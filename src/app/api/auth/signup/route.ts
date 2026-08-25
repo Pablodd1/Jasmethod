@@ -1,0 +1,42 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { hashPassword, createSession, setSessionCookie } from "@/lib/auth";
+import { sendEmail, welcomeEmail } from "@/lib/email";
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { email, password, name } = body || {};
+    if (!email || !password || !name) {
+      return NextResponse.json({ error: "Email, password, and name are required." }, { status: 400 });
+    }
+    const normalized = String(email).toLowerCase().trim();
+    const existing = await prisma.user.findUnique({ where: { email: normalized } });
+    if (existing) {
+      return NextResponse.json({ error: "An account with this email already exists. Try logging in." }, { status: 409 });
+    }
+    if (String(password).length < 8) {
+      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
+    }
+    const user = await prisma.user.create({
+      data: {
+        email: normalized,
+        passwordHash: hashPassword(String(password)),
+        name: String(name).trim(),
+        profile: { create: {} },
+        motivation: { create: {} },
+      },
+    });
+    const token = await createSession(user.id);
+    await setSessionCookie(token, req);
+
+    // Fire-and-forget welcome email (never blocks signup)
+    const { subject, html } = welcomeEmail(user.name);
+    void sendEmail({ to: user.email, subject, html, userId: user.id });
+
+    return NextResponse.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  } catch (e: any) {
+    console.error("signup error:", e);
+    return NextResponse.json({ error: "Signup failed. Please try again." }, { status: 500 });
+  }
+}

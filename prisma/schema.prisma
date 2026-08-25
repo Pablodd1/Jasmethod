@@ -1,0 +1,304 @@
+// JasMiamiMethod — Prisma schema
+// Multi-user triathlon coaching platform (medical/human research based, 2000+)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- IDENTITY ----------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         String    @default("athlete") // athlete | coach | admin
+  timezone     String    @default("America/New_York")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  profile     AthleteProfile?
+  sessions    AuthSession[]
+  plans       TrainingPlan[]
+  workouts    Workout[]
+  metrics     DailyMetrics[]
+  sleep       SleepRecord[]
+  bloodPanels BloodPanel[]
+  dnaResults  GeneticResult[]
+  nutrition   NutritionLog[]
+  hydration   HydrationLog[]
+  connectors  Connector[]
+  calendar    CalendarEvent[]
+  motivation  MotivationPref?
+  emails      SentEmail[]
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------- ATHLETE PROFILE & PHYSIOLOGY ----------
+
+model AthleteProfile {
+  id            String  @id @default(cuid())
+  userId        String  @unique
+  birthYear     Int?
+  sex           String? // male | female
+  heightCm      Float?
+  weightKg      Float?
+  experience    String  @default("beginner") // beginner | amateur | advanced | pro
+  goal          String? // sprint | olympic | half | full
+  raceDate      DateTime?
+  weeklyHours   Float   @default(8)
+  vo2max        Float? // ml/kg/min (measured or estimated)
+  lthr          Int?   // lactate threshold HR bpm
+  restingHr     Int?
+  maxHr         Int?
+  ftp           Float? // functional threshold power W
+  cp            Float? // critical power W
+  wPrime        Float? // kJ
+  swimPaceBase  Float? // sec/100m threshold
+  runPaceBase   Float? // sec/km threshold
+  hrvBaseline   Float? // ms
+  injured       Boolean @default(false)
+  notes         String?
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------- TRAINING PLAN ----------
+
+model TrainingPlan {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  level       String   // beginner | amateur | advanced | pro
+  distance    String   // sprint | olympic | half | full
+  weeks       Int
+  startDate   DateTime
+  raceDate    DateTime?
+  status      String   @default("active") // active | completed | archived
+  tssTarget   Float?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days        PlanDay[]
+}
+
+model PlanDay {
+  id        String       @id @default(cuid())
+  planId    String
+  date      DateTime
+  week      Int
+  dayOfWeek Int
+  focus     String? // swim | bike | run | strength | recovery | rest
+  notes     String?
+  plan      TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  sessions  Workout[]
+}
+
+// ---------- WORKOUTS ----------
+
+model Workout {
+  id         String   @id @default(cuid())
+  userId     String
+  planDayId  String?
+  date       DateTime
+  sport      String   // swim | bike | run | strength | mobility | recovery | brick
+  title      String
+  type       String   // interval | tempo | endurance | threshold | recovery | strength | skill
+  durationMin Int
+  distanceKm Float?
+  intensity  String?  // z1..z5, rpe
+  rpe        Int?     // 1-10
+  tss        Float?
+  planned    Boolean  @default(true)
+  completed  Boolean  @default(false)
+  notes      String?
+  avgHr      Int?
+  maxHr      Int?
+  avgPower   Float?
+  np         Float?
+  calories   Int?
+  source     String?  // manual | plan | strava | garmin | apple | whoop
+  externalId String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planDay    PlanDay? @relation(fields: [planDayId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+}
+
+// ---------- METRICS: SLEEP / HRV / RECOVERY ----------
+
+model DailyMetrics {
+  id            String   @id @default(cuid())
+  userId        String
+  date          DateTime @unique
+  hrv           Float?   // ms (RMSSD)
+  restingHr     Int?
+  sleepScore    Int?     // 0-100
+  recoveryScore Int?     // 0-100 readiness
+  stressScore   Int?     // 0-100
+  energy        Int?     // 0-100
+  rhr           Int?
+  weightKg      Float?
+  bodyFat       Float?
+  sleepHours    Float?
+  source        String?  // whoop | aura | apple | garmin | manual
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SleepRecord {
+  id            String   @id @default(cuid())
+  userId        String
+  date          DateTime
+  bedTime       DateTime?
+  wakeTime      DateTime?
+  hours         Float
+  deepHours     Float?
+  remHours      Float?
+  lightHours    Float?
+  awakenings    Int?
+  efficiency    Float?   // 0-100
+  quality       Int?     // 0-100
+  source        String?  // whoop | aura | apple | garmin | manual
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+// ---------- BLOOD PANELS ----------
+
+model BloodPanel {
+  id        String       @id @default(cuid())
+  userId    String
+  date      DateTime
+  lab       String?
+  note      String?
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  results   BloodResult[]
+}
+
+model BloodResult {
+  id           String     @id @default(cuid())
+  panelId      String
+  marker       String     // e.g. "Ferritin", "Vitamin D", "Hemoglobin"
+  value        Float
+  unit         String?
+  refLow       Float?
+  refHigh      Float?
+  panel        BloodPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  notes        String?
+}
+
+// ---------- DNA ----------
+
+model GeneticResult {
+  id        String    @id @default(cuid())
+  userId    String
+  uploadedAt DateTime @default(now())
+  provider  String    // 23andme | ancestry | raw
+  fileName  String?
+  summary   String?   // JSON: trait genotypes
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variants  GeneticVariant[]
+}
+
+model GeneticVariant {
+  id         String    @id @default(cuid())
+  dnaResultId String
+  rsid       String
+  gene       String?
+  genotype   String
+  trait      String?
+  impact     String?   // beneficial | neutral | caution
+  note       String?
+  dnaResult  GeneticResult @relation(fields: [dnaResultId], references: [id], onDelete: Cascade)
+}
+
+// ---------- NUTRITION & HYDRATION ----------
+
+model NutritionLog {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime
+  meal      String?  // breakfast | lunch | dinner | snack | fuel
+  food      String
+  calories  Int?
+  proteinG  Float?
+  carbsG    Float?
+  fatG      Float?
+  waterMl   Int?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model HydrationLog {
+  id      String   @id @default(cuid())
+  userId  String
+  date    DateTime
+  ml      Int
+  source  String?  // water | sports drink | electrolytes
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------- CONNECTORS ----------
+
+model Connector {
+  id          String   @id @default(cuid())
+  userId      String
+  provider    String   // whoop | aura | apple | garmin | strava | withings
+  status      String   @default("disconnected") // connected | disconnected | error
+  tokenEnc    String?  // encrypted access token
+  refreshEnc  String?
+  expiresAt   DateTime?
+  scope       String?
+  lastSyncAt  DateTime?
+  lastSyncCount Int?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+}
+
+// ---------- CALENDAR & MOTIVATION ----------
+
+model CalendarEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  date      DateTime
+  startTime String?
+  endTime   String?
+  type      String   // workout | race | appointment | note
+  notes     String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MotivationPref {
+  id        String @id @default(cuid())
+  userId    String @unique
+  dailyQuote Boolean @default(true)
+  emailDigest Boolean @default(true)
+  digestHour Int    @default(6)
+  style     String @default("coach") // coach | science | tough | gentle
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SentEmail {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  to        String
+  status    String   // sent | failed
+  error     String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

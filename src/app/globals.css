@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Sora", system-ui;
+  --font-body: "Inter", system-ui;
+}
+
+body {
+  @apply bg-sand-100 text-slate-800 font-body antialiased;
+}
+
+h1, h2, h3, h4 {
+  @apply font-display;
+}
+
+.card {
+  @apply bg-white rounded-2xl border border-sand-200 shadow-sm p-5;
+}
+
+.btn-primary {
+  @apply inline-flex items-center gap-2 bg-ocean-600 hover:bg-ocean-700 text-white font-semibold px-4 py-2 rounded-xl transition-colors disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center gap-2 bg-white hover:bg-sand-100 text-ocean-800 border border-ocean-200 font-semibold px-4 py-2 rounded-xl transition-colors;
+}
+
+.btn-danger {
+  @apply inline-flex items-center gap-2 bg-coral-500 hover:bg-coral-600 text-white font-semibold px-4 py-2 rounded-xl transition-colors;
+}
+
+.input {
+  @apply w-full rounded-xl border border-sand-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-400;
+}
+
+.inp {
+  @apply w-full rounded-xl border border-sand-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-400 mb-2;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 bg-ocean-600 hover:bg-ocean-700 text-white font-semibold px-4 py-2 rounded-xl transition-colors;
+}
+
+.btn.ghost {
+  @apply bg-white hover:bg-sand-100 text-ocean-800 border border-ocean-200;
+}
+
+.label {
+  @apply block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1;
+}
+
+.chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
+}
+
+.chip-z1 { @apply bg-slate-100 text-slate-600; }
+.chip-z2 { @apply bg-emerald-100 text-emerald-700; }
+.chip-z3 { @apply bg-lime-100 text-lime-700; }
+.chip-z4 { @apply bg-amber-100 text-amber-700; }
+.chip-z5 { @apply bg-orange-100 text-orange-700; }
+.chip-z6 { @apply bg-red-100 text-red-700; }
+.chip-z7 { @apply bg-purple-100 text-purple-700; }
