@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Waves, Activity, HeartPulse, Dna, FlaskConical, Moon, Apple, Dumbbell, ArrowRight } from "lucide-react";
+import { Waves, Activity, HeartPulse, Dna, FlaskConical, Moon, Apple, Dumbbell, ArrowRight, Bike, Zap, CalendarDays } from "lucide-react";
 
 export default function LandingPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -63,6 +63,50 @@ export default function LandingPage() {
                 <f.icon className="w-4 h-4 text-ocean-300" /> {f.label}
               </span>
             ))}
+          </div>
+        </div>
+
+        {/* Free training banner */}
+        <div className="max-w-3xl mx-auto mt-4 mb-10">
+          <div className="bg-ocean-800/40 border border-ocean-700/60 rounded-3xl p-6 md:p-8">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider mb-3">
+                <CalendarDays className="w-3.5 h-3.5" /> Free with the app
+              </div>
+              <h2 className="font-display text-2xl md:text-3xl font-bold">Free group training, every week</h2>
+              <p className="text-ocean-200 text-sm mt-1">Two coached sessions open to everyone. No catch — just show up and go.</p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-white/5 border border-ocean-600/40 rounded-2xl p-5">
+                <div className="flex items-center gap-2 text-coral-300 text-xs font-bold uppercase tracking-wide mb-2">
+                  <Zap className="w-4 h-4" /> Wednesday
+                </div>
+                <div className="font-display text-xl font-bold">VO2max · Double Threshold</div>
+                <p className="text-ocean-200 text-sm mt-1.5">
+                  Always double-threshold day — two quality sessions back-to-back, the Norwegian-method way. Free with the app.
+                </p>
+              </div>
+
+              <div className="bg-white/5 border border-ocean-600/40 rounded-2xl p-5">
+                <div className="flex items-center gap-2 text-ocean-300 text-xs font-bold uppercase tracking-wide mb-2">
+                  <Bike className="w-4 h-4" /> Saturday
+                </div>
+                <div className="font-display text-xl font-bold">Bike + Run</div>
+                <p className="text-ocean-200 text-sm mt-1.5">
+                  Long ride, then run off the bike — brick work that makes race day feel easy. Free with the app.
+                </p>
+              </div>
+            </div>
+
+            <div className="text-center mt-6">
+              <button
+                onClick={() => setMode("signup")}
+                className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-semibold rounded-xl px-6 py-2.5 text-sm transition-colors"
+              >
+                Start Training Free <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
