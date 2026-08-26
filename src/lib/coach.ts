@@ -4,7 +4,7 @@
 // requests in one server process; swap for a DB row if you go multi-instance.)
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.7-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 interface Briefing {
   mode: "gemini" | "fallback";
