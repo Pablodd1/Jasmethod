@@ -87,8 +87,9 @@ function geminiBriefing(c: CoachContext): Promise<Briefing> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: buildPrompt(c) }] }],
-        generationConfig: { temperature: 0.6, maxOutputTokens: 300, responseMimeType: "application/json" },
+        contents: [{ parts: [{ text: buildPrompt(c) }] }],
+        // NOTE: no `temperature` — Gemini 3.x flash is a thinking model and rejects it.
+        generationConfig: { maxOutputTokens: 1024, responseMimeType: "application/json" },
       }),
       signal: ctrl.signal,
     }).then(async (res) => {
