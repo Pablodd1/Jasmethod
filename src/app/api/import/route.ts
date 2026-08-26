@@ -37,7 +37,7 @@ export async function POST(req: Request) {
         const d = new Date(c.day);
         if (isNaN(d.getTime())) continue;
         const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
-        const existing = await prisma.dailyMetrics.findUnique({ where: { date: dayStart } });
+        const existing = await prisma.dailyMetrics.findUnique({ where: { userId_date: { userId: user.id, date: dayStart } } });
         const data = {
           hrv: c.hrv ?? undefined,
           restingHr: c.restingHr ?? undefined,
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     if (source === "applehealth" && extra.hrvLogs?.length) {
       const latest = extra.hrvLogs[extra.hrvLogs.length - 1];
       const dayStart = new Date(latest.date); dayStart.setHours(0, 0, 0, 0);
-      const existing = await prisma.dailyMetrics.findUnique({ where: { date: dayStart } });
+      const existing = await prisma.dailyMetrics.findUnique({ where: { userId_date: { userId: user.id, date: dayStart } } });
       const data = { hrv: Math.round(latest.ms * 100) / 100, source: "apple" };
       if (existing) await prisma.dailyMetrics.update({ where: { id: existing.id }, data });
       else await prisma.dailyMetrics.create({ data: { userId: user.id, date: dayStart, ...data } });

@@ -87,8 +87,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <LanguageSelect lang={lang} onChange={setLanguage} />
           </div>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-ocean-600 flex items-center justify-center font-bold">
-              {user?.name?.[0]?.toUpperCase() || "A"}
+            <div className="w-9 h-9 rounded-full bg-ocean-600 flex items-center justify-center font-bold text-lg">
+              {user?.avatar || user?.name?.[0]?.toUpperCase() || "A"}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold truncate">{user?.name || "Athlete"}</div>

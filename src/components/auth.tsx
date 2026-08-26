@@ -8,6 +8,7 @@ interface User {
   email: string;
   role: string;
   language?: string;
+  avatar?: string;
   profile?: any;
   motivation?: any;
 }

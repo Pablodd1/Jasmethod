@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------- IDENTITY ----------
@@ -20,6 +21,7 @@ model User {
   role         String    @default("athlete") // athlete | coach | admin
   timezone     String    @default("America/New_York")
   language     String    @default("en") // en | es | ht | fr | ru
+  avatar       String    @default("🧑") // emoji icon face
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -151,7 +153,7 @@ model Workout {
 model DailyMetrics {
   id            String   @id @default(cuid())
   userId        String
-  date          DateTime @unique
+  date          DateTime
   hrv           Float?   // ms (RMSSD)
   restingHr     Int?
   sleepScore    Int?     // 0-100
@@ -164,6 +166,8 @@ model DailyMetrics {
   sleepHours    Float?
   source        String?  // whoop | aura | apple | garmin | manual
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
 }
 
 model SleepRecord {

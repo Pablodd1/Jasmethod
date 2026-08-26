@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     for (const k of ["hrv", "restingHr", "sleepScore", "recoveryScore", "stressScore", "energy", "rhr", "weightKg", "bodyFat", "sleepHours", "source"]) {
       if (body[k] !== undefined) data[k] = body[k];
     }
-    const existing = await prisma.dailyMetrics.findUnique({ where: { date: dayStart } });
+    const existing = await prisma.dailyMetrics.findUnique({ where: { userId_date: { userId: user.id, date: dayStart } } });
     const metric = existing
       ? await prisma.dailyMetrics.update({ where: { id: existing.id }, data })
       : await prisma.dailyMetrics.create({ data: { userId: user.id, date: dayStart, ...data } });
