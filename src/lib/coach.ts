@@ -1,16 +1,13 @@
-// JasMiamiMethod — AI Coach (ox-alpha via OpenRouter)
-// ox-alpha is a reasoning model (~115s latency), so we never block a page load on it.
-// We cache one briefing per user/day and serve it instantly; ox-alpha generation runs
-// fire-and-forget in the background and backfills the cache. (ponytail: in-memory Map —
-// survives across requests in one server process; swap for a DB row if you go multi-instance.)
+// JasMiamiMethod — AI Coach (Gemini Flash via Google AI Studio, direct API).
+// Caches one briefing per user/day and serves instantly; generation runs fire-and-forget
+// in the background and backfills the cache. (ponytail: in-memory Map — survives across
+// requests in one server process; swap for a DB row if you go multi-instance.)
 
-const OR_KEY = process.env.OPENROUTER_API_KEY;
-// Default model: Gemini Flash — fast (<2s vs ox-alpha's ~115s), cheapest, best
-// multilingual (es/ht/fr/ru) and reliable strict-JSON. Override via OPENROUTER_MODEL.
-const OR_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-3.7-flash";
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash"; // override to gemini-3.x for newer
 
 interface Briefing {
-  mode: "ox-alpha" | "fallback";
+  mode: "gemini" | "fallback";
   headline: string;
   briefing: string;
   adaptation: string;
@@ -80,30 +77,28 @@ Respond in strict JSON: {"headline": "<GREEN|AMBER|RED> DAY — short tag", "bri
 Keep it tight. No markdown. Under 90 words total.`;
 }
 
-function oxAlphaBriefing(c: CoachContext): Promise<Briefing> {
+function geminiBriefing(c: CoachContext): Promise<Briefing> {
   return new Promise((resolve) => {
-    if (!OR_KEY) return resolve(fallbackBriefing(c));
+    if (!GEMINI_KEY) return resolve(fallbackBriefing(c));
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 20000); // flash models answer in ~1-2s; 20s headroom
-    fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
+    fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${OR_KEY}`, "HTTP-Referer": "https://jasmiamimethod.com", "X-Title": "JasMiamiMethod" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: OR_MODEL,
-        messages: [{ role: "user", content: buildPrompt(c) }],
-        temperature: 0.6,
-        max_tokens: 300,
-        response_format: { type: "json_object" },
+        contents: [{ role: "user", parts: [{ text: buildPrompt(c) }] }],
+        generationConfig: { temperature: 0.6, maxOutputTokens: 300, responseMimeType: "application/json" },
       }),
       signal: ctrl.signal,
     }).then(async (res) => {
       clearTimeout(t);
       if (!res.ok) return resolve(fallbackBriefing(c));
       const data = await res.json();
-      const text = data?.choices?.[0]?.message?.content || "";
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const parsed = JSON.parse(text);
       resolve({
-        mode: "ox-alpha",
+        mode: "gemini",
         headline: parsed.headline || fallbackBriefing(c).headline,
         briefing: parsed.briefing || fallbackBriefing(c).briefing,
         adaptation: parsed.adaptation || fallbackBriefing(c).adaptation,
@@ -123,10 +118,10 @@ export function getCoachBriefing(userId: string, c: CoachContext): Briefing {
 
   if (!pending.has(userId)) {
     pending.add(userId);
-    oxAlphaBriefing(c).then((b) => {
+    geminiBriefing(c).then((b) => {
       // ponytail: only cache a real model result. Caching fallback would pin the
       // user to rule-based output all day after a single 429/timeout — wrong.
-      if (b.mode === "ox-alpha") {
+      if (b.mode === "gemini") {
         cache.set(userId, { date: tk, briefing: b });
       }
       pending.delete(userId);
