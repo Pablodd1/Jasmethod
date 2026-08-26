@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { generatePlan, estimateVo2max, maxHrFromAge, estimateLthr, buildZoneTable, type ZoneTable } from "@/lib/science";
+import { generatePlan, generateHyroxPlan, estimateVo2max, maxHrFromAge, estimateLthr, buildZoneTable, type ZoneTable } from "@/lib/science";
+import { recoveryFor, scheduleTests, venueAdjustment } from "@/lib/adaptive";
 
 // POST /api/plan/generate — generate a periodized plan for the user
 export async function POST(req: Request) {
@@ -10,7 +11,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { distance, weeks, startDate, raceDate } = body || {};
+    const { distance, weeks, startDate, raceDate, targetTempC } = body || {};
     const profile = user.profile ?? (await prisma.athleteProfile.create({ data: { userId: user.id } }));
     const level = profile.experience || "amateur";
 
@@ -33,24 +34,25 @@ export async function POST(req: Request) {
     }
 
     const weeksCount = Math.max(4, Math.min(30, parseInt(weeks || "12", 10)));
-    const start = startDate ? new Date(startDate) : new Date();
-    const race = raceDate ? new Date(raceDate) : new Date(start.getTime() + weeksCount * 7 * 86400000);
+    // Parse date-only strings as LOCAL midnight (new Date("YYYY-MM-DD") is UTC,
+    // which shifts every session a day off in EDT and breaks "today" lookups).
+    const toLocalMidnight = (s: string) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+    const start = startDate ? toLocalMidnight(String(startDate)) : new Date(new Date().setHours(0, 0, 0, 0));
+    const race = raceDate ? toLocalMidnight(String(raceDate)) : new Date(start.getTime() + weeksCount * 7 * 86400000);
 
-    const generated = generatePlan({
-      level,
-      distance: distance || "olympic",
-      weeks: weeksCount,
-      startDate: start,
-      weeklyHours: profile.weeklyHours || undefined,
-    });
+    const dist = String(distance || "olympic");
+    const isHyrox = dist === "hyrox";
+    const generated = isHyrox
+      ? generateHyroxPlan({ level, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined })
+      : generatePlan({ level, distance: dist, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined });
 
     // Persist plan + plan days + planned workouts
     const plan = await prisma.trainingPlan.create({
       data: {
         userId: user.id,
-        name: `JMM ${distance || "olympic"} ${weeksCount}-week plan (${level})`,
+        name: `JMM ${dist} ${weeksCount}-week plan (${level})`,
         level,
-        distance: distance || "olympic",
+        distance: dist,
         weeks: weeksCount,
         startDate: start,
         raceDate: race,
@@ -78,6 +80,7 @@ export async function POST(req: Request) {
                     planned: true,
                     completed: false,
                     source: "plan",
+                    recovery: recoveryFor(date).cooldownNote,
                   },
                 },
               };
@@ -96,13 +99,49 @@ export async function POST(req: Request) {
       thresholdPaceSecPer100m: profile.swimPaceBase || undefined,
     });
 
+    // Schedule benchmark tests every ~2 months, race-aware
+    const races = await prisma.race.findMany({ where: { userId: user.id, date: { gte: start } } });
+    const scheduledTests = scheduleTests(start, weeksCount, races.map((r) => ({ date: r.date })), { hyrox: isHyrox });
+    await prisma.benchmarkTest.deleteMany({ where: { userId: user.id, completed: false } });
+    if (scheduledTests.length) {
+      await prisma.benchmarkTest.createMany({
+        data: scheduledTests.map((t) => ({
+          userId: user.id,
+          date: t.date,
+          type: t.type,
+          name: t.name,
+          skipped: t.skipped,
+          reason: t.reason || null,
+        })),
+      });
+    }
+
+    // Race venue adjustment (temperature + elevation + terrain + water) from the A-race
+    let venuePlan = null;
+    const anchorRace = races.find((r) => r.priority === 1) || races[0];
+    const temp = targetTempC !== undefined ? parseFloat(targetTempC) : anchorRace?.targetTempC ?? undefined;
+    if (anchorRace || temp !== undefined) {
+      venuePlan = venueAdjustment({
+        targetTempC: temp,
+        humidity: anchorRace?.humidity ?? undefined,
+        baseElevM: anchorRace?.baseElevM ?? undefined,
+        bikeElevM: anchorRace?.bikeElevM ?? undefined,
+        bikeTerrain: anchorRace?.bikeTerrain ?? undefined,
+        runElevM: anchorRace?.runElevM ?? undefined,
+        runTerrain: anchorRace?.runTerrain ?? undefined,
+        swimVenue: anchorRace?.swimVenue ?? undefined,
+        waterTempC: anchorRace?.waterTempC ?? undefined,
+        swimCurrent: anchorRace?.swimCurrent ?? undefined,
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       plan: {
         id: plan.id,
         name: plan.name,
         level,
-        distance,
+        distance: dist,
         weeks: weeksCount,
         startDate: start,
         raceDate: race,
@@ -110,6 +149,8 @@ export async function POST(req: Request) {
       },
       zones,
       physiology: { vo2max, lthr },
+      benchmarks: scheduledTests,
+      venuePlan,
     });
   } catch (e: any) {
     console.error("plan generate error:", e);

@@ -4,6 +4,11 @@ import { hashPassword } from "../src/lib/auth";
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO !== "true") {
+    console.log("Skipping demo seed (production). Set SEED_DEMO=true to seed the demo account.");
+    return;
+  }
+
   // Demo athlete account
   const demo = await prisma.user.upsert({
     where: { email: "demo@jasmiamimethod.com" },

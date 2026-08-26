@@ -4,27 +4,52 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, CalendarDays, Dumbbell, HeartPulse, Moon, Droplets, Apple,
-  FlaskConical, Dna, Plug, Settings, Waves, LogOut, LineChart,
+  FlaskConical, Dna, Plug, Settings, Waves, LogOut, Activity, Flag, ClipboardCheck, Bell, Globe,
 } from "lucide-react";
 import { useAuth } from "./auth";
+import { LANGS, t, type Lang } from "@/lib/i18n";
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: Home },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/training", label: "Training Plan", icon: Dumbbell },
-  { href: "/labs", label: "Field-Test Labs", icon: FlaskConical },
-  { href: "/metrics", label: "HRV & Recovery", icon: HeartPulse },
-  { href: "/sleep", label: "Sleep", icon: Moon },
-  { href: "/nutrition", label: "Nutrition & Hydration", icon: Apple },
-  { href: "/blood", label: "Blood Panels", icon: FlaskConical },
-  { href: "/dna", label: "DNA Analysis", icon: Dna },
-  { href: "/connectors", label: "Connectors", icon: Plug },
-  { href: "/settings", label: "Profile & Zones", icon: Settings },
+  { href: "/dashboard", key: "nav.dashboard", icon: Home },
+  { href: "/fitness", key: "nav.fitness", icon: Activity },
+  { href: "/calendar", key: "nav.calendar", icon: CalendarDays },
+  { href: "/training", key: "nav.training", icon: Dumbbell },
+  { href: "/races", key: "nav.races", icon: Flag },
+  { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
+  { href: "/labs", key: "nav.labs", icon: FlaskConical },
+  { href: "/metrics", key: "nav.metrics", icon: HeartPulse },
+  { href: "/sleep", key: "nav.sleep", icon: Moon },
+  { href: "/nutrition", key: "nav.nutrition", icon: Apple },
+  { href: "/blood", key: "nav.blood", icon: FlaskConical },
+  { href: "/dna", key: "nav.dna", icon: Dna },
+  { href: "/connectors", key: "nav.connectors", icon: Plug },
+  { href: "/reminders", key: "nav.reminders", icon: Bell },
+  { href: "/settings", key: "nav.settings", icon: Settings },
 ];
+
+function LanguageSelect({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
+  return (
+    <select
+      value={lang}
+      onChange={(e) => onChange(e.target.value as Lang)}
+      className="w-full bg-ocean-900 text-ocean-100 text-xs rounded-lg px-2 py-1.5 border border-ocean-800 focus:outline-none"
+    >
+      {LANGS.map((l) => (
+        <option key={l.code} value={l.code}>{l.native}</option>
+      ))}
+    </select>
+  );
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
+  const lang = (user?.language || "en") as Lang;
+
+  async function setLanguage(l: Lang) {
+    await fetch("/api/language", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ language: l }) });
+    await refresh();
+  }
 
   return (
     <div className="flex min-h-screen">
@@ -51,12 +76,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 <Icon className="w-4.5 h-4.5 w-5 h-5" />
-                {item.label}
+                {t(lang, item.key)}
               </Link>
             );
           })}
         </nav>
-        <div className="px-5 py-4 border-t border-ocean-900">
+        <div className="px-5 py-4 border-t border-ocean-900 space-y-3">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-ocean-400 shrink-0" />
+            <LanguageSelect lang={lang} onChange={setLanguage} />
+          </div>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-ocean-600 flex items-center justify-center font-bold">
               {user?.name?.[0]?.toUpperCase() || "A"}
@@ -78,7 +107,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Waves className="w-6 h-6 text-ocean-300" />
           <span className="font-display font-bold">JasMiamiMethod</span>
         </div>
-        <button onClick={() => logout()} className="text-ocean-300 text-sm">Log out</button>
+        <div className="flex items-center gap-2">
+          <Globe className="w-4 h-4 text-ocean-400" />
+          <select value={lang} onChange={(e) => setLanguage(e.target.value as Lang)} className="bg-ocean-900 text-ocean-100 text-xs rounded px-1.5 py-1 border border-ocean-800">
+            {LANGS.map((l) => <option key={l.code} value={l.code}>{l.native}</option>)}
+          </select>
+          <button onClick={() => logout()} className="text-ocean-300 text-sm">Log out</button>
+        </div>
       </div>
 
       <main className="flex-1 md:ml-60 pt-14 md:pt-0">
@@ -90,6 +125,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 export function MobileNav() {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const lang = (user?.language || "en") as Lang;
   return (
     <div className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-sand-200 flex justify-around py-2">
       {NAV.slice(0, 5).map((item) => {
@@ -98,7 +135,7 @@ export function MobileNav() {
         return (
           <Link key={item.href} href={item.href} className={`flex flex-col items-center gap-0.5 text-[10px] ${active ? "text-ocean-600" : "text-slate-400"}`}>
             <Icon className="w-5 h-5" />
-            {item.label.split(" ")[0]}
+            {t(lang, item.key).split(" ")[0]}
           </Link>
         );
       })}

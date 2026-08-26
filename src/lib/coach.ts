@@ -5,7 +5,9 @@
 // survives across requests in one server process; swap for a DB row if you go multi-instance.)
 
 const OR_KEY = process.env.OPENROUTER_API_KEY;
-const OR_MODEL = process.env.OPENROUTER_MODEL || "stealth/ox-alpha";
+// Default model: Gemini Flash — fast (<2s vs ox-alpha's ~115s), cheapest, best
+// multilingual (es/ht/fr/ru) and reliable strict-JSON. Override via OPENROUTER_MODEL.
+const OR_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-3.7-flash";
 
 interface Briefing {
   mode: "ox-alpha" | "fallback";
@@ -30,6 +32,7 @@ export interface CoachContext {
   planName: string | null;
   bloodFlags: string[];
   dnaHighlights: string[];
+  language?: string; // en | es | ht | fr | ru
 }
 
 function fallbackBriefing(c: CoachContext): Briefing {
@@ -60,6 +63,8 @@ function fallbackBriefing(c: CoachContext): Briefing {
 function buildPrompt(c: CoachContext): string {
   const p = c.profile || {};
   const m = c.latestMetric || {};
+  const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", ht: "Haitian Creole", fr: "French", ru: "Russian" };
+  const langName = LANG_NAMES[c.language || "en"] || "English";
   return `You are Coach Jas, a science-backed triathlon coach for ${c.name || "this athlete"}.
 Athlete profile: sex=${p.sex || "n/a"}, age=${p.birthYear ? new Date().getFullYear() - p.birthYear : "n/a"}, experience=${p.experience || "n/a"}, goal=${p.goal || "n/a"}.
 Physiology: VO2max=${p.vo2max ?? "n/a"}, LTHR=${p.lthr ?? "n/a"}, FTP=${p.ftp ?? "n/a"}.
@@ -69,6 +74,7 @@ Today's planned session: ${c.todaySession ? `${c.todaySession.title} (${c.todayS
 Active plan: ${c.planName ?? "none"}.
 Blood flags: ${c.bloodFlags.length ? c.bloodFlags.join("; ") : "none on file"}.
 DNA highlights: ${c.dnaHighlights.length ? c.dnaHighlights.join("; ") : "none on file"}.
+Language: respond entirely in ${langName}.
 
 Respond in strict JSON: {"headline": "<GREEN|AMBER|RED> DAY — short tag", "briefing": "<2-3 sentences, coach voice, Miami-flavored, evidence-based>", "adaptation": "<one concrete change to today's training based on readiness>", "sources": ["<author year>", ...]}.
 Keep it tight. No markdown. Under 90 words total.`;
@@ -78,7 +84,7 @@ function oxAlphaBriefing(c: CoachContext): Promise<Briefing> {
   return new Promise((resolve) => {
     if (!OR_KEY) return resolve(fallbackBriefing(c));
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 130000); // ox-alpha ~115s; give headroom
+    const t = setTimeout(() => ctrl.abort(), 20000); // flash models answer in ~1-2s; 20s headroom
     fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${OR_KEY}`, "HTTP-Referer": "https://jasmiamimethod.com", "X-Title": "JasMiamiMethod" },

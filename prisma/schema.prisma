@@ -19,6 +19,7 @@ model User {
   name         String
   role         String    @default("athlete") // athlete | coach | admin
   timezone     String    @default("America/New_York")
+  language     String    @default("en") // en | es | ht | fr | ru
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -36,6 +37,11 @@ model User {
   calendar    CalendarEvent[]
   motivation  MotivationPref?
   emails      SentEmail[]
+  races       Race[]
+  benchmarks  BenchmarkTest[]
+  checkins    DailyCheckin[]
+  supplement  SupplementProfile?
+  reminder    ReminderPref?
 }
 
 model AuthSession {
@@ -130,6 +136,9 @@ model Workout {
   calories   Int?
   source     String?  // manual | plan | strava | garmin | apple | whoop
   externalId String?
+  preWeightKg  Float?  // pre-session body weight (hydration tracking)
+  postWeightKg Float?  // post-session body weight
+  recovery     String? // post-workout ANS recovery cooldown note (rotates daily)
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   planDay    PlanDay? @relation(fields: [planDayId], references: [id], onDelete: SetNull)
@@ -301,4 +310,89 @@ model SentEmail {
   error     String?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------- RACES (goal + calendar + temperature) ----------
+
+model Race {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  distance    String   // sprint | olympic | half | full | hyrox
+  date        DateTime
+  startTime   String?  // "07:30"
+  location    String?
+  targetTempC Float?   // expected race-day temperature (for heat adjustment)
+  humidity    Float?   // % (optional — folded into heat index)
+  baseElevM   Float?   // venue base elevation (thin-air altitude)
+  goalTimeMin Float?   // target finish time in minutes
+  priority    Int      @default(1) // 1 = A-race (anchor), 2 = B, 3 = C
+  bikeElevM   Float?   // total climb on the bike leg (m)
+  bikeTerrain String?  // flat | rolling | hilly | mountain
+  runElevM    Float?   // total climb on the run leg (m)
+  runTerrain  String?  // flat | rolling | hilly | trail
+  swimVenue   String?  // pool | lake | ocean | river
+  waterTempC  Float?   // swim water temperature (°C)
+  swimCurrent String?  // none | mild | strong
+  notes       String?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+// ---------- SCHEDULED TESTING (FTP/LTHR/CP benchmarks) ----------
+
+model BenchmarkTest {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime
+  type      String   // ftp | lthr | cp | run5k | swim
+  name      String
+  result    Float?   // measured value (W / bpm / sec / time)
+  skipped   Boolean  @default(false)
+  reason    String?
+  completed Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+// ---------- DAILY CHECK-IN (questionnaire → adaptation) ----------
+
+model DailyCheckin {
+  id         String   @id @default(cuid())
+  userId     String
+  date       DateTime
+  answers    String?  // JSON: Checkin
+  adaptation String?  // JSON: Adaptation
+  fuel       String?  // JSON: FuelPlan
+  ergos      String?  // JSON: string[] of ergo keys recommended
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+// ---------- SUPPLEMENT / ERGOGENIC PREFERENCES ----------
+
+model SupplementProfile {
+  id       String  @id @default(cuid())
+  userId   String  @unique
+  enabled  Boolean @default(true) // master switch — off = never recommend anything
+  likes    String? // JSON: string[]
+  dislikes String? // JSON: string[]
+  optsOut  String? // JSON: string[]
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------- TRAINING REMINDERS (email / telegram) ----------
+
+model ReminderPref {
+  id              String  @id @default(cuid())
+  userId          String  @unique
+  emailEnabled    Boolean @default(true)
+  telegramEnabled Boolean @default(false)
+  telegramChatId  String?
+  reminderHour    Int     @default(6) // 0-23 local, when the reminder fires
+  remindBeforeMin Int     @default(0) // extra lead time before the session
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

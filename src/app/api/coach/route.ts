@@ -53,6 +53,7 @@ export async function GET() {
     planName: plans[0]?.name || null,
     bloodFlags,
     dnaHighlights: dnaHighlights.slice(0, 4),
+    language: user.language,
   });
 
   return NextResponse.json({ briefing, cached: briefing.mode === "fallback" ? false : true });

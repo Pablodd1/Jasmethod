@@ -9,3 +9,4 @@ prisma/dev.db-journal
 .env*.local
 .vercel
 .env*
+!.env.example

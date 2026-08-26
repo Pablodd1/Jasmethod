@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { recoveryFor } from "@/lib/adaptive";
 
 // GET /api/workouts?days=14 — user workouts (planned + completed)
 export async function GET(req: Request) {
@@ -37,7 +38,10 @@ export async function POST(req: Request) {
         maxHr: body.maxHr !== undefined ? parseInt(body.maxHr, 10) : undefined,
         avgPower: body.avgPower !== undefined ? parseFloat(body.avgPower) : undefined,
         calories: body.calories !== undefined ? parseInt(body.calories, 10) : undefined,
+        preWeightKg: body.preWeightKg !== undefined ? parseFloat(body.preWeightKg) : undefined,
+        postWeightKg: body.postWeightKg !== undefined ? parseFloat(body.postWeightKg) : undefined,
         notes: body.notes,
+        recovery: recoveryFor(new Date(body.date || new Date())).cooldownNote,
         planned: false,
         completed: true,
         source: "manual",

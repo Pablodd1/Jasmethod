@@ -14,7 +14,7 @@
 // - Tanaka, Monahan & Seals 2001: age-predicted HRmax accuracy.
 // - Bouchard et al. 2011: HERITAGE — VO2max trainability, genomic predictors.
 
-export type Sport = "swim" | "bike" | "run" | "strength" | "mobility" | "recovery" | "brick";
+export type Sport = "swim" | "bike" | "run" | "strength" | "mobility" | "recovery" | "brick" | "hyrox";
 export type ZoneKey = "z1" | "z2" | "z3" | "z4" | "z5" | "z6" | "z7";
 
 export interface Zone {
@@ -559,3 +559,113 @@ export const NUTRITION_GUIDELINES = {
   sodium: { target: 700, range: "400-1000", unit: "mg/L", source: "ACSM 2007" },
   proteinPost: { target: 0.3, unit: "g/kg within 2h", source: "Phillips & Van Loon 2011" },
 };
+
+// ---------- HYROX ----------
+// 8 × (1km run + functional station), 8km running total. Weights/distances from the
+// official HYROX rulebook (Singles, Open divisions). W/M = Open women/men; Pro listed separately.
+export interface HyroxStation {
+  key: string;
+  name: string;
+  spec: string;   // distance/reps
+  women: string;  // open weight (or "—")
+  men: string;
+  pro: string;
+  focus: string;
+}
+
+export const HYROX_STATIONS: HyroxStation[] = [
+  { key: "ski", name: "SkiErg", spec: "1000m", women: "—", men: "—", pro: "—", focus: "Lats, shoulders, core + aerobic. Arrive off Run 1 — don't spike HR here." },
+  { key: "sledpush", name: "Sled Push", spec: "50m (4×12.5m)", women: "102kg", men: "152kg", pro: "202kg", focus: "Legs, posterior chain, calves. Raw strength + grip shoes." },
+  { key: "sledpull", name: "Sled Pull", spec: "50m (4×12.5m)", women: "78kg", men: "103kg", pro: "153kg", focus: "Glutes, back, biceps, grip. Hand-over-hand rope under fatigue." },
+  { key: "burpee", name: "Burpee Broad Jumps", spec: "80m", women: "—", men: "—", pro: "—", focus: "Full body + biggest HR spike of the race. Pacing beats sprinting." },
+  { key: "row", name: "Rowing", spec: "1000m", women: "—", men: "—", pro: "—", focus: "Back, legs, aerobic. Go conservative early — pays off late." },
+  { key: "farmers", name: "Farmers Carry", spec: "200m", women: "2×16kg", men: "2×24kg", pro: "2×32kg", focus: "Grip, traps, postural endurance. Grip is already compromised here." },
+  { key: "lunges", name: "Sandbag Lunges", spec: "100m", women: "10kg", men: "20kg", pro: "30kg", focus: "Quads, hip flexors. Knee-to-floor standard fails when hip flexors are tight." },
+  { key: "wallball", name: "Wall Balls", spec: "100 reps", women: "4kg", men: "6kg", pro: "9kg", focus: "Squat mechanics, shoulders, lungs. Everything is loaded by this point." },
+];
+
+// HYROX periodized generator — run + station-specific strength + "compromised running"
+// (the run→station transition that defines the sport).
+export function generateHyroxPlan(opts: {
+  level: string; // beginner | amateur | advanced | pro
+  weeks: number;
+  startDate: Date;
+  weeklyHours?: number;
+}): GeneratedWeek[] {
+  const { level, weeks, startDate, weeklyHours } = opts;
+  const baseWeekly = weeklyHours ?? (level === "pro" ? 14 : level === "advanced" ? 10 : level === "amateur" ? 7 : 5);
+  const phase = (w: number): "base" | "build" | "peak" | "taper" => {
+    const pct = w / weeks;
+    if (pct <= 0.5) return "base";
+    if (pct <= 0.8) return "build";
+    if (pct <= 0.92) return "peak";
+    return "taper";
+  };
+  const theme: Record<string, string> = {
+    base: "Aerobic Base + Strength Foundation",
+    build: "Station-Specific + Compromised Running",
+    peak: "Race Simulation",
+    taper: "Freshness & Taper",
+  };
+
+  const weeksOut: GeneratedWeek[] = [];
+  for (let w = 1; w <= weeks; w++) {
+    const ph = phase(w);
+    let vol = 1;
+    if (ph === "base") vol = 0.8 + 0.4 * (w / (weeks * 0.5));
+    else if (ph === "build") vol = 1.2 + 0.1 * ((w - weeks * 0.5) / (weeks * 0.3));
+    else if (ph === "peak") vol = 0.9;
+    else vol = 0.55;
+
+    const totalMin = Math.round(baseWeekly * 60 * vol);
+    const sessions: PlanSession[] = [];
+    const runMin = Math.round(totalMin * 0.4);
+    const strengthMin = Math.round(totalMin * 0.5);
+    const otherMin = Math.round(totalMin * 0.1);
+
+    // RUN
+    if (ph === "base") {
+      sessions.push({ sport: "run", title: "Run: Easy Aerobic", minutes: Math.round(runMin * 0.45), zone: "z2", type: "endurance", description: "Easy Z2 run. HYROX is 8×1km — build the aerobic engine that lets you recover between stations (Seiler 2009)." });
+      sessions.push({ sport: "run", title: "Run: Long Run", minutes: Math.round(runMin * 0.4), zone: "z2", type: "endurance", description: "Longer Z2 run. Cap HR at 89% LTHR. Run slow to run fast." });
+      sessions.push({ sport: "run", title: "Run: Strides", minutes: Math.round(runMin * 0.15), zone: "z5", type: "interval", description: "Easy run + 6×20s strides at Z5 to keep leg speed without fatigue." });
+    } else if (ph === "build") {
+      sessions.push({ sport: "run", title: "Run: 1km Repeats", minutes: Math.round(runMin * 0.4), zone: "z5", type: "interval", description: "6×1km at ~5k pace (Z5) with 90s jog recovery. Mirrors the exact HYROX run segment length." });
+      sessions.push({ sport: "run", title: "Run: Tempo", minutes: Math.round(runMin * 0.3), zone: "z4", type: "threshold", description: "3×10 min at T-pace (Z4) with 3 min easy. The sustained run pace you'll hold between stations." });
+      sessions.push({ sport: "run", title: "Run: Easy + Hills", minutes: Math.round(runMin * 0.3), zone: "z2", type: "endurance", description: "Easy Z2 + 8×60s hill repeats for run economy (Rønnestad 2014)." });
+    } else if (ph === "peak") {
+      sessions.push({ sport: "run", title: "Run: Race-Pace 1km", minutes: Math.round(runMin * 0.5), zone: "z4", type: "interval", description: "5×1km at race pace with 2 min walk/jog. Dial in the exact effort you'll race at." });
+      sessions.push({ sport: "run", title: "Run: Sharpening", minutes: Math.round(runMin * 0.3), zone: "z3", type: "tempo", description: "Short and sharp: 3×8 min at 90-93% LTHR." });
+    } else {
+      sessions.push({ sport: "run", title: "Run: Taper Jog", minutes: Math.round(runMin * 0.6), zone: "z2", type: "recovery", description: "Easy 20-30 min with 4×20s strides. Legs stay sharp, fatigue stays low." });
+    }
+
+    // STRENGTH / STATIONS
+    if (ph === "base") {
+      sessions.push({ sport: "strength", title: "Strength: Sled & Squat Foundation", minutes: Math.round(strengthMin * 0.35), zone: "z1", type: "strength", description: "Heavy compound lifts (back squat, deadlift, sled push/pull light) 3×5-8. Build the raw posterior-chain strength HYROX stations demand." });
+      sessions.push({ sport: "strength", title: "Engine: SkiErg + Row", minutes: Math.round(strengthMin * 0.3), zone: "z2", type: "endurance", description: "SkiErg 5×500m + Row 5×500m at steady aerobic pace. Learn the erg technique you'll use on race day." });
+      sessions.push({ sport: "strength", title: "Conditioning: Carry + Lunge + Wall Ball", minutes: Math.round(strengthMin * 0.35), zone: "z3", type: "strength", description: "Farmers carry 4×50m, sandbag lunges 4×25m, wall balls 3×20. Light weights, full movement standards." });
+    } else if (ph === "build") {
+      sessions.push({ sport: "strength", title: "Station: Sled Push + Pull", minutes: Math.round(strengthMin * 0.35), zone: "z4", type: "strength", description: "Sled push 8×12.5m + sled pull 8×12.5m at race weight (build toward it). Grip the floor, drive through the posterior chain." });
+      sessions.push({ sport: "strength", title: "Station: Erg Intervals", minutes: Math.round(strengthMin * 0.3), zone: "z4", type: "interval", description: "SkiErg + Row 8×500m at race pace with 1:1 rest. Damper ~6 (race setting)." });
+      sessions.push({ sport: "strength", title: "Station: Burpees + Carries + Wall Balls", minutes: Math.round(strengthMin * 0.35), zone: "z4", type: "strength", description: "80m burpee broad jumps, 200m farmers carry, 100m lunges, 3×30 wall balls — full movement standards, race weights." });
+    } else if (ph === "peak") {
+      sessions.push({ sport: "strength", title: "Station: Full-Weight Dress Rehearsal", minutes: Math.round(strengthMin * 0.6), zone: "z4", type: "strength", description: "Every station at race weight, once through, with 500m jog between. Lock in the movement standards." });
+    } else {
+      sessions.push({ sport: "strength", title: "Strength: Maintenance", minutes: Math.round(strengthMin * 0.5), zone: "z1", type: "strength", description: "Light, explosive: 2×8 moderate load. No heavy lifting within 7-10 days of race." });
+    }
+
+    // COMPROMISED RUNNING (the defining HYROX skill)
+    if (ph === "build" || ph === "peak") {
+      sessions.push({ sport: "hyrox", title: "Compromised Run: Station Intervals", minutes: 45, zone: "z3", type: "brick", description: "Run 1km → 1 station (ski/sled/wallball, rotating) → run 1km → next station, ×4. This is where HYROX is won — learn to run on tired, loaded legs." });
+    }
+    if (ph === "peak" || ph === "taper") {
+      sessions.push({ sport: "hyrox", title: "Race Sim: Full/Short HYROX", minutes: ph === "peak" ? 60 : 40, zone: "z4", type: "brick", description: ph === "peak" ? "Full 8-station simulation with 1km runs (or scaled to 60 min). Practice pacing + transitions." : "Half simulation — 4 stations + 4×500m. Stay sharp, don't dig deep." });
+    }
+
+    // RECOVERY + MOBILITY
+    sessions.push({ sport: "recovery", title: "Recovery: Mobility + Grip/Ankle Care", minutes: Math.round(otherMin > 0 ? otherMin : 25), zone: "z1", type: "recovery", description: "Hip-flexor, ankle and wrist mobility (lunges + wall balls + farmers carry punish them). Easy Z1 flush. Sleep 8h." });
+
+    weeksOut.push({ week: w, theme: theme[ph], sessions, totalMinutes: totalMin });
+  }
+  return weeksOut;
+}

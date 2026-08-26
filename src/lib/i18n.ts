@@ -1,0 +1,85 @@
+// JasMiamiMethod — i18n (es, ht, fr, ru + en)
+// Minimal, dependency-free translation layer. `t(lang, key)` falls back to en.
+// ponytail: flat dictionary, no i18n framework — 5 languages × a few dozen keys.
+
+export type Lang = "en" | "es" | "ht" | "fr" | "ru";
+
+export const LANGS: { code: Lang; label: string; native: string }[] = [
+  { code: "en", label: "English", native: "English" },
+  { code: "es", label: "Spanish", native: "Español" },
+  { code: "ht", label: "Haitian Creole", native: "Kreyòl Ayisyen" },
+  { code: "fr", label: "French", native: "Français" },
+  { code: "ru", label: "Russian", native: "Русский" },
+];
+
+const S: Record<string, Record<Lang, string>> = {
+  // ---- nav ----
+  "nav.dashboard": { en: "Dashboard", es: "Panel", ht: "Tablodbò", fr: "Tableau de bord", ru: "Главная" },
+  "nav.fitness": { en: "Performance", es: "Rendimiento", ht: "Pèfòmans", fr: "Performance", ru: "Результаты" },
+  "nav.calendar": { en: "Calendar", es: "Calendario", ht: "Kalandriye", fr: "Calendrier", ru: "Календарь" },
+  "nav.training": { en: "Training Plan", es: "Plan de entrenamiento", ht: "Plan antrennman", fr: "Plan d'entraînement", ru: "План тренировок" },
+  "nav.races": { en: "Races & Venues", es: "Carreras y sedes", ht: "Kous ak lokal", fr: "Courses et lieux", ru: "Гонки и трассы" },
+  "nav.checkin": { en: "Daily Check-In", es: "Chequeo diario", ht: "Tcheke chak jou", fr: "Bilan quotidien", ru: "Ежедневный чек-ин" },
+  "nav.labs": { en: "Field-Test Labs", es: "Pruebas de campo", ht: "Tès teren", fr: "Tests de terrain", ru: "Полевые тесты" },
+  "nav.metrics": { en: "HRV & Recovery", es: "VFC y recuperación", ht: "VFC ak rekiperasyon", fr: "VFC et récupération", ru: "ВСР и восстановление" },
+  "nav.sleep": { en: "Sleep", es: "Sueño", ht: "Dòmi", fr: "Sommeil", ru: "Сон" },
+  "nav.nutrition": { en: "Nutrition & Hydration", es: "Nutrición e hidratación", ht: "Nitrisyon ak idratasyon", fr: "Nutrition et hydratation", ru: "Питание и гидратация" },
+  "nav.blood": { en: "Blood Panels", es: "Análisis de sangre", ht: "Tès san", fr: "Bilans sanguins", ru: "Анализы крови" },
+  "nav.dna": { en: "DNA Analysis", es: "Análisis de ADN", ht: "Analiz ADN", fr: "Analyse ADN", ru: "Анализ ДНК" },
+  "nav.connectors": { en: "Connectors", es: "Conectores", ht: "Konektè", fr: "Connecteurs", ru: "Подключения" },
+  "nav.reminders": { en: "Reminders", es: "Recordatorios", ht: "Rapèl", fr: "Rappels", ru: "Напоминания" },
+  "nav.settings": { en: "Profile & Zones", es: "Perfil y zonas", ht: "Pwofil ak zòn", fr: "Profil et zones", ru: "Профиль и зоны" },
+
+  // ---- recovery techniques (name + instructions) ----
+  "rec.box.name": { en: "Box Breathing", es: "Respiración de caja", ht: "Respirasyon kare", fr: "Respiration carrée", ru: "Квадратное дыхание" },
+  "rec.box.instr": { en: "Inhale 4s → hold 4s → exhale 4s → hold 4s, 5 min seated.", es: "Inhala 4s → sostén 4s → exhala 4s → sostén 4s, 5 min sentado.", ht: "Respire 4s → kenbe 4s → soti 4s → kenbe 4s, 5 min chita.", fr: "Inspire 4s → retenez 4s → expirez 4s → retenez 4s, 5 min assis.", ru: "Вдох 4с → задержка 4с → выдох 4с → задержка 4с, 5 мин сидя." },
+  "rec.sigh.name": { en: "Physiological Sigh", es: "Suspiro fisiológico", ht: "Soupi fizyolojik", fr: "Soupir physiologique", ru: "Физиологический вздох" },
+  "rec.sigh.instr": { en: "Two short inhales, then one long slow exhale. 5-8 rounds.", es: "Dos inhalaciones cortas, luego una exhalación larga y lenta. 5-8 rondas.", ht: "De ti rale kout, apre yon lontan ekspirasyon dousman. 5-8 fwa.", fr: "Deux inspirations courtes, puis une longue expiration lente. 5-8 fois.", ru: "Два коротких вдоха, затем один длинный медленный выдох. 5-8 раз." },
+  "rec.478.name": { en: "4-7-8 Breathing", es: "Respiración 4-7-8", ht: "Respirasyon 4-7-8", fr: "Respiration 4-7-8", ru: "Дыхание 4-7-8" },
+  "rec.478.instr": { en: "Inhale 4s → hold 7s → exhale 8s. 4-6 rounds.", es: "Inhala 4s → sostén 7s → exhala 8s. 4-6 rondas.", ht: "Respire 4s → kenbe 7s → soti 8s. 4-6 fwa.", fr: "Inspire 4s → retenez 7s → expirez 8s. 4-6 fois.", ru: "Вдох 4с → задержка 7с → выдох 8с. 4-6 раз." },
+  "rec.resonance.name": { en: "Resonance Breathing", es: "Respiración resonante", ht: "Respirasyon rezonans", fr: "Respiration en résonance", ru: "Резонансное дыхание" },
+  "rec.resonance.instr": { en: "~5.5 breaths/min (5.5s in, 5.5s out), 10 min.", es: "~5.5 respiraciones/min (5.5s in, 5.5s out), 10 min.", ht: "~5.5 souf/min (5.5s antre, 5.5s soti), 10 min.", fr: "~5.5 respirations/min (5.5s in, 5.5s out), 10 min.", ru: "~5.5 вдоха/мин (5.5с вдох, 5.5с выдох), 10 мин." },
+  "rec.nadi.name": { en: "Alternate-Nostril Breathing", es: "Respiración alternada", ht: "Respirasyon altène nan nen", fr: "Respiration alternée", ru: "Попеременное дыхание ноздрями" },
+  "rec.nadi.instr": { en: "Close right nostril, inhale left; close left, exhale right. 5 min.", es: "Cierra la fosa derecha, inhala por la izquierda; cierra la izquierda, exhala por la derecha. 5 min.", ht: "Fèmen twou nen dwat, respire nan goch; fèmen goch, soti nan dwat. 5 min.", fr: "Fermez la narine droite, inspirez à gauche ; fermez la gauche, expirez à droite. 5 min.", ru: "Закройте правую ноздрю, вдох левой; закройте левую, выдох правой. 5 мин." },
+  "rec.pmr.name": { en: "Progressive Muscle Relaxation", es: "Relajación muscular progresiva", ht: "Relaksasyon miskilè pwogresif", fr: "Relaxation musculaire progressive", ru: "Прогрессивная мышечная релаксация" },
+  "rec.pmr.instr": { en: "Tense each muscle 5s then release 10s, feet → face.", es: "Tensa cada músculo 5s y suelta 10s, de pies a cara.", ht: "Sere chak misk 5s epi lage 10s, depi pye rive figi.", fr: "Contractez chaque muscle 5s puis relâchez 10s, des pieds au visage.", ru: "Напрягайте мышцы 5с, расслабляйте 10с, от стоп к лицу." },
+  "rec.dive.name": { en: "Cold Face Immersion", es: "Inmersión facial fría", ht: "Imèsyon figi frèt", fr: "Immersion faciale froide", ru: "Холодное погружение лица" },
+  "rec.dive.instr": { en: "Cold water on face 15-30s, 3 rounds.", es: "Agua fría en la cara 15-30s, 3 rondas.", ht: "Dlo frèt sou figi 15-30s, 3 fwa.", fr: "Eau froide sur le visage 15-30s, 3 fois.", ru: "Холодная вода на лицо 15-30с, 3 раза." },
+  "rec.legs.name": { en: "Legs-Up-The-Wall", es: "Piernas contra la pared", ht: "Janm kont miray la", fr: "Jambes contre le mur", ru: "Ноги на стене" },
+  "rec.legs.instr": { en: "Lie on back, legs vertical against a wall. 10 min.", es: "Acuéstate boca arriba, piernas verticales contra la pared. 10 min.", ht: "Kouche sou do, janm vètikal kont miray. 10 min.", fr: "Allongé sur le dos, jambes à la verticale contre un mur. 10 min.", ru: "Лёжа на спине, ноги вертикально на стене. 10 мин." },
+  "rec.exhale.name": { en: "Extended Exhale (2:1)", es: "Exhalación prolongada (2:1)", ht: "Ekspirasyon pwolonje (2:1)", fr: "Expiration prolongée (2:1)", ru: "Удлинённый выдох (2:1)" },
+  "rec.exhale.instr": { en: "Inhale 3s, exhale 6s. 5 min.", es: "Inhala 3s, exhala 6s. 5 min.", ht: "Respire 3s, soti 6s. 5 min.", fr: "Inspire 3s, expire 6s. 5 min.", ru: "Вдох 3с, выдох 6с. 5 мин." },
+
+  // ---- adaptation verdicts + messages ----
+  "adapt.full": { en: "FULL", es: "COMPLETO", ht: "KOMPLÈ", fr: "COMPLET", ru: "ПОЛНАЯ" },
+  "adapt.trim": { en: "TRIM", es: "RECORTAR", ht: "REDWI", fr: "RÉDUIRE", ru: "СОКРАТИТЬ" },
+  "adapt.easy": { en: "EASY", es: "SUAVE", ht: "FASIL", fr: "LÉGER", ru: "ЛЁГКАЯ" },
+  "adapt.rest": { en: "REST", es: "DESCANSO", ht: "REPO", fr: "REPOS", ru: "ОТДЫХ" },
+  "adapt.full.msg": { en: "Green to go. Take the key session by the horns — chase the quality.", es: "Luz verde. Aprovecha la sesión clave y busca la calidad.", ht: "Limyè vèt. Pran sesyon kle a epi chase kalite.", fr: "Feu vert. Attaquez la séance clé — cherchez la qualité.", ru: "Зелёный свет. Возьми ключевую тренировку и работай на качество." },
+  "adapt.trim.msg": { en: "Trim the last interval set. Do the main work, cap intensity at threshold, extend the warm-up.", es: "Recorta la última serie. Haz el trabajo principal, limita la intensidad y alarga el calentamiento.", ht: "Redwi dènye seri a. Fè travay prensipal la, limite entansite, pwolonje chofaj la.", fr: "Coupez la dernière série. Faites le travail principal, plafonnez l'intensité, allongez l'échauffement.", ru: "Убери последнюю серию. Сделай основную работу, ограничь интенсивность, удлини разминку." },
+  "adapt.easy.msg": { en: "Easy day. Keep the habit but drop intensity to Z2 and ~60% duration. Sleep is the priority tonight.", es: "Día suave. Mantén el hábito pero baja a Z2 y ~60% de duración. Prioriza el sueño esta noche.", ht: "Jou fasil. Kenbe abitid la men desann nan Z2 ak ~60% dire. Dòmi se priyorite aswè a.", fr: "Journée légère. Gardez l'habitude mais descendez en Z2 et ~60% de durée. Le sommeil est la priorité.", ru: "Лёгкий день. Сохрани привычку, но снизь до Z2 и ~60% длительности. Сон — приоритет." },
+  "adapt.rest.msg": { en: "Full rest or a 20-min Z1 flush. Training now would dig a deeper hole — protect the block.", es: "Descanso total o 20 min en Z1. Entrenar ahora cavaría un hoyo más hondo: protege el bloque.", ht: "Repo total oswa 20 min Z1. Antrennman kounye a ta fouye yon twou pi fon — pwoteje blòk la.", fr: "Repos total ou 20 min en Z1. S'entraîner maintenant creuserait un trou plus profond — protégez le bloc.", ru: "Полный отдых или 20 мин в Z1. Тренировка сейчас выкопает яму глубже — защити блок." },
+
+  // ---- fuel + ergo labels ----
+  "fuel.carbs": { en: "Carbs", es: "Carbohidratos", ht: "Kaboyidrat", fr: "Glucides", ru: "Углеводы" },
+  "fuel.sodium": { en: "Sodium", es: "Sodio", ht: "Sodyòm", fr: "Sodium", ru: "Натрий" },
+  "fuel.fluid": { en: "Fluid", es: "Líquido", ht: "Likid", fr: "Liquide", ru: "Жидкость" },
+  "fuel.caffeine": { en: "Caffeine", es: "Cafeína", ht: "Kafeyin", fr: "Caféine", ru: "Кофеин" },
+  "fuel.ergos": { en: "Ergogenic Aids", es: "Ayudas ergogénicas", ht: "Èd èrgojenik", fr: "Aides ergogènes", ru: "Эргогенные средства" },
+  "fuel.brands": { en: "Best Fuel Brands", es: "Mejores marcas de combustible", ht: "Pi bon mak gaz", fr: "Meilleures marques de carburant", ru: "Лучшие бренды питания" },
+  "ergo.caffeine": { en: "Caffeine", es: "Cafeína", ht: "Kafeyin", fr: "Caféine", ru: "Кофеин" },
+  "ergo.nitrate": { en: "Beetroot / Nitrate", es: "Remolacha / Nitrato", ht: "Bètrav / Nitrat", fr: "Betterave / Nitrate", ru: "Свёкла / Нитрат" },
+  "ergo.creatine": { en: "Creatine Monohydrate", es: "Creatina monohidrato", ht: "Kreatin monoidrat", fr: "Créatine monohydrate", ru: "Креатин моногидрат" },
+  "ergo.betaAlanine": { en: "Beta-Alanine", es: "Beta-alanina", ht: "Beta-alanin", fr: "Bêta-alanine", ru: "Бета-аланин" },
+  "ergo.bicarb": { en: "Sodium Bicarbonate", es: "Bicarbonato de sodio", ht: "Bikabonat sodyòm", fr: "Bicarbonate de sodium", ru: "Бикарбонат натрия" },
+  "ergo.phosphate": { en: "Sodium Phosphate", es: "Fosfato de sodio", ht: "Fosfat sodyòm", fr: "Phosphate de sodium", ru: "Фосфат натрия" },
+
+  // ---- common ----
+  "common.today": { en: "Today's Training", es: "Entrenamiento de hoy", ht: "Antrennman jodi a", fr: "Entraînement du jour", ru: "Сегодняшняя тренировка" },
+  "common.recovery": { en: "Recovery", es: "Recuperación", ht: "Rekiperasyon", fr: "Récupération", ru: "Восстановление" },
+};
+
+export function t(lang: Lang | string | undefined | null, key: string): string {
+  const l = (lang || "en") as Lang;
+  return S[key]?.[l] || S[key]?.en || key;
+}

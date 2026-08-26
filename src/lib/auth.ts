@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
+import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { prisma } from "./db";
 
@@ -10,13 +11,15 @@ export function hashToken(token: string): string {
 }
 
 export function hashPassword(password: string): string {
-  // bcrypt-style via scrypt (no native bcrypt dep needed on serverless)
-  const salt = randomBytes(16).toString("hex");
-  const hash = createHash("sha256").update(`${salt}::${password}`).digest("hex");
-  return `${salt}:${hash}`;
+  // bcrypt with cost 10 — proper slow KDF (replaces the old SHA-256 fast hash)
+  return bcrypt.hashSync(password, 10);
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
+  if (stored.startsWith("$2")) {
+    return bcrypt.compareSync(password, stored);
+  }
+  // Legacy SHA-256 hash (pre-migration) — keep working; rehash on next save.
   const [salt, hash] = stored.split(":");
   if (!salt || !hash) return false;
   const candidate = createHash("sha256").update(`${salt}::${password}`).digest("hex");

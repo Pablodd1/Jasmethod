@@ -7,6 +7,7 @@ interface User {
   name: string;
   email: string;
   role: string;
+  language?: string;
   profile?: any;
   motivation?: any;
 }

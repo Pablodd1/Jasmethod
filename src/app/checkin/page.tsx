@@ -1,0 +1,168 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen } from "lucide-react";
+import { ProtectedPage } from "@/components/gate";
+import { useAuth } from "@/components/auth";
+import { t, type Lang } from "@/lib/i18n";
+
+const QUESTIONS = [
+  { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great" },
+  { key: "soreness", label: "Muscle soreness", hint: "1 = fresh, 5 = wrecked" },
+  { key: "motivation", label: "Motivation", hint: "1 = none, 5 = fired up" },
+  { key: "energy", label: "Energy", hint: "1 = drained, 5 = buzzing" },
+  { key: "stress", label: "Life stress", hint: "1 = calm, 5 = overwhelmed" },
+];
+
+const VERDICT_COLOR: Record<string, string> = { full: "text-emerald-600", trim: "text-amber-600", easy: "text-orange-600", rest: "text-coral-600" };
+
+export default function CheckinPage() {
+  const { user } = useAuth();
+  const lang = (user?.language || "en") as Lang;
+  const [answers, setAnswers] = useState<any>({ sleep: "3", soreness: "3", motivation: "3", energy: "3", stress: "3", sick: false, menstrual: false });
+  const [result, setResult] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function load() {
+    const res = await fetch("/api/checkin");
+    const d = await res.json();
+    if (d.checkin?.answers) setAnswers({ ...answers, ...JSON.parse(d.checkin.answers) });
+    if (d.checkin?.adaptation) setResult({ adaptation: JSON.parse(d.checkin.adaptation) });
+    if (d.recovery || d.fuelBrands || d.sources) setResult((r: any) => ({ ...(r || {}), recovery: d.recovery, fuelBrands: d.fuelBrands, sources: d.sources }));
+  }
+  useEffect(() => { if (user) load(); }, [user]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/checkin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(answers) });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed");
+      setResult(d);
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+
+  const setQ = (k: string, v: any) => setAnswers((a: any) => ({ ...a, [k]: v }));
+  const adaptation = result?.adaptation || result;
+  const fuel = result?.fuel;
+  const ergos = result?.ergos?.recommended;
+  const recovery = result?.recovery;
+  const fuelBrands = result?.fuelBrands;
+  const sources = result?.sources;
+
+  return (
+    <ProtectedPage>
+      <div className="space-y-6">
+        <div>
+          <h1 className="font-display text-2xl font-bold">Daily Check-In</h1>
+          <p className="text-slate-500 text-sm">30 seconds each morning — your answers adapt today&apos;s training, fuel, and ergogenic aids.</p>
+        </div>
+
+        {err && <div className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="card">
+            <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-ocean-500" /> Questionnaire</h2>
+            <form onSubmit={submit} className="space-y-4">
+              {QUESTIONS.map((q) => (
+                <div key={q.key}>
+                  <label className="label">{q.label}</label>
+                  <select className="input" value={answers[q.key]} onChange={(e) => setQ(q.key, e.target.value)}>
+                    {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <div className="text-[11px] text-slate-400">{q.hint}</div>
+                </div>
+              ))}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={answers.sick} onChange={(e) => setQ("sick", e.target.checked)} /> Feeling sick or injured today
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={answers.menstrual} onChange={(e) => setQ("menstrual", e.target.checked)} /> Menstrual phase (adjusts readiness)
+              </label>
+              <button type="submit" disabled={busy} className="btn-primary w-full justify-center"><Zap className="w-4 h-4" /> {busy ? "Checking…" : "Get Today's Plan"}</button>
+            </form>
+          </div>
+
+          <div className="space-y-4">
+            {adaptation && (
+              <div className="card">
+                <h3 className="font-display font-bold mb-2">Today&apos;s Adaptation</h3>
+                <div className={`font-display text-2xl font-bold ${VERDICT_COLOR[adaptation.verdict] || ""}`}>
+                  {t(lang, `adapt.${adaptation.verdict}`)} · {adaptation.score}/100
+                </div>
+                <p className="text-sm text-slate-600 mt-1">{t(lang, `adapt.${adaptation.verdict}.msg`)}</p>
+                <div className="text-xs text-slate-400 mt-2">Duration ×{adaptation.durationFactor} · intensity cap {adaptation.intensityCap}</div>
+              </div>
+            )}
+
+            {fuel && (
+              <div className="card">
+                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><Flame className="w-4 h-4 text-orange-500" /> {t(lang, "common.today")}</h3>
+                <div className="text-sm text-slate-600 space-y-1">
+                  <div>{t(lang, "fuel.carbs")}: <strong>{fuel.carbsPerHourG} g/h</strong></div>
+                  <div>{t(lang, "fuel.sodium")}: <strong>{fuel.sodiumMgPerHour} mg/h</strong> · {t(lang, "fuel.fluid")}: <strong>{fuel.fluidMlPerHour} ml/h</strong></div>
+                  {fuel.caffeineMg && <div>{t(lang, "fuel.caffeine")}: <strong>{fuel.caffeineMg} mg</strong> pre-session</div>}
+                </div>
+              </div>
+            )}
+
+            {ergos && (
+              <div className="card">
+                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><Pill className="w-4 h-4 text-ocean-500" /> {t(lang, "fuel.ergos")}</h3>
+                {ergos.length === 0 ? (
+                  <p className="text-sm text-slate-500">No aids match today&apos;s session.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {ergos.map((e: any) => (
+                      <div key={e.key} className="text-sm">
+                        <div><strong>{t(lang, `ergo.${e.key}`)}</strong> <span className="chip chip-z2">{e.evidence}</span></div>
+                        <div className="text-xs text-slate-500">{e.dose} · {e.when}</div>
+                        <div className="text-xs text-slate-400">{e.benefit}{e.caution ? ` ⚠ ${e.caution}` : ""}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {recovery && (
+              <div className="card">
+                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><Wind className="w-4 h-4 text-emerald-500" /> {t(lang, "common.recovery")}</h3>
+                <div className="font-semibold text-sm">{recovery.name} · {recovery.minutes} min</div>
+                <p className="text-xs text-slate-500 mt-1">{recovery.instructions}</p>
+              </div>
+            )}
+
+            {fuelBrands && (
+              <div className="card">
+                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><ShoppingCart className="w-4 h-4 text-ocean-500" /> {t(lang, "fuel.brands")}</h3>
+                <p className="text-xs text-slate-400 mb-2">{fuelBrands.note}</p>
+                <div className="space-y-1.5">
+                  {fuelBrands.brands.map((b: any) => (
+                    <div key={b.name} className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{b.name} <span className="text-[10px] uppercase text-slate-400">({b.type})</span></span>
+                      <span className="text-xs text-slate-500">{b.carbsG} carb · {b.sodiumMg} Na</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {sources && sources.length > 0 && (
+              <div className="card bg-slate-50 border-slate-200">
+                <h3 className="font-display font-bold text-sm mb-2 flex items-center gap-2"><BookOpen className="w-4 h-4 text-slate-500" /> Evidence (human studies)</h3>
+                <ul className="text-[11px] text-slate-500 space-y-1">
+                  {sources.slice(0, 5).map((s: any) => (
+                    <li key={s.id}>• {s.ref} — <em>{s.population}</em></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </ProtectedPage>
+  );
+}
