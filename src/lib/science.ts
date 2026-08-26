@@ -302,8 +302,10 @@ export function generatePlan(opts: {
   runBase?: number;
   strengthBase?: number;
   weeklyHours?: number;
+  easyPct?: number; // target % of weekly minutes in Z1-Z2; rest = quality. Default 70 (70/30).
 }): GeneratedWeek[] {
-  const { level, distance, weeks, startDate, weeklyHours } = opts;
+  const { level, distance, weeks, startDate, weeklyHours, easyPct } = opts;
+  const splitTarget = easyPct ?? 70; // 70/30 default, manual-adjustable
   const baseWeekly = weeklyHours ?? (level === "pro" ? 20 : level === "advanced" ? 14 : level === "amateur" ? 10 : 6);
   // Distance multipliers for weekly hours
   const distFactor: Record<string, number> = { sprint: 0.6, olympic: 0.8, half: 1.0, full: 1.3 };
@@ -428,14 +430,83 @@ export function generatePlan(opts: {
     // ---- RECOVERY ----
     sessions.push({ sport: "recovery", title: "Recovery: Active Recovery + Mobility", minutes: 30, zone: "z1", type: "recovery", description: "Easy Z1 spin/walk/row. 15 min mobility work (hips, ankles, T-spine). Sleep is the #1 recovery tool — target 8h, prioritize early bedtime." });
 
+    // Enforce the user's easy/quality split in base + build (peak/taper keep
+    // race-specific + fresh work as designed — converting those would be wrong).
+    const finalSessions = ph === "base" || ph === "build" ? enforceSplit(sessions, splitTarget) : sessions;
+
     weeksOut.push({
       week: w,
       theme: phaseTheme[ph],
-      sessions,
+      sessions: finalSessions,
       totalMinutes: totalMin,
     });
   }
   return weeksOut;
+}
+
+// ---- Easy/quality split enforcement (70/30 default, manual-adjustable) ----
+// easy = Z1-Z2 minutes, quality = Z3+. Flipping only boundary sessions
+// (tempo ↔ endurance) keeps plan intent; never touches race-sim/brick/recovery.
+export function easyShareOf(sessions: PlanSession[]): number {
+  const total = sessions.reduce((a, s) => a + s.minutes, 0);
+  if (total <= 0) return 0;
+  const easy = sessions.filter((s) => s.zone === "z1" || s.zone === "z2").reduce((a, s) => a + s.minutes, 0);
+  return Math.round((easy / total) * 100);
+}
+
+const EASY_TITLE: Record<string, string> = {
+  "Bike: Threshold Intervals": "Bike: Easy Aerobic",
+  "Bike: Tempo": "Bike: Easy Aerobic",
+  "Bike: VO2max Intervals": "Bike: Easy Aerobic",
+  "Bike: Race Simulation": "Bike: Easy Aerobic",
+  "Bike: Race Pace Intervals": "Bike: Easy Aerobic",
+  "Run: Track Intervals": "Run: Easy Aerobic",
+  "Run: Tempo": "Run: Easy Aerobic",
+  "Run: Hill Repeats": "Run: Easy Aerobic",
+  "Run: Race Pace": "Run: Easy Aerobic",
+  "Run: Cruise Intervals": "Run: Easy Aerobic",
+  "Swim: Threshold Set": "Swim: Easy Aerobic",
+  "Swim: Race Pace + Open Water": "Swim: Easy Aerobic",
+  "Swim: Sharpening": "Swim: Easy Aerobic",
+};
+
+const QUALITY_TITLE: Record<string, string> = {
+  "Bike: Long Endurance": "Bike: Tempo",
+  "Bike: Aerobic Spin": "Bike: Tempo",
+  "Run: Long Aerobic": "Run: Tempo",
+  "Run: Easy + Strides": "Run: Tempo",
+  "Swim: Endurance & Technique": "Swim: Tempo Set",
+};
+
+export function enforceSplit(sessions: PlanSession[], easyPct: number): PlanSession[] {
+  const target = Math.max(45, Math.min(90, easyPct));
+  const work = sessions.map((s) => ({ ...s }));
+  const isEasy = (s: PlanSession) => s.zone === "z1" || s.zone === "z2";
+  for (let i = 0; i < 12; i++) {
+    const E = work.filter(isEasy).reduce((a, s) => a + s.minutes, 0);
+    const T = work.reduce((a, s) => a + s.minutes, 0) || 1;
+    const cur = (E / T) * 100;
+    if (Math.abs(cur - target) <= 3) break;
+    // Best single flip: solve the new minutes so (easy)/(total) lands on target.
+    let bestIdx = -1, bestM2 = 0, bestDist = Infinity, bestDir: "promote" | "demote" | null = null;
+    work.forEach((s, idx) => {
+      if (isEasy(s) && s.zone === "z2" && s.type === "endurance") {
+        const m2 = Math.max(10, Math.min(s.minutes * 1.5, Math.round((100 * E - target * T + target * s.minutes) / (100 + target))));
+        const dist = Math.abs(((E - m2) / (T - s.minutes + m2)) * 100 - target);
+        if (dist < bestDist) { bestDist = dist; bestIdx = idx; bestM2 = m2; bestDir = "promote"; }
+      } else if (!isEasy(s) && s.sport !== "brick" && s.type !== "brick") {
+        const m2 = Math.max(10, Math.min(s.minutes * 1.5, Math.round((target * T - target * s.minutes - 100 * E) / (100 - target))));
+        const dist = Math.abs(((E + m2) / (T - s.minutes + m2)) * 100 - target);
+        if (dist < bestDist) { bestDist = dist; bestIdx = idx; bestM2 = m2; bestDir = "demote"; }
+      }
+    });
+    if (bestIdx < 0 || !bestDir || bestM2 === work[bestIdx].minutes) break;
+    const s = work[bestIdx];
+    work[bestIdx] = bestDir === "promote"
+      ? { ...s, minutes: bestM2, zone: "z3", type: "tempo", title: QUALITY_TITLE[s.title] || s.title, description: `${s.description} Auto-promoted (${bestM2} min) to hit your ${target}% easy / ${100 - target}% quality split.` }
+      : { ...s, minutes: bestM2, zone: "z2", type: "endurance", title: EASY_TITLE[s.title] || s.title, description: `${s.description} Auto-demoted (${bestM2} min) to hit your ${target}% easy / ${100 - target}% quality split.` };
+  }
+  return work;
 }
 
 // ---- Daily motivation engine ----

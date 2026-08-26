@@ -79,6 +79,26 @@ export function recoveryFor(date: Date): RecoveryPlan {
   };
 }
 
+// ---------- 1b. DAY OFF PROTOCOL (picked rest days) ----------
+// A day off is NOT zero: 20 min Z1 in any modality keeps blood flow + habit
+// alive, then a breathing technique drives vagal recovery (Lehrer 2014).
+export interface DayOffProtocol {
+  title: string;
+  minutes: number;
+  zone: string;
+  description: string;
+}
+
+export function dayOffProtocol(date: Date): DayOffProtocol {
+  const rec = recoveryFor(date);
+  return {
+    title: "Day Off — 20 min Z1 + Breathing",
+    minutes: 20,
+    zone: "z1",
+    description: `20 minutes in Zone 1 in ANY modality you enjoy (easy walk, spin, swim, stretch, yoga). Then ${rec.technique.minutes} min ${rec.technique.name}: ${rec.technique.instructions}`,
+  };
+}
+
 // ---------- 2. RACE TEMPERATURE ADJUSTMENT ----------
 // Heat degrades sustained pace; adjust pacing + volume + hydration.
 // Cold has a milder, opposite effect. (Ely 2007; Casa 2000.)

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Dumbbell, Waves, Bike, Zap, Sparkles, Layers, HeartPulse } from "lucide-react";
+import { Dumbbell, Waves, Bike, Zap, Sparkles, Layers, HeartPulse, ChevronDown, ChevronUp, CloudSun, Pencil, Save, X } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
-import { HR_ZONES, intensityDistribution } from "@/lib/science";
+import { dayOffProtocol } from "@/lib/adaptive";
 
 const SPORT_ICON: Record<string, any> = { swim: Waves, bike: Bike, run: Zap, strength: Dumbbell, brick: Zap, recovery: HeartPulse };
 
@@ -18,10 +18,12 @@ export default function TrainingPage() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [form, setForm] = useState({ distance: "olympic", weeks: "12", startDate: new Date().toISOString().slice(0, 10) });
+  const [form, setForm] = useState({ distance: "olympic", weeks: "12", startDate: new Date().toISOString().slice(0, 10), easyPct: "70" });
   const [error, setError] = useState("");
   const [zones, setZones] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<Record<string, { title: string; durationMin: string; intensity: string }>>({});
 
   async function load() {
     const [p, z] = await Promise.all([
@@ -58,20 +60,64 @@ export default function TrainingPage() {
     }
   }
 
-  async function toggleComplete(session: any) {
-    await fetch("/api/plan", {
+  async function api(body: any) {
+    const res = await fetch("/api/plan", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: session.id, completed: !session.completed }),
+      body: JSON.stringify(body),
     });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed");
+    return data;
+  }
+
+  async function toggleComplete(session: any) {
+    try { await api({ sessionId: session.id, completed: !session.completed }); } catch (e: any) { setError(e.message); }
     load();
+  }
+
+  async function toggleDayOff(day: any) {
+    try { await api({ planDayId: day.id, dayOff: !day.dayOff }); } catch (e: any) { setError(e.message); }
+    load();
+  }
+
+  async function saveEdit(sessionId: string) {
+    const f = editing[sessionId];
+    if (!f) return;
+    try {
+      await api({
+        sessionId,
+        title: f.title,
+        durationMin: parseInt(f.durationMin, 10) || 30,
+        intensity: f.intensity,
+      });
+      setEditing((prev) => { const n = { ...prev }; delete n[sessionId]; return n; });
+    } catch (e: any) {
+      setError(e.message);
+    }
+    load();
+  }
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+
+  function startEdit(s: any) {
+    setEditing((prev) => ({ ...prev, [s.id]: { title: s.title, durationMin: String(s.durationMin), intensity: s.intensity || "z2" } }));
   }
 
   const plan = plans[0];
   const sessions = plan?.days?.flatMap((d: any) => d.sessions) || [];
   const completedCount = sessions.filter((s: any) => s.completed).length;
   const totalCount = sessions.length;
-  const dist = plan ? intensityDistribution(plan.level) : null;
+  const easyMin = sessions.filter((s: any) => s.intensity === "z1" || s.intensity === "z2").reduce((a: number, s: any) => a + s.durationMin, 0);
+  const totalMin = sessions.reduce((a: number, s: any) => a + s.durationMin, 0);
+  const actualEasy = totalMin ? Math.round((easyMin / totalMin) * 100) : null;
+  const targetEasy = plan?.easyPct ?? 70;
 
   return (
     <ProtectedPage>
@@ -79,7 +125,7 @@ export default function TrainingPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold">Training Plan</h1>
-            <p className="text-slate-500 text-sm">Periodized Base → Build → Peak → Taper. Built on Seiler&apos;s 80/20 model and Billat&apos;s vVO2max research.</p>
+            <p className="text-slate-500 text-sm">Periodized Base → Build → Peak → Taper. Default 70/30 easy-to-quality split — adjust the slider and fine-tune sessions by hand.</p>
           </div>
           <span className="chip chip-z2"><Layers className="w-3.5 h-3.5" /> {completedCount}/{totalCount} sessions</span>
         </div>
@@ -90,7 +136,7 @@ export default function TrainingPage() {
           <p className="text-sm text-slate-500 mb-4">
             {profile?.lthr ? `Your LTHR: ${profile.lthr} bpm — sessions anchored to your physiology.` : "Complete your profile to auto-estimate VO2max and LTHR; otherwise we'll use standard estimates."}
           </p>
-          <form onSubmit={generate} className="grid md:grid-cols-4 gap-4 items-end">
+          <form onSubmit={generate} className="grid md:grid-cols-5 gap-4 items-end">
             <div>
               <label className="label">Race distance</label>
               <select className="input" value={form.distance} onChange={(e) => setForm({ ...form, distance: e.target.value })}>
@@ -110,6 +156,11 @@ export default function TrainingPage() {
               <label className="label">Start date</label>
               <input type="date" className="input" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
             </div>
+            <div>
+              <label className="label">Easy / quality split: {form.easyPct}% / {100 - Number(form.easyPct)}%</label>
+              <input type="range" min={50} max={85} step={5} className="w-full accent-cyan-600" value={form.easyPct} onChange={(e) => setForm({ ...form, easyPct: e.target.value })} />
+              <div className="text-[10px] text-slate-400 mt-0.5">% of weekly minutes in Z1-Z2 (easy). 70 = 70/30.</div>
+            </div>
             <button type="submit" disabled={generating} className="btn-primary justify-center">
               {generating ? "Building plan…" : <><Sparkles className="w-4 h-4" /> Generate Plan</>}
             </button>
@@ -122,78 +173,135 @@ export default function TrainingPage() {
           <div className="card">
             <h2 className="font-display font-bold text-lg mb-3">Your Training Zones</h2>
             <div className="grid md:grid-cols-7 gap-2">
-              {HR_ZONES.map((z) => {
-                const r = zones.hr[z.key];
+              {[["z1", "Active Recovery"], ["z2", "Aerobic"], ["z3", "Tempo"], ["z4", "Sub-LT"], ["z5", "LT"], ["z6", "VO2max"], ["z7", "Anaerobic"]].map(([key, name]) => {
+                const r = zones.hr[key];
                 return (
-                  <div key={z.key} className="rounded-xl border border-sand-200 p-3 text-center">
-                    <div className={`chip ${`chip-${z.key}`} mx-auto`}>{z.name}</div>
+                  <div key={key} className="rounded-xl border border-sand-200 p-3 text-center">
+                    <div className={`chip ${`chip-${key}`} mx-auto`}>{name}</div>
                     <div className="font-display text-lg font-bold mt-2">{r.low}-{r.high}</div>
                     <div className="text-[10px] text-slate-400 uppercase">bpm</div>
-                    <div className="text-[11px] text-slate-500 mt-1 leading-tight">{z.description}</div>
                   </div>
                 );
               })}
             </div>
-            {zones.power && (
-              <div className="mt-3 text-sm text-slate-500">
-                Power zones anchored on FTP {zones.anchorPower} W · {zones.power.z1.low}-{zones.power.z7.high} W range
-              </div>
-            )}
           </div>
         )}
 
-        {/* Intensity distribution */}
-        {dist && (
+        {/* Intensity distribution — target vs actual */}
+        {plan && actualEasy !== null && (
           <div className="card">
             <h2 className="font-display font-bold text-lg mb-1">Intensity Distribution</h2>
-            <p className="text-xs text-slate-400 mb-3">Seiler&apos;s 80/20 polarized model — most volume easy, a little very hard, almost nothing in between.</p>
+            <p className="text-xs text-slate-400 mb-3">Your target: {targetEasy}% easy / {100 - targetEasy}% quality · Actual in this plan: {actualEasy}% easy / {100 - actualEasy}% quality (peak/taper weeks keep race-specific work).</p>
             <div className="flex gap-1 h-6 rounded-full overflow-hidden">
-              <div className="bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white" style={{ width: `${dist.zone1}%` }}>Z1-2 {dist.zone1}%</div>
-              <div className="bg-amber-400 flex items-center justify-center text-[10px] font-bold text-white" style={{ width: `${dist.zone2}%` }}>Z3 {dist.zone2}%</div>
-              <div className="bg-red-500 flex items-center justify-center text-[10px] font-bold text-white" style={{ width: `${dist.zone3}%` }}>Z4+ {dist.zone3}%</div>
+              <div className="bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white" style={{ width: `${actualEasy}%` }}>Easy {actualEasy}%</div>
+              <div className="bg-red-500 flex items-center justify-center text-[10px] font-bold text-white" style={{ width: `${100 - actualEasy}%` }}>Quality {100 - actualEasy}%</div>
             </div>
+            <div className="flex gap-1 h-1.5 mt-1 rounded-full overflow-hidden opacity-60">
+              <div className="bg-slate-300" style={{ width: `${targetEasy}%` }} />
+              <div className="bg-slate-400" style={{ width: `${100 - targetEasy}%` }} />
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">▁ target marker</div>
           </div>
         )}
 
         {/* Plan view */}
         {plan ? (
           <div className="space-y-4">
-            {plan.days.map((day: any) => (
-              <div key={day.id} className="card">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-slate-500">
-                    Week {day.week} · {new Date(day.date).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
-                  </div>
-                  <span className="chip chip-z2">Theme: {day.week <= Math.ceil(plan.weeks * 0.5) ? "Aerobic Foundation" : day.week <= Math.ceil(plan.weeks * 0.8) ? "Threshold & Speed" : day.week <= Math.ceil(plan.weeks * 0.92) ? "Race Simulation" : "Freshness & Taper"}</span>
-                </div>
-                {day.sessions.map((s: any) => {
-                  const Icon = SPORT_ICON[s.sport] || Dumbbell;
-                  const done = s.completed;
-                  return (
-                    <div key={s.id} className={`flex items-center gap-3 p-2.5 rounded-xl mb-1.5 ${done ? "bg-emerald-50 border border-emerald-200" : "hover:bg-sand-100"}`}>
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${done ? "bg-emerald-500 text-white" : "bg-ocean-100 text-ocean-700"}`}>
-                        <Icon className="w-4.5 h-4.5 w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm truncate">{s.title}</div>
-                        <div className="text-xs text-slate-500 truncate">{fmtMin(s.durationMin)}{s.distanceKm ? ` · ${s.distanceKm} km` : ""} · {s.intensity} · {s.type}</div>
-                      </div>
-                      <span className={`chip ${`chip-${s.intensity || "z2"}`} hidden sm:inline-flex`}>{s.intensity || "Z2"}</span>
-                      <button onClick={() => toggleComplete(s)} className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${done ? "bg-emerald-600 text-white" : "bg-white border border-ocean-200 text-ocean-700"}`}>
-                        {done ? "✓" : "Done"}
+            {plan.days.map((day: any) => {
+              const off = day.dayOff;
+              const prot = dayOffProtocol(new Date(day.date));
+              const isExpanded = expanded.has(day.id);
+              return (
+                <div key={day.id} className={`card ${off ? "border-dashed border-slate-300 bg-slate-50" : ""}`}>
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                    <div className="text-sm font-semibold text-slate-500">
+                      Week {day.week} · {new Date(day.date).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleDayOff(day)}
+                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${off ? "bg-ocean-600 text-white" : "bg-white border border-ocean-200 text-ocean-700"}`}
+                      >
+                        <CloudSun className="w-3.5 h-3.5 inline mr-1" />{off ? "Resume training" : "Day off"}
                       </button>
                     </div>
-                  );
-                })}
-                {day.notes && <p className="text-xs text-slate-400 mt-2 italic">{day.notes}</p>}
-              </div>
-            ))}
+                  </div>
+
+                  {off ? (
+                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="font-semibold text-sm text-slate-700">☁️ {prot.title}</div>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">{prot.description}</p>
+                      <p className="text-[11px] text-slate-400 mt-2 italic">A day off is NOT zero — 20 min Z1 keeps blood flow + the habit alive, breathing drives recovery. Planned sessions for this day are skipped.</p>
+                    </div>
+                  ) : (
+                    <div>
+                      {day.sessions.map((s: any) => {
+                        const Icon = SPORT_ICON[s.sport] || Dumbbell;
+                        const done = s.completed;
+                        const edit = editing[s.id];
+                        return (
+                          <div key={s.id} className={`rounded-xl mb-1.5 ${done ? "bg-emerald-50 border border-emerald-200" : "hover:bg-sand-100"}`}>
+                            <div className="flex items-center gap-3 p-2.5">
+                              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${done ? "bg-emerald-500 text-white" : "bg-ocean-100 text-ocean-700"}`}>
+                                <Icon className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm truncate">{s.title}</div>
+                                <div className="text-xs text-slate-500 truncate">{fmtMin(s.durationMin)}{s.distanceKm ? ` · ${s.distanceKm} km` : ""} · {s.intensity} · {s.type}</div>
+                              </div>
+                              <span className={`chip ${`chip-${s.intensity || "z2"}`} hidden sm:inline-flex`}>{s.intensity || "Z2"}</span>
+                              <button onClick={() => startEdit(s)} className="text-xs p-1.5 rounded-lg text-slate-400 hover:bg-slate-100" title="Edit session">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => toggleExpand(s.id)} className="text-xs p-1.5 rounded-lg text-slate-400 hover:bg-slate-100" title="Details">
+                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                              </button>
+                              <button onClick={() => toggleComplete(s)} className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${done ? "bg-emerald-600 text-white" : "bg-white border border-ocean-200 text-ocean-700"}`}>
+                                {done ? "✓" : "Done"}
+                              </button>
+                            </div>
+
+                            {isExpanded && (
+                              <div className="px-3 pb-3 -mt-1 space-y-2">
+                                {day.notes && <p className="text-xs text-slate-600 leading-relaxed border-l-2 border-ocean-200 pl-2">{day.notes}</p>}
+                                {s.recovery && <p className="text-[11px] text-slate-400 leading-relaxed">🧘 {s.recovery}</p>}
+                              </div>
+                            )}
+
+                            {edit && (
+                              <div className="px-3 pb-3 -mt-1 flex flex-wrap items-end gap-2">
+                                <div className="flex-1 min-w-40">
+                                  <label className="label">Title</label>
+                                  <input className="input" value={edit.title} onChange={(e) => setEditing((p) => ({ ...p, [s.id]: { ...p[s.id], title: e.target.value } }))} />
+                                </div>
+                                <div className="w-24">
+                                  <label className="label">Min</label>
+                                  <input type="number" className="input" value={edit.durationMin} onChange={(e) => setEditing((p) => ({ ...p, [s.id]: { ...p[s.id], durationMin: e.target.value } }))} />
+                                </div>
+                                <div className="w-28">
+                                  <label className="label">Intensity</label>
+                                  <select className="input" value={edit.intensity} onChange={(e) => setEditing((p) => ({ ...p, [s.id]: { ...p[s.id], intensity: e.target.value } }))}>
+                                    {["z1", "z2", "z3", "z4", "z5", "z6", "z7"].map((z) => <option key={z} value={z}>{z.toUpperCase()}</option>)}
+                                  </select>
+                                </div>
+                                <button onClick={() => saveEdit(s.id)} className="btn-primary text-xs px-3 py-2"><Save className="w-3.5 h-3.5 inline mr-1" />Save</button>
+                                <button onClick={() => setEditing((p) => { const n = { ...p }; delete n[s.id]; return n; })} className="text-xs p-2 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-3.5 h-3.5" /></button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="card text-center py-16 text-slate-400">
             <Dumbbell className="w-12 h-12 mx-auto mb-3 text-slate-300" />
             <p className="font-medium text-slate-500">No training plan yet</p>
-            <p className="text-sm">Choose your distance and generate your personalized plan above.</p>
+            <p className="text-sm">Choose your distance, set your 70/30 split, and generate your personalized plan above.</p>
           </div>
         )}
       </div>

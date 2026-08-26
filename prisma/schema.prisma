@@ -96,6 +96,7 @@ model TrainingPlan {
   raceDate    DateTime?
   status      String   @default("active") // active | completed | archived
   tssTarget   Float?
+  easyPct     Int      @default(70) // target % of weekly minutes in Z1-Z2 (rest = quality); manual-adjustable at generation
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   days        PlanDay[]
@@ -109,6 +110,7 @@ model PlanDay {
   dayOfWeek Int
   focus     String? // swim | bike | run | strength | recovery | rest
   notes     String?
+  dayOff    Boolean  @default(false) // picked rest day: 20 min Z1 + breathing protocol replaces planned sessions
   plan      TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   sessions  Workout[]
 }
@@ -396,7 +398,7 @@ model ReminderPref {
   emailEnabled    Boolean @default(true)
   telegramEnabled Boolean @default(false)
   telegramChatId  String?
-  reminderHour    Int     @default(6) // 0-23 local, when the reminder fires
+  reminderHour    Int     @default(17) // 0-23 local; <12 = morning reminder, >=12 = evening detailed plan for tomorrow
   remindBeforeMin Int     @default(0) // extra lead time before the session
   user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

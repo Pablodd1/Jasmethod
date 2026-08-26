@@ -108,14 +108,20 @@ export default function CalendarPage() {
               const key = format(day, "yyyy-MM-dd");
               const dayEvents = events.filter((e) => format(new Date(e.date), "yyyy-MM-dd") === key);
               const dayWorkouts = workouts.filter((w) => format(new Date(w.date), "yyyy-MM-dd") === key);
+              const isDayOff = plan?.days?.some((d: any) => d.dayOff && format(new Date(d.date), "yyyy-MM-dd") === key);
               const isToday = isSameDay(day, new Date());
               const inMonth = isSameMonth(day, month);
               return (
                 <div key={key} className={`min-h-24 md:min-h-32 rounded-xl border p-1.5 transition-colors ${isToday ? "border-ocean-500 bg-ocean-50" : "border-sand-200 bg-white"} ${inMonth ? "" : "opacity-40"}`}>
                   <div className="text-xs font-semibold mb-1">{format(day, "d")}</div>
                   <div className="space-y-1 overflow-hidden">
+                    {isDayOff && (
+                      <div className="text-[10px] md:text-[11px] rounded-md px-1.5 py-0.5 bg-slate-200 text-slate-600 font-semibold truncate" title="Day off — 20 min Z1 + breathing">
+                        ☁️ OFF
+                      </div>
+                    )}
                     {dayWorkouts.map((w) => (
-                      <div key={w.id} className={`text-[10px] md:text-[11px] rounded-md px-1.5 py-0.5 truncate ${SPORT_COLOR[w.sport] || "bg-slate-100 text-slate-600"} ${w.completed ? "line-through opacity-60" : ""}`} title={`${w.title} — ${w.durationMin} min`}>
+                      <div key={w.id} className={`text-[10px] md:text-[11px] rounded-md px-1.5 py-0.5 truncate ${SPORT_COLOR[w.sport] || "bg-slate-100 text-slate-600"} ${w.completed ? "line-through opacity-60" : ""} ${isDayOff ? "opacity-50" : ""}`} title={`${w.title} — ${w.durationMin} min`}>
                         <Dumbbell className="w-2.5 h-2.5 inline mr-1" />{w.title.split(":").pop()?.trim().slice(0, 22)}
                       </div>
                     ))}

@@ -177,6 +177,7 @@ async function seedPersona(p: Persona) {
       weeks: p.weeks,
       startDate: start,
       raceDate: new Date(start.getTime() + p.weeks * 7 * 86400000),
+      easyPct: 70,
       days: {
         create: sessions.map((s, si) => {
           const date = new Date(start); date.setDate(date.getDate() + si);

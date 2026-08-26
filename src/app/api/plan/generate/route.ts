@@ -11,7 +11,8 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { distance, weeks, startDate, raceDate, targetTempC } = body || {};
+    const { distance, weeks, startDate, raceDate, targetTempC, easyPct } = body || {};
+    const splitTarget = easyPct === undefined || easyPct === null ? 70 : Math.max(45, Math.min(90, parseInt(String(easyPct), 10) || 70));
     const profile = user.profile ?? (await prisma.athleteProfile.create({ data: { userId: user.id } }));
     const level = profile.experience || "amateur";
 
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     const isHyrox = dist === "hyrox";
     const generated = isHyrox
       ? generateHyroxPlan({ level, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined })
-      : generatePlan({ level, distance: dist, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined });
+      : generatePlan({ level, distance: dist, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined, easyPct: splitTarget });
 
     // Persist plan + plan days + planned workouts
     const plan = await prisma.trainingPlan.create({
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
         weeks: weeksCount,
         startDate: start,
         raceDate: race,
+        easyPct: splitTarget,
         days: {
           create: generated.flatMap((week, wi) =>
             week.sessions.map((s, si) => {

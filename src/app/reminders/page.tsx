@@ -7,7 +7,7 @@ import { useAuth } from "@/components/auth";
 
 export default function RemindersPage() {
   const { user } = useAuth();
-  const [prefs, setPrefs] = useState<any>({ emailEnabled: true, telegramEnabled: false, telegramChatId: "", reminderHour: "6", remindBeforeMin: "0" });
+  const [prefs, setPrefs] = useState<any>({ emailEnabled: true, telegramEnabled: false, telegramChatId: "", reminderHour: "17", remindBeforeMin: "0" });
   const [telegramConfigured, setTelegramConfigured] = useState(false);
   const [saved, setSaved] = useState(false);
   const [sent, setSent] = useState<any>(null);
@@ -42,7 +42,7 @@ export default function RemindersPage() {
       <div className="space-y-6 max-w-2xl">
         <div>
           <h1 className="font-display text-2xl font-bold">Training Reminders</h1>
-          <p className="text-slate-500 text-sm">Get a nudge every training day — email and/or Telegram — so no session slips.</p>
+          <p className="text-slate-500 text-sm">Morning (hour &lt; 12): short reminder of today&apos;s session. Evening (hour ≥ 12, default 17:00): the full detailed plan for tomorrow + readiness recommendation — email and/or Telegram.</p>
         </div>
 
         {saved && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">✓ Preferences saved</div>}
@@ -73,7 +73,9 @@ export default function RemindersPage() {
         <div className="card">
           <h2 className="font-display font-bold text-lg mb-3">Schedule</h2>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="label">Reminder hour (0-23)</label><input type="number" min={0} max={23} className="input" value={prefs.reminderHour} onChange={(e) => set("reminderHour", e.target.value)} /></div>
+            <div><label className="label">Daily plan hour (0-23)</label><input type="number" min={0} max={23} className="input" value={prefs.reminderHour} onChange={(e) => set("reminderHour", e.target.value)} />
+              <div className="text-[10px] text-slate-400 mt-1">17 = 5pm detailed plan for tomorrow. Pick a morning hour for a short today-reminder instead.</div>
+            </div>
             <div><label className="label">Lead time (min)</label><input type="number" min={0} className="input" value={prefs.remindBeforeMin} onChange={(e) => set("remindBeforeMin", e.target.value)} /></div>
           </div>
           <button onClick={save} disabled={busy} className="btn-primary justify-center mt-4"><Save className="w-4 h-4" /> Save Preferences</button>

@@ -45,6 +45,54 @@ export function buildReminder(name: string, session: { title: string; durationMi
   return { subject, text, html };
 }
 
+export interface DailyPlanLine {
+  title: string;
+  durationMin: number;
+  intensity?: string;
+  type?: string;
+  sport?: string;
+  description?: string;
+  recovery?: string;
+}
+
+export interface DailyPlanInput {
+  name: string;
+  dateLabel: string; // "tomorrow" | "Tuesday, Sep 1"
+  sessions: DailyPlanLine[]; // empty = day off / no plan
+  readiness?: { score: number; advice: string } | null;
+}
+
+// Evening detailed plan (5pm default) — tomorrow's sessions in full, or the
+// day-off protocol, plus a data-driven readiness recommendation.
+export function buildDailyPlanMessage(inp: DailyPlanInput): ReminderMessage {
+  const { name, dateLabel, sessions, readiness } = inp;
+  const subject = `📋 ${name} — ${dateLabel}'s plan`;
+  const lines: string[] = [`Coach Jas · ${dateLabel}'s training plan`];
+  if (!sessions.length) {
+    lines.push("");
+    lines.push("☁️ DAY OFF — active recovery protocol (a day off is NOT zero):");
+    lines.push("• 20 min Zone 1 in any modality — walk, spin, swim, stretch, yoga");
+    lines.push("• Breathing: pick one, 2-5 min — box (4-4-4-4), physiological sigh, or 4-7-8");
+    lines.push("• Sleep 8h. This IS the workout — recovery compounds.");
+  } else {
+    for (const s of sessions) {
+      lines.push("");
+      lines.push(`🏷 ${s.title}`);
+      lines.push(`   ${s.durationMin} min · ${(s.intensity || "Z2").toUpperCase()} · ${s.type || ""}${s.sport ? ` · ${s.sport}` : ""}`);
+      if (s.description) lines.push(`   ${s.description}`);
+      if (s.recovery) lines.push(`   🧘 ${s.recovery}`);
+    }
+  }
+  if (readiness?.advice) lines.push("", `🧬 Readiness: ${readiness.advice}`);
+  lines.push("", "— JasMiamiMethod Coach");
+  const text = lines.join("\n");
+  const html = `<div style="font-family:system-ui;max-width:600px;margin:auto;background:#f0f9ff;border-radius:16px;padding:32px;border:1px solid #bae8ff">
+    <h2 style="color:#175793;margin:0 0 12px">${subject}</h2>
+    <div style="white-space:pre-wrap;color:#334155;font-size:14px;line-height:1.5">${text.replace(/</g, "&lt;")}</div>
+  </div>`;
+  return { subject, text, html };
+}
+
 export async function sendReminder(
   opts: { email: string; name: string; telegramChatId?: string },
   message: ReminderMessage,
