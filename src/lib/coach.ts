@@ -79,7 +79,7 @@ Keep it tight. No markdown. Under 90 words total.`;
 
 function geminiBriefing(c: CoachContext): Promise<Briefing> {
   return new Promise((resolve) => {
-    if (!GEMINI_KEY) return resolve(fallbackBriefing(c));
+    if (!GEMINI_KEY) { console.error("[coach] GEMINI_API_KEY missing"); return resolve(fallbackBriefing(c)); }
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 20000); // flash models answer in ~1-2s; 20s headroom
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
@@ -93,7 +93,7 @@ function geminiBriefing(c: CoachContext): Promise<Briefing> {
       signal: ctrl.signal,
     }).then(async (res) => {
       clearTimeout(t);
-      if (!res.ok) return resolve(fallbackBriefing(c));
+      if (!res.ok) { console.error("[coach] Gemini HTTP", res.status); return resolve(fallbackBriefing(c)); }
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const parsed = JSON.parse(text);
@@ -104,7 +104,7 @@ function geminiBriefing(c: CoachContext): Promise<Briefing> {
         adaptation: parsed.adaptation || fallbackBriefing(c).adaptation,
         sources: Array.isArray(parsed.sources) ? parsed.sources : [],
       });
-    }).catch(() => { clearTimeout(t); resolve(fallbackBriefing(c)); });
+    }).catch((e) => { clearTimeout(t); console.error("[coach] Gemini error:", String(e?.message || e)); resolve(fallbackBriefing(c)); });
   });
 }
 
