@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { Dna, Upload, CheckCircle2, AlertCircle, Info } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
+import { t, type Lang } from "@/lib/i18n";
 import { DNA_TRAITS } from "@/lib/science";
 
 export default function DnaPage() {
   const { user } = useAuth();
+  const lang = (user?.language || "en") as Lang;
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -27,7 +29,7 @@ export default function DnaPage() {
     e.preventDefault();
     const fileInput = document.getElementById("dna-file") as HTMLInputElement;
     const file = fileInput?.files?.[0];
-    if (!file) { setError("Choose your raw DNA file first."); return; }
+    if (!file) { setError(t(lang, "dna.chooseFile")); return; }
     setUploading(true);
     setError("");
     const fd = new FormData();
@@ -36,7 +38,7 @@ export default function DnaPage() {
     const res = await fetch("/api/dna", { method: "POST", body: fd });
     const data = await res.json();
     setUploading(false);
-    if (!res.ok) { setError(data.error || "Upload failed"); return; }
+    if (!res.ok) { setError(data.error || t(lang, "dna.uploadFailed")); return; }
     setDone(true);
     load();
     setTimeout(() => setDone(false), 3000);
@@ -48,17 +50,17 @@ export default function DnaPage() {
     <ProtectedPage>
       <div className="space-y-6">
         <div>
-          <h1 className="font-display text-2xl font-bold">DNA Analysis</h1>
+          <h1 className="font-display text-2xl font-bold">{t(lang, "dna.title")}</h1>
           <p className="text-slate-500 text-sm">Upload your raw 23andMe or Ancestry file — we analyze performance-relevant SNPs (ACTN3, ACE, PPARGC1A…) from the post-2000 genomics literature.</p>
         </div>
 
         {/* Upload */}
         <div className="card">
-          <h2 className="font-display font-bold text-lg mb-3">Upload Raw DNA</h2>
+          <h2 className="font-display font-bold text-lg mb-3">{t(lang, "dna.upload")}</h2>
           <form onSubmit={upload} className="space-y-3">
             <div className="grid md:grid-cols-3 gap-3 items-end">
               <div>
-                <label className="label">Provider</label>
+                <label className="label">{t(lang, "dna.provider")}</label>
                 <select className="input" value={provider} onChange={(e) => setProvider(e.target.value)}>
                   <option value="23andme">23andMe</option>
                   <option value="ancestry">AncestryDNA</option>
@@ -70,12 +72,12 @@ export default function DnaPage() {
                 <input id="dna-file" type="file" accept=".txt,.csv" className="input file:mr-3 file:rounded-lg file:border-0 file:bg-ocean-100 file:text-ocean-700 file:px-3 file:py-1.5 file:text-sm" />
               </div>
               <button type="submit" disabled={uploading} className="btn-primary justify-center">
-                <Upload className="w-4 h-4" /> {uploading ? "Analyzing…" : "Analyze DNA"}
+                <Upload className="w-4 h-4" /> {uploading ? "Analyzing…" : t(lang, "dna.analyze")}
               </button>
             </div>
           </form>
           {error && <div className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2 mt-3">{error}</div>}
-          {done && <div className="text-sm text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2 mt-3">✓ DNA analyzed!</div>}
+          {done && <div className="text-sm text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2 mt-3">{t(lang, "dna.analyzed")}</div>}
           <p className="text-[11px] text-slate-400 mt-3">
             Privacy: raw files are processed in-memory; only analyzed SNP results are stored. Delete your file locally after upload if you wish.
           </p>
@@ -127,7 +129,7 @@ export default function DnaPage() {
               <div className="flex gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div className="text-sm text-amber-900">
-                  <strong>Science honesty:</strong> Single-SNP associations are real but small. ACTN3 explains a fraction of sprint ability; trainability is polygenic (HERITAGE: ~50% of VO2max response is genetic, but everyone responds to training). Use this as insight, not destiny — the plan still adapts to your data.
+                  <strong>{t(lang, "dna.scienceHonesty")}</strong> Single-SNP associations are real but small. ACTN3 explains a fraction of sprint ability; trainability is polygenic (HERITAGE: ~50% of VO2max response is genetic, but everyone responds to training). Use this as insight, not destiny — the plan still adapts to your data.
                 </div>
               </div>
             </div>
@@ -135,7 +137,7 @@ export default function DnaPage() {
         ) : (
           <div className="card text-center py-16 text-slate-400">
             <Dna className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-            <p className="font-medium text-slate-500">No DNA uploaded yet</p>
+            <p className="font-medium text-slate-500">{t(lang, "dna.noDna")}</p>
             <p className="text-sm">Download your raw data from 23andMe (Settings → Raw Data) or Ancestry, then upload it here.</p>
           </div>
         )}

@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import { Plug, Upload, ExternalLink, CheckCircle2, XCircle, Cloud } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
+import { t, type Lang } from "@/lib/i18n";
 
 export default function ConnectorsPage() {
   const { user } = useAuth();
+  const lang = (user?.language || "en") as Lang;
   const [providers, setProviders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export default function ConnectorsPage() {
     try {
       const res = await fetch("/api/import", { method: "POST", body: fd });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Import failed");
+      if (!res.ok) throw new Error(data.error || t(lang, "conn.importFailed"));
       setMsg(`${source}: ${data.workoutsImported ?? 0} workouts imported${data.metricsImported ? `, ${data.metricsImported} days of metrics` : ""}.`);
       input.value = "";
       load();
@@ -55,7 +57,7 @@ export default function ConnectorsPage() {
     <ProtectedPage>
       <div className="space-y-6">
         <div>
-          <h1 className="font-display text-2xl font-bold">Connectors & Import</h1>
+          <h1 className="font-display text-2xl font-bold">{t(lang, "conn.title")}</h1>
           <p className="text-slate-500 text-sm">Bring your history in from every platform — Strava OAuth, Garmin TCX, Apple Health export, Whoop CSV, Oura API.</p>
         </div>
 
@@ -78,9 +80,9 @@ export default function ConnectorsPage() {
                     </div>
                   </div>
                   {connected ? (
-                    <span className="chip chip-z2"><CheckCircle2 className="w-3 h-3" /> Connected</span>
+                    <span className="chip chip-z2"><CheckCircle2 className="w-3 h-3" /> {t(lang, "conn.connected")}</span>
                   ) : (
-                    <span className="chip chip-z1"><XCircle className="w-3 h-3" /> Disconnected</span>
+                    <span className="chip chip-z1"><XCircle className="w-3 h-3" /> {t(lang, "conn.disconnected")}</span>
                   )}
                 </div>
 
@@ -88,7 +90,7 @@ export default function ConnectorsPage() {
                   {p.id === "strava" && (
                     p.configured ? (
                       <a href={p.connectUrl} className="btn-primary w-full justify-center">
-                        <ExternalLink className="w-4 h-4" /> Connect Strava
+                        <ExternalLink className="w-4 h-4" /> {t(lang, "conn.connectStrava")}
                       </a>
                     ) : (
                       <div className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
@@ -102,14 +104,14 @@ export default function ConnectorsPage() {
                       <div className="flex gap-2">
                         <input id={`file-${p.id}`} type="file" className="input text-xs" accept={p.id === "tcx" ? ".tcx,.xml" : p.id === "apple" ? ".xml" : ".csv,.txt"} />
                         <button onClick={() => uploadImport(p.id)} disabled={importing === p.id} className="btn-secondary shrink-0">
-                          <Upload className="w-4 h-4" /> {importing === p.id ? "Importing…" : "Import"}
+                          <Upload className="w-4 h-4" /> {importing === p.id ? "Importing…" : t(lang, "conn.import")}
                         </button>
                       </div>
                     </div>
                   )}
                   {p.id === "oura" && (
                     p.configured ? (
-                      <div className="text-xs text-slate-500">Oura OAuth ready — set up in dev environment.</div>
+                      <div className="text-xs text-slate-500">{t(lang, "conn.oura")}</div>
                     ) : (
                       <div className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
                         Add OURA_CLIENT_ID/SECRET to enable Oura Cloud OAuth (cloud.ouraring.com — free dev account).
@@ -126,7 +128,7 @@ export default function ConnectorsPage() {
           <div className="flex gap-3">
             <Plug className="w-5 h-5 text-ocean-600 shrink-0 mt-0.5" />
             <div className="text-sm text-ocean-900">
-              <strong>Which should I use?</strong> Strava OAuth is the best single source if you log there — it pulls a year of history automatically. Garmin TCX preserves power/HR data precisely. Whoop CSV brings HRV + recovery + sleep. Apple Health covers everything from iPhone. They all merge into one timeline.
+              <strong>{t(lang, "conn.which")}</strong> Strava OAuth is the best single source if you log there — it pulls a year of history automatically. Garmin TCX preserves power/HR data precisely. Whoop CSV brings HRV + recovery + sleep. Apple Health covers everything from iPhone. They all merge into one timeline.
             </div>
           </div>
         </div>

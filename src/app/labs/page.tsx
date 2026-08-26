@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { FlaskConical, Beaker, Droplets, HeartPulse, Bike, Waves, Footprints, Save, Zap } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
+import { useAuth } from "@/components/auth";
 import { buildZoneTable } from "@/lib/science";
+import { t, type Lang } from "@/lib/i18n";
 
 // ---------- pure calculator math (ported from the Miami prototype, reused here) ----------
 function parseHMS(t: string) {
@@ -27,6 +29,8 @@ function vdot(sec: number, dist: number) {
 function css(t4: number, t2: number) { return 200 / (t4 - t2); } // sec/100m
 
 export default function LabsPage() {
+  const { user } = useAuth();
+  const lang = (user?.language || "en") as Lang;
   const [vd, setVd] = useState<any>(null);
   const [ftp, setFtp] = useState<any>(null);
   const [lthr, setLthr] = useState<any>(null);
@@ -62,8 +66,8 @@ export default function LabsPage() {
     <ProtectedPage>
       <div className="space-y-6">
         <div>
-          <h1 className="font-display text-2xl md:text-3xl font-bold">Field-Test Labs</h1>
-          <p className="text-slate-500 mt-1">Run the tests, get real zones, push them into your plan. Re-test every 6–8 weeks. <span className="text-coral-600 font-medium">Coach Jas, powered by ox-alpha.</span></p>
+          <h1 className="font-display text-2xl md:text-3xl font-bold">{t(lang, "labs.title")}</h1>
+          <p className="text-slate-500 mt-1">Run the tests, get real zones, push them into your plan. Re-test every 6–8 weeks. <span className="text-coral-600 font-medium">{t(lang, "labs.subtitle")}</span></p>
         </div>
 
         {savedMsg && <div className="card border-emerald-200 bg-emerald-50 text-emerald-800 font-medium">{savedMsg}</div>}
@@ -71,9 +75,9 @@ export default function LabsPage() {
         <div className="grid md:grid-cols-2 gap-4">
           {/* VDOT */}
           <div className="card">
-            <div className="flex items-center gap-2 mb-3"><Footprints className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">VDOT — Running Paces</h2></div>
+            <div className="flex items-center gap-2 mb-3"><Footprints className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">{t(lang, "labs.vdot")}</h2></div>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <label className="col-span-1">Race distance
+              <label className="col-span-1">{t(lang, "labs.raceDistance")}
                 <select id="vdDist" className="inp" defaultValue="5000">
                   <option value="5000">5K</option><option value="10000">10K</option>
                   <option value="21097">Half</option><option value="42195">Marathon</option>
@@ -90,7 +94,7 @@ export default function LabsPage() {
               const vd = vdot(sec, dist);
               const pv = (f: number) => fmtPK(1000 / vFromVO2(vd * f) * 60) + " /km";
               setVd({ vdot: vd.toFixed(1), easy: pv(0.72), threshold: pv(0.88), interval: pv(0.98) });
-            }}>Calc paces</button>
+            }}>{t(lang, "labs.calcPaces")}</button>
             {vd && <div className="mt-3 grid grid-cols-4 gap-2 text-center">
               {[["VDOT", vd.vdot], ["EASY", vd.easy], ["THR", vd.threshold], ["INT", vd.interval]].map((x) => (
                 <div key={x[0]} className="rounded-xl bg-ocean-50 p-2"><div className="text-[10px] uppercase text-slate-400">{x[0]}</div><div className="font-display font-bold text-ocean-700">{x[1]}</div></div>
@@ -100,8 +104,8 @@ export default function LabsPage() {
 
           {/* FTP */}
           <div className="card">
-            <div className="flex items-center gap-2 mb-3"><Bike className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">FTP — Power Zones</h2></div>
-            <label className="text-sm">20-min test avg power (W)
+            <div className="flex items-center gap-2 mb-3"><Bike className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">{t(lang, "labs.ftp")}</h2></div>
+            <label className="text-sm">{t(lang, "labs.ftpTest")}
               <input id="ftpW" className="inp" placeholder="250" />
             </label>
             <button className="btn" onClick={() => {
@@ -110,7 +114,7 @@ export default function LabsPage() {
               const ftpW = Math.round(raw * 0.95);
               const f = [0.54, 0.75, 0.9, 0.975, 1.13, 1.35];
               setFtp({ ftpW, zones: f.map((z) => Math.round(ftpW * z)) });
-            }}>Build zones</button>
+            }}>{t(lang, "labs.buildZones")}</button>
             {ftp && <>
               <div className="mt-2 text-center font-display text-2xl font-bold text-ocean-700">{ftp.ftpW} W</div>
               <div className="grid grid-cols-3 gap-1 mt-2 text-center text-xs">
@@ -118,14 +122,14 @@ export default function LabsPage() {
                   <div key={z} className="rounded bg-sand-100 p-1"><div className="text-slate-400">{z}</div><div className="font-semibold">{ftp.zones[i]}</div></div>
                 ))}
               </div>
-              <button className="btn ghost mt-2 w-full" onClick={() => saveZones({ ftp: ftp.ftpW })}><Save className="w-4 h-4" /> Save FTP to profile</button>
+              <button className="btn ghost mt-2 w-full" onClick={() => saveZones({ ftp: ftp.ftpW })}><Save className="w-4 h-4" /> {t(lang, "labs.saveFtp")}</button>
             </>}
           </div>
 
           {/* LTHR */}
           <div className="card">
-            <div className="flex items-center gap-2 mb-3"><HeartPulse className="w-5 h-5 text-coral-600" /><h2 className="font-display font-bold text-lg">LTHR — HR Zones</h2></div>
-            <label className="text-sm">30-min TT avg HR (last 20 min)
+            <div className="flex items-center gap-2 mb-3"><HeartPulse className="w-5 h-5 text-coral-600" /><h2 className="font-display font-bold text-lg">{t(lang, "labs.lthr")}</h2></div>
+            <label className="text-sm">{t(lang, "labs.lthrTest")}
               <input id="lthr" className="inp" placeholder="162" />
             </label>
             <button className="btn" onClick={() => {
@@ -133,7 +137,7 @@ export default function LabsPage() {
               if (!v) return;
               const f = [0.84, 0.87, 0.92, 0.97, 1.02];
               setLthr({ v, zones: f.map((z) => Math.round(v * z)) });
-            }}>Build zones</button>
+            }}>{t(lang, "labs.buildZones")}</button>
             {lthr && <>
               <div className="mt-2 text-center font-display text-2xl font-bold text-coral-600">{lthr.v} bpm</div>
               <div className="grid grid-cols-5 gap-1 mt-2 text-center text-xs">
@@ -141,16 +145,16 @@ export default function LabsPage() {
                   <div key={z} className="rounded bg-sand-100 p-1"><div className="text-slate-400">{z}</div><div className="font-semibold">{lthr.zones[i]}</div></div>
                 ))}
               </div>
-              <button className="btn ghost mt-2 w-full" onClick={() => saveZones({ lthr: lthr.v })}><Save className="w-4 h-4" /> Save LTHR to profile</button>
+              <button className="btn ghost mt-2 w-full" onClick={() => saveZones({ lthr: lthr.v })}><Save className="w-4 h-4" /> {t(lang, "labs.saveLthr")}</button>
             </>}
           </div>
 
           {/* CSS */}
           <div className="card">
-            <div className="flex items-center gap-2 mb-3"><Waves className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">CSS — Swim Threshold</h2></div>
+            <div className="flex items-center gap-2 mb-3"><Waves className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">{t(lang, "labs.css")}</h2></div>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <label>400m time<input id="s400" className="inp" placeholder="6:00" /></label>
-              <label>200m time<input id="s200" className="inp" placeholder="2:50" /></label>
+              <label>{t(lang, "labs.css400")}<input id="s400" className="inp" placeholder="6:00" /></label>
+              <label>{t(lang, "labs.css200")}<input id="s200" className="inp" placeholder="2:50" /></label>
             </div>
             <button className="btn" onClick={() => {
               const t4 = parseHMS((document.getElementById("s400") as HTMLInputElement).value);
@@ -158,7 +162,7 @@ export default function LabsPage() {
               if (!t4 || !t2) return;
               const p100 = 100 / css(t4, t2);
               setCss({ css: fmtPK(p100) + "/100", en2: fmtPK(p100 / 0.92) + "/100", en3: fmtPK(p100 / 0.985) + "/100" });
-            }}>Calc CSS</button>
+            }}>{t(lang, "labs.calcCss")}</button>
             {cssRes && <div className="mt-3 grid grid-cols-3 gap-2 text-center">
               {[["CSS", cssRes.css], ["EN2", cssRes.en2], ["EN3", cssRes.en3]].map((x) => (
                 <div key={x[0]} className="rounded-xl bg-ocean-50 p-2"><div className="text-[10px] uppercase text-slate-400">{x[0]}</div><div className="font-display font-bold text-ocean-700">{x[1]}</div></div>
@@ -168,9 +172,9 @@ export default function LabsPage() {
 
           {/* Fuel */}
           <div className="card">
-            <div className="flex items-center gap-2 mb-3"><Beaker className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">Fuel Targets</h2></div>
+            <div className="flex items-center gap-2 mb-3"><Beaker className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">{t(lang, "labs.fuel")}</h2></div>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <label>Body weight (kg)<input id="fW" className="inp" placeholder="70" /></label>
+              <label>{t(lang, "labs.bodyWeight")}<input id="fW" className="inp" placeholder="70" /></label>
               <label>Training min today<input id="fMin" className="inp" placeholder="90" /></label>
             </div>
             <button className="btn" onClick={() => {
