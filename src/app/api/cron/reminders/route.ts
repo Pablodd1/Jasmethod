@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { buildReminder, sendReminder } from "@/lib/notify";
 
+// Never prerender this route at build time — it hits the DB and is cron-only.
+export const dynamic = "force-dynamic";
+
 // GET /api/cron/reminders — fired hourly by Vercel cron. Sends the training
 // reminder to each athlete whose reminder hour matches the current hour in
 // their timezone. Protected by CRON_SECRET (set as Authorization: Bearer).
