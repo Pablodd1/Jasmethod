@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { analyzeHydration } from "@/lib/adaptive";
 
 // GET /api/plan — list user's plans
 export async function GET() {
@@ -31,7 +32,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ ok: true, planDay: updated });
     }
 
-    const { title, durationMin, intensity, sport, date, completed, notes } = body || {};
+    const { title, durationMin, intensity, sport, date, completed, notes, preWeightKg, postWeightKg } = body || {};
     if (!sessionId) return NextResponse.json({ error: "sessionId required" }, { status: 400 });
 
     const existing = await prisma.workout.findFirst({ where: { id: sessionId, userId: user.id } });
@@ -47,9 +48,14 @@ export async function PUT(req: Request) {
         ...(date !== undefined && { date: new Date(date) }),
         ...(completed !== undefined && { completed }),
         ...(notes !== undefined && { notes }),
+        ...(preWeightKg !== undefined && { preWeightKg: parseFloat(preWeightKg) }),
+        ...(postWeightKg !== undefined && { postWeightKg: parseFloat(postWeightKg) }),
       },
     });
-    return NextResponse.json({ ok: true, workout: updated });
+    // Pre/post weight → sweat-loss analysis (Casa 2000: >2% = dehydration)
+    const w = updated;
+    const hydration = w.preWeightKg && w.postWeightKg ? analyzeHydration(w.preWeightKg, w.postWeightKg) : null;
+    return NextResponse.json({ ok: true, workout: updated, hydration });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Update failed" }, { status: 500 });
   }

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Dumbbell, Waves, Bike, Zap, Sparkles, Layers, HeartPulse, ChevronDown, ChevronUp, CloudSun, Pencil, Save, X } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
-import { dayOffProtocol } from "@/lib/adaptive";
+import { dayOffProtocol, analyzeHydration } from "@/lib/adaptive";
 
 const SPORT_ICON: Record<string, any> = { swim: Waves, bike: Bike, run: Zap, strength: Dumbbell, brick: Zap, recovery: HeartPulse };
 
@@ -23,7 +23,7 @@ export default function TrainingPage() {
   const [zones, setZones] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [editing, setEditing] = useState<Record<string, { title: string; durationMin: string; intensity: string }>>({});
+  const [editing, setEditing] = useState<Record<string, { title: string; durationMin: string; intensity: string; preWeightKg: string; postWeightKg: string }>>({});
 
   async function load() {
     const [p, z] = await Promise.all([
@@ -90,6 +90,8 @@ export default function TrainingPage() {
         title: f.title,
         durationMin: parseInt(f.durationMin, 10) || 30,
         intensity: f.intensity,
+        ...(f.preWeightKg ? { preWeightKg: f.preWeightKg } : {}),
+        ...(f.postWeightKg ? { postWeightKg: f.postWeightKg } : {}),
       });
       setEditing((prev) => { const n = { ...prev }; delete n[sessionId]; return n; });
     } catch (e: any) {
@@ -107,7 +109,7 @@ export default function TrainingPage() {
   }
 
   function startEdit(s: any) {
-    setEditing((prev) => ({ ...prev, [s.id]: { title: s.title, durationMin: String(s.durationMin), intensity: s.intensity || "z2" } }));
+    setEditing((prev) => ({ ...prev, [s.id]: { title: s.title, durationMin: String(s.durationMin), intensity: s.intensity || "z2", preWeightKg: s.preWeightKg ? String(s.preWeightKg) : "", postWeightKg: s.postWeightKg ? String(s.postWeightKg) : "" } }));
   }
 
   const plan = plans[0];
@@ -265,6 +267,10 @@ export default function TrainingPage() {
                               <div className="px-3 pb-3 -mt-1 space-y-2">
                                 {day.notes && <p className="text-xs text-slate-600 leading-relaxed border-l-2 border-ocean-200 pl-2">{day.notes}</p>}
                                 {s.recovery && <p className="text-[11px] text-slate-400 leading-relaxed">🧘 {s.recovery}</p>}
+                                {s.preWeightKg && s.postWeightKg && (() => {
+                                  const h = analyzeHydration(s.preWeightKg, s.postWeightKg);
+                                  return <p className={`text-[11px] leading-relaxed rounded-lg px-2 py-1.5 ${h.flag === "severe" ? "bg-coral-50 text-coral-700" : h.flag === "high" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>💧 {h.advice}</p>;
+                                })()}
                               </div>
                             )}
 
@@ -283,6 +289,14 @@ export default function TrainingPage() {
                                   <select className="input" value={edit.intensity} onChange={(e) => setEditing((p) => ({ ...p, [s.id]: { ...p[s.id], intensity: e.target.value } }))}>
                                     {["z1", "z2", "z3", "z4", "z5", "z6", "z7"].map((z) => <option key={z} value={z}>{z.toUpperCase()}</option>)}
                                   </select>
+                                </div>
+                                <div className="w-24">
+                                  <label className="label">Pre kg</label>
+                                  <input type="number" step="0.1" className="input" value={edit.preWeightKg} onChange={(e) => setEditing((p) => ({ ...p, [s.id]: { ...p[s.id], preWeightKg: e.target.value } }))} placeholder="e.g. 74.2" />
+                                </div>
+                                <div className="w-24">
+                                  <label className="label">Post kg</label>
+                                  <input type="number" step="0.1" className="input" value={edit.postWeightKg} onChange={(e) => setEditing((p) => ({ ...p, [s.id]: { ...p[s.id], postWeightKg: e.target.value } }))} placeholder="e.g. 73.4" />
                                 </div>
                                 <button onClick={() => saveEdit(s.id)} className="btn-primary text-xs px-3 py-2"><Save className="w-3.5 h-3.5 inline mr-1" />Save</button>
                                 <button onClick={() => setEditing((p) => { const n = { ...p }; delete n[s.id]; return n; })} className="text-xs p-2 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-3.5 h-3.5" /></button>

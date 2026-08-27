@@ -1,6 +1,6 @@
 // Quick logic check for the new plan features (run: npx tsx scripts/check-plan-features.ts)
 import { generatePlan, easyShareOf, enforceSplit } from "../src/lib/science";
-import { dayOffProtocol } from "../src/lib/adaptive";
+import { dayOffProtocol, analyzeHydration, morningWeightTrend, adaptSession } from "../src/lib/adaptive";
 import { buildDailyPlanMessage } from "../src/lib/notify";
 
 function assert(cond: boolean, msg: string) {
@@ -40,5 +40,26 @@ const msg = buildDailyPlanMessage({
 assert(msg.text.includes("Run: Track Intervals") && msg.text.includes("6x800m") && msg.text.includes("HRV trending down"), "telegram message has full detail + readiness");
 const offMsg = buildDailyPlanMessage({ name: "Jasmel", dateLabel: "tomorrow", sessions: [] });
 assert(offMsg.text.includes("DAY OFF") && offMsg.text.includes("20 min Zone 1"), "telegram day-off message has protocol");
+
+// 6. Hydration: 2%+ sweat loss flags, 3%+ severe
+const h1 = analyzeHydration(80, 78.5); // 1.9% → ok
+assert(h1.flag === "ok" && h1.lossKg === 1.5, "1.9% sweat loss = ok flag");
+const h2 = analyzeHydration(80, 78.2); // 2.25% → high
+assert(h2.flag === "high" && h2.advice.includes("1.5"), "2.25% sweat loss = high flag with rehydration advice");
+const h3 = analyzeHydration(80, 77.4); // 3.25% → severe
+assert(h3.flag === "severe" && h3.advice.includes("150%"), "3.25% sweat loss = severe flag");
+
+// 7. Morning weight trend: >1.5% up flags, stable stays ok
+const base = new Date("2026-09-01T00:00:00Z");
+const days = (n: number) => ({ date: new Date(base.getTime() + n * 86400000), weightKg: null as number | null });
+const stable = morningWeightTrend(Array.from({ length: 6 }, (_, i) => days(i)).map((d, i) => ({ ...d, weightKg: 74 })));
+assert(stable !== null && stable.flag === "ok", "stable morning weight = ok");
+const up = morningWeightTrend(Array.from({ length: 6 }, (_, i) => days(i)).map((d, i) => ({ ...d, weightKg: i < 3 ? 74 : 75.6 })));
+assert(up !== null && up.flag === "up", "weight +2.1% flags up");
+
+// 8. RHR elevation knocks readiness down (Plews 2013)
+const normal = adaptSession({ sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick: false });
+const lagging = adaptSession({ sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick: false, rhr: 62, rhrBaseline: 52 });
+assert(lagging.score < normal.score, "RHR +10 over baseline lowers readiness score");
 
 console.log(process.exitCode ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");

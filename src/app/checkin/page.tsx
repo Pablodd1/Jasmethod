@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen } from "lucide-react";
+import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen, HeartPulse } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
@@ -19,7 +19,7 @@ const VERDICT_COLOR: Record<string, string> = { full: "text-emerald-600", trim: 
 export default function CheckinPage() {
   const { user } = useAuth();
   const lang = (user?.language || "en") as Lang;
-  const [answers, setAnswers] = useState<any>({ sleep: "3", soreness: "3", motivation: "3", energy: "3", stress: "3", sick: false, menstrual: false });
+  const [answers, setAnswers] = useState<any>({ sleep: "3", soreness: "3", motivation: "3", energy: "3", stress: "3", sick: false, menstrual: false, weightKg: "", rhr: "" });
   const [result, setResult] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -81,6 +81,18 @@ export default function CheckinPage() {
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={answers.menstrual} onChange={(e) => setQ("menstrual", e.target.checked)} /> Menstrual phase (adjusts readiness)
               </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Morning weight (kg)</label>
+                  <input type="number" step="0.1" className="input" value={answers.weightKg} onChange={(e) => setQ("weightKg", e.target.value)} placeholder="e.g. 74.0" />
+                  <div className="text-[11px] text-slate-400">Same scale, after bathroom, before food — trend matters more than the number.</div>
+                </div>
+                <div>
+                  <label className="label">Resting HR (bpm)</label>
+                  <input type="number" className="input" value={answers.rhr} onChange={(e) => setQ("rhr", e.target.value)} placeholder="e.g. 48" />
+                  <div className="text-[11px] text-slate-400">Before coffee, still in bed. +6 over baseline = back off.</div>
+                </div>
+              </div>
               <button type="submit" disabled={busy} className="btn-primary w-full justify-center"><Zap className="w-4 h-4" /> {busy ? "Checking…" : "Get Today's Plan"}</button>
             </form>
           </div>
@@ -132,6 +144,19 @@ export default function CheckinPage() {
                 <h3 className="font-display font-bold mb-2 flex items-center gap-2"><Wind className="w-4 h-4 text-emerald-500" /> {t(lang, "common.recovery")}</h3>
                 <div className="font-semibold text-sm">{recovery.name} · {recovery.minutes} min</div>
                 <p className="text-xs text-slate-500 mt-1">{recovery.instructions}</p>
+              </div>
+            )}
+
+            {result?.hydration && (
+              <div className="card">
+                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><HeartPulse className="w-4 h-4 text-ocean-500" /> Weight & Hydration</h3>
+                {result.hydration.rhrNote && <p className="text-xs text-slate-600 mb-1">❤️ {result.hydration.rhrNote}</p>}
+                {result.hydration.weightTrend && (
+                  <p className={`text-xs leading-relaxed rounded-lg px-2 py-1.5 ${result.hydration.weightTrend.flag === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                    ⚖️ {result.hydration.weightTrend.advice}
+                  </p>
+                )}
+                {!result.hydration.weightTrend && !result.hydration.rhrNote && <p className="text-xs text-slate-400">Add morning weight + RHR above — trends kick in after a few days.</p>}
               </div>
             )}
 

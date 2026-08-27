@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { adaptSession, recommendFuel, recommendErgogenics, temperatureAdjustment, recoveryFor, type Checkin, type SupplementPrefs } from "@/lib/adaptive";
+import { adaptSession, recommendFuel, recommendErgogenics, temperatureAdjustment, recoveryFor, morningWeightTrend, type Checkin, type SupplementPrefs } from "@/lib/adaptive";
 import { t, type Lang } from "@/lib/i18n";
 import { fuelBrandsFor } from "@/lib/fuelbrands";
 import { sourcesFor } from "@/lib/research";
@@ -59,7 +59,18 @@ export async function POST(req: Request) {
       stress: parseInt(b.stress ?? "3", 10),
       sick: Boolean(b.sick),
       menstrual: b.menstrual === true,
+      weightKg: b.weightKg ? parseFloat(b.weightKg) : undefined,
+      rhr: b.rhr ? parseInt(b.rhr, 10) : undefined,
     };
+
+    // 7-day baselines from stored daily metrics — so morning weight + RHR are
+    // actually analyzed, not just collected.
+    const since = new Date(Date.now() - 12 * 86400000);
+    const metrics = await prisma.dailyMetrics.findMany({ where: { userId: user.id, date: { gte: since } }, orderBy: { date: "asc" } });
+    const rhrs = metrics.filter((m) => m.restingHr).map((m) => m.restingHr as number);
+    if (checkin.rhr && rhrs.length >= 3) {
+      checkin.rhrBaseline = Math.round(rhrs.slice(0, -1).reduce((a, v) => a + v, 0) / (rhrs.length - 1));
+    }
 
     // Today's planned session (for fuel/ergo context + adaptation note)
     const start = dayStart(new Date());
@@ -108,6 +119,27 @@ export async function POST(req: Request) {
       },
     });
 
+    // Persist morning weight + RHR into daily metrics so the trends compound
+    // (weight trend, RHR baseline, sweat-loss context for tomorrow).
+    if (checkin.weightKg !== undefined || checkin.rhr !== undefined) {
+      await prisma.dailyMetrics.upsert({
+        where: { userId_date: { userId: user.id, date: start } },
+        create: { userId: user.id, date: start, weightKg: checkin.weightKg, restingHr: checkin.rhr },
+        update: { ...(checkin.weightKg !== undefined && { weightKg: checkin.weightKg }), ...(checkin.rhr !== undefined && { restingHr: checkin.rhr }) },
+      });
+    }
+
+    // Weight trend (last 3 mornings vs the ones before) + RHR note
+    const weightTrend = morningWeightTrend([
+      ...metrics.map((m) => ({ date: m.date, weightKg: m.weightKg })),
+      ...(checkin.weightKg !== undefined ? [{ date: start, weightKg: checkin.weightKg }] : []),
+    ]);
+    const rhrDelta = checkin.rhr && checkin.rhrBaseline ? checkin.rhr - checkin.rhrBaseline : null;
+    const rhrNote = rhrDelta === null ? null
+      : rhrDelta > 6 ? `RHR ${rhrDelta}+ bpm over baseline — recovery is lagging.`
+      : rhrDelta < -6 ? "RHR below baseline — recovered."
+      : "RHR in range.";
+
     return NextResponse.json({
       ok: true,
       checkin: saved,
@@ -117,6 +149,7 @@ export async function POST(req: Request) {
       recovery: translatedRecovery((user.language || "en") as Lang),
       fuelBrands: fuelBrandsFor(todaySession?.durationMin || 0),
       sources: sourcesFor(CORE_SOURCE_IDS),
+      hydration: { weightTrend, rhrNote, rhrBaseline: checkin.rhrBaseline ?? null },
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });

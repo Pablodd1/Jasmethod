@@ -190,6 +190,9 @@ export interface Checkin {
   stress: number;    // 1-5 (5 = very stressed)
   sick: boolean;     // ill/injured today
   menstrual?: boolean; // female-specific flag
+  weightKg?: number; // morning fasted weight (objective daily signal)
+  rhr?: number;      // morning resting HR
+  rhrBaseline?: number; // 7-day avg RHR, set server-side from daily metrics
 }
 
 export interface Adaptation {
@@ -210,6 +213,13 @@ export function adaptSession(checkin: Checkin): Adaptation {
   score -= (stress - 3) * 5;     // ±10
   if (checkin.menstrual) score -= 10;
   if (sick) score -= 40;
+  // Objective morning signals: elevated RHR = recovery lagging (Plews 2013),
+  // low RHR = recovered. ±6 bpm vs the 7-day baseline.
+  if (checkin.rhr && checkin.rhrBaseline) {
+    const rhrDelta = checkin.rhr - checkin.rhrBaseline;
+    if (rhrDelta > 6) score -= 10;
+    else if (rhrDelta < -6) score += 4;
+  }
   score = Math.max(0, Math.min(100, score));
 
   let verdict: Adaptation["verdict"], durationFactor: number, intensityCap: string, message: string;
@@ -227,6 +237,62 @@ export function adaptSession(checkin: Checkin): Adaptation {
     message = "Green to go. Take the key session by the horns — chase the quality.";
   }
   return { score, verdict, durationFactor, intensityCap, message };
+}
+
+// ---------- 4b. HYDRATION & WEIGHT ANALYSIS (uses the data, doesn't just store it) ----------
+// Pre/post session weight → sweat loss (1 kg ≈ 1 L). >2% = dehydration flag
+// (Casa et al. 2000), >3% = severe — back off tomorrow.
+export interface HydrationStatus {
+  preKg: number;
+  postKg: number;
+  lossKg: number;
+  pct: number;
+  flag: "ok" | "high" | "severe";
+  advice: string;
+}
+
+export function analyzeHydration(preKg: number, postKg: number): HydrationStatus {
+  const lossKg = Math.max(0, Math.round((preKg - postKg) * 100) / 100);
+  const pct = preKg > 0 ? Math.round((lossKg / preKg) * 1000) / 10 : 0;
+  let flag: HydrationStatus["flag"] = "ok";
+  let advice = lossKg > 0.3
+    ? `Lost ${lossKg} L sweat this session — that's your sweat rate. Replace with fluids + electrolytes.`
+    : "Sweat loss within limits — hydrate normally.";
+  if (pct > 3) {
+    flag = "severe";
+    advice = `Lost ${pct}% of body weight (${lossKg} L) — significant dehydration. Replace 150% of the loss with fluids + electrolytes over the next 2h and ease tomorrow's intensity.`;
+  } else if (pct > 2) {
+    flag = "high";
+    advice = `Lost ${pct}% of body weight (${lossKg} L). Drink 1.5× the loss in the next 2h with sodium.`;
+  }
+  return { preKg, postKg, lossKg, pct, flag, advice };
+}
+
+// Morning weight trend: last 3 vs previous mornings. ±1.5% = flag (up = likely
+// overhydration/under-fuelling/inflammation; down = dehydration/fuel deficit).
+export interface WeightTrend {
+  deltaPct: number;
+  flag: "ok" | "up" | "down";
+  advice: string;
+}
+
+export function morningWeightTrend(weights: { date: Date; weightKg: number | null }[]): WeightTrend | null {
+  const vals = weights.filter((w) => w.weightKg).map((w) => w.weightKg as number);
+  if (vals.length < 4) return null;
+  const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+  const recent = avg(vals.slice(-3));
+  const prior = avg(vals.slice(0, -3));
+  const deltaPct = Math.round(((recent - prior) / prior) * 1000) / 10;
+  let flag: WeightTrend["flag"] = "ok";
+  let advice = `Weight stable (${deltaPct >= 0 ? "+" : ""}${deltaPct}% vs last week).`;
+  if (deltaPct > 1.5) {
+    flag = "up";
+    advice = `Weight up ${deltaPct}% vs last week — often overhydration, under-fuelling or inflammation. Keep carbs consistent and re-check in 3 days.`;
+  } else if (deltaPct < -1.5) {
+    flag = "down";
+    advice = `Weight down ${deltaPct}% — possible dehydration or fuel deficit. Hydrate and eat at maintenance.`;
+  }
+  return { deltaPct, flag, advice };
 }
 
 // ---------- 5. FUEL, STIMULANTS & ERGOGENIC AIDS ----------

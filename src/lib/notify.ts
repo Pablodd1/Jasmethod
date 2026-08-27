@@ -60,6 +60,7 @@ export interface DailyPlanInput {
   dateLabel: string; // "tomorrow" | "Tuesday, Sep 1"
   sessions: DailyPlanLine[]; // empty = day off / no plan
   readiness?: { score: number; advice: string } | null;
+  hydration?: string | null; // sweat-loss advice from yesterday's session weights
 }
 
 // Evening detailed plan (5pm default) — tomorrow's sessions in full, or the
@@ -84,6 +85,7 @@ export function buildDailyPlanMessage(inp: DailyPlanInput): ReminderMessage {
     }
   }
   if (readiness?.advice) lines.push("", `🧬 Readiness: ${readiness.advice}`);
+  if (inp.hydration) lines.push("", `💧 ${inp.hydration}`);
   lines.push("", "— JasMiamiMethod Coach");
   const text = lines.join("\n");
   const html = `<div style="font-family:system-ui;max-width:600px;margin:auto;background:#f0f9ff;border-radius:16px;padding:32px;border:1px solid #bae8ff">

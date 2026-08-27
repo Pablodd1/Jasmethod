@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { buildReminder, buildDailyPlanMessage, sendReminder } from "@/lib/notify";
 import { hrvReadiness } from "@/lib/science";
+import { analyzeHydration } from "@/lib/adaptive";
 
 // Never prerender this route at build time — it hits the DB and is cron-only.
 export const dynamic = "force-dynamic";
@@ -55,14 +56,21 @@ export async function GET(req: Request) {
     const tomorrow = new Date(dayStart); tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowEnd = new Date(tomorrow); tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
 
-    const [sessions, metrics] = await Promise.all([
+    const [sessions, metrics, lastSession] = await Promise.all([
       prisma.workout.findMany({
         where: { userId: u.id, date: { gte: tomorrow, lt: tomorrowEnd }, planned: true },
         include: { planDay: true },
         orderBy: { date: "asc" },
       }),
       prisma.dailyMetrics.findMany({ where: { userId: u.id, date: { gte: new Date(Date.now() - 30 * 86400000) } }, orderBy: { date: "asc" } }),
+      prisma.workout.findFirst({
+        where: { userId: u.id, date: { lt: dayStart }, completed: true, preWeightKg: { not: null }, postWeightKg: { not: null } },
+        orderBy: { date: "desc" },
+      }),
     ]);
+
+    // Sweat-loss advice from the most recent weighed session (pre/post kg)
+    const hydration = lastSession?.preWeightKg && lastSession.postWeightKg ? analyzeHydration(lastSession.preWeightKg, lastSession.postWeightKg).advice : null;
 
     // Readiness from the last 7 days of HRV (same method as /api/metrics)
     const last7 = metrics.filter((m) => m.hrv).slice(-7);
@@ -91,6 +99,7 @@ export async function GET(req: Request) {
         recovery: s.recovery || undefined,
       })),
       readiness,
+      hydration,
     });
     await sendReminder(opts, msg);
     sent++;
