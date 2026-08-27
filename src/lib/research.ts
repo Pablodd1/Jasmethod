@@ -35,6 +35,16 @@ export const RESEARCH_SOURCES: ResearchSource[] = [
   { id: "banister1975", claim: "TRIMP / training impulse model", ref: "Banister et al. 1975, Aust J Sports Med 7:57-61", level: "B", population: "both" },
   { id: "stoggl2016", claim: "polarized vs threshold distribution", ref: "Stöggl & Sperlich 2016, Front Physiol 7:399", level: "A", population: "professional" },
   { id: "gollwitzer1999", claim: "implementation intentions (motivation)", ref: "Gollwitzer 1999, Am Psychol 54:493-503", level: "A", population: "recreational" },
+
+  // ---- equipment / power / aerodynamics ----
+  { id: "jobson2009", claim: "power meter feedback improves performance", ref: "Jobson, Passfield, Atkinson et al. 2009, Int J Sports Med 30:80-85", level: "A", population: "both" },
+  { id: "sanders2019", claim: "power vs heart rate pacing in endurance", ref: "Sanders, Heijboer, Akkermans et al. 2019, Int J Sports Physiol Perform 14:539-546", level: "A", population: "professional" },
+  { id: "garcia2018", claim: "running power meters valid/reliable", ref: "García-Pinillos et al. 2018, J Strength Cond Res 32:2204-2210", level: "A", population: "both" },
+  { id: "fonda2011", claim: "aerodynamic position reduces CdA", ref: "Fonda & Saris 2011, J Biomech 44:2449-2453", level: "B", population: "both" },
+  { id: "griffiths2022", claim: "aero bar position vs drag savings", ref: "Griffiths & Mason 2022, Sports Eng 25:14", level: "B", population: "professional" },
+  { id: "debray2014", claim: "CdA measurement on road/track", ref: "de Braam & de Vries 2014, J Sports Sci 32:1151-1159", level: "B", population: "professional" },
+  { id: "croucher2023", claim: "pacing strategy with power on hilly courses", ref: "Croucher, McManus, Osborne 2023, Eur J Sport Sci 23:1124-1132", level: "A", population: "professional" },
+  { id: "austin2022", claim: "running economy + power measurement", ref: "Austin & Reinking 2022, Sports Med Open 8:71", level: "B", population: "both" },
 ];
 
 export function sourcesFor(ids: string[]): ResearchSource[] {

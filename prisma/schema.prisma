@@ -77,6 +77,17 @@ model AthleteProfile {
   wPrime        Float? // kJ
   swimPaceBase  Float? // sec/100m threshold
   runPaceBase   Float? // sec/km threshold
+  // equipment & measurement stack (smart coach gear advice)
+  bikeType       String? // road | tt | tri | gravel | mountain
+  hasBikePowerMeter Boolean @default(false)
+  hasRunPowerMeter   Boolean @default(false)
+  hasBikeComputer    Boolean @default(false)
+  hasAeroBars        Boolean @default(false)
+  hasHrm             Boolean @default(false)
+  hasGpsWatch        Boolean @default(false)
+  hasSwimPaceTool    Boolean @default(false)
+  hasSmartTrainer    Boolean @default(false)
+  hasCadenceSensor   Boolean @default(false)
   hrvBaseline   Float? // ms
   injured       Boolean @default(false)
   notes         String?
