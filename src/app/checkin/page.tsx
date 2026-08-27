@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen, HeartPulse } from "lucide-react";
+import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen, HeartPulse, Mic, CheckCircle2 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
+import { parseCheckinTranscript, type VoiceCheckinAnswers } from "@/lib/voice-parse";
 
 const QUESTIONS = [
   { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great" },
@@ -23,6 +24,55 @@ export default function CheckinPage() {
   const [result, setResult] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [heard, setHeard] = useState<VoiceCheckinAnswers | null>(null);
+  const [speechError, setSpeechError] = useState("");
+
+  function startVoice() {
+    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setSpeechError("Voice isn't supported in this browser — use Chrome/Edge/Safari, or just type below.");
+      return;
+    }
+    const rec = new SR();
+    const langMap: Record<string, string> = { en: "en-US", es: "es-ES", ht: "ht-HT", fr: "fr-FR", ru: "ru-RU" };
+    rec.lang = langMap[(user?.language as string) || "en"] || "en-US";
+    rec.interimResults = true;
+    rec.onresult = (e: any) => {
+      let text = "";
+      for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
+      setTranscript(text);
+    };
+    rec.onerror = (e: any) => { setListening(false); setSpeechError(`Voice error: ${e.error} — type below instead.`); };
+    rec.onend = () => {
+      setListening(false);
+      setTranscript((tx) => {
+        const clean = tx.trim();
+        if (clean) setHeard(parseCheckinTranscript(clean));
+        return tx;
+      });
+    };
+    setListening(true); setSpeechError(""); setTranscript(""); setHeard(null);
+    rec.start();
+  }
+
+  function applyHeard() {
+    if (!heard) return;
+    setAnswers((a: any) => ({
+      ...a,
+      sleep: String(heard.sleep ?? a.sleep),
+      soreness: String(heard.soreness ?? a.soreness),
+      energy: String(heard.energy ?? a.energy),
+      motivation: String(heard.motivation ?? a.motivation),
+      stress: String(heard.stress ?? a.stress),
+      weightKg: heard.weightKg ? String(heard.weightKg) : a.weightKg,
+      rhr: heard.rhr ? String(heard.rhr) : a.rhr,
+      sick: heard.sick,
+      menstrual: heard.menstrual,
+    }));
+    setHeard(null);
+  }
 
   async function load() {
     const res = await fetch("/api/checkin");
@@ -61,6 +111,41 @@ export default function CheckinPage() {
         </div>
 
         {err && <div className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
+
+        {/* Voice check-in */}
+        <div className="card bg-ocean-50 border-ocean-200">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="font-display font-bold text-lg flex items-center gap-2"><Mic className="w-5 h-5 text-ocean-600" /> Voice Check-In</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Say it all at once, e.g. "sleep was 4, soreness 2, energy 3, motivation 4, stress 2, weight 74 point 2, resting heart rate 48". Or keep typing below — both work.</p>
+            </div>
+            <button onClick={startVoice} disabled={listening} className={`btn-primary ${listening ? "opacity-70" : ""}`}>
+              <Mic className="w-4 h-4" /> {listening ? "Listening… speak now" : "Start Voice"}
+            </button>
+          </div>
+          {listening && <div className="text-xs text-ocean-700 mt-2 animate-pulse">● Recording — say your answers, then pause.</div>}
+          {transcript && <p className="text-sm text-slate-600 mt-2 italic border-l-2 border-ocean-300 pl-2">“{transcript}”</p>}
+          {speechError && <p className="text-xs text-amber-700 mt-2">{speechError}</p>}
+
+          {heard && (
+            <div className="mt-3 rounded-xl bg-white border border-ocean-200 p-3">
+              <div className="font-semibold text-sm mb-2 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Heard from your voice — check each:</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 text-xs">
+                {([["sleep", "Sleep"], ["soreness", "Soreness"], ["energy", "Energy"], ["motivation", "Motivation"], ["stress", "Stress"]] as const).map(([k, label]) => (
+                  <span key={k} className={`rounded-lg px-2 py-1 ${heard[k] ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>
+                    {heard[k] ? `✓ ${label}: ${heard[k]}` : `${label}: —`}
+                  </span>
+                ))}
+                <span className={`rounded-lg px-2 py-1 ${heard.weightKg ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.weightKg ? `✓ Weight: ${heard.weightKg} kg` : "Weight: —"}</span>
+                <span className={`rounded-lg px-2 py-1 ${heard.rhr ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.rhr ? `✓ RHR: ${heard.rhr} bpm` : "RHR: —"}</span>
+                <span className={`rounded-lg px-2 py-1 ${heard.sick ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.sick ? "✓ Sick/injured" : "Sick: no"}</span>
+                <span className={`rounded-lg px-2 py-1 ${heard.menstrual ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.menstrual ? "✓ Menstrual" : "Period: no"}</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">Anything wrong? Fix it in the form below after applying — then submit.</p>
+              <button onClick={applyHeard} className="btn-primary text-xs px-4 py-2 mt-2"><CheckCircle2 className="w-3.5 h-3.5 inline mr-1" /> Apply to form</button>
+            </div>
+          )}
+        </div>
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="card">

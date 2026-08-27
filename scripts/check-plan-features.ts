@@ -2,6 +2,7 @@
 import { generatePlan, easyShareOf, enforceSplit } from "../src/lib/science";
 import { dayOffProtocol, analyzeHydration, morningWeightTrend, adaptSession } from "../src/lib/adaptive";
 import { buildDailyPlanMessage } from "../src/lib/notify";
+import { parseCheckinTranscript } from "../src/lib/voice-parse";
 
 function assert(cond: boolean, msg: string) {
   if (!cond) { console.error("FAIL:", msg); process.exitCode = 1; }
@@ -61,5 +62,16 @@ assert(up !== null && up.flag === "up", "weight +2.1% flags up");
 const normal = adaptSession({ sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick: false });
 const lagging = adaptSession({ sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick: false, rhr: 62, rhrBaseline: 52 });
 assert(lagging.score < normal.score, "RHR +10 over baseline lowers readiness score");
+
+// 9. Voice transcript → structured answers, every response acknowledged
+const v1 = parseCheckinTranscript("sleep was 4, soreness 2, energy 3, motivation 4, stress 2, weight 74 point 2, resting heart rate 48");
+assert(v1.sleep === 4 && v1.soreness === 2 && v1.energy === 3 && v1.motivation === 4 && v1.stress === 2, "voice: 1-5 scales parsed");
+assert(v1.weightKg === 74.2 && v1.rhr === 48, "voice: weight decimal + RHR parsed");
+const v2 = parseCheckinTranscript("I slept four hours, everything hurts, I'm not sick, and I weigh 80 kilos");
+assert(v2.sleep === 4 && v2.sick === false && v2.weightKg === 80, "voice: word numbers + negation handled");
+const v3 = parseCheckinTranscript("I feel sick with a cold and I'm on my period");
+assert(v3.sick === true && v3.menstrual === true, "voice: sick + menstrual flags");
+const v4 = parseCheckinTranscript("I don't feel well but I'm not injured");
+assert(v4.sick === true && v4.menstrual === false, "voice: ill without injury flag");
 
 console.log(process.exitCode ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
