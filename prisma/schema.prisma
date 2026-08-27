@@ -140,6 +140,7 @@ model Workout {
   calories   Int?
   source     String?  // manual | plan | strava | garmin | apple | whoop
   externalId String?
+  indoor     Boolean  @default(false) // moved indoors → no heat/weather adjustment
   preWeightKg  Float?  // pre-session body weight (hydration tracking)
   postWeightKg Float?  // post-session body weight
   recovery     String? // post-workout ANS recovery cooldown note (rotates daily)
