@@ -239,7 +239,11 @@ export default function CalendarPage() {
                           {s.indoor && <span className="chip bg-slate-200 text-slate-600 ml-2">🏠 Indoor</span>}
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400">{fmtMin(s.durationMin)} · {s.intensity?.toUpperCase() || "Z2"}</span>
+                          <span className="text-xs text-slate-400">
+                            {s.date && new Date(s.date).getHours() + new Date(s.date).getMinutes() > 0
+                              ? `${format(new Date(s.date), "HH:mm")} · ` : ""}
+                            {fmtMin(s.durationMin)} · {s.intensity?.toUpperCase() || "Z2"}
+                          </span>
                           <button onClick={() => openMove(s)} className="btn-secondary text-xs px-2.5 py-1.5"><Clock className="w-3 h-3 inline mr-1" />Move</button>
                           <button onClick={() => toggleDone(s)} className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${s.completed ? "bg-emerald-600 text-white" : "bg-white border border-ocean-200 text-ocean-700"}`}>
                             {s.completed ? "✓ Done" : "Done"}
