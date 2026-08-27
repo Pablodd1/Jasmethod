@@ -5,6 +5,7 @@ import { Dumbbell, Waves, Bike, Zap, Sparkles, Layers, HeartPulse, ChevronDown, 
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { dayOffProtocol, analyzeHydration } from "@/lib/adaptive";
+import { buildSessionDetail } from "@/lib/science";
 
 const SPORT_ICON: Record<string, any> = { swim: Waves, bike: Bike, run: Zap, strength: Dumbbell, brick: Zap, recovery: HeartPulse };
 
@@ -265,8 +266,21 @@ export default function TrainingPage() {
 
                             {isExpanded && (
                               <div className="px-3 pb-3 -mt-1 space-y-2">
-                                {day.notes && <p className="text-xs text-slate-600 leading-relaxed border-l-2 border-ocean-200 pl-2">{day.notes}</p>}
-                                {s.recovery && <p className="text-[11px] text-slate-400 leading-relaxed">🧘 {s.recovery}</p>}
+                                {(() => {
+                                  const d = buildSessionDetail(
+                                    { sport: s.sport, type: s.type, zone: s.intensity || "z2", minutes: s.durationMin, description: day.notes || "" },
+                                    s.recovery || undefined,
+                                  );
+                                  return (
+                                    <div className="rounded-xl border border-ocean-100 bg-ocean-50/50 p-3 space-y-1.5 text-xs">
+                                      <p className="text-slate-700"><span className="font-bold text-ocean-700">WARM-UP</span> — {d.wu}</p>
+                                      <p className="text-slate-700"><span className="font-bold text-ocean-700">MAIN SET</span> — {d.main}</p>
+                                      <p className="text-slate-700"><span className="font-bold text-ocean-700">COOL-DOWN</span> — {d.cd}</p>
+                                      <p className="text-slate-500">🧘 {d.breathing}</p>
+                                      <p className="text-slate-400">📚 Study: {d.study}</p>
+                                    </div>
+                                  );
+                                })()}
                                 {s.preWeightKg && s.postWeightKg && (() => {
                                   const h = analyzeHydration(s.preWeightKg, s.postWeightKg);
                                   return <p className={`text-[11px] leading-relaxed rounded-lg px-2 py-1.5 ${h.flag === "severe" ? "bg-coral-50 text-coral-700" : h.flag === "high" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>💧 {h.advice}</p>;

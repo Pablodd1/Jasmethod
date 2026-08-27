@@ -1,5 +1,5 @@
 // Quick logic check for the new plan features (run: npx tsx scripts/check-plan-features.ts)
-import { generatePlan, easyShareOf, enforceSplit } from "../src/lib/science";
+import { generatePlan, easyShareOf, enforceSplit, buildSessionDetail } from "../src/lib/science";
 import { dayOffProtocol, analyzeHydration, morningWeightTrend, adaptSession } from "../src/lib/adaptive";
 import { buildDailyPlanMessage } from "../src/lib/notify";
 import { parseCheckinTranscript } from "../src/lib/voice-parse";
@@ -73,5 +73,14 @@ const v3 = parseCheckinTranscript("I feel sick with a cold and I'm on my period"
 assert(v3.sick === true && v3.menstrual === true, "voice: sick + menstrual flags");
 const v4 = parseCheckinTranscript("I don't feel well but I'm not injured");
 assert(v4.sick === true && v4.menstrual === false, "voice: ill without injury flag");
+
+// 10. Structured session detail: WU / Main / CD / Breathing / Study on every session
+const d1 = buildSessionDetail({ sport: "run", type: "interval", zone: "z5", minutes: 50, description: "Warm-up 10 min jog + drills. 6×800m at vVO2max with 400m jog recovery. C/D 10 min." }, "Cool-down: 5 min Box Breathing. Inhale 4s → hold 4s.");
+assert(d1.wu.includes("10 min easy jog") && d1.cd.includes("10 min easy jog"), "detail: run WU + CD present");
+assert(d1.main.includes("6×800m") && !d1.main.includes("Warm-up"), "detail: main set is the prescription, warm-up stripped");
+assert(d1.breathing.includes("Box Breathing"), "detail: breathing technique present");
+assert(d1.study.includes("Billat"), "detail: interval study reference present");
+const d2 = buildSessionDetail({ sport: "swim", type: "threshold", zone: "z4", minutes: 60, description: "W/U 400m, then 8×100m at T-pace." });
+assert(d2.wu.includes("200-400m easy swim") && d2.study.includes("Friel"), "detail: swim WU + threshold study present");
 
 console.log(process.exitCode ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");

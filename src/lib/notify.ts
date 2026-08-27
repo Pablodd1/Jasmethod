@@ -2,6 +2,7 @@
 // Both are gated on env/config and never crash the caller.
 
 import { sendEmail } from "./email";
+import { buildSessionDetail } from "./science";
 
 export async function sendTelegram(chatId: string, text: string): Promise<{ ok: boolean; error?: string }> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -77,11 +78,18 @@ export function buildDailyPlanMessage(inp: DailyPlanInput): ReminderMessage {
     lines.push("• Sleep 8h. This IS the workout — recovery compounds.");
   } else {
     for (const s of sessions) {
+      const detail = buildSessionDetail(
+        { sport: s.sport || "run", type: s.type || "endurance", zone: s.intensity || "z2", minutes: s.durationMin, description: s.description || "" },
+        s.recovery,
+      );
       lines.push("");
       lines.push(`🏷 ${s.title}`);
       lines.push(`   ${s.durationMin} min · ${(s.intensity || "Z2").toUpperCase()} · ${s.type || ""}${s.sport ? ` · ${s.sport}` : ""}`);
-      if (s.description) lines.push(`   ${s.description}`);
-      if (s.recovery) lines.push(`   🧘 ${s.recovery}`);
+      lines.push(`   🔥 WU: ${detail.wu}`);
+      lines.push(`   ✅ MAIN: ${detail.main}`);
+      lines.push(`   🧊 CD: ${detail.cd}`);
+      lines.push(`   🧘 ${detail.breathing}`);
+      lines.push(`   📚 Study: ${detail.study}`);
     }
   }
   if (readiness?.advice) lines.push("", `🧬 Readiness: ${readiness.advice}`);

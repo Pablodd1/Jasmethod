@@ -509,6 +509,60 @@ export function enforceSplit(sessions: PlanSession[], easyPct: number): PlanSess
   return work;
 }
 
+// ---- Structured session detail (WU / Main / CD / Breathing / Study) ----
+// Derived from the session fields at display time, so it works for every
+// session — new or already generated. Study lines map to the same evidence
+// base used across the app (research.ts).
+export interface SessionDetail {
+  wu: string;
+  main: string;
+  cd: string;
+  breathing: string;
+  study: string;
+}
+
+const WU_TEMPLATES: Record<string, string> = {
+  swim: "200-400m easy swim + 4×50m technique drills (body position, breathing, catch). Keep HR in Z1-Z2.",
+  bike: "15 min easy spin (Z1-Z2), cadence 85-95 rpm, then 3×1 min at Z3 openers with 1 min easy between.",
+  run: "10 min easy jog (Z1-Z2) + dynamic drills: 4×20s high knees, butt kicks, leg swings, 2×20m strides.",
+  strength: "5 min light cardio (bike/row) + dynamic warm-up: leg swings, arm circles, 10 bodyweight squats, 10 push-ups.",
+  brick: "15 min easy spin (Z1-Z2), then practice a quick transition: shoes off, 2×1 min run off the bike.",
+  recovery: "2 min easy — this is a recovery day; just get moving.",
+};
+
+const CD_TEMPLATES: Record<string, string> = {
+  swim: "200m easy swim + 5 min mobility (shoulders, hips, ankles).",
+  bike: "10 min easy spin (Z1) + 5 min light stretching (quads, hips, hamstrings).",
+  run: "10 min easy jog (Z1) + 5 min mobility (hips, calves, T-spine).",
+  strength: "5 min light cardio + 10 min static stretching of the trained muscle groups.",
+  brick: "10 min easy jog + 5 min mobility. Legs will feel heavy — that's the adaptation.",
+  recovery: "Done — that was the workout.",
+};
+
+const STUDY_BY_TYPE: Record<string, string> = {
+  interval: "Billat et al. 2001 — vVO2max interval prescription (Med Sci Sports Exerc 33:1597-1602)",
+  threshold: "Friel 7-zone LT model (Triathlete's Training Bible); Seiler & Tønnessen 2009, Int J Sports Physiol Perform 4:417-429",
+  tempo: "Seiler & Tønnessen 2009 — polarized distribution (Int J Sports Physiol Perform 4:417-429)",
+  endurance: "Seiler & Tønnessen 2009 — 80/20 polarized model (Int J Sports Physiol Perform 4:417-429)",
+  strength: "Rønnestad & Mujika 2014 — strength improves endurance economy (Scand J Med Sci Sports)",
+  brick: "Friel — transition practice (The Triathlete's Training Bible)",
+  recovery: "Buchheit 2014 — HRV-guided recovery (Front Physiol 5:73)",
+};
+
+export function buildSessionDetail(
+  s: { sport: string; type: string; zone: string; minutes: number; description: string },
+  recoveryNote?: string,
+): SessionDetail {
+  const sport = s.sport || "run";
+  const wu = WU_TEMPLATES[sport] || WU_TEMPLATES.run;
+  // Main set = the description with any leading warm-up sentence stripped.
+  const main = (s.description || "").replace(/^(?:W\/U|Warm-up|warm up)[^.]*\.\s*/, "");
+  const cd = CD_TEMPLATES[sport] || CD_TEMPLATES.run;
+  const breathing = recoveryNote || "Cool-down: 2-5 min breathing — box (4-4-4-4), physiological sigh, or 4-7-8.";
+  const study = STUDY_BY_TYPE[s.type] || STUDY_BY_TYPE.endurance;
+  return { wu, main, cd, breathing, study };
+}
+
 // ---- Daily motivation engine ----
 // Combines science-grounded coaching cues with psychology research
 // (self-determination theory — Ryan & Deci 2000; implementation intentions — Gollwitzer 1999).
