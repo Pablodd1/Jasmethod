@@ -268,7 +268,7 @@ export default function TrainingPage() {
                               <div className="px-3 pb-3 -mt-1 space-y-2">
                                 {(() => {
                                   const d = buildSessionDetail(
-                                    { sport: s.sport, type: s.type, zone: s.intensity || "z2", minutes: s.durationMin, description: day.notes || "" },
+                                    { sport: s.sport, type: s.type, zone: s.intensity || "z2", minutes: s.durationMin, description: s.notes || day.notes || "" },
                                     s.recovery || undefined,
                                   );
                                   return (

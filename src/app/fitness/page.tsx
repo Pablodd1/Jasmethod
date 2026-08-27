@@ -48,6 +48,12 @@ export default function FitnessPage() {
                   </div>
                 </div>
                 {pmc.rampWarning && <div className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-2">⚠ {pmc.rampWarning}</div>}
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-3 text-xs">
+                  <div className="rounded-xl border border-sky-200 bg-sky-50 p-2.5"><strong className="text-sky-700">TSS</strong> — Training Stress Score: how hard ONE workout was. 1h all-out = 100. Easy ride ≈ 30-50, hard intervals ≈ 80-120.</div>
+                  <div className="rounded-xl border border-sky-200 bg-sky-50 p-2.5"><strong className="text-sky-700">CTL = Fitness</strong> — your 42-day average training load. It rises slowly and only with consistency. Think of it as your engine size.</div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5"><strong className="text-amber-700">ATL = Fatigue</strong> — your recent 7-day load. Rises fast after hard weeks. Tired legs = high ATL.</div>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5"><strong className="text-emerald-700">TSB = Form</strong> — Fitness minus Fatigue. Positive = fresh (race-ready). Negative = tired (normal mid-block; good for building, bad for race week).</div>
+                </div>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={pmc.series} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>

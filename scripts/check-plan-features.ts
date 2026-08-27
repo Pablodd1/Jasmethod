@@ -38,7 +38,7 @@ const msg = buildDailyPlanMessage({
   sessions: [{ title: "Run: Track Intervals", durationMin: 50, intensity: "z5", type: "interval", sport: "run", description: "6x800m at vVO2max", recovery: "Cool-down: 5 min Box Breathing." }],
   readiness: { score: 40, advice: "HRV trending down — keep it easy." },
 });
-assert(msg.text.includes("Run: Track Intervals") && msg.text.includes("6x800m") && msg.text.includes("HRV trending down"), "telegram message has full detail + readiness");
+assert(msg.text.includes("Run: Track Intervals") && msg.text.includes("800m") && msg.text.includes("HRV trending down"), "telegram message has full detail + readiness");
 const offMsg = buildDailyPlanMessage({ name: "Jasmel", dateLabel: "tomorrow", sessions: [] });
 assert(offMsg.text.includes("DAY OFF") && offMsg.text.includes("20 min Zone 1"), "telegram day-off message has protocol");
 
@@ -82,5 +82,17 @@ assert(d1.breathing.includes("Box Breathing"), "detail: breathing technique pres
 assert(d1.study.includes("Billat"), "detail: interval study reference present");
 const d2 = buildSessionDetail({ sport: "swim", type: "threshold", zone: "z4", minutes: 60, description: "W/U 400m, then 8×100m at T-pace." });
 assert(d2.wu.includes("200-400m easy swim") && d2.study.includes("Friel"), "detail: swim WU + threshold study present");
+
+// 11. Empty/missing description → specialist-coach main set template, never blank
+const d3 = buildSessionDetail({ sport: "bike", type: "threshold", zone: "z4", minutes: 75, description: "" });
+assert(d3.main.includes("3×10 min") && d3.main.includes("threshold"), "detail: bike threshold template when description empty");
+const d4 = buildSessionDetail({ sport: "run", type: "interval", zone: "z5", minutes: 50, description: "" });
+assert(d4.main.includes("6×800m") && d4.main.includes("vVO2max"), "detail: run interval template when description empty");
+const d5 = buildSessionDetail({ sport: "swim", type: "endurance", zone: "z2", minutes: 45, description: "" });
+assert(d5.main.includes("technique drill"), "detail: swim endurance template when description empty");
+const d6 = buildSessionDetail({ sport: "strength", type: "strength", zone: "z1", minutes: 40, description: "" });
+assert(d6.main.includes("compound lifts"), "detail: strength template when description empty");
+const d7 = buildSessionDetail({ sport: "brick", type: "brick", zone: "z3", minutes: 75, description: "" });
+assert(d7.main.includes("off the bike"), "detail: brick template when description empty");
 
 console.log(process.exitCode ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");

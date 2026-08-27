@@ -510,15 +510,57 @@ export function enforceSplit(sessions: PlanSession[], easyPct: number): PlanSess
 }
 
 // ---- Structured session detail (WU / Main / CD / Breathing / Study) ----
-// Derived from the session fields at display time, so it works for every
-// session — new or already generated. Study lines map to the same evidence
-// base used across the app (research.ts).
+// Main set: the workout's own description (now stored per-session in
+// Workout.notes), falling back to a specialist-coach template per sport+type
+// so NO session ever shows an empty main set.
 export interface SessionDetail {
   wu: string;
   main: string;
   cd: string;
   breathing: string;
   study: string;
+}
+
+const ZONE_LABEL: Record<string, string> = {
+  z1: "Z1 active recovery (<81% LTHR — very easy, conversational)",
+  z2: "Z2 aerobic (81-89% LTHR — easy, nose-breathing pace)",
+  z3: "Z3 tempo (90-93% LTHR — comfortably hard)",
+  z4: "Z4 threshold (94-99% LTHR — sustained, 'race-effort' hard)",
+  z5: "Z5 lactate threshold (100-102% LTHR)",
+  z6: "Z6 VO2max (103-106% LTHR — 3-5 min hard reps)",
+  z7: "Z7 anaerobic (>106% LTHR — 30s-2min max efforts)",
+};
+
+function mainTemplate(sport: string, type: string, zone: string, minutes: number): string {
+  const z = ZONE_LABEL[zone] || ZONE_LABEL.z2;
+  const work = Math.max(15, minutes - 25); // minus WU/CD
+  if (sport === "swim") {
+    if (type === "interval") return `Main: ${Math.round(work / 6)}×100m fast (${z}) with 20s rest after each. Count strokes — fewer strokes per lap = more efficient. Finish each rep with 5m strong off the wall.`;
+    if (type === "threshold") return `Main: 4-8×100m at T-pace (${z}) with 20s rest, or 4×200m with 30s rest. Hold pace — the clock doesn't lie. If pace drops >3s/100m, stop the set.`;
+    return `Main: ${Math.round(work / 15)}×(150m easy + 50m technique drill: catch-up, fingertip drag, 3-3-3 breathing). Steady ${z}. Total focus: body position high, hips up, long stroke.`;
+  }
+  if (sport === "bike") {
+    if (type === "interval") return `Main: 5×3 min at ${z} with 3 min easy spin between. Seated, cadence 90+. Each rep should feel like a hard but repeatable climb. ${Math.round(work)} min total work.`;
+    if (type === "threshold") return `Main: 3×10 min at ${z} (or 91-105% FTP) with 5 min easy between. This is THE session — hold power steady, don't surge the first rep. Aero position on the intervals.`;
+    if (type === "tempo") return `Main: 2×20 min at ${z} with 8 min easy between. Steady effort, cadence 85-95. Eat/drink during this session — it's race-practice for the gut too.`;
+    return `Main: ${Math.round(work)} min steady ${z}. Cadence 85-95 rpm. Fuel 60-90g carbs/hour if over 90 min (Jeukendrup 2014). This ride builds your aerobic engine.`;
+  }
+  if (sport === "run") {
+    if (type === "interval") return `Main: 6×800m at vVO2max (${z}) — roughly 3-5s/400m faster than 5k pace — with 400m jog recovery (Billat 2001). ${Math.round(work)} min of work. Stop the set if pace drops or form breaks.`;
+    if (type === "threshold") return `Main: 3×10 min at T-pace (${z}) with 3 min easy jog between. Threshold pace = what you could race for 1 hour. Controlled discomfort — 7/10 effort.`;
+    if (type === "tempo") return `Main: 20-30 min continuous at ${z} (marathon-effort). Relax the shoulders, quick feet, breathe on a 3-3 rhythm.`;
+    return `Main: ${Math.round(work)} min easy ${z}. Cap HR at 89% LTHR. Conversational — if you can't talk, slow down. This is where the engine is built (Seiler: 80% of volume lives here).`;
+  }
+  if (sport === "strength") {
+    return `Main: 3-5 sets of 5-8 reps, compound lifts — back squat, deadlift, bench/row (Rønnestad 2014: heavy strength improves endurance economy). 2-3 min rest between sets. Bar speed intentional on every rep; leave 2 reps in reserve.`;
+  }
+  if (sport === "brick") {
+    return `Main: 60 min ride with the last 20 min at race effort, then IMMEDIATELY off the bike into a 15 min run at target race pace. The first 400m on foot will feel like running on stilts — that's exactly the skill you're training.`;
+  }
+  if (sport === "recovery") {
+    return `Main: ${Math.round(work)} min anything-goes at ${z} — walk, easy spin, swim, stretch, yoga. The goal is blood flow, NOT fitness. If your breathing is labored, you're going too hard.`;
+  }
+  return `Main: ${Math.round(work)} min at ${z}.`;
 }
 
 const WU_TEMPLATES: Record<string, string> = {
@@ -555,8 +597,10 @@ export function buildSessionDetail(
 ): SessionDetail {
   const sport = s.sport || "run";
   const wu = WU_TEMPLATES[sport] || WU_TEMPLATES.run;
-  // Main set = the description with any leading warm-up sentence stripped.
-  const main = (s.description || "").replace(/^(?:W\/U|Warm-up|warm up)[^.]*\.\s*/, "");
+  // Main set: prefer the session's own prescription; if empty or too thin,
+  // generate a specialist-coach template from sport+type+zone+duration.
+  const desc = (s.description || "").trim();
+  const main = desc.length >= 25 ? desc.replace(/^(?:W\/U|Warm-up|warm up)[^.]*\.\s*/, "") : mainTemplate(sport, s.type, s.zone, s.minutes);
   const cd = CD_TEMPLATES[sport] || CD_TEMPLATES.run;
   const breathing = recoveryNote || "Cool-down: 2-5 min breathing — box (4-4-4-4), physiological sigh, or 4-7-8.";
   const study = STUDY_BY_TYPE[s.type] || STUDY_BY_TYPE.endurance;

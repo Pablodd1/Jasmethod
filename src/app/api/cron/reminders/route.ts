@@ -95,7 +95,7 @@ export async function GET(req: Request) {
         intensity: s.intensity || undefined,
         type: s.type || undefined,
         sport: s.sport,
-        description: s.planDay?.notes || undefined,
+        description: s.notes || s.planDay?.notes || undefined,
         recovery: s.recovery || undefined,
       })),
       readiness,

@@ -93,7 +93,7 @@ export default function CalendarPage() {
   const selWorkouts = selected
     ? workouts.filter((w) => format(new Date(w.date), "yyyy-MM-dd") === selected)
     : [];
-  const selSessions = selDays.flatMap((d: any) => d.sessions.map((s: any) => ({ ...s, notes: d.notes, dayOff: d.dayOff })));
+  const selSessions = selDays.flatMap((d: any) => d.sessions.map((s: any) => ({ ...s, notes: s.notes || d.notes, dayOff: d.dayOff })));
   const selStandalone = selWorkouts.filter((w: any) => !selSessions.some((s: any) => s.id === w.id));
   const allSessions = [...selSessions, ...selStandalone];
   const selEvents = selected ? events.filter((e) => format(new Date(e.date), "yyyy-MM-dd") === selected) : [];
