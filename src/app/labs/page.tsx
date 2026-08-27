@@ -250,7 +250,7 @@ export default function LabsPage() {
                 </div>
               </div>}
             </div>
-            <p className="text-xs text-slate-400 mt-3">These zones power your Training Plan, today&apos;s sessions, and the ox-alpha Coach briefing. Update them from any lab above.</p>
+            <p className="text-xs text-slate-400 mt-3">These zones power your Training Plan, today&apos;s sessions, and the JASAI Coach briefing. Update them from any lab above.</p>
           </div>
         )}
       </div>

@@ -68,7 +68,7 @@ export interface DailyPlanInput {
 export function buildDailyPlanMessage(inp: DailyPlanInput): ReminderMessage {
   const { name, dateLabel, sessions, readiness } = inp;
   const subject = `📋 ${name} — ${dateLabel}'s plan`;
-  const lines: string[] = [`Coach Jas · ${dateLabel}'s training plan`];
+  const lines: string[] = [`JASAI · ${dateLabel}'s training plan`];
   if (!sessions.length) {
     lines.push("");
     lines.push("☁️ DAY OFF — active recovery protocol (a day off is NOT zero):");

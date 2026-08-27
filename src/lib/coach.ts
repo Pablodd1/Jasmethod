@@ -62,7 +62,7 @@ function buildPrompt(c: CoachContext): string {
   const m = c.latestMetric || {};
   const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", ht: "Haitian Creole", fr: "French", ru: "Russian" };
   const langName = LANG_NAMES[c.language || "en"] || "English";
-  return `You are Coach Jas, a science-backed triathlon coach for ${c.name || "this athlete"}.
+  return `You are JASAI, a science-backed triathlon coach for ${c.name || "this athlete"}.
 Athlete profile: sex=${p.sex || "n/a"}, age=${p.birthYear ? new Date().getFullYear() - p.birthYear : "n/a"}, experience=${p.experience || "n/a"}, goal=${p.goal || "n/a"}.
 Physiology: VO2max=${p.vo2max ?? "n/a"}, LTHR=${p.lthr ?? "n/a"}, FTP=${p.ftp ?? "n/a"}.
 Readiness score (0-100): ${c.readiness?.score ?? "n/a"} — ${c.readiness?.advice ?? "no HRV data"}.
@@ -109,8 +109,8 @@ function geminiBriefing(c: CoachContext): Promise<Briefing> {
   });
 }
 
-// Returns a briefing instantly. If a fresh ox-alpha result is cached, returns it.
-// Otherwise returns fallback immediately and kicks off background ox-alpha generation
+// Returns a briefing instantly. If a fresh JASAI result is cached, returns it.
+// Otherwise returns fallback immediately and kicks off background JASAI generation
 // that backfills the cache (so the next load shows the real model output).
 export function getCoachBriefing(userId: string, c: CoachContext): Briefing {
   const tk = todayKey();

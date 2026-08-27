@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { hrvReadiness } from "@/lib/science";
 import { getCoachBriefing } from "@/lib/coach";
 
-// GET /api/coach — gathers the athlete's day and asks ox-alpha for a briefing
+// GET /api/coach — gathers the athlete's day and asks JASAI for a briefing
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

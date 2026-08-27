@@ -82,7 +82,7 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   "dash.greeting": { en: "Good morning, {name} ☀️", es: "Buenos días, {name} ☀️" },
   "dash.athlete": { en: "Athlete", es: "Atleta" },
   "dash.motivation": { en: "Today is a brick in the wall. Lay it well.", es: "Hoy es un ladrillo en la pared. Colócalo bien." },
-  "dash.coachJas": { en: "Coach Jas · ox-alpha", es: "Coach Jas · ox-alpha" },
+  "dash.coachJas": { en: "JASAI", es: "JASAI" },
   "dash.ruleBased": { en: "rule-based", es: "basado en reglas" },
   "dash.adaptation": { en: "Adaptation:", es: "Adaptación:" },
   "dash.setupProfile": { en: "Set up your athlete profile", es: "Configura tu perfil de atleta" },
@@ -131,7 +131,7 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
 
   // ---- labs ----
   "labs.title": { en: "Field-Test Labs", es: "Laboratorios de prueba de campo" },
-  "labs.subtitle": { en: "Coach Jas, powered by ox-alpha.", es: "Coach Jas, impulsado por ox-alpha." },
+  "labs.subtitle": { en: "JASAI, powered by Gemini.", es: "JASAI, impulsado por Gemini." },
   "labs.vdot": { en: "VDOT — Running Paces", es: "VDOT — Ritmos de carrera" },
   "labs.raceDistance": { en: "Race distance", es: "Distancia de carrera" },
   "labs.calcPaces": { en: "Calc paces", es: "Calcular ritmos" },
