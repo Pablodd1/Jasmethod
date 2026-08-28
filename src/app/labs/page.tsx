@@ -1,11 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FlaskConical, Beaker, Droplets, HeartPulse, Bike, Waves, Footprints, Save, Zap } from "lucide-react";
+import { FlaskConical, Beaker, Droplets, HeartPulse, Bike, Waves, Footprints, Save, Zap, ClipboardList, TrendingUp } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { buildZoneTable } from "@/lib/science";
+import { cmjReadiness } from "@/lib/adaptive";
 import { t, type Lang } from "@/lib/i18n";
+
+// result units per benchmark type (rec: close the punch-force measurement loop)
+const BENCH_UNIT: Record<string, string> = {
+  ftp: "W", lthr: "bpm", cp: "W", run5k: "sec", swim: "sec/100m",
+  run1k: "sec", erg: "m", strengthBench: "cm (med-ball throw)",
+  boxing: "punches / N (count in 3 min, or peak N if smart bag)",
+};
 
 // ---------- pure calculator math (ported from the Miami prototype, reused here) ----------
 function parseHMS(t: string) {
@@ -39,9 +47,13 @@ export default function LabsPage() {
   const [sweat, setSweat] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [savedMsg, setSavedMsg] = useState<string>("");
+  const [bench, setBench] = useState<any[]>([]);
+  const [cmj, setCmj] = useState<{ today: string; base: string } | null>(null);
+  const [cmjRes, setCmjRes] = useState<ReturnType<typeof cmjReadiness> | null>(null);
 
   useEffect(() => {
     fetch("/api/profile").then((r) => r.json()).then((d) => setProfile(d.profile));
+    fetch("/api/benchmarks").then((r) => r.json()).then((d) => setBench(d.tests || []));
   }, []);
 
   function saveZones(payload: Record<string, any>) {
@@ -253,6 +265,57 @@ export default function LabsPage() {
             <p className="text-xs text-slate-400 mt-3">These zones power your Training Plan, today&apos;s sessions, and the JASAI Coach briefing. Update them from any lab above.</p>
           </div>
         )}
+        {/* SCHEDULED TESTS + result logging */}
+        <div className="card">
+          <div className="flex items-center gap-2 mb-3"><ClipboardList className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">Scheduled Tests</h2></div>
+          {bench.length === 0 && <p className="text-sm text-slate-500">No scheduled tests — generate a training plan and your 6-8 week test calendar appears here.</p>}
+          <div className="space-y-2">
+            {bench.map((b) => (
+              <div key={b.id} className={`flex flex-wrap items-center gap-2 p-2 rounded-xl ${b.completed ? "bg-emerald-50" : "bg-slate-50"}`}>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{b.name}</div>
+                  <div className="text-xs text-slate-500">{new Date(b.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}{b.result ? ` · result: ${b.result}` : b.skipped ? ` · skipped (${b.reason || "near race"})` : ""}</div>
+                </div>
+                {!b.completed && !b.skipped && (
+                  <form className="flex items-center gap-1" onSubmit={(e) => {
+                    e.preventDefault();
+                    const v = (e.currentTarget.elements.namedItem("res") as HTMLInputElement).value;
+                    if (!v) return;
+                    fetch("/api/benchmarks", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: b.id, result: v }) })
+                      .then((r) => r.json()).then((d) => { if (d.ok) setBench((p) => p.map((x) => x.id === b.id ? d.test : x)); });
+                  }}>
+                    <input name="res" type="number" step="any" className="inp w-28" placeholder={BENCH_UNIT[b.type] || "value"} />
+                    <button className="btn text-xs px-3 py-1.5">Log</button>
+                  </form>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-slate-400 mt-3">FTP/LTHR results re-anchor your training zones automatically. Boxing: log punch count in 3 min, or peak Newtons if you use a smart bag.</p>
+        </div>
+
+        {/* CMJ NEUROMUSCULAR READINESS (boxing gate) */}
+        <div className="card">
+          <div className="flex items-center gap-2 mb-3"><TrendingUp className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">Neuromuscular Readiness (CMJ)</h2></div>
+          <p className="text-sm text-slate-500 mb-2">Best of 3 countermovement jumps, morning, same conditions. Compare vs your 7-day best. For boxers: jump height tracks punch output (Loturco 2016).</p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-sm">Today&apos;s best CMJ (cm)
+              <input className="inp" value={cmj?.today || ""} onChange={(e) => setCmj({ today: e.target.value, base: cmj?.base || "" })} placeholder="38" />
+            </label>
+            <label className="text-sm">Baseline (7-day best, cm)
+              <input className="inp" value={cmj?.base || ""} onChange={(e) => setCmj({ today: cmj?.today || "", base: e.target.value })} placeholder="40" />
+            </label>
+          </div>
+          <button className="btn" onClick={() => {
+            const t0 = parseFloat(cmj?.today || ""), b0 = parseFloat(cmj?.base || "");
+            if (t0 > 0 && b0 > 0) setCmjRes(cmjReadiness(t0, b0)); else setCmjRes(null);
+          }}>Check readiness</button>
+          {cmjRes && (
+            <div className={`mt-3 p-3 rounded-xl text-sm ${cmjRes.status === "green" ? "bg-emerald-50 text-emerald-800" : cmjRes.status === "amber" ? "bg-amber-50 text-amber-800" : "bg-coral-50 text-coral-700"}`}>
+              <strong className="uppercase">{cmjRes.status}</strong> — {cmjRes.advice}
+            </div>
+          )}
+        </div>
       </div>
     </ProtectedPage>
   );

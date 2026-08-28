@@ -99,6 +99,36 @@ export function dayOffProtocol(date: Date): DayOffProtocol {
   };
 }
 
+// ---------- 1b. NEUROMUSCULAR READINESS (CMJ gate) ----------
+// Morning CMJ vs baseline: >8% drop = neuromuscular fatigue → convert intensity
+// to skill work. Grounding: CMJ tracks punch output in boxers (Loturco 2016);
+// jump performance is a standard fatigability monitor (Jordan/Plantiga practice;
+// Muñoz-López 2024 review uses CMJ as the boxers' neuromuscular measure).
+export interface CmjReadiness {
+  status: "green" | "amber" | "red";
+  advice: string;
+}
+
+export function cmjReadiness(todayCm: number, baselineCm: number): CmjReadiness {
+  const drop = (baselineCm - todayCm) / baselineCm; // positive = worse
+  if (drop >= 0.08) {
+    return {
+      status: "red",
+      advice: `CMJ down ${Math.round(drop * 100)}% vs baseline — neuromuscular fatigue. Convert today's intensity/bag rounds to skill work (shadow technique, footwork, film review). Keep volume low (Loturco 2016: CMJ tracks punch output; a tired CNS throws slow punches and builds bad patterns).`,
+    };
+  }
+  if (drop >= 0.04) {
+    return {
+      status: "amber",
+      advice: `CMJ down ${Math.round(drop * 100)}% — borderline. Warm up, re-test after the warm-up; if it recovers, train as planned but cap explosive work at 80% volume.`,
+    };
+  }
+  return {
+    status: "green",
+    advice: `CMJ within ${Math.round(drop * 100)}% of baseline${drop < 0 ? ` (up ${Math.abs(Math.round(drop * 100))}%)` : ""} — CNS is fresh. Full intensity green light: reactive rounds, sprint and power work all on.`,
+  };
+}
+
 // ---------- 2. RACE TEMPERATURE ADJUSTMENT ----------
 // Heat degrades sustained pace; adjust pacing + volume + hydration.
 // Cold has a milder, opposite effect. (Ely 2007; Casa 2000.)
