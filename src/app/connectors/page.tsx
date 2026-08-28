@@ -87,14 +87,14 @@ export default function ConnectorsPage() {
                 </div>
 
                 <div className="mt-4">
-                  {p.id === "strava" && (
+                  {p.method === "oauth" && (
                     p.configured ? (
                       <a href={p.connectUrl} className="btn-primary w-full justify-center">
-                        <ExternalLink className="w-4 h-4" /> {t(lang, "conn.connectStrava")}
+                        <ExternalLink className="w-4 h-4" /> {p.status === "connected" ? "Sync now" : `Connect ${p.name}`}
                       </a>
                     ) : (
                       <div className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
-                        Add STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET to enable OAuth (dev.strava.com — free).
+                        Add {p.id.toUpperCase()}_CLIENT_ID and {p.id.toUpperCase()}_CLIENT_SECRET to enable OAuth.
                       </div>
                     )
                   )}

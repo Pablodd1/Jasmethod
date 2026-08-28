@@ -333,3 +333,93 @@ export function normalizeGenotype(rsid: string, g: string): string {
   }
   return up;
 }
+
+// ---------- Garmin Connect OAuth2 (official Developer Program) ----------
+// Auth: OAuth 2.0 with PKCE. Register an app at developer.garmin.com to get
+// client id/secret. Same shape as Strava integration so the connectors UI
+// can treat it identically.
+export interface GarminConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
+
+export function garminAuthUrl(cfg: GarminConfig, state: string): string {
+  // PKCE: generate code_verifier per auth attempt; app must persist it to
+  // verify at callback. Simplification: stateless demo uses state only.
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    redirect_uri: cfg.redirectUri,
+    response_type: "code",
+    scope: "activities", // Garmin scopes: activities | health_snapshot | etc.
+    state,
+  });
+  return `https://connect.garmin.com/oauth/authorize?${params.toString()}`;
+}
+
+export async function garminExchangeToken(cfg: GarminConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const body = new URLSearchParams({
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    code,
+    grant_type: "authorization_code",
+    redirect_uri: cfg.redirectUri,
+  });
+  const resp = await fetch("https://connect.garmin.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!resp.ok) throw new Error(`Garmin token exchange failed: ${resp.status} ${await resp.text()}`);
+  return resp.json();
+}
+
+export async function garminRefreshToken(cfg: GarminConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const body = new URLSearchParams({
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+  const resp = await fetch("https://connect.garmin.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!resp.ok) throw new Error(`Garmin refresh failed: ${resp.status} ${await resp.text()}`);
+  return resp.json();
+}
+
+// List activities. Garmin's public Activity API paginates; after=ISO date.
+export async function garminGetActivities(accessToken: string, after?: Date): Promise<any[]> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (after) params.set("startTime", after.toISOString());
+  const resp = await fetch(`https://apis.garmin.com/activity-api/v1/activities?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!resp.ok) throw new Error(`Garmin activities failed: ${resp.status} ${await resp.text()}`);
+  const data = await resp.json();
+  return Array.isArray(data) ? data : data.activities || [];
+}
+
+export function garminActivityToWorkout(a: any): ImportedWorkout {
+  const type = (a.activityType?.name || a.type || "").toLowerCase();
+  const sport: ImportedWorkout["sport"] = type.includes("swim") ? "swim"
+    : type.includes("cycling") || type.includes("bike") ? "bike"
+    : type.includes("run") ? "run"
+    : type.includes("strength") ? "strength" : "other";
+  const durationSec = a.durationInSeconds ?? a.duration ?? 0;
+  return {
+    externalId: String(a.activityId || a.id || `${Date.now()}-${Math.random()}`),
+    sport,
+    date: new Date(a.startTimeInSeconds ? a.startTimeInSeconds * 1000 : a.startTimeLocal || Date.now()),
+    durationMin: Math.round(durationSec / 60),
+    distanceKm: a.distanceInMeters ? a.distanceInMeters / 1000 : undefined,
+    avgHr: a.averageHr ?? a.averageHeartRateInBeatsPerMinute,
+    maxHr: a.maxHr ?? a.maxHeartRateInBeatsPerMinute,
+    avgPower: a.averagePowerInWatts,
+    calories: a.calories,
+    title: a.activityName || type || "Activity",
+    source: "garmin",
+  };
+}

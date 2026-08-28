@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { stravaAuthUrl } from "@/lib/importers";
+import { stravaAuthUrl, garminAuthUrl } from "@/lib/importers";
 
-// GET /api/connectors — list connector status + Strava auth URL if configured
+// GET /api/connectors — list connector status + OAuth URLs if configured
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,11 +18,19 @@ export async function GET() {
         redirectUri: `${baseUrl}/api/connectors/strava/callback`,
       })
     : null;
+  const garminConfigured = Boolean(process.env.GARMIN_CLIENT_ID && process.env.GARMIN_CLIENT_SECRET);
+  const garminUrl = garminConfigured
+    ? garminAuthUrl({
+        clientId: process.env.GARMIN_CLIENT_ID!,
+        clientSecret: process.env.GARMIN_CLIENT_SECRET!,
+        redirectUri: `${baseUrl}/api/connectors/garmin/callback`,
+      }, `garmin-${user.id}`)
+    : null;
 
   // Provider metadata for the UI
   const providers = [
-    { id: "strava", name: "Strava", description: "Pull all activities & previous records", status: connectors.find((c) => c.provider === "strava")?.status || "disconnected", configured: stravaConfigured, connectUrl: stravaUrl },
-    { id: "garmin", name: "Garmin", description: "Upload .TCX exports (Connect → Activities → Export)", status: connectors.find((c) => c.provider === "garmin")?.status || "disconnected", configured: true, method: "upload" },
+    { id: "strava", name: "Strava", description: "Pull all activities & previous records", status: connectors.find((c) => c.provider === "strava")?.status || "disconnected", configured: stravaConfigured, connectUrl: stravaUrl, method: "oauth" },
+    { id: "garmin", name: "Garmin", description: garminConfigured ? "Connect Garmin Connect — pull activities automatically" : "Upload .TCX exports (Connect → Activities → Export)", status: connectors.find((c) => c.provider === "garmin")?.status || "disconnected", configured: true, connectUrl: garminUrl, method: garminConfigured ? "oauth" : "upload" },
     { id: "apple", name: "Apple Health", description: "Upload export.zip → export.xml", status: connectors.find((c) => c.provider === "apple")?.status || "disconnected", configured: true, method: "upload" },
     { id: "whoop", name: "Whoop", description: "Upload cycle CSV export (recovery, HRV, sleep)", status: connectors.find((c) => c.provider === "whoop")?.status || "disconnected", configured: true, method: "upload" },
     { id: "oura", name: "Oura / Aura Ring", description: "Oura Cloud API — add OURA_CLIENT_ID/SECRET to enable OAuth", status: connectors.find((c) => c.provider === "oura")?.status || "disconnected", configured: Boolean(process.env.OURA_CLIENT_ID), method: "api" },

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, CalendarDays, Dumbbell, HeartPulse, Moon, Droplets, Apple,
-  FlaskConical, Dna, Plug, Settings, Waves, LogOut, Activity, Flag, ClipboardCheck, Bell, Globe, Gauge,
+  FlaskConical, Dna, Plug, Settings, Waves, LogOut, Activity, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield,
 } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
@@ -26,6 +26,7 @@ const NAV = [
   { href: "/connectors", key: "nav.connectors", icon: Plug },
   { href: "/reminders", key: "nav.reminders", icon: Bell },
   { href: "/settings", key: "nav.settings", icon: Settings },
+  { href: "/admin", key: "nav.admin", icon: Shield, adminOnly: true },
 ];
 
 function LanguageSelect({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
@@ -65,7 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {NAV.map((item) => {
+          {NAV.filter((item) => !item.adminOnly || user?.role === "admin" || user?.role === "coach").map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
             return (
