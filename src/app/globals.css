@@ -32,8 +32,19 @@ h1, h2, h3, h4 {
 }
 
 .input {
-  @apply w-full rounded-xl border border-sand-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-400;
+  @apply w-full min-w-0 rounded-xl border border-sand-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-400;
 }
+
+/* truncate/flex items must be allowed below min-content, else nowrap text
+   stretches the whole page at phone width (Tailwind omits min-w-0 on purpose) */
+.truncate { min-width: 0; }
+
+/* <select> min-content = longest <option> text and is NOT overridden by
+   min-w-0; overflow:hidden resets the intrinsic size (text just elides). */
+select { min-width: 0; }
+/* grid/flex ITEMS (not containers) default to min-width:auto and stretch
+   their track once a nowrap child gets long enough */
+[class*="grid"] > *, .card { min-width: 0; }
 
 .inp {
   @apply w-full rounded-xl border border-sand-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean-400 mb-2;

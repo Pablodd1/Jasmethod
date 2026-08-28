@@ -107,9 +107,9 @@ export default function CalendarPage() {
             <h1 className="font-display text-2xl font-bold">Training Calendar</h1>
             <p className="text-slate-500 text-sm">Click any day to see the full workout detail, move sessions, or mark them done.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button onClick={() => setMonth(addMonths(month, -1))} className="btn-secondary p-2"><ChevronLeft className="w-4 h-4" /></button>
-            <div className="font-display font-bold text-lg min-w-40 text-center">{format(month, "MMMM yyyy")}</div>
+            <div className="font-display font-bold text-lg text-center">{format(month, "MMMM yyyy")}</div>
             <button onClick={() => setMonth(addMonths(month, 1))} className="btn-secondary p-2"><ChevronRight className="w-4 h-4" /></button>
             <button onClick={() => { setMonth(new Date()); load(new Date()); }} className="btn-secondary text-sm">Today</button>
             <button onClick={() => setShowForm(!showForm)} className="btn-primary"><Plus className="w-4 h-4" /> Event</button>
