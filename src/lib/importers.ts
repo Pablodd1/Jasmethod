@@ -423,3 +423,77 @@ export function garminActivityToWorkout(a: any): ImportedWorkout {
     source: "garmin",
   };
 }
+
+// ---------- Google Calendar OAuth2 (read availability) ----------
+// Scope: read-only calendar so the smart coach sees meetings/blocked time
+// and can fit training into the user's real schedule.
+export interface GoogleCalConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
+
+export function googleCalAuthUrl(cfg: GoogleCalConfig, state: string): string {
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    redirect_uri: cfg.redirectUri,
+    response_type: "code",
+    scope: "https://www.googleapis.com/auth/calendar.readonly",
+    access_type: "offline",
+    prompt: "consent",
+    state,
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
+export async function googleCalExchangeToken(cfg: GoogleCalConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const body = new URLSearchParams({
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    code,
+    grant_type: "authorization_code",
+    redirect_uri: cfg.redirectUri,
+  });
+  const resp = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!resp.ok) throw new Error(`Google token exchange failed: ${resp.status} ${await resp.text()}`);
+  return resp.json();
+}
+
+export async function googleCalRefreshToken(cfg: GoogleCalConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const body = new URLSearchParams({
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+  const resp = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!resp.ok) throw new Error(`Google refresh failed: ${resp.status} ${await resp.text()}`);
+  return resp.json();
+}
+
+// Fetch upcoming events from primary calendar (default 14 days).
+export async function googleCalGetEvents(accessToken: string, days = 14): Promise<any[]> {
+  const now = new Date();
+  const end = new Date(now.getTime() + days * 86400000);
+  const params = new URLSearchParams({
+    timeMin: now.toISOString(),
+    timeMax: end.toISOString(),
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "100",
+  });
+  const resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!resp.ok) throw new Error(`Google calendar events failed: ${resp.status} ${await resp.text()}`);
+  const data = await resp.json();
+  return data.items || [];
+}

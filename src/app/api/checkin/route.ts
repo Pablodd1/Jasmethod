@@ -42,7 +42,13 @@ export async function GET() {
   const recovery = translatedRecovery(lang);
   const fuelBrands = fuelBrandsFor(todaySession?.durationMin || 0);
   const sources = sourcesFor(CORE_SOURCE_IDS);
-  return NextResponse.json({ checkin, recovery, fuelBrands, sources, language: lang });
+  // Today's appointments — surface them even before submitting the checkin
+  const todayAppointments = await prisma.calendarEvent.findMany({
+    where: { userId: user.id, type: "appointment", date: { gte: today, lt: new Date(today.getTime() + 86400000) } },
+    orderBy: { date: "asc" },
+    select: { title: true, startTime: true, endTime: true },
+  });
+  return NextResponse.json({ checkin, recovery, fuelBrands, sources, language: lang, calendar: { busyCount: todayAppointments.length, appointments: todayAppointments } });
 }
 
 // POST /api/checkin — submit the daily questionnaire; returns adaptation + fuel + ergos
@@ -81,6 +87,32 @@ export async function POST(req: Request) {
     });
 
     const adaptation = adaptSession(checkin);
+
+    // Lifestyle awareness: today's appointments from calendar (meetings, busy time).
+    // The coach uses this to keep the prescription realistic — no 2-hour ride on
+    // a day with 4 back-to-back meetings.
+    const todayAppointments = await prisma.calendarEvent.findMany({
+      where: { userId: user.id, type: "appointment", date: { gte: start, lt: end } },
+      orderBy: { date: "asc" },
+      select: { title: true, startTime: true, endTime: true },
+    });
+    const busyCount = todayAppointments.length;
+    let busyNote = null;
+    if (busyCount > 0) {
+      const busyHrs = todayAppointments.reduce((s, a) => {
+        if (a.startTime && a.endTime) {
+          const [sh, sm] = a.startTime.split(":").map(Number);
+          const [eh, em] = a.endTime.split(":").map(Number);
+          return s + Math.max(0, (eh * 60 + em) - (sh * 60 + sm)) / 60;
+        }
+        return s + 1; // all-day or unknown length ≈ 1h
+      }, 0);
+      busyNote = `${busyCount} meeting${busyCount > 1 ? "s" : ""} on your calendar today (~${Math.round(busyHrs)}h busy). ${
+        busyHrs >= 6 ? "Heavy day — keep training short and high-yield if you train at all." :
+        busyHrs >= 3 ? "Medium day — a compact session fits if you schedule it between commitments." :
+        "Light calendar — normal session fits."
+      }`;
+    }
 
     // fuel: heat factor if an A-race is within 7 days
     let heatFactor = 1;
@@ -150,6 +182,7 @@ export async function POST(req: Request) {
       fuelBrands: fuelBrandsFor(todaySession?.durationMin || 0),
       sources: sourcesFor(CORE_SOURCE_IDS),
       hydration: { weightTrend, rhrNote, rhrBaseline: checkin.rhrBaseline ?? null },
+      calendar: { busyCount, busyNote },
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });

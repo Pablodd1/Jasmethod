@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   HeartPulse, Moon, Dumbbell, Droplets, Apple, FlaskConical, Dna, Plug,
-  ArrowRight, CheckCircle2, Waves, Sparkles, CalendarDays,
+  ArrowRight, CheckCircle2, Waves, Sparkles, CalendarDays, CalendarClock,
 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -27,6 +27,7 @@ export default function DashboardPage() {
   const [hydration, setHydration] = useState<any[]>([]);
   const [todaySessions, setTodaySessions] = useState<any[]>([]);
   const [coach, setCoach] = useState<any>(null);
+  const [calendar, setCalendar] = useState<any>({ busyCount: 0, appointments: [] });
   const [loading, setLoading] = useState(true);
 
   const mot = dailyMotivation(Math.floor(Date.now() / 86400000), user?.motivation?.style || "coach");
@@ -38,12 +39,14 @@ export default function DashboardPage() {
       fetch("/api/workouts?days=30").then((r) => r.json()),
       fetch("/api/metrics?days=14").then((r) => r.json()),
       fetch("/api/nutrition?days=2").then((r) => r.json()),
+      fetch("/api/checkin").then((r) => r.json()).catch(() => ({ calendar: null })),
       fetch("/api/coach").then((r) => r.json()).catch(() => ({ briefing: null })),
-    ]).then(([planData, workData, metricData, nutrData, coachData]) => {
+    ]).then(([planData, workData, metricData, nutrData, checkinData, coachData]) => {
       setPlan(planData.plans?.[0] || null);
       setWorkouts(workData.workouts || []);
       setMetrics(metricData.metrics || []);
       setHydration(nutrData.daily || []);
+      setCalendar(checkinData?.calendar || { busyCount: 0, appointments: [] });
       setCoach(coachData.briefing || null);
       const today = new Date().toISOString().slice(0, 10);
       setTodaySessions((workData.workouts || []).filter((w: any) => w.date.slice(0, 10) === today));
@@ -112,6 +115,25 @@ export default function DashboardPage() {
                   {coach.sources.map((s: string) => <span key={s} className="text-[10px] bg-white/15 rounded-full px-2 py-0.5">{s}</span>)}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Calendar-aware coaching: today's appointments */}
+        {calendar.busyCount > 0 && (
+          <div className="card border-amber-200 bg-amber-50">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 shrink-0"><CalendarClock className="w-4 h-4" /></div>
+              <div className="flex-1">
+                <div className="font-semibold text-amber-900">Today: {calendar.busyCount} commitment{calendar.busyCount > 1 ? "s" : ""} on your calendar</div>
+                <div className="text-sm text-amber-800 mt-0.5 space-y-0.5">
+                  {calendar.appointments.slice(0, 5).map((a: any, i: number) => (
+                    <div key={i}>{a.startTime || "all-day"} · {a.title}</div>
+                  ))}
+                  {calendar.busyCount > 5 && <div className="text-xs">+{calendar.busyCount - 5} more</div>}
+                </div>
+                <Link href="/calendar" className="text-xs text-amber-700 underline mt-1 inline-block">Plan training around this →</Link>
+              </div>
             </div>
           </div>
         )}

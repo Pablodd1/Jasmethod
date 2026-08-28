@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen, HeartPulse, Mic, CheckCircle2 } from "lucide-react";
+import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen, HeartPulse, Mic, CheckCircle2, CalendarClock } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
@@ -191,6 +191,14 @@ export default function CheckinPage() {
                 </div>
                 <p className="text-sm text-slate-600 mt-1">{t(lang, `adapt.${adaptation.verdict}.msg`)}</p>
                 <div className="text-xs text-slate-400 mt-2">Duration ×{adaptation.durationFactor} · intensity cap {adaptation.intensityCap}</div>
+              </div>
+            )}
+
+            {result?.calendar?.busyNote && (
+              <div className="card border-amber-200 bg-amber-50">
+                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-amber-600" /> Calendar-aware coaching</h3>
+                <p className="text-sm text-amber-800">{result.calendar.busyNote}</p>
+                <p className="text-xs text-amber-600 mt-1">Synced from Google Calendar — training is fit around your real schedule.</p>
               </div>
             )}
 
