@@ -1,0 +1,47 @@
+P,Sounds like a plan,Not what you'd call a casual hobby, triathlon, right
+H,Exactly. And today we're breaking down an app that treats it like one. JasMiamiMethod. Who is it for?
+P,The Miami endurance athlete. And honestly anyone who wants their training based on actual peer-reviewed science, not vibes from an Instagram coach.
+H,So what makes this different from TrainingPeaks or Strava or whatever?
+P,The loop. Most apps store your data. JasMiamiMethod analyzes every single input and rewrites your training because of it.
+H,Walk me through that loop.
+P,Start at zero. You do field tests: a threshold run to find your lactate threshold heart rate, a bike test for functional threshold power, swim and run pace baselines. The app calculates your seven training zones from those.
+H,And if someone skips all that?
+P,Then the app keeps a science-based standard plan and nudges you toward the tests. But the moment real numbers exist, everything individualizes.
+H,Fair. Now the daily part?
+P,Thirty-second check-in every morning. Sleep quality, soreness, energy, motivation, stress, morning weight, resting heart rate. You can even talk into your phone and it parses the numbers. Plus flags if you're sick or menstruating.
+H,That's a lot of questions for a training app.
+P,It's what the analysis runs on. Example: resting heart rate. The app keeps a rolling seven-day baseline. If today's is six beats or more above it, your readiness score drops and a hard interval session gets downgraded to easy aerobic volume. That's not a suggestion, that's that day's workout already rewritten.
+H,And the weight?
+P,Dehydration and fueling detector. Up more than one percent overnight, you're retaining, possibly overhydrating. Down more than one and a half, you're under-fueled or dry. It shows up as its own card with plain-English advice.
+H,What about the blood and DNA stuff I saw mentioned?
+P,Deeper individualization. You can upload blood panels and the app interprets them, ferritin, vitamin D, that kind of thing. DNA analysis looks at variants like ACTN3, the speed gene, and ACE, to tell you whether you're genetically more strength or endurance biased, and whether you're a caffeine responder.
+P,It's post-2000 sports medicine evidence throughout. Every claim cites a study.
+H,Okay, so the plan itself. How is a training week built?
+P,A rule-based engine generates a periodized block from your profile: goal race, available hours per week, experience level. Polarized structure, roughly eighty percent easy work, twenty percent hard. Wednesdays are double threshold, Saturdays brick bike and run. Rest days are never nothing, you get twenty minutes zone one plus breathing work.
+H,Why is rest still training?
+P,Because active recovery clears fatigue faster than the couch, and the habit stays unbroken. Consistency beats heroics.
+H,What does a single workout look like? An athlete opens it up, what do they see?
+P,Five structured blocks. Warm-up, specific to the sport. Main set, written by discipline like a specialist coach would dictate it. Cool-down. A breathing technique, box breathing or four-seven-eight, rotated daily. And a study line explaining the evidence behind the session.
+H,Give me a real main set.
+P,Run intervals: six by eight hundred meters at your maximal aerobic speed, roughly three to five seconds per four hundred faster than five-k pace, with a four-hundred-meter jog between. Named to the Billat two-thousand-one research. Swim threshold: four to eight by hundred at T-pace, twenty seconds rest, and if your pace drops more than three seconds per hundred, stop the set.
+P,The app tells you exactly when to quit. That's coaching.
+H,That's actually really nice. Zones are always confusing.
+P,They're translated. Instead of just saying Z4, it says: ninety-four to ninety-nine percent of threshold heart rate, race-effort hard. You feel it, you know where you are.
+H,Now the calendar. I heard you can move workouts.
+P,Click any day, you get the full session cards. Every session has a move button. Pick a new date and time. Here's the clever part: enter the expected outdoor temperature and it shows live heat guidance before you commit. Miami summer, that matters.
+H,What does heat guidance actually say?
+P,Over thirty-two Celsius: extreme heat, move indoors or to early morning, cut volume twenty-five percent, pace by feel not target, ice slurry before, drink seven hundred fifty milliliters an hour. From the Ely two-thousand-seven and Casa hydration research. Or just tick indoor and skip the drama.
+H,How do the athletes get their plan each day?
+P,A Telegram message at five PM with tomorrow's complete session. Same structure: warm-up, main set, cool-down, breathing, the study. Check it on your phone at dinner, done.
+H,What about tracking progress over months?
+P,Performance management chart, the same math TrainingPeaks uses but explained for humans. One workout gets a training stress score, an intensity number where one hour all-out is one hundred. Fitness is your forty-two-day average of those, your engine size. Fatigue is the last seven days. Form is fitness minus fatigue: positive means fresh and race-ready, negative means you're tired, which mid-block is exactly where you should be.
+H,And a race prediction?
+P,From current fitness it estimates your finish time for the goal race. Plus an execution score: did you actually do the plan, on time, full duration?
+H,What devices plug in?
+P,Strava today, Garmin and Google Calendar are wired. The calendar read-only access is neat: the coach sees your meetings and schedules around them. Whoop, Oura, Apple Health feed the sleep and HRV modules.
+H,There's also a coach side?
+P,Admin dashboard. The coach sees every athlete's readiness, compliance, and load in one place. Multiple athlete accounts, five languages: English, Spanish, Haitian Creole, French, Russian. Very Miami.
+H,What's next?
+P,More ergogenic detail, things like citrulline for blood flow that are already in the fuel engine, deeper Garmin analytics, and the race venue knowledge base. The direction is the go-to Miami athlete app: the user is the coach of their own data, the AI explains the numbers.
+P,JasMiamiMethod. Science-backed, athlete-first. Try it, there are free coached group sessions weekly.
+H,We'll leave it there. Go do your twenty minutes of zone one.
