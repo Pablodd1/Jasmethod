@@ -37,8 +37,64 @@ export interface GearAdvice {
 export function gearAdvice(input: GearInput): GearAdvice[] {
   const out: GearAdvice[] = [];
   const isTri = ["sprint", "olympic", "half", "full"].includes(input.raceDistance || "");
+  const isBoxing = input.raceDistance === "boxing" || (input.sports || []).includes("boxing");
   const sports = input.sports || (isTri ? ["bike", "run", "swim"] : input.raceDistance ? [input.raceDistance] : []);
   const level = input.experience || "amateur";
+
+  // ---- BOXING: measurement + bio data stack ----
+  if (isBoxing) {
+    out.push({
+      id: "box-smart-bag",
+      category: "power",
+      title: "Punch-force measurement (smart bag or accelerometer)",
+      advice: "Punch force is THE boxing KPI: elite straight punches land ~1500N vs ~1000N for juniors, Olympic boxers reach 2000-4800N. A water-filled smart bag (pressure-sensor validated) or accelerometer bag gives you peak force + punch count per round — train power by number, not feel.",
+      sourceIds: ["pieter2022", "walilko2005", "diewald2022", "busko2016"],
+      priority: 1,
+    });
+    out.push({
+      id: "box-jump-cmj",
+      category: "data",
+      title: "CMJ / jump contact mat or app (neuromuscular readiness)",
+      advice: "Countermovement-jump height and reactive strength index track punch output: boxers with higher CMJ throw more punches in fights and hit harder (Loturco). A contact mat (Optojump-class) or a phone jump app + weekly 3-jump test = your explosiveness and freshness gauge for the whole camp.",
+      sourceIds: ["loturco2016", "munozlopez2024"],
+      priority: 1,
+    });
+    out.push({
+      id: "box-reaction",
+      category: "equipment",
+      title: "Reaction lights (BlazePod / FITLIGHT)",
+      advice: "Eye-hand coordination and reaction time are the top predictors of punch hit rate — above raw eyesight. Reactive light pods for 10 min, 2-3×/week (cue → jab/slip/step) measurably improve visual reaction time and visuomotor skill. Cheaper alternative: a partner with a tennis ball and hand signals.",
+      sourceIds: ["zhang2025", "hassan2025", "appelbaum2016"],
+      priority: 2,
+    });
+    out.push({
+      id: "box-video",
+      category: "data",
+      title: "Phone tripod (60fps) — film your rounds",
+      advice: "The cheapest bio-feedback that exists: film shadow and bag rounds weekly, review at half speed for tells — dropping lead hand, flat feet, telegraphed shoulders. Motor learning sticks better with filmed feedback + one cue per session.",
+      sourceIds: ["martinezdequel2019", "appelbaum2016"],
+      priority: 3,
+    });
+    if (!input.hasHrm) {
+      out.push({
+        id: "box-hrm",
+        category: "heart",
+        title: "HR strap for round-based intensity",
+        advice: "3-min rounds are HIIT: a chest strap shows inter-round HR recovery (the fight engine metric). Track HR at the 60s rest — faster drop between rounds = better aerobic recovery for the next output.",
+        sourceIds: ["seiler2009", "plews2013"],
+        priority: 2,
+      });
+    } else {
+      out.push({
+        id: "box-hrm",
+        category: "heart",
+        title: "Inter-round HR recovery (use your strap)",
+        advice: "With your HR strap: log HR at end of round and at the 60s rest buzzer. Target: ≥25 bpm drop by the bell. Falling recovery across rounds = aerobic engine limit, add roadwork; stable recovery but fading punches = local shoulder/muscular endurance, add burnout finishers.",
+        sourceIds: ["seiler2009"],
+        priority: 2,
+      });
+    }
+  }
 
   // ---- BIKE POWER ----
   if (sports.includes("bike") && !input.hasBikePowerMeter) {
@@ -93,7 +149,7 @@ export function gearAdvice(input: GearInput): GearAdvice[] {
   }
 
   // ---- HEART RATE STRAP ----
-  if (!input.hasHrm) {
+  if (!input.hasHrm && !isBoxing) {
     out.push({
       id: "hrm",
       category: "heart",

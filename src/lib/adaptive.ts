@@ -148,9 +148,9 @@ const HYROX_TEST_TYPES: { type: ScheduledTest["type"]; name: string; cadenceDays
 ];
 
 const BOXING_TEST_TYPES: { type: ScheduledTest["type"]; name: string; cadenceDays: number }[] = [
-  { type: "boxing", name: "3-min Max Punch Test (bag, count + film review)", cadenceDays: 56 },
+  { type: "boxing", name: "Punch Output Test (3-min bag: punch count + film review)", cadenceDays: 56 },
   { type: "run5k", name: "Roadwork Benchmark (5k TT)", cadenceDays: 56 },
-  { type: "strengthBench", name: "Power Bench (max-eff med-ball throw + push-up AMRAP)", cadenceDays: 56 },
+  { type: "strengthBench", name: "Neuromuscular Bench (CMJ + med-ball throw + push-up AMRAP)", cadenceDays: 56 },
 ];
 
 export function scheduleTests(startDate: Date, weeks: number, races: { date: Date }[], opts: { hyrox?: boolean; boxing?: boolean } = {}): ScheduledTest[] {

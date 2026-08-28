@@ -153,6 +153,8 @@ export default function SettingsPage() {
                     <option value="olympic">Olympic</option>
                     <option value="half">Half Ironman</option>
                     <option value="full">Full Ironman</option>
+                    <option value="hyrox">HYROX</option>
+                    <option value="boxing">Boxing</option>
                   </select>
                 </div>
                 <div>

@@ -45,6 +45,22 @@ export const RESEARCH_SOURCES: ResearchSource[] = [
   { id: "debray2014", claim: "CdA measurement on road/track", ref: "de Braam & de Vries 2014, J Sports Sci 32:1151-1159", level: "B", population: "professional" },
   { id: "croucher2023", claim: "pacing strategy with power on hilly courses", ref: "Croucher, McManus, Osborne 2023, Eur J Sport Sci 23:1124-1132", level: "A", population: "professional" },
   { id: "austin2022", claim: "running economy + power measurement", ref: "Austin & Reinking 2022, Sports Med Open 8:71", level: "B", population: "both" },
+
+  // ---- boxing: biomechanics, neuromuscular power, visuomotor ----
+  { id: "walilko2005", claim: "Olympic boxer punch forces ~2000-4800N (hand velocity 6-11 m/s)", ref: "Walilko et al. 2005, Br J Sports Med 39:710-719", level: "A", population: "professional" },
+  { id: "pieter2022", claim: "elite vs junior boxers: peak punch force 1508 vs 1035N, velocity 7.2 vs 6.3 m/s; lead-leg start-up strength separates levels", ref: "Biomechanics of the lead straight punch of different level boxers, Front Physiol 13:1015154 (2022)", level: "A", population: "both" },
+  { id: "loturco2016", claim: "strength & power qualities (jump, bench-throw) highly associated with punching impact in elite boxers", ref: "Loturco et al. 2016, J Strength Cond Res 30:109-116", level: "A", population: "professional" },
+  { id: "lopezlaval2020", claim: "bench-press velocity relates to rear-hand punch velocity (pro boxers)", ref: "Lopez-Laval et al. 2020, J Strength Cond Res 34:308-312", level: "A", population: "professional" },
+  { id: "chottidao2024", claim: "RCT: plyometric AND jump-rope training improved jab velocity, RFD and reaction time in junior boxers", ref: "Chottidao et al. 2024 (plyometric vs jump-rope RCT, in Muñoz-López et al. 2024 scoping review, Appl Sci 14:9706)", level: "A", population: "both" },
+  { id: "munozlopez2024", claim: "scoping review: strength/plyometric training improves punch force, RFD and CMJ in boxers; PAPE acutely boosts punch RFD", ref: "Muñoz-López et al. 2024, Appl Sci 14:9706 (scoping review)", level: "B", population: "both" },
+  { id: "turner2011", claim: "rear-hand punch force develops from the ground up (triple extension + hip drive)", ref: "Turner, Baker & Miller 2011, Strength Cond J 33:2-9", level: "B", population: "both" },
+  { id: "busko2016", claim: "accelerometer-instrumented bag validly measures punch force", ref: "Buśko et al. 2016, Acta Bioeng Biomech 18(1):47-54", level: "A", population: "both" },
+  { id: "diewald2022", claim: "commercial water-filled smart bag: valid & reliable peak punch-force measurement", ref: "Diewald et al. 2022, Sports Eng 25 (instrumented punching-bag validation)", level: "A", population: "both" },
+  { id: "smith2000", claim: "boxing dynamometer discriminates punch force (lab gold standard)", ref: "Smith, Dyson, Hale & Janaway 2000, J Sports Sci 18:445-450", level: "A", population: "professional" },
+  { id: "zhang2025", claim: "eye-hand coordination, reaction time, perceptual span and depth perception are the top predictors of punch hit rate in amateur boxers", ref: "Front Physiol 16:1639227 (2025) — visual ability vs boxing performance", level: "A", population: "both" },
+  { id: "martinezdequel2019", claim: "combat athletes' perceptual-cognitive expertise (anticipation, pattern recognition) is trainable and discriminates skill level", ref: "Martínez de Quel et al. 2019, perceptual-cognitive expertise in combat sports (narrative review)", level: "B", population: "both" },
+  { id: "hassan2025", claim: "FITLIGHT reactive-agility training improves visual reaction time and visuomotor skill", ref: "Hassan et al. 2025 (FITLIGHT visual-motor RCT, PMC12252139)", level: "A", population: "recreational" },
+  { id: "appelbaum2016", claim: "visual-motor skills are trainable and transfer to sport performance", ref: "Appelbaum & Erickson 2016, J Sports Sci 34:842-850 (review)", level: "B", population: "both" },
 ];
 
 export function sourcesFor(ids: string[]): ResearchSource[] {

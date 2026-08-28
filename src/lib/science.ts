@@ -908,6 +908,11 @@ export function generateBoxingCamp(opts: {
     // RING WORK — skill (technique ladder)
     sessions.push({ sport: "boxing", title: "Skill: Shadowboxing Technique Ladder", minutes: Math.round(ringMin * 0.2), zone: "z2", type: "skill", description: `6×3 min shadow rounds on ${skillFocus}. Film round 4 and 6 — a phone on the gym bag is a coach. Footwork leads, hands follow; reset to stance after every action.` });
 
+    // VISUOMOTOR — eye-brain coordination (top predictor of hit rate: EHC, RT, perceptual span)
+    if (ph !== "taper") {
+      sessions.push({ sport: "boxing", title: "Reaction Training: Visual Drills", minutes: 20, zone: "z2", type: "skill", description: "10 min: partner or reaction lights (BlazePod/FITLIGHT) call jab/slip/step — react to the cue, don't predict it. 5 min: ball-drop drill (partner drops a tennis ball behind your shoulder, catch before second bounce). 5 min: shadowbox while a partner randomly holds up fingers — call the number mid-combo. EHC + reaction time beat raw eyesight for landing punches (Appelbaum & Erickson 2016; visual-ability study 2025)." });
+    }
+
     // RING WORK — rounds phase-specific
     if (ph === "base") {
       sessions.push({ sport: "boxing", title: "Bag: Volume + Punch Mechanics", minutes: Math.round(ringMin * 0.3), zone: "z3", type: "endurance", description: "6×3 min bag (1 min rest). Every 30s the cue changes: jabs only → 1-2 → 1-2-3 → slip-and-counter shadow. Full extension, exhale on each punch, hands back to the face every time." });
@@ -924,7 +929,7 @@ export function generateBoxingCamp(opts: {
 
     // S&C (transfer to punching power / durability)
     if (ph !== "taper") {
-      sessions.push({ sport: "strength", title: "S&C: Punching Power + Neck/Core Armor", minutes: scMin, zone: "z3", type: "strength", description: "Explosive triple-extension: jump squat 3×5, landmine punch 4×6/side, rotational med-ball throw 4×6/side; armor: neck isometrics 3×30s, Pallof press 3×10, farmers carry 3×40m. Move the bar FAST — force = mass × acceleration (Suchomel 2016)." });
+      sessions.push({ sport: "strength", title: "S&C: Punching Power + Neck/Core Armor", minutes: scMin, zone: "z3", type: "strength", description: "Explosive triple-extension: jump squat 3×5, landmine punch 4×6/side, rotational med-ball throw 4×6/side; armor: neck isometrics 3×30s, Pallof press 3×10, farmers carry 3×40m. Move the bar FAST — force = mass × acceleration (Suchomel 2016). Ground-up power transfer is what the punch rides on (Turner 2011); jump and throw power track punch impact in elite boxers (Loturco 2016)." });
     } else {
       sessions.push({ sport: "strength", title: "S&C: Activation Only", minutes: Math.round(scMin * 0.6), zone: "z1", type: "recovery", description: "Banded pull-aparts, hip 90/90s, light med-ball tosses. Keep the nervous system awake, the muscles asleep." });
     }
