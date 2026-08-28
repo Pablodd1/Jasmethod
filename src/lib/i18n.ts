@@ -70,6 +70,7 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   "fuel.ergos": { en: "Ergogenic Aids", es: "Ayudas ergogénicas", ht: "Èd èrgojenik", fr: "Aides ergogènes", ru: "Эргогенные средства" },
   "fuel.brands": { en: "Best Fuel Brands", es: "Mejores marcas de combustible", ht: "Pi bon mak gaz", fr: "Meilleures marques de carburant", ru: "Лучшие бренды питания" },
   "ergo.caffeine": { en: "Caffeine", es: "Cafeína", ht: "Kafeyin", fr: "Caféine", ru: "Кофеин" },
+  "ergo.citrulline": { en: "L-Citrulline Malate", es: "Citrulina Malato", ht: "Sitrulin Malat", fr: "Citrulline Malate", ru: "Цитруллин малат" },
   "ergo.nitrate": { en: "Beetroot / Nitrate", es: "Remolacha / Nitrato", ht: "Bètrav / Nitrat", fr: "Betterave / Nitrate", ru: "Свёкла / Нитрат" },
   "ergo.creatine": { en: "Creatine Monohydrate", es: "Creatina monohidrato", ht: "Kreatin monoidrat", fr: "Créatine monohydrate", ru: "Креатин моногидрат" },
   "ergo.betaAlanine": { en: "Beta-Alanine", es: "Beta-alanina", ht: "Beta-alanin", fr: "Bêta-alanine", ru: "Бета-аланин" },

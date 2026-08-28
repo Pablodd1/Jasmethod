@@ -304,7 +304,7 @@ export interface FuelPlan {
   notes: string;
 }
 
-export function recommendFuel(opts: { durationMin: number; intensity: string; heatFactor?: number }): FuelPlan {
+export function recommendFuel(opts: { durationMin: number; intensity: string; heatFactor?: number; ergosIncludeCaffeine?: boolean }): FuelPlan {
   const { durationMin, intensity } = opts;
   const heat = opts.heatFactor ?? 1;
   const hard = intensity === "z4" || intensity === "z5" || intensity === "z6" || intensity === "z7" || intensity === "interval" || intensity === "threshold";
@@ -317,7 +317,8 @@ export function recommendFuel(opts: { durationMin: number; intensity: string; he
   } else {
     carbsPerHourG = 60; sodiumMgPerHour = 700; fluidMlPerHour = Math.round(750 * heat); notes.push("60g carbs/h, work up to 90g/h on race day (glucose:fructose 2:1).");
   }
-  if (hard && durationMin >= 45) { caffeineMg = 150; notes.push("Caffeine 150mg 45-60 min pre-session (3 mg/kg personalizable)."); }
+  if (hard && durationMin >= 45 && !opts.ergosIncludeCaffeine) { caffeineMg = 150; notes.push("Caffeine 150mg 45-60 min pre-session (3 mg/kg personalizable)."); }
+  else if (hard && durationMin >= 45) { notes.push("Caffeine already covered in your ergogenic picks — same pre-session timing."); }
   return { carbsPerHourG, sodiumMgPerHour, fluidMlPerHour, caffeineMg, notes: notes.join(" ") };
 }
 
@@ -333,6 +334,7 @@ export interface ErgoOption {
 
 export const ERGOGENIC_LIBRARY: ErgoOption[] = [
   { key: "caffeine", name: "Caffeine", evidence: "A", dose: "3-6 mg/kg (~200-400mg)", when: "45-60 min pre-workout", benefit: "Lowers perceived exertion, improves endurance + high-intensity output (Goldstein 2010).", caution: "Late-day use can impair sleep — stop by ~2pm." },
+  { key: "citrulline", name: "L-Citrulline Malate", evidence: "A", dose: "6-8 g (2:1 malate) or 3g citrulline", when: "60 min pre-workout", benefit: "Increases nitric oxide availability, reduces fatigue in high-volume and strength sessions; complements beetroot (Bailey 2015, Pérez-Guisado 2010).", caution: "Can cause mild GI upset — start with half dose." },
   { key: "nitrate", name: "Beetroot / Nitrate", evidence: "A", dose: "6-8 mmol (~400-500mg nitrate)", when: "2-3 h pre-workout, or 6 days loading", benefit: "Improves efficiency + endurance; lowers O2 cost (Jones 2018).", caution: "Avoid antibacterial mouthwash — kills the oral bacteria that convert nitrate." },
   { key: "creatine", name: "Creatine Monohydrate", evidence: "A", dose: "3-5 g/day", when: "Any time, daily", benefit: "Power, strength, repeat-sprint + recovery; small endurance benefit.", caution: "Expect ~1kg water-weight gain." },
   { key: "betaAlanine", name: "Beta-Alanine", evidence: "A", dose: "3.2-6.4 g/day (split doses)", when: "Daily, with food", benefit: "Buffers acidosis for 1-4 min efforts (swim/bike/run surges).", caution: "Causes harmless skin tingling (paresthesia)." },
@@ -359,6 +361,8 @@ export function recommendErgogenics(prefs: SupplementPrefs, session: { sport: st
   if (long) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "nitrate")!);
   if (strength || shortIntense) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!);
   if (shortIntense) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "betaAlanine")!);
+  if (strength || session.type === "volume" || session.durationMin >= 75) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "citrulline")!);
+  if (session.type === "test" || session.type === "race") picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "bicarb")!);
 
   // respect likes (boost), dislikes + opt-outs (remove), then re-rank by evidence
   const liked = picks.filter((e) => prefs.likes.includes(e.key));
@@ -497,4 +501,48 @@ export function venueAdjustment(v: VenueProfile): VenueAdjustment {
   ].filter(Boolean).join(" ");
 
   return { bike: { label: "Bike", ...bike }, run: { label: "Run", ...run }, swim: swimNote, heat, altitude, wetsuit, overall };
+}
+
+// ---------- POST-WORKOUT RECOVERY FUELING ----------
+// The 30-60 min window after training: carbs to refill glycogen, protein for
+// repair, electrolytes + fluid to rehydrate (Thomas 2016; Kerksick 2017).
+export interface PostWorkoutFuel {
+  carbsG: number;
+  proteinG: number;
+  ratio: string;          // carb:protein
+  sodiumMg: number;
+  fluidMl: number;
+  window: string;
+  examples: string;
+  notes: string;
+}
+
+export function postWorkoutFuel(opts: { durationMin: number; intensity: string; heatFactor?: number; sport?: string }): PostWorkoutFuel {
+  const heat = opts.heatFactor ?? 1;
+  const hard = ["z4", "z5", "z6", "z7", "interval", "threshold", "test", "race"].includes(opts.intensity);
+  const long = opts.durationMin >= 90;
+  const strength = opts.sport === "strength";
+
+  // Base: 0.8-1.2 g/kg/h carb + 0.3-0.4 g/kg protein in the recovery window.
+  // Scale by session demand: long/hard → more carbs; strength → more protein.
+  let carbsG = 30, proteinG = 15, ratio = "2:1";
+  let examples = "Banana + 250ml chocolate milk, or a shake (30g carb / 15g protein).";
+  if (long) {
+    carbsG = 60; proteinG = 20; ratio = "3:1";
+    examples = "Rice bowl with chicken (60g carb / 20g protein), or 2× recovery shakes within 2h.";
+  } else if (strength) {
+    carbsG = 25; proteinG = 25; ratio = "1:1";
+    examples = "Whey or plant shake (25g protein) + fruit; protein matters most after strength.";
+  }
+  if (hard && !long) {
+    carbsG = 40; proteinG = 20; ratio = "2:1";
+    examples = "Bagel + Greek yogurt + honey, or a 40/20 recovery drink.";
+  }
+
+  const sodiumMg = Math.round(300 * heat);
+  const fluidMl = Math.round(600 * heat);
+  const window = "Within 30-60 min post-session (the sooner after hard sessions, the better)";
+  const notes = `Electrolytes: ${sodiumMg}mg sodium + ${fluidMl}ml fluid (${heat > 1 ? `+${Math.round((heat - 1) * 100)}% for heat` : "normal conditions"}). ${hard ? "Hard session — prioritize the window." : long ? "Long session — glycogen refill matters for tomorrow." : "Keep it light — this was an easy day."}`;
+
+  return { carbsG, proteinG, ratio, sodiumMg, fluidMl, window, examples, notes };
 }

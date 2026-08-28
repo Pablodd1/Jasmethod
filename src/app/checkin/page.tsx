@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen, HeartPulse, Mic, CheckCircle2, CalendarClock } from "lucide-react";
+import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen, HeartPulse, Mic, CheckCircle2, CalendarClock, Apple, Music } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
@@ -229,6 +229,44 @@ export default function CheckinPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {result?.post && (
+              <div className="card">
+                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><Apple className="w-4 h-4 text-emerald-500" /> Post-workout refuel</h3>
+                <div className="text-sm text-slate-600 space-y-1">
+                  <div><strong>{result.post.carbsG}g carbs : {result.post.proteinG}g protein</strong> ({result.post.ratio})</div>
+                  <div className="text-xs text-slate-500">{result.post.window}</div>
+                  <div className="text-xs text-slate-500">{result.post.sodiumMg}mg sodium · {result.post.fluidMl}ml fluid</div>
+                  <div className="text-xs text-slate-500">{result.post.examples}</div>
+                  <div className="text-xs text-slate-400 mt-1">{result.post.notes}</div>
+                </div>
+              </div>
+            )}
+
+            {result?.stim && (
+              <div className="card">
+                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><Music className="w-4 h-4 text-ocean-500" /> Stimulation — music, brain & breath</h3>
+                <div className="space-y-2 text-sm">
+                  <div><span className="font-semibold">Pre:</span> <a href={result.stim.pre.music.url} target="_blank" rel="noreferrer" className="text-ocean-600 underline">{result.stim.pre.music.title}</a>
+                    <div className="text-xs text-slate-500">{result.stim.pre.brain}</div>
+                    <div className="text-xs text-slate-400">{result.stim.pre.breath}</div>
+                  </div>
+                  {result.stim.during && (
+                    <div><span className="font-semibold">During:</span> <a href={result.stim.during.music.url} target="_blank" rel="noreferrer" className="text-ocean-600 underline">{result.stim.during.music.title}</a>
+                      <div className="text-xs text-slate-500">{result.stim.during.brain}</div>
+                    </div>
+                  )}
+                  <div><span className="font-semibold">Post:</span> <a href={result.stim.post.music.url} target="_blank" rel="noreferrer" className="text-ocean-600 underline">{result.stim.post.music.title}</a>
+                    <div className="text-xs text-slate-500">{result.stim.post.brain}</div>
+                    <div className="text-xs text-slate-400">{result.stim.post.breath}</div>
+                  </div>
+                  <div><span className="font-semibold">Night:</span> <a href={result.stim.night.music.url} target="_blank" rel="noreferrer" className="text-ocean-600 underline">{result.stim.night.music.title}</a>
+                    <div className="text-xs text-slate-500">{result.stim.night.brain}</div>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">{result.stim.post.why}</p>
+                </div>
               </div>
             )}
 

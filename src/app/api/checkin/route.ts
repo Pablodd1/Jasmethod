@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { adaptSession, recommendFuel, recommendErgogenics, temperatureAdjustment, recoveryFor, morningWeightTrend, type Checkin, type SupplementPrefs } from "@/lib/adaptive";
+import { adaptSession, recommendFuel, recommendErgogenics, temperatureAdjustment, recoveryFor, morningWeightTrend, postWorkoutFuel, type Checkin, type SupplementPrefs } from "@/lib/adaptive";
+import { stimPlan } from "@/lib/stimulation";
 import { t, type Lang } from "@/lib/i18n";
 import { fuelBrandsFor } from "@/lib/fuelbrands";
 import { sourcesFor } from "@/lib/research";
@@ -132,6 +133,22 @@ export async function POST(req: Request) {
     const ergos = todaySession
       ? recommendErgogenics(prefs, { sport: todaySession.sport, type: todaySession.type, durationMin: todaySession.durationMin, intensity: todaySession.intensity || undefined })
       : { recommended: [], reason: "Rest day — no ergogenic aids needed." };
+    const ergosIncludeCaffeine = (ergos.recommended || []).some((e: any) => e.key === "caffeine");
+    if (todaySession && ergosIncludeCaffeine) {
+      fuel.notes += " Caffeine already covered in ergogenic picks — same pre-session timing, no double dose.";
+    }
+
+    // Post-workout recovery fueling + stimulation plan (music/brain/breath)
+    const post = todaySession
+      ? postWorkoutFuel({ durationMin: todaySession.durationMin, intensity: todaySession.intensity || "z2", heatFactor, sport: todaySession.sport })
+      : null;
+    const hardSession = Boolean(todaySession && ["z4","z5","z6","z7","interval","threshold","test","race"].includes(todaySession.intensity || todaySession.type));
+    const stim = {
+      pre: stimPlan("pre", { hardSession }),
+      during: todaySession ? stimPlan("during", { hardSession }) : null,
+      post: stimPlan("post", { hardSession }),
+      night: stimPlan("night", { hardSession }),
+    };
 
     const saved = await prisma.dailyCheckin.upsert({
       where: { userId_date: { userId: user.id, date: start } },
@@ -178,6 +195,8 @@ export async function POST(req: Request) {
       adaptation,
       fuel,
       ergos,
+      post,
+      stim,
       recovery: translatedRecovery((user.language || "en") as Lang),
       fuelBrands: fuelBrandsFor(todaySession?.durationMin || 0),
       sources: sourcesFor(CORE_SOURCE_IDS),
