@@ -14,7 +14,7 @@
 // - Tanaka, Monahan & Seals 2001: age-predicted HRmax accuracy.
 // - Bouchard et al. 2011: HERITAGE — VO2max trainability, genomic predictors.
 
-export type Sport = "swim" | "bike" | "run" | "strength" | "mobility" | "recovery" | "brick" | "hyrox";
+export type Sport = "swim" | "bike" | "run" | "strength" | "mobility" | "recovery" | "brick" | "hyrox" | "boxing";
 export type ZoneKey = "z1" | "z2" | "z3" | "z4" | "z5" | "z6" | "z7";
 
 export interface Zone {
@@ -560,6 +560,12 @@ function mainTemplate(sport: string, type: string, zone: string, minutes: number
   if (sport === "recovery") {
     return `Main: ${Math.round(work)} min anything-goes at ${z} — walk, easy spin, swim, stretch, yoga. The goal is blood flow, NOT fitness. If your breathing is labored, you're going too hard.`;
   }
+  if (sport === "boxing") {
+    if (type === "interval") return `Main: ${Math.max(4, Math.round(work / 4))}×3 min rounds (${z}) with 1 min rest — each round a different job: output burst → counter-boxing → pivot-and-exit footwork. Hands back to the face after every punch; the rest is standing, not slumping.`;
+    if (type === "skill") return `Main: ${Math.max(3, Math.round(work / 5))}×2 min technique rounds: mirror or film work on one pattern per round (jab range, slip-roll-counter, angle exit). Slow is smooth, smooth is fast — groove it at 60% before you add power.`;
+    if (type === "strength") return `Main: power circuit ${Math.round(work)} min: 4 rounds of 20 max-speed punches on the bag, 8 explosive push-ups, 10 landmine or med-ball rotational throws, 30s plank. Rest 60s between rounds. Every rep moves FAST.`;
+    return `Main: ${Math.round(work)} min continuous at ${z}: shadow rounds or light bag broken into 3-min rounds (1 min rest). Long steady output with clean mechanics — the engine is built here, one round at a time.`;
+  }
   return `Main: ${Math.round(work)} min at ${z}.`;
 }
 
@@ -569,6 +575,7 @@ const WU_TEMPLATES: Record<string, string> = {
   run: "10 min easy jog (Z1-Z2) + dynamic drills: 4×20s high knees, butt kicks, leg swings, 2×20m strides.",
   strength: "5 min light cardio (bike/row) + dynamic warm-up: leg swings, arm circles, 10 bodyweight squats, 10 push-ups.",
   brick: "15 min easy spin (Z1-Z2), then practice a quick transition: shoes off, 2×1 min run off the bike.",
+  boxing: "10 min jump rope (loose-shoulder singles, 30s doubles sprinkled) + 2 min shadow at half speed + wrist circles and band pull-aparts ×15.",
   recovery: "2 min easy — this is a recovery day; just get moving.",
 };
 
@@ -578,6 +585,7 @@ const CD_TEMPLATES: Record<string, string> = {
   run: "10 min easy jog (Z1) + 5 min mobility (hips, calves, T-spine).",
   strength: "5 min light cardio + 10 min static stretching of the trained muscle groups.",
   brick: "10 min easy jog + 5 min mobility. Legs will feel heavy — that's the adaptation.",
+  boxing: "10 min easy rope or shadow (Z1) + 5 min wrist/forearm and shoulder mobility + neck isometrics 2×30s.",
   recovery: "Done — that was the workout.",
 };
 
@@ -588,6 +596,7 @@ const STUDY_BY_TYPE: Record<string, string> = {
   endurance: "Seiler & Tønnessen 2009 — 80/20 polarized model (Int J Sports Physiol Perform 4:417-429)",
   strength: "Rønnestad & Mujika 2014 — strength improves endurance economy (Scand J Med Sci Sports)",
   brick: "Friel — transition practice (The Triathlete's Training Bible)",
+  skill: "Motor learning: variability of practice improves skill retention (Wulf 2013, Int Rev Sport Exerc Psychol)",
   recovery: "Buchheit 2014 — HRV-guided recovery (Front Physiol 5:73)",
 };
 
@@ -833,6 +842,95 @@ export function generateHyroxPlan(opts: {
 
     // RECOVERY + MOBILITY
     sessions.push({ sport: "recovery", title: "Recovery: Mobility + Grip/Ankle Care", minutes: Math.round(otherMin > 0 ? otherMin : 25), zone: "z1", type: "recovery", description: "Hip-flexor, ankle and wrist mobility (lunges + wall balls + farmers carry punish them). Easy Z1 flush. Sleep 8h." });
+
+    weeksOut.push({ week: w, theme: theme[ph], sessions, totalMinutes: totalMin });
+  }
+  return weeksOut;
+}
+
+// ---- Boxing Fight Camp (individualized, periodized like a real fighter's camp) ----
+// Informed by fight-camp practice: aerobic roadwork base → round-intensity build →
+// fight-simulation peak → taper. Reactive rounds = offense+defense cues, not just punches.
+export function generateBoxingCamp(opts: {
+  level: string; // beginner | amateur | advanced | pro
+  weeks: number;
+  startDate: Date;
+  weeklyHours?: number;
+}): GeneratedWeek[] {
+  const { level, weeks, startDate, weeklyHours } = opts;
+  const baseWeekly = weeklyHours ?? (level === "pro" ? 16 : level === "advanced" ? 12 : level === "amateur" ? 8 : 5);
+  const phase = (w: number): "base" | "build" | "peak" | "taper" => {
+    const pct = w / weeks;
+    if (pct <= 0.45) return "base";
+    if (pct <= 0.78) return "build";
+    if (pct <= 0.9) return "peak";
+    return "taper";
+  };
+  const theme: Record<string, string> = {
+    base: "Technique + Aerobic Engine (Roadwork)",
+    build: "Round Intensity + Reactive Defense",
+    peak: "Fight Simulation + Sparring Sharpening",
+    taper: "Freshness & Sharpness",
+  };
+  // Skill ladder per level (FightFlow-style Skill Academy progression)
+  const skillFocus = level === "pro" || level === "advanced"
+    ? "feint-and-set traps, check-and-counter angles, pivot exits off the ropes"
+    : level === "amateur"
+      ? "jab range control, slip-roll-counter chains, lateral exits after combos"
+      : "stance symmetry, jab-to-straight 1-2, hands-up reset after every combination";
+
+  const weeksOut: GeneratedWeek[] = [];
+  for (let w = 1; w <= weeks; w++) {
+    const ph = phase(w);
+    let vol = 1;
+    if (ph === "base") vol = 0.8 + 0.4 * (w / (weeks * 0.45));
+    else if (ph === "build") vol = 1.15 + 0.15 * ((w - weeks * 0.45) / (weeks * 0.33));
+    else if (ph === "peak") vol = 0.95;
+    else vol = 0.5;
+
+    const totalMin = Math.round(baseWeekly * 60 * vol);
+    const sessions: PlanSession[] = [];
+    const cardioMin = Math.round(totalMin * 0.25); // roadwork
+    const ringMin = Math.round(totalMin * 0.55);    // skill + rounds
+    const scMin = Math.round(totalMin * 0.2);       // S&C
+
+    // ROADWORK (the boxer's Z2 base)
+    if (ph === "base") {
+      sessions.push({ sport: "run", title: "Roadwork: Easy Aerobic Run", minutes: Math.round(cardioMin * 0.5), zone: "z2", type: "endurance", description: "Steady Z2 run — the gas tank that lets you throw round 12 like round 1 (Seiler 2009). Breathe through the nose where you can." });
+      sessions.push({ sport: "run", title: "Roadwork: Intervals (fartlek)", minutes: Math.round(cardioMin * 0.3), zone: "z4", type: "interval", description: "Easy jog + 8×2 min hard / 2 min easy surges. Simulates the surge-recover rhythm of exchanges inside a round." });
+    } else if (ph === "build" || ph === "peak") {
+      sessions.push({ sport: "run", title: "Roadwork: Hill Sprints", minutes: Math.round(cardioMin * 0.4), zone: "z5", type: "interval", description: "10 min easy + 8×30s all-out hill sprints, walk-down recovery. Builds the fast-twitch output behind hand speed and the engine for high-tempo rounds." });
+      if (ph === "peak") sessions.push({ sport: "run", title: "Roadwork: Round-Pace Run", minutes: Math.round(cardioMin * 0.3), zone: "z4", type: "tempo", description: "Run 3 min hard / 1 min float ×4 (a 3:1 round shape). Keep the hard floats honest — this maps your engine onto round timing." });
+    } else {
+      sessions.push({ sport: "run", title: "Roadwork: Shakeout Jog", minutes: Math.round(cardioMin * 0.5), zone: "z1", type: "recovery", description: "20-30 min very easy jog + 4×20s strides. Taper week — flush, don't fish." });
+    }
+
+    // RING WORK — skill (technique ladder)
+    sessions.push({ sport: "boxing", title: "Skill: Shadowboxing Technique Ladder", minutes: Math.round(ringMin * 0.2), zone: "z2", type: "skill", description: `6×3 min shadow rounds on ${skillFocus}. Film round 4 and 6 — a phone on the gym bag is a coach. Footwork leads, hands follow; reset to stance after every action.` });
+
+    // RING WORK — rounds phase-specific
+    if (ph === "base") {
+      sessions.push({ sport: "boxing", title: "Bag: Volume + Punch Mechanics", minutes: Math.round(ringMin * 0.3), zone: "z3", type: "endurance", description: "6×3 min bag (1 min rest). Every 30s the cue changes: jabs only → 1-2 → 1-2-3 → slip-and-counter shadow. Full extension, exhale on each punch, hands back to the face every time." });
+      sessions.push({ sport: "boxing", title: "Defense: Slip-Roll-Block Drill", minutes: Math.round(ringMin * 0.2), zone: "z2", type: "skill", description: "4×3 min partner/bag: throw 1-2, then slip right / roll left / block-high — immediately re-angle 45°. Defense is a footwork problem, not a hand problem." });
+    } else if (ph === "build") {
+      sessions.push({ sport: "boxing", title: "Reactive Rounds: Offense-Defense Cues", minutes: Math.round(ringMin * 0.3), zone: "z4", type: "interval", description: "8×3 min high-intensity rounds (1 min rest). Structure per round: 30s output burst → 30s counter boxing → footwork-only recovery movement. Have a corner call the cue, or use a timer app — you must REACT, not memorize." });
+      sessions.push({ sport: "boxing", title: "Sparring / Drill-Spar: Problem Solving", minutes: Math.round(ringMin * 0.25), zone: "z4", type: "skill", description: level === "beginner" ? "4×2 min technical drill-spar at 50% (touch-points only) against a pad holder or careful partner — eyes open, look for the opening, exit at an angle. Nothing hard yet; this is pattern-building." : "4-6 rounds drill-spar (light-moderate), one tactical problem per round (e.g. land the jab first, or counter the 1-2, or work the body). Debrief one takeaway per round out loud." });
+    } else if (ph === "peak") {
+      sessions.push({ sport: "boxing", title: "Fight Sim: Full-Dress Rounds", minutes: Math.round(ringMin * 0.35), zone: "z5", type: "interval", description: `${level === "pro" ? "10" : "6"}×3 min at fight tempo (1 min rest): rounds alternate sparring, hard bag with corner instructions, and pad work at full power. Mouthguard, rounds scored by a third party if possible. This is the dress rehearsal.` });
+      sessions.push({ sport: "boxing", title: "Conditioning: Burnout Finisher", minutes: Math.round(ringMin * 0.15), zone: "z5", type: "interval", description: "After easy rounds: 3×30s nonstop punches (light bag or shadow, max frequency) with 30s rest, plus 3×20s wall sit. Teach the shoulders to fire when they're gone — that's the last 30 seconds of a close fight." });
+    } else {
+      sessions.push({ sport: "boxing", title: "Sharp Rounds: Speed, Not Fatigue", minutes: Math.round(ringMin * 0.3), zone: "z3", type: "interval", description: "4×2 min shadow/bag at crisp speed with FULL rest (2 min) between. Quality > quantity all week. Visualize the opening sequences daily — mental reps hold sharpness while the body freshens." });
+    }
+
+    // S&C (transfer to punching power / durability)
+    if (ph !== "taper") {
+      sessions.push({ sport: "strength", title: "S&C: Punching Power + Neck/Core Armor", minutes: scMin, zone: "z3", type: "strength", description: "Explosive triple-extension: jump squat 3×5, landmine punch 4×6/side, rotational med-ball throw 4×6/side; armor: neck isometrics 3×30s, Pallof press 3×10, farmers carry 3×40m. Move the bar FAST — force = mass × acceleration (Suchomel 2016)." });
+    } else {
+      sessions.push({ sport: "strength", title: "S&C: Activation Only", minutes: Math.round(scMin * 0.6), zone: "z1", type: "recovery", description: "Banded pull-aparts, hip 90/90s, light med-ball tosses. Keep the nervous system awake, the muscles asleep." });
+    }
+
+    // RECOVERY
+    sessions.push({ sport: "recovery", title: "Recovery: Mobility + Wrists/Shoulders", minutes: 25, zone: "z1", type: "recovery", description: "Wrist curls + extensor stretches, thoracic openers, hip mobility (roadwork and pivots tax them). 8h sleep is a training session — motor patterns consolidate overnight (Walker)." });
 
     weeksOut.push({ week: w, theme: theme[ph], sessions, totalMinutes: totalMin });
   }

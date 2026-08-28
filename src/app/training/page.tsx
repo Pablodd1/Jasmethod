@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Dumbbell, Waves, Bike, Zap, Sparkles, Layers, HeartPulse, ChevronDown, ChevronUp, CloudSun, Pencil, Save, X } from "lucide-react";
+import { Dumbbell, Waves, Bike, Zap, Sparkles, Layers, HeartPulse, ChevronDown, ChevronUp, CloudSun, Pencil, Save, X, Swords } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { dayOffProtocol, analyzeHydration } from "@/lib/adaptive";
 import { buildSessionDetail } from "@/lib/science";
 
-const SPORT_ICON: Record<string, any> = { swim: Waves, bike: Bike, run: Zap, strength: Dumbbell, brick: Zap, recovery: HeartPulse };
+const SPORT_ICON: Record<string, any> = { swim: Waves, bike: Bike, run: Zap, strength: Dumbbell, brick: Zap, recovery: HeartPulse, hyrox: Layers, boxing: Swords };
 
 function fmtMin(min: number) {
   if (min >= 60) return `${Math.floor(min / 60)}h ${min % 60 ? `${min % 60}m` : ""}`;
@@ -147,6 +147,8 @@ export default function TrainingPage() {
                 <option value="olympic">Olympic (1.5k / 40k / 10k)</option>
                 <option value="half">Half Ironman (1.9k / 90k / 21.1k)</option>
                 <option value="full">Full Ironman (3.8k / 180k / 42.2k)</option>
+                <option value="hyrox">HYROX (8×1km + 8 stations)</option>
+                <option value="boxing">Boxing (fight camp)</option>
               </select>
             </div>
             <div>

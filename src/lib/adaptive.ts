@@ -127,7 +127,7 @@ export function temperatureAdjustment(tempC: number): TempAdjustment {
 // ---------- 3. SCHEDULED TESTING (every ~2 months, race-aware) ----------
 export interface ScheduledTest {
   date: Date;
-  type: "ftp" | "lthr" | "cp" | "run5k" | "swim" | "run1k" | "erg" | "strengthBench";
+  type: "ftp" | "lthr" | "cp" | "run5k" | "swim" | "run1k" | "erg" | "strengthBench" | "boxing";
   name: string;
   skipped: boolean;
   reason?: string;
@@ -147,8 +147,14 @@ const HYROX_TEST_TYPES: { type: ScheduledTest["type"]; name: string; cadenceDays
   { type: "strengthBench", name: "Sled + Wall Ball Benchmark", cadenceDays: 56 },
 ];
 
-export function scheduleTests(startDate: Date, weeks: number, races: { date: Date }[], opts: { hyrox?: boolean } = {}): ScheduledTest[] {
-  const testTypes = opts.hyrox ? HYROX_TEST_TYPES : TRIATHLON_TEST_TYPES;
+const BOXING_TEST_TYPES: { type: ScheduledTest["type"]; name: string; cadenceDays: number }[] = [
+  { type: "boxing", name: "3-min Max Punch Test (bag, count + film review)", cadenceDays: 56 },
+  { type: "run5k", name: "Roadwork Benchmark (5k TT)", cadenceDays: 56 },
+  { type: "strengthBench", name: "Power Bench (max-eff med-ball throw + push-up AMRAP)", cadenceDays: 56 },
+];
+
+export function scheduleTests(startDate: Date, weeks: number, races: { date: Date }[], opts: { hyrox?: boolean; boxing?: boolean } = {}): ScheduledTest[] {
+  const testTypes = opts.boxing ? BOXING_TEST_TYPES : opts.hyrox ? HYROX_TEST_TYPES : TRIATHLON_TEST_TYPES;
   const out: ScheduledTest[] = [];
   const RACE_GUARD_DAYS = 14; // skip any test within 2 weeks of a race
   const raceDates = races.map((r) => new Date(r.date).getTime());

@@ -14,6 +14,8 @@ const SPORT_COLOR: Record<string, string> = {
   run: "bg-orange-100 text-orange-700",
   strength: "bg-purple-100 text-purple-700",
   brick: "bg-red-100 text-red-700",
+  hyrox: "bg-amber-100 text-amber-700",
+  boxing: "bg-rose-100 text-rose-700",
   recovery: "bg-slate-100 text-slate-600",
 };
 

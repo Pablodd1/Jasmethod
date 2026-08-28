@@ -5,7 +5,7 @@ import { Flag, Plus, Trash2, Thermometer, Mountain, Waves, Clock } from "lucide-
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 
-const DISTANCES = ["sprint", "olympic", "half", "full", "hyrox"];
+const DISTANCES = ["sprint", "olympic", "half", "full", "hyrox", "boxing"];
 const TERRAINS = ["flat", "rolling", "hilly", "mountain", "trail"];
 const VENUES = ["pool", "lake", "ocean", "river"];
 

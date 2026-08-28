@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { generatePlan, generateHyroxPlan, estimateVo2max, maxHrFromAge, estimateLthr, buildZoneTable, type ZoneTable } from "@/lib/science";
+import { generatePlan, generateHyroxPlan, generateBoxingCamp, estimateVo2max, maxHrFromAge, estimateLthr, buildZoneTable, type ZoneTable } from "@/lib/science";
 import { recoveryFor, scheduleTests, venueAdjustment } from "@/lib/adaptive";
 
 // POST /api/plan/generate — generate a periodized plan for the user
@@ -43,7 +43,10 @@ export async function POST(req: Request) {
 
     const dist = String(distance || "olympic");
     const isHyrox = dist === "hyrox";
-    const generated = isHyrox
+    const isBoxing = dist === "boxing";
+    const generated = isBoxing
+      ? generateBoxingCamp({ level, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined })
+      : isHyrox
       ? generateHyroxPlan({ level, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined })
       : generatePlan({ level, distance: dist, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined, easyPct: splitTarget });
 
@@ -103,7 +106,7 @@ export async function POST(req: Request) {
 
     // Schedule benchmark tests every ~2 months, race-aware
     const races = await prisma.race.findMany({ where: { userId: user.id, date: { gte: start } } });
-    const scheduledTests = scheduleTests(start, weeksCount, races.map((r) => ({ date: r.date })), { hyrox: isHyrox });
+    const scheduledTests = scheduleTests(start, weeksCount, races.map((r) => ({ date: r.date })), { hyrox: isHyrox, boxing: isBoxing });
     await prisma.benchmarkTest.deleteMany({ where: { userId: user.id, completed: false } });
     if (scheduledTests.length) {
       await prisma.benchmarkTest.createMany({
