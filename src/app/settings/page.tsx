@@ -155,6 +155,9 @@ export default function SettingsPage() {
                     <option value="full">Full Ironman</option>
                     <option value="hyrox">HYROX</option>
                     <option value="boxing">Boxing</option>
+                    <option value="cycle">Cycling (no triathlon)</option>
+                    <option value="swim-only">Swimming only</option>
+                    <option value="lifting">Lifting / Strength only</option>
                   </select>
                 </div>
                 <div>

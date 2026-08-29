@@ -941,3 +941,62 @@ export function generateBoxingCamp(opts: {
   }
   return weeksOut;
 }
+
+// ---- Single-sport plan generator (cycling / swimming / lifting-only) ----
+// Same 6-week progression wave as the race plans: base→build→peak→taper,
+// ~6-8% weekly overload, test weeks re-anchor zones. Non-racers get the same
+// wave without the taper (steady cycle restarts every 6 weeks).
+export function generateSingleSport(opts: {
+  sport: "bike" | "swim" | "strength";
+  level: string;
+  weeks: number;
+  startDate: Date;
+  weeklyHours?: number;
+  hasRace?: boolean;
+}): GeneratedWeek[] {
+  const { sport, level, weeks, startDate, weeklyHours, hasRace } = opts;
+  const baseWeekly = weeklyHours ?? (level === "advanced" ? 10 : level === "amateur" ? 7 : level === "beginner" ? 4 : 12);
+  const phase = (w: number): "base" | "build" | "peak" | "taper" => {
+    const pct = w / weeks;
+    if (pct <= 0.45) return "base";
+    if (pct <= 0.78) return "build";
+    if (pct <= 0.9) return "peak";
+    return hasRace ? "taper" : "peak"; // non-racers: no taper, repeat wave
+  };
+
+  const weeksOut: GeneratedWeek[] = [];
+  for (let w = 1; w <= weeks; w++) {
+    const ph = phase(w);
+    let vol = 1;
+    if (ph === "base") vol = 0.8 + 0.4 * (w / (weeks * 0.45));
+    else if (ph === "build") vol = 1.15 + 0.15 * ((w - weeks * 0.45) / (weeks * 0.33));
+    else if (ph === "peak") vol = 0.95;
+    else vol = 0.5;
+
+    const totalMin = Math.round(baseWeekly * 60 * vol);
+    const sessions: PlanSession[] = [];
+
+    if (sport === "bike") {
+      sessions.push({ sport: "bike", title: "Endurance Ride (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Steady aerobic miles — cadence 85-95 rpm. The engine builder (Seiler 2009: 80/20)." });
+      sessions.push({ sport: "bike", title: "Sweet Spot Intervals", minutes: Math.round(totalMin * 0.25), zone: "z3", type: "interval", description: "3×12 min @ 88-94% FTP, 6 min spin between. Best fitness-per-minute of any bike workout (Seiler 2010)." });
+      sessions.push({ sport: "bike", title: "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Endurance spin, keep it easy today." : "5×4 min @ 106-120% FTP, 4 min easy. Raise the ceiling (Billat 2001)." });
+      sessions.push({ sport: "strength", title: "Cyclist Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Squats, hip thrusts, single-leg work 3×8 — heavy but controlled. Preserves power and bone (Ronnestad 2020)." });
+      sessions.push({ sport: "mobility", title: "Recovery Spin + Hip Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ultra-light spin + hip flexor/hamstring flow. Blood flow without load." });
+    } else if (sport === "swim") {
+      sessions.push({ sport: "swim", title: "Technique + Aerobic Swim", minutes: Math.round(totalMin * 0.3), zone: "z2", type: "endurance", description: "Drills (catch-up, fingertip drag) then steady swims. Technique first — speed follows form." });
+      sessions.push({ sport: "swim", title: "Threshold Swim Set", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "interval", description: "10×100 @ CSS pace, 15s rest. Threshold is the swim engine (Olbrecht 2015)." });
+      sessions.push({ sport: "swim", title: "VO2max Sprints", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Easy pull buoy set instead today." : "8×50m max effort, 60s full recovery. Race-speed Neuromuscular work." });
+      sessions.push({ sport: "strength", title: "Swimmer Strength", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "strength", description: "Pull-ups, rows, rotator cuff work 3×10. Shoulder durability = swim career length." });
+      sessions.push({ sport: "mobility", title: "Ankle & Shoulder Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ankle flexibility = better kick; thoracic mobility = longer catch." });
+    } else {
+      // lifting-only — progressive overload is the plan
+      sessions.push({ sport: "strength", title: "Lower Body Heavy", minutes: Math.round(totalMin * 0.3), zone: "z1", type: "strength", description: "Squat 4×5, RDL 3×8, lunges 3×10. Add 2.5kg or 1 rep vs last week — the 6-week wave adds ~8% load (Schoenfeld 2016)." });
+      sessions.push({ sport: "strength", title: "Upper Body Heavy", minutes: Math.round(totalMin * 0.25), zone: "z1", type: "strength", description: "Bench 4×5, rows 4×8, overhead press 3×8. Log every set — beat the logbook." });
+      sessions.push({ sport: "strength", title: "Full Body Volume", minutes: Math.round(totalMin * 0.25), zone: "z1", type: "strength", description: "3×10 hypertrophy circuit @ 70% — the volume that grows muscle and work capacity." });
+      sessions.push({ sport: "mobility", title: "Mobility + Core", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "recovery", description: "Hips, shoulders, spine + anti-rotation core. Mobility is what lets you keep loading heavy." });
+    }
+
+    weeksOut.push({ week: w, theme: ph === "taper" ? "Freshness & Sharpening" : ph === "peak" ? "Peak Intensity" : ph === "build" ? "Build: Raise the Ceiling" : "Base: Aerobic Foundation", sessions, totalMinutes: totalMin });
+  }
+  return weeksOut;
+}

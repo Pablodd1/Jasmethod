@@ -3,6 +3,26 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Waves, Activity, HeartPulse, Dna, FlaskConical, Moon, Apple, Dumbbell, ArrowRight, Bike, Zap, CalendarDays } from "lucide-react";
+import { PRE_WORKOUT, POST_WORKOUT, ERGOGENIC_AIDS, ONBOARDING_STEPS, MIND_RECOVERY, type EduCard } from "@/lib/edu-content";
+
+function SectionBlock({ title, subtitle, cards }: { title: string; subtitle: string; cards: EduCard[] }) {
+  return (
+    <div className="bg-ocean-800/40 border border-ocean-700/60 rounded-3xl p-6 md:p-8">
+      <h2 className="font-display text-2xl md:text-3xl font-bold">{title}</h2>
+      <p className="text-ocean-200 text-sm mt-1 mb-5">{subtitle}</p>
+      <div className="grid md:grid-cols-2 gap-4">
+        {cards.map((c) => (
+          <div key={c.title} className="bg-white/5 border border-ocean-600/40 rounded-2xl p-5">
+            <div className="text-2xl mb-2">{c.icon}</div>
+            <div className="font-semibold text-sm">{c.title}</div>
+            <p className="text-ocean-200 text-sm mt-1">{c.text}</p>
+            {c.ref && <div className="text-ocean-400 text-[11px] mt-2">📖 {c.ref}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function LandingPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -106,6 +126,43 @@ export default function LandingPage() {
                 className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-semibold rounded-xl px-6 py-2.5 text-sm transition-colors"
               >
                 Start Training Free <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Science content sections */}
+        <div className="max-w-5xl mx-auto mt-10 space-y-6">
+          {[
+            { title: "Pre-Workout — prime the engine", subtitle: "What to take, when, and why", cards: PRE_WORKOUT },
+            { title: "Post-Workout — rebuild faster", subtitle: "The window that actually matters", cards: POST_WORKOUT },
+            { title: "Ergogenic Aids — what's proven", subtitle: "Supplements backed by science, skip the hype", cards: ERGOGENIC_AIDS },
+            { title: "Mind & Recovery", subtitle: "Meditation, visualization, and reading as training tools", cards: MIND_RECOVERY },
+          ].map((sec) => (
+            <SectionBlock key={sec.title} title={sec.title} subtitle={sec.subtitle} cards={sec.cards} />
+          ))}
+
+          {/* Onboarding / how it works */}
+          <div className="bg-ocean-800/40 border border-ocean-700/60 rounded-3xl p-6 md:p-8">
+            <h2 className="font-display text-2xl md:text-3xl font-bold text-center">How it works — daily data in</h2>
+            <p className="text-ocean-200 text-sm text-center mt-1 mb-6">With devices or without. Manually or by voice. Two minutes a morning.</p>
+            <div className="grid md:grid-cols-2 gap-4">
+              {ONBOARDING_STEPS.map((s, i) => (
+                <div key={s.title} className="bg-white/5 border border-ocean-600/40 rounded-2xl p-5 flex gap-3">
+                  <div className="text-2xl shrink-0">{s.icon}</div>
+                  <div>
+                    <div className="font-semibold text-sm"><span className="text-ocean-300 mr-1.5">{i + 1}.</span>{s.title}</div>
+                    <p className="text-ocean-200 text-sm mt-1">{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="text-center mt-6">
+              <button
+                onClick={() => setMode("signup")}
+                className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-semibold rounded-xl px-6 py-2.5 text-sm transition-colors"
+              >
+                Start Your First Check-In <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>

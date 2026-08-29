@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { generatePlan, generateHyroxPlan, generateBoxingCamp, estimateVo2max, maxHrFromAge, estimateLthr, buildZoneTable, type ZoneTable } from "@/lib/science";
+import { generatePlan, generateHyroxPlan, generateBoxingCamp, generateSingleSport, estimateVo2max, maxHrFromAge, estimateLthr, buildZoneTable, type ZoneTable } from "@/lib/science";
 import { recoveryFor, scheduleTests, venueAdjustment } from "@/lib/adaptive";
 
 // POST /api/plan/generate — generate a periodized plan for the user
@@ -44,7 +44,15 @@ export async function POST(req: Request) {
     const dist = String(distance || "olympic");
     const isHyrox = dist === "hyrox";
     const isBoxing = dist === "boxing";
-    const generated = isBoxing
+    const isSingleSport = dist === "cycle" || dist === "swim-only" || dist === "lifting";
+    const generated = isSingleSport
+      ? generateSingleSport({
+          sport: dist === "cycle" ? "bike" : dist === "swim-only" ? "swim" : "strength",
+          level, weeks: weeksCount, startDate: start,
+          weeklyHours: profile.weeklyHours || undefined,
+          hasRace: Boolean(raceDate),
+        })
+      : isBoxing
       ? generateBoxingCamp({ level, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined })
       : isHyrox
       ? generateHyroxPlan({ level, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined })

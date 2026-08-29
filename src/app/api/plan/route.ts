@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { analyzeHydration } from "@/lib/adaptive";
+import { analyzeHydration, progressionAdvice } from "@/lib/adaptive";
 
 // GET /api/plan — list user's plans
 export async function GET() {
@@ -13,7 +13,31 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
     take: 5,
   });
-  return NextResponse.json({ plans });
+
+  // Progression oversight: completion % by week for the active plan
+  let progression = null;
+  const active = plans[0];
+  if (active) {
+    const byWeek = new Map<string, { weekStart: Date; planned: number; completed: number }>();
+    const now = Date.now();
+    for (const day of active.days) {
+      if (day.date.getTime() > now) continue; // only past/current days count
+      const d = new Date(day.date);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - d.getDay()); // week starts Sunday
+      const key = d.toISOString().slice(0, 10);
+      if (!byWeek.has(key)) byWeek.set(key, { weekStart: d, planned: 0, completed: 0 });
+      const wk = byWeek.get(key)!;
+      for (const s of day.sessions) {
+        wk.planned += 1;
+        if (s.completed) wk.completed += 1;
+      }
+    }
+    const weeks = Array.from(byWeek.values()).sort((a, b) => a.weekStart.getTime() - b.weekStart.getTime());
+    progression = progressionAdvice(weeks);
+  }
+
+  return NextResponse.json({ plans, progression });
 }
 
 // PUT /api/plan — update a session within a plan (edit workout) or toggle a day off

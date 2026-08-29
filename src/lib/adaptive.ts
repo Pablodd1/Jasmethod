@@ -659,3 +659,25 @@ export function prescribeToday(opts: {
     sources,
   };
 }
+
+// ---------- PROGRESSION OVERSIGHT ----------
+// Watches completed vs planned load week-by-week. If the athlete is nailing
+// their weeks (≥85% sessions completed), the next cycle can push harder.
+// If they're missing sessions (<60%), prescribe a deload before injury does.
+// ponytail: simple completion-% heuristic; per-zone TRAC-style load model if precision matters
+export function progressionAdvice(recentWeeks: { weekStart: Date; planned: number; completed: number }[]): {
+  status: "on_track" | "push" | "deload";
+  pct: number;
+  message: string;
+} {
+  const valid = recentWeeks.filter((w) => w.planned > 0);
+  if (!valid.length) return { status: "on_track", pct: 0, message: "Complete your first training week to unlock progression tracking." };
+  const planned = valid.reduce((s, w) => s + w.planned, 0);
+  const completed = valid.reduce((s, w) => s + w.completed, 0);
+  const pct = Math.round((completed / planned) * 100);
+  const last3 = valid.slice(-3);
+  const last3Pct = last3.length ? Math.round((last3.reduce((s, w) => s + w.completed, 0) / last3.reduce((s, w) => s + w.planned, 0)) * 100) : pct;
+  if (last3Pct >= 85) return { status: "push", pct, message: `${last3Pct}% completion over the last 3 weeks — you're absorbing the load. The next cycle pushes +5-8%. Keep sleeping.` };
+  if (last3Pct < 60) return { status: "deload", pct, message: `${last3Pct}% completion — life is winning. Next week auto-scales down ~20% (volume, not intensity). Missing sessions is data, not failure.` };
+  return { status: "on_track", pct, message: `${pct} completion — steady. The plan ramps as designed.` };
+}

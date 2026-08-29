@@ -22,6 +22,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const lang = (user?.language || "en") as Lang;
   const [plan, setPlan] = useState<any>(null);
+  const [progression, setProgression] = useState<any>(null);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [metrics, setMetrics] = useState<any[]>([]);
   const [hydration, setHydration] = useState<any[]>([]);
@@ -43,6 +44,7 @@ export default function DashboardPage() {
       fetch("/api/coach").then((r) => r.json()).catch(() => ({ briefing: null })),
     ]).then(([planData, workData, metricData, nutrData, checkinData, coachData]) => {
       setPlan(planData.plans?.[0] || null);
+      setProgression(planData.progression || null);
       setWorkouts(workData.workouts || []);
       setMetrics(metricData.metrics || []);
       setHydration(nutrData.daily || []);
@@ -247,6 +249,11 @@ export default function DashboardPage() {
                   <div className="bg-ocean-600 h-full rounded-full" style={{ width: `${completionPct}%` }} />
                 </div>
                 <div className="text-xs text-slate-500 mt-1.5">{t(lang, "dash.completionPct").replace("{p}", String(completionPct))}</div>
+                {progression && (
+                  <div className={`mt-3 rounded-xl px-3 py-2 text-xs border ${progression.status === "push" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : progression.status === "deload" ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-ocean-50 border-ocean-200 text-ocean-800"}`}>
+                    <span className="font-bold">{progression.status === "push" ? "📈 " : progression.status === "deload" ? "📉 " : "✓ "}{progression.pct}% adherence.</span> {progression.message}
+                  </div>
+                )}
               </>
             ) : (
               <div className="text-slate-400 text-sm py-4">
