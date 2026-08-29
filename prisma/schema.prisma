@@ -44,6 +44,7 @@ model User {
   checkins    DailyCheckin[]
   supplement  SupplementProfile?
   reminder    ReminderPref?
+  cognitive   CognitiveTest[]
 }
 
 model AuthSession {
@@ -413,4 +414,18 @@ model ReminderPref {
   reminderHour    Int     @default(17) // 0-23 local; <12 = morning reminder, >=12 = evening detailed plan for tomorrow
   remindBeforeMin Int     @default(0) // extra lead time before the session
   user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Cognitive training results (Stroop, Reaction Time) — the "brain training" pillar.
+model CognitiveTest {
+  id        String   @id @default(cuid())
+  userId    String
+  test      String   // stroop | reaction | memory
+  score     Float    // e.g. stroop: avg response ms; reaction: avg ms; memory: correct/10
+  accuracy  Float?   // 0-100
+  date      DateTime @default(now())
+  notes     String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
 }

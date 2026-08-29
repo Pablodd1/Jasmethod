@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, CalendarDays, Dumbbell, HeartPulse, Moon, Droplets, Apple,
-  FlaskConical, Dna, Plug, Settings, Waves, LogOut, Activity, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield, Trophy,
+  FlaskConical, Dna, Plug, Settings, Waves, LogOut, Activity, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield, Trophy, Brain,
 } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
@@ -24,6 +24,7 @@ const NAV = [
   { href: "/blood", key: "nav.blood", icon: FlaskConical },
   { href: "/dna", key: "nav.dna", icon: Dna },
   { href: "/gear", key: "nav.gear", icon: Gauge },
+  { href: "/brain", key: "nav.brain", icon: Brain },
   { href: "/connectors", key: "nav.connectors", icon: Plug },
   { href: "/reminders", key: "nav.reminders", icon: Bell },
   { href: "/settings", key: "nav.settings", icon: Settings },
