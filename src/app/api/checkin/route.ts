@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { adaptSession, recommendFuel, recommendErgogenics, temperatureAdjustment, recoveryFor, morningWeightTrend, postWorkoutFuel, type Checkin, type SupplementPrefs } from "@/lib/adaptive";
+import { adaptSession, recommendFuel, recommendErgogenics, temperatureAdjustment, recoveryFor, morningWeightTrend, postWorkoutFuel, prescribeToday, type Checkin, type SupplementPrefs } from "@/lib/adaptive";
 import { stimPlan } from "@/lib/stimulation";
 import { t, type Lang } from "@/lib/i18n";
 import { fuelBrandsFor } from "@/lib/fuelbrands";
@@ -85,7 +85,9 @@ export async function POST(req: Request) {
     const todaySession = await prisma.workout.findFirst({
       where: { userId: user.id, date: { gte: start, lt: end }, planned: true },
       orderBy: { date: "asc" },
+      select: { id: true, sport: true, title: true, type: true, intensity: true, durationMin: true, planDay: { select: { notes: true } } },
     });
+    const userProfile = await prisma.athleteProfile.findUnique({ where: { userId: user.id } });
 
     const adaptation = adaptSession(checkin);
 
@@ -98,9 +100,10 @@ export async function POST(req: Request) {
       select: { title: true, startTime: true, endTime: true },
     });
     const busyCount = todayAppointments.length;
+    let busyHrs = 0;
     let busyNote = null;
     if (busyCount > 0) {
-      const busyHrs = todayAppointments.reduce((s, a) => {
+      busyHrs = todayAppointments.reduce((s, a) => {
         if (a.startTime && a.endTime) {
           const [sh, sm] = a.startTime.split(":").map(Number);
           const [eh, em] = a.endTime.split(":").map(Number);
@@ -150,6 +153,34 @@ export async function POST(req: Request) {
       night: stimPlan("night", { hardSession }),
     };
 
+    // THE prescription: detailed session for today, scaled by recovery + calendar.
+    const prescription = todaySession
+      ? prescribeToday({
+          session: {
+            sport: todaySession.sport,
+            title: todaySession.title,
+            type: todaySession.type,
+            intensity: todaySession.intensity,
+            durationMin: todaySession.durationMin,
+            description: todaySession.planDay?.notes || todaySession.title,
+          },
+          adaptation,
+          busyNote,
+          busyHrs,
+          profile: userProfile ? { lthr: userProfile.lthr, ftp: userProfile.ftp, runPaceBase: userProfile.runPaceBase } : null,
+        })
+      : null;
+    // Persist the scaled plan back onto today's workout so the athlete sees it all day
+    if (prescription && todaySession) {
+      await prisma.workout.update({
+        where: { id: todaySession.id },
+        data: {
+          durationMin: prescription.durationMin,
+          notes: `[Prescribed ${prescription.scaled.reason}] ${prescription.detail.main}`,
+        },
+      });
+    }
+
     const saved = await prisma.dailyCheckin.upsert({
       where: { userId_date: { userId: user.id, date: start } },
       create: {
@@ -193,6 +224,7 @@ export async function POST(req: Request) {
       ok: true,
       checkin: saved,
       adaptation,
+      prescription,
       fuel,
       ergos,
       post,

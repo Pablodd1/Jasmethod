@@ -194,6 +194,27 @@ export default function CheckinPage() {
               </div>
             )}
 
+            {result?.prescription && (
+              <div className="card border-ocean-300 bg-ocean-50">
+                <h3 className="font-display font-bold mb-1 flex items-center gap-2"><ClipboardCheck className="w-4 h-4 text-ocean-600" /> Today&apos;s prescription — just execute</h3>
+                <div className="font-semibold text-sm text-ocean-900">{result.prescription.title} · {result.prescription.durationMin} min</div>
+                {result.prescription.targets.hr && <div className="text-xs text-ocean-700 mt-0.5">HR target: {result.prescription.targets.hr} · RPE {result.prescription.targets.rpe}/10</div>}
+                {result.prescription.targets.pace && <div className="text-xs text-ocean-700">Pace: {result.prescription.targets.pace}</div>}
+                {result.prescription.targets.power && <div className="text-xs text-ocean-700">Power: {result.prescription.targets.power}</div>}
+                <div className="text-[11px] text-ocean-500 mt-1">{result.prescription.scaled.reason}</div>
+                <div className="mt-3 space-y-2 text-sm">
+                  <div><span className="font-semibold text-ocean-800">Warm-up:</span> <span className="text-slate-700">{result.prescription.detail.wu}</span></div>
+                  <div><span className="font-semibold text-ocean-800">Main:</span> <span className="text-slate-700">{result.prescription.detail.main}</span></div>
+                  <div><span className="font-semibold text-ocean-800">Cool-down:</span> <span className="text-slate-700">{result.prescription.detail.cd}</span></div>
+                  <div><span className="font-semibold text-ocean-800">Recovery:</span> <span className="text-slate-700">{result.prescription.detail.breathing}</span></div>
+                  <div><span className="font-semibold text-ocean-800">Study:</span> <span className="text-slate-700">{result.prescription.detail.study}</span></div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {result.prescription.sources.map((s: string) => <span key={s} className="text-[10px] bg-ocean-100 text-ocean-700 rounded-full px-2 py-0.5">{s}</span>)}
+                </div>
+              </div>
+            )}
+
             {result?.calendar?.busyNote && (
               <div className="card border-amber-200 bg-amber-50">
                 <h3 className="font-display font-bold mb-2 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-amber-600" /> Calendar-aware coaching</h3>

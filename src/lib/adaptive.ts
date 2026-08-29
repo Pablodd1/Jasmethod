@@ -582,3 +582,79 @@ export function postWorkoutFuel(opts: { durationMin: number; intensity: string; 
 
   return { carbsG, proteinG, ratio, sodiumMg, fluidMl, window, examples, notes };
 }
+
+// ---------- DAILY PRESCRIPTION (the "don't think, just execute" step) ----------
+// After the morning check-in, build the athlete's ACTUAL session for today:
+// exact warm-up / main set / cool-down / breathing, scaled by recovery verdict,
+// calendar busy time, and their own HR/power baselines. Science-backed detail
+// comes from buildSessionDetail (WU/CD templates, main-set generator).
+import { buildSessionDetail } from "./science";
+
+export interface DailyPrescription {
+  title: string;
+  sport: string;
+  durationMin: number;
+  verdict: string;
+  detail: { wu: string; main: string; cd: string; breathing: string; study: string };
+  targets: { hr?: string; power?: string; pace?: string; rpe: number };
+  scaled: { originalMin: number; factor: number; reason: string };
+  sources: string[];
+}
+
+export function prescribeToday(opts: {
+  session: { sport: string; title: string; type: string; intensity?: string | null; durationMin: number; description?: string | null };
+  adaptation: { verdict: string; durationFactor: number; intensityCap: string };
+  busyNote?: string | null;
+  busyHrs?: number;
+  profile?: { lthr?: number | null; ftp?: number | null; runPaceBase?: number | null } | null;
+}): DailyPrescription {
+  const { session, adaptation, profile } = opts;
+  const factor = adaptation.durationFactor;
+  const heavyDay = (opts.busyHrs || 0) >= 6;
+
+  // Time-box: heavy calendar day → shrink to a high-yield 20-25 min version.
+  let durationMin = Math.max(20, Math.round(session.durationMin * factor));
+  let reason = `Recovery ${adaptation.verdict} → duration ×${factor}`;
+  if (heavyDay && durationMin > 25) {
+    durationMin = 25;
+    reason += `; heavy calendar (${opts.busyHrs}h busy) → capped at 25 min high-yield`;
+  }
+
+  const detail = buildSessionDetail({
+    sport: session.sport,
+    type: session.type,
+    zone: adaptation.intensityCap === "z1" ? "z1" : session.intensity || "z2",
+    minutes: durationMin,
+    description: session.description || "",
+  });
+
+  // Pacing targets from the athlete's own baselines (not generic).
+  const targets: DailyPrescription["targets"] = { rpe: adaptation.verdict === "rest" ? 2 : adaptation.verdict === "easy" ? 4 : adaptation.verdict === "trim" ? 6 : 7 };
+  if (profile?.lthr && adaptation.intensityCap !== "z1") {
+    const cap = adaptation.intensityCap === "z2" ? 0.85 : adaptation.intensityCap === "z4" ? 0.95 : 1.05;
+    targets.hr = `${Math.round(profile.lthr * 0.8)}-${Math.round(profile.lthr * cap)} bpm`;
+  }
+  if (profile?.ftp && session.sport === "bike") {
+    targets.power = `≤${Math.round((profile.ftp * (adaptation.intensityCap === "z2" ? 0.75 : adaptation.intensityCap === "z4" ? 0.9 : 1.05))) / 1} W`;
+  }
+  if (profile?.runPaceBase && session.sport === "run") {
+    const pace = profile.runPaceBase;
+    targets.pace = adaptation.intensityCap === "z2"
+      ? `${Math.round((pace * 1.15) / 5) * 5}-${Math.round((pace * 1.3) / 5) * 5} sec/km`
+      : `~${Math.round((pace * 0.95) / 5) * 5} sec/km`;
+  }
+
+  const sources = ["Friel", "Seiler 2009", "Billat 2001"];
+  if (adaptation.verdict === "rest" || adaptation.verdict === "easy") sources.push("Plews 2013", "Lehrer 2014");
+
+  return {
+    title: session.title,
+    sport: session.sport,
+    durationMin,
+    verdict: adaptation.verdict,
+    detail,
+    targets,
+    scaled: { originalMin: session.durationMin, factor, reason },
+    sources,
+  };
+}
