@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { adaptSession, recommendFuel, recommendErgogenics, temperatureAdjustment, recoveryFor, morningWeightTrend, postWorkoutFuel, prescribeToday, type Checkin, type SupplementPrefs } from "@/lib/adaptive";
 import { stimPlan } from "@/lib/stimulation";
+import { cycleAdvice, youthPolicy, proteinPerKg } from "@/lib/cycle";
 import { t, type Lang } from "@/lib/i18n";
 import { fuelBrandsFor } from "@/lib/fuelbrands";
 import { sourcesFor } from "@/lib/research";
@@ -66,6 +67,7 @@ export async function POST(req: Request) {
       stress: parseInt(b.stress ?? "3", 10),
       sick: Boolean(b.sick),
       menstrual: b.menstrual === true,
+      cycleDay: b.cycleDay ? parseInt(b.cycleDay, 10) : undefined,
       weightKg: b.weightKg ? parseFloat(b.weightKg) : undefined,
       rhr: b.rhr ? parseInt(b.rhr, 10) : undefined,
     };
@@ -88,6 +90,14 @@ export async function POST(req: Request) {
       select: { id: true, sport: true, title: true, type: true, intensity: true, durationMin: true, planDay: { select: { notes: true } } },
     });
     const userProfile = await prisma.athleteProfile.findUnique({ where: { userId: user.id } });
+
+    // Female-cycle + youth awareness (sex/age-specific coaching)
+    const cycle = cycleAdvice(checkin.cycleDay, userProfile?.sex ?? null);
+    const youth = youthPolicy(userProfile?.birthYear ?? null);
+    const protein = {
+      perKg: proteinPerKg(userProfile?.sex ?? null, todaySession?.sport === "strength", userProfile?.birthYear ?? null),
+      note: cycle ? `Female athlete, ${cycle.label} phase → ~${cycle.proteinPerKg.toFixed(1)} g/kg/day (Williamson 2023).` : `Protein target ~${(proteinPerKg(userProfile?.sex ?? null, todaySession?.sport === "strength", userProfile?.birthYear ?? null)).toFixed(1)} g/kg/day (ISSN 2017).`,
+    };
 
     const adaptation = adaptSession(checkin);
 
@@ -225,6 +235,9 @@ export async function POST(req: Request) {
       checkin: saved,
       adaptation,
       prescription,
+      cycle,
+      youth,
+      protein,
       fuel,
       ergos,
       post,

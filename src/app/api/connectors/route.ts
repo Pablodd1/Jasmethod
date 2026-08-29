@@ -42,6 +42,7 @@ export async function GET() {
     { id: "google_cal", name: "Google Calendar", description: googleConfigured ? "See your meetings & busy time — the coach fits training around your schedule" : "Add GOOGLE_CLIENT_ID/SECRET to sync Gmail Calendar", status: connectors.find((c) => c.provider === "google_cal")?.status || "disconnected", configured: googleConfigured, connectUrl: googleUrl, method: "oauth" },
     { id: "apple", name: "Apple Health", description: "Upload export.zip → export.xml", status: connectors.find((c) => c.provider === "apple")?.status || "disconnected", configured: true, method: "upload" },
     { id: "whoop", name: "Whoop", description: "Upload cycle CSV export (recovery, HRV, sleep)", status: connectors.find((c) => c.provider === "whoop")?.status || "disconnected", configured: true, method: "upload" },
+    { id: "coros", name: "COROS", description: "COROS watches — via Terra API (activities, sleep, daily) or manual FIT/TCX upload. Official API requires application at api@coros.com", status: connectors.find((c) => c.provider === "coros")?.status || "disconnected", configured: Boolean(process.env.TERRA_API_KEY && process.env.TERRA_DEV_ID), method: "api" },
     { id: "oura", name: "Oura / Aura Ring", description: "Oura Cloud API — add OURA_CLIENT_ID/SECRET to enable OAuth", status: connectors.find((c) => c.provider === "oura")?.status || "disconnected", configured: Boolean(process.env.OURA_CLIENT_ID), method: "api" },
   ];
 

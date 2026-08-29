@@ -166,6 +166,10 @@ export default function CheckinPage() {
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={answers.menstrual} onChange={(e) => setQ("menstrual", e.target.checked)} /> Menstrual phase (adjusts readiness)
               </label>
+              <label className="flex items-center gap-2 text-sm">
+                Cycle day (1-35):
+                <input type="number" min={1} max={35} value={answers.cycleDay || ""} onChange={(e) => setQ("cycleDay", e.target.value)} className="input w-20 !py-1 !px-2 text-xs" placeholder="—" />
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Morning weight (kg)</label>
@@ -212,6 +216,28 @@ export default function CheckinPage() {
                 <div className="mt-2 flex flex-wrap gap-1">
                   {result.prescription.sources.map((s: string) => <span key={s} className="text-[10px] bg-ocean-100 text-ocean-700 rounded-full px-2 py-0.5">{s}</span>)}
                 </div>
+              </div>
+            )}
+
+            {result?.cycle && (
+              <div className="card border-rose-200 bg-rose-50">
+                <h3 className="font-display font-bold mb-1 flex items-center gap-2"><HeartPulse className="w-4 h-4 text-rose-500" /> Cycle-aware coaching · {result.cycle.label}</h3>
+                <div className="text-xs text-rose-600 mb-1">Strength: {result.cycle.strength} · Endurance: {result.cycle.endurance} · Protein: {result.cycle.proteinPerKg.toFixed(1)} g/kg</div>
+                <p className="text-sm text-rose-800">{result.cycle.trainingNote}</p>
+              </div>
+            )}
+
+            {result?.protein && (
+              <div className="card">
+                <h3 className="font-display font-bold mb-1 flex items-center gap-2"><Apple className="w-4 h-4 text-emerald-500" /> Protein target</h3>
+                <p className="text-sm text-slate-600">{result.protein.note}</p>
+              </div>
+            )}
+
+            {result?.youth && !result.youth.allowed && (
+              <div className="card border-coral-300 bg-coral-50">
+                <h3 className="font-display font-bold mb-1">Age policy</h3>
+                <p className="text-sm text-coral-800">{result.youth.note}</p>
               </div>
             )}
 

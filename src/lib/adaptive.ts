@@ -226,6 +226,7 @@ export interface Checkin {
   stress: number;    // 1-5 (5 = very stressed)
   sick: boolean;     // ill/injured today
   menstrual?: boolean; // female-specific flag
+  cycleDay?: number; // day of menstrual cycle (1-35) — enables phase-aware training
   weightKg?: number; // morning fasted weight (objective daily signal)
   rhr?: number;      // morning resting HR
   rhrBaseline?: number; // 7-day avg RHR, set server-side from daily metrics

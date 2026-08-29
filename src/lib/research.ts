@@ -61,6 +61,15 @@ export const RESEARCH_SOURCES: ResearchSource[] = [
   { id: "martinezdequel2019", claim: "combat athletes' perceptual-cognitive expertise (anticipation, pattern recognition) is trainable and discriminates skill level", ref: "Martínez de Quel et al. 2019, perceptual-cognitive expertise in combat sports (narrative review)", level: "B", population: "both" },
   { id: "hassan2025", claim: "FITLIGHT reactive-agility training improves visual reaction time and visuomotor skill", ref: "Hassan et al. 2025 (FITLIGHT visual-motor RCT, PMC12252139)", level: "A", population: "recreational" },
   { id: "appelbaum2016", claim: "visual-motor skills are trainable and transfer to sport performance", ref: "Appelbaum & Erickson 2016, J Sports Sci 34:842-850 (review)", level: "B", population: "both" },
+
+  // ---- female athlete / cycle / sex-specific ----
+  { id: "niering2024", claim: "strength favors late follicular phase; early follicular unfavorable", ref: "Niering et al. 2024, Sports 12:31 (systematic review + meta)", level: "A", population: "recreational" },
+  { id: "mcnull2020", claim: "trivial overall MC performance effects; individual variability dominates", ref: "McNulty et al. 2020, Br J Sports Med 54:712-722 (meta-analysis)", level: "A", population: "both" },
+  { id: "carmichael2021", claim: "perceived performance worst in late luteal + early follicular", ref: "Carmichael et al. 2021, Int J Environ Res Public Health 18:1667", level: "B", population: "both" },
+  { id: "williamson2023", claim: "female endurance athletes need ~1.89 g/kg protein; higher than males", ref: "Williamson et al. 2023, Sports Med (female athlete protein)", level: "A", population: "both" },
+  { id: "issn2017", claim: "protein 1.4-2.0 g/kg athletes (strength 1.6-2.0)", ref: "Jäger et al. 2017, J Int Soc Sports Nutr 14:20 (ISSN position stand)", level: "A", population: "both" },
+  { id: "aossm2023", claim: "youth strength training safe ~7-8+, supervised", ref: "AOSSM 2023, Youth Strength Training (position)", level: "B", population: "recreational" },
+  { id: "nsca2022", claim: "youth RT: readiness-based, no max lifts to failure", ref: "NSCA Youth Performance & Fitness 2022 (position)", level: "B", population: "recreational" },
 ];
 
 export function sourcesFor(ids: string[]): ResearchSource[] {
