@@ -9,6 +9,7 @@ export default function LandingPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [birthYear, setBirthYear] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -20,7 +21,7 @@ export default function LandingPage() {
       const res = await fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mode === "signup" ? { email, password, name } : { email, password }),
+        body: JSON.stringify(mode === "signup" ? { email, password, name, birthYear } : { email, password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -131,6 +132,12 @@ export default function LandingPage() {
               <div>
                 <label className="label">Full name</label>
                 <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Jasmel Acosta" required />
+              </div>
+            )}
+            {mode === "signup" && (
+              <div>
+                <label className="label">Birth year (13+ to use the app)</label>
+                <input className="input" type="number" min={1930} max={2012} value={birthYear} onChange={(e) => setBirthYear(e.target.value)} placeholder="1990" />
               </div>
             )}
             <div>

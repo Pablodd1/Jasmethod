@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { hashPassword, createSession, setSessionCookie } from "@/lib/auth";
 import { sendEmail, welcomeEmail } from "@/lib/email";
+import { youthPolicy } from "@/lib/cycle";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email, password, name } = body || {};
+    const { email, password, name, birthYear } = body || {};
     if (!email || !password || !name) {
       return NextResponse.json({ error: "Email, password, and name are required." }, { status: 400 });
     }
@@ -18,12 +19,18 @@ export async function POST(req: Request) {
     if (String(password).length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
+    // Age gate: 13+ (platform policy; research: youth training ~7-8+ supervised, AOSSM)
+    const by = birthYear ? parseInt(birthYear, 10) : null;
+    const gate = youthPolicy(by);
+    if (!gate.allowed) {
+      return NextResponse.json({ error: gate.note }, { status: 403 });
+    }
     const user = await prisma.user.create({
       data: {
         email: normalized,
         passwordHash: hashPassword(String(password)),
         name: String(name).trim(),
-        profile: { create: {} },
+        profile: { create: by ? { birthYear: by } : {} },
         motivation: { create: {} },
       },
     });
