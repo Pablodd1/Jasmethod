@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plug, Upload, ExternalLink, CheckCircle2, XCircle, Cloud } from "lucide-react";
+import { Plug, Upload, ExternalLink, CheckCircle2, XCircle, Cloud, RefreshCw } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
@@ -14,6 +14,18 @@ export default function ConnectorsPage() {
   const [importing, setImporting] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [syncing, setSyncing] = useState(false);
+
+  async function syncAll() {
+    setSyncing(true); setErr(""); setMsg("");
+    try {
+      const res = await fetch("/api/connectors/sync", { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Sync failed");
+      setMsg(`✓ ${d.message}`);
+      load();
+    } catch (e: any) { setErr(e.message); } finally { setSyncing(false); }
+  }
 
   async function load() {
     const res = await fetch("/api/connectors");
@@ -63,6 +75,13 @@ export default function ConnectorsPage() {
 
         {msg && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">✓ {msg}</div>}
         {err && <div className="text-sm text-coral-600 bg-coral-50 border border-coral-200 rounded-lg px-3 py-2">✗ {err}</div>}
+
+        <div className="flex items-center justify-between">
+          <p className="text-slate-500 text-sm">Bring your history in from every platform — Strava OAuth, Garmin TCX, Apple Health export, Whoop CSV, Oura API.</p>
+          <button onClick={syncAll} disabled={syncing} className="btn-secondary shrink-0">
+            <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync all devices"}
+          </button>
+        </div>
 
         <div className="grid md:grid-cols-2 gap-4">
           {providers.map((p) => {
