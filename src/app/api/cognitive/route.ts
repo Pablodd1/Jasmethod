@@ -36,8 +36,10 @@ export async function GET() {
   }
   const best: Record<string, { best: number; avg: number; n: number }> = {};
   for (const [k, v] of Object.entries(byType)) {
-    // lower = better for stroop/reaction (ms); memory = higher better
-    const lowerBetter = k !== "memory";
+    // lower = better for stroop/reaction (ms); higher = better for tapping/
+    // balance (count/seconds), memory (correct), pulse (no trend — skip best)
+    if (k === "pulse") continue; // resting HR: no "best", track trend only
+    const lowerBetter = k === "stroop" || k === "reaction";
     best[k] = {
       best: lowerBetter ? Math.min(...v.scores) : Math.max(...v.scores),
       avg: Math.round(v.scores.reduce((a, s) => a + s, 0) / v.scores.length),
