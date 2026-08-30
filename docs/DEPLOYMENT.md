@@ -13,7 +13,7 @@
 | Layer | Technology | Where |
 |---|---|---|
 | Frontend + API | Next.js 14 (App Router) | Vercel (or any Node host) |
-| Database | PostgreSQL | **Supabase** (project ref `aycckjrkhgnwaggrrejp`) |
+| Database | PostgreSQL | **Supabase** (project ref `aycckjrkhgnwaggrrejp`, region `us-east-1`) |
 | ORM | Prisma 5.22 | `prisma/schema.prisma`, `prisma/migrations/0_init` |
 | Auth | DB sessions (bcrypt + `jmm_session` cookie) | no external auth provider |
 | AI coach | Google Gemini (optional) | falls back to rule-based |
@@ -46,12 +46,15 @@ Settings → Secrets and variables → Actions, if built via Actions).
 ## 3. One-time database setup (Supabase)
 
 ```bash
-# 1) Put the two URLs in .env (local, gitignored) or in the deploy env vars.
-# 2) Apply schema (creates all tables):
-npx prisma migrate deploy
+# One-shot: builds DATABASE_URL + DIRECT_URL from ref/region/password,
+# applies the schema, and provisions the two accounts.
+SUPABASE_DB_PASSWORD='...' npx tsx scripts/setup-supabase.ts
+```
 
-# 3) Provision the two real MVP accounts:
-npx tsx scripts/create-accounts.ts
+Or manually:
+```bash
+npx prisma migrate deploy            # 1) creates all tables
+npx tsx scripts/create-accounts.ts   # 2) provisions Evgenia + Jasmel
 ```
 
 `npm run build` already runs `prisma migrate deploy && prisma generate && next build`,
@@ -77,7 +80,7 @@ Provisioning is idempotent (upserts) — safe to re-run: `npx tsx scripts/create
 
 | Credential | Where it lives | Committed to git? |
 |---|---|---|
-| Supabase project ref (`aycckjrkhgnwaggrrejp`) | this file / connection URL | ✅ (not secret) |
+| Supabase project ref (`aycckjrkhgnwaggrrejp`) + region (`us-east-1`) | this file / connection URL | ✅ (not secret) |
 | Supabase DB password | **Supabase → Project Settings → Database → Reset password** (owner only) | ❌ never |
 | `DATABASE_URL` / `DIRECT_URL` | Vercel (or GitHub Actions secrets) + local `.env` | ❌ never (`.env` is gitignored) |
 | `CRON_SECRET` | Vercel/GitHub secret + local `.env` | ❌ never |

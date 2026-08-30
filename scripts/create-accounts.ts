@@ -94,6 +94,9 @@ const TRI_WEEKLY: SessionSpec[] = [
   { sport: "run", title: "Run: Long Run", type: "endurance", minutes: 90, zone: "z2", description: "Long aerobic run — fuel 30-60g carbs/h." },
 ];
 
+// A race entry with the required Prisma `Race` fields plus optional extras.
+type RaceSpec = { name: string; distance: string; date: Date; [key: string]: any };
+
 interface AccountSpec {
   email: string;
   name: string;
@@ -107,7 +110,7 @@ interface AccountSpec {
   distance: string;
   weeks: number;
   metricsBase: { hrv: number; rhr: number; sleep: number; weight: number };
-  races: Record<string, any>[];
+  races: RaceSpec[];
 }
 
 const ACCOUNTS: AccountSpec[] = [
