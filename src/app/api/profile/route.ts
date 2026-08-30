@@ -34,7 +34,7 @@ export async function PUT(req: Request) {
     const allowed = [
       "birthYear", "sex", "heightCm", "weightKg", "experience", "goal", "raceDate",
       "weeklyHours", "vo2max", "lthr", "restingHr", "maxHr", "ftp", "cp", "wPrime",
-      "swimPaceBase", "runPaceBase", "hrvBaseline", "injured", "notes",
+      "swimPaceBase", "runPaceBase", "hrvBaseline", "injured", "notes", "trainingWindow",
     ];
     const data: Record<string, any> = {};
     for (const key of allowed) {

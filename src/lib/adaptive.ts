@@ -99,6 +99,23 @@ export function dayOffProtocol(date: Date): DayOffProtocol {
   };
 }
 
+// ---------- 1c. TRAINING TIME-OF-DAY (athlete-picked window) ----------
+// A preferred training window (morning/midday/evening) maps to a default
+// start time for each session. The athlete can then fine-tune any single
+// session's startTime from the calendar. "any" = flexible (no fixed time).
+export const TRAINING_WINDOWS = [
+  { key: "any", label: "Flexible — no fixed time", startTime: null },
+  { key: "morning", label: "Morning", startTime: "06:30" },
+  { key: "midday", label: "Midday", startTime: "12:30" },
+  { key: "evening", label: "Evening", startTime: "18:00" },
+] as const;
+
+export type TrainingWindow = (typeof TRAINING_WINDOWS)[number]["key"];
+
+export function defaultStartTime(window?: string | null): string | null {
+  return TRAINING_WINDOWS.find((w) => w.key === window)?.startTime ?? null;
+}
+
 // ---------- 1b. NEUROMUSCULAR READINESS (CMJ gate) ----------
 // Morning CMJ vs baseline: >8% drop = neuromuscular fatigue → convert intensity
 // to skill work. Grounding: CMJ tracks punch output in boxers (Loturco 2016);
@@ -595,6 +612,7 @@ export interface DailyPrescription {
   title: string;
   sport: string;
   durationMin: number;
+  startTime?: string | null; // "HH:mm" when a fixed session time is scheduled
   verdict: string;
   detail: { wu: string; main: string; cd: string; breathing: string; study: string };
   targets: { hr?: string; power?: string; pace?: string; rpe: number };
@@ -603,7 +621,7 @@ export interface DailyPrescription {
 }
 
 export function prescribeToday(opts: {
-  session: { sport: string; title: string; type: string; intensity?: string | null; durationMin: number; description?: string | null };
+  session: { sport: string; title: string; type: string; intensity?: string | null; durationMin: number; description?: string | null; startTime?: string | null };
   adaptation: { verdict: string; durationFactor: number; intensityCap: string };
   busyNote?: string | null;
   busyHrs?: number;
@@ -652,6 +670,7 @@ export function prescribeToday(opts: {
     title: session.title,
     sport: session.sport,
     durationMin,
+    startTime: session.startTime ?? null,
     verdict: adaptation.verdict,
     detail,
     targets,

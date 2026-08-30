@@ -8,7 +8,7 @@ import { t, type Lang } from "@/lib/i18n";
 
 export default function ConnectorsPage() {
   const { user } = useAuth();
-  const lang = (user?.language || "en") as Lang;
+  const lang = (user?.language || "es") as Lang;
   const [providers, setProviders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState<string | null>(null);

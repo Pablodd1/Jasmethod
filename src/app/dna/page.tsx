@@ -9,7 +9,7 @@ import { DNA_TRAITS } from "@/lib/science";
 
 export default function DnaPage() {
   const { user } = useAuth();
-  const lang = (user?.language || "en") as Lang;
+  const lang = (user?.language || "es") as Lang;
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);

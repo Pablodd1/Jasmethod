@@ -35,7 +35,7 @@ export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const today = dayStart(new Date());
-  const lang = (user.language || "en") as Lang;
+  const lang = (user.language || "es") as Lang;
   const checkin = await prisma.dailyCheckin.findUnique({ where: { userId_date: { userId: user.id, date: today } } });
   const todaySession = await prisma.workout.findFirst({
     where: { userId: user.id, date: { gte: today, lt: new Date(today.getTime() + 86400000) }, planned: true },
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
     const todaySession = await prisma.workout.findFirst({
       where: { userId: user.id, date: { gte: start, lt: end }, planned: true },
       orderBy: { date: "asc" },
-      select: { id: true, sport: true, title: true, type: true, intensity: true, durationMin: true, planDay: { select: { notes: true } } },
+      select: { id: true, sport: true, title: true, type: true, intensity: true, durationMin: true, startTime: true, planDay: { select: { notes: true } } },
     });
     const userProfile = await prisma.athleteProfile.findUnique({ where: { userId: user.id } });
 
@@ -173,6 +173,7 @@ export async function POST(req: Request) {
             intensity: todaySession.intensity,
             durationMin: todaySession.durationMin,
             description: todaySession.planDay?.notes || todaySession.title,
+            startTime: todaySession.startTime,
           },
           adaptation,
           busyNote,
@@ -242,7 +243,7 @@ export async function POST(req: Request) {
       ergos,
       post,
       stim,
-      recovery: translatedRecovery((user.language || "en") as Lang),
+      recovery: translatedRecovery((user.language || "es") as Lang),
       fuelBrands: fuelBrandsFor(todaySession?.durationMin || 0),
       sources: sourcesFor(CORE_SOURCE_IDS),
       hydration: { weightTrend, rhrNote, rhrBaseline: checkin.rhrBaseline ?? null },

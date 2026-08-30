@@ -38,7 +38,7 @@ function css(t4: number, t2: number) { return 200 / (t4 - t2); } // sec/100m
 
 export default function LabsPage() {
   const { user } = useAuth();
-  const lang = (user?.language || "en") as Lang;
+  const lang = (user?.language || "es") as Lang;
   const [vd, setVd] = useState<any>(null);
   const [ftp, setFtp] = useState<any>(null);
   const [lthr, setLthr] = useState<any>(null);

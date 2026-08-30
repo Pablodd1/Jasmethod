@@ -8,7 +8,7 @@ import { t, type Lang } from "@/lib/i18n";
 
 export default function SleepPage() {
   const { user } = useAuth();
-  const lang = (user?.language || "en") as Lang;
+  const lang = (user?.language || "es") as Lang;
   const [sleep, setSleep] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), hours: "", quality: "", deepHours: "" });

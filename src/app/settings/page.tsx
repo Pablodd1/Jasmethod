@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, HeartPulse, Mail, Zap } from "lucide-react";
+import Link from "next/link";
+import { Save, HeartPulse, Mail, Zap, Plug, Dna, Bike, FlaskConical, ArrowRight } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { HR_ZONES, estimateVo2max } from "@/lib/science";
+import { TRAINING_WINDOWS } from "@/lib/adaptive";
+import { t, type Lang } from "@/lib/i18n";
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const lang = (user?.language || "es") as Lang;
   const [profile, setProfile] = useState<any>(null);
   const [zones, setZones] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -16,6 +20,7 @@ export default function SettingsPage() {
   const [vo2Estimate, setVo2Estimate] = useState<any>(null);
   const [emailSent, setEmailSent] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
+  const [modules, setModules] = useState<any>({});
 
   async function load() {
     const res = await fetch("/api/profile");
@@ -37,12 +42,26 @@ export default function SettingsPage() {
         ftp: d.profile.ftp || "",
         runPaceBase: d.profile.runPaceBase || "",
         swimPaceBase: d.profile.swimPaceBase || "",
+        trainingWindow: d.profile.trainingWindow || "any",
         raceDate: d.profile.raceDate ? d.profile.raceDate.slice(0, 10) : "",
       });
     }
     setLoading(false);
   }
   useEffect(() => { if (user) load(); }, [user]);
+
+  async function loadModules() {
+    try {
+      const [c, d, b, g] = await Promise.all([
+        fetch("/api/connectors").then((r) => r.json()).catch(() => null),
+        fetch("/api/dna").then((r) => r.json()).catch(() => null),
+        fetch("/api/blood").then((r) => r.json()).catch(() => null),
+        fetch("/api/gear").then((r) => r.json()).catch(() => null),
+      ]);
+      setModules({ connectors: c, dna: d, blood: b, gear: g });
+    } catch {}
+  }
+  useEffect(() => { if (user) loadModules(); }, [user]);
 
   function estimate() {
     if (!form.birthYear || !form.sex || !form.weightKg || !form.heightCm) return;
@@ -102,12 +121,20 @@ export default function SettingsPage() {
     );
   }
 
+  // Module status summaries for the integrated hub.
+  const connProviders = modules.connectors?.providers || [];
+  const connectedCount = connProviders.filter((c: any) => c.status === "connected").length;
+  const dnaTraits = (modules.dna?.results || []).reduce((a: number, r: any) => a + (r.variants?.length || 0), 0);
+  const panels = modules.blood?.panels || [];
+  const bloodFlags = panels.reduce((a: number, p: any) => a + (p.results || []).filter((r: any) => r.status === "low" || r.status === "high").length, 0);
+  const gearTracked = modules.gear?.profile ? Object.values(modules.gear.profile).filter((v) => v === true).length : 0;
+
   return (
     <ProtectedPage>
       <div className="space-y-6">
         <div>
-          <h1 className="font-display text-2xl font-bold">Profile & Training Zones</h1>
-          <p className="text-slate-500 text-sm">Your physiology drives every session. Fill in what you know — we estimate the rest from the research.</p>
+          <h1 className="font-display text-2xl font-bold">{t(lang, "nav.settings")}</h1>
+          <p className="text-slate-500 text-sm">{lang === "es" ? "Tu fisiología mueve cada sesión. Llena lo que sepas — nosotros estimamos el resto desde la investigación." : "Your physiology drives every session. Fill in what you know — we estimate the rest from the research."}</p>
         </div>
 
         {saved && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">✓ Profile saved — zones updated</div>}
@@ -156,6 +183,7 @@ export default function SettingsPage() {
                     <option value="hyrox">HYROX</option>
                     <option value="boxing">Boxing</option>
                     <option value="cycle">Cycling (no triathlon)</option>
+                    <option value="run-only">Running only</option>
                     <option value="swim-only">Swimming only</option>
                     <option value="lifting">Lifting / Strength only</option>
                   </select>
@@ -167,6 +195,13 @@ export default function SettingsPage() {
                 <div>
                   <label className="label">Race date</label>
                   <input type="date" className="input" value={form.raceDate} onChange={(e) => setForm({ ...form, raceDate: e.target.value })} />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Preferred training time</label>
+                  <select className="input" value={form.trainingWindow} onChange={(e) => setForm({ ...form, trainingWindow: e.target.value })}>
+                    {TRAINING_WINDOWS.map((w) => <option key={w.key} value={w.key}>{w.label}{w.startTime ? ` (default ${w.startTime})` : ""}</option>)}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">New plans get this default start time. You can still move any individual session in the calendar.</p>
                 </div>
               </div>
 
@@ -250,6 +285,64 @@ export default function SettingsPage() {
               </button>
               {emailSent && <div className="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-2">✓ Digest sent (or queued via SMTP)</div>}
             </div>
+          </div>
+        </div>
+
+        {/* ── Integrated modules hub (Conectores · ADN · Equipamiento · Sangre) ── */}
+        <div className="border-t border-sand-200 pt-6">
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="font-display font-bold text-lg">{t(lang, "settings.modulesTitle")}</h2>
+          </div>
+          <p className="text-sm text-slate-500 mb-4">{t(lang, "settings.modulesSub")}</p>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              {
+                href: "/connectors",
+                icon: Plug,
+                tint: "text-ocean-600 bg-ocean-100",
+                name: t(lang, "settings.mod.connectors"),
+                desc: t(lang, "settings.mod.connectorsDesc"),
+                status: connectedCount > 0 ? t(lang, "settings.mod.connected").replace("{n}", String(connectedCount)) : t(lang, "settings.mod.notSetUp"),
+              },
+              {
+                href: "/dna",
+                icon: Dna,
+                tint: "text-coral-500 bg-coral-100",
+                name: t(lang, "settings.mod.dna"),
+                desc: t(lang, "settings.mod.dnaDesc"),
+                status: dnaTraits > 0 ? t(lang, "settings.mod.traits").replace("{n}", String(dnaTraits)) : t(lang, "settings.mod.notSetUp"),
+              },
+              {
+                href: "/gear",
+                icon: Bike,
+                tint: "text-emerald-600 bg-emerald-100",
+                name: t(lang, "settings.mod.gear"),
+                desc: t(lang, "settings.mod.gearDesc"),
+                status: gearTracked > 0 ? t(lang, "settings.mod.gearCount").replace("{n}", String(gearTracked)) : t(lang, "settings.mod.notSetUp"),
+              },
+              {
+                href: "/blood",
+                icon: FlaskConical,
+                tint: "text-vermillion-500 bg-vermillion-400/10",
+                name: t(lang, "settings.mod.blood"),
+                desc: t(lang, "settings.mod.bloodDesc"),
+                status: panels.length > 0 ? t(lang, "settings.mod.panels").replace("{n}", String(panels.length)).replace("{f}", String(bloodFlags)) : t(lang, "settings.mod.notSetUp"),
+              },
+            ].map((m) => {
+              const Icon = m.icon;
+              return (
+                <Link key={m.href} href={m.href} className="card flex flex-col hover:shadow-md transition-shadow group">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${m.tint}`}><Icon className="w-5 h-5" /></div>
+                  <div className="font-semibold mt-3">{m.name}</div>
+                  <div className="text-xs text-slate-500 mt-0.5 leading-relaxed">{m.desc}</div>
+                  <div className="mt-auto pt-3 flex items-center justify-between text-sm">
+                    <span className="text-xs font-medium text-slate-400">{m.status}</span>
+                    <span className="text-xs font-semibold text-ocean-600 flex items-center gap-1">{t(lang, "settings.mod.open")} <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" /></span>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </div>
