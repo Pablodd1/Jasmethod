@@ -159,7 +159,7 @@ JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting th
 | `GOOGLE_CLIENT_ID/SECRET` | Google Calendar OAuth | ❌ Need (console.cloud.google.com) |
 | `OURA_CLIENT_ID/SECRET` | Oura OAuth | ❌ Need (cloud.ouraring.com) |
 | `GEMINI_API_KEY` | AI coach | ✅ Set |
-| `AUTH_SECRET` | Session encryption | ✅ Set |
+| `AUTH_SECRET` | *(not read by DB-session auth — not required for MVP)* | ⚠️ Optional |
 | `TELEGRAM_BOT_TOKEN` | Reminders via Telegram | ⚠️ Optional |
 | SMTP vars | Email reminders | ✅ Set |
 
