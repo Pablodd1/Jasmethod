@@ -152,6 +152,49 @@ export function AuthCard({
       <p className="micro mt-5 text-center !normal-case !tracking-normal !text-[11px] !text-ink-400">
         Free for athletes. Your blood, DNA and training data stay private.
       </p>
+
+      {/* Beta tester quick logins — one-tap demo accounts */}
+      {mode === "login" && (
+        <div className="mt-4 pt-4 border-t border-ink-200">
+          <div className="micro text-[10px] text-ink-400 mb-2">Beta testers — one tap to sign in:</div>
+          <div className="flex flex-col gap-2">
+            {[
+              { label: "Evgenia T — Triathlon (Olympic)", email: "evgenia@jasmiamimethod.com" },
+              { label: "Jasmel — Triathlon (70.3)", email: "jasmel@jasmiamimethod.com" },
+            ].map((acct) => (
+              <button
+                key={acct.email}
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setError(""); setDetail(""); setBusy(true);
+                  try {
+                    const res = await fetch("/api/auth/login", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ email: acct.email, password: "demo1234" }),
+                    });
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => ({}));
+                      setError(data.error || "Demo login failed");
+                      setBusy(false);
+                      return;
+                    }
+                    window.location.href = redirectTo;
+                  } catch {
+                    setError("Network error — please try again.");
+                    setBusy(false);
+                  }
+                }}
+                className="w-full flex items-center justify-between rounded-xl border border-ink-200 bg-paper-100 hover:bg-paper-200 px-4 py-2.5 text-sm font-semibold text-ink-800 transition-colors"
+              >
+                <span>{acct.label}</span>
+                <span className="text-ink-400 text-xs">→</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
