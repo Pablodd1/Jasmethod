@@ -5,6 +5,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // App tokens (authenticated dashboard) — kept intact.
         ocean: {
           50: "#eef9ff",
           100: "#d8f1ff",
@@ -28,10 +29,35 @@ const config: Config = {
           200: "#f9ead3",
           300: "#f0d5a8",
         },
+        // Editorial sports-science system (public site).
+        paper: {
+          DEFAULT: "#f7f2e9",
+          50: "#fbf8f1",
+          100: "#f3eddf",
+          200: "#e9dfc9",
+        },
+        ink: {
+          900: "#16120d",
+          800: "#221d16",
+          700: "#3a3329",
+          600: "#4f473c",
+          500: "#6b6155",
+          400: "#8a7f72",
+          300: "#a89d90",
+          200: "#c9c0b4",
+          100: "#e4ded4",
+        },
+        vermillion: {
+          400: "#e06a4f",
+          500: "#c94b31",
+          600: "#b03a24",
+          700: "#8f2f1e",
+        },
       },
       fontFamily: {
-        display: ["var(--font-display)", "system-ui"],
-        body: ["var(--font-body)", "system-ui"],
+        display: ["var(--font-display)", "Georgia", "serif"],
+        body: ["var(--font-body)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
     },
   },

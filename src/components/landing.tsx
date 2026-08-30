@@ -1,225 +1,226 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
-import { Waves, Activity, HeartPulse, Dna, FlaskConical, Moon, Apple, Dumbbell, ArrowRight, Bike, Zap, CalendarDays } from "lucide-react";
-import { PRE_WORKOUT, POST_WORKOUT, ERGOGENIC_AIDS, ONBOARDING_STEPS, MIND_RECOVERY, type EduCard } from "@/lib/edu-content";
+import {
+  Activity,
+  Apple,
+  ArrowRight,
+  Dna,
+  FlaskConical,
+  HeartPulse,
+  Moon,
+  Pill,
+  Waves,
+  Zap,
+} from "lucide-react";
+import { SiteHeader, SiteFooter } from "@/components/site-shell";
+import { AuthCard } from "@/components/auth-card";
+import { TOPIC_LIST } from "@/lib/topics";
 
-function SectionBlock({ title, subtitle, cards }: { title: string; subtitle: string; cards: EduCard[] }) {
-  return (
-    <div className="bg-ocean-800/40 border border-ocean-700/60 rounded-3xl p-6 md:p-8">
-      <h2 className="font-display text-2xl md:text-3xl font-bold">{title}</h2>
-      <p className="text-ocean-200 text-sm mt-1 mb-5">{subtitle}</p>
-      <div className="grid md:grid-cols-2 gap-4">
-        {cards.map((c) => (
-          <div key={c.title} className="bg-white/5 border border-ocean-600/40 rounded-2xl p-5">
-            <div className="text-2xl mb-2">{c.icon}</div>
-            <div className="font-semibold text-sm">{c.title}</div>
-            <p className="text-ocean-200 text-sm mt-1">{c.text}</p>
-            {c.ref && <div className="text-ocean-400 text-[11px] mt-2">📖 {c.ref}</div>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// Editorial icons for the five science-field guides.
+const TOPIC_ICONS: Record<string, typeof Pill> = {
+  supplements: Pill,
+  "ergogenic-aids": Zap,
+  sleep: Moon,
+  nutrition: Apple,
+  "race-fuel": Waves,
+};
+
+// The app's function set — the honest "what this app does" summary.
+const FUNCTIONS: { icon: typeof Activity; title: string; text: string }[] = [
+  {
+    icon: Activity,
+    title: "Daily readiness check-in",
+    text: "Five quick questions plus resting heart rate and weight. Two minutes every morning — typed or spoken — scored into one 0–100 readiness number.",
+  },
+  {
+    icon: HeartPulse,
+    title: "Adaptive coach + prescription",
+    text: "Your check-in is scaled into today's exact session: duration, intensity cap and fuel. The AI coach (Gemini) writes the plain-English reasoning behind it.",
+  },
+  {
+    icon: Waves,
+    title: "Periodized race plans",
+    text: "Triathlon, HYROX, cycling, running, swimming or lifting — 6-week blocks that grow ~5–8% as you complete weeks and back off when life gets busy.",
+  },
+  {
+    icon: Moon,
+    title: "Sleep & recovery",
+    text: "Wearable sync (Garmin, Oura, Whoop, COROS, Strava) pulls sleep, HRV and workouts automatically — no watch needed for the core flow.",
+  },
+  {
+    icon: FlaskConical,
+    title: "Blood & DNA panels",
+    text: "Store panels and get flags against athlete-adjusted ranges (endurance ferritin, vitamin D, B12), plus DNA trait highlights that change training.",
+  },
+  {
+    icon: Apple,
+    title: "Nutrition, fuel & ergogenics",
+    text: "Personal protein targets, race-day fueling and evidence-graded ergogenic picks — de-duplicated so you're never told to take caffeine twice.",
+  },
+];
 
 export default function LandingPage() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [birthYear, setBirthYear] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/auth/${mode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mode === "signup" ? { email, password, name, birthYear } : { email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Something went wrong");
-        setBusy(false);
-        return;
-      }
-      window.location.href = "/dashboard";
-    } catch {
-      setError("Network error — please try again.");
-      setBusy(false);
-    }
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-ocean-950 via-ocean-900 to-ocean-800 text-white">
-      <div className="max-w-6xl mx-auto px-6 py-10">
-        {/* Hero */}
-        <div className="text-center py-10 md:py-16">
-          <div className="inline-flex items-center gap-2 bg-ocean-800/60 rounded-full px-4 py-1.5 text-xs font-semibold text-ocean-200 mb-6">
-            <Activity className="w-3.5 h-3.5" /> Post-2000 sports medicine · HRV-driven · Periodized
-          </div>
-          <h1 className="font-display text-4xl md:text-6xl font-extrabold tracking-tight mb-4">
-            JasMiamiMethod
-          </h1>
-          <p className="text-ocean-200 text-lg md:text-xl max-w-2xl mx-auto">
-            The science-backed triathlon method. Daily training, sleep, recovery, HRV, blood panels,
-            DNA, nutrition & hydration — one coach, every ingredient.
-          </p>
-          <div className="flex flex-wrap justify-center gap-3 mt-8 text-sm">
-            {[
-              { icon: Dumbbell, label: "Periodized Plans" },
-              { icon: HeartPulse, label: "HRV Readiness" },
-              { icon: Moon, label: "Sleep Science" },
-              { icon: Apple, label: "Nutrition" },
-              { icon: FlaskConical, label: "Blood Panels" },
-              { icon: Dna, label: "DNA Analysis" },
-            ].map((f) => (
-              <span key={f.label} className="flex items-center gap-1.5 bg-ocean-800/50 rounded-full px-3.5 py-1.5 text-ocean-100">
-                <f.icon className="w-4 h-4 text-ocean-300" /> {f.label}
-              </span>
-            ))}
-          </div>
+    <div className="min-h-screen bg-paper">
+      <SiteHeader />
+
+      {/* ── Hero / summary ─────────────────────────────────────────── */}
+      <section className="pub-container pt-14 sm:pt-20 pb-10">
+        <p className="kicker">Post-2000 sports medicine · HRV-driven · Periodized</p>
+        <h1 className="display-2xl mt-4 max-w-3xl">
+          Training that reads <span className="text-vermillion-500">your body</span>, not your ego.
+        </h1>
+        <p className="deck mt-5 max-w-2xl">
+          JasMiamiMethod is the science-backed endurance coach: a two-minute morning
+          check-in becomes today&apos;s exact session, fuel plan and recovery — grounded in
+          post-2000 human-performance research, not folklore.
+        </p>
+
+        <div className="flex flex-wrap gap-3 mt-8">
+          <Link href="/onboarding#signup" className="btn-editorial-accent">
+            Start free <ArrowRight className="w-4 h-4" />
+          </Link>
+          <Link href="/science" className="btn-editorial-ghost">
+            Read the science
+          </Link>
         </div>
 
-        {/* Free training banner */}
-        <div className="max-w-3xl mx-auto mt-4 mb-10">
-          <div className="bg-ocean-800/40 border border-ocean-700/60 rounded-3xl p-6 md:p-8">
-            <div className="text-center mb-6">
-              <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider mb-3">
-                <CalendarDays className="w-3.5 h-3.5" /> Free with the app
-              </div>
-              <h2 className="font-display text-2xl md:text-3xl font-bold">Free group training, every week</h2>
-              <p className="text-ocean-200 text-sm mt-1">Two coached sessions open to everyone. No catch — just show up and go.</p>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="bg-white/5 border border-ocean-600/40 rounded-2xl p-5">
-                <div className="flex items-center gap-2 text-coral-300 text-xs font-bold uppercase tracking-wide mb-2">
-                  <Zap className="w-4 h-4" /> Wednesday
-                </div>
-                <div className="font-display text-xl font-bold">VO2max · Double Threshold</div>
-                <p className="text-ocean-200 text-sm mt-1.5">
-                  Always double-threshold day — two quality sessions back-to-back, the Norwegian-method way. Free with the app.
-                </p>
-              </div>
-
-              <div className="bg-white/5 border border-ocean-600/40 rounded-2xl p-5">
-                <div className="flex items-center gap-2 text-ocean-300 text-xs font-bold uppercase tracking-wide mb-2">
-                  <Bike className="w-4 h-4" /> Saturday
-                </div>
-                <div className="font-display text-xl font-bold">Bike + Run</div>
-                <p className="text-ocean-200 text-sm mt-1.5">
-                  Long ride, then run off the bike — brick work that makes race day feel easy. Free with the app.
-                </p>
-              </div>
-            </div>
-
-            <div className="text-center mt-6">
-              <button
-                onClick={() => setMode("signup")}
-                className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-semibold rounded-xl px-6 py-2.5 text-sm transition-colors"
-              >
-                Start Training Free <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Science content sections */}
-        <div className="max-w-5xl mx-auto mt-10 space-y-6">
+        {/* Glance band */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-12">
           {[
-            { title: "Pre-Workout — prime the engine", subtitle: "What to take, when, and why", cards: PRE_WORKOUT },
-            { title: "Post-Workout — rebuild faster", subtitle: "The window that actually matters", cards: POST_WORKOUT },
-            { title: "Ergogenic Aids — what's proven", subtitle: "Supplements backed by science, skip the hype", cards: ERGOGENIC_AIDS },
-            { title: "Mind & Recovery", subtitle: "Meditation, visualization, and reading as training tools", cards: MIND_RECOVERY },
-          ].map((sec) => (
-            <SectionBlock key={sec.title} title={sec.title} subtitle={sec.subtitle} cards={sec.cards} />
+            { value: "2", unit: "min", label: "Daily check-in" },
+            { value: "0–100", unit: "score", label: "Readiness verdict" },
+            { value: "4", unit: "modes", label: "Full · Trim · Easy · Rest" },
+            { value: "5", unit: "guides", label: "Evidence field guides" },
+          ].map((m) => (
+            <div key={m.label} className="metric-card">
+              <div className="metric-value">{m.value}</div>
+              <div className="metric-unit mt-0.5">{m.unit}</div>
+              <div className="micro mt-2 !text-ink-500">{m.label}</div>
+            </div>
           ))}
-
-          {/* Onboarding / how it works */}
-          <div className="bg-ocean-800/40 border border-ocean-700/60 rounded-3xl p-6 md:p-8">
-            <h2 className="font-display text-2xl md:text-3xl font-bold text-center">How it works — daily data in</h2>
-            <p className="text-ocean-200 text-sm text-center mt-1 mb-6">With devices or without. Manually or by voice. Two minutes a morning.</p>
-            <div className="grid md:grid-cols-2 gap-4">
-              {ONBOARDING_STEPS.map((s, i) => (
-                <div key={s.title} className="bg-white/5 border border-ocean-600/40 rounded-2xl p-5 flex gap-3">
-                  <div className="text-2xl shrink-0">{s.icon}</div>
-                  <div>
-                    <div className="font-semibold text-sm"><span className="text-ocean-300 mr-1.5">{i + 1}.</span>{s.title}</div>
-                    <p className="text-ocean-200 text-sm mt-1">{s.text}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="text-center mt-6">
-              <button
-                onClick={() => setMode("signup")}
-                className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white font-semibold rounded-xl px-6 py-2.5 text-sm transition-colors"
-              >
-                Start Your First Check-In <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
         </div>
+      </section>
 
-        {/* Auth card */}
-        <div className="max-w-md mx-auto bg-white text-slate-800 rounded-3xl shadow-2xl p-8">
-          <div className="flex rounded-xl bg-sand-100 p-1 mb-6">
-            {(["login", "signup"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  mode === m ? "bg-ocean-600 text-white shadow" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                {m === "login" ? "Log In" : "Create Account"}
-              </button>
+      {/* ── What the app does ───────────────────────────────────────── */}
+      <section className="pub-container py-10">
+        <div className="flex items-center gap-3 mb-6">
+          <span className="kicker">01 — The functions</span>
+          <div className="flex-1 hr-rule" />
+        </div>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {FUNCTIONS.map((f) => (
+            <div key={f.title} className="rounded-2xl border border-ink-200 bg-white p-6">
+              <f.icon className="w-5 h-5 text-vermillion-500" />
+              <h3 className="font-display text-lg font-bold text-ink-900 mt-3">{f.title}</h3>
+              <p className="text-sm text-ink-600 mt-1.5 leading-relaxed">{f.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How it works teaser ─────────────────────────────────────── */}
+      <section className="pub-container py-10">
+        <div className="rounded-3xl border border-ink-200 bg-white p-8 md:p-10">
+          <div className="flex items-center gap-3 mb-5">
+            <span className="kicker">02 — How it works</span>
+            <div className="flex-1 hr-rule" />
+          </div>
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              { n: "1", t: "Check in", d: "Two minutes: sleep, soreness, energy, motivation, stress — plus resting HR and weight when you have them." },
+              { n: "2", t: "Get scored", d: "Your answers combine into a 0–100 readiness score and one of four verdicts that scale today's session." },
+              { n: "3", t: "Execute", d: "The coach returns the exact session, fuel plan and recovery drill. You don't think — you go." },
+            ].map((s) => (
+              <div key={s.n}>
+                <div className="font-mono text-4xl font-semibold text-vermillion-500">{s.n}</div>
+                <h3 className="font-display text-xl font-bold text-ink-900 mt-2">{s.t}</h3>
+                <p className="text-sm text-ink-600 mt-2 leading-relaxed">{s.d}</p>
+              </div>
             ))}
           </div>
-
-          <form onSubmit={submit} className="space-y-4">
-            {mode === "signup" && (
-              <div>
-                <label className="label">Full name</label>
-                <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Jasmel Acosta" required />
-              </div>
-            )}
-            {mode === "signup" && (
-              <div>
-                <label className="label">Birth year (13+ to use the app)</label>
-                <input className="input" type="number" min={1930} max={2012} value={birthYear} onChange={(e) => setBirthYear(e.target.value)} placeholder="1990" />
-              </div>
-            )}
-            <div>
-              <label className="label">Email</label>
-              <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
-            </div>
-            <div>
-              <label className="label">Password</label>
-              <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required minLength={8} />
-            </div>
-            {error && <div className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{error}</div>}
-            <button type="submit" disabled={busy} className="btn-primary w-full justify-center py-2.5">
-              {busy ? "Please wait…" : mode === "login" ? "Log In" : "Start Training Free"}
-            </button>
-          </form>
-
-          <p className="text-[11px] text-slate-400 mt-5 text-center">
-            Free for athletes. Your data stays yours — blood, DNA and training records are private.
-          </p>
+          <Link href="/onboarding" className="btn-editorial mt-8">
+            See the full step-by-step <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
+      </section>
 
-        <footer className="text-center text-ocean-400 text-xs py-10">
-          © 2026 JasMiamiMethod · Built on post-2000 human performance research · Miami, FL
-        </footer>
-      </div>
+      {/* ── Science field guides (trigger buttons) ──────────────────── */}
+      <section className="pub-container py-10" id="science">
+        <div className="flex items-center gap-3 mb-6">
+          <span className="kicker">03 — The field guides</span>
+          <div className="flex-1 hr-rule" />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {TOPIC_LIST.map((topic) => {
+            const Icon = TOPIC_ICONS[topic.slug] ?? Pill;
+            return (
+              <Link
+                key={topic.slug}
+                href={`/science/${topic.slug}`}
+                className="group rounded-2xl border border-ink-200 bg-white p-6 transition-colors hover:border-vermillion-500"
+              >
+                <div className="flex items-center justify-between">
+                  <Icon className="w-6 h-6 text-vermillion-500" />
+                  <span className="font-mono text-xs text-ink-300">{topic.index}</span>
+                </div>
+                <h3 className="font-display text-xl font-bold text-ink-900 mt-4 group-hover:text-vermillion-600">
+                  {topic.title}
+                </h3>
+                <p className="text-sm text-ink-600 mt-1.5 leading-relaxed">{topic.subtitle}</p>
+                <span className="inline-flex items-center gap-1 mt-4 text-sm font-semibold text-ink-800">
+                  Open guide <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </Link>
+            );
+          })}
+          {/* Hub tile fills the 6th cell */}
+          <Link
+            href="/science"
+            className="group flex flex-col justify-between rounded-2xl border border-dashed border-ink-300 bg-paper-50 p-6 transition-colors hover:border-ink-900"
+          >
+            <div>
+              <Dna className="w-6 h-6 text-ink-400" />
+              <h3 className="font-display text-xl font-bold text-ink-900 mt-4">All five guides</h3>
+              <p className="text-sm text-ink-600 mt-1.5 leading-relaxed">
+                Supplements, ergogenic aids, sleep, nutrition and race fuel — one evidence index.
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1 mt-4 text-sm font-semibold text-ink-800">
+              The science index <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Sign in / register ───────────────────────────────────────── */}
+      <section className="pub-container py-10 pb-16" id="signup">
+        <div className="grid md:grid-cols-2 gap-8 items-start">
+          <div>
+            <p className="kicker">04 — Get started</p>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-ink-900 mt-3 leading-tight">
+              Free for athletes. Your data stays yours.
+            </h2>
+            <p className="deck mt-4">
+              Sign in or register in under a minute. Blood, DNA and training records are
+              private — you can delete them at any time.
+            </p>
+            <ul className="mt-6 space-y-3 text-sm text-ink-600">
+              {[
+                "No credit card, no device required to start.",
+                "Connect Garmin, Strava, Oura, Whoop or COROS later.",
+                "Backed by cited post-2000 research on every recommendation.",
+              ].map((li) => (
+                <li key={li} className="flex items-start gap-2">
+                  <span className="text-vermillion-500 mt-0.5">✓</span> {li}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <AuthCard initialMode="login" />
+        </div>
+      </section>
+
+      <SiteFooter />
     </div>
   );
 }
