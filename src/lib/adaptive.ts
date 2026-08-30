@@ -205,9 +205,9 @@ export function scheduleTests(startDate: Date, weeks: number, races: { date: Dat
   const out: ScheduledTest[] = [];
   const RACE_GUARD_DAYS = 14; // skip any test within 2 weeks of a race
   const raceDates = races.map((r) => new Date(r.date).getTime());
-  // stagger test types across the block so no single week is overloaded
-  const stagger = [0, 14, 28, 42, 7];
-  for (let i = 0; i < weeks * 7; i += 56) {
+  // stagger test types across the 6-week block so no single week is overloaded
+  const stagger = [0, 14, 28, 35, 7];
+  for (let i = 0; i < weeks * 7; i += 42) { // every 6 weeks — matches the mesocycle taper week
     testTypes.forEach((tt, j) => {
       const d = new Date(startDate.getTime() + (i + stagger[j % stagger.length]) * 86400000);
       const end = new Date(startDate.getTime() + weeks * 7 * 86400000);

@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       ? generateBoxingCamp({ level, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined })
       : isHyrox
       ? generateHyroxPlan({ level, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined })
-      : generatePlan({ level, distance: dist, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined, easyPct: splitTarget });
+      : generatePlan({ level, distance: dist, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined, easyPct: splitTarget, raceDate: raceDate ? race : undefined });
 
     // Persist plan + plan days + planned workouts
     const plan = await prisma.trainingPlan.create({

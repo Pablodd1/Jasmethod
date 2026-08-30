@@ -11,9 +11,10 @@ function assert(cond: boolean, msg: string) {
 
 // 1. Default 70/30: base+build weeks (peak/taper intentionally untouched) ~70% easy
 const plan = generatePlan({ level: "amateur", distance: "olympic", weeks: 12, startDate: new Date() });
-const baseBuild = plan.filter((w) => w.week <= Math.floor(12 * 0.8));
+// meso: split is enforced on build weeks only (week 6 of each 6-week block = taper/test)
+const baseBuild = plan.filter((w) => w.week % 6 !== 0);
 const avgEasy = Math.round(baseBuild.reduce((a, w) => a + easyShareOf(w.sessions), 0) / baseBuild.length);
-assert(avgEasy >= 67 && avgEasy <= 73, `default split lands near 70% easy (avg ${avgEasy}% over base+build)`);
+assert(avgEasy >= 67 && avgEasy <= 73, `default split lands near 70% easy (avg ${avgEasy}% over build weeks)`);
 
 // 2. Manual override 50/50 pulls the same plan toward 50
 const hardPlan = generatePlan({ level: "amateur", distance: "olympic", weeks: 12, startDate: new Date(), easyPct: 50 });

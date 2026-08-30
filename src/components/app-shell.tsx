@@ -4,29 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, CalendarDays, Dumbbell, HeartPulse, Moon, Droplets, Apple,
-  FlaskConical, Dna, Plug, Settings, Waves, LogOut, Activity, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield, Trophy, Brain,
+  FlaskConical, Settings, Waves, LogOut, Activity, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield, Trophy,
 } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
 
 const NAV = [
   { href: "/dashboard", key: "nav.dashboard", icon: Home },
-  { href: "/fitness", key: "nav.fitness", icon: Activity },
+  { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
   { href: "/calendar", key: "nav.calendar", icon: CalendarDays },
   { href: "/training", key: "nav.training", icon: Dumbbell },
+  { href: "/fitness", key: "nav.fitness", icon: Activity },
   { href: "/races", key: "nav.races", icon: Flag },
   { href: "/races/forecast", key: "nav.forecast", icon: Gauge },
   { href: "/prs", key: "nav.prs", icon: Trophy },
-  { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
-  { href: "/labs", key: "nav.labs", icon: FlaskConical },
   { href: "/metrics", key: "nav.metrics", icon: HeartPulse },
   { href: "/sleep", key: "nav.sleep", icon: Moon },
   { href: "/nutrition", key: "nav.nutrition", icon: Apple },
   { href: "/blood", key: "nav.blood", icon: FlaskConical },
-  { href: "/dna", key: "nav.dna", icon: Dna },
-  { href: "/gear", key: "nav.gear", icon: Gauge },
-  { href: "/brain", key: "nav.brain", icon: Brain },
-  { href: "/connectors", key: "nav.connectors", icon: Plug },
   { href: "/reminders", key: "nav.reminders", icon: Bell },
   { href: "/settings", key: "nav.settings", icon: Settings },
   { href: "/admin", key: "nav.admin", icon: Shield, adminOnly: true },

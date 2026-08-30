@@ -192,6 +192,36 @@ export async function POST(req: Request) {
       });
     }
 
+    // ---- Tomorrow's session rides today's readiness too ----
+    // Recovery lags one day: a red today softens tomorrow so the calendar
+    // reflects the biometrics immediately (user product rule).
+    const tomorrowStart = new Date(start); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const tomorrowSession = await prisma.workout.findFirst({
+      where: { userId: user.id, date: { gte: tomorrowStart, lt: new Date(tomorrowStart.getTime() + 86400000) }, planned: true },
+      orderBy: { date: "asc" },
+      select: { id: true, sport: true, title: true, type: true, intensity: true, durationMin: true, notes: true, planDay: { select: { notes: true } } },
+    });
+    let tomorrowAdjustment: { title: string; durationMin: number; note: string } | null = null;
+    if (tomorrowSession) {
+      // carry-over: today's verdict applies at half weight to tomorrow
+      const tomorrowFactor = adaptation.verdict === "rest" ? 0.6 : adaptation.verdict === "easy" ? 0.75 : adaptation.verdict === "trim" ? 0.9 : 1;
+      if (tomorrowFactor < 1) {
+        const newDur = Math.max(20, Math.round(tomorrowSession.durationMin * tomorrowFactor));
+        await prisma.workout.update({
+          where: { id: tomorrowSession.id },
+          data: {
+            durationMin: newDur,
+            notes: `[Adapted from yesterday's check-in — ${adaptation.verdict} day, duration ×${tomorrowFactor}] ${tomorrowSession.planDay?.notes || tomorrowSession.title}`,
+          },
+        });
+        tomorrowAdjustment = {
+          title: tomorrowSession.title,
+          durationMin: newDur,
+          note: `Tomorrow adjusted: ${adaptation.verdict} today → duration ×${tomorrowFactor} (${tomorrowSession.durationMin}→${newDur} min). It will re-scale after tomorrow's own check-in.`,
+        };
+      }
+    }
+
     const saved = await prisma.dailyCheckin.upsert({
       where: { userId_date: { userId: user.id, date: start } },
       create: {
@@ -248,6 +278,7 @@ export async function POST(req: Request) {
       sources: sourcesFor(CORE_SOURCE_IDS),
       hydration: { weightTrend, rhrNote, rhrBaseline: checkin.rhrBaseline ?? null },
       calendar: { busyCount, busyNote },
+      tomorrowAdjustment,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });

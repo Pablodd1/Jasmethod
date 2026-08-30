@@ -8,11 +8,24 @@ import { t, type Lang } from "@/lib/i18n";
 import { parseCheckinTranscript, type VoiceCheckinAnswers } from "@/lib/voice-parse";
 
 const QUESTIONS = [
-  { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great" },
-  { key: "soreness", label: "Muscle soreness", hint: "1 = fresh, 5 = wrecked" },
-  { key: "motivation", label: "Motivation", hint: "1 = none, 5 = fired up" },
-  { key: "energy", label: "Energy", hint: "1 = drained, 5 = buzzing" },
-  { key: "stress", label: "Life stress", hint: "1 = calm, 5 = overwhelmed" },
+  { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great — hours matter but how you FEEL matters more" },
+  { key: "soreness", label: "Muscle soreness", hint: "1 = fresh legs, 5 = wrecked — legs, back, shoulders combined" },
+  { key: "motivation", label: "Motivation", hint: "1 = none, 5 = fired up — want to train, not just should" },
+  { key: "energy", label: "Energy", hint: "1 = drained, 5 = buzzing — overall, since waking" },
+  { key: "stress", label: "Life stress", hint: "1 = calm, 5 = overwhelmed — work, family, money combined" },
+];
+
+// The voice script — read these aloud or tap Start Voice and answer in one go.
+// Wording matches what the parser understands (voice-parse.ts).
+const VOICE_SCRIPT = [
+  "Sleep quality, one to five?",
+  "Muscle soreness, one to five?",
+  "Energy, one to five?",
+  "Motivation, one to five?",
+  "Life stress, one to five?",
+  "Morning weight in kilograms? (e.g. \"seventy four point two\")",
+  "Resting heart rate? (e.g. \"48\")",
+  "Any sickness, injury, or menstrual phase today? (yes/no)",
 ];
 
 const VERDICT_COLOR: Record<string, string> = { full: "text-emerald-600", trim: "text-amber-600", easy: "text-orange-600", rest: "text-coral-600" };
@@ -123,6 +136,13 @@ export default function CheckinPage() {
               <Mic className="w-4 h-4" /> {listening ? "Listening… speak now" : "Start Voice"}
             </button>
           </div>
+          <details className="mt-2">
+            <summary className="text-xs font-semibold text-ocean-700 cursor-pointer select-none">📋 Question script — read these in order (tap to expand)</summary>
+            <ol className="text-xs text-slate-600 mt-2 space-y-1 list-decimal list-inside">
+              {VOICE_SCRIPT.map((q) => <li key={q}>{q}</li>)}
+            </ol>
+            <p className="text-[11px] text-slate-400 mt-1.5">One breath, one number. The full transcript gets parsed automatically — you&apos;ll confirm before it applies.</p>
+          </details>
           {listening && <div className="text-xs text-ocean-700 mt-2 animate-pulse">● Recording — say your answers, then pause.</div>}
           {transcript && <p className="text-sm text-slate-600 mt-2 italic border-l-2 border-ocean-300 pl-2">“{transcript}”</p>}
           {speechError && <p className="text-xs text-amber-700 mt-2">{speechError}</p>}
@@ -198,6 +218,13 @@ export default function CheckinPage() {
               </div>
             )}
 
+            {result?.tomorrowAdjustment && (
+              <div className="card border-amber-200 bg-amber-50">
+                <h3 className="font-display font-bold mb-1 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-amber-600" /> Tomorrow already adapted</h3>
+                <div className="text-sm font-semibold text-amber-900">{result.tomorrowAdjustment.title} → {result.tomorrowAdjustment.durationMin} min</div>
+                <p className="text-xs text-amber-800 mt-1">{result.tomorrowAdjustment.note}</p>
+              </div>
+            )}
             {result?.prescription && (
               <div className="card border-ocean-300 bg-ocean-50">
                 <h3 className="font-display font-bold mb-1 flex items-center gap-2"><ClipboardCheck className="w-4 h-4 text-ocean-600" /> Today&apos;s prescription — just execute</h3>

@@ -292,6 +292,33 @@ export interface GeneratedWeek {
 // Structure: Base (50%) → Build (30%) → Peak (15%) → Taper (5%) for a full race block.
 // Progressive overload: +5-10% volume/week in base, intensity rises in build,
 // volume drops in peak with quality preserved, taper = -40% volume wk-1.
+// ---- 6-week mesocycle engine (user product rule) ----
+// Everything cycles in 6-week blocks: 5 build weeks stepping up + week 6 = taper
+// + baseline test. Each block is 5-10% higher than the last, scaled by level.
+// After a race: volume dips (race = block end), next block rebuilds from lower.
+export function mesoBlock(level: string): number {
+  // per-block volume increase: fitter athletes progress slower (less headroom)
+  return level === "beginner" ? 1.10 : level === "amateur" ? 1.07 : level === "advanced" ? 1.06 : 1.05;
+}
+
+export function mesoVolume(weekIndex: number, level: string, raceDates: Date[] = [], startDate: Date = new Date(0)): { vol: number; phase: "build" | "taper"; block: number } {
+  // weekIndex 0-based
+  const block = Math.floor(weekIndex / 6);
+  const inBlock = weekIndex % 6;
+  // within-block wave: 0.85 → 1.0 across 5 build weeks
+  const within = 0.85 + (inBlock / 4) * 0.15;
+  // block-to-block: each cycle 5-10% higher
+  const step = Math.pow(mesoBlock(level), block);
+  // post-race dip: the week right after a race drops to rebuild
+  const wkStart = startDate.getTime() + weekIndex * 7 * 86400000;
+  const prevWeekStart = wkStart - 7 * 86400000;
+  const afterRace = raceDates.some((r) => { const rt = new Date(r).getTime(); return rt >= prevWeekStart && rt < wkStart; });
+  const isTaper = inBlock === 5;
+  if (afterRace) return { vol: 0.6 * step, phase: "build", block }; // post-race regeneration week
+  if (isTaper) return { vol: 0.55 * step, phase: "taper", block };
+  return { vol: within * step, phase: "build", block };
+}
+
 export function generatePlan(opts: {
   level: string; // beginner | amateur | advanced | pro
   distance: string; // sprint | olympic | half | full
@@ -303,36 +330,28 @@ export function generatePlan(opts: {
   strengthBase?: number;
   weeklyHours?: number;
   easyPct?: number; // target % of weekly minutes in Z1-Z2; rest = quality. Default 70 (70/30).
+  raceDate?: Date; // race day — volume dips after it, then rebuilds
 }): GeneratedWeek[] {
-  const { level, distance, weeks, startDate, weeklyHours, easyPct } = opts;
+  const { level, distance, weeks, startDate, weeklyHours, easyPct, raceDate } = opts;
   const splitTarget = easyPct ?? 70; // 70/30 default, manual-adjustable
   const baseWeekly = weeklyHours ?? (level === "pro" ? 20 : level === "advanced" ? 14 : level === "amateur" ? 10 : 6);
   // Distance multipliers for weekly hours
   const distFactor: Record<string, number> = { sprint: 0.6, olympic: 0.8, half: 1.0, full: 1.3 };
   const targetHours = baseWeekly * (distFactor[distance] ?? 1);
-  const phase = (w: number): "base" | "build" | "peak" | "taper" => {
-    const pct = w / weeks;
-    if (pct <= 0.5) return "base";
-    if (pct <= 0.8) return "build";
-    if (pct <= 0.92) return "peak";
-    return "taper";
-  };
-  const phaseTheme: Record<string, string> = {
-    base: "Aerobic Foundation",
-    build: "Threshold & Speed",
-    peak: "Race Simulation",
-    taper: "Freshness & Taper",
-  };
+  // 6-week mesocycles: week 6 = taper + baseline test, each block +5-10%
+  const races = raceDate ? [raceDate] : [];
 
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
-    const ph = phase(w);
-    // Volume curve: build up through base, level in build, drop in peak, sharp taper
-    let volumeFactor = 1;
-    if (ph === "base") volumeFactor = 0.8 + 0.4 * (w / (weeks * 0.5)); // 0.8 → 1.2
-    else if (ph === "build") volumeFactor = 1.2 + 0.1 * ((w - weeks * 0.5) / (weeks * 0.3)); // 1.2 → 1.3
-    else if (ph === "peak") volumeFactor = 0.9;
-    else volumeFactor = 0.55; // taper week ~45% volume drop
+    const { vol: volumeFactor, phase: ph, block } = mesoVolume(w - 1, level, races, startDate);
+    // legacy 4-phase mapping for session content variety: early block = base,
+    // mid = build, late = peak-style race work, week 6 = taper
+    const inBlock = (w - 1) % 6;
+    const legacy: "base" | "build" | "peak" | "taper" = ph === "taper" ? "taper" : inBlock <= 1 ? "base" : inBlock <= 3 ? "build" : "peak";
+    const phaseTheme: Record<string, string> = {
+      build: `Block ${block + 1} · Threshold & Speed`,
+      taper: "Baseline Test Week · Freshness & Taper",
+    };
 
     const totalMin = Math.round(targetHours * 60 * volumeFactor);
     // Session split by sport (triathlon norms)
@@ -350,11 +369,11 @@ export function generatePlan(opts: {
     const hardSessions = level === "pro" ? 4 : level === "advanced" ? 3 : level === "amateur" ? 2 : 2;
 
     // ---- SWIM ----
-    if (ph === "base") {
+    if (legacy === "base") {
       sessions.push({ sport: "swim", title: "Swim: Endurance & Technique", minutes: swimMin, zone: "z2", type: "endurance", description: "Continuous swim with 4×50m technique drills. Focus on body position and breathing. Swim as one of the most technical sports — drill quality over speed." });
-    } else if (ph === "build") {
+    } else if (legacy === "build") {
       sessions.push({ sport: "swim", title: "Swim: Threshold Set", minutes: swimMin, zone: "z4", type: "threshold", description: "Warm-up 400m, then 8×100m at T-pace with 20s rest, cool-down 200m. Or 4×200m at threshold (Friel swim zone 4)." });
-    } else if (ph === "peak") {
+    } else if (legacy === "peak") {
       sessions.push({ sport: "swim", title: "Swim: Race Pace + Open Water", minutes: swimMin, zone: "z4", type: "interval", description: "Simulate race start: 200m hard, 6×100m at race pace, sighting drills every 4th stroke. Open-water practice if possible — sighting and drafting are race-specific skills." });
     } else {
       sessions.push({ sport: "swim", title: "Swim: Sharpening", minutes: Math.round(swimMin * 0.6), zone: "z4", type: "interval", description: "Short and sharp: 200m w/u, 6×50m fast with 30s rest, 200m c/d. Keep the nervous system primed without fatigue." });
@@ -364,9 +383,9 @@ export function generatePlan(opts: {
     const bikeSessions = level === "pro" ? 4 : level === "advanced" ? 3 : level === "amateur" ? 3 : 2;
     for (let i = 0; i < bikeSessions; i++) {
       const part = Math.round(bikeMin / bikeSessions);
-      if (ph === "base") {
+      if (legacy === "base") {
         sessions.push({ sport: "bike", title: i === 0 ? "Bike: Long Endurance" : "Bike: Aerobic Spin", minutes: i === 0 ? part + 15 : part, zone: "z2", type: "endurance", description: i === 0 ? `Long ride in Z2 (81-89% LTHR). Nutrition practice: 60-90g carbs/hour. This is the session that builds the aerobic engine (Seiler 2009).` : `Steady Z2 spin. Keep cadence 85-95 rpm. Optional: 3×10 min at Z3 at the end if feeling fresh.` });
-      } else if (ph === "build") {
+      } else if (legacy === "build") {
         sessions.push({
           sport: "bike",
           title: i === 0 ? "Bike: Threshold Intervals" : i === 1 ? "Bike: Tempo" : "Bike: VO2max Intervals",
@@ -379,7 +398,7 @@ export function generatePlan(opts: {
               ? `20 min W/U, 2×20 min tempo (90-93% LTHR) with 8 min easy, 15 min C/D.`
               : `20 min W/U, 6×3 min at 106-120% FTP / 103-106% LTHR with 3 min easy between. Push hard but controlled.`,
         });
-      } else if (ph === "peak") {
+      } else if (legacy === "peak") {
         sessions.push({ sport: "bike", title: i === 0 ? "Bike: Race Simulation" : "Bike: Race Pace Intervals", minutes: part, zone: i === 0 ? "z4" : "z3", type: "interval", description: i === 0 ? `Simulate race day: long ride with race-pace blocks, including climbs at Z4 and flats at Z3. Practice aero position and nutrition.` : `Race pace work: 4×8 min at Z4 with 4 min Z1 between.` });
       } else {
         sessions.push({ sport: "bike", title: "Bike: Taper Spin", minutes: Math.round(part * 0.5), zone: "z2", type: "recovery", description: "Short, easy spins. 3-4 accelerations of 1 min at Z4 to keep legs fresh, then easy. Less is more." });
@@ -390,9 +409,9 @@ export function generatePlan(opts: {
     const runSessions = level === "pro" ? 4 : level === "advanced" ? 3 : level === "amateur" ? 2 : 2;
     for (let i = 0; i < runSessions; i++) {
       const part = Math.round(runMin / runSessions);
-      if (ph === "base") {
+      if (legacy === "base") {
         sessions.push({ sport: "run", title: i === 0 ? "Run: Long Aerobic" : "Run: Easy + Strides", minutes: i === 0 ? part + 10 : part, zone: "z2", type: "endurance", description: i === 0 ? `Long run in Z2. Heart rate capped at 89% LTHR. Run slow to run fast — 80% of weekly volume should be easy (Stöggl 2016).` : `Easy Z2 run finishing with 6×20s strides at Z5 to maintain leg speed without fatigue.` });
-      } else if (ph === "build") {
+      } else if (legacy === "build") {
         sessions.push({
           sport: "run",
           title: i === 0 ? "Run: Track Intervals" : i === 1 ? "Run: Tempo" : "Run: Hill Repeats",
@@ -405,7 +424,7 @@ export function generatePlan(opts: {
               ? `15 min W/U, 3×10 min at T-pace (Z4) with 3 min easy jog, 10 min C/D.`
               : `Hills: 8×60s hard uphill (Z6) with jog-down recovery. Powerful, controlled, arms pumping.`),
         });
-      } else if (ph === "peak") {
+      } else if (legacy === "peak") {
         sessions.push({ sport: "run", title: i === 0 ? "Run: Race Pace" : "Run: Cruise Intervals", minutes: part, zone: i === 0 ? "z4" : "z3", type: "interval", description: i === 0 ? `Race pace simulation: 4×10 min at target race pace with 3 min easy. Practice fueling — gels at race intervals.` : `Comfortably hard cruise intervals at 90-93% LTHR.` });
       } else {
         sessions.push({ sport: "run", title: "Run: Taper Jog", minutes: Math.round(part * 0.5), zone: "z2", type: "recovery", description: "Easy 20-30 min jog with 4×20s strides. Legs stay sharp, fatigue stays low." });
@@ -414,25 +433,25 @@ export function generatePlan(opts: {
 
     // ---- STRENGTH ----
     if (strengthMin >= 30) {
-      const phaseFocus = ph === "base"
+      const phaseFocus = legacy === "base"
         ? "Strength: Foundation — heavy compound lifts (squat, deadlift, bench, row) 3×5-8. Post-2000 evidence: strength training improves running economy and time-trial performance (Rønnestad & Mujika 2014, Scand J Med Sci Sports)."
-        : ph === "build"
+        : legacy === "build"
           ? "Strength: Power — add Olympic lifts / plyometrics (jumps, throws) 3×5. Converts strength into speed (Rønnestad 2014)."
           : "Strength: Maintenance — light, explosive. 2×8 with moderate load. Stop heavy lifting 7-10 days pre-race.";
-      sessions.push({ sport: "strength", title: ph === "taper" ? "Strength: Maintenance" : `Strength: ${ph === "base" ? "Foundation" : ph === "build" ? "Power" : "Maintenance"}`, minutes: strengthMin, zone: "z1", type: "strength", description: phaseFocus });
+      sessions.push({ sport: "strength", title: legacy === "taper" ? "Strength: Maintenance" : `Strength: ${legacy === "base" ? "Foundation" : legacy === "build" ? "Power" : "Maintenance"}`, minutes: strengthMin, zone: "z1", type: "strength", description: phaseFocus });
     }
 
     // ---- BRICK (bike→run) ----
-    if (ph === "build" || ph === "peak") {
+    if (legacy === "build" || legacy === "peak") {
       sessions.push({ sport: "brick", title: "Brick: Bike → Run", minutes: 75, zone: "z3", type: "brick", description: "60 min ride (last 20 at race effort) + 15 min run off the bike at race pace. The legs learn to run tired — this is where triathlon is won. Do this weekly in build, twice in peak." });
     }
 
     // ---- RECOVERY ----
     sessions.push({ sport: "recovery", title: "Recovery: Active Recovery + Mobility", minutes: 30, zone: "z1", type: "recovery", description: "Easy Z1 spin/walk/row. 15 min mobility work (hips, ankles, T-spine). Sleep is the #1 recovery tool — target 8h, prioritize early bedtime." });
 
-    // Enforce the user's easy/quality split in base + build (peak/taper keep
-    // race-specific + fresh work as designed — converting those would be wrong).
-    const finalSessions = ph === "base" || ph === "build" ? enforceSplit(sessions, splitTarget) : sessions;
+    // Enforce the user's easy/quality split on every non-taper week (meso rule:
+    // taper/test week keeps race-specific + fresh work as designed).
+    const finalSessions = legacy !== "taper" ? enforceSplit(sessions, splitTarget) : sessions;
 
     weeksOut.push({
       week: w,
@@ -772,12 +791,9 @@ export function generateHyroxPlan(opts: {
 }): GeneratedWeek[] {
   const { level, weeks, startDate, weeklyHours } = opts;
   const baseWeekly = weeklyHours ?? (level === "pro" ? 14 : level === "advanced" ? 10 : level === "amateur" ? 7 : 5);
-  const phase = (w: number): "base" | "build" | "peak" | "taper" => {
-    const pct = w / weeks;
-    if (pct <= 0.5) return "base";
-    if (pct <= 0.8) return "build";
-    if (pct <= 0.92) return "peak";
-    return "taper";
+  const legacy = (w: number): "base" | "build" | "peak" | "taper" => {
+    const inBlock = (w - 1) % 6;
+    return inBlock === 5 ? "taper" : inBlock <= 1 ? "base" : inBlock <= 3 ? "build" : "peak";
   };
   const theme: Record<string, string> = {
     base: "Aerobic Base + Strength Foundation",
@@ -788,12 +804,8 @@ export function generateHyroxPlan(opts: {
 
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
-    const ph = phase(w);
-    let vol = 1;
-    if (ph === "base") vol = 0.8 + 0.4 * (w / (weeks * 0.5));
-    else if (ph === "build") vol = 1.2 + 0.1 * ((w - weeks * 0.5) / (weeks * 0.3));
-    else if (ph === "peak") vol = 0.9;
-    else vol = 0.55;
+    const ph = legacy(w);
+    const vol = mesoVolume(w - 1, level).vol;
 
     const totalMin = Math.round(baseWeekly * 60 * vol);
     const sessions: PlanSession[] = [];
@@ -882,11 +894,7 @@ export function generateBoxingCamp(opts: {
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
     const ph = phase(w);
-    let vol = 1;
-    if (ph === "base") vol = 0.8 + 0.4 * (w / (weeks * 0.45));
-    else if (ph === "build") vol = 1.15 + 0.15 * ((w - weeks * 0.45) / (weeks * 0.33));
-    else if (ph === "peak") vol = 0.95;
-    else vol = 0.5;
+    const vol = mesoVolume(w - 1, level).vol;
 
     const totalMin = Math.round(baseWeekly * 60 * vol);
     const sessions: PlanSession[] = [];
@@ -957,21 +965,14 @@ export function generateSingleSport(opts: {
   const { sport, level, weeks, startDate, weeklyHours, hasRace } = opts;
   const baseWeekly = weeklyHours ?? (level === "advanced" ? 10 : level === "amateur" ? 7 : level === "beginner" ? 4 : 12);
   const phase = (w: number): "base" | "build" | "peak" | "taper" => {
-    const pct = w / weeks;
-    if (pct <= 0.45) return "base";
-    if (pct <= 0.78) return "build";
-    if (pct <= 0.9) return "peak";
-    return hasRace ? "taper" : "peak"; // non-racers: no taper, repeat wave
+    const inBlock = (w - 1) % 6;
+    return inBlock === 5 ? "taper" : inBlock <= 1 ? "base" : inBlock <= 3 ? "build" : "peak"; // week 6 = baseline test taper even without a race
   };
 
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
     const ph = phase(w);
-    let vol = 1;
-    if (ph === "base") vol = 0.8 + 0.4 * (w / (weeks * 0.45));
-    else if (ph === "build") vol = 1.15 + 0.15 * ((w - weeks * 0.45) / (weeks * 0.33));
-    else if (ph === "peak") vol = 0.95;
-    else vol = 0.5;
+    const vol = mesoVolume(w - 1, level).vol;
 
     const totalMin = Math.round(baseWeekly * 60 * vol);
     const sessions: PlanSession[] = [];
