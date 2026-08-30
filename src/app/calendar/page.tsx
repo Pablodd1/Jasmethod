@@ -73,16 +73,17 @@ export default function CalendarPage() {
 
   async function saveMove() {
     if (!moveFor || !moveForm.date) return;
-    const [y, m, d] = moveForm.date.split("-").map(Number);
-    const [hh, mm] = (moveForm.time || "00:00").split(":").map(Number);
-    const dt = new Date(y, m - 1, d, hh || 0, mm || 0);
-    const ok = await api({ sessionId: moveFor.id, date: dt.toISOString(), indoor: moveForm.indoor });
+    const ok = await api({ sessionId: moveFor.id, date: moveForm.date, startTime: moveForm.time || null, indoor: moveForm.indoor });
     if (ok) { setMoveFor(null); load(month); }
   }
 
   function openMove(session: any) {
-    const d = new Date(session.date);
-    setMoveForm({ date: format(d, "yyyy-MM-dd"), time: "", indoor: Boolean(session.indoor), temp: "" });
+    setMoveForm({
+      date: format(new Date(session.date), "yyyy-MM-dd"),
+      time: session.startTime || "",
+      indoor: Boolean(session.indoor),
+      temp: "",
+    });
     setMoveFor(session);
   }
 
@@ -242,8 +243,7 @@ export default function CalendarPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-slate-400">
-                            {s.date && new Date(s.date).getHours() + new Date(s.date).getMinutes() > 0
-                              ? `${format(new Date(s.date), "HH:mm")} · ` : ""}
+                            {s.startTime ? `${s.startTime} · ` : ""}
                             {fmtMin(s.durationMin)} · {s.intensity?.toUpperCase() || "Z2"}
                           </span>
                           <button onClick={() => openMove(s)} className="btn-secondary text-xs px-2.5 py-1.5"><Clock className="w-3 h-3 inline mr-1" />Move</button>
@@ -278,7 +278,7 @@ export default function CalendarPage() {
         {moveFor && (
           <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setMoveFor(null)}>
             <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-display font-bold text-lg mb-1 flex items-center gap-2"><Clock className="w-5 h-5 text-ocean-600" /> Move workout</h3>
+              <h3 className="font-display font-bold text-lg mb-1 flex items-center gap-2"><Clock className="w-5 h-5 text-ocean-600" /> Move & schedule workout</h3>
               <p className="text-xs text-slate-400 mb-4">{moveFor.title}</p>
               <div className="space-y-3">
                 <div>
@@ -286,8 +286,9 @@ export default function CalendarPage() {
                   <input type="date" className="input" value={moveForm.date} onChange={(e) => setMoveForm({ ...moveForm, date: e.target.value })} />
                 </div>
                 <div>
-                  <label className="label">Time (optional)</label>
+                  <label className="label">Start time {moveForm.time ? "" : <span className="text-slate-400">(optional)</span>}</label>
                   <input type="time" className="input" value={moveForm.time} onChange={(e) => setMoveForm({ ...moveForm, time: e.target.value })} />
+                  <p className="text-[11px] text-slate-400 mt-1">Leave empty for a flexible day — the coach slots it around your calendar.</p>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={moveForm.indoor} onChange={(e) => setMoveForm({ ...moveForm, indoor: e.target.checked })} />

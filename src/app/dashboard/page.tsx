@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   HeartPulse, Moon, Dumbbell, Droplets, Apple, FlaskConical, Dna, Plug,
   ArrowRight, CheckCircle2, Waves, Sparkles, CalendarDays, CalendarClock,
+  Flag, ClipboardCheck, Target, Timer,
 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -18,9 +19,28 @@ function fmtMin(min: number) {
   return `${min}m`;
 }
 
+function daysUntil(dateStr: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+function countdownLabel(lang: Lang, days: number): string {
+  if (days <= 0) return t(lang, "dash.countdown.today");
+  if (days === 1) return t(lang, "dash.countdown.oneDay");
+  return t(lang, "dash.countdown.days").replace("{n}", String(days));
+}
+
+function dateLabel(lang: Lang, dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString(lang === "es" ? "es-VE" : lang === "ru" ? "ru-RU" : lang === "ht" ? "fr-FR" : "en-US", { day: "numeric", month: "short" });
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
-  const lang = (user?.language || "en") as Lang;
+  const lang = (user?.language || "es") as Lang;
   const [plan, setPlan] = useState<any>(null);
   const [progression, setProgression] = useState<any>(null);
   const [workouts, setWorkouts] = useState<any[]>([]);
@@ -29,6 +49,8 @@ export default function DashboardPage() {
   const [todaySessions, setTodaySessions] = useState<any[]>([]);
   const [coach, setCoach] = useState<any>(null);
   const [calendar, setCalendar] = useState<any>({ busyCount: 0, appointments: [] });
+  const [races, setRaces] = useState<any[]>([]);
+  const [benchmarks, setBenchmarks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const mot = dailyMotivation(Math.floor(Date.now() / 86400000), user?.motivation?.style || "coach");
@@ -42,7 +64,9 @@ export default function DashboardPage() {
       fetch("/api/nutrition?days=2").then((r) => r.json()),
       fetch("/api/checkin").then((r) => r.json()).catch(() => ({ calendar: null })),
       fetch("/api/coach").then((r) => r.json()).catch(() => ({ briefing: null })),
-    ]).then(([planData, workData, metricData, nutrData, checkinData, coachData]) => {
+      fetch("/api/races").then((r) => r.json()).catch(() => ({ races: [] })),
+      fetch("/api/benchmarks").then((r) => r.json()).catch(() => ({ tests: [] })),
+    ]).then(([planData, workData, metricData, nutrData, checkinData, coachData, raceData, benchData]) => {
       setPlan(planData.plans?.[0] || null);
       setProgression(planData.progression || null);
       setWorkouts(workData.workouts || []);
@@ -50,6 +74,8 @@ export default function DashboardPage() {
       setHydration(nutrData.daily || []);
       setCalendar(checkinData?.calendar || { busyCount: 0, appointments: [] });
       setCoach(coachData.briefing || null);
+      setRaces(raceData.races || []);
+      setBenchmarks(benchData.tests || []);
       const today = new Date().toISOString().slice(0, 10);
       setTodaySessions((workData.workouts || []).filter((w: any) => w.date.slice(0, 10) === today));
       setLoading(false);
@@ -81,6 +107,15 @@ export default function DashboardPage() {
 
   const needsProfile = user && !user.profile?.birthYear;
   const needsPlan = !plan;
+  // Countdown to the next events that matter (goal / race / baseline test).
+  const todayMs = new Date(); todayMs.setHours(0, 0, 0, 0);
+  const nextRace = (races || [])
+    .filter((r: any) => new Date(r.date) >= todayMs)
+    .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+  const nextBenchmark = (benchmarks || [])
+    .filter((b: any) => !b.completed && !b.skipped && new Date(b.date) >= todayMs)
+    .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+  const goalDate = nextRace?.date || plan?.raceDate || null;
 
   return (
     <ProtectedPage>
@@ -98,6 +133,51 @@ export default function DashboardPage() {
             &ldquo;{mot.quote}&rdquo;
           </blockquote>
           <p className="mt-2 text-ocean-200 text-sm">{mot.message}</p>
+        </div>
+
+        {/* Countdown to next goal / race / baseline test */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-display font-bold text-lg flex items-center gap-2"><Timer className="w-5 h-5 text-ocean-500" /> {t(lang, "dash.countdown.title")}</h2>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {/* Next goal */}
+            <div className="rounded-xl border border-sand-200 bg-sand-100/60 p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><Target className="w-4 h-4" /> {t(lang, "dash.countdown.goal")}</div>
+              {goalDate ? (
+                <>
+                  <div className="font-display text-2xl font-bold mt-2">{countdownLabel(lang, daysUntil(String(goalDate).slice(0, 10)))}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{dateLabel(lang, String(goalDate).slice(0, 10))}{nextRace?.name ? ` · ${nextRace.name}` : ""}</div>
+                </>
+              ) : (
+                <Link href="/races" className="font-display text-lg font-bold text-slate-400 mt-2 inline-block hover:text-ocean-600">{t(lang, "dash.countdown.noGoal")} →</Link>
+              )}
+            </div>
+            {/* Next race */}
+            <div className="rounded-xl border border-sand-200 bg-sand-100/60 p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><Flag className="w-4 h-4" /> {t(lang, "dash.countdown.race")}</div>
+              {nextRace ? (
+                <>
+                  <div className="font-display text-2xl font-bold mt-2">{countdownLabel(lang, daysUntil(String(nextRace.date).slice(0, 10)))}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{dateLabel(lang, String(nextRace.date).slice(0, 10))} · {nextRace.name}</div>
+                </>
+              ) : (
+                <Link href="/races" className="font-display text-lg font-bold text-slate-400 mt-2 inline-block hover:text-ocean-600">{t(lang, "dash.countdown.noRace")} →</Link>
+              )}
+            </div>
+            {/* Next baseline test */}
+            <div className="rounded-xl border border-sand-200 bg-sand-100/60 p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><ClipboardCheck className="w-4 h-4" /> {t(lang, "dash.countdown.baseline")}</div>
+              {nextBenchmark ? (
+                <>
+                  <div className="font-display text-2xl font-bold mt-2">{countdownLabel(lang, daysUntil(String(nextBenchmark.date).slice(0, 10)))}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{dateLabel(lang, String(nextBenchmark.date).slice(0, 10))} · {nextBenchmark.name}</div>
+                </>
+              ) : (
+                <Link href="/labs" className="font-display text-lg font-bold text-slate-400 mt-2 inline-block hover:text-ocean-600">{t(lang, "dash.countdown.noBaseline")} →</Link>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* AI Coach (JASAI) briefing */}

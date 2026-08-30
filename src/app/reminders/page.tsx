@@ -8,7 +8,7 @@ import { t, type Lang } from "@/lib/i18n";
 
 export default function RemindersPage() {
   const { user } = useAuth();
-  const lang = (user?.language || "en") as Lang;
+  const lang = (user?.language || "es") as Lang;
   const [prefs, setPrefs] = useState<any>({ emailEnabled: true, telegramEnabled: false, telegramChatId: "", reminderHour: "17", remindBeforeMin: "0" });
   const [telegramConfigured, setTelegramConfigured] = useState(false);
   const [saved, setSaved] = useState(false);

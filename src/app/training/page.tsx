@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Dumbbell, Waves, Bike, Zap, Sparkles, Layers, HeartPulse, ChevronDown, ChevronUp, CloudSun, Pencil, Save, X, Swords } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
-import { dayOffProtocol, analyzeHydration } from "@/lib/adaptive";
+import { dayOffProtocol, analyzeHydration, TRAINING_WINDOWS } from "@/lib/adaptive";
 import { buildSessionDetail } from "@/lib/science";
 
 const SPORT_ICON: Record<string, any> = { swim: Waves, bike: Bike, run: Zap, strength: Dumbbell, brick: Zap, recovery: HeartPulse, hyrox: Layers, boxing: Swords };
@@ -19,7 +19,7 @@ export default function TrainingPage() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [form, setForm] = useState({ distance: "olympic", weeks: "12", startDate: new Date().toISOString().slice(0, 10), easyPct: "70" });
+  const [form, setForm] = useState({ distance: "olympic", weeks: "12", startDate: new Date().toISOString().slice(0, 10), easyPct: "70", trainingWindow: "" });
   const [error, setError] = useState("");
   const [zones, setZones] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
@@ -139,7 +139,7 @@ export default function TrainingPage() {
           <p className="text-sm text-slate-500 mb-4">
             {profile?.lthr ? `Your LTHR: ${profile.lthr} bpm — sessions anchored to your physiology.` : "Complete your profile to auto-estimate VO2max and LTHR; otherwise we'll use standard estimates."}
           </p>
-          <form onSubmit={generate} className="grid md:grid-cols-5 gap-4 items-end">
+          <form onSubmit={generate} className="grid md:grid-cols-6 gap-4 items-end">
             <div>
               <label className="label">Race distance</label>
               <select className="input" value={form.distance} onChange={(e) => setForm({ ...form, distance: e.target.value })}>
@@ -149,6 +149,10 @@ export default function TrainingPage() {
                 <option value="full">Full Ironman (3.8k / 180k / 42.2k)</option>
                 <option value="hyrox">HYROX (8×1km + 8 stations)</option>
                 <option value="boxing">Boxing (fight camp)</option>
+                <option value="cycle">Cycling only</option>
+                <option value="run-only">Running only</option>
+                <option value="swim-only">Swimming only</option>
+                <option value="lifting">Lifting / Strength only</option>
               </select>
             </div>
             <div>
@@ -160,6 +164,13 @@ export default function TrainingPage() {
             <div>
               <label className="label">Start date</label>
               <input type="date" className="input" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Training time</label>
+              <select className="input" value={form.trainingWindow} onChange={(e) => setForm({ ...form, trainingWindow: e.target.value })}>
+                <option value="">Auto (use profile)</option>
+                {TRAINING_WINDOWS.map((w) => <option key={w.key} value={w.key}>{w.label}{w.startTime ? ` · ${w.startTime}` : ""}</option>)}
+              </select>
             </div>
             <div>
               <label className="label">Easy / quality split: {form.easyPct}% / {100 - Number(form.easyPct)}%</label>
@@ -338,3 +349,4 @@ export default function TrainingPage() {
     </ProtectedPage>
   );
 }
+

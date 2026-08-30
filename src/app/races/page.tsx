@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Flag, Plus, Trash2, Thermometer, Mountain, Waves, Clock } from "lucide-react";
+import { Flag, Plus, Trash2, Thermometer, Mountain, Waves, Clock, Gauge } from "lucide-react";
+import Link from "next/link";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 
-const DISTANCES = ["sprint", "olympic", "half", "full", "hyrox", "boxing"];
+const DISTANCES = ["sprint", "olympic", "half", "full", "5k", "10k", "half-marathon", "marathon", "40k", "100k", "180k", "gran-fondo", "750m", "1500m", "1900m", "3800m", "hyrox", "boxing"];
 const TERRAINS = ["flat", "rolling", "hilly", "mountain", "trail"];
 const VENUES = ["pool", "lake", "ocean", "river"];
 
@@ -65,6 +66,10 @@ export default function RacesPage() {
           <h1 className="font-display text-2xl font-bold">Races &amp; Venues</h1>
           <p className="text-slate-500 text-sm">Goal races with full venue data — temperature, elevation, terrain, and water conditions drive your plan.</p>
         </div>
+
+        <Link href="/races/forecast" className="btn-primary justify-center w-fit">
+          <Gauge className="w-4 h-4" /> Race Forecast
+        </Link>
 
         {err && <div className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
 
