@@ -157,10 +157,15 @@ export function AuthCard({
       {mode === "login" && (
         <div className="mt-4 pt-4 border-t border-ink-200">
           <div className="micro text-[10px] text-ink-400 mb-2">Beta testers — one tap to sign in:</div>
-          <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {[
-              { label: "Evgenia T — Triathlon (Olympic)", email: "evgenia@jasmiamimethod.com" },
-              { label: "Jasmel — Triathlon (70.3)", email: "jasmel@jasmiamimethod.com" },
+              { icon: "🏃‍♂️", label: "Jeand", sport: "Run", email: "jeand.duno@gmail.com" },
+              { icon: "🏃‍♀️", label: "Kathy", sport: "Run", email: "kathy@jasmiamimethod.com" },
+              { icon: "🥉", label: "Jas", sport: "Triathlon", email: "jas@jasmiamimethod.com" },
+              { icon: "🏋️", label: "Andres", sport: "Hyrox", email: "andres@jasmiamimethod.com" },
+              { icon: "🎽", label: "Julia", sport: "Run", email: "juliaburtseva@gmail.com" },
+              { icon: "👟", label: "Arl", sport: "Run", email: "arlenramirez0425@gmail.com" },
+              { icon: "⚡", label: "M", sport: "Run", email: "m@jasmiamimethod.com" },
             ].map((acct) => (
               <button
                 key={acct.email}
@@ -186,10 +191,11 @@ export function AuthCard({
                     setBusy(false);
                   }
                 }}
-                className="w-full flex items-center justify-between rounded-xl border border-ink-200 bg-paper-100 hover:bg-paper-200 px-4 py-2.5 text-sm font-semibold text-ink-800 transition-colors"
+                className="w-full flex items-center gap-2 rounded-xl border border-ink-200 bg-paper-100 hover:bg-paper-200 px-3 py-2.5 text-sm font-semibold text-ink-800 transition-colors"
               >
-                <span>{acct.label}</span>
-                <span className="text-ink-400 text-xs">→</span>
+                <span className="text-lg leading-none">{acct.icon}</span>
+                <span className="flex-1 text-left truncate">{acct.label}</span>
+                <span className="text-ink-400 text-[10px] font-medium uppercase tracking-wide">{acct.sport}</span>
               </button>
             ))}
           </div>
