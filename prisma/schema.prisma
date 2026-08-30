@@ -20,7 +20,7 @@ model User {
   name         String
   role         String    @default("athlete") // athlete | coach | admin
   timezone     String    @default("America/New_York")
-  language     String    @default("en") // en | es | ht | fr | ru
+  language     String    @default("es") // en | es | ht | fr | ru
   avatar       String    @default("🧑") // emoji icon face
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -69,6 +69,7 @@ model AthleteProfile {
   goal          String? // sprint | olympic | half | full
   raceDate      DateTime?
   weeklyHours   Float   @default(8)
+  trainingWindow String @default("any") // any | morning | midday | evening — default session time-of-day
   vo2max        Float? // ml/kg/min (measured or estimated)
   lthr          Int?   // lactate threshold HR bpm
   restingHr     Int?
@@ -134,6 +135,7 @@ model Workout {
   userId     String
   planDayId  String?
   date       DateTime
+  startTime  String?  // "HH:mm" — preferred time-of-day for this session (athlete-pickable)
   sport      String   // swim | bike | run | strength | mobility | recovery | brick
   title      String
   type       String   // interval | tempo | endurance | threshold | recovery | strength | skill

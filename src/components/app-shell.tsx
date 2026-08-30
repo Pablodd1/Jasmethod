@@ -15,6 +15,7 @@ const NAV = [
   { href: "/calendar", key: "nav.calendar", icon: CalendarDays },
   { href: "/training", key: "nav.training", icon: Dumbbell },
   { href: "/races", key: "nav.races", icon: Flag },
+  { href: "/races/forecast", key: "nav.forecast", icon: Gauge },
   { href: "/prs", key: "nav.prs", icon: Trophy },
   { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
   { href: "/labs", key: "nav.labs", icon: FlaskConical },
@@ -48,7 +49,7 @@ function LanguageSelect({ lang, onChange }: { lang: Lang; onChange: (l: Lang) =>
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout, refresh } = useAuth();
-  const lang = (user?.language || "en") as Lang;
+  const lang = (user?.language || "es") as Lang;
 
   async function setLanguage(l: Lang) {
     await fetch("/api/language", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ language: l }) });
@@ -130,7 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 export function MobileNav() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const lang = (user?.language || "en") as Lang;
+  const lang = (user?.language || "es") as Lang;
   return (
     <div className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-sand-200 flex justify-around py-2">
       {NAV.slice(0, 5).map((item) => {

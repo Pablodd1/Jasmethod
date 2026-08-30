@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { generatePlan, generateHyroxPlan, generateBoxingCamp, generateSingleSport, estimateVo2max, maxHrFromAge, estimateLthr, buildZoneTable, type ZoneTable } from "@/lib/science";
-import { recoveryFor, scheduleTests, venueAdjustment } from "@/lib/adaptive";
+import { recoveryFor, scheduleTests, venueAdjustment, defaultStartTime } from "@/lib/adaptive";
 
 // POST /api/plan/generate — generate a periodized plan for the user
 export async function POST(req: Request) {
@@ -11,10 +11,18 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { distance, weeks, startDate, raceDate, targetTempC, easyPct } = body || {};
+    const { distance, weeks, startDate, raceDate, targetTempC, easyPct, trainingWindow } = body || {};
     const splitTarget = easyPct === undefined || easyPct === null ? 70 : Math.max(45, Math.min(90, parseInt(String(easyPct), 10) || 70));
     const profile = user.profile ?? (await prisma.athleteProfile.create({ data: { userId: user.id } }));
     const level = profile.experience || "amateur";
+
+    // Preferred training window: an explicit request wins, else the saved
+    // profile preference, else "any" (no fixed time).
+    const window = String(trainingWindow || profile.trainingWindow || "any");
+    if (trainingWindow && trainingWindow !== profile.trainingWindow) {
+      await prisma.athleteProfile.update({ where: { userId: user.id }, data: { trainingWindow: window } });
+    }
+    const sessionStartTime = defaultStartTime(window);
 
     // Estimate physiology if missing
     let vo2max = profile.vo2max;
@@ -44,10 +52,10 @@ export async function POST(req: Request) {
     const dist = String(distance || "olympic");
     const isHyrox = dist === "hyrox";
     const isBoxing = dist === "boxing";
-    const isSingleSport = dist === "cycle" || dist === "swim-only" || dist === "lifting";
+    const isSingleSport = dist === "cycle" || dist === "swim-only" || dist === "run-only" || dist === "lifting";
     const generated = isSingleSport
       ? generateSingleSport({
-          sport: dist === "cycle" ? "bike" : dist === "swim-only" ? "swim" : "strength",
+          sport: dist === "cycle" ? "bike" : dist === "swim-only" ? "swim" : dist === "run-only" ? "run" : "strength",
           level, weeks: weeksCount, startDate: start,
           weeklyHours: profile.weeklyHours || undefined,
           hasRace: Boolean(raceDate),
@@ -84,6 +92,7 @@ export async function POST(req: Request) {
                   create: {
                     userId: user.id,
                     date,
+                    startTime: sessionStartTime,
                     sport: s.sport,
                     title: s.title,
                     type: s.type,

@@ -19,7 +19,7 @@ const VERDICT_COLOR: Record<string, string> = { full: "text-emerald-600", trim: 
 
 export default function CheckinPage() {
   const { user } = useAuth();
-  const lang = (user?.language || "en") as Lang;
+  const lang = (user?.language || "es") as Lang;
   const [answers, setAnswers] = useState<any>({ sleep: "3", soreness: "3", motivation: "3", energy: "3", stress: "3", sick: false, menstrual: false, weightKg: "", rhr: "" });
   const [result, setResult] = useState<any>(null);
   const [busy, setBusy] = useState(false);

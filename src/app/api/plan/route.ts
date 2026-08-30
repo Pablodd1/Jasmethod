@@ -56,11 +56,27 @@ export async function PUT(req: Request) {
       return NextResponse.json({ ok: true, planDay: updated });
     }
 
-    const { title, durationMin, intensity, sport, date, completed, notes, preWeightKg, postWeightKg, indoor } = body || {};
+    const { title, durationMin, intensity, sport, date, startTime, completed, notes, preWeightKg, postWeightKg, indoor, rpe, avgHr, maxHr, avgPower, np, distanceKm } = body || {};
     if (!sessionId) return NextResponse.json({ error: "sessionId required" }, { status: 400 });
 
     const existing = await prisma.workout.findFirst({ where: { id: sessionId, userId: user.id } });
     if (!existing) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+
+    // When a session is marked done and no RPE/HR was supplied, derive a sensible
+    // RPE from intensity so daily load (TSS) is always known — not left empty.
+    let resolvedRpe = rpe;
+    let resolvedAvgHr = avgHr;
+    if (completed === true && (rpe === undefined || rpe === null || rpe === "")) {
+      const z = (intensity ?? existing.intensity ?? "z2") as string;
+      resolvedRpe = z === "z1" || z === "z2" ? 3 : z === "z3" ? 5 : z === "z4" ? 7 : 9;
+    }
+    if (completed === true && (avgHr === undefined || avgHr === null || avgHr === "")) {
+      const lthr = (await prisma.athleteProfile.findUnique({ where: { userId: user.id } }))?.lthr ?? null;
+      if (lthr) {
+        const cap = intensity === "z2" ? 0.85 : intensity === "z4" ? 0.95 : 0.9;
+        resolvedAvgHr = Math.round(lthr * cap);
+      }
+    }
 
     const updated = await prisma.workout.update({
       where: { id: sessionId },
@@ -70,11 +86,20 @@ export async function PUT(req: Request) {
         ...(intensity !== undefined && { intensity }),
         ...(sport !== undefined && { sport }),
         ...(date !== undefined && { date: new Date(date) }),
+        // startTime "HH:mm"; explicit null/"" clears it (back to flexible)
+        ...(startTime !== undefined && { startTime: startTime === null || startTime === "" ? null : String(startTime) }),
         ...(completed !== undefined && { completed }),
         ...(notes !== undefined && { notes }),
         ...(preWeightKg !== undefined && { preWeightKg: parseFloat(preWeightKg) }),
         ...(postWeightKg !== undefined && { postWeightKg: parseFloat(postWeightKg) }),
         ...(indoor !== undefined && { indoor: Boolean(indoor) }),
+        // Post-session data → daily load (TSS) via /api/fitness + /api/race-forecast PMC
+        ...(resolvedRpe !== undefined && resolvedRpe !== null && resolvedRpe !== "" && { rpe: parseInt(String(resolvedRpe), 10) }),
+        ...(resolvedAvgHr !== undefined && resolvedAvgHr !== null && resolvedAvgHr !== "" && { avgHr: parseInt(String(resolvedAvgHr), 10) }),
+        ...(maxHr !== undefined && maxHr !== null && maxHr !== "" && { maxHr: parseInt(String(maxHr), 10) }),
+        ...(avgPower !== undefined && avgPower !== null && avgPower !== "" && { avgPower: parseFloat(String(avgPower)) }),
+        ...(np !== undefined && np !== null && np !== "" && { np: parseFloat(String(np)) }),
+        ...(distanceKm !== undefined && distanceKm !== null && distanceKm !== "" && { distanceKm: parseFloat(String(distanceKm)) }),
       },
     });
     // Moving a workout also moves its plan day, so the calendar stays in sync.

@@ -942,12 +942,12 @@ export function generateBoxingCamp(opts: {
   return weeksOut;
 }
 
-// ---- Single-sport plan generator (cycling / swimming / lifting-only) ----
+// ---- Single-sport plan generator (cycling / swimming / running / lifting-only) ----
 // Same 6-week progression wave as the race plans: base→build→peak→taper,
 // ~6-8% weekly overload, test weeks re-anchor zones. Non-racers get the same
 // wave without the taper (steady cycle restarts every 6 weeks).
 export function generateSingleSport(opts: {
-  sport: "bike" | "swim" | "strength";
+  sport: "bike" | "swim" | "run" | "strength";
   level: string;
   weeks: number;
   startDate: Date;
@@ -988,6 +988,12 @@ export function generateSingleSport(opts: {
       sessions.push({ sport: "swim", title: "VO2max Sprints", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Easy pull buoy set instead today." : "8×50m max effort, 60s full recovery. Race-speed Neuromuscular work." });
       sessions.push({ sport: "strength", title: "Swimmer Strength", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "strength", description: "Pull-ups, rows, rotator cuff work 3×10. Shoulder durability = swim career length." });
       sessions.push({ sport: "mobility", title: "Ankle & Shoulder Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ankle flexibility = better kick; thoracic mobility = longer catch." });
+    } else if (sport === "run") {
+      sessions.push({ sport: "run", title: "Long Aerobic Run (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Steady conversational miles — the aerobic engine (Seiler 2009: 80/20). Build the long run ≤10% distance per week." });
+      sessions.push({ sport: "run", title: "Tempo / Threshold Run", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "threshold", description: "20-30 min @ lactate threshold (T-pace). The single best marathon/half predictor (Billat 2001)." });
+      sessions.push({ sport: "run", title: "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Easy strides instead today." : "6×800m or 5×1000m @ ~5k pace, equal-time jog recovery. Raise the ceiling." });
+      sessions.push({ sport: "strength", title: "Runner Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Single-leg squats, calf raises, glute bridge 3×10. Running economy + injury-proofing (Ronnestad 2020)." });
+      sessions.push({ sport: "mobility", title: "Recovery Run + Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Easy shakeout jog + hip/ankle mobility flow. Blood flow with zero load." });
     } else {
       // lifting-only — progressive overload is the plan
       sessions.push({ sport: "strength", title: "Lower Body Heavy", minutes: Math.round(totalMin * 0.3), zone: "z1", type: "strength", description: "Squat 4×5, RDL 3×8, lunges 3×10. Add 2.5kg or 1 rep vs last week — the 6-week wave adds ~8% load (Schoenfeld 2016)." });
