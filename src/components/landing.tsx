@@ -10,6 +10,7 @@ import {
   FlaskConical,
   HeartPulse,
   Layers,
+  Medal,
   Moon,
   Pill,
   Swords,
@@ -76,8 +77,9 @@ const FUNCTIONS: { icon: typeof Activity; titleKey: string; textKey: string }[] 
   { icon: Apple, titleKey: "pub.fn6.title", textKey: "pub.fn6.text" },
 ];
 
-// The five engines we coach — HYROX, swim, bike, run, boxing.
+// The six engines we coach — triathlon, HYROX, swim, bike, run, boxing.
 const SPORTS: { icon: typeof Activity; nameKey: string; descKey: string }[] = [
+  { icon: Medal, nameKey: "pub.sport.triathlon.name", descKey: "pub.sport.triathlon.desc" },
   { icon: Layers, nameKey: "pub.sport.hyrox.name", descKey: "pub.sport.hyrox.desc" },
   { icon: Waves, nameKey: "pub.sport.swim.name", descKey: "pub.sport.swim.desc" },
   { icon: Bike, nameKey: "pub.sport.bike.name", descKey: "pub.sport.bike.desc" },
@@ -143,7 +145,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Sport showcase: HYROX · Swim · Bike · Run · Boxing ──────── */}
+      {/* ── Sport showcase: Triathlon · HYROX · Swim · Bike · Run · Boxing ──────── */}
       <section className="pub-container py-10" id="sports">
         <div className="flex items-center gap-3 mb-6">
           <span className="kicker">01 — {t(lang, "pub.sports.kicker")}</span>
@@ -154,7 +156,7 @@ export default function LandingPage() {
         </h2>
         <p className="deck mt-3 max-w-3xl">{t(lang, "pub.sports.sub")}</p>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mt-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-8">
           {SPORTS.map((s) => {
             const Icon = s.icon;
             return (

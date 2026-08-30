@@ -44,6 +44,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (e: any) {
     console.error("signup error:", e);
-    return NextResponse.json({ error: "Signup failed. Please try again." }, { status: 500 });
+    const code = e?.code as string | undefined;
+    const raw = e?.message ? String(e.message) : "";
+    let detail: string;
+    switch (code) {
+      case "P1001": detail = "Base de datos inalcanzable — revisa DATABASE_URL / DIRECT_URL y el acceso de red."; break;
+      case "P1000": detail = "Autenticación de base de datos fallida — credenciales inválidas."; break;
+      case "P1010": detail = "Acceso del usuario de base de datos rechazado."; break;
+      case "P1013": detail = "Nombre de base de datos inválido."; break;
+      case "P2021":
+      case "P2022": detail = "El esquema de base de datos no existe. Aplícalo con `npx prisma db push` o `prisma migrate deploy`."; break;
+      default: detail = raw.replace(/(postgres(ql)?:\/\/)([^@\s]+)@/gi, "$1***@").slice(0, 240); break;
+    }
+    if (!detail) detail = "Error desconocido.";
+    return NextResponse.json({ error: "Signup failed. Please try again.", detail }, { status: 500 });
   }
 }

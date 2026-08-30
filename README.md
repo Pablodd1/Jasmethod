@@ -151,7 +151,8 @@ JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting th
 
 | Variable | Used for | Status |
 |---|---|---|
-| `DATABASE_URL` | Supabase Postgres | ✅ Set |
+| `DATABASE_URL` | Supabase pooled Postgres (PgBouncer, port 6543) | ✅ Set |
+| `DIRECT_URL` | Supabase direct Postgres (Session, port 5432) — **required** for `prisma migrate deploy` | ⚠️ Must set |
 | `NEXT_PUBLIC_APP_URL` | OAuth redirects | ✅ Set |
 | `STRAVA_CLIENT_ID/SECRET` | Strava OAuth | ⚠️ Set? (dev.strava.com) |
 | `GARMIN_CLIENT_ID/SECRET` | Garmin OAuth | ❌ Need (developer.garmin.com) |
@@ -163,6 +164,8 @@ JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting th
 | SMTP vars | Email reminders | ✅ Set |
 
 **To activate each OAuth:** create the dev app (free), add redirect URI `https://<domain>/api/connectors/<provider>/callback`, put credentials in `.env`, restart.
+
+> **Database wiring (Supabase):** `DATABASE_URL` must be the **pooled** connection (PgBouncer, port `6543`, `?pgbouncer=true`) and `DIRECT_URL` the **direct/Session** connection (port `5432`). Prisma requires a **non-empty `DIRECT_URL`** to run migrations — without it, `npm run build` fails with `P1012` and the deploy stops. The build now auto-applies the schema via `prisma migrate deploy`, so no manual `db push` is needed in production. If `DATABASE_URL` is already a plain direct connection (no pooler), set `DIRECT_URL` to the same value.
 
 ---
 
@@ -205,11 +208,12 @@ git clone git@github.com:Pablodd1/Jasmethod.git && cd Jasmethod
 npm install
 
 # 2. Environment
-cp .env.example .env.local   # add DATABASE_URL (Supabase), GEMINI_API_KEY, AUTH_SECRET
+cp .env.example .env.local   # add DATABASE_URL (pooled) + DIRECT_URL (direct), GEMINI_API_KEY, AUTH_SECRET
 
-# 3. Database
-npx prisma db push
+# 3. Database (local dev)
+npx prisma migrate deploy   # or `db push` for quick local iteration
 npx prisma db seed
+# Production: `npm run build` runs `prisma migrate deploy` automatically.
 
 # 4. Run
 npm run dev                  # http://localhost:3000

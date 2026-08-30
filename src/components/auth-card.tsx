@@ -24,11 +24,13 @@ export function AuthCard({
   const [name, setName] = useState("");
   const [birthYear, setBirthYear] = useState("");
   const [error, setError] = useState("");
+  const [detail, setDetail] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setDetail("");
     setBusy(true);
     try {
       const res = await fetch(`/api/auth/${mode}`, {
@@ -41,12 +43,14 @@ export function AuthCard({
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Something went wrong");
+        setDetail(data.detail || "");
         setBusy(false);
         return;
       }
       window.location.href = redirectTo;
     } catch {
       setError("Network error — please try again.");
+      setDetail("");
       setBusy(false);
     }
   }
@@ -136,6 +140,9 @@ export function AuthCard({
           <div className="text-sm text-vermillion-600 bg-vermillion-400/10 rounded-lg px-3 py-2">
             {error}
           </div>
+        )}
+        {detail && (
+          <div className="text-[11px] font-mono text-ink-500 mt-1 break-words leading-relaxed">{detail}</div>
         )}
         <button type="submit" disabled={busy} className="btn-editorial-accent w-full justify-center py-2.5">
           {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Start free"}
