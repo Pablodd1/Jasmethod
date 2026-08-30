@@ -497,3 +497,144 @@ export async function googleCalGetEvents(accessToken: string, days = 14): Promis
   const data = await resp.json();
   return data.items || [];
 }
+
+// ---------- OURA (cloud.ouraring.com v2 — OAuth2 only) ----------
+
+export interface OuraConfig { clientId: string; clientSecret: string; redirectUri: string; }
+
+export function ouraAuthUrl(cfg: OuraConfig): string {
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    redirect_uri: cfg.redirectUri,
+    response_type: "code",
+    scope: "personal email daily sleep readiness hrv",
+  });
+  return `https://cloud.ouraring.com/oauth/authorize?${params.toString()}`;
+}
+
+export async function ouraExchangeToken(cfg: OuraConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const body = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, code, grant_type: "authorization_code" });
+  const resp = await fetch("https://api.ouraring.com/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+  if (!resp.ok) throw new Error(`Oura token exchange failed: ${resp.status} ${await resp.text()}`);
+  return resp.json();
+}
+
+export async function ouraRefreshToken(cfg: OuraConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const body = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" });
+  const resp = await fetch("https://api.ouraring.com/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+  if (!resp.ok) throw new Error(`Oura token refresh failed: ${resp.status}`);
+  return resp.json();
+}
+
+// One normalized daily row from Oura sleep + readiness documents.
+export interface OuraDaily { date: string; hrv: number | null; restingHr: number | null; sleepScore: number | null; sleepHours: number | null; readiness: number | null; }
+
+export async function ouraGetDaily(accessToken: string, days = 30): Promise<OuraDaily[]> {
+  const end = new Date(), start = new Date(Date.now() - days * 86400000);
+  const params = new URLSearchParams({ start_date: start.toISOString().slice(0, 10), end_date: end.toISOString().slice(0, 10) });
+  const hdr = { Authorization: `Bearer ${accessToken}` };
+  const [sleep, readiness] = await Promise.all([
+    fetch(`https://api.ouraring.com/v2/usercollection/sleep?${params}`, { headers: hdr }),
+    fetch(`https://api.ouraring.com/v2/usercollection/readiness?${params}`, { headers: hdr }),
+  ]);
+  if (!sleep.ok) throw new Error(`Oura sleep failed: ${sleep.status}`);
+  const sd = await sleep.json(), rd = readiness.ok ? await readiness.json() : { data: [] };
+  const rmap = new Map<string, any>((rd.data || []).map((r: any) => [r.day, r]));
+  const byDay = new Map<string, OuraDaily>();
+  for (const s of sd.data || []) {
+    const d = byDay.get(s.day) || { date: s.day, hrv: null, restingHr: null, sleepScore: null, sleepHours: null, readiness: null };
+    d.hrv = s.hrv?.average ?? d.hrv;
+    d.restingHr = s.lowest_resting_heart_rate ?? d.restingHr;
+    d.sleepScore = s.score ?? d.sleepScore;
+    d.sleepHours = s.total_sleep_duration != null ? Math.round((s.total_sleep_duration / 3600) * 10) / 10 : d.sleepHours;
+    byDay.set(s.day, d);
+  }
+  for (const ent of Array.from(rmap.entries())) {
+    const day = ent[0], r = ent[1];
+    const d = byDay.get(day) || { date: day, hrv: null, restingHr: null, sleepScore: null, sleepHours: null, readiness: null };
+    d.readiness = r.score ?? d.readiness;
+    byDay.set(day, d);
+  }
+  return Array.from(byDay.values());
+}
+
+// ---------- WHOOP (developer.whoop.com — OAuth2) ----------
+
+export interface WhoopConfig { clientId: string; clientSecret: string; redirectUri: string; }
+
+export function whoopAuthUrl(cfg: WhoopConfig, state: string): string {
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    redirect_uri: cfg.redirectUri,
+    response_type: "code",
+    scope: "read:recovery read:sleep read:workout read:body_measurement read:cycles basic:profile",
+    state,
+  });
+  return `https://api.prod.whoop.com/oauth/oauth2/auth?${params.toString()}`;
+}
+
+export async function whoopExchangeToken(cfg: WhoopConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const body = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, code, grant_type: "authorization_code" });
+  const resp = await fetch("https://api.prod.whoop.com/oauth/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+  if (!resp.ok) throw new Error(`Whoop token exchange failed: ${resp.status} ${await resp.text()}`);
+  return resp.json();
+}
+
+export async function whoopRefreshToken(cfg: WhoopConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+  const body = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" });
+  const resp = await fetch("https://api.prod.whoop.com/oauth/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+  if (!resp.ok) throw new Error(`Whoop token refresh failed: ${resp.status}`);
+  return resp.json();
+}
+
+// Recovery + sleep per cycle day, normalized.
+export interface WhoopDaily { date: string; recoveryScore: number | null; hrv: number | null; restingHr: number | null; sleepScore: number | null; sleepHours: number | null; }
+
+export async function whoopGetDaily(accessToken: string, days = 30): Promise<WhoopDaily[]> {
+  const hdr = { Authorization: `Bearer ${accessToken}` };
+  const end = new Date().toISOString(), start = new Date(Date.now() - days * 86400000).toISOString();
+  const out = new Map<string, WhoopDaily>();
+  // sleep (has scores + hrv + rhr)
+  let url: string | null = `https://api.prod.whoop.com/developer/v1/recovery/sleep?start=${start}&end=${end}&limit=50`;
+  const collected: any[] = [];
+  while (url) { // ponytail: manual pagination loop on next_token — Whoop has no offset paging
+    const r: Response = await fetch(url, { headers: hdr });
+    if (!r.ok) throw new Error(`Whoop sleep failed: ${r.status}`);
+    const d: any = await r.json();
+    collected.push(...(d.records || []));
+    url = d.next_token ? `https://api.prod.whoop.com/developer/v1/recovery/sleep?start=${start}&end=${end}&limit=50&nextToken=${d.next_token}` : null;
+  }
+  for (const s of collected) {
+    const day = (s.created_at || "").slice(0, 10);
+    if (!day) continue;
+    const row = out.get(day) || { date: day, recoveryScore: null, hrv: null, restingHr: null, sleepScore: null, sleepHours: null };
+    if (s.score?.sleep_performance_percentage != null) row.sleepScore = Math.round(s.score.sleep_performance_percentage);
+    if (s.score.stage_summary?.total_in_bed_time_milli != null) row.sleepHours = Math.round((s.score.stage_summary.total_in_bed_time_milli / 3600000) * 10) / 10;
+    const hr = s.score.heart_rate_variability?.rms ?? s.score.heart_rate_variability;
+    if (typeof hr === "number") row.hrv = Math.round(hr * 10) / 10;
+    const rhr = s.score.resting_heart_rate;
+    if (typeof rhr === "number") row.restingHr = Math.round(rhr);
+    out.set(day, row);
+  }
+  // recovery (readiness per sleep)
+  url = `https://api.prod.whoop.com/developer/v1/recovery?start=${start}&end=${end}&limit=50`;
+  let rec: any = null;
+  const recs: any[] = [];
+  while (url) {
+    const r: Response = await fetch(url, { headers: hdr });
+    if (!r.ok) break; // recovery is optional — don't fail the sync for it
+    rec = await r.json();
+    recs.push(...(rec.records || []));
+    url = rec.next_token ? `https://api.prod.whoop.com/developer/v1/recovery?start=${start}&end=${end}&limit=50&nextToken=${rec.next_token}` : null;
+  }
+  for (const c of recs) {
+    const day = (c.created_at || "").slice(0, 10);
+    if (!day) continue;
+    const row = out.get(day) || { date: day, recoveryScore: null, hrv: null, restingHr: null, sleepScore: null, sleepHours: null };
+    if (c.score?.recovery_score != null) row.recoveryScore = Math.round(c.score.recovery_score);
+    if (row.hrv == null && c.score?.heart_rate_variability?.rms != null) row.hrv = Math.round(c.score.heart_rate_variability.rms * 10) / 10;
+    if (row.restingHr == null && c.score?.resting_heart_rate != null) row.restingHr = Math.round(c.score.resting_heart_rate);
+    out.set(day, row);
+  }
+  return Array.from(out.values());
+}

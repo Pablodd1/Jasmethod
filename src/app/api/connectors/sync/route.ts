@@ -5,6 +5,8 @@ import {
   stravaRefreshToken, stravaGetActivities, stravaActivityToWorkout,
   garminRefreshToken, garminGetActivities, garminActivityToWorkout,
   googleCalRefreshToken, googleCalGetEvents,
+  ouraRefreshToken, ouraGetDaily,
+  whoopRefreshToken, whoopGetDaily,
 } from "@/lib/importers";
 
 // POST /api/connectors/sync — re-pull data from every connected provider.
@@ -91,6 +93,56 @@ export async function POST() {
         total += imported;
         results.push({ provider: "google_cal", imported });
         await prisma.connector.update({ where: { id: conn.id }, data: { lastSyncAt: new Date(), lastSyncCount: imported } });
+      } else if (conn.provider === "oura") {
+        let access = conn.tokenEnc!;
+        if (conn.expiresAt && conn.expiresAt < new Date() && conn.refreshEnc && process.env.OURA_CLIENT_ID) {
+          const t = await ouraRefreshToken(
+            { clientId: process.env.OURA_CLIENT_ID!, clientSecret: process.env.OURA_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/oura/callback` },
+            conn.refreshEnc
+          );
+          access = t.access_token;
+          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: t.access_token, refreshEnc: t.refresh_token, expiresAt: new Date(Date.now() + t.expires_in * 1000) } });
+        }
+        const days = Math.min(90, Math.max(1, Math.ceil((Date.now() - since.getTime()) / 86400000)));
+        const daily = await ouraGetDaily(access, days);
+        let imported = 0;
+        for (const d of daily) {
+          const [y, m, day] = d.date.split("-").map(Number);
+          if (!y) continue;
+          await prisma.dailyMetrics.upsert({
+            where: { userId_date: { userId: user.id, date: new Date(y, m - 1, day) } },
+            create: { userId: user.id, date: new Date(y, m - 1, day), hrv: d.hrv, restingHr: d.restingHr, sleepScore: d.sleepScore, sleepHours: d.sleepHours, recoveryScore: d.readiness, source: "oura" },
+            update: { hrv: d.hrv ?? undefined, restingHr: d.restingHr ?? undefined, sleepScore: d.sleepScore ?? undefined, sleepHours: d.sleepHours ?? undefined, recoveryScore: d.readiness ?? undefined, source: "oura" },
+          });
+          imported++;
+        }
+        await prisma.connector.updateMany({ where: { id: conn.id }, data: { lastSyncAt: new Date(), lastSyncCount: imported } });
+        results.push({ provider: "oura", imported });
+      } else if (conn.provider === "whoop") {
+        let access = conn.tokenEnc!;
+        if (conn.expiresAt && conn.expiresAt < new Date() && conn.refreshEnc && process.env.WHOOP_CLIENT_ID) {
+          const t = await whoopRefreshToken(
+            { clientId: process.env.WHOOP_CLIENT_ID!, clientSecret: process.env.WHOOP_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/whoop/callback` },
+            conn.refreshEnc
+          );
+          access = t.access_token;
+          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: t.access_token, refreshEnc: t.refresh_token, expiresAt: new Date(Date.now() + t.expires_in * 1000) } });
+        }
+        const days = Math.min(90, Math.max(1, Math.ceil((Date.now() - since.getTime()) / 86400000)));
+        const daily = await whoopGetDaily(access, days);
+        let imported = 0;
+        for (const d of daily) {
+          const [y, m, day] = d.date.split("-").map(Number);
+          if (!y) continue;
+          await prisma.dailyMetrics.upsert({
+            where: { userId_date: { userId: user.id, date: new Date(y, m - 1, day) } },
+            create: { userId: user.id, date: new Date(y, m - 1, day), hrv: d.hrv, restingHr: d.restingHr, sleepScore: d.sleepScore, sleepHours: d.sleepHours, recoveryScore: d.recoveryScore, source: "whoop" },
+            update: { hrv: d.hrv ?? undefined, restingHr: d.restingHr ?? undefined, sleepScore: d.sleepScore ?? undefined, sleepHours: d.sleepHours ?? undefined, recoveryScore: d.recoveryScore ?? undefined, source: "whoop" },
+          });
+          imported++;
+        }
+        await prisma.connector.updateMany({ where: { id: conn.id }, data: { lastSyncAt: new Date(), lastSyncCount: imported } });
+        results.push({ provider: "whoop", imported });
       }
     } catch (e: any) {
       results.push({ provider: conn.provider, imported: 0, error: e.message });

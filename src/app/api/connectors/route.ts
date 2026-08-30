@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { stravaAuthUrl, garminAuthUrl, googleCalAuthUrl } from "@/lib/importers";
+import { stravaAuthUrl, garminAuthUrl, googleCalAuthUrl, ouraAuthUrl, whoopAuthUrl } from "@/lib/importers";
 
 // GET /api/connectors — list connector status + OAuth URLs if configured
 export async function GET() {
@@ -35,15 +35,24 @@ export async function GET() {
       }, `gcal-${user.id}`)
     : null;
 
+  const ouraConfigured = Boolean(process.env.OURA_CLIENT_ID && process.env.OURA_CLIENT_SECRET);
+  const ouraUrl = ouraConfigured
+    ? ouraAuthUrl({ clientId: process.env.OURA_CLIENT_ID!, clientSecret: process.env.OURA_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/oura/callback` })
+    : null;
+  const whoopConfigured = Boolean(process.env.WHOOP_CLIENT_ID && process.env.WHOOP_CLIENT_SECRET);
+  const whoopUrl = whoopConfigured
+    ? whoopAuthUrl({ clientId: process.env.WHOOP_CLIENT_ID!, clientSecret: process.env.WHOOP_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/whoop/callback` }, `whoop-${user.id}`)
+    : null;
+
   // Provider metadata for the UI
   const providers = [
     { id: "strava", name: "Strava", description: "Pull all activities & previous records", status: connectors.find((c) => c.provider === "strava")?.status || "disconnected", configured: stravaConfigured, connectUrl: stravaUrl, method: "oauth" },
     { id: "garmin", name: "Garmin", description: garminConfigured ? "Connect Garmin Connect — pull activities automatically" : "Upload .TCX exports (Connect → Activities → Export)", status: connectors.find((c) => c.provider === "garmin")?.status || "disconnected", configured: true, connectUrl: garminUrl, method: garminConfigured ? "oauth" : "upload" },
     { id: "google_cal", name: "Google Calendar", description: googleConfigured ? "See your meetings & busy time — the coach fits training around your schedule" : "Add GOOGLE_CLIENT_ID/SECRET to sync Gmail Calendar", status: connectors.find((c) => c.provider === "google_cal")?.status || "disconnected", configured: googleConfigured, connectUrl: googleUrl, method: "oauth" },
     { id: "apple", name: "Apple Health", description: "Upload export.zip → export.xml", status: connectors.find((c) => c.provider === "apple")?.status || "disconnected", configured: true, method: "upload" },
-    { id: "whoop", name: "Whoop", description: "Upload cycle CSV export (recovery, HRV, sleep)", status: connectors.find((c) => c.provider === "whoop")?.status || "disconnected", configured: true, method: "upload" },
+    { id: "whoop", name: "Whoop", description: whoopConfigured ? "Connect Whoop — recovery, HRV & sleep sync automatically" : "Add WHOOP_CLIENT_ID/SECRET for auto-sync, or upload cycle CSV export", status: connectors.find((c) => c.provider === "whoop")?.status || "disconnected", configured: true, connectUrl: whoopUrl, method: whoopConfigured ? "oauth" : "upload" },
     { id: "coros", name: "COROS", description: "COROS watches — via Terra API (activities, sleep, daily) or manual FIT/TCX upload. Official API requires application at api@coros.com", status: connectors.find((c) => c.provider === "coros")?.status || "disconnected", configured: Boolean(process.env.TERRA_API_KEY && process.env.TERRA_DEV_ID), method: "api" },
-    { id: "oura", name: "Oura / Aura Ring", description: "Oura Cloud API — add OURA_CLIENT_ID/SECRET to enable OAuth", status: connectors.find((c) => c.provider === "oura")?.status || "disconnected", configured: Boolean(process.env.OURA_CLIENT_ID), method: "api" },
+    { id: "oura", name: "Oura / Aura Ring", description: ouraConfigured ? "Connect Oura — sleep, readiness & HRV sync automatically" : "Add OURA_CLIENT_ID/SECRET to enable OAuth", status: connectors.find((c) => c.provider === "oura")?.status || "disconnected", configured: ouraConfigured, connectUrl: ouraUrl, method: ouraConfigured ? "oauth" : "api" },
   ];
 
   return NextResponse.json({ providers, connectors });
