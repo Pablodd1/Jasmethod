@@ -2,18 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --font-display: "Sora", system-ui;
-  --font-body: "Inter", system-ui;
-}
+/* ----------------------------------------------------------------------------
+   Fonts — variables are injected by next/font on <html> via className.
+   (Fraunces = editorial serif display, Inter = body, IBM Plex Mono = data.)
+---------------------------------------------------------------------------- */
 
 body {
-  @apply bg-sand-100 text-slate-800 font-body antialiased;
+  @apply bg-paper text-ink-800 font-body antialiased;
 }
 
 h1, h2, h3, h4 {
   @apply font-display;
 }
+
+::selection {
+  background: #e06a4f;
+  color: #fbf8f1;
+}
+
+/* ----------------------------------------------------------------------------
+   App utility classes (authenticated dashboard) — kept intact.
+---------------------------------------------------------------------------- */
 
 .card {
   @apply bg-white rounded-2xl border border-sand-200 shadow-sm p-5;
@@ -73,3 +82,104 @@ select { min-width: 0; }
 .chip-z5 { @apply bg-orange-100 text-orange-700; }
 .chip-z6 { @apply bg-red-100 text-red-700; }
 .chip-z7 { @apply bg-purple-100 text-purple-700; }
+
+/* ----------------------------------------------------------------------------
+   Editorial sports-science system (public landing / onboarding / science pages).
+   Serif display, warm paper, ink, vermillion accent, mono eyebrows + metrics.
+---------------------------------------------------------------------------- */
+
+@layer components {
+  .pub-container {
+    @apply max-w-5xl mx-auto px-5 sm:px-8;
+  }
+
+  .kicker {
+    @apply font-mono text-[11px] sm:text-xs font-semibold uppercase tracking-[0.22em] text-vermillion-500;
+  }
+
+  .display-2xl {
+    @apply font-display text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.02] tracking-tight text-ink-900;
+  }
+
+  .deck {
+    @apply text-base sm:text-lg text-ink-600 leading-relaxed;
+  }
+
+  .lede {
+    @apply font-display text-xl sm:text-2xl leading-snug text-ink-800;
+  }
+
+  .hr-rule {
+    @apply border-0 h-px bg-ink-200;
+  }
+
+  .micro {
+    @apply font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400;
+  }
+
+  .btn-editorial {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-ink-900 bg-ink-900 px-6 py-3 text-sm font-semibold text-paper transition-colors hover:bg-ink-700 disabled:opacity-50;
+  }
+
+  .btn-editorial-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-ink-300 bg-transparent px-6 py-3 text-sm font-semibold text-ink-800 transition-colors hover:border-ink-900 hover:text-ink-900;
+  }
+
+  .btn-editorial-accent {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-vermillion-500 bg-vermillion-500 px-6 py-3 text-sm font-semibold text-paper transition-colors hover:bg-vermillion-600 disabled:opacity-50;
+  }
+
+  .field-editorial {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-vermillion-400;
+  }
+
+  .eyebrow-pill {
+    @apply inline-flex items-center gap-2 rounded-full border border-ink-200 bg-white px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-ink-600;
+  }
+
+  .metric-card {
+    @apply rounded-2xl border border-ink-200 bg-white p-5;
+  }
+
+  .metric-value {
+    @apply font-display text-3xl font-bold text-ink-900;
+  }
+
+  .metric-unit {
+    @apply font-mono text-xs uppercase tracking-wide text-vermillion-500;
+  }
+
+  .cite {
+    @apply font-mono text-[11px] leading-relaxed text-ink-500;
+  }
+
+  .topic-nav-link {
+    @apply flex items-center justify-between gap-3 border-b border-ink-200 py-4 transition-colors hover:border-vermillion-500;
+  }
+}
+
+/* Long-form editorial prose for the science pages. */
+.prose-editorial {
+  @apply text-ink-700 leading-[1.75] text-[15px] sm:text-base;
+}
+.prose-editorial p {
+  @apply my-4;
+}
+.prose-editorial h2 {
+  @apply font-display text-2xl sm:text-[1.7rem] font-bold text-ink-900 mt-10 mb-3 leading-tight;
+}
+.prose-editorial h3 {
+  @apply font-display text-lg font-bold text-ink-900 mt-8 mb-2;
+}
+.prose-editorial strong {
+  @apply text-ink-900 font-semibold;
+}
+.prose-editorial a {
+  @apply text-vermillion-600 underline underline-offset-2;
+}
+.prose-editorial ul {
+  @apply my-4 space-y-2 list-disc pl-5;
+}
+.prose-editorial .dropcap::first-letter {
+  @apply font-display float-left text-5xl leading-[0.85] pr-2 pt-1 text-vermillion-500;
+}
