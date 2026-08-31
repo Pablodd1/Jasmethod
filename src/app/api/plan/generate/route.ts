@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { generatePlan, generateHyroxPlan, generateBoxingCamp, generateSingleSport, estimateVo2max, maxHrFromAge, estimateLthr, buildZoneTable, type ZoneTable } from "@/lib/science";
+import { generatePlan, generateHyroxPlan, generateBoxingCamp, generateSingleSport, estimateVo2max, maxHrFromAge, estimateLthr, buildZoneTable, type ZoneTable, type PlanSession } from "@/lib/science";
 import { recoveryFor, scheduleTests, venueAdjustment, defaultStartTime } from "@/lib/adaptive";
 
 // POST /api/plan/generate — generate a periodized plan for the user
@@ -67,6 +67,15 @@ export async function POST(req: Request) {
       : generatePlan({ level, distance: dist, weeks: weeksCount, startDate: start, weeklyHours: profile.weeklyHours || undefined, easyPct: splitTarget, raceDate: raceDate ? race : undefined });
 
     // Persist plan + plan days + planned workouts
+    // One active plan per athlete: archive any previous active plan and remove
+    // its future planned-but-uncompleted workouts so calendars don't double-book.
+    const oldPlans = await prisma.trainingPlan.findMany({ where: { userId: user.id, status: "active" }, select: { id: true } });
+    if (oldPlans.length) {
+      await prisma.workout.deleteMany({
+        where: { userId: user.id, planned: true, completed: false, planDay: { planId: { in: oldPlans.map((p) => p.id) } } },
+      });
+      await prisma.trainingPlan.updateMany({ where: { id: { in: oldPlans.map((p) => p.id) } }, data: { status: "archived" } });
+    }
     const plan = await prisma.trainingPlan.create({
       data: {
         userId: user.id,
@@ -78,18 +87,27 @@ export async function POST(req: Request) {
         raceDate: race,
         easyPct: splitTarget,
         days: {
-          create: generated.flatMap((week, wi) =>
-            week.sessions.map((s, si) => {
+          create: generated.flatMap((week, wi) => {
+            // Group the week's sessions onto 7 day-slots; sessions sharing a slot
+            // (e.g. swim + recovery on Monday) join ONE PlanDay so dates never
+            // duplicate and "Day off" applies to the whole day.
+            const bySlot = new Map<number, PlanSession[]>();
+            week.sessions.forEach((s: PlanSession, si: number) => {
+              const slot = si % 7;
+              if (!bySlot.has(slot)) bySlot.set(slot, []);
+              bySlot.get(slot)!.push(s);
+            });
+            return Array.from(bySlot.entries()).map(([slot, slotSessions]) => {
               const date = new Date(start);
-              date.setDate(date.getDate() + (wi * 7) + (si % 7));
+              date.setDate(date.getDate() + (wi * 7) + slot);
               return {
                 date,
                 week: week.week,
                 dayOfWeek: date.getDay(),
-                focus: s.sport,
-                notes: s.description,
+                focus: slotSessions[0].sport,
+                notes: slotSessions[0].description,
                 sessions: {
-                  create: {
+                  create: slotSessions.map((s) => ({
                     userId: user.id,
                     date,
                     startTime: sessionStartTime,
@@ -98,16 +116,17 @@ export async function POST(req: Request) {
                     type: s.type,
                     durationMin: s.minutes,
                     intensity: s.zone,
+                    notes: s.description,
                     rpe: s.zone === "z1" || s.zone === "z2" ? 3 : s.zone === "z3" ? 5 : s.zone === "z4" ? 7 : 9,
                     planned: true,
                     completed: false,
                     source: "plan",
                     recovery: recoveryFor(date).cooldownNote,
-                  },
+                  })),
                 },
               };
-            })
-          ),
+            });
+          }),
         },
       },
       include: { days: { include: { sessions: true } } },

@@ -137,7 +137,7 @@ export default function TrainingPage() {
         <div className="card">
           <h2 className="font-display font-bold text-lg mb-1">Generate a New Plan</h2>
           <p className="text-sm text-slate-500 mb-4">
-            {profile?.lthr ? `Your LTHR: ${profile.lthr} bpm — sessions anchored to your physiology.` : "Complete your profile to auto-estimate VO2max and LTHR; otherwise we'll use standard estimates."}
+            {profile?.lthr ? `Your LTHR: ${profile.lthr} bpm — the heart rate you could hold for a hard one-hour effort. Sessions anchor to it.` : "Complete your profile to auto-estimate VO2max (your aerobic engine size) and LTHR (your one-hour heart rate); otherwise we'll use standard estimates."}
           </p>
           <form onSubmit={generate} className="grid md:grid-cols-6 gap-4 items-end">
             <div>
@@ -184,10 +184,14 @@ export default function TrainingPage() {
           {error && <div className="text-sm text-coral-600 mt-3 bg-coral-50 rounded-lg px-3 py-2">{error}</div>}
         </div>
 
-        {/* Zone table */}
+        {/* Zone table — compact. Full zone-by-zone descriptions live in Profile & Zones. */}
         {zones?.hr && (
           <div className="card">
-            <h2 className="font-display font-bold text-lg mb-3">Your Training Zones (max HR {zones.anchorHr} bpm)</h2>
+            <h2 className="font-display font-bold text-lg mb-1">Your Training Zones (max HR {zones.anchorHr} bpm)</h2>
+            <p className="text-xs text-slate-400 mb-3">
+              Z1 = recovery · Z2 = all-day pace · Z3 = comfortably hard · Z4 = threshold · Z5 = max. RPE = how hard it feels, 1–10.
+              Full descriptions & swim/power zones in <a href="/settings" className="text-ocean-600 underline">Profile &amp; Zones</a>.
+            </p>
             <div className="grid md:grid-cols-5 gap-2">
               {HR_ZONES.map((z) => {
                 const r = zones.hr![z.key];
@@ -228,7 +232,6 @@ export default function TrainingPage() {
             {plan.days.map((day: any) => {
               const off = day.dayOff;
               const prot = dayOffProtocol(new Date(day.date));
-              const isExpanded = expanded.has(day.id);
               return (
                 <div key={day.id} className={`card ${off ? "border-dashed border-slate-300 bg-slate-50" : ""}`}>
                   <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
@@ -257,6 +260,7 @@ export default function TrainingPage() {
                         const Icon = SPORT_ICON[s.sport] || Dumbbell;
                         const done = s.completed;
                         const edit = editing[s.id];
+                        const isExpanded = expanded.has(s.id);
                         return (
                           <div key={s.id} className={`rounded-xl mb-1.5 ${done ? "bg-emerald-50 border border-emerald-200" : "hover:bg-sand-100"}`}>
                             <div className="flex items-center gap-3 p-2.5">
