@@ -82,7 +82,7 @@ assert(d1.main.includes("6×800m") && !d1.main.includes("Warm-up"), "detail: mai
 assert(d1.breathing.includes("Box Breathing"), "detail: breathing technique present");
 assert(d1.study.includes("Billat"), "detail: interval study reference present");
 const d2 = buildSessionDetail({ sport: "swim", type: "threshold", zone: "z4", minutes: 60, description: "W/U 400m, then 8×100m at T-pace." });
-assert(d2.wu.includes("200-400m easy swim") && d2.study.includes("Friel"), "detail: swim WU + threshold study present");
+assert(d2.wu.includes("10 min easy swim") && d2.study.includes("Friel"), "detail: swim WU + threshold study present");
 
 // 11. Empty/missing description → specialist-coach main set template, never blank
 const d3 = buildSessionDetail({ sport: "bike", type: "threshold", zone: "z4", minutes: 75, description: "" });

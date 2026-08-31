@@ -552,44 +552,52 @@ const ZONE_LABEL: Record<string, string> = {
 
 function mainTemplate(sport: string, type: string, zone: string, minutes: number): string {
   const z = ZONE_LABEL[zone] || ZONE_LABEL.z2;
-  const work = Math.max(15, minutes - 25); // minus WU/CD
+  const work = Math.max(15, minutes - 25); // main-set budget after WU/CD
+  const t = `≈ ${Math.round(work)} min total`;
   if (sport === "swim") {
-    if (type === "interval") return `Main: ${Math.round(work / 6)}×100m fast (${z}) with 20s rest after each. Count strokes — fewer strokes per lap = more efficient. Finish each rep with 5m strong off the wall.`;
-    if (type === "threshold") return `Main: 4-8×100m at T-pace (${z}) with 20s rest, or 4×200m with 30s rest. Hold pace — the clock doesn't lie. If pace drops >3s/100m, stop the set.`;
-    return `Main: ${Math.round(work / 15)}×(150m easy + 50m technique drill: catch-up, fingertip drag, 3-3-3 breathing). Steady ${z}. Total focus: body position high, hips up, long stroke.`;
+    if (type === "interval") {
+      const n = Math.max(4, Math.round(work / 3));
+      return `Main: ${n}×100m fast (${z}), ~1:40–2:00 each, 20s rest between → ${t}. Count strokes — fewer per lap = more efficient. Finish each rep with 5m strong off the wall.`;
+    }
+    if (type === "threshold") {
+      const n = Math.max(4, Math.round(work / 3));
+      return `Main: ${n}×100m at T-pace (${z}), ~1:40–2:00 each, 20s rest → ${t}. Hold pace — if it drops >3s/100m, stop the set.`;
+    }
+    const n = Math.max(3, Math.round(work / 8));
+    return `Main: ${n}×(150m easy + 50m technique drill: catch-up, fingertip drag, 3-3-3 breathing), ~4 min per round (${z}) → ${t}. Body position high, hips up, long stroke.`;
   }
   if (sport === "bike") {
-    if (type === "interval") return `Main: 5×3 min at ${z} with 3 min easy spin between. Seated, cadence 90+. Each rep should feel like a hard but repeatable climb. ${Math.round(work)} min total work.`;
-    if (type === "threshold") return `Main: 3×10 min at ${z} (or 91-105% FTP) with 5 min easy between. This is THE session — hold power steady, don't surge the first rep. Aero position on the intervals.`;
-    if (type === "tempo") return `Main: 2×20 min at ${z} with 8 min easy between. Steady effort, cadence 85-95. Eat/drink during this session — it's race-practice for the gut too.`;
-    return `Main: ${Math.round(work)} min steady ${z}. Cadence 85-95 rpm. Fuel 60-90g carbs/hour if over 90 min (Jeukendrup 2014). This ride builds your aerobic engine.`;
+    if (type === "interval") return `Main: 5×3 min at ${z} (3 min easy spin between) → ${t}. Seated, cadence 90+. Each rep hard but repeatable.`;
+    if (type === "threshold") return `Main: 3×10 min at ${z} / 91–105% FTP (5 min easy between) → ${t}. Hold power steady — don't surge rep 1. Aero on the intervals.`;
+    if (type === "tempo") return `Main: 2×20 min at ${z} (8 min easy between) → ${t}. Cadence 85–95. Eat/drink — race-practice for the gut.`;
+    return `Main: ${Math.round(work)} min steady ${z} → ${t}. Cadence 85–95 rpm. Fuel 60–90g carbs/hr if >90 min (Jeukendrup 2014).`;
   }
   if (sport === "run") {
-    if (type === "interval") return `Main: 6×800m at vVO2max (${z}) — roughly 3-5s/400m faster than 5k pace — with 400m jog recovery (Billat 2001). ${Math.round(work)} min of work. Stop the set if pace drops or form breaks.`;
-    if (type === "threshold") return `Main: 3×10 min at T-pace (${z}) with 3 min easy jog between. Threshold pace = what you could race for 1 hour. Controlled discomfort — 7/10 effort.`;
-    if (type === "tempo") return `Main: 20-30 min continuous at ${z} (marathon-effort). Relax the shoulders, quick feet, breathe on a 3-3 rhythm.`;
-    return `Main: ${Math.round(work)} min easy ${z}. Cap HR at 89% LTHR. Conversational — if you can't talk, slow down. This is where the engine is built (Seiler: 80% of volume lives here).`;
+    if (type === "interval") return `Main: 6×800m at vVO2max (${z}), ~3:00–3:30 each, 400m jog recovery ~2:00 → ${t} (Billat 2001). Stop the set if pace drops or form breaks.`;
+    if (type === "threshold") return `Main: 3×10 min at T-pace (${z}, ~7/10 effort), 3 min easy jog between → ${t}. T-pace = what you could race for 1 hour.`;
+    if (type === "tempo") return `Main: 20–30 min continuous at ${z} (marathon effort) → ${t}. Relax shoulders, quick feet, 3-3 breathing rhythm.`;
+    return `Main: ${Math.round(work)} min easy ${z} → ${t}. Cap HR 89% LTHR. Conversational — if you can't talk, slow down (Seiler: 80% of volume lives here).`;
   }
   if (sport === "strength") {
-    return `Main: 3-5 sets of 5-8 reps, compound lifts — back squat, deadlift, bench/row (Rønnestad 2014: heavy strength improves endurance economy). 2-3 min rest between sets. Bar speed intentional on every rep; leave 2 reps in reserve.`;
+    return `Main: 3–5 sets × 5–8 reps compound lifts — squat, deadlift, bench/row, 2–3 min rest between sets → ${t} (Rønnestad 2014: heavy strength improves endurance economy). Bar speed intentional; leave 2 reps in reserve.`;
   }
   if (sport === "brick") {
-    return `Main: 60 min ride with the last 20 min at race effort, then IMMEDIATELY off the bike into a 15 min run at target race pace. The first 400m on foot will feel like running on stilts — that's exactly the skill you're training.`;
+    return `Main: 60 min ride (last 20 min at race effort) then IMMEDIATELY off the bike into 15 min run at race pace → ≈ 75 min total. First 400m on foot feels like stilts — that's the skill you're training.`;
   }
   if (sport === "recovery") {
-    return `Main: ${Math.round(work)} min anything-goes at ${z} — walk, easy spin, swim, stretch, yoga. The goal is blood flow, NOT fitness. If your breathing is labored, you're going too hard.`;
+    return `Main: ${Math.round(work)} min anything-goes at ${z} → ${t}. Walk, easy spin, swim, stretch, yoga. Goal is blood flow, not fitness. Labored breathing = too hard.`;
   }
   if (sport === "boxing") {
-    if (type === "interval") return `Main: ${Math.max(4, Math.round(work / 4))}×3 min rounds (${z}) with 1 min rest — each round a different job: output burst → counter-boxing → pivot-and-exit footwork. Hands back to the face after every punch; the rest is standing, not slumping.`;
-    if (type === "skill") return `Main: ${Math.max(3, Math.round(work / 5))}×2 min technique rounds: mirror or film work on one pattern per round (jab range, slip-roll-counter, angle exit). Slow is smooth, smooth is fast — groove it at 60% before you add power.`;
-    if (type === "strength") return `Main: power circuit ${Math.round(work)} min: 4 rounds of 20 max-speed punches on the bag, 8 explosive push-ups, 10 landmine or med-ball rotational throws, 30s plank. Rest 60s between rounds. Every rep moves FAST.`;
-    return `Main: ${Math.round(work)} min continuous at ${z}: shadow rounds or light bag broken into 3-min rounds (1 min rest). Long steady output with clean mechanics — the engine is built here, one round at a time.`;
+    if (type === "interval") return `Main: ${Math.max(4, Math.round(work / 4))}×3 min rounds (${z}), 1 min rest → ${t}. Each round a job: output burst → counter-boxing → pivot-and-exit footwork. Hands back to face after every punch.`;
+    if (type === "skill") return `Main: ${Math.max(3, Math.round(work / 5))}×2 min technique rounds → ${t}. One pattern per round (jab range, slip-roll-counter, angle exit). 60% speed first — slow is smooth.`;
+    if (type === "strength") return `Main: power circuit ${Math.round(work)} min: 4 rounds of 20 max-speed bag punches, 8 explosive push-ups, 10 rotational throws, 30s plank, 60s rest → ${t}. Every rep FAST.`;
+    return `Main: ${Math.round(work)} min continuous ${z} in 3-min rounds (1 min rest) → ${t}. Long steady output, clean mechanics.`;
   }
-  return `Main: ${Math.round(work)} min at ${z}.`;
+  return `Main: ${Math.round(work)} min at ${z} → ${t}.`;
 }
 
 const WU_TEMPLATES: Record<string, string> = {
-  swim: "200-400m easy swim + 4×50m technique drills (body position, breathing, catch). Keep HR in Z1-Z2.",
+  swim: "~10 min easy swim (200-400m) + 4×50m technique drills (body position, breathing, catch). Keep HR in Z1-Z2.",
   bike: "15 min easy spin (Z1-Z2), cadence 85-95 rpm, then 3×1 min at Z3 openers with 1 min easy between.",
   run: "10 min easy jog (Z1-Z2) + dynamic drills: 4×20s high knees, butt kicks, leg swings, 2×20m strides.",
   strength: "5 min light cardio (bike/row) + dynamic warm-up: leg swings, arm circles, 10 bodyweight squats, 10 push-ups.",
@@ -599,7 +607,7 @@ const WU_TEMPLATES: Record<string, string> = {
 };
 
 const CD_TEMPLATES: Record<string, string> = {
-  swim: "200m easy swim + 5 min mobility (shoulders, hips, ankles).",
+  swim: "~5 min: 200m easy swim + 5 min mobility (shoulders, hips, ankles).",
   bike: "10 min easy spin (Z1) + 5 min light stretching (quads, hips, hamstrings).",
   run: "10 min easy jog (Z1) + 5 min mobility (hips, calves, T-spine).",
   strength: "5 min light cardio + 10 min static stretching of the trained muscle groups.",
@@ -630,7 +638,7 @@ export function buildSessionDetail(
   const desc = (s.description || "").trim();
   const main = desc.length >= 25 ? desc.replace(/^(?:W\/U|Warm-up|warm up)[^.]*\.\s*/, "") : mainTemplate(sport, s.type, s.zone, s.minutes);
   const cd = CD_TEMPLATES[sport] || CD_TEMPLATES.run;
-  const breathing = recoveryNote || "Cool-down: 2-5 min breathing — box (4-4-4-4), physiological sigh, or 4-7-8.";
+  const breathing = recoveryNote || "Recovery & ANS down-regulation (5–10 min): shift sympathetic → parasympathetic (vagal tone). Physiological sigh (double inhale + long exhale) ×5, or box breathing 4-4-4-4 ×10, or 4-7-8 ×4. Slow extended-exhale breathing raises HRV — your objective recovery score (Buchheit 2014). Splash cold water on face/neck for the dive reflex (extra vagal kick).";
   const study = STUDY_BY_TYPE[s.type] || STUDY_BY_TYPE.endurance;
   return { wu, main, cd, breathing, study };
 }
