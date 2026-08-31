@@ -5,7 +5,7 @@ import { Dumbbell, Waves, Bike, Zap, Sparkles, Layers, HeartPulse, ChevronDown, 
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { dayOffProtocol, analyzeHydration, TRAINING_WINDOWS } from "@/lib/adaptive";
-import { buildSessionDetail } from "@/lib/science";
+import { buildSessionDetail, HR_ZONES } from "@/lib/science";
 
 const SPORT_ICON: Record<string, any> = { swim: Waves, bike: Bike, run: Zap, strength: Dumbbell, brick: Zap, recovery: HeartPulse, hyrox: Layers, boxing: Swords };
 
@@ -187,15 +187,17 @@ export default function TrainingPage() {
         {/* Zone table */}
         {zones?.hr && (
           <div className="card">
-            <h2 className="font-display font-bold text-lg mb-3">Your Training Zones</h2>
-            <div className="grid md:grid-cols-7 gap-2">
-              {[["z1", "Active Recovery"], ["z2", "Aerobic"], ["z3", "Tempo"], ["z4", "Sub-LT"], ["z5", "LT"], ["z6", "VO2max"], ["z7", "Anaerobic"]].map(([key, name]) => {
-                const r = zones.hr[key];
+            <h2 className="font-display font-bold text-lg mb-3">Your Training Zones (max HR {zones.anchorHr} bpm)</h2>
+            <div className="grid md:grid-cols-5 gap-2">
+              {HR_ZONES.map((z) => {
+                const r = zones.hr![z.key];
+                const b = zones.bikeHr?.[z.key];
                 return (
-                  <div key={key} className="rounded-xl border border-sand-200 p-3 text-center">
-                    <div className={`chip ${`chip-${key}`} mx-auto`}>{name}</div>
+                  <div key={z.key} className="rounded-xl border border-sand-200 p-3 text-center">
+                    <div className={`chip ${`chip-${z.key}`} mx-auto`}>{z.name}</div>
                     <div className="font-display text-lg font-bold mt-2">{r.low}-{r.high}</div>
-                    <div className="text-[10px] text-slate-400 uppercase">bpm</div>
+                    <div className="text-[10px] text-slate-400 uppercase">bpm · RPE {z.rpe}</div>
+                    {b && <div className="text-[10px] text-slate-400">bike {b.low}-{b.high}</div>}
                   </div>
                 );
               })}

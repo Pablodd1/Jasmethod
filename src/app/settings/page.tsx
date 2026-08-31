@@ -250,30 +250,42 @@ export default function SettingsPage() {
 
           <div className="space-y-6">
             <div className="card">
-              <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><HeartPulse className="w-5 h-5 text-coral-500" /> Your HR Zones (LTHR {zones?.anchorHr || "—"} bpm)</h2>
+              <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><HeartPulse className="w-5 h-5 text-coral-500" /> Your HR Zones — max HR {zones?.anchorHr || "—"} bpm</h2>
               {zones?.hr ? (
                 <div className="space-y-1.5">
                   {HR_ZONES.map((z) => {
                     const r = zones.hr[z.key];
+                    const b = zones.bikeHr?.[z.key];
                     return (
                       <div key={z.key} className="flex items-center gap-3 text-sm">
                         <span className={`chip ${`chip-${z.key}`} w-28 justify-center`}>{z.name}</span>
-                        <span className="font-display font-bold w-20">{r.low}-{r.high} bpm</span>
-                        <span className="text-xs text-slate-400 flex-1 truncate">{z.description}</span>
+                        <span className="font-display font-bold w-24">{r.low}-{r.high} bpm</span>
+                        <span className="text-xs text-slate-400 flex-1 truncate">{z.description} <span className="text-slate-500">(RPE {z.rpe})</span></span>
+                        {b && <span className="text-xs text-slate-400 whitespace-nowrap">Bike {b.low}-{b.high}</span>}
                       </div>
                     );
                   })}
+                  {zones.swim && (
+                    <div className="border-t border-sand-200 pt-2 mt-2 text-xs text-slate-500">
+                      Swim (sec/100m): Z1 {zones.swim.z1.high}-{zones.swim.z1.low} · Z2 {zones.swim.z2.high}-{zones.swim.z2.low} · Z3 {zones.swim.z3.high}-{zones.swim.z3.low} · Z4 {zones.swim.z4.high}-{zones.swim.z4.low} · Z5 {zones.swim.z5.high}-{zones.swim.z5.low} (threshold {zones.anchorSwim}s)
+                    </div>
+                  )}
                   {zones.power && (
                     <div className="border-t border-sand-200 pt-2 mt-2 text-xs text-slate-500">
                       Power: Z1 &lt;{zones.power.z1.high}W · Z2 {zones.power.z2.low}-{zones.power.z2.high}W · Z3 {zones.power.z3.low}-{zones.power.z3.high}W · Z4 {zones.power.z4.low}-{zones.power.z4.high}W · Z5+ {zones.power.z5.low}+W (FTP {zones.anchorPower}W)
                     </div>
                   )}
+                  {zones.vo2maxHr && (
+                    <div className="border-t border-sand-200 pt-2 mt-2 text-xs text-slate-500">
+                      VO2max ≈ {zones.vo2maxHr} ml/kg/min (Uth 2004: 15.3 × HRmax ÷ HRrest)
+                    </div>
+                  )}
                 </div>
               ) : (
-                <p className="text-sm text-slate-400">Enter your LTHR (or save VO2max) to see personalized zones.</p>
+                <p className="text-sm text-slate-400">Enter your max HR to see personalized zones.</p>
               )}
               <p className="text-[11px] text-slate-400 mt-3">
-                LTHR = average HR of the last 20 min of a 30-min all-out time trial (Friel protocol; Lamberts 2009 validation). Zones follow the 7-zone model anchored on LTHR.
+                Zones follow the MyProCoach 5-zone model anchored on max HR (run). Bike = run − 6 bpm. Swim uses CSS/threshold pace. Gym, boxing &amp; HYROX use the same zones guided by RPE.
               </p>
             </div>
 

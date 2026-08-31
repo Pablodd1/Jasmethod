@@ -115,10 +115,12 @@ export async function POST(req: Request) {
 
     // Also build the zone table for the user to see
     const zones: ZoneTable = buildZoneTable({
+      maxHr: profile.maxHr ?? undefined,
       lthr,
       ftp: profile.ftp || undefined,
       thresholdPaceSecPerKm: profile.runPaceBase || undefined,
       thresholdPaceSecPer100m: profile.swimPaceBase || undefined,
+      restingHr: profile.restingHr || undefined,
     });
 
     // Schedule benchmark tests every ~2 months, race-aware

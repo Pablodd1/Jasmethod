@@ -70,8 +70,8 @@ export default function LabsPage() {
   }
 
   // live zone table from current inputs
-  const zones = profile?.lthr
-    ? buildZoneTable({ lthr: profile.lthr, ftp: profile.ftp || undefined, thresholdPaceSecPer100m: profile.swimPaceBase || undefined, thresholdPaceSecPerKm: profile.runPaceBase || undefined })
+  const zones = profile?.maxHr || profile?.lthr
+    ? buildZoneTable({ maxHr: profile.maxHr || undefined, lthr: profile.lthr || undefined, ftp: profile.ftp || undefined, thresholdPaceSecPer100m: profile.swimPaceBase || undefined, thresholdPaceSecPerKm: profile.runPaceBase || undefined, restingHr: profile.restingHr || undefined })
     : null;
 
   return (

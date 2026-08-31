@@ -13,14 +13,14 @@ export async function GET() {
   const age = profile.birthYear ? new Date().getFullYear() - profile.birthYear : undefined;
   const hrMax = profile.maxHr ?? (age ? maxHrFromAge(age) : undefined);
   const lthr = profile.lthr ?? (hrMax ? estimateLthr(hrMax, profile.experience) : undefined);
-  const zones = lthr
-    ? buildZoneTable({
-        lthr,
-        ftp: profile.ftp || undefined,
-        thresholdPaceSecPerKm: profile.runPaceBase || undefined,
-        thresholdPaceSecPer100m: profile.swimPaceBase || undefined,
-      })
-    : null;
+  const zones = buildZoneTable({
+    maxHr: hrMax,
+    lthr: lthr || undefined,
+    ftp: profile.ftp || undefined,
+    thresholdPaceSecPerKm: profile.runPaceBase || undefined,
+    thresholdPaceSecPer100m: profile.swimPaceBase || undefined,
+    restingHr: profile.restingHr || undefined,
+  });
 
   return NextResponse.json({ profile, zones, age, hrMax, lthr });
 }

@@ -23,20 +23,25 @@ export interface Zone {
   pctLow: number; // % of anchor
   pctHigh: number;
   description: string;
+  rpe?: string; // RPE equivalent (1-10) — the gym/boxing/hyrox anchor
 }
 
-// ---- Heart rate zones anchored on Lactate Threshold HR (Friel 7-zone model) ----
-// Z1 (active recovery)  <81% LTHR; Z2 (aerobic endurance) 81-89%; Z3 (tempo) 90-93%;
-// Z4 (sub-LT) 94-99%; Z5 (LT) 100-102%; Z6 (VO2max) 103-106%; Z7 (anaerobic) >106%.
+// ---- MyProCoach 5-zone HR model (anchored on MAX HEART RATE) ----
+// Verified against MyProCoach calculator (myprocoach.net/calculators/hr-zones, 2026):
+// Z1 Easy 68-73%, Z2 Steady 73-80%, Z3 Moderately Hard 80-87%, Z4 Hard 87-93%,
+// Z5 Very Hard 93-100% of MAX HR. Bike zones run 5-8 bpm lower (we use 6).
+// Gym/boxing/hyrox use the SAME max-HR zones but are RPE-guided (HR lags
+// intermittent high-force work), so each zone carries its RPE equivalent.
 export const HR_ZONES: Zone[] = [
-  { key: "z1", name: "Active Recovery", pctLow: 0.5, pctHigh: 0.8, description: "Very easy spinning/jogging, conversational pace. Flush lactate, promote blood flow." },
-  { key: "z2", name: "Aerobic Endurance", pctLow: 0.81, pctHigh: 0.89, description: "The engine builder. 80% of training lives here (Seiler 2009)." },
-  { key: "z3", name: "Tempo", pctLow: 0.9, pctHigh: 0.93, description: "Comfortably hard. 'Sweet spot' for time-crunched amateurs." },
-  { key: "z4", name: "Sub-Lactate Threshold", pctLow: 0.94, pctHigh: 0.99, description: "Sustained effort just below LT. Race-pace work for half/full." },
-  { key: "z5", name: "Lactate Threshold", pctLow: 1.0, pctHigh: 1.02, description: "The critical intensity. Elevates LT over time." },
-  { key: "z6", name: "VO2max", pctLow: 1.03, pctHigh: 1.06, description: "3-5 min hard efforts. Raises the ceiling (Billat 2001)." },
-  { key: "z7", name: "Anaerobic Capacity", pctLow: 1.06, pctHigh: 1.15, description: "Max efforts 30s-2min. Neuromuscular power." },
+  { key: "z1", name: "Easy", pctLow: 0.68, pctHigh: 0.73, rpe: "1-2 /10", description: "Recovery / easy — blood flow, active recovery." },
+  { key: "z2", name: "Steady", pctLow: 0.73, pctHigh: 0.80, rpe: "3-4 /10", description: "Endurance — fat & carb efficiency. Conversational." },
+  { key: "z3", name: "Moderately Hard", pctLow: 0.80, pctHigh: 0.87, rpe: "5-6 /10", description: "Tempo — delays lactate fatigue. 10-20 min reps." },
+  { key: "z4", name: "Hard", pctLow: 0.87, pctHigh: 0.93, rpe: "7-8 /10", description: "Threshold — raises lactate threshold. 3-10 min reps." },
+  { key: "z5", name: "Very Hard", pctLow: 0.93, pctHigh: 1.00, rpe: "9-10 /10", description: "VO2max / top-end speed. 1-3 min reps." },
 ];
+
+// Bike HR zones sit 5-8 bpm below run (MyProCoach); 6 is the midpoint.
+export const BIKE_HR_OFFSET_BPM = 6;
 
 // ---- Power zones anchored on FTP (Coggan) ----
 export const POWER_ZONES: Zone[] = [
@@ -110,58 +115,107 @@ export function lthrFrom30MinTT(last20AvgHr: number): number {
   return Math.round(last20AvgHr);
 }
 
-export interface ZoneTable {
-  hr?: Record<ZoneKey, { low: number; high: number }>;
-  power?: Record<ZoneKey, { low: number; high: number }>;
-  pace?: Record<ZoneKey, { low: number; high: number }>;
-  anchorHr: number;
-  anchorPower?: number;
-  anchorPace?: number; // sec per unit
+// ---- VO2max from heart-rate ratio (Uth–Sørensen–Overgaard–Pedersen 2004) ----
+// Most recent simple field-test estimate: VO2max = 15.3 × (HRmax / HRrest).
+// ~0.8 ml/kg/min accuracy vs direct measurement (Eur J Appl Physiol 91:111-115).
+export function estimateVo2maxFromHr(maxHr: number, restingHr: number): number {
+  if (!maxHr || !restingHr || restingHr <= 0) return 0;
+  return Math.round((15.3 * maxHr) / restingHr * 10) / 10;
 }
 
+// ---- Critical Swim Speed (CSS) — MyProCoach 400m + 200m test ----
+// CSS = (D400 - D200) / (T400 - T200) in m/s; ≈ pace for a maximal 1500m TT.
+export function cssFromTestTimes(t400sec: number, t200sec: number): number {
+  if (t400sec <= t200sec) return 0;
+  const speedMs = 200 / (t400sec - t200sec);
+  return Math.round((100 / speedMs) * 10) / 10; // sec/100m
+}
+
+export interface ZoneTable {
+  anchorHr?: number;  // MAX heart rate (HR zone anchor)
+  anchorLthr?: number; // threshold HR (cross-reference only)
+  hr?: Record<string, { low: number; high: number }>;        // RUN HR (MyProCoach 5-zone, % max HR)
+  bikeHr?: Record<string, { low: number; high: number }>;    // BIKE HR (run zones − 6 bpm)
+  power?: Record<ZoneKey, { low: number; high: number }>;    // FTP power (Coggan 7-zone)
+  pace?: Record<ZoneKey, { low: number; high: number }>;     // RUN threshold pace (7-zone, sec/km)
+  swim?: Record<string, { low: number; high: number }>;      // SWIM pace (5-zone, sec/100m)
+  anchorPower?: number;
+  anchorPace?: number; // run threshold sec/km
+  anchorSwim?: number; // swim threshold sec/100m
+  vo2maxHr?: number;   // Uth 2004 estimate (needs restingHr)
+}
+
+// Swim pace zones around threshold (CSS) pace — sec/100m. Slower = larger seconds.
+const SWIM_ZONE_MULT: Record<string, { slow: number; fast: number }> = {
+  z1: { slow: 1.25, fast: 1.15 },
+  z2: { slow: 1.15, fast: 1.06 },
+  z3: { slow: 1.06, fast: 1.02 },
+  z4: { slow: 1.02, fast: 0.98 },
+  z5: { slow: 0.98, fast: 0.92 },
+};
+
 export function buildZoneTable(opts: {
-  lthr: number;
+  maxHr?: number;
+  lthr?: number;
   ftp?: number;
   thresholdPaceSecPerKm?: number; // run
   thresholdPaceSecPer100m?: number; // swim
+  restingHr?: number;
 }): ZoneTable {
-  const { lthr, ftp, thresholdPaceSecPerKm, thresholdPaceSecPer100m } = opts;
-  const hr: Record<ZoneKey, { low: number; high: number }> = {} as any;
-  for (const z of HR_ZONES) {
-    hr[z.key] = {
-      low: Math.round(lthr * z.pctLow),
-      high: Math.round(lthr * z.pctHigh),
-    };
+  const { maxHr, lthr, ftp, thresholdPaceSecPerKm, thresholdPaceSecPer100m, restingHr } = opts;
+
+  let hr: Record<string, { low: number; high: number }> | undefined;
+  let bikeHr: Record<string, { low: number; high: number }> | undefined;
+  if (maxHr) {
+    hr = {}; bikeHr = {};
+    for (const z of HR_ZONES) {
+      hr[z.key] = { low: Math.round(maxHr * z.pctLow), high: Math.round(maxHr * z.pctHigh) };
+      bikeHr[z.key] = {
+        low: Math.round(maxHr * z.pctLow) - BIKE_HR_OFFSET_BPM,
+        high: Math.round(maxHr * z.pctHigh) - BIKE_HR_OFFSET_BPM,
+      };
+    }
   }
+
   let power: Record<ZoneKey, { low: number; high: number }> | undefined;
   if (ftp) {
     power = {} as Record<ZoneKey, { low: number; high: number }>;
     for (const z of POWER_ZONES) {
-      power[z.key] = {
-        low: Math.round(ftp * z.pctLow),
-        high: Math.round(ftp * z.pctHigh),
-      };
+      power[z.key] = { low: Math.round(ftp * z.pctLow), high: Math.round(ftp * z.pctHigh) };
     }
   }
-  const paceAnchor = thresholdPaceSecPerKm ?? (thresholdPaceSecPer100m ? thresholdPaceSecPer100m : undefined);
+
   let pace: Record<ZoneKey, { low: number; high: number }> | undefined;
-  if (paceAnchor) {
+  if (thresholdPaceSecPerKm) {
     pace = {} as Record<ZoneKey, { low: number; high: number }>;
-    // pace zones: higher % = faster (lower seconds)
     for (const z of PACE_ZONES) {
-      pace[z.key] = {
-        high: Math.round(paceAnchor / z.pctLow),
-        low: Math.round(paceAnchor / z.pctHigh),
-      };
+      pace[z.key] = { high: Math.round(thresholdPaceSecPerKm / z.pctLow), low: Math.round(thresholdPaceSecPerKm / z.pctHigh) };
     }
   }
+
+  let swim: Record<string, { low: number; high: number }> | undefined;
+  if (thresholdPaceSecPer100m) {
+    swim = {};
+    for (const z of HR_ZONES) {
+      const m = SWIM_ZONE_MULT[z.key];
+      swim[z.key] = { low: Math.round(thresholdPaceSecPer100m * m.fast), high: Math.round(thresholdPaceSecPer100m * m.slow) };
+    }
+  }
+
+  const vo2maxHr = maxHr && restingHr ? estimateVo2maxFromHr(maxHr, restingHr) : undefined;
+
   return {
+    anchorHr: maxHr,
+    anchorLthr: lthr,
     hr,
+    bikeHr,
     power,
     pace,
-    anchorHr: lthr,
+    swim,
     anchorPower: ftp,
-    anchorPace: paceAnchor,
+    anchorPace: thresholdPaceSecPerKm,
+    anchorSwim: thresholdPaceSecPer100m,
+    vo2maxHr,
   };
 }
 
@@ -541,13 +595,13 @@ export interface SessionDetail {
 }
 
 const ZONE_LABEL: Record<string, string> = {
-  z1: "Z1 active recovery (<81% LTHR — very easy, conversational)",
-  z2: "Z2 aerobic (81-89% LTHR — easy, nose-breathing pace)",
-  z3: "Z3 tempo (90-93% LTHR — comfortably hard)",
-  z4: "Z4 threshold (94-99% LTHR — sustained, 'race-effort' hard)",
-  z5: "Z5 lactate threshold (100-102% LTHR)",
-  z6: "Z6 VO2max (103-106% LTHR — 3-5 min hard reps)",
-  z7: "Z7 anaerobic (>106% LTHR — 30s-2min max efforts)",
+  z1: "Z1 Easy (68-73% max HR — recovery, conversational)",
+  z2: "Z2 Steady (73-80% max HR — endurance, nose-breathing pace)",
+  z3: "Z3 Moderately Hard (80-87% max HR — tempo)",
+  z4: "Z4 Hard (87-93% max HR — threshold)",
+  z5: "Z5 Very Hard (93-100% max HR — VO2max)",
+  z6: "Z6 VO2max intervals (max effort; HR tops out — use pace/power)",
+  z7: "Z7 anaerobic sprints (HR not useful — use pace/power)",
 };
 
 function mainTemplate(sport: string, type: string, zone: string, minutes: number): string {
