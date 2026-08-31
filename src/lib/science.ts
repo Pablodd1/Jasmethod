@@ -225,19 +225,15 @@ export function sRPE(rpe: number, minutes: number): number {
 }
 
 // ---- TSS (Coggan) ----
+// NOTE: the HR-based TSS variant that lived here (tssFromHr) was removed — it
+// was dead code with mis-applied Banister TRIMP constants (sex-specific pairs
+// L=0.64/0.86, a=1.92/1.67 were collapsed into a single exponent). The real
+// HR-based load path is estimateTss() in lib/fitness.ts, which is tested.
 export function tssFromPower(normalizedPower: number, ftp: number, durationSec: number): number {
   if (!ftp || ftp <= 0) return 0;
   const IF = normalizedPower / ftp;
   const hours = durationSec / 3600;
   return Math.round((durationSec * normalizedPower * IF) / (ftp * 3600) * 100 * 100) / 100;
-}
-
-export function tssFromHr(normalizedHr: number, lthr: number, durationSec: number, sex: "male" | "female" = "male"): number {
-  // TSS-like HR-based load using TRIMP-style exponential weighting (Banister)
-  const ratio = normalizedHr / lthr;
-  const y = sex === "male" ? 0.64 : 0.86; // Banister TRIMP constants
-  const trimp = durationSec / 60 * ratio * 0.64 * Math.exp(y * ratio);
-  return Math.round(trimp * 10) / 10;
 }
 
 // ---- Chronic vs Acute load (CTL/ATL) & Training Stress Balance ----
@@ -700,25 +696,38 @@ export function buildSessionDetail(
 // ---- Daily motivation engine ----
 // Combines science-grounded coaching cues with psychology research
 // (self-determination theory — Ryan & Deci 2000; implementation intentions — Gollwitzer 1999).
-export const MOTIVATION_LIBRARY: { quote: string; science: string; coach: string }[] = [
-  { quote: "The body achieves what the mind believes.", science: "Self-efficacy is one of the strongest predictors of endurance performance (Hagger et al. 2001).", coach: "Today is a brick in the wall. Lay it well." },
-  { quote: "Discipline is choosing what you want most over what you want now.", science: "Delay of gratification and habit automation are trainable (Gollwitzer 1999 implementation intentions).", coach: "Set your gear out tonight. Remove the choice, remove the friction." },
-  { quote: "You don't rise to the level of your goals. You fall to the level of your systems.", science: "Consistency of training load beats heroic single sessions — CTL is built daily (Coggan).", coach: "One session today beats two tomorrow. Go." },
-  { quote: "Pain is temporary. Quitting lasts forever.", science: "Perceived exertion is modulated by mindset — reframing effort as a positive signal improves performance (Crum & Langer 2007).", coach: "When it hurts in Z4, tell yourself: this is exactly where the adaptation happens." },
-  { quote: "The miracle isn't that I finished. It's that I had the courage to start.", science: "Behavioral activation — starting is the hardest part; once moving, commitment rises (Lewin's task-initiation research).", coach: "Warm-up is the hardest 10 minutes. Get them done and the rest flows." },
-  { quote: "Champions are made in the hours others spend sleeping.", science: "Sleep is when training adaptations consolidate — growth hormone, tissue repair, memory of motor patterns (Fullagar 2015, Sports Med).", coach: "Actually — champions ARE made in sleep. 8 hours is a training session. Guard it." },
-  { quote: "Run when you can, walk if you must, crawl if you have to; just never give up.", science: "Pacing flexibility preserves performance when conditions change (Abbiss & Laursen 2008).", coach: "Bad day? Cut the pace, keep the time. Load is load." },
-  { quote: "What you do every day matters more than what you do once in a while.", science: "Aerobic base requires chronic stimulus — 12+ weeks of consistent Z2 (Seiler 2009).", coach: "The long game is the only game. Today's easy session IS the adaptation." },
-  { quote: "Sweat is fat crying.", science: "Well — sweat is thermoregulation, but the sentiment stands: hard work signals adaptation (ACSM 2021).", coach: "Hydrate. Electrolytes. Now. Then train." },
-  { quote: "It never gets easier, you just get faster.", science: "As fitness improves, the same RPE yields higher absolute output — this is the hallmark of adaptation (Foster 1998).", coach: "If today's Z2 feels easier than last month, raise the bar — that's progress." },
+export const MOTIVATION_LIBRARY: { quote: string; science: string; coach: string; es?: { quote: string; coach: string } }[] = [
+  { quote: "The body achieves what the mind believes.", science: "Self-efficacy is one of the strongest predictors of endurance performance (Hagger et al. 2001).", coach: "Today is a brick in the wall. Lay it well.", es: { quote: "El cuerpo logra lo que la mente cree.", coach: "Hoy pones un ladrillo en la pared. Colócalo bien." } },
+  { quote: "Discipline is choosing what you want most over what you want now.", science: "Delay of gratification and habit automation are trainable (Gollwitzer 1999 implementation intentions).", coach: "Set your gear out tonight. Remove the choice, remove the friction.", es: { quote: "La disciplina es elegir lo que más quieres sobre lo que quieres ahora.", coach: "Deja tu equipo listo esta noche. Sin decisión, sin fricción." } },
+  { quote: "You don't rise to the level of your goals. You fall to the level of your systems.", science: "Consistency of training load beats heroic single sessions — CTL is built daily (Coggan).", coach: "One session today beats two tomorrow. Go.", es: { quote: "No subes al nivel de tus metas; caes al nivel de tus sistemas.", coach: "Una sesión hoy vale más que dos mañana. Ve." } },
+  { quote: "Pain is temporary. Quitting lasts forever.", science: "Perceived exertion is modulated by mindset — reframing effort as a positive signal improves performance (Crum & Langer 2007).", coach: "When it hurts in Z4, tell yourself: this is exactly where the adaptation happens.", es: { quote: "El dolor es temporal. Rendirse dura para siempre.", coach: "Cuando duela en Z4, dime: aquí es exactamente donde ocurre la adaptación." } },
+  { quote: "The miracle isn't that I finished. It's that I had the courage to start.", science: "Behavioral activation — starting is the hardest part; once moving, commitment rises (Lewin's task-initiation research).", coach: "Warm-up is the hardest 10 minutes. Get them done and the rest flows.", es: { quote: "El milagro no es que terminé; es que tuve el valor de empezar.", coach: "El calentamiento son los 10 minutos más difíciles. Hazlos y el resto fluye." } },
+  { quote: "Champions are made in the hours others spend sleeping.", science: "Sleep is when training adaptations consolidate — growth hormone, tissue repair, memory of motor patterns (Fullagar 2015, Sports Med).", coach: "Actually — champions ARE made in sleep. 8 hours is a training session. Guard it.", es: { quote: "Los campeones se hacen en las horas que otros gastan durmiendo.", coach: "De hecho — los campeones SE hacen durmiendo. 8 horas son una sesión de entreno. Protégelas." } },
+  { quote: "Run when you can, walk if you must, crawl if you have to; just never give up.", science: "Pacing flexibility preserves performance when conditions change (Abbiss & Laursen 2008).", coach: "Bad day? Cut the pace, keep the time. Load is load.", es: { quote: "Corre cuando puedas, camina si hace falta, gatea si tienes que; pero nunca te rindas.", coach: "¿Mal día? Baja el ritmo, mantén el tiempo. La carga es carga." } },
+  { quote: "What you do every day matters more than what you do once in a while.", science: "Aerobic base requires chronic stimulus — 12+ weeks of consistent Z2 (Seiler 2009).", coach: "The long game is the only game. Today's easy session IS the adaptation.", es: { quote: "Lo que haces cada día importa más que lo que haces de vez en cuando.", coach: "El juego largo es el único juego. La sesión fácil de hoy ES la adaptación." } },
+  { quote: "Sweat is fat crying.", science: "Well — sweat is thermoregulation, but the sentiment stands: hard work signals adaptation (ACSM 2021).", coach: "Hydrate. Electrolytes. Now. Then train.", es: { quote: "El sudor es la grasa llorando.", coach: "Hidrátate. Electrolitos. Ya. Luego entrena." } },
+  { quote: "It never gets easier, you just get faster.", science: "As fitness improves, the same RPE yields higher absolute output — this is the hallmark of adaptation (Foster 1998).", coach: "If today's Z2 feels easier than last month, raise the bar — that's progress.", es: { quote: "Nunca se hace más fácil, solo te haces más rápido.", coach: "Si tu Z2 de hoy se siente más fácil que el mes pasado, sube el listón — eso es progreso." } },
 ];
 
-export function dailyMotivation(dayIndex: number, style: string = "coach"): { quote: string; message: string } {
+// Style prefixes localized (prepended to the coach message).
+const MOTIVATION_PREFIX: Record<string, { tough: string; gentle: string }> = {
+  en: { tough: "No excuses. ", gentle: "You've got this. " },
+  es: { tough: "Sin excusas. ", gentle: "Tú puedes. " },
+  ht: { tough: "Pa gen ekskoz. ", gentle: "Ou kapab. " },
+  fr: { tough: "Aucune excuse. ", gentle: "Tu peux le faire. " },
+  ru: { tough: "Без оправданий. ", gentle: "У тебя получится. " },
+};
+
+export function dailyMotivation(dayIndex: number, style: string = "coach", lang: string = "en"): { quote: string; message: string } {
   const item = MOTIVATION_LIBRARY[dayIndex % MOTIVATION_LIBRARY.length];
-  if (style === "science") return { quote: item.quote, message: item.science };
-  if (style === "tough") return { quote: item.quote, message: `No excuses. ${item.coach}` };
-  if (style === "gentle") return { quote: item.quote, message: `You've got this. ${item.coach}` };
-  return { quote: item.quote, message: item.coach };
+  const es = lang === "es" && item.es ? item.es : null;
+  const quote = es ? es.quote : item.quote;
+  const coach = es ? es.coach : item.coach;
+  const prefix = MOTIVATION_PREFIX[lang] || MOTIVATION_PREFIX.en;
+  if (style === "science") return { quote, message: item.science };
+  if (style === "tough") return { quote, message: `${prefix.tough}${coach}` };
+  if (style === "gentle") return { quote, message: `${prefix.gentle}${coach}` };
+  return { quote, message: coach };
 }
 
 // ---- Blood panel reference ranges (post-2000 clinical + sports medicine) ----

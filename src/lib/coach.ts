@@ -32,27 +32,69 @@ export interface CoachContext {
   language?: string; // en | es | ht | fr | ru
 }
 
+// Localized rule-based fallback briefings (used when Gemini is unavailable).
+// "{title}" is replaced with the session title. Languages fall back to English.
+const FALLBACK: Record<string, { green: string; amber: string; red: string; swap: string; trim: string; full: string; none: string }> = {
+  en: {
+    green: "Recovery markers look strong today. This is a day to take the planned key session by the horns — quality work compounds when you're fresh.",
+    amber: "You're in the middle of the band — recovered enough to train, but not at full surplus. Keep the session's intent, trim the last rep or two if it bites.",
+    red: "Readiness is suppressed. Today is about protecting the block: Z1 flush, mobility, and sleep. The hard work keeps for tomorrow.",
+    swap: 'Swap "{title}" for a 30-min Z1 spin + 15-min mobility flow.',
+    trim: 'Run "{title}" but extend the warm-up 10 min and drop the final interval set if RPE climbs early.',
+    full: 'Full plan for "{title}" — chase the quality.',
+    none: "No session loaded for today — a good day for an easy 40-min Z2 cross-train or total rest.",
+  },
+  es: {
+    green: "Tus marcadores de recuperación se ven fuertes hoy. Es día de tomar la sesión clave con ganas — el trabajo de calidad se acumula cuando estás fresco.",
+    amber: "Estás en el punto medio — recuperado para entrenar, pero sin excedente. Mantén la intención de la sesión y quita la última repetición si cuesta.",
+    red: "La lectura está baja. Hoy toca proteger el bloque: trote Z1, movilidad y sueño. El trabajo duro espera hasta mañana.",
+    swap: 'Cambia "{title}" por 30 min de Z1 + 15 min de movilidad.',
+    trim: 'Haz "{title}" pero alarga el calentamiento 10 min y quita la última serie si el esfuerzo sube pronto.',
+    full: 'Plan completo para "{title}" — busca la calidad.',
+    none: "Hoy no hay sesión cargada — buen día para 40 min suaves de Z2 o descanso total.",
+  },
+  ht: {
+    green: "Marco rekiperasyon yo byen jodi a. Se yon jou pou pran séans kle a tout kouraj — travay kalite a kwanze lè ou fre.",
+    amber: "Ou nan mitan an — ou ka antrene, men san sipli. Kenbe entansyon séans lan, retire dènye repete a si li twò di.",
+    red: "Nivo a ba. Jodi a se pou pwoteje blòk la: Z1, mobilite ak dòmi. Travay di a tann demen.",
+    swap: 'Chanje "{title}" pou 30 minit Z1 + 15 minit mobilite.',
+    trim: 'Fè "{title}" men alonge chofa a 10 minit epi retire dènye seri a si efò a monte twò vit.',
+    full: 'Plan konplè pou "{title}" — chache kalite a.',
+    none: "Pa gen séans jodi a — bon jou pou 40 minit Z2 fasil oswa repo total.",
+  },
+  fr: {
+    green: "Tes marqueurs de récupération sont forts aujourd'hui. C'est le jour d'attaquer la séance clé — le travail de qualité se cumule quand tu es frais.",
+    amber: "Tu es dans la zone médiane — assez récupéré pour t'entraîner, sans surplus. Garde l'intention de la séance, retire la dernière répétition si ça mord.",
+    red: "Ton niveau est bas. Aujourd'hui, on protège le bloc : Z1, mobilité et sommeil. Le travail dur attend demain.",
+    swap: 'Remplace "{title}" par 30 min de Z1 + 15 min de mobilité.',
+    trim: "Fais \"{title}\" mais allonge l'échauffement de 10 min et retire la dernière série si l'effort monte trop tôt.",
+    full: 'Plan complet pour "{title}" — va chercher la qualité.',
+    none: "Pas de séance aujourd'hui — bon jour pour 40 min de Z2 facile ou du repos complet.",
+  },
+  ru: {
+    green: "Показатели восстановления сегодня сильные. День, чтобы взять ключевую тренировку с полной отдачей — качественная работа накапливается, когда вы свежи.",
+    amber: "Вы в середине диапазона — восстановились достаточно для тренировки, но без запаса. Сохраните замысел тренировки, уберите последний повтор, если тяжело.",
+    red: "Показатели снижены. Сегодня важнее сохранить блок: Z1, мобильность и сон. Тяжёлая работа подождёт до завтра.",
+    swap: "Замените «{title}» на 30 мин Z1 + 15 мин мобильности.",
+    trim: "Выполните «{title}», но удлините разминку на 10 мин и уберите последний интервал, если нагрузка растёт слишком рано.",
+    full: "Полный план на «{title}» — работайте над качеством.",
+    none: "На сегодня тренировки нет — хороший день для 40 мин лёгкого Z2 или полного отдыха.",
+  },
+};
+
 function fallbackBriefing(c: CoachContext): Briefing {
+  const L = FALLBACK[c.language || "en"] || FALLBACK.en;
   const r = c.readiness?.score ?? 60;
   const state = r >= 75 ? "GREEN" : r >= 55 ? "AMBER" : "RED";
   const headline = `${state} DAY`;
-  let briefing = "";
-  if (state === "GREEN")
-    briefing = "Recovery markers look strong today. This is a day to take the planned key session by the horns — quality work compounds when you're fresh.";
-  else if (state === "AMBER")
-    briefing = "You're in the middle of the band — recovered enough to train, but not at full surplus. Keep the session's intent, trim the last rep or two if it bites.";
-  else
-    briefing = "Readiness is suppressed. Today is about protecting the block: Z1 flush, mobility, and sleep. The hard work keeps for tomorrow.";
+  const briefing = state === "GREEN" ? L.green : state === "AMBER" ? L.amber : L.red;
 
-  let adaptation = "";
+  let adaptation: string;
   if (c.todaySession) {
-    adaptation = state === "RED"
-      ? `Swap "${c.todaySession.title}" for a 30-min Z1 spin + 15-min mobility flow.`
-      : state === "AMBER"
-      ? `Run "${c.todaySession.title}" but extend the warm-up 10 min and drop the final interval set if RPE climbs early.`
-      : `Full plan for "${c.todaySession.title}" — chase the quality.`;
+    const t = c.todaySession.title;
+    adaptation = state === "RED" ? L.swap.replace("{title}", t) : state === "AMBER" ? L.trim.replace("{title}", t) : L.full.replace("{title}", t);
   } else {
-    adaptation = "No session loaded for today — a good day for an easy 40-min Z2 cross-train or total rest.";
+    adaptation = L.none;
   }
   return { mode: "fallback", headline, briefing, adaptation, sources: ["HRV: Buchheit 2014", "Polarized: Seiler 2009"] };
 }

@@ -4,11 +4,13 @@
 
 export type Lang = "en" | "es" | "ht" | "fr" | "ru";
 
-// User-requested language set: Spanish (default), English, Haitian Creole, Russian.
+// User-requested language set: English, Spanish (default per-user), Haitian Creole,
+// French, Russian. All five have dictionary strings below.
 export const LANGS: { code: Lang; label: string; native: string }[] = [
-  { code: "es", label: "Spanish", native: "Español" },
   { code: "en", label: "English", native: "English" },
+  { code: "es", label: "Spanish", native: "Español" },
   { code: "ht", label: "Haitian Creole", native: "Kreyòl Ayisyen" },
+  { code: "fr", label: "French", native: "Français" },
   { code: "ru", label: "Russian", native: "Русский" },
 ];
 
@@ -34,6 +36,8 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   "nav.admin": { en: "Admin", es: "Admin", ht: "Admin", fr: "Admin", ru: "Админ" },
   "nav.reminders": { en: "Reminders", es: "Recordatorios", ht: "Rapèl", fr: "Rappels", ru: "Напоминания" },
   "nav.settings": { en: "Profile & Zones", es: "Perfil y zonas", ht: "Pwofil ak zòn", fr: "Profil et zones", ru: "Профиль и зоны" },
+  "nav.science": { en: "Science Guides", es: "Guías científicas", ht: "Gid syans", fr: "Guides scientifiques", ru: "Научные гиды" },
+  "nav.more": { en: "More", es: "Más", ht: "Plis", fr: "Plus", ru: "Ещё" },
 
   // ---- recovery techniques (name + instructions) ----
   "rec.box.name": { en: "Box Breathing", es: "Respiración de caja", ht: "Respirasyon kare", fr: "Respiration carrée", ru: "Квадратное дыхание" },
@@ -137,7 +141,7 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
 
   // ---- labs ----
   "labs.title": { en: "Field-Test Labs", es: "Laboratorios de prueba de campo" },
-  "labs.subtitle": { en: "JASAI, powered by Gemini.", es: "JASAI, impulsado por Gemini." },
+  "labs.subtitle": { en: "Test, save, and your zones update across the whole app.", es: "Haz la prueba, guárdala, y tus zonas se actualizan en toda la app.", ht: "Fè tès la, sove l, e zòn ou yo mete ajou nan tout app la.", fr: "Faites le test, enregistrez, et vos zones se mettent à jour dans toute l'app.", ru: "Сделайте тест, сохраните — и ваши зоны обновятся во всём приложении." },
   "labs.vdot": { en: "VDOT — Running Paces", es: "VDOT — Ritmos de carrera" },
   "labs.raceDistance": { en: "Race distance", es: "Distancia de carrera" },
   "labs.calcPaces": { en: "Calc paces", es: "Calcular ritmos" },

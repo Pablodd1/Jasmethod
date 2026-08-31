@@ -10,7 +10,7 @@ assert.equal(t("es", "nav.dashboard"), "Panel", "spanish nav");
 assert.equal(t("ru", "nav.training"), "План тренировок", "russian nav");
 assert.equal(t("ht", "adapt.rest"), "REPO", "creole verdict");
 assert.equal(t("fr", "rec.box.name"), "Respiration carrée", "french recovery name");
-assert.equal(t("xx", "nav.sleep"), "Sleep", "unknown lang falls back to en");
+assert.equal(t("xx", "nav.sleep"), "Sueño", "unknown lang falls back to es (Miami default) before en");
 assert.equal(t("en", "rec.sigh.instr").length > 5, true, "instructions resolve");
 // every recovery key resolves in all languages
 for (const l of LANGS) {

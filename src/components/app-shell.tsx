@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Home, CalendarDays, Dumbbell, Apple,
   FlaskConical, Settings, Waves, LogOut, Activity, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield, Trophy,
+  TestTubes, HeartPulse, Moon, Brain, Bike, Dna, BookOpen,
 } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
@@ -23,6 +24,19 @@ const NAV = [
   { href: "/reminders", key: "nav.reminders", icon: Bell },
   { href: "/settings", key: "nav.settings", icon: Settings },
   { href: "/admin", key: "nav.admin", icon: Shield, adminOnly: true },
+];
+
+// Secondary group — these pages were previously reachable only through scattered
+// links; every tab gets exactly one home in the nav so content stops being
+// re-embedded elsewhere.
+const NAV_MORE = [
+  { href: "/labs", key: "nav.labs", icon: TestTubes },
+  { href: "/metrics", key: "nav.metrics", icon: HeartPulse },
+  { href: "/sleep", key: "nav.sleep", icon: Moon },
+  { href: "/brain", key: "nav.brain", icon: Brain },
+  { href: "/gear", key: "nav.gear", icon: Bike },
+  { href: "/dna", key: "nav.dna", icon: Dna },
+  { href: "/science", key: "nav.science", icon: BookOpen },
 ];
 
 function LanguageSelect({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
@@ -74,6 +88,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 <Icon className="w-4.5 h-4.5 w-5 h-5" />
+                {t(lang, item.key)}
+              </Link>
+            );
+          })}
+          <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-widest text-ocean-500">{t(lang, "nav.more")}</div>
+          {NAV_MORE.map((item) => {
+            const active = pathname === item.href || pathname.startsWith(item.href + "/");
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  active ? "bg-ocean-600 text-white" : "text-ocean-300 hover:bg-ocean-900 hover:text-white"
+                }`}
+              >
+                <Icon className="w-4 h-4" />
                 {t(lang, item.key)}
               </Link>
             );
