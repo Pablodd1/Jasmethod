@@ -59,11 +59,42 @@ export default function ConnectorsPage() {
     }
   }
 
-  const HELP: Record<string, string> = {
-    garmin: "Garmin Connect → Activity → ⋯ → Export Original (.tcx). Upload the .tcx file.",
-    apple: "iPhone Health app → Profile → Export All Health Data → unzip → upload export.xml.",
-    whoop: "Whoop app → Profile → Settings → Export Data (cycle CSV). Upload the cycle CSV.",
+  // Device connection steps + external links (English bodies — brand/path strings
+  // are the same across languages; localize the chrome, not these export paths).
+  const LINKS: Record<string, { url: string; label: string }> = {
+    strava: { url: "https://www.strava.com", label: "strava.com" },
+    garmin: { url: "https://connect.garmin.com", label: "connect.garmin.com" },
+    google_cal: { url: "https://calendar.google.com", label: "calendar.google.com" },
+    apple: { url: "https://support.apple.com/en-us/102246", label: "Apple Health export guide" },
+    whoop: { url: "https://www.whoop.com", label: "whoop.com" },
+    coros: { url: "https://www.coros.com", label: "coros.com" },
+    oura: { url: "https://cloud.ouraring.com", label: "cloud.ouraring.com" },
   };
+
+  function stepsFor(p: any): string[] {
+    switch (p.id) {
+      case "strava":
+        return ["Click \"Connect Strava\" and log in.", "Authorize JasMiamiMethod to read your activities.", "Your full history imports automatically."];
+      case "garmin":
+        return p.method === "oauth" && p.configured
+          ? ["Click \"Connect Garmin\" and log in to Garmin Connect.", "Authorize read access to your activities.", "Workouts sync after each watch upload."]
+          : ["Go to connect.garmin.com and log in.", "Open an activity → ⋯ (gear) → \"Export Original\" (.tcx).", "Upload the .tcx file here."];
+      case "google_cal":
+        return ["Click \"Connect Google Calendar\" and log in.", "Allow calendar read access.", "The coach sees your busy time and fits training around it."];
+      case "apple":
+        return ["On iPhone: Health app → your profile photo → \"Export All Health Data\".", "Unzip the export.zip to find export.xml.", "Upload export.xml here."];
+      case "whoop":
+        return p.method === "oauth" && p.configured
+          ? ["Click \"Connect Whoop\" and log in.", "Authorize read access.", "Recovery, HRV & sleep sync automatically."]
+          : ["Whoop app → Profile → Settings → Export Data.", "Export the cycle CSV.", "Upload the CSV here."];
+      case "coros":
+        return ["COROS syncs via Terra API (auto) when configured.", "For official API access, email api@coros.com.", "Otherwise upload a .fit/.tcx file here."];
+      case "oura":
+        return ["Click \"Connect Oura\" and log in to your Oura account.", "Authorize JasMiamiMethod.", "Sleep, readiness & HRV sync automatically."];
+      default:
+        return [];
+    }
+  }
 
   return (
     <ProtectedPage>
@@ -119,7 +150,6 @@ export default function ConnectorsPage() {
                   )}
                   {p.method === "upload" && (
                     <div className="space-y-2">
-                      {HELP[p.id] && <p className="text-[11px] text-slate-400">{HELP[p.id]}</p>}
                       <div className="flex gap-2">
                         <input id={`file-${p.id}`} type="file" className="input text-xs" accept={p.id === "tcx" ? ".tcx,.xml" : p.id === "apple" ? ".xml" : ".csv,.txt"} />
                         <button onClick={() => uploadImport(p.id)} disabled={importing === p.id} className="btn-secondary shrink-0">
@@ -136,6 +166,21 @@ export default function ConnectorsPage() {
                         Add OURA_CLIENT_ID/SECRET to enable Oura Cloud OAuth (cloud.ouraring.com — free dev account).
                       </div>
                     )
+                  )}
+                  {stepsFor(p).length > 0 && (
+                    <details className="mt-3 text-xs text-slate-600 group">
+                      <summary className="cursor-pointer font-medium text-ocean-700 hover:underline flex items-center gap-1">
+                        {t(lang, "conn.howTo")}
+                      </summary>
+                      <ol className="list-decimal pl-4 mt-2 space-y-1 text-slate-500">
+                        {stepsFor(p).map((s, i) => <li key={i}>{s}</li>)}
+                      </ol>
+                      {LINKS[p.id] && (
+                        <a href={LINKS[p.id].url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-ocean-600 hover:underline mt-2">
+                          <ExternalLink className="w-3 h-3" /> {LINKS[p.id].label}
+                        </a>
+                      )}
+                    </details>
                   )}
                 </div>
               </div>

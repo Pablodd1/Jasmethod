@@ -176,6 +176,7 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   "conn.which": { en: "Which should I use?", es: "¿Cuál debería usar?" },
   "conn.importFailed": { en: "Import failed", es: "Error de importación" },
   "conn.import": { en: "Import", es: "Importar" },
+  "conn.howTo": { en: "How to connect", es: "Cómo conectar", ht: "Kijan pou konekte", fr: "Comment connecter", ru: "Как подключить" },
 
   // ---- reminders ----
   "rem.title": { en: "Training Reminders", es: "Recordatorios de entrenamiento" },
