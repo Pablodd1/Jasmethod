@@ -7,7 +7,7 @@ import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { HR_ZONES, estimateVo2max } from "@/lib/science";
 import { TRAINING_WINDOWS } from "@/lib/adaptive";
-import { t, type Lang } from "@/lib/i18n";
+import { t, fmtNum, type Lang } from "@/lib/i18n";
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -242,7 +242,7 @@ export default function SettingsPage() {
             </form>
             {vo2Estimate && (
               <div className="mt-3 text-sm bg-ocean-50 border border-ocean-200 rounded-xl p-3">
-                <strong>Estimated VO2max:</strong> {vo2Estimate.vo2max} ml/kg/min ({vo2Estimate.label}, {vo2Estimate.pctile}th percentile)
+                <strong>Estimated VO2max:</strong> {fmtNum(vo2Estimate.vo2max, lang, 1)} ml/kg/min ({vo2Estimate.label}, {fmtNum(vo2Estimate.pctile, lang)}th percentile)
                 <div className="text-xs text-slate-500 mt-1">Jurca 2005 non-exercise regression · age {vo2Estimate.age} · BMI {vo2Estimate.bmi}</div>
               </div>
             )}
@@ -277,7 +277,7 @@ export default function SettingsPage() {
                   )}
                   {zones.vo2maxHr && (
                     <div className="border-t border-sand-200 pt-2 mt-2 text-xs text-slate-500">
-                      VO2max ≈ {zones.vo2maxHr} ml/kg/min (Uth 2004: 15.3 × HRmax ÷ HRrest)
+                      VO2max ≈ {fmtNum(zones.vo2maxHr, lang, 1)} ml/kg/min (Uth 2004: 15.3 × HRmax ÷ HRrest)
                     </div>
                   )}
                 </div>

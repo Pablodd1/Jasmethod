@@ -5,11 +5,13 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Ca
 import { Activity, Gauge, Target } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
+import { fmtNum, type Lang } from "@/lib/i18n";
 
 const FORM_LABEL: Record<string, string> = { fresh: "Fresh — race-ready window", neutral: "Neutral", fatigued: "Fatigued — prioritize recovery", risky: "Risky — deep fatigue, back off" };
 
 export default function FitnessPage() {
   const { user } = useAuth();
+  const lang = (user?.language || "es") as Lang;
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -43,7 +45,7 @@ export default function FitnessPage() {
                 <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                   <h2 className="font-display font-bold text-lg flex items-center gap-2"><Activity className="w-5 h-5 text-ocean-500" /> Fitness · Fatigue · Form</h2>
                   <div className="text-sm text-slate-500">
-                    CTL <strong>{pmc.current.ctl}</strong> · ATL <strong>{pmc.current.atl}</strong> · TSB <strong>{pmc.current.tsb}</strong>
+                    CTL <strong>{fmtNum(pmc.current.ctl, lang, 1)}</strong> · ATL <strong>{fmtNum(pmc.current.atl, lang, 1)}</strong> · TSB <strong>{fmtNum(pmc.current.tsb, lang, 1)}</strong>
                     <span className="ml-2 chip chip-z2">{FORM_LABEL[pmc.formZone]}</span>
                   </div>
                 </div>

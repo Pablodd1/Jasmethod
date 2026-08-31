@@ -333,6 +333,26 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   "settings.mod.panels": { en: "{n} panels · {f} flags", es: "{n} paneles · {f} alertas", ht: "{n} panno · {f} alèt", ru: "{n} панелей · {f} флагов" },
 };
 
+// Locale per language for Intl numeric/date formatting.
+const LOCALE: Record<Lang, string> = {
+  en: "en-US", // 1,234.56
+  es: "es-ES", // 1.234,56
+  fr: "fr-FR", // 1 234,56
+  ht: "fr-FR", // Haitian Creole follows French numeric convention
+  ru: "ru-RU", // 1 234,56
+};
+
+// Locale-aware number formatting — the "numeric system" follows the language
+// (decimal comma vs dot, thousands separator). Decimals default to auto (0-2).
+export function fmtNum(n: number | null | undefined, lang?: Lang | string | null, decimals?: number): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  const locale = LOCALE[(lang as Lang) || "es"] || "es-ES";
+  const opts = decimals === undefined
+    ? { maximumFractionDigits: 2 }
+    : { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+  return new Intl.NumberFormat(locale, opts).format(n);
+}
+
 export function t(lang: Lang | string | undefined | null, key: string): string {
   const l = (lang || "es") as Lang;
   return S[key]?.[l] || S[key]?.es || S[key]?.en || key;
