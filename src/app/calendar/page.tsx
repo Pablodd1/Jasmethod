@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth";
 import { startOfMonth, endOfMonth, eachDayOfInterval, format, isSameMonth, isSameDay, addMonths } from "date-fns";
 import { buildSessionDetail } from "@/lib/science";
 import { dayOffProtocol, temperatureAdjustment } from "@/lib/adaptive";
+import { WeekStrip } from "@/components/week-strip";
 
 const SPORT_COLOR: Record<string, string> = {
   swim: "bg-sky-100 text-sky-700",
@@ -33,6 +34,7 @@ export default function CalendarPage() {
   const [showForm, setShowForm] = useState(false);
   const [evForm, setEvForm] = useState({ title: "", date: format(new Date(), "yyyy-MM-dd"), type: "note", notes: "" });
   const [selected, setSelected] = useState<string | null>(null); // yyyy-MM-dd
+  const [stripWorkouts, setStripWorkouts] = useState<any[]>([]); // prev month → next month for the week strip
   const [moveFor, setMoveFor] = useState<any>(null); // session being moved
   const [moveForm, setMoveForm] = useState({ date: "", time: "", indoor: false, temp: "" });
 
@@ -43,6 +45,12 @@ export default function CalendarPage() {
     setEvents(d.events || []);
     setWorkouts(d.workouts || []);
     setPlan(d.plan);
+    // Week strip spans prev/next month — one extra request, cached server-side.
+    const sres = await fetch("/api/calendar?month=auto");
+    if (sres.ok) {
+      const sd = await sres.json();
+      setStripWorkouts(sd.workouts || []);
+    }
   }
 
   useEffect(() => { if (user) load(month); }, [user, month]);
@@ -144,6 +152,12 @@ export default function CalendarPage() {
             </form>
           </div>
         )}
+
+        {/* Week strip: previous month → next week, today pinned in view */}
+        <div className="card">
+          <h2 className="font-display font-bold text-sm mb-2 text-slate-500 uppercase tracking-wide">Your weeks — last month to next week</h2>
+          <WeekStrip workouts={stripWorkouts} selected={selected || format(new Date(), "yyyy-MM-dd")} onSelect={setSelected} />
+        </div>
 
         {/* Calendar grid */}
         <div className="card p-3 md:p-5">

@@ -1,10 +1,10 @@
 import { AuthProvider } from "@/components/auth";
-import LandingPage from "@/components/landing";
+import SignInGate from "@/components/sign-in-gate";
 
 export default function Home() {
   return (
     <AuthProvider>
-      <LandingPage />
+      <SignInGate />
     </AuthProvider>
   );
 }

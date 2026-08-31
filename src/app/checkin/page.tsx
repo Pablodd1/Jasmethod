@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen, HeartPulse, Mic, CheckCircle2, CalendarClock, Apple, Music } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ClipboardCheck, Flame, Pill, Zap, Wind, ShoppingCart, BookOpen, HeartPulse, Mic, CheckCircle2, CalendarClock, Apple, Music, Plug, RefreshCw, Download, Upload, ExternalLink, Watch } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
@@ -32,6 +33,7 @@ const VERDICT_COLOR: Record<string, string> = { full: "text-emerald-600", trim: 
 
 export default function CheckinPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const lang = (user?.language || "es") as Lang;
   const [answers, setAnswers] = useState<any>({ sleep: "3", soreness: "3", motivation: "3", energy: "3", stress: "3", sick: false, menstrual: false, weightKg: "", rhr: "" });
   const [result, setResult] = useState<any>(null);
@@ -41,6 +43,12 @@ export default function CheckinPage() {
   const [transcript, setTranscript] = useState("");
   const [heard, setHeard] = useState<VoiceCheckinAnswers | null>(null);
   const [speechError, setSpeechError] = useState("");
+  // Módulos integrados: provider list + sync state (collapses once 1 is connected)
+  const [providers, setProviders] = useState<any[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
+  const [importing, setImporting] = useState<string | null>(null);
+  const [approved, setApproved] = useState(false);
 
   function startVoice() {
     const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -93,8 +101,70 @@ export default function CheckinPage() {
     if (d.checkin?.answers) setAnswers({ ...answers, ...JSON.parse(d.checkin.answers) });
     if (d.checkin?.adaptation) setResult({ adaptation: JSON.parse(d.checkin.adaptation) });
     if (d.recovery || d.fuelBrands || d.sources) setResult((r: any) => ({ ...(r || {}), recovery: d.recovery, fuelBrands: d.fuelBrands, sources: d.sources }));
+    // Device modules — same list the connectors page uses
+    const cres = await fetch("/api/connectors");
+    if (cres.ok) {
+      const cd = await cres.json();
+      setProviders(cd.providers || []);
+    }
   }
   useEffect(() => { if (user) load(); }, [user]);
+
+  const connectedCount = providers.filter((p) => p.status === "connected").length;
+
+  // Real-time pull from every connected provider (existing /sync endpoint).
+  async function syncDevices() {
+    setSyncing(true); setSyncMsg(""); setErr("");
+    try {
+      const res = await fetch("/api/connectors/sync", { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Sync failed");
+      setSyncMsg(d.message || "Synced.");
+      load();
+    } catch (e: any) { setErr(e.message); } finally { setSyncing(false); }
+  }
+
+  // File import for athletes without a supported OAuth device.
+  async function uploadImport(source: string) {
+    const input = document.getElementById(`checkin-file-${source}`) as HTMLInputElement;
+    const file = input?.files?.[0];
+    if (!file) { setErr(`Choose a ${source} file first.`); return; }
+    setImporting(source); setErr("");
+    const fd = new FormData();
+    fd.append("source", source);
+    fd.append("file", file);
+    try {
+      const res = await fetch("/api/import", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      setSyncMsg(`${source}: ${data.workoutsImported ?? 0} workouts imported.`);
+      input.value = "";
+      load();
+    } catch (e: any) { setErr(e.message); } finally { setImporting(null); }
+  }
+
+  // Approve today's workout → server marks it approved and returns the .FIT
+  // for import into Garmin Connect / COROS Training Hub.
+  async function approveAndDownload() {
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/workout/approve", { method: "POST" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Approve failed");
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get("Content-Disposition") || "";
+      const name = dispo.match(/filename="([^"]+)"/)?.[1] || "workout.fit";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      setApproved(true);
+      setTimeout(() => router.push("/calendar"), 1200);
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -124,6 +194,48 @@ export default function CheckinPage() {
         </div>
 
         {err && <div className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
+
+        {/* Módulos integrados — device sync. Full until 1 device connects, then collapsed. */}
+        <div className="card">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="font-display font-bold text-lg flex items-center gap-2">
+              <Plug className="w-5 h-5 text-ocean-500" /> Módulos integrados
+              {connectedCount > 0 && (
+                <span className="chip chip-z2 ml-1"><Watch className="w-3 h-3" /> {connectedCount} synced</span>
+              )}
+            </h2>
+            {connectedCount > 0 ? (
+              <button onClick={syncDevices} disabled={syncing} className="btn-secondary text-sm">
+                <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync now"}
+              </button>
+            ) : (
+              <span className="text-xs text-slate-400">Connect a device to pull real biometrics, or skip and use the questionnaire.</span>
+            )}
+          </div>
+          {syncMsg && <div className="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-3">✓ {syncMsg}</div>}
+          {connectedCount === 0 && (
+            <div className="grid md:grid-cols-2 gap-3 mt-3">
+              {providers.map((p) => (
+                <div key={p.id} className="rounded-xl border border-sand-200 p-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm">{p.name}</div>
+                    <div className="text-[11px] text-slate-400 truncate">{p.method === "oauth" ? "Real-time pull" : "File import"}</div>
+                  </div>
+                  {p.method === "oauth" && p.configured && p.connectUrl ? (
+                    <a href={p.connectUrl} className="btn-primary text-xs px-3 py-1.5 shrink-0"><ExternalLink className="w-3 h-3" /> Connect</a>
+                  ) : p.method === "upload" || !p.configured ? (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <input id={`checkin-file-${p.id}`} type="file" className="hidden" accept=".tcx,.xml,.csv" onChange={() => uploadImport(p.id)} />
+                      <button onClick={() => document.getElementById(`checkin-file-${p.id}`)?.click()} disabled={importing === p.id} className="btn-secondary text-xs px-3 py-1.5">
+                        <Upload className="w-3 h-3" /> {importing === p.id ? "…" : "Upload"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Voice check-in */}
         <div className="card bg-ocean-50 border-ocean-200">
@@ -243,6 +355,16 @@ export default function CheckinPage() {
                 <div className="mt-2 flex flex-wrap gap-1">
                   {result.prescription.sources.map((s: string) => <span key={s} className="text-[10px] bg-ocean-100 text-ocean-700 rounded-full px-2 py-0.5">{s}</span>)}
                 </div>
+                {/* Approve → .FIT for the watch + go to the week calendar */}
+                {approved ? (
+                  <div className="mt-3 text-sm font-semibold text-emerald-700 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> Approved — .FIT downloaded. Import it in Garmin Connect / COROS Training Hub. Opening calendar…
+                  </div>
+                ) : (
+                  <button onClick={approveAndDownload} disabled={busy} className="btn-primary w-full justify-center mt-3">
+                    <Download className="w-4 h-4" /> {busy ? "Approving…" : "Approve workout & sync to watch (.FIT)"}
+                  </button>
+                )}
               </div>
             )}
 

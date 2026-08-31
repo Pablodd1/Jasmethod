@@ -2,15 +2,24 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
-// GET /api/calendar?month=YYYY-MM — calendar events + workouts for the month
+// GET /api/calendar?month=YYYY-MM — calendar events + workouts for the month.
+// month=auto spans the previous month, current month and next month so the
+// week strip (prev weeks → next week) always has data without extra requests.
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const url = new URL(req.url);
-  const month = url.searchParams.get("month") || new Date().toISOString().slice(0, 7);
-  const [y, m] = month.split("-").map(Number);
-  const start = new Date(y, m - 1, 1);
-  const end = new Date(y, m, 1);
+  let month = url.searchParams.get("month") || new Date().toISOString().slice(0, 7);
+  const parts = month.split("-");
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  let start = new Date(y, m - 1, 1);
+  let end = new Date(y, m, 1);
+  if (month === "auto") {
+    const now = new Date();
+    start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    end = new Date(now.getFullYear(), now.getMonth() + 2, 1);
+  }
 
   const [events, workouts, plans] = await Promise.all([
     prisma.calendarEvent.findMany({ where: { userId: user.id, date: { gte: start, lt: end } }, orderBy: { date: "asc" } }),

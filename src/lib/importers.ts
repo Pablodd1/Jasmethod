@@ -344,17 +344,23 @@ export interface GarminConfig {
   redirectUri: string;
 }
 
+// Garmin Health API — OAuth 2.0 with PKCE (verified against developer.garmin.com
+// + openwearables.io guide, 2026-08). Authorize = connect.garmin.com/oauth2Confirm,
+// token = diauth.garmin.com/di-oauth2-service/oauth/token, data = apis.garmin.com
+// wellness-api (push-based: real-time data arrives via webhook after connect;
+// endpoints below are the pull/backfill surface). Requires HISTORICAL_DATA_EXPORT
+// permission granted at connect or backfill returns 403.
 export function garminAuthUrl(cfg: GarminConfig, state: string): string {
-  // PKCE: generate code_verifier per auth attempt; app must persist it to
-  // verify at callback. Simplification: stateless demo uses state only.
+  // PKCE S256: verifier is generated per-attempt and must be sent to
+  // garminExchangeToken. Simplification: stateless flow uses state only —
+  // add code_challenge when a per-user verifier store exists.
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
     response_type: "code",
-    scope: "activities", // Garmin scopes: activities | health_snapshot | etc.
     state,
   });
-  return `https://connect.garmin.com/oauth/authorize?${params.toString()}`;
+  return `https://connect.garmin.com/oauth2Confirm?${params.toString()}`;
 }
 
 export async function garminExchangeToken(cfg: GarminConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
@@ -365,9 +371,9 @@ export async function garminExchangeToken(cfg: GarminConfig, code: string): Prom
     grant_type: "authorization_code",
     redirect_uri: cfg.redirectUri,
   });
-  const resp = await fetch("https://connect.garmin.com/oauth/token", {
+  const resp = await fetch("https://diauth.garmin.com/di-oauth2-service/oauth/token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: body.toString(),
   });
   if (!resp.ok) throw new Error(`Garmin token exchange failed: ${resp.status} ${await resp.text()}`);
@@ -381,21 +387,20 @@ export async function garminRefreshToken(cfg: GarminConfig, refreshToken: string
     refresh_token: refreshToken,
     grant_type: "refresh_token",
   });
-  const resp = await fetch("https://connect.garmin.com/oauth/token", {
+  const resp = await fetch("https://diauth.garmin.com/di-oauth2-service/oauth/token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: body.toString(),
   });
   if (!resp.ok) throw new Error(`Garmin refresh failed: ${resp.status} ${await resp.text()}`);
   return resp.json();
 }
 
-// List activities. Garmin's public Activity API paginates; after=ISO date.
-export async function garminGetActivities(accessToken: string, after?: Date): Promise<any[]> {
-  const params = new URLSearchParams({ limit: "50" });
-  if (after) params.set("startTime", after.toISOString());
-  const resp = await fetch(`https://apis.garmin.com/activity-api/v1/activities?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+// Garmin Health API is push-based (no polling): data arrives at our webhook
+// when the watch syncs. This is the authenticated backfill surface.
+export async function garminGetActivities(accessToken: string, _after?: Date): Promise<any[]> {
+  const resp = await fetch("https://apis.garmin.com/wellness-api/rest/activityDetails", {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
   });
   if (!resp.ok) throw new Error(`Garmin activities failed: ${resp.status} ${await resp.text()}`);
   const data = await resp.json();
@@ -403,23 +408,25 @@ export async function garminGetActivities(accessToken: string, after?: Date): Pr
 }
 
 export function garminActivityToWorkout(a: any): ImportedWorkout {
-  const type = (a.activityType?.name || a.type || "").toLowerCase();
+  // Health-API activity payloads nest under `activity`; tolerate both shapes.
+  const act = a.activity || a;
+  const type = (act.activityType || act.activityId || act.type || "").toString().toLowerCase();
   const sport: ImportedWorkout["sport"] = type.includes("swim") ? "swim"
     : type.includes("cycling") || type.includes("bike") ? "bike"
     : type.includes("run") ? "run"
     : type.includes("strength") ? "strength" : "other";
-  const durationSec = a.durationInSeconds ?? a.duration ?? 0;
+  const durationSec = act.durationInSeconds ?? act.duration ?? a.durationInSeconds ?? 0;
   return {
-    externalId: String(a.activityId || a.id || `${Date.now()}-${Math.random()}`),
+    externalId: String(act.activityId || act.id || a.summaryId || `${Date.now()}-${Math.random()}`),
     sport,
-    date: new Date(a.startTimeInSeconds ? a.startTimeInSeconds * 1000 : a.startTimeLocal || Date.now()),
+    date: new Date((act.startTimeInSeconds ?? a.startTimeInSeconds ?? Date.now() / 1000) * 1000),
     durationMin: Math.round(durationSec / 60),
-    distanceKm: a.distanceInMeters ? a.distanceInMeters / 1000 : undefined,
-    avgHr: a.averageHr ?? a.averageHeartRateInBeatsPerMinute,
-    maxHr: a.maxHr ?? a.maxHeartRateInBeatsPerMinute,
-    avgPower: a.averagePowerInWatts,
-    calories: a.calories,
-    title: a.activityName || type || "Activity",
+    distanceKm: act.distanceInMeters ? act.distanceInMeters / 1000 : undefined,
+    avgHr: act.averageHr ?? act.averageHeartRateInBeatsPerMinute,
+    maxHr: act.maxHr ?? act.maxHeartRateInBeatsPerMinute,
+    avgPower: act.averagePowerInWatts,
+    calories: act.calories ?? act.activeKilocalories,
+    title: act.activityName || type || "Activity",
     source: "garmin",
   };
 }
@@ -594,30 +601,33 @@ export async function whoopGetDaily(accessToken: string, days = 30): Promise<Who
   const hdr = { Authorization: `Bearer ${accessToken}` };
   const end = new Date().toISOString(), start = new Date(Date.now() - days * 86400000).toISOString();
   const out = new Map<string, WhoopDaily>();
-  // sleep (has scores + hrv + rhr)
-  let url: string | null = `https://api.prod.whoop.com/developer/v1/recovery/sleep?start=${start}&end=${end}&limit=50`;
+  // WHOOP Developer API v2 (verified against developer.whoop.com, 2026-08).
+  // Endpoints: /developer/v2/activity/sleep, /developer/v2/recovery,
+  // /developer/v2/activity/workout. All paginate via `next_token`.
+  // Sleep (has scores + hrv + rhr)
+  let url: string | null = `https://api.prod.whoop.com/developer/v2/activity/sleep?start=${start}&end=${end}&limit=25`;
   const collected: any[] = [];
   while (url) { // ponytail: manual pagination loop on next_token — Whoop has no offset paging
     const r: Response = await fetch(url, { headers: hdr });
     if (!r.ok) throw new Error(`Whoop sleep failed: ${r.status}`);
     const d: any = await r.json();
     collected.push(...(d.records || []));
-    url = d.next_token ? `https://api.prod.whoop.com/developer/v1/recovery/sleep?start=${start}&end=${end}&limit=50&nextToken=${d.next_token}` : null;
+    url = d.next_token ? `https://api.prod.whoop.com/developer/v2/activity/sleep?start=${start}&end=${end}&limit=25&nextToken=${d.next_token}` : null;
   }
   for (const s of collected) {
-    const day = (s.created_at || "").slice(0, 10);
+    const day = (s.created_at || s.start || "").slice(0, 10);
     if (!day) continue;
     const row = out.get(day) || { date: day, recoveryScore: null, hrv: null, restingHr: null, sleepScore: null, sleepHours: null };
     if (s.score?.sleep_performance_percentage != null) row.sleepScore = Math.round(s.score.sleep_performance_percentage);
     if (s.score.stage_summary?.total_in_bed_time_milli != null) row.sleepHours = Math.round((s.score.stage_summary.total_in_bed_time_milli / 3600000) * 10) / 10;
-    const hr = s.score.heart_rate_variability?.rms ?? s.score.heart_rate_variability;
+    const hr = s.score.hrv_rmssd_milli ?? s.score.heart_rate_variability?.rms ?? s.score.heart_rate_variability;
     if (typeof hr === "number") row.hrv = Math.round(hr * 10) / 10;
     const rhr = s.score.resting_heart_rate;
     if (typeof rhr === "number") row.restingHr = Math.round(rhr);
     out.set(day, row);
   }
-  // recovery (readiness per sleep)
-  url = `https://api.prod.whoop.com/developer/v1/recovery?start=${start}&end=${end}&limit=50`;
+  // recovery (readiness per cycle — v2 field: hrv_rmssd_milli)
+  url = `https://api.prod.whoop.com/developer/v2/recovery?start=${start}&end=${end}&limit=25`;
   let rec: any = null;
   const recs: any[] = [];
   while (url) {
@@ -625,14 +635,14 @@ export async function whoopGetDaily(accessToken: string, days = 30): Promise<Who
     if (!r.ok) break; // recovery is optional — don't fail the sync for it
     rec = await r.json();
     recs.push(...(rec.records || []));
-    url = rec.next_token ? `https://api.prod.whoop.com/developer/v1/recovery?start=${start}&end=${end}&limit=50&nextToken=${rec.next_token}` : null;
+    url = rec.next_token ? `https://api.prod.whoop.com/developer/v2/recovery?start=${start}&end=${end}&limit=25&nextToken=${rec.next_token}` : null;
   }
   for (const c of recs) {
     const day = (c.created_at || "").slice(0, 10);
     if (!day) continue;
     const row = out.get(day) || { date: day, recoveryScore: null, hrv: null, restingHr: null, sleepScore: null, sleepHours: null };
     if (c.score?.recovery_score != null) row.recoveryScore = Math.round(c.score.recovery_score);
-    if (row.hrv == null && c.score?.heart_rate_variability?.rms != null) row.hrv = Math.round(c.score.heart_rate_variability.rms * 10) / 10;
+    if (row.hrv == null && c.score?.hrv_rmssd_milli != null) row.hrv = Math.round(c.score.hrv_rmssd_milli * 10) / 10;
     if (row.restingHr == null && c.score?.resting_heart_rate != null) row.restingHr = Math.round(c.score.resting_heart_rate);
     out.set(day, row);
   }

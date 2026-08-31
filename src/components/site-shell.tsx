@@ -42,7 +42,7 @@ export function SiteHeader() {
   const { language } = useAuth();
   return (
     <header className="border-b border-ink-200/70 bg-paper/90 backdrop-blur sticky top-0 z-30">
-      <div className="pub-container flex items-center justify-between py-4 gap-4">
+      <div className="pub-container flex flex-wrap items-center justify-between py-4 gap-4">
         <Link href="/" className="flex items-center gap-2.5">
           <Waves className="w-6 h-6 text-vermillion-500" />
           <span className="font-display text-lg font-bold tracking-tight text-ink-900">
@@ -53,7 +53,7 @@ export function SiteHeader() {
           <Link href="/science" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors">
             {t(language, "pub.science")}
           </Link>
-          <Link href="/onboarding" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors hidden sm:inline">
+          <Link href="/how-it-works" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors hidden sm:inline">
             {t(language, "pub.howItWorks")}
           </Link>
           <Link href="/dashboard" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors hidden sm:inline">

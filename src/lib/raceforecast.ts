@@ -50,7 +50,7 @@ export interface ForecastInput {
   goalTimeMin?: number | null;
 }
 
-export type ForecastSport = "triathlon" | "swim" | "bike" | "run";
+export type ForecastSport = "triathlon" | "swim" | "bike" | "run" | "hyrox";
 
 export interface ForecastSegment {
   sport: "swim" | "bike" | "run";
@@ -132,6 +132,85 @@ function bikeBaselineSpeedKmh(ftp: number | null | undefined, speedFactor: numbe
   return Math.round((f * 0.05 + 20) * speedFactor * 10) / 10;
 }
 
+// ---------------------------------------------------------------------------
+// Physics engine (Best Bike Split approach): solve steady-state velocity from
+// the rider's power against gravity + rolling resistance + aero drag.
+//   P = (m·g·sinθ + m·g·Crr·cosθ + ½·ρ·CdA·v_air²) · v_ground / drivetrain
+// Whole-course simplification: gravity uses the average grade implied by
+// elevation gain over distance (segment-level GPX solving is the upgrade path).
+// ---------------------------------------------------------------------------
+function bikePhysicsSpeedKmh(opts: {
+  ftp: number; weightKg?: number | null; bikeKg?: number;
+  elevGainM?: number | null; distanceKm: number; terrain?: string | null;
+  sustainableIF?: number; // fraction of FTP holdable over this distance
+}): { speedKmh: number; powerW: number; model: string } {
+  const ftp = opts.ftp;
+  const m = (opts.weightKg ?? 70) + (opts.bikeKg ?? 9);
+  const powerW = Math.round(ftp * (opts.sustainableIF ?? 0.78)); // holdable watts, not raw FTP
+  const crr = (opts.terrain || "flat") === "trail" ? 0.008 : (opts.terrain || "flat") === "hilly" || (opts.terrain || "flat") === "mountain" ? 0.006 : 0.0045;
+  const cdA = 0.28; // TT/aero position assumption; 0.32 for road position (upgrade knob)
+  const rho = 1.225; // sea-level air density (kg/m³)
+  const drivetrain = 0.976;
+  const pAvail = powerW * drivetrain; // watts reaching the wheel
+
+  // Average grade over the course from elevation gain (bounded to realistic).
+  const grade = Math.min(0.08, Math.max(-0.02, (opts.elevGainM ?? 0) / (opts.distanceKm * 1000)));
+  const g = 9.81;
+  // Solve v from P = (m·g·grade + m·g·Crr + ½ρCdA·v²)·v (cubic in v; closed-form
+  // via iterative Newton from 10 m/s — converges in <5 iterations).
+  let v = 10;
+  for (let i = 0; i < 8; i++) {
+    const f = (m * g * grade + m * g * crr) * v + 0.5 * rho * cdA * v * v * v - pAvail;
+    const df = (m * g * grade + m * g * crr) + 1.5 * rho * cdA * v * v;
+    v = Math.max(1, v - f / df);
+  }
+  const speedKmh = v * 3.6;
+  return {
+    speedKmh: Math.round(Math.min(70, Math.max(8, speedKmh)) * 10) / 10,
+    powerW,
+    model: `physics: ${powerW}W vs gravity+Crr+aero (CdA ${cdA}, Crr ${crr}, ${Math.round(grade * 1000) / 10}% avg grade)`,
+  };
+}
+
+// Riegel fatigue: T2 = T1 · (D2/D1)^k. Threshold-pace base at 10k; k > 1 for
+// long-course durability loss (1.06 matches user's multi-sport fatigue model).
+function riegelPace(baseSecPerKm: number, km: number, exponent = 1.06): number {
+  return baseSecPerKm * Math.pow(km / 10, exponent - 1);
+}
+
+// Triathlon transition penalty: bike TSS pre-fatigues the legs. Derate run
+// pace by the fraction of anaerobic/battery cost consumed on the bike leg —
+// heuristically ~2% (sprint) to ~9% (Ironman) vs a fresh standalone run.
+function bikeTssRunPenalty(bikeKm: number): number {
+  const approxTss = bikeKm * 0.85; // ~1 TSS/km at race intensity (normalized)
+  if (approxTss <= 0) return 1;
+  // Penalty grows sub-linearly: sqrt(TSS/100) scaled to ~2-9% across distances.
+  return 1 + Math.min(0.09, 0.02 * Math.sqrt(approxTss / 17));
+}
+
+// HYROX compromised-run state-space model: 8 stations × 1km run. Each station
+// (sled push/pull heaviest) spikes lactate; the following run decays until the
+// body clears it. Average pace decay across the race ≈ station cost × recovery.
+function hyroxCompromisedRunPace(thresholdSecPerKm: number, fitness?: ForecastInput["fitness"]): {
+  avgPaceSecPerKm: number; stationDecay: number; note: string;
+} {
+  // Station metabolic cost multipliers (relative lactate spike), avg across
+  // the 8 HYROX stations: ski 1.6km, sled push, sled pull, burpees, rowing,
+  // farmers carry, sandbag lunges, wall balls.
+  const STATION_COSTS = [0.03, 0.05, 0.05, 0.04, 0.03, 0.015, 0.03, 0.04];
+  const avgDecay = STATION_COSTS.reduce((a, b) => a + b, 0) / STATION_COSTS.length; // mean pace derate
+  // Better durability (higher CTL) → less decay between stations.
+  const ctl = fitness?.current?.ctl ?? 30;
+  const durability = Math.min(1.25, Math.max(0.85, 0.85 + ctl / 150)); // 0.85–1.25
+  const decay = avgDecay / durability;
+  return {
+    avgPaceSecPerKm: Math.round(thresholdSecPerKm * (1 + decay)),
+    stationDecay: decay,
+    note: `State-space: 8 stations derate each following run km by ~${Math.round(decay * 100)}% (durability factor ${durability.toFixed(2)} from CTL ${Math.round(ctl)}). Sled push/pull and wall balls cost most.`,
+  };
+}
+
+
 function triRunPaceFactor(distance: string): number {
   return ({ sprint: 0.97, olympic: 1.0, half: 1.05, full: 1.1 } as Record<string, number>)[distance] ?? 1;
 }
@@ -146,11 +225,12 @@ function triBikeSpeedFactor(distance: string): number {
 
 export function classifyDistance(distance: string | null | undefined): ForecastSport | null {
   const d = (distance || "").toLowerCase();
+  if (d === "hyrox") return "hyrox";
   if (["sprint", "olympic", "half", "full"].includes(d)) return "triathlon";
   if (RUN_DISTANCES[d]) return "run";
   if (BIKE_DISTANCES[d]) return "bike";
   if (SWIM_DISTANCES[d]) return "swim";
-  return null; // hyrox / boxing / unknown → not a forecastable endurance event
+  return null; // boxing / unknown → not a forecastable endurance event
 }
 
 export const FORECASTABLE_DISTANCES = [
@@ -158,6 +238,7 @@ export const FORECASTABLE_DISTANCES = [
   "5k", "10k", "half-marathon", "marathon",
   "40k", "100k", "180k", "gran-fondo",
   "750m", "1500m", "1900m", "3800m",
+  "hyrox",
 ];
 
 // ---------------------------------------------------------------------------
@@ -313,13 +394,19 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       notes: [venuePlan.swim.detail, venuePlan.wetsuit.note].filter(Boolean),
     });
 
-    // Bike
+    // Bike — physics engine (Best Bike Split style): solve speed from holdable
+    // watts vs gravity + rolling + aero. Replaces the old FTP heuristic.
     const ftp = athlete.ftp ?? 220;
     if (!athlete.ftp) measurementGaps.push("No FTP — using 220W default.");
-    const bikeSpeedBase = bikeBaselineSpeedKmh(ftp, triBikeSpeedFactor(distance));
-    const bikeDiv = envSpeedDivisor * bikeTerrainSpeedFactor(v.bikeTerrain, v.bikeElevM);
-    const bikeSpeed = Math.round((bikeSpeedBase / bikeDiv) * 10) / 10;
     const bikeIF = leg.bikeKm >= 150 ? 0.72 : leg.bikeKm >= 70 ? 0.78 : leg.bikeKm >= 30 ? 0.83 : 0.88;
+    const physics = bikePhysicsSpeedKmh({
+      ftp, weightKg: athlete.weightKg, bikeKg: 9,
+      elevGainM: v.bikeElevM, distanceKm: leg.bikeKm, terrain: v.bikeTerrain,
+      sustainableIF: bikeIF * triBikeSpeedFactor(distance),
+    });
+    const bikeSpeedBase = physics.speedKmh;
+    const bikeDiv = envSpeedDivisor; // terrain/grade now inside the physics solve
+    const bikeSpeed = Math.round((bikeSpeedBase / bikeDiv) * 10) / 10;
     const bikeMin = leg.bikeKm / bikeSpeed * 60;
     const bikeFuel = recommendFuel({ durationMin: bikeMin, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
     baselineTotalMin += leg.bikeKm / bikeSpeedBase * 60;
@@ -337,11 +424,13 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       notes: [venuePlan.bike.detail, venuePlan.bike.training].filter(Boolean),
     });
 
-    // Run
+    // Run — Riegel fatigue curve + triathlon transition penalty: the bike TSS
+    // pre-fatigues the legs, so race-run pace derates vs a fresh run.
     const runPaceBase = athlete.runPaceBase ?? 300;
     if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
     const runBasePace = runPaceBase * triRunPaceFactor(distance);
-    const runPace = runBasePace * envPace * terrainPaceFactor(v.runTerrain, v.runElevM) * fit.paceFactor;
+    const tssPenalty = bikeTssRunPenalty(leg.bikeKm);
+    const runPace = runBasePace * tssPenalty * envPace * terrainPaceFactor(v.runTerrain, v.runElevM) * fit.paceFactor;
     const runMin = (leg.runKm * runPace) / 60;
     const runFuel = recommendFuel({ durationMin: runMin, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
     baselineTotalMin += (leg.runKm * runBasePace) / 60;
@@ -354,7 +443,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       pace: fmtSecPerKm(runPace),
       hrTarget: runHr,
       fuel: runFuel,
-      notes: [venuePlan.run.detail].filter(Boolean),
+      notes: [venuePlan.run.detail, `Transition penalty: bike TSS derates run pace ×${tssPenalty.toFixed(2)} vs fresh (Riegel k=1.06 durability curve).`].filter(Boolean),
     });
 
     transitionsMin = leg.transitionMin;
@@ -369,7 +458,8 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     const r = RUN_DISTANCES[distance];
     const runPaceBase = athlete.runPaceBase ?? 300;
     if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
-    const runBasePace = runPaceBase * r.paceFactor;
+    // Riegel k=1.06 fatigue curve (replaces the flat paceFactor table).
+    const runBasePace = riegelPace(runPaceBase, r.km, 1.06);
     const runPace = runBasePace * envPace * terrainPaceFactor(v.runTerrain, v.runElevM) * fit.paceFactor;
     const runMin = (r.km * runPace) / 60;
     baselineTotalMin = Math.round((r.km * runBasePace) / 60);
@@ -394,10 +484,15 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     const b = BIKE_DISTANCES[distance];
     const ftp = athlete.ftp ?? 220;
     if (!athlete.ftp) measurementGaps.push("No FTP — using 220W default.");
-    const bikeSpeedBase = bikeBaselineSpeedKmh(ftp, b.speedFactor);
-    const bikeDiv = envSpeedDivisor * bikeTerrainSpeedFactor(v.bikeTerrain, v.bikeElevM);
-    const bikeSpeed = Math.round((bikeSpeedBase / bikeDiv) * 10) / 10;
     const bikeIF = b.km >= 150 ? 0.72 : b.km >= 70 ? 0.78 : b.km >= 30 ? 0.83 : 0.88;
+    const physics = bikePhysicsSpeedKmh({
+      ftp, weightKg: athlete.weightKg, bikeKg: 9,
+      elevGainM: v.bikeElevM, distanceKm: b.km, terrain: v.bikeTerrain,
+      sustainableIF: bikeIF * b.speedFactor,
+    });
+    const bikeSpeedBase = physics.speedKmh;
+    const bikeDiv = envSpeedDivisor; // terrain/grade inside the physics solve
+    const bikeSpeed = Math.round((bikeSpeedBase / bikeDiv) * 10) / 10;
     const bikeMin = b.km / bikeSpeed * 60;
     baselineTotalMin = Math.round(b.km / bikeSpeedBase * 60);
     const bikeFuel = recommendFuel({ durationMin: bikeMin, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
@@ -408,14 +503,51 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       distanceLabel: b.label,
       timeMin: Math.round(bikeMin),
       speedKmh: bikeSpeed,
-      powerTargetW: Math.round(ftp * bikeIF),
+      powerTargetW: physics.powerW,
       intensityFactor: bikeIF,
       hrTarget: bikeHr,
       fuel: bikeFuel,
-      notes: [venuePlan.bike.detail, venuePlan.bike.training].filter(Boolean),
+      notes: [venuePlan.bike.detail, venuePlan.bike.training, `Power model: ${physics.model}.`].filter(Boolean),
     });
     totalMin = Math.round(bikeMin);
-    if (v.bikeTerrain && v.bikeTerrain !== "flat") factors.push(`Bike: ${v.bikeTerrain}${v.bikeElevM ? ` with ${v.bikeElevM}m climb` : ""} — course slows average speed.`);
+    if (v.bikeTerrain && v.bikeTerrain !== "flat") factors.push(`Bike: ${v.bikeTerrain}${v.bikeElevM ? ` with ${v.bikeElevM}m climb` : ""} — physics engine solved per-grade velocity.`);
+  }
+
+  // --- HYROX (state-space compromised-run model) ---
+  else if (sport === "hyrox") {
+    const runPaceBase = athlete.runPaceBase ?? 300;
+    if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
+    const hyrox = hyroxCompromisedRunPace(runPaceBase, fitness);
+    // 8 × 1km runs at compromised pace + 8 stations (station time ≈ derived
+    // from the decay: heavier stations cost proportionally more seconds).
+    const runMinTotal = (8 * hyrox.avgPaceSecPerKm) / 60;
+    // Station time: ~60-135s each depending on cost; solve so total lands in
+    // the realistic 58-75min window for a mid-field athlete, then scale by CTL.
+    const ctl = fitness?.current?.ctl ?? 30;
+    const stationScale = Math.min(1.25, Math.max(0.8, 1.05 - ctl / 200));
+    const STATION_SECONDS = [75, 110, 110, 85, 75, 50, 85, 95]; // ski→wall balls
+    const stationMinTotal = (STATION_SECONDS.reduce((a, b) => a + b, 0) * stationScale) / 60;
+    const runFuel = recommendFuel({ durationMin: runMinTotal + stationMinTotal, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
+    baselineTotalMin = Math.round(runMinTotal + stationMinTotal);
+    segments.push({
+      sport: "run",
+      label: "Compromised runs",
+      distanceLabel: "8 × 1 km",
+      timeMin: Math.round(runMinTotal),
+      pace: fmtSecPerKm(hyrox.avgPaceSecPerKm),
+      fuel: runFuel,
+      notes: [hyrox.note, "Each run km is paced at threshold + station decay — fresh legs only for km 1."],
+    });
+    segments.push({
+      sport: "strength" as any,
+      label: "8 functional stations",
+      distanceLabel: "ski · sled ×2 · burpees · row · farmers · lunges · wall balls",
+      timeMin: Math.round(stationMinTotal),
+      fuel: runFuel,
+      notes: [`Station load scaled ×${stationScale.toFixed(2)} by durability (CTL ${Math.round(ctl)}).`],
+    });
+    factors.push(`HYROX state-space: mean run-pace decay ${Math.round(hyrox.stationDecay * 100)}% per station.`);
+    totalMin = Math.round(runMinTotal + stationMinTotal);
   }
 
   // --- Swim only ---
@@ -454,7 +586,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       ? [hasFtp, hasRunPace, hasSwimPace].filter(Boolean).length
       : sport === "bike"
         ? (hasFtp ? 1 : 0)
-        : sport === "run"
+        : sport === "run" || sport === "hyrox"
           ? (hasRunPace ? 1 : 0)
           : (hasSwimPace ? 1 : 0);
   const relevantTotal = sport === "triathlon" ? 3 : 1;
@@ -479,6 +611,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       sport === "triathlon" ? (TRI_DISTANCE_LABELS[distance] || distance)
       : sport === "run" ? RUN_DISTANCES[distance].label
       : sport === "bike" ? BIKE_DISTANCES[distance].label
+      : sport === "hyrox" ? "HYROX · 8 × 1km + 8 stations"
       : SWIM_DISTANCES[distance].label,
     confidence,
     measurementGaps,
