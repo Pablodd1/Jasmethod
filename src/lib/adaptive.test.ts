@@ -110,7 +110,10 @@ assert.equal(HYROX_STATIONS[7].name, "Wall Balls");
 const hy = generateHyroxPlan({ level: "amateur", weeks: 12, startDate: new Date("2026-08-26T00:00:00Z") });
 assert.equal(hy.length, 12, "12 weeks generated");
 assert.ok(hy.every((w) => w.sessions.length >= 4), "every week has a session slate (taper is lighter)");
-assert.ok(hy.slice(0, 6).every((w) => w.sessions.length >= 6), "base/build weeks are full");
+// 6-week mesocycle: weeks 1-5 are base/build (full slate), week 6 is the
+// taper + test week by design (run + strength + race sim + recovery = 4).
+assert.ok(hy.slice(0, 5).every((w) => w.sessions.length >= 6), "base/build weeks are full");
+assert.ok(hy[5].sessions.length >= 4, "week 6 taper is lighter but complete");
 assert.ok(hy.some((w) => w.sessions.some((s) => s.sport === "hyrox")), "compromised running / race sim present");
 assert.ok(hy.some((w) => w.sessions.some((s) => s.sport === "run")), "run sessions present");
 assert.ok(hy.some((w) => w.sessions.some((s) => s.sport === "strength")), "station strength present");

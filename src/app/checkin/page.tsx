@@ -209,11 +209,14 @@ export default function CheckinPage() {
               )}
             </h2>
             {connectedCount > 0 ? (
-              <button onClick={syncDevices} disabled={syncing} className="btn-secondary text-sm">
-                <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync now"}
-              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={syncDevices} disabled={syncing} className="btn-secondary text-sm">
+                  <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync now"}
+                </button>
+                <a href="/connectors" className="text-xs text-ocean-600 underline">Manage devices</a>
+              </div>
             ) : (
-              <span className="text-xs text-slate-400">Connect a device to pull real biometrics, or skip and use the questionnaire.</span>
+              <span className="text-xs text-slate-400">Connect a device to pull real biometrics, or skip and use the questionnaire. <a href="/connectors" className="text-ocean-600 underline">All devices &amp; file imports →</a></span>
             )}
           </div>
           {syncMsg && <div className="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-3">✓ {syncMsg}</div>}
@@ -324,7 +327,7 @@ export default function CheckinPage() {
                 <div>
                   <label className="label">HRV (RMSSD, ms)</label>
                   <input type="number" step="0.1" className="input" value={answers.hrv} onChange={(e) => setQ("hrv", e.target.value)} placeholder="e.g. 62" />
-                  <div className="text-[11px] text-slate-400">From your HR watch/app, within 5 min of waking. A drop below your 7-day baseline = back off.</div>
+                  <div className="text-[11px] text-slate-400">RMSSD = the standard morning recovery number (ms) your watch app reports. Within 5 min of waking; a drop below your 7-day baseline = back off.</div>
                 </div>
                 <div>
                   <label className="label">Sleep hours last night</label>
@@ -345,6 +348,7 @@ export default function CheckinPage() {
                 </div>
                 <p className="text-sm text-slate-600 mt-1">{t(lang, `adapt.${adaptation.verdict}.msg`)}</p>
                 <div className="text-xs text-slate-400 mt-2">Duration ×{adaptation.durationFactor} · intensity cap {adaptation.intensityCap}</div>
+                <a href="/onboarding#evaluation" className="text-xs text-ocean-600 underline mt-2 inline-block">What do Full / Trim / Easy / Rest mean?</a>
               </div>
             )}
 
@@ -359,7 +363,7 @@ export default function CheckinPage() {
               <div className="card border-ocean-300 bg-ocean-50">
                 <h3 className="font-display font-bold mb-1 flex items-center gap-2"><ClipboardCheck className="w-4 h-4 text-ocean-600" /> Today&apos;s prescription — just execute</h3>
                 <div className="font-semibold text-sm text-ocean-900">{result.prescription.title} · {result.prescription.durationMin} min</div>
-                {result.prescription.targets.hr && <div className="text-xs text-ocean-700 mt-0.5">HR target: {result.prescription.targets.hr} · RPE {result.prescription.targets.rpe}/10</div>}
+                {result.prescription.targets.hr && <div className="text-xs text-ocean-700 mt-0.5">HR target: {result.prescription.targets.hr} · RPE {result.prescription.targets.rpe}/10 <span className="text-ocean-400">(how hard it feels)</span></div>}
                 {result.prescription.targets.pace && <div className="text-xs text-ocean-700">Pace: {result.prescription.targets.pace}</div>}
                 {result.prescription.targets.power && <div className="text-xs text-ocean-700">Power: {result.prescription.targets.power}</div>}
                 <div className="text-[11px] text-ocean-500 mt-1">{result.prescription.scaled.reason}</div>
@@ -429,7 +433,8 @@ export default function CheckinPage() {
 
             {ergos && (
               <div className="card">
-                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><Pill className="w-4 h-4 text-ocean-500" /> {t(lang, "fuel.ergos")}</h3>
+                <h3 className="font-display font-bold mb-1 flex items-center gap-2"><Pill className="w-4 h-4 text-ocean-500" /> {t(lang, "fuel.ergos")}</h3>
+                <p className="text-xs text-slate-400 mb-2">Optional pre-workout aids — graded A/B by the strength of the human evidence. Skip anything you don&apos;t like.</p>
                 {ergos.length === 0 ? (
                   <p className="text-sm text-slate-500">No aids match today&apos;s session.</p>
                 ) : (

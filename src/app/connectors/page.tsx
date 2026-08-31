@@ -108,7 +108,6 @@ export default function ConnectorsPage() {
         {err && <div className="text-sm text-coral-600 bg-coral-50 border border-coral-200 rounded-lg px-3 py-2">✗ {err}</div>}
 
         <div className="flex items-center justify-between">
-          <p className="text-slate-500 text-sm">Bring your history in from every platform — Strava OAuth, Garmin TCX, Apple Health export, Whoop CSV, Oura API.</p>
           <button onClick={syncAll} disabled={syncing} className="btn-secondary shrink-0">
             <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync all devices"}
           </button>

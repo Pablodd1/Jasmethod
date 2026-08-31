@@ -9,7 +9,7 @@ export default function MetricsPage() {
   const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ hrv: "", restingHr: "", recoveryScore: "", sleepHours: "", stressScore: "" });
+  const [form, setForm] = useState({ hrv: "", restingHr: "", recoveryScore: "", stressScore: "" });
   const [saved, setSaved] = useState(false);
 
   async function load() {
@@ -29,14 +29,13 @@ export default function MetricsPage() {
         hrv: form.hrv ? parseFloat(form.hrv) : undefined,
         restingHr: form.restingHr ? parseInt(form.restingHr, 10) : undefined,
         recoveryScore: form.recoveryScore ? parseInt(form.recoveryScore, 10) : undefined,
-        sleepHours: form.sleepHours ? parseFloat(form.sleepHours) : undefined,
         stressScore: form.stressScore ? parseInt(form.stressScore, 10) : undefined,
         source: "manual",
       }),
     });
     if (res.ok) {
       setSaved(true);
-      setForm({ hrv: "", restingHr: "", recoveryScore: "", sleepHours: "", stressScore: "" });
+      setForm({ hrv: "", restingHr: "", recoveryScore: "", stressScore: "" });
       load();
       setTimeout(() => setSaved(false), 2500);
     }
@@ -84,25 +83,27 @@ export default function MetricsPage() {
                 <div>
                   <label className="label">HRV (RMSSD, ms)</label>
                   <input className="input" type="number" step="0.1" value={form.hrv} onChange={(e) => setForm({ ...form, hrv: e.target.value })} placeholder="e.g. 62.4" />
+                  <div className="text-[11px] text-slate-400">The standard morning recovery number, in milliseconds, from Whoop / Oura / Garmin / Apple Watch.</div>
                 </div>
                 <div>
                   <label className="label">Resting HR</label>
                   <input className="input" type="number" value={form.restingHr} onChange={(e) => setForm({ ...form, restingHr: e.target.value })} placeholder="e.g. 48" />
+                  <div className="text-[11px] text-slate-400">Heart beats per minute, before getting out of bed.</div>
                 </div>
                 <div>
                   <label className="label">Recovery score</label>
                   <input className="input" type="number" value={form.recoveryScore} onChange={(e) => setForm({ ...form, recoveryScore: e.target.value })} placeholder="0-100" />
-                </div>
-                <div>
-                  <label className="label">Sleep hours</label>
-                  <input className="input" type="number" step="0.1" value={form.sleepHours} onChange={(e) => setForm({ ...form, sleepHours: e.target.value })} placeholder="e.g. 7.5" />
+                  <div className="text-[11px] text-slate-400">If your device gives one (0–100).</div>
                 </div>
               </div>
               <button type="submit" className="btn-primary w-full justify-center">Save Metrics</button>
               {saved && <div className="text-sm text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2 text-center">✓ Saved</div>}
             </form>
             <p className="text-[11px] text-slate-400 mt-3">
-              Tip: measure HRV within 5 min of waking, same position daily. 7-day rolling baseline is what matters — not a single reading.
+              Tip: measure HRV within 5 min of waking, same position daily. The 7-day rolling baseline is what matters — not a single reading.
+            </p>
+            <p className="text-[11px] text-slate-400 mt-1">
+              🌙 Sleep is logged once, in the <a href="/sleep" className="underline">Sleep tab</a> — it feeds the same daily record.
             </p>
           </div>
 
@@ -133,7 +134,7 @@ export default function MetricsPage() {
           <div className="flex gap-3">
             <Brain className="w-5 h-5 text-ocean-600 shrink-0 mt-0.5" />
             <div className="text-sm text-ocean-900">
-              <strong>The science:</strong> Parasympathetic reactivation after training is reflected in elevated HRV. When morning HRV drops more than 1 SD below your 7-day baseline, training quality and immune function suffer — reduce intensity that day (Plews et al. 2013, Front Physiol; Buchheit 2014). Elite cyclists show HRV-guided training outperforms fixed plans.
+              <strong>The science:</strong> HRV is your body&apos;s &ldquo;rest-and-repair&rdquo; gauge (the parasympathetic system). When your morning HRV drops more than one normal day-to-day swing below your 7-day baseline, training quality and immune function suffer — keep it easy that day (Plews et al. 2013, Front Physiol; Buchheit 2014). Elite cyclists show HRV-guided training outperforms fixed plans.
             </div>
           </div>
         </div>

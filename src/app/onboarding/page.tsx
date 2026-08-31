@@ -145,7 +145,7 @@ export default function OnboardingPage() {
       </section>
 
       {/* Part 3 — the daily evaluation */}
-      <section className="pub-container py-10">
+      <section className="pub-container py-10" id="evaluation">
         <div className="rounded-3xl border border-ink-200 bg-white p-8 md:p-10">
           <div className="flex items-center gap-3 mb-6">
             <span className="kicker">Part 3 — The daily evaluation</span>

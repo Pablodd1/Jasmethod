@@ -14,6 +14,8 @@ export default function RemindersPage() {
   const [saved, setSaved] = useState(false);
   const [sent, setSent] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [digestSent, setDigestSent] = useState(false);
+  const [digestBusy, setDigestBusy] = useState(false);
 
   async function load() {
     const res = await fetch("/api/reminders");
@@ -37,6 +39,15 @@ export default function RemindersPage() {
     const d = await res.json();
     setSent(d);
     setBusy(false);
+  }
+
+  // Moved here from Settings so every message-delivery control lives on one tab.
+  async function sendDigest() {
+    setDigestBusy(true);
+    const res = await fetch("/api/email/digest", { method: "POST" });
+    setDigestBusy(false);
+    setDigestSent(res.ok);
+    setTimeout(() => setDigestSent(false), 4000);
   }
 
   return (
@@ -86,6 +97,15 @@ export default function RemindersPage() {
         <div className="card bg-ocean-50 border-ocean-200">
           <p className="text-sm text-ocean-900 mb-3">{t(lang, "rem.sendNow")}</p>
           <button onClick={sendNow} disabled={busy} className="btn-secondary justify-center"><Send className="w-4 h-4" /> {t(lang, "rem.sendNowBtn")}</button>
+        </div>
+
+        <div className="card">
+          <h2 className="font-display font-bold text-lg mb-2 flex items-center gap-2"><Mail className="w-5 h-5 text-ocean-500" /> Daily Motivation Email</h2>
+          <p className="text-sm text-slate-500 mb-3">Your daily quote, coach message and today&apos;s session in your inbox ({user?.email}).</p>
+          <button onClick={sendDigest} disabled={digestBusy} className="btn-primary w-full justify-center">
+            <Mail className="w-4 h-4" /> {digestBusy ? "Sending…" : "Send Today's Digest Now"}
+          </button>
+          {digestSent && <div className="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-2">✓ Digest sent (or queued via SMTP)</div>}
         </div>
       </div>
     </ProtectedPage>

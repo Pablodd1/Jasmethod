@@ -12,7 +12,7 @@ export async function POST() {
     const mot = user.motivation;
     const style = mot?.style || "coach";
     const dayIndex = Math.floor(Date.now() / 86400000);
-    const { quote, message } = dailyMotivation(dayIndex, style);
+    const { quote, message } = dailyMotivation(dayIndex, style, user.language || "en");
 
     // Find today's planned session
     const start = new Date(); start.setHours(0, 0, 0, 0);

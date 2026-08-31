@@ -9,6 +9,7 @@ import { NUTRITION_GUIDELINES } from "@/lib/science";
 export default function NutritionPage() {
   const { user } = useAuth();
   const [daily, setDaily] = useState<any[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ meal: "breakfast", food: "", calories: "", proteinG: "", carbsG: "", fatG: "" });
   const [waterForm, setWaterForm] = useState({ ml: "250", source: "water" });
@@ -18,6 +19,7 @@ export default function NutritionPage() {
     const res = await fetch("/api/nutrition?days=7");
     const d = await res.json();
     setDaily(d.daily || []);
+    setLogs(d.logs?.nutrition || []);
     setLoading(false);
   }
   useEffect(() => { if (user) load(); }, [user]);
@@ -132,6 +134,29 @@ export default function NutritionPage() {
             </p>
           </div>
         </div>
+
+        {/* Recent meals — the actual foods logged, newest first */}
+        {logs.length > 0 && (
+          <div className="card">
+            <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><UtensilsCrossed className="w-5 h-5 text-emerald-500" /> Recent meals</h2>
+            <div className="divide-y divide-sand-100">
+              {logs.slice(0, 10).map((l) => (
+                <div key={l.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <span className="font-medium">{l.food}</span>
+                    <span className="text-xs text-slate-400 capitalize"> · {l.meal}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 whitespace-nowrap">
+                    {l.calories ? `${l.calories} kcal` : ""}
+                    {l.proteinG ? ` · ${l.proteinG}g P` : ""}
+                    {l.carbsG ? ` · ${l.carbsG}g C` : ""}
+                    {l.fatG ? ` · ${l.fatG}g F` : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Daily summary */}
         <div className="card">

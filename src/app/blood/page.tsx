@@ -166,7 +166,7 @@ export default function BloodPage() {
                             <td className="py-2.5 font-display font-bold">{r.value} <span className="text-xs text-slate-400 font-normal">{r.unit}</span></td>
                             <td className="py-2.5 text-slate-500">{r.refLow ?? "—"} – {r.refHigh ?? "—"}</td>
                             <td className="py-2.5">
-                              <span className={`chip ${r.status === "high" ? "chip-z6" : r.status === "low" ? "chip-z5" : "chip-z2"}`}>
+                              <span className={`chip ${r.status === "high" ? "chip-z6" : r.status === "low" ? "chip-z5" : r.status === "optimize" ? "chip-z4" : "chip-z2"}`}>
                                 <Icon className="w-3 h-3" /> {r.status}
                               </span>
                             </td>

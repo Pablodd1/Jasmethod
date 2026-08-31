@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Save, HeartPulse, Mail, Zap, Plug, Dna, Bike, FlaskConical, ArrowRight } from "lucide-react";
+import { Save, HeartPulse, Zap, Plug, Dna, Bike, FlaskConical, ArrowRight } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { HR_ZONES, estimateVo2max } from "@/lib/science";
@@ -18,8 +18,6 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [form, setForm] = useState<any>({});
   const [vo2Estimate, setVo2Estimate] = useState<any>(null);
-  const [emailSent, setEmailSent] = useState(false);
-  const [emailBusy, setEmailBusy] = useState(false);
   const [modules, setModules] = useState<any>({});
 
   async function load() {
@@ -100,15 +98,6 @@ export default function SettingsPage() {
       load();
       setTimeout(() => setSaved(false), 2500);
     }
-  }
-
-  async function sendDigest() {
-    setEmailBusy(true);
-    const res = await fetch("/api/email/digest", { method: "POST" });
-    const d = await res.json();
-    setEmailBusy(false);
-    setEmailSent(res.ok);
-    setTimeout(() => setEmailSent(false), 4000);
   }
 
   if (loading) {
@@ -216,8 +205,9 @@ export default function SettingsPage() {
                     <input className="input" type="number" step="0.1" value={form.vo2max} onChange={(e) => setForm({ ...form, vo2max: e.target.value })} placeholder="e.g. 48" />
                   </div>
                   <div>
-                    <label className="label">LTHR (bpm) — from 30' TT</label>
+                    <label className="label">LTHR (bpm) — from a 30-min all-out test</label>
                     <input className="input" type="number" value={form.lthr} onChange={(e) => setForm({ ...form, lthr: e.target.value })} placeholder="e.g. 165" />
+                    <div className="text-[11px] text-slate-400">LTHR = the heart rate you could hold for a hard one-hour effort. Test it in <a href="/labs" className="underline">Labs</a>.</div>
                   </div>
                   <div>
                     <label className="label">Max HR</label>
@@ -226,14 +216,17 @@ export default function SettingsPage() {
                   <div>
                     <label className="label">FTP (watts)</label>
                     <input className="input" type="number" step="0.1" value={form.ftp} onChange={(e) => setForm({ ...form, ftp: e.target.value })} placeholder="e.g. 250" />
+                    <div className="text-[11px] text-slate-400">FTP = the watts you could hold for about one hour.</div>
                   </div>
                   <div>
                     <label className="label">Run T-pace (sec/km)</label>
                     <input className="input" type="number" value={form.runPaceBase} onChange={(e) => setForm({ ...form, runPaceBase: e.target.value })} placeholder="e.g. 285" />
+                    <div className="text-[11px] text-slate-400">T-pace = the pace you could race for about one hour.</div>
                   </div>
                   <div>
                     <label className="label">Swim T-pace (sec/100m)</label>
                     <input className="input" type="number" value={form.swimPaceBase} onChange={(e) => setForm({ ...form, swimPaceBase: e.target.value })} placeholder="e.g. 95" />
+                    <div className="text-[11px] text-slate-400">Your CSS pace — from the 400 m + 200 m test in <a href="/labs" className="underline">Labs</a>.</div>
                   </div>
                 </div>
               </div>
@@ -285,17 +278,8 @@ export default function SettingsPage() {
                 <p className="text-sm text-slate-400">Enter your max HR to see personalized zones.</p>
               )}
               <p className="text-[11px] text-slate-400 mt-3">
-                Zones follow the MyProCoach 5-zone model anchored on max HR (run). Bike = run − 6 bpm. Swim uses CSS/threshold pace. Gym, boxing &amp; HYROX use the same zones guided by RPE.
+                Zones follow the MyProCoach 5-zone model anchored on max HR (run). Bike = run − 6 bpm. Swim uses CSS/threshold pace. Gym, boxing &amp; HYROX use the same zones guided by RPE. Run the tests in <a href="/labs" className="text-ocean-600 underline">Labs &amp; Tests</a> to fill in your real numbers.
               </p>
-            </div>
-
-            <div className="card">
-              <h2 className="font-display font-bold text-lg mb-2 flex items-center gap-2"><Mail className="w-5 h-5 text-ocean-500" /> Daily Motivation Email</h2>
-              <p className="text-sm text-slate-500 mb-3">Get your daily quote, coach message and today&apos;s session in your inbox ({user?.email}).</p>
-              <button onClick={sendDigest} disabled={emailBusy} className="btn-primary w-full justify-center">
-                <Mail className="w-4 h-4" /> {emailBusy ? "Sending…" : "Send Today's Digest Now"}
-              </button>
-              {emailSent && <div className="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-2">✓ Digest sent (or queued via SMTP)</div>}
             </div>
           </div>
         </div>

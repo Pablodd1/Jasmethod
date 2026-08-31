@@ -53,7 +53,7 @@ export default function DashboardPage() {
   const [benchmarks, setBenchmarks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const mot = dailyMotivation(Math.floor(Date.now() / 86400000), user?.motivation?.style || "coach");
+  const mot = dailyMotivation(Math.floor(Date.now() / 86400000), user?.motivation?.style || "coach", user?.language || "en");
 
   useEffect(() => {
     if (!user) return;

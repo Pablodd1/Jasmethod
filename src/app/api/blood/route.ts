@@ -12,16 +12,26 @@ export async function GET() {
     include: { results: true },
     orderBy: { date: "desc" },
   });
-  // Annotate each result with reference range + status
+  // Annotate each result with reference range + status.
+  // Athlete-specific performance targets on top of the clinical ranges: inside
+  // the clinical range but below the athlete optimum → status "optimize".
+  const ATHLETE_TARGETS: Record<string, { min?: number; max?: number }> = {
+    Ferritin: { min: 50 },        // Peeling 2008: ≥50-60 ng/mL for endurance athletes
+    "Vitamin D": { min: 40 },     // Holick 2007: optimize to 40-60 ng/mL
+    Hemoglobin: { max: 17.5 },
+  };
   const annotated = panels.map((p) => ({
     ...p,
     results: p.results.map((r) => {
       const ref = BLOOD_REFERENCE[r.marker];
       const refLow = r.refLow ?? ref?.refLow;
       const refHigh = r.refHigh ?? ref?.refHigh;
+      const target = ATHLETE_TARGETS[r.marker];
       let status = "ok";
       if (refLow !== undefined && r.value < refLow) status = "low";
       else if (refHigh !== undefined && r.value > refHigh) status = "high";
+      else if (target?.min !== undefined && r.value < target.min) status = "optimize";
+      else if (target?.max !== undefined && r.value > target.max) status = "optimize";
       return { ...r, refLow, refHigh, status, athleteNote: ref?.athleteNote };
     }),
   }));

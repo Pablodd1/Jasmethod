@@ -22,8 +22,8 @@ JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting th
 
 | Requested | Built | Status |
 |---|---|---|
-| Full Spanish support across all pages | 5-language i18n system (en/es/ht/fr/ru), 100+ keys; dashboard, sleep, labs, dna, connectors, reminders, checkin all wired to `t(lang, key)` | ✅ Complete |
-| Language selector | In navbar (app-shell), persists per user (`user.language`), fallback to English for missing langs | ✅ Complete |
+| Full Spanish support across all pages | 5-language i18n system (en/es/ht/fr/ru — French restored to the selector in Aug 2026; dictionary already carried all `fr` strings), 100+ keys; dashboard, sleep, labs, dna, connectors, reminders, checkin all wired to `t(lang, key)` | ✅ Complete |
+| Language selector | In navbar (app-shell), persists per user (`user.language`), fallback chain: requested lang → es (Miami default) → en | ✅ Complete |
 
 ### 2.2 Gear Lab — equipment intelligence
 
@@ -173,7 +173,6 @@ JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting th
 
 | Feature | Why not | Effort |
 |---|---|---|
-| **`prescribeToday()`** — the final daily prescription that REWRITES today's workout from all signals (checkin + calendar + weather + load) | The plumbing exists (adaptSession + busyNote + temperatureAdjustment + estimateTss); the final "rewrite the plan day" step is not wired | ~1 day |
 | **End-of-day review loop** — athlete rates how the session went; feeds tomorrow's adaptation | Model exists (workout.completed/rpe); no EOD UI | ~0.5 day |
 | **Oura OAuth** | Needs OURA_CLIENT_ID/SECRET | ~0.5 day (pattern exists) |
 | **TrainingPeaks OAuth** | Requires TP partner approval (weeks) | code ~0.5 day after approval |
@@ -228,3 +227,37 @@ jando@jasmiamimethod.com     # Runner (full, advanced)
 ---
 
 *Generated 2026-08-28. Maintained by the project owner + Hermes agent. This document is the handoff for any developer taking over — verify each section against the live code before relying on it.*
+
+---
+
+## 9. Change Log — Aug 31, 2026 review pass (terminology + plain language + de-dup)
+
+Reviewed against the official industry terminology (TrainingPeaks glossary: TSS/CTL=Fitness/ATL=Fatigue/TSB=Form/IF/NP; TriDot: FitLogic/TrainX/RaceX) and simplified for non-technical readers:
+
+- **`src/lib/glossary.ts` + `src/components/term.tsx`** (new): plain-language, bilingual (en/es) glossary for every term the app uses (FTP, TSS, CTL/ATL/TSB, LTHR, HRV/RMSSD, VDOT, CSS, RPE, T-pace, Z1–Z7, EN2/EN3, CMJ, TrainX/RaceX…). Wired as tooltips and inline hints.
+- **Plain language everywhere**: Labs calculators each explain what the test measures + result legends (EASY/THR/INT, EN2/EN3, KCAL/CARB/PRO/FAT, sweat TARGET/SODIUM); Training zone card explains Z1–Z5 + RPE in one line; Metrics science note rewritten without "1 SD" jargon; Check-in RPE and ergogenic-aids card get plain subtitles; Settings physiology fields (LTHR, FTP, T-pace, CSS) explain themselves.
+- **De-duplication (each tab now owns its content)**:
+  - Zone tables: **Settings = source of truth**. Labs' full "Saved Zones (live)" tables replaced with latest-test anchors + link; Training keeps compact chips + link.
+  - Sleep hours input removed from Metrics (Sleep tab owns sleep; both write the same daily record).
+  - Daily Motivation Email card moved Settings → **Reminders** (all delivery controls on one tab).
+  - Check-in device grid links out to Connectors ("Manage devices") instead of embedding the provider list twice.
+  - Check-in verdict card links to `/onboarding#evaluation` (anchor added) instead of re-explaining Full/Trim/Easy/Rest.
+- **Nav**: Labs, HRV & Recovery (metrics), Sleep, Brain, Gear, DNA, Science Guides added to a "More" sidebar group — previously orphan pages reachable only through scattered links.
+- **Code health**: dead `tssFromHr()` removed from science.ts (never called; mis-applied Banister constants — the tested `estimateTss()` in fitness.ts is the real path). Stale adaptive.test assertion fixed for the 6-week mesocycle (week 6 = taper). i18n test fallback expectation corrected to shipped behavior (es before en). French re-added to the language selector (LANGS order now en/es/ht/fr/ru, matching the dictionary).
+- Security items (plaintext OAuth tokens, no auth rate limiting) are **known and deferred** — acceptable for the closed MVP tester phase, must be fixed before any public launch.
+
+### Same day — live beta-test fix pass (QA as athlete, full click-through)
+
+Found by black-box testing every tab in a real browser against a seeded local DB:
+
+- **FIXED — Training "Details" expander never opened** (`training/page.tsx`): `isExpanded` was keyed on the PlanDay id while the button toggled the Workout id — they could never match.
+- **FIXED — Plan generation created duplicate/broken days** (`api/plan/generate/route.ts`): one PlanDay per session with `si % 7` slot math wrapped >7-session weeks back onto Monday. Sessions are now grouped onto 7 day-slots sharing one PlanDay (84 days / 100 sessions instead of 404 single-session days).
+- **FIXED — New plans didn't supersede old ones**: both stayed `active` and every calendar day rendered each workout twice. Generating now archives previous active plans and deletes their future planned-uncompleted workouts.
+- **FIXED — Food names invisible**: Nutrition now shows a "Recent meals" list (name + macros), not just daily numeric aggregates.
+- **FIXED — Labs page wrong subtitle** ("JASAI, powered by Gemini" was the i18n value) + Labs hardcoded-English strings translated (time, fuel, sweat, scheduled tests, CMJ).
+- **FIXED — Connectors intro paragraph rendered twice** (removed the duplicate).
+- **FIXED — Blood panels now flag athlete-target gaps**: inside clinical range but below athlete optimum (ferritin ≥50, vitamin D ≥40) → status `optimize` (Peeling 2008 / Holick 2007).
+- **FIXED — Science guides dropped app navigation when logged in**: public header now always shows a highlighted "Dashboard →" link for signed-in athletes.
+- **FIXED — English-only leaks in Spanish UI**: JASAI rule-based fallback briefings localized (en/es/ht/fr/ru), daily motivation quotes translated to Spanish, dashboard + digest email now pass the athlete's language.
+- Full QA pass details: login/logout, admin 403 gate, all 5 languages live-switching, all Labs calculators math-verified, check-in → adaptation → prescription end-to-end, calendar day modal, race + forecast, blood/HRV/sleep/nutrition logging, Stroop test.
+
