@@ -71,6 +71,10 @@ export async function POST(req: Request) {
       weightKg: b.weightKg ? parseFloat(b.weightKg) : undefined,
       rhr: b.rhr ? parseInt(b.rhr, 10) : undefined,
     };
+    // Manual biometrics for athletes without a synced device but with an HR
+    // watch/app: HRV (RMSSD) + sleep hours, analyzed alongside weight/RHR.
+    const hrv = b.hrv ? parseFloat(b.hrv) : undefined;
+    const sleepHours = b.sleepHours ? parseFloat(b.sleepHours) : undefined;
 
     // 7-day baselines from stored daily metrics — so morning weight + RHR are
     // actually analyzed, not just collected.
@@ -240,15 +244,32 @@ export async function POST(req: Request) {
       },
     });
 
-    // Persist morning weight + RHR into daily metrics so the trends compound
-    // (weight trend, RHR baseline, sweat-loss context for tomorrow).
-    if (checkin.weightKg !== undefined || checkin.rhr !== undefined) {
+    // Persist morning weight + RHR + HRV + sleep hours into daily metrics so the
+    // trends compound (weight trend, RHR baseline, HRV baseline, sleep tracking).
+    if (checkin.weightKg !== undefined || checkin.rhr !== undefined || hrv !== undefined || sleepHours !== undefined) {
       await prisma.dailyMetrics.upsert({
         where: { userId_date: { userId: user.id, date: start } },
-        create: { userId: user.id, date: start, weightKg: checkin.weightKg, restingHr: checkin.rhr },
-        update: { ...(checkin.weightKg !== undefined && { weightKg: checkin.weightKg }), ...(checkin.rhr !== undefined && { restingHr: checkin.rhr }) },
+        create: { userId: user.id, date: start, source: "manual", weightKg: checkin.weightKg, restingHr: checkin.rhr, hrv, sleepHours },
+        update: {
+          ...(checkin.weightKg !== undefined && { weightKg: checkin.weightKg }),
+          ...(checkin.rhr !== undefined && { restingHr: checkin.rhr }),
+          ...(hrv !== undefined && { hrv }),
+          ...(sleepHours !== undefined && { sleepHours }),
+        },
       });
     }
+
+    // HRV note: morning RMSSD below the 7-day baseline signals under-recovery.
+    const hrvs = metrics.filter((m) => m.hrv).map((m) => m.hrv as number);
+    const hrvBaseline = hrvs.length >= 3 ? Math.round(hrvs.slice(0, -1).reduce((a, v) => a + v, 0) / (hrvs.length - 1)) : null;
+    const hrvNote = hrv == null || hrvBaseline == null ? null
+      : hrv < hrvBaseline * 0.9 ? `HRV ${hrv} ms is well below your ${hrvBaseline} ms baseline — parasympathetic recovery is low, keep today easy.`
+      : hrv > hrvBaseline * 1.1 ? `HRV ${hrv} ms is above your ${hrvBaseline} ms baseline — you're recovering well.`
+      : `HRV ${hrv} ms is in line with your ${hrvBaseline} ms baseline.`;
+    const sleepNote = sleepHours == null ? null
+      : sleepHours < 7 ? `Slept ${sleepHours}h last night — under 7h, prioritize an early night tonight (Mah 2011: sleep extension lifts performance).`
+      : sleepHours >= 8 ? `Slept ${sleepHours}h — solid. Keep the consistent bed/wake time.`
+      : `Slept ${sleepHours}h — decent, but aim for 8h.`;
 
     // Weight trend (last 3 mornings vs the ones before) + RHR note
     const weightTrend = morningWeightTrend([
@@ -276,7 +297,7 @@ export async function POST(req: Request) {
       recovery: translatedRecovery((user.language || "es") as Lang),
       fuelBrands: fuelBrandsFor(todaySession?.durationMin || 0),
       sources: sourcesFor(CORE_SOURCE_IDS),
-      hydration: { weightTrend, rhrNote, rhrBaseline: checkin.rhrBaseline ?? null },
+      hydration: { weightTrend, rhrNote, hrvNote, sleepNote, rhrBaseline: checkin.rhrBaseline ?? null },
       calendar: { busyCount, busyNote },
       tomorrowAdjustment,
     });

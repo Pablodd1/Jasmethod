@@ -344,7 +344,7 @@ export default function DashboardPage() {
           <div className="card">
             <h2 className="font-display font-bold text-lg mb-3">{t(lang, "dash.quickActions")}</h2>
             <div className="space-y-2">
-              <Link href="/metrics" className="flex items-center gap-2 text-sm text-ocean-700 hover:bg-ocean-50 rounded-lg p-2"><HeartPulse className="w-4 h-4" /> {t(lang, "dash.logHrv")}</Link>
+              <Link href="/checkin" className="flex items-center gap-2 text-sm text-ocean-700 hover:bg-ocean-50 rounded-lg p-2"><HeartPulse className="w-4 h-4" /> {t(lang, "dash.logHrv")}</Link>
               <Link href="/nutrition" className="flex items-center gap-2 text-sm text-ocean-700 hover:bg-ocean-50 rounded-lg p-2"><Apple className="w-4 h-4" /> {t(lang, "dash.logFood")}</Link>
               <Link href="/blood" className="flex items-center gap-2 text-sm text-ocean-700 hover:bg-ocean-50 rounded-lg p-2"><FlaskConical className="w-4 h-4" /> {t(lang, "dash.addBlood")}</Link>
               <Link href="/dna" className="flex items-center gap-2 text-sm text-ocean-700 hover:bg-ocean-50 rounded-lg p-2"><Dna className="w-4 h-4" /> {t(lang, "dash.uploadDna")}</Link>

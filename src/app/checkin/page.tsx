@@ -26,6 +26,8 @@ const VOICE_SCRIPT = [
   "Life stress, one to five?",
   "Morning weight in kilograms? (e.g. \"seventy four point two\")",
   "Resting heart rate? (e.g. \"48\")",
+  "HRV in milliseconds? (e.g. \"62\")",
+  "Sleep hours last night? (e.g. \"seven point five\")",
   "Any sickness, injury, or menstrual phase today? (yes/no)",
 ];
 
@@ -35,7 +37,7 @@ export default function CheckinPage() {
   const { user } = useAuth();
   const router = useRouter();
   const lang = (user?.language || "es") as Lang;
-  const [answers, setAnswers] = useState<any>({ sleep: "3", soreness: "3", motivation: "3", energy: "3", stress: "3", sick: false, menstrual: false, weightKg: "", rhr: "" });
+  const [answers, setAnswers] = useState<any>({ sleep: "3", soreness: "3", motivation: "3", energy: "3", stress: "3", sick: false, menstrual: false, weightKg: "", rhr: "", hrv: "", sleepHours: "" });
   const [result, setResult] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -89,6 +91,8 @@ export default function CheckinPage() {
       stress: String(heard.stress ?? a.stress),
       weightKg: heard.weightKg ? String(heard.weightKg) : a.weightKg,
       rhr: heard.rhr ? String(heard.rhr) : a.rhr,
+      hrv: heard.hrv ? String(heard.hrv) : a.hrv,
+      sleepHours: heard.sleepHours ? String(heard.sleepHours) : a.sleepHours,
       sick: heard.sick,
       menstrual: heard.menstrual,
     }));
@@ -270,6 +274,8 @@ export default function CheckinPage() {
                 ))}
                 <span className={`rounded-lg px-2 py-1 ${heard.weightKg ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.weightKg ? `✓ Weight: ${heard.weightKg} kg` : "Weight: —"}</span>
                 <span className={`rounded-lg px-2 py-1 ${heard.rhr ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.rhr ? `✓ RHR: ${heard.rhr} bpm` : "RHR: —"}</span>
+                <span className={`rounded-lg px-2 py-1 ${heard.hrv ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.hrv ? `✓ HRV: ${heard.hrv} ms` : "HRV: —"}</span>
+                <span className={`rounded-lg px-2 py-1 ${heard.sleepHours ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.sleepHours ? `✓ Sleep: ${heard.sleepHours} h` : "Sleep hrs: —"}</span>
                 <span className={`rounded-lg px-2 py-1 ${heard.sick ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.sick ? "✓ Sick/injured" : "Sick: no"}</span>
                 <span className={`rounded-lg px-2 py-1 ${heard.menstrual ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{heard.menstrual ? "✓ Menstrual" : "Period: no"}</span>
               </div>
@@ -312,6 +318,18 @@ export default function CheckinPage() {
                   <label className="label">Resting HR (bpm)</label>
                   <input type="number" className="input" value={answers.rhr} onChange={(e) => setQ("rhr", e.target.value)} placeholder="e.g. 48" />
                   <div className="text-[11px] text-slate-400">Before coffee, still in bed. +6 over baseline = back off.</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">HRV (RMSSD, ms)</label>
+                  <input type="number" step="0.1" className="input" value={answers.hrv} onChange={(e) => setQ("hrv", e.target.value)} placeholder="e.g. 62" />
+                  <div className="text-[11px] text-slate-400">From your HR watch/app, within 5 min of waking. A drop below your 7-day baseline = back off.</div>
+                </div>
+                <div>
+                  <label className="label">Sleep hours last night</label>
+                  <input type="number" step="0.1" className="input" value={answers.sleepHours} onChange={(e) => setQ("sleepHours", e.target.value)} placeholder="e.g. 7.5" />
+                  <div className="text-[11px] text-slate-400">From your watch/app. Under 7h — prioritize an early night.</div>
                 </div>
               </div>
               <button type="submit" disabled={busy} className="btn-primary w-full justify-center"><Zap className="w-4 h-4" /> {busy ? "Checking…" : "Get Today's Plan"}</button>
@@ -476,14 +494,16 @@ export default function CheckinPage() {
 
             {result?.hydration && (
               <div className="card">
-                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><HeartPulse className="w-4 h-4 text-ocean-500" /> Weight & Hydration</h3>
+                <h3 className="font-display font-bold mb-2 flex items-center gap-2"><HeartPulse className="w-4 h-4 text-ocean-500" /> Biometrics & Recovery</h3>
                 {result.hydration.rhrNote && <p className="text-xs text-slate-600 mb-1">❤️ {result.hydration.rhrNote}</p>}
+                {result.hydration.hrvNote && <p className="text-xs text-slate-600 mb-1">📈 {result.hydration.hrvNote}</p>}
+                {result.hydration.sleepNote && <p className="text-xs text-slate-600 mb-1">😴 {result.hydration.sleepNote}</p>}
                 {result.hydration.weightTrend && (
                   <p className={`text-xs leading-relaxed rounded-lg px-2 py-1.5 ${result.hydration.weightTrend.flag === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
                     ⚖️ {result.hydration.weightTrend.advice}
                   </p>
                 )}
-                {!result.hydration.weightTrend && !result.hydration.rhrNote && <p className="text-xs text-slate-400">Add morning weight + RHR above — trends kick in after a few days.</p>}
+                {!result.hydration.weightTrend && !result.hydration.rhrNote && !result.hydration.hrvNote && !result.hydration.sleepNote && <p className="text-xs text-slate-400">Add morning weight, RHR, HRV + sleep hours above — trends kick in after a few days.</p>}
               </div>
             )}
 

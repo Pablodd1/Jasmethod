@@ -13,6 +13,8 @@ export interface VoiceCheckinAnswers {
   stress?: number;
   weightKg?: number;
   rhr?: number;
+  hrv?: number;
+  sleepHours?: number;
   sick: boolean;
   menstrual: boolean;
 }
@@ -41,6 +43,10 @@ export function parseCheckinTranscript(text: string): VoiceCheckinAnswers {
   if (w) out.weightKg = parseFloat(w[1]);
   const hr = /\b(?:resting\s*(?:hr|heart\s*rate)|rhr|heart\s*rate)\s*(?:was|is)?\s*(\d{2})/.exec(t);
   if (hr) out.rhr = parseInt(hr[1], 10);
+  const hrv = /\bhrv\s*(?:was|is)?\s*(\d{2,3}(?:\.\d)?)/.exec(t);
+  if (hrv) out.hrv = parseFloat(hrv[1]);
+  const sh = /\b(?:sleep\s*(?:hours?|hrs?))\s*(?:was|is)?\s*(\d{1,2}(?:\.\d)?)/.exec(t);
+  if (sh) out.sleepHours = parseFloat(sh[1]);
 
   const unwell = /\b(?:don'?t|dont|not)\s+feel\w*\s+well\b/.test(t); // "don't feel well" = sick in itself
   const symptoms = /\b(sick|ill|injured|hurt|cold|flu|fever|cough|under the weather)\b/.test(t);
