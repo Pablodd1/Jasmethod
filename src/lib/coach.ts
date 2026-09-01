@@ -30,6 +30,7 @@ export interface CoachContext {
   bloodFlags: string[];
   dnaHighlights: string[];
   language?: string; // en | es | ht | fr | ru
+  historyDigest?: string; // long-term memory: check-in trend, weekly load, adherence, benchmarks
 }
 
 // Localized rule-based fallback briefings (used when Gemini is unavailable).
@@ -113,6 +114,11 @@ Today's planned session: ${c.todaySession ? `${c.todaySession.title} (${c.todayS
 Active plan: ${c.planName ?? "none"}.
 Blood flags: ${c.bloodFlags.length ? c.bloodFlags.join("; ") : "none on file"}.
 DNA highlights: ${c.dnaHighlights.length ? c.dnaHighlights.join("; ") : "none on file"}.
+Athlete history (analyze this BEFORE advising):
+${c.historyDigest || "no history yet"}
+
+Coaching rules: use sports-science reasoning (Seiler polarized distribution, Plews/Buchheit HRV baselines, Foster session-RPE load) on the data above. If HRV/sleep/stress trend down for 2+ days, recommend recovery; if adherence is below 60%, scale the load down rather than demanding more; if benchmarks are improving and readiness is high, encourage progression. Reference the trend when it matters (e.g. "third low-energy morning this week"). Never invent data not shown above.
+
 Language: respond entirely in ${langName}.
 
 Respond in strict JSON: {"headline": "<GREEN|AMBER|RED> DAY — short tag", "briefing": "<2-3 sentences, coach voice, Miami-flavored, evidence-based>", "adaptation": "<one concrete change to today's training based on readiness>", "sources": ["<author year>", ...]}.
