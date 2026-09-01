@@ -186,7 +186,10 @@ export default function CheckinPage() {
   }
 
   const setQ = (k: string, v: any) => setAnswers((a: any) => ({ ...a, [k]: v }));
-  const adaptation = result?.adaptation || result;
+  // Only render the adaptation card when a REAL verdict exists — on a fresh
+  // day (no submitted check-in yet) `result` holds loading data (recovery,
+  // fuel brands, readiness) but no adaptation, and verdict would be undefined.
+  const adaptation = result?.adaptation?.verdict ? result.adaptation : null;
   const fuel = result?.fuel;
   const ergos = result?.ergos?.recommended;
   const recovery = result?.recovery;
