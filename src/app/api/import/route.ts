@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseTcx, parseAppleHealth, parseWhoopCsv } from "@/lib/importers";
 
-// POST /api/import — multipart upload: source = tcx | applehealth | whoop; file
+// POST /api/import — multipart upload. source: tcx | garmin | coros (all parsed
+// as TCX), apple | applehealth (Apple Health export.xml), whoop (cycle CSV).
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -13,13 +14,16 @@ export async function POST(req: Request) {
     const file = form.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "No file provided." }, { status: 400 });
 
+    // Normalize: the Connectors page posts the provider id as the source.
+    const src = source === "garmin" || source === "coros" ? "tcx" : source === "apple" ? "applehealth" : source;
+
     const text = await file.text();
     let workouts: any[] = [];
     let extra: Record<string, any> = {};
 
-    if (source === "tcx") {
+    if (src === "tcx") {
       workouts = parseTcx(text);
-    } else if (source === "applehealth") {
+    } else if (src === "applehealth") {
       const ah = parseAppleHealth(text);
       workouts = ah.workouts;
       extra = {
@@ -29,7 +33,7 @@ export async function POST(req: Request) {
         hrvLogs: ah.hrvLogs,
         hrLogs: ah.hrLogs,
       };
-    } else if (source === "whoop") {
+    } else if (src === "whoop") {
       const cycles = parseWhoopCsv(text);
       // Whoop cycles are recovery/sleep data, not workouts
       let created = 0;
@@ -54,7 +58,7 @@ export async function POST(req: Request) {
       }
       return NextResponse.json({ ok: true, source, metricsImported: created, workoutsImported: 0 });
     } else {
-      return NextResponse.json({ error: "Unknown source. Use tcx, applehealth, or whoop." }, { status: 400 });
+      return NextResponse.json({ error: "Unknown source. Use tcx, garmin, coros, apple, applehealth, or whoop." }, { status: 400 });
     }
 
     // Store imported workouts (dedupe by externalId)

@@ -15,16 +15,42 @@ export default function ConnectorsPage() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [syncing, setSyncing] = useState(false);
+  // Real-time sync progress: devices sync ONE per request so the bar moves
+  // truthfully (no fake animation). Athlete sees per-device status + elapsed.
+  const [sync, setSync] = useState<{
+    running: boolean; current: number; total: number; currentName: string;
+    results: { provider: string; name: string; ok: boolean; imported: number; error?: string }[];
+    startedAt: number; elapsed: number; done: boolean;
+  } | null>(null);
 
   async function syncAll() {
-    setSyncing(true); setErr(""); setMsg("");
-    try {
-      const res = await fetch("/api/connectors/sync", { method: "POST" });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Sync failed");
-      setMsg(`✓ ${d.message}`);
-      load();
-    } catch (e: any) { setErr(e.message); } finally { setSyncing(false); }
+    const connected = providers.filter((p) => p.status === "connected");
+    if (connected.length === 0) {
+      setErr(lang === "es" ? "No hay dispositivos conectados todavía — conecta uno arriba." : "No connected devices yet — connect one above.");
+      return;
+    }
+    setSyncing(true);
+    setErr(""); setMsg("");
+    setSync({ running: true, current: 0, total: connected.length, currentName: "", results: [], startedAt: Date.now(), elapsed: 0, done: false });
+    const timer = setInterval(() => setSync((s) => (s && s.running ? { ...s, elapsed: Math.round((Date.now() - s.startedAt) / 1000) } : s)), 500);
+    for (let i = 0; i < connected.length; i++) {
+      const p = connected[i];
+      setSync((s) => (s ? { ...s, current: i + 1, currentName: p.name } : s));
+      try {
+        const res = await fetch("/api/connectors/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: p.id }) });
+        const d = await res.json();
+        const r = d.synced?.[0];
+        setSync((s) => s ? { ...s, results: [...s.results, { provider: p.id, name: p.name, ok: !r?.error, imported: r?.imported ?? 0, error: r?.error }] } : s);
+        if (!res.ok || r?.error) setErr(`${p.name}: ${r?.error || d.error || "sync failed"}`);
+      } catch (e: any) {
+        setSync((s) => s ? { ...s, results: [...s.results, { provider: p.id, name: p.name, ok: false, imported: 0, error: e.message }] } : s);
+        setErr(`${p.name}: ${e.message}`);
+      }
+    }
+    clearInterval(timer);
+    setSyncing(false);
+    setSync((s) => (s ? { ...s, running: false, done: true, elapsed: Math.round((Date.now() - s.startedAt) / 1000) } : s));
+    load();
   }
 
   async function load() {
@@ -148,7 +174,46 @@ export default function ConnectorsPage() {
           <button onClick={syncAll} disabled={syncing} className="btn-secondary shrink-0">
             <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? (lang === "es" ? "Sincronizando…" : "Syncing…") : (lang === "es" ? "Sincronizar todos los dispositivos" : "Sync all devices")}
           </button>
+          <span className="text-xs text-slate-400">{lang === "es" ? "Auto-sincroniza cada día a las 5:00 AM" : "Auto-syncs daily at 5:00 AM"}</span>
         </div>
+
+        {/* Live sync progress — real per-device steps, elapsed time, errors inline */}
+        {sync && (
+          <div className="card border-ocean-200 bg-ocean-50/50">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+              <div className="font-semibold text-sm text-ocean-900">
+                {sync.running
+                  ? (lang === "es" ? `Sincronizando ${sync.currentName} (${sync.current}/${sync.total})…` : `Syncing ${sync.currentName} (${sync.current}/${sync.total})…`)
+                  : (lang === "es" ? `Sincronización completa — ${sync.total} dispositivo${sync.total === 1 ? "" : "s"} en ${sync.elapsed}s` : `Sync complete — ${sync.total} device${sync.total === 1 ? "" : "s"} in ${sync.elapsed}s`)}
+              </div>
+              <div className="text-xs text-slate-500 tabular-nums">{sync.elapsed}s</div>
+            </div>
+            <div className="h-3 bg-white rounded-full overflow-hidden border border-ocean-100">
+              <div
+                className={`h-full transition-all duration-500 ${sync.results.some((r) => !r.ok) ? "bg-amber-400" : "bg-emerald-500"}`}
+                style={{ width: `${Math.round((sync.results.length / Math.max(1, sync.total)) * 100)}%` }}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {sync.results.map((r) => (
+                <span key={r.provider} className={`text-xs rounded-full px-2.5 py-1 font-medium ${r.ok ? "bg-emerald-100 text-emerald-700" : "bg-coral-100 text-coral-700"}`}>
+                  {r.ok ? "✓" : "✗"} {r.name}{r.ok ? ` · +${r.imported}` : ""}
+                </span>
+              ))}
+              {sync.running && <span className="text-xs rounded-full px-2.5 py-1 font-medium bg-ocean-100 text-ocean-700 animate-pulse">⏳ {sync.currentName}</span>}
+            </div>
+            {sync.done && sync.results.some((r) => !r.ok) && (
+              <p className="text-xs text-coral-700 mt-2">
+                {lang === "es"
+                  ? "Algún dispositivo falló — el error está marcado arriba y el equipo ya fue notificado para ayudarte."
+                  : "A device failed — the error is marked above and the team has been notified to help you."}
+              </p>
+            )}
+            {sync.done && !sync.results.some((r) => !r.ok) && (
+              <p className="text-xs text-emerald-700 mt-2">{lang === "es" ? "Todo sincronizado sin errores." : "Everything synced without errors."}</p>
+            )}
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-4">
           {providers.map((p) => {
