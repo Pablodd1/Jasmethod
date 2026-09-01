@@ -174,10 +174,12 @@ export function AuthCard({
                 onClick={async () => {
                   setError(""); setDetail(""); setBusy(true);
                   try {
-                    const res = await fetch("/api/auth/login", {
+                    // Self-provisioning demo login: creates the account on first
+                    // tap on any fresh database; existing accounts just log in.
+                    const res = await fetch("/api/auth/demo", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ email: acct.email, password: "demo1234" }),
+                      body: JSON.stringify({ email: acct.email }),
                     });
                     if (!res.ok) {
                       const data = await res.json().catch(() => ({}));
