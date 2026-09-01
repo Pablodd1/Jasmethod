@@ -7,6 +7,8 @@ import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
 import { parseCheckinTranscript, type VoiceCheckinAnswers } from "@/lib/voice-parse";
+import { CognitiveCheck } from "@/components/cognitive-check";
+import { Activity } from "lucide-react";
 
 const QUESTIONS = [
   { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great — hours matter but how you FEEL matters more" },
@@ -51,6 +53,7 @@ export default function CheckinPage() {
   const [syncMsg, setSyncMsg] = useState("");
   const [importing, setImporting] = useState<string | null>(null);
   const [approved, setApproved] = useState(false);
+  const [readiness, setReadiness] = useState<{ score: number; advice: string; deltaPct: number } | null>(null);
 
   function startVoice() {
     const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -105,6 +108,7 @@ export default function CheckinPage() {
     if (d.checkin?.answers) setAnswers({ ...answers, ...JSON.parse(d.checkin.answers) });
     if (d.checkin?.adaptation) setResult({ adaptation: JSON.parse(d.checkin.adaptation) });
     if (d.recovery || d.fuelBrands || d.sources) setResult((r: any) => ({ ...(r || {}), recovery: d.recovery, fuelBrands: d.fuelBrands, sources: d.sources }));
+    if (d.readiness) setReadiness(d.readiness);
     // Device modules — same list the connectors page uses
     const cres = await fetch("/api/connectors");
     if (cres.ok) {
@@ -243,6 +247,24 @@ export default function CheckinPage() {
             </div>
           )}
         </div>
+
+        {/* Consolidated from the former VFC/Recovery page: HRV readiness hero */}
+        {readiness && (
+          <div className={`rounded-3xl p-5 text-white ${readiness.score >= 65 ? "bg-gradient-to-r from-emerald-600 to-emerald-500" : readiness.score >= 40 ? "bg-gradient-to-r from-amber-500 to-amber-400" : "bg-gradient-to-r from-coral-600 to-coral-500"}`}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold opacity-90"><Activity className="w-4 h-4" /> {lang === "es" ? "Preparación (VFC vs base de 7 días)" : "Readiness (HRV vs 7-day baseline)"}</div>
+                <div className="font-display text-3xl font-extrabold mt-1">{readiness.score}/100</div>
+                <div className="text-sm mt-0.5">{readiness.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(readiness.deltaPct)}%</div>
+              </div>
+              <p className="text-sm leading-relaxed max-w-md opacity-95">{readiness.advice}</p>
+              <a href="/metrics" className="text-xs underline opacity-90">{lang === "es" ? "Historial de VFC →" : "HRV history →"}</a>
+            </div>
+          </div>
+        )}
+
+        {/* Consolidated from the former Brain page: cognitive check lives here */}
+        <CognitiveCheck lang={lang} />
 
         {/* Voice check-in */}
         <div className="card bg-ocean-50 border-ocean-200">

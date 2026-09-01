@@ -246,6 +246,13 @@ Reviewed against the official industry terminology (TrainingPeaks glossary: TSS/
 - **Code health**: dead `tssFromHr()` removed from science.ts (never called; mis-applied Banister constants — the tested `estimateTss()` in fitness.ts is the real path). Stale adaptive.test assertion fixed for the 6-week mesocycle (week 6 = taper). i18n test fallback expectation corrected to shipped behavior (es before en). French re-added to the language selector (LANGS order now en/es/ht/fr/ru, matching the dictionary).
 - Security items (plaintext OAuth tokens, no auth rate limiting) are **known and deferred** — acceptable for the closed MVP tester phase, must be fixed before any public launch.
 
+### Sep 1, 2026 — product restructuring (consolidated modules + mandatory plyometrics)
+
+- **Login flow**: every login (form + one-tap) now lands on the **Daily Check-in** before anything else.
+- **Daily Check-in is the consolidated module**: HRV readiness hero (formerly the standalone VFC & Recovery page) and the **Cognitive Check** (Stroop) now live inside the check-in. `/metrics` and `/brain` routes remain for full history but are OUT of the main navigation.
+- **Race Prediction absorbs Performance**: the "Rendimiento" tab is out of the navigation; the Fitness/Fatigue/Form (PMC) view is linked from the Race Forecast page (the AI prediction engine consumes that same load data).
+- **Mandatory conditioning rule (hardcoded)**: every plan generator (triathlon, single-sport, HYROX, boxing) now includes **plyometrics 1-2×/week** alongside sport-specific lifting — a dedicated plyo session (1× base, 2nd added in build/peak), explicit plyo prescriptions in every strength description, protected from the easy/quality split demotion. Evidence: Rønnestad & Mujika 2014 + Ramírez-Campillo 2022 plyo meta (added to research.ts).
+
 ### Same day — live beta-test fix pass (QA as athlete, full click-through)
 
 Found by black-box testing every tab in a real browser against a seeded local DB:

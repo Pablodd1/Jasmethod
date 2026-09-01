@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Brain, Zap, Timer, Target, History, Fingerprint, Scale, HeartPulse } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
+import { CognitiveCheck } from "@/components/cognitive-check";
 import { useAuth } from "@/components/auth";
 
 // Cognitive training — the "brain" pillar. Interactive Stroop + Reaction Time
@@ -15,6 +16,7 @@ const COLOR_HEX: Record<string, string> = { red: "#ef4444", blue: "#3b82f6", gre
 
 export default function BrainPage() {
   const { user } = useAuth();
+  const lang = (user?.language || "en") as string;
   const [tab, setTab] = useState<"stroop" | "reaction" | "morning" | "history">("stroop");
   const [history, setHistory] = useState<any[]>([]);
   const [best, setBest] = useState<any>({});
@@ -47,7 +49,7 @@ export default function BrainPage() {
           <button onClick={() => setTab("history")} className={`chip ${tab === "history" ? "chip-z3" : ""}`}>History</button>
         </div>
 
-        {tab === "stroop" && <StroopTest onSave={(s, a) => save("stroop", s, a)} />}
+        {tab === "stroop" && <CognitiveCheck lang={lang} />}
         {tab === "reaction" && <ReactionTest onSave={(s, a) => save("reaction", s, a)} />}
         {tab === "morning" && <MorningCheck onSave={save} />}
         {tab === "history" && <HistoryView history={history} best={best} />}
@@ -57,82 +59,6 @@ export default function BrainPage() {
 }
 
 // ---------- STROOP ----------
-function StroopTest({ onSave }: { onSave: (score: number, accuracy: number) => void }) {
-  const [word, setWord] = useState("");
-  const [ink, setInk] = useState("");
-  const [trial, setTrial] = useState(0);
-  const [started, setStarted] = useState(false);
-  const [done, setDone] = useState(false);
-  const [times, setTimes] = useState<number[]>([]);
-  const [correct, setCorrect] = useState(0);
-  const startRef = useRef(0);
-
-  const TOTAL = 10;
-
-  function next() {
-    let w = COLORS[Math.floor(Math.random() * COLORS.length)];
-    let i = COLORS[Math.floor(Math.random() * COLORS.length)];
-    if (w === i) { w = COLORS[(COLORS.indexOf(w) + 1) % COLORS.length]; } // avoid trivial same-word-same-color
-    setWord(w); setInk(i);
-    startRef.current = performance.now();
-  }
-
-  function begin() { setStarted(true); setTrial(0); setTimes([]); setCorrect(0); setDone(false); next(); }
-
-  function answer(c: string) {
-    const ms = performance.now() - startRef.current;
-    const isCorrect = c === ink;
-    if (isCorrect) setCorrect((n) => n + 1);
-    setTimes((t) => [...t, ms]);
-    const t = trial + 1;
-    if (t >= TOTAL) {
-      setDone(true);
-      const avg = [...times, ms].reduce((a, x) => a + x, 0) / TOTAL;
-      onSave(Math.round(avg), Math.round((correct + (isCorrect ? 1 : 0)) / TOTAL * 100));
-    } else {
-      setTrial(t);
-      next();
-    }
-  }
-
-  if (!started) {
-    return (
-      <div className="card text-center py-10">
-        <Zap className="w-10 h-10 text-violet-500 mx-auto mb-3" />
-        <h3 className="font-display font-bold text-lg">Stroop Test</h3>
-        <p className="text-sm text-slate-500 mt-1 mb-4">The word says one color, the ink is another. Tap the INK color. 10 trials — measures inhibitory control (relevant to pacing discipline).</p>
-        <button onClick={begin} className="btn-primary">Start</button>
-      </div>
-    );
-  }
-
-  if (done) {
-    const avg = Math.round(times.reduce((a, x) => a + x, 0) / times.length);
-    return (
-      <div className="card text-center py-10">
-        <Target className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
-        <h3 className="font-display font-bold text-lg">Done! Avg {avg} ms · {Math.round(correct / TOTAL * 100)}% accurate</h3>
-        <p className="text-sm text-slate-500 mt-2">{avg < 700 ? "Elite focus — top-tier inhibitory control." : avg < 1000 ? "Solid — above average focus." : "Reasonable baseline — retest weekly, expect improvement."}</p>
-        <div className="flex justify-center gap-2 mt-4"><button onClick={begin} className="btn-secondary">Retest</button></div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="card text-center py-10">
-      <div className="text-xs text-slate-400 mb-2">Trial {trial + 1}/{TOTAL} — tap the INK color</div>
-      <div className="font-display text-5xl font-bold mb-6" style={{ color: COLOR_HEX[ink] }}>{word}</div>
-      <div className="flex justify-center gap-3 flex-wrap">
-        {COLORS.map((c) => (
-          <button key={c} onClick={() => answer(c)} className="w-16 h-16 rounded-xl text-white font-bold text-sm" style={{ backgroundColor: COLOR_HEX[c] }}>
-            {c}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ---------- REACTION TIME ----------
 function ReactionTest({ onSave }: { onSave: (score: number, accuracy: number | null) => void }) {
   const [phase, setPhase] = useState<"idle" | "waiting" | "go" | "done">("idle");

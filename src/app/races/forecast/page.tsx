@@ -54,7 +54,7 @@ export default function RaceForecastPage() {
             <h1 className="font-display text-2xl font-bold flex items-center gap-2">
               <Gauge className="w-6 h-6 text-coral-500" /> {t(lang, "fc.title")}
             </h1>
-            <p className="text-slate-500 text-sm mt-1">{t(lang, "fc.subtitle")}</p>
+            <p className="text-slate-500 text-sm mt-1"> Performance curve (Fitness/Fatigue/Form) lives in the <a href="/fitness" className="underline">Performance view</a>. {t(lang, "fc.subtitle")}</p>
           </div>
         </div>
 

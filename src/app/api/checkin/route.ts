@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { adaptSession, recommendFuel, recommendErgogenics, temperatureAdjustment, recoveryFor, morningWeightTrend, postWorkoutFuel, prescribeToday, type Checkin, type SupplementPrefs } from "@/lib/adaptive";
+import { hrvReadiness } from "@/lib/science";
 import { stimPlan } from "@/lib/stimulation";
 import { cycleAdvice, youthPolicy, proteinPerKg } from "@/lib/cycle";
 import { t, type Lang } from "@/lib/i18n";
@@ -50,7 +51,22 @@ export async function GET() {
     orderBy: { date: "asc" },
     select: { title: true, startTime: true, endTime: true },
   });
-  return NextResponse.json({ checkin, recovery, fuelBrands, sources, language: lang, calendar: { busyCount: todayAppointments.length, appointments: todayAppointments } });
+  // HRV readiness (consolidated from the former standalone VFC page): last 7
+  // days of RMSSD vs the latest reading, Buchheit 2014 / Plews 2013 model.
+  const last7 = await prisma.dailyMetrics.findMany({
+    where: { userId: user.id, hrv: { not: null } },
+    orderBy: { date: "desc" },
+    take: 7,
+  });
+  let readiness: { score: number; advice: string; deltaPct: number } | null = null;
+  if (last7.length >= 3) {
+    const latest = last7[0].hrv!;
+    const baseline = last7.slice(1).map((m) => m.hrv!).reverse();
+    const mean = baseline.reduce((a, b) => a + b, 0) / baseline.length;
+    const sd = Math.sqrt(baseline.reduce((a, b) => a + (b - mean) ** 2, 0) / baseline.length);
+    readiness = hrvReadiness(latest, baseline, sd);
+  }
+  return NextResponse.json({ checkin, recovery, fuelBrands, sources, language: lang, readiness, calendar: { busyCount: todayAppointments.length, appointments: todayAppointments } });
 }
 
 // POST /api/checkin — submit the daily questionnaire; returns adaptation + fuel + ergos

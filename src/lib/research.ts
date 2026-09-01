@@ -62,6 +62,9 @@ export const RESEARCH_SOURCES: ResearchSource[] = [
   { id: "hassan2025", claim: "FITLIGHT reactive-agility training improves visual reaction time and visuomotor skill", ref: "Hassan et al. 2025 (FITLIGHT visual-motor RCT, PMC12252139)", level: "A", population: "recreational" },
   { id: "appelbaum2016", claim: "visual-motor skills are trainable and transfer to sport performance", ref: "Appelbaum & Erickson 2016, J Sports Sci 34:842-850 (review)", level: "B", population: "both" },
 
+  // ---- plyometrics (mandatory 1-2x/week conditioning rule) ----
+  { id: "ramirezcampillo2022", claim: "plyometric jump training improves power, economy and injury resilience; 1-2 sessions/week effective", ref: "Ramírez-Campillo et al. 2022, plyometric jump training meta-analysis (Sports Med)", level: "A", population: "both" },
+
   // ---- female athlete / cycle / sex-specific ----
   { id: "niering2024", claim: "strength favors late follicular phase; early follicular unfavorable", ref: "Niering et al. 2024, Sports 12:31 (systematic review + meta)", level: "A", population: "recreational" },
   { id: "mcnull2020", claim: "trivial overall MC performance effects; individual variability dominates", ref: "McNulty et al. 2020, Br J Sports Med 54:712-722 (meta-analysis)", level: "A", population: "both" },

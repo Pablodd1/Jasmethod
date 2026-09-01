@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, CalendarDays, Dumbbell, Apple,
-  FlaskConical, Settings, Waves, LogOut, Activity, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield, Trophy,
-  TestTubes, HeartPulse, Moon, Brain, Bike, Dna, BookOpen,
+  FlaskConical, Settings, Waves, LogOut, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield, Trophy,
+  TestTubes, Moon, Bike, Dna, BookOpen,
 } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
@@ -15,7 +15,6 @@ const NAV = [
   { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
   { href: "/calendar", key: "nav.calendar", icon: CalendarDays },
   { href: "/training", key: "nav.training", icon: Dumbbell },
-  { href: "/fitness", key: "nav.fitness", icon: Activity },
   { href: "/races", key: "nav.races", icon: Flag },
   { href: "/races/forecast", key: "nav.forecast", icon: Gauge },
   { href: "/prs", key: "nav.prs", icon: Trophy },
@@ -31,9 +30,7 @@ const NAV = [
 // re-embedded elsewhere.
 const NAV_MORE = [
   { href: "/labs", key: "nav.labs", icon: TestTubes },
-  { href: "/metrics", key: "nav.metrics", icon: HeartPulse },
   { href: "/sleep", key: "nav.sleep", icon: Moon },
-  { href: "/brain", key: "nav.brain", icon: Brain },
   { href: "/gear", key: "nav.gear", icon: Bike },
   { href: "/dna", key: "nav.dna", icon: Dna },
   { href: "/science", key: "nav.science", icon: BookOpen },

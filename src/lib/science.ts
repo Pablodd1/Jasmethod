@@ -481,14 +481,24 @@ export function generatePlan(opts: {
       }
     }
 
-    // ---- STRENGTH ----
+    // ---- STRENGTH + PLYOMETRICS (product rule: plyo 1-2×/week is MANDATORY
+    // in every plan, alongside sport-specific lifting — Rønnestad & Mujika 2014;
+    // Ramírez-Campillo et al. 2022 plyometric jump training meta-analysis) ----
     if (strengthMin >= 30) {
       const phaseFocus = legacy === "base"
-        ? "Strength: Foundation — heavy compound lifts (squat, deadlift, bench, row) 3×5-8. Post-2000 evidence: strength training improves running economy and time-trial performance (Rønnestad & Mujika 2014, Scand J Med Sci Sports)."
+        ? "Strength: Foundation — heavy compound lifts (squat, deadlift, bench, row) 3×5-8 + plyometric primer (box jumps 3×5, med-ball throws 3×8). Strength improves running economy and time-trial performance (Rønnestad & Mujika 2014); plyo 1-2×/week is mandatory in every plan (Ramírez-Campillo 2022)."
         : legacy === "build"
-          ? "Strength: Power — add Olympic lifts / plyometrics (jumps, throws) 3×5. Converts strength into speed (Rønnestad 2014)."
-          : "Strength: Maintenance — light, explosive. 2×8 with moderate load. Stop heavy lifting 7-10 days pre-race.";
-      sessions.push({ sport: "strength", title: legacy === "taper" ? "Strength: Maintenance" : `Strength: ${legacy === "base" ? "Foundation" : legacy === "build" ? "Power" : "Maintenance"}`, minutes: strengthMin, zone: "z1", type: "strength", description: phaseFocus });
+          ? "Strength: Power — Olympic lifts / loaded jumps 3×5 + plyometric circuit (depth jumps, bounds, hopping drills) 2×/week. Converts strength into speed (Rønnestad 2014; Ramírez-Campillo 2022)."
+          : "Strength: Maintenance — light, explosive. 2×8 moderate load + 3×5 box jumps. Stop heavy lifting 7-10 days pre-race.";
+      sessions.push({ sport: "strength", title: legacy === "taper" ? "Strength: Maintenance" : `Strength: ${legacy === "base" ? "Foundation + Plyo" : legacy === "build" ? "Power + Plyo" : "Maintenance"}`, minutes: strengthMin, zone: "z1", type: "strength", description: phaseFocus });
+      // Dedicated plyometric session: 1×/week in base, 2nd in build/peak (the
+      // 2nd rides inside the strength day above). Never in taper.
+      if (legacy === "base") {
+        sessions.push({ sport: "strength", title: "Plyometrics: Jump Training", minutes: Math.max(25, Math.round(strengthMin * 0.5)), zone: "z3", type: "plyo", description: "Plyometrics (mandatory 1-2×/week): box jumps 4×5, standing long jumps 3×5, pogo hops 3×20s, single-leg bounds 2×6/leg. Full recovery between sets — quality of contact, not fatigue. Improves economy, power and injury resilience (Ramírez-Campillo 2022)." });
+      }
+      if (legacy === "build" || legacy === "peak") {
+        sessions.push({ sport: "strength", title: "Plyometrics: Reactive Power", minutes: Math.max(25, Math.round(strengthMin * 0.5)), zone: "z3", type: "plyo", description: "Plyometrics (mandatory 2×/week in build): depth jumps 4×5 (drop height ≤40cm), lateral bounds 3×8/side, single-leg hops 3×10, sprint-specific bounding 4×20m. Full recoveries, land quiet — stiff ankles, quiet knees (Ramírez-Campillo 2022)." });
+      }
     }
 
     // ---- BRICK (bike→run) ----
@@ -563,7 +573,7 @@ export function enforceSplit(sessions: PlanSession[], easyPct: number): PlanSess
         const m2 = Math.max(10, Math.min(s.minutes * 1.5, Math.round((100 * E - target * T + target * s.minutes) / (100 + target))));
         const dist = Math.abs(((E - m2) / (T - s.minutes + m2)) * 100 - target);
         if (dist < bestDist) { bestDist = dist; bestIdx = idx; bestM2 = m2; bestDir = "promote"; }
-      } else if (!isEasy(s) && s.sport !== "brick" && s.type !== "brick") {
+      } else if (!isEasy(s) && s.sport !== "brick" && s.type !== "brick" && s.type !== "strength" && s.type !== "plyo") {
         const m2 = Math.max(10, Math.min(s.minutes * 1.5, Math.round((target * T - target * s.minutes - 100 * E) / (100 - target))));
         const dist = Math.abs(((E + m2) / (T - s.minutes + m2)) * 100 - target);
         if (dist < bestDist) { bestDist = dist; bestIdx = idx; bestM2 = m2; bestDir = "demote"; }
@@ -902,11 +912,11 @@ export function generateHyroxPlan(opts: {
 
     // STRENGTH / STATIONS
     if (ph === "base") {
-      sessions.push({ sport: "strength", title: "Strength: Sled & Squat Foundation", minutes: Math.round(strengthMin * 0.35), zone: "z1", type: "strength", description: "Heavy compound lifts (back squat, deadlift, sled push/pull light) 3×5-8. Build the raw posterior-chain strength HYROX stations demand." });
+      sessions.push({ sport: "strength", title: "Strength: Sled & Squat Foundation", minutes: Math.round(strengthMin * 0.35), zone: "z1", type: "strength", description: "Heavy compound lifts (back squat, deadlift, sled push/pull light) 3×5-8 + plyometric primer (box jumps 3×5, broad jumps 3×5) — plyo 1-2×/week is mandatory in every plan (Ramírez-Campillo 2022). Build the raw posterior-chain strength HYROX stations demand." });
       sessions.push({ sport: "strength", title: "Engine: SkiErg + Row", minutes: Math.round(strengthMin * 0.3), zone: "z2", type: "endurance", description: "SkiErg 5×500m + Row 5×500m at steady aerobic pace. Learn the erg technique you'll use on race day." });
       sessions.push({ sport: "strength", title: "Conditioning: Carry + Lunge + Wall Ball", minutes: Math.round(strengthMin * 0.35), zone: "z3", type: "strength", description: "Farmers carry 4×50m, sandbag lunges 4×25m, wall balls 3×20. Light weights, full movement standards." });
     } else if (ph === "build") {
-      sessions.push({ sport: "strength", title: "Station: Sled Push + Pull", minutes: Math.round(strengthMin * 0.35), zone: "z4", type: "strength", description: "Sled push 8×12.5m + sled pull 8×12.5m at race weight (build toward it). Grip the floor, drive through the posterior chain." });
+      sessions.push({ sport: "strength", title: "Station: Sled Push + Pull", minutes: Math.round(strengthMin * 0.35), zone: "z4", type: "strength", description: "Sled push 8×12.5m + sled pull 8×12.5m at race weight (build toward it) + plyometric circuit 2×/week: depth jumps 3×5, bounding 3×20m — the explosive stiffness that makes sleds and walls cheaper (Ramírez-Campillo 2022)." });
       sessions.push({ sport: "strength", title: "Station: Erg Intervals", minutes: Math.round(strengthMin * 0.3), zone: "z4", type: "interval", description: "SkiErg + Row 8×500m at race pace with 1:1 rest. Damper ~6 (race setting)." });
       sessions.push({ sport: "strength", title: "Station: Burpees + Carries + Wall Balls", minutes: Math.round(strengthMin * 0.35), zone: "z4", type: "strength", description: "80m burpee broad jumps, 200m farmers carry, 100m lunges, 3×30 wall balls — full movement standards, race weights." });
     } else if (ph === "peak") {
@@ -1008,7 +1018,7 @@ export function generateBoxingCamp(opts: {
 
     // S&C (transfer to punching power / durability)
     if (ph !== "taper") {
-      sessions.push({ sport: "strength", title: "S&C: Punching Power + Neck/Core Armor", minutes: scMin, zone: "z3", type: "strength", description: "Explosive triple-extension: jump squat 3×5, landmine punch 4×6/side, rotational med-ball throw 4×6/side; armor: neck isometrics 3×30s, Pallof press 3×10, farmers carry 3×40m. Move the bar FAST — force = mass × acceleration (Suchomel 2016). Ground-up power transfer is what the punch rides on (Turner 2011); jump and throw power track punch impact in elite boxers (Loturco 2016)." });
+      sessions.push({ sport: "strength", title: "S&C: Punching Power + Neck/Core Armor", minutes: scMin, zone: "z3", type: "strength", description: "Mandatory plyometrics 1-2×/week: jump squat 3×5, depth jumps 3×5, plyo push-ups 3×8; landmine punch 4×6/side, rotational med-ball throw 4×6/side; armor: neck isometrics 3×30s, Pallof press 3×10, farmers carry 3×40m. Move the bar FAST — force = mass × acceleration (Suchomel 2016). Ground-up power transfer is what the punch rides on (Turner 2011); jump and throw power track punch impact in elite boxers (Loturco 2016)." });
     } else {
       sessions.push({ sport: "strength", title: "S&C: Activation Only", minutes: Math.round(scMin * 0.6), zone: "z1", type: "recovery", description: "Banded pull-aparts, hip 90/90s, light med-ball tosses. Keep the nervous system awake, the muscles asleep." });
     }
@@ -1052,23 +1062,23 @@ export function generateSingleSport(opts: {
       sessions.push({ sport: "bike", title: "Endurance Ride (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Steady aerobic miles — cadence 85-95 rpm. The engine builder (Seiler 2009: 80/20)." });
       sessions.push({ sport: "bike", title: "Sweet Spot Intervals", minutes: Math.round(totalMin * 0.25), zone: "z3", type: "interval", description: "3×12 min @ 88-94% FTP, 6 min spin between. Best fitness-per-minute of any bike workout (Seiler 2010)." });
       sessions.push({ sport: "bike", title: "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Endurance spin, keep it easy today." : "5×4 min @ 106-120% FTP, 4 min easy. Raise the ceiling (Billat 2001)." });
-      sessions.push({ sport: "strength", title: "Cyclist Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Squats, hip thrusts, single-leg work 3×8 — heavy but controlled. Preserves power and bone (Ronnestad 2020)." });
+      sessions.push({ sport: "strength", title: "Cyclist Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Squats, hip thrusts, single-leg work 3×8 + plyometric primer (box jumps 3×5, pogo hops 3×20s) — plyo 1-2×/week mandatory (Ramírez-Campillo 2022). Preserves power and bone (Ronnestad 2020)." });
       sessions.push({ sport: "mobility", title: "Recovery Spin + Hip Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ultra-light spin + hip flexor/hamstring flow. Blood flow without load." });
     } else if (sport === "swim") {
       sessions.push({ sport: "swim", title: "Technique + Aerobic Swim", minutes: Math.round(totalMin * 0.3), zone: "z2", type: "endurance", description: "Drills (catch-up, fingertip drag) then steady swims. Technique first — speed follows form." });
       sessions.push({ sport: "swim", title: "Threshold Swim Set", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "interval", description: "10×100 @ CSS pace, 15s rest. Threshold is the swim engine (Olbrecht 2015)." });
       sessions.push({ sport: "swim", title: "VO2max Sprints", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Easy pull buoy set instead today." : "8×50m max effort, 60s full recovery. Race-speed Neuromuscular work." });
-      sessions.push({ sport: "strength", title: "Swimmer Strength", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "strength", description: "Pull-ups, rows, rotator cuff work 3×10. Shoulder durability = swim career length." });
+      sessions.push({ sport: "strength", title: "Swimmer Strength", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "strength", description: "Pull-ups, rows, rotator cuff work 3×10 + plyometric primer (clap push-ups 3×5, med-ball slams 3×8) — plyo 1-2×/week mandatory (Ramírez-Campillo 2022). Shoulder durability = swim career length." });
       sessions.push({ sport: "mobility", title: "Ankle & Shoulder Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ankle flexibility = better kick; thoracic mobility = longer catch." });
     } else if (sport === "run") {
       sessions.push({ sport: "run", title: "Long Aerobic Run (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Steady conversational miles — the aerobic engine (Seiler 2009: 80/20). Build the long run ≤10% distance per week." });
       sessions.push({ sport: "run", title: "Tempo / Threshold Run", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "threshold", description: "20-30 min @ lactate threshold (T-pace). The single best marathon/half predictor (Billat 2001)." });
       sessions.push({ sport: "run", title: "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Easy strides instead today." : "6×800m or 5×1000m @ ~5k pace, equal-time jog recovery. Raise the ceiling." });
-      sessions.push({ sport: "strength", title: "Runner Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Single-leg squats, calf raises, glute bridge 3×10. Running economy + injury-proofing (Ronnestad 2020)." });
+      sessions.push({ sport: "strength", title: "Runner Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Single-leg squats, calf raises, glute bridge 3×10 + plyometrics 1-2×/week (pogo hops, A-skips, bounds — mandatory, Ramírez-Campillo 2022). Running economy + injury-proofing (Ronnestad 2020)." });
       sessions.push({ sport: "mobility", title: "Recovery Run + Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Easy shakeout jog + hip/ankle mobility flow. Blood flow with zero load." });
     } else {
       // lifting-only — progressive overload is the plan
-      sessions.push({ sport: "strength", title: "Lower Body Heavy", minutes: Math.round(totalMin * 0.3), zone: "z1", type: "strength", description: "Squat 4×5, RDL 3×8, lunges 3×10. Add 2.5kg or 1 rep vs last week — the 6-week wave adds ~8% load (Schoenfeld 2016)." });
+      sessions.push({ sport: "strength", title: "Lower Body Heavy", minutes: Math.round(totalMin * 0.3), zone: "z1", type: "strength", description: "Squat 4×5, RDL 3×8, lunges 3×10 + plyometric primer (jump squats 3×5, med-ball throws 3×8) — plyo 1-2×/week mandatory (Ramírez-Campillo 2022). Add 2.5kg or 1 rep vs last week — the 6-week wave adds ~8% load (Schoenfeld 2016)." });
       sessions.push({ sport: "strength", title: "Upper Body Heavy", minutes: Math.round(totalMin * 0.25), zone: "z1", type: "strength", description: "Bench 4×5, rows 4×8, overhead press 3×8. Log every set — beat the logbook." });
       sessions.push({ sport: "strength", title: "Full Body Volume", minutes: Math.round(totalMin * 0.25), zone: "z1", type: "strength", description: "3×10 hypertrophy circuit @ 70% — the volume that grows muscle and work capacity." });
       sessions.push({ sport: "mobility", title: "Mobility + Core", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "recovery", description: "Hips, shoulders, spine + anti-rotation core. Mobility is what lets you keep loading heavy." });
