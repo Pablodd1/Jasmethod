@@ -648,3 +648,82 @@ export async function whoopGetDaily(accessToken: string, days = 30): Promise<Who
   }
   return Array.from(out.values());
 }
+
+// ---------- Garmin Connect "Activities.csv" (activity export) ----------
+// Parses the CSV you get from Garmin Connect → Activities → Export CSV
+// (columns: Activity Type, Date, Title, Distance, Calories, Time, Avg HR,
+// Max HR, Avg Power, NP, TSS, ...). Distances: km for run/bike, meters for
+// swims (Garmin exports swims in meters with thousands separators).
+export interface GarminActivity {
+  date: Date;
+  sport: "swim" | "bike" | "run";
+  title: string;
+  durationMin: number;
+  distanceKm: number | null;
+  avgHr: number | null;
+  maxHr: number | null;
+  avgPower: number | null;
+  np: number | null;
+  tss: number | null;
+  calories: number | null;
+  externalId: string;
+}
+
+function csvSplit(line: string): string[] {
+  const out: string[] = [];
+  let cur = "", inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+    else if (ch === "," && !inQ) { out.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+export function parseGarminActivitiesCsv(csv: string): GarminActivity[] {
+  const lines = csv.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+  const header = csvSplit(lines[0]).map((h) => h.trim());
+  const idx = (name: string) => header.findIndex((h) => h === name);
+  const iType = idx("Activity Type"), iDate = idx("Date"), iTitle = idx("Title"),
+    iDist = idx("Distance"), iCal = idx("Calories"), iTime = idx("Time"),
+    iAvgHr = idx("Avg HR"), iMaxHr = idx("Max HR"), iAvgPwr = idx("Avg Power"),
+    iNP = header.findIndex((h) => h.startsWith("Normalized Power")), iTss = header.findIndex((h) => h.startsWith("Training Stress Score"));
+
+  const num = (v: string | undefined): number | null => {
+    if (v == null) return null;
+    const clean = v.replace(/,/g, "").replace(/^'-/, "-").replace(/'/g, "").trim();
+    if (clean === "" || clean === "--") return null;
+    const n = parseFloat(clean);
+    return isNaN(n) ? null : n;
+  };
+
+  const out: GarminActivity[] = [];
+  for (const line of lines.slice(1)) {
+    const c = csvSplit(line);
+    const type = (c[iType] || "").trim();
+    const sport: GarminActivity["sport"] | null = /Swim/i.test(type) ? "swim" : /Cycling|Bike/i.test(type) ? "bike" : /Run|Jog|Walk/i.test(type) ? "run" : null;
+    if (!sport) continue; // skip strength/other rows the app can't use yet
+    const dateStr = (c[iDate] || "").trim();
+    const date = new Date(dateStr.replace(" ", "T"));
+    if (isNaN(date.getTime())) continue;
+    const timeStr = (c[iTime] || "").trim();
+    const tm = timeStr.match(/^(\d+):(\d+):(\d+)/);
+    if (!tm) continue;
+    const durationMin = Math.round((+tm[1] * 3600 + +tm[2] * 60 + +tm[3]) / 60);
+    const rawDist = num(c[iDist]);
+    // Garmins: swims in METERS (e.g. "1,620"), run/bike in KM (e.g. "54.09").
+    const distanceKm = rawDist == null ? null : sport === "swim" ? Math.round((rawDist / 1000) * 100) / 100 : rawDist;
+    const title = (c[iTitle] || type).trim();
+    out.push({
+      date, sport, title, durationMin, distanceKm,
+      avgHr: num(c[iAvgHr]), maxHr: num(c[iMaxHr]),
+      avgPower: num(c[iAvgPwr]), np: num(iNP >= 0 ? c[iNP] : undefined),
+      tss: num(iTss >= 0 ? c[iTss] : undefined), calories: num(c[iCal]),
+      externalId: `garmin-csv:${dateStr}:${title}`,
+    });
+  }
+  return out;
+}

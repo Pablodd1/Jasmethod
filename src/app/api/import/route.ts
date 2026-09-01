@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { parseTcx, parseAppleHealth, parseWhoopCsv } from "@/lib/importers";
+import { parseTcx, parseAppleHealth, parseWhoopCsv, parseGarminActivitiesCsv } from "@/lib/importers";
 
 // POST /api/import — multipart upload. source: tcx | garmin | coros (all parsed
 // as TCX), apple | applehealth (Apple Health export.xml), whoop (cycle CSV).
@@ -22,7 +22,11 @@ export async function POST(req: Request) {
     let extra: Record<string, any> = {};
 
     if (src === "tcx") {
-      workouts = parseTcx(text);
+      // Garmin uploads can be .tcx (single activity) OR the Activities.csv
+      // bulk export — detect by content so either file just works.
+      workouts = text.trimStart().startsWith("<")
+        ? parseTcx(text)
+        : parseGarminActivitiesCsv(text).map((a) => ({ date: a.date, sport: a.sport, title: a.title, durationMin: a.durationMin, distanceKm: a.distanceKm ?? undefined, avgHr: a.avgHr ?? undefined, maxHr: a.maxHr ?? undefined, avgPower: a.avgPower ?? undefined, np: a.np ?? undefined, tss: a.tss ?? undefined, calories: a.calories ?? undefined, source: "garmin", externalId: a.externalId }));
     } else if (src === "applehealth") {
       const ah = parseAppleHealth(text);
       workouts = ah.workouts;
