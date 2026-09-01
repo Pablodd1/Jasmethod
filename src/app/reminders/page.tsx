@@ -16,6 +16,33 @@ export default function RemindersPage() {
   const [busy, setBusy] = useState(false);
   const [digestSent, setDigestSent] = useState(false);
   const [digestBusy, setDigestBusy] = useState(false);
+  // Telegram auto-pairing: personal code + one-tap detect
+  const [pairing, setPairing] = useState<{ code: string; botUsername: string | null; configured: boolean } | null>(null);
+  const [pairBusy, setPairBusy] = useState(false);
+  const [pairMsg, setPairMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function loadPairing() {
+    const res = await fetch("/api/reminders/telegram-detect");
+    if (res.ok) setPairing(await res.json());
+  }
+
+  async function detectChat() {
+    setPairBusy(true); setPairMsg(null);
+    try {
+      const res = await fetch("/api/reminders/telegram-detect", { method: "POST" });
+      const d = await res.json();
+      if (d.ok) {
+        setPairMsg({ ok: true, text: `${lang === "es" ? "Chat conectado" : "Chat connected"}: ${d.chatId}` });
+        load();
+      } else {
+        setPairMsg({ ok: false, text: d.error || "Not found" });
+      }
+    } catch (e: any) {
+      setPairMsg({ ok: false, text: e.message });
+    } finally {
+      setPairBusy(false);
+    }
+  }
 
   async function load() {
     const res = await fetch("/api/reminders");
@@ -23,7 +50,7 @@ export default function RemindersPage() {
     setTelegramConfigured(d.telegramConfigured);
     if (d.prefs) setPrefs({ ...prefs, ...d.prefs, reminderHour: String(d.prefs.reminderHour ?? 6), remindBeforeMin: String(d.prefs.remindBeforeMin ?? 0) });
   }
-  useEffect(() => { if (user) load(); }, [user]);
+  useEffect(() => { if (user) { load(); loadPairing(); } }, [user]);
 
   const set = (k: string, v: any) => setPrefs((p: any) => ({ ...p, [k]: v }));
 
@@ -78,7 +105,42 @@ export default function RemindersPage() {
               </div>
             </label>
             {prefs.telegramEnabled && (
-              <div><label className="label">{t(lang, "rem.telegramChatId")}</label><input className="input" value={prefs.telegramChatId} onChange={(e) => set("telegramChatId", e.target.value)} placeholder="e.g. 123456789" /></div>
+              <div className="space-y-3">
+                {/* Auto-pairing: one link + one Detect press — no hunting for numbers */}
+                <div className="rounded-xl border border-ocean-200 bg-ocean-50/60 p-3 space-y-2">
+                  <div className="font-semibold text-sm text-ocean-900">{lang === "es" ? "Conexión automática (recomendado)" : "Automatic setup (recommended)"}</div>
+                  {pairing?.botUsername ? (
+                    <a
+                      href={`https://t.me/${pairing.botUsername}?start=${pairing.code}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-secondary text-sm w-full justify-center"
+                    >
+                      {lang === "es" ? "1. Abrir el bot y enviar el código" : "1. Open the bot & send the code"} {pairing.code}
+                    </a>
+                  ) : (
+                    <div className="text-xs text-slate-600">
+                      {lang === "es"
+                        ? <>1. Abre nuestro bot en Telegram y envía: <code className="bg-white px-1 rounded">/start {pairing?.code}</code></>
+                        : <>1. Open our bot in Telegram and send: <code className="bg-white px-1 rounded">/start {pairing?.code}</code></>}
+                    </div>
+                  )}
+                  <div className="text-xs text-slate-500">
+                    {lang === "es" ? "2. Vuelve aquí y pulsa Detectar — conectamos tu chat automáticamente." : "2. Come back here and press Detect — we link your chat automatically."}
+                  </div>
+                  <button onClick={detectChat} disabled={pairBusy} className="btn-primary text-sm w-full justify-center">
+                    {pairBusy ? (lang === "es" ? "Detectando…" : "Detecting…") : (lang === "es" ? "2. Detectar mi chat" : "2. Detect my chat")}
+                  </button>
+                  {pairMsg && (
+                    <div className={`text-xs rounded-lg px-2 py-1.5 ${pairMsg.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{pairMsg.text}</div>
+                  )}
+                </div>
+                <div>
+                  <label className="label">{lang === "es" ? "O pega tu Chat ID manualmente" : "Or paste your Chat ID manually"}</label>
+                  <input className="input" value={prefs.telegramChatId} onChange={(e) => set("telegramChatId", e.target.value)} placeholder="e.g. 123456789" />
+                  <div className="text-[10px] text-slate-400 mt-1">{lang === "es" ? "Copia el número de @userinfobot si prefieres el método manual." : "Copy the number from @userinfobot if you prefer the manual method."}</div>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -88,6 +150,18 @@ export default function RemindersPage() {
           <div className="grid grid-cols-2 gap-3">
             <div><label className="label">{t(lang, "rem.dailyHour")}</label><input type="number" min={0} max={23} className="input" value={prefs.reminderHour} onChange={(e) => set("reminderHour", e.target.value)} />
               <div className="text-[10px] text-slate-400 mt-1">17 = 5pm detailed plan for tomorrow. Pick a morning hour for a short today-reminder instead.</div>
+            </div>
+            <div className="flex items-end pb-1">
+              <div className="text-sm text-slate-600">
+                {(() => {
+                  const h = parseInt(prefs.reminderHour, 10);
+                  if (isNaN(h) || h < 0 || h > 23) return lang === "es" ? "Elige una hora (0-23)" : "Pick an hour (0-23)";
+                  const label = `${((h + 11) % 12) + 1}:00 ${h < 12 ? "AM" : "PM"}`;
+                  return lang === "es"
+                    ? `${label} — ${h < 12 ? "recordatorio corto de hoy" : "plan detallado de mañana"}`
+                    : `${label} — ${h < 12 ? "short today reminder" : "detailed tomorrow plan"}`;
+                })()}
+              </div>
             </div>
             <div><label className="label">{t(lang, "rem.leadTime")}</label><input type="number" min={0} className="input" value={prefs.remindBeforeMin} onChange={(e) => set("remindBeforeMin", e.target.value)} /></div>
           </div>
