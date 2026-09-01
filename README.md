@@ -261,3 +261,21 @@ Found by black-box testing every tab in a real browser against a seeded local DB
 - **FIXED — English-only leaks in Spanish UI**: JASAI rule-based fallback briefings localized (en/es/ht/fr/ru), daily motivation quotes translated to Spanish, dashboard + digest email now pass the athlete's language.
 - Full QA pass details: login/logout, admin 403 gate, all 5 languages live-switching, all Labs calculators math-verified, check-in → adaptation → prescription end-to-end, calendar day modal, race + forecast, blood/HRV/sleep/nutrition logging, Stroop test.
 
+
+### Repairing old duplicate data (pre-fix plans on production)
+
+Plans generated before the day-grouping fix can still contain duplicate
+PlanDay rows (multiple "Mondays"). `scripts/fix-duplicate-plan-days.cjs`
+merges them: one day per date, all sessions folded onto it, duplicates
+deleted, completed workouts untouched, idempotent.
+
+```bash
+# preview what would change:
+node scripts/fix-duplicate-plan-days.cjs
+# apply for real:
+APPLY=1 node scripts/fix-duplicate-plan-days.cjs
+```
+
+Run it against any environment once after deploying the fix (tested on a
+synthetic old-bug plan: 2 duplicate days → 1 day holding both sessions,
+0 orphans).
