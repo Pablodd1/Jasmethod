@@ -11,9 +11,18 @@ export const dynamic = "force-dynamic";
 // POST /api/reminders/send — "Send now" from the Reminders page. Delivers the
 // same message the cron would send right now (email + Telegram if enabled),
 // so the athlete can verify the channels work. Returns per-channel results.
-export async function POST() {
+export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // ?when=tomorrow (or body {when:"tomorrow"}) previews tomorrow's detailed
+  // plan — exactly what the evening cron sends. Default: today.
+  let when = "today";
+  try {
+    const body = await req.json();
+    if (body?.when === "tomorrow") when = "tomorrow";
+    if (req.url.includes("when=tomorrow")) when = "tomorrow";
+  } catch { /* no body */ }
 
   const lang = user.language || "en";
   const prefs = await prisma.reminderPref.findUnique({ where: { userId: user.id } });
@@ -22,6 +31,7 @@ export async function POST() {
   }
 
   const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  if (when === "tomorrow") dayStart.setDate(dayStart.getDate() + 1);
   const end = new Date(dayStart); end.setDate(end.getDate() + 1);
 
   // Today's sessions (all of them — "send now" shows the full day, not just
@@ -53,7 +63,7 @@ export async function POST() {
   if (sessions.length > 0) {
     message = buildDailyPlanMessage({
       name: user.name,
-      dateLabel: lang === "es" ? "hoy" : "today",
+      dateLabel: when === "tomorrow" ? (lang === "es" ? "mañana" : "tomorrow") : (lang === "es" ? "hoy" : "today"),
       sessions: sessions.map((s) => ({ title: s.title, durationMin: s.durationMin, intensity: s.intensity || undefined, startTime: s.startTime || undefined })),
       readiness: readinessAdvice ? { score: 0, advice: readinessAdvice } : null,
       hydration,

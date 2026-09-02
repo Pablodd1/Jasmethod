@@ -60,9 +60,9 @@ export default function RemindersPage() {
     setBusy(false); setSaved(true); setTimeout(() => setSaved(false), 2500);
   }
 
-  async function sendNow() {
+  async function sendNow(when: "today" | "tomorrow" = "today") {
     setBusy(true);
-    const res = await fetch("/api/reminders/send", { method: "POST" });
+    const res = await fetch("/api/reminders/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ when }) });
     const d = await res.json();
     setSent(d);
     setBusy(false);
@@ -170,7 +170,12 @@ export default function RemindersPage() {
 
         <div className="card bg-ocean-50 border-ocean-200">
           <p className="text-sm text-ocean-900 mb-3">{t(lang, "rem.sendNow")}</p>
-          <button onClick={sendNow} disabled={busy} className="btn-secondary justify-center"><Send className="w-4 h-4" /> {t(lang, "rem.sendNowBtn")}</button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => sendNow("today")} disabled={busy} className="btn-secondary"><Send className="w-4 h-4" /> {t(lang, "rem.sendNowBtn")}</button>
+            <button onClick={() => sendNow("tomorrow")} disabled={busy} className="btn-secondary">
+              <Send className="w-4 h-4" /> {lang === "es" ? "Enviar plan de mañana" : "Send tomorrow's plan"}
+            </button>
+          </div>
         </div>
 
         <div className="card">
