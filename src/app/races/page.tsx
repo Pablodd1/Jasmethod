@@ -19,6 +19,7 @@ const empty = {
 
 export default function RacesPage() {
   const { user } = useAuth();
+  const lang = (user?.language || "en") as string;
   const [races, setRaces] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<any>(empty);
@@ -90,6 +91,11 @@ export default function RacesPage() {
                   <button onClick={() => del(r.id)} className="text-slate-400 hover:text-coral-600"><Trash2 className="w-4 h-4" /></button>
                 </div>
                 <div className="mt-2 text-xs text-slate-500 space-y-0.5">
+                  {r.weather && (
+                    <div className="bg-sky-50 text-sky-800 rounded-lg px-2 py-1 mb-1">
+                      🌤 {lang === "es" ? "Pronóstico día de carrera" : "Race-day forecast"}: {r.weather.tempC}°C ({lang === "es" ? "sensación" : "feels"} {r.weather.feelsLikeC}°C) · 💨 {r.weather.windKph} km/h · {r.weather.condition}
+                    </div>
+                  )}
                   {r.targetTempC != null && <div><Thermometer className="w-3 h-3 inline mr-1" />{r.targetTempC}°C{r.humidity != null ? ` · ${r.humidity}% RH` : ""}</div>}
                   {r.baseElevM != null && <div><Mountain className="w-3 h-3 inline mr-1" />{r.baseElevM}m base elevation</div>}
                   {r.bikeTerrain && <div>Bike: {r.bikeTerrain}{r.bikeElevM ? ` (${r.bikeElevM}m climb)` : ""}</div>}

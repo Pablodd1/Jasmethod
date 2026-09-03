@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { computePmc } from "@/lib/fitness";
 import { forecastRace, classifyDistance } from "@/lib/raceforecast";
+import { getRaceWeather, windFactor, heatFactor, heatPowerFactor } from "@/lib/weather";
 
 // GET /api/race-forecast?distance=half&id=<raceId>
 // Approach-B race prediction: baseline thresholds + PMC fitness (CTL/TSB) +
@@ -93,9 +94,35 @@ export async function GET(req: Request) {
     goalTimeMin: race?.goalTimeMin ?? undefined,
   });
 
+  // ---- Live race-day weather (Open-Meteo, hourly at the venue) ----
+  // Overrides any manual temperature with the real feels-like forecast and
+  // applies the wind penalty to the bike leg. Only within the 16-day window.
+  let weather: any = null;
+  if (forecast && race?.lat != null && race?.lng != null) {
+    const raceDate = new Date(race.date);
+    const daysAway = (raceDate.getTime() - Date.now()) / 86400000;
+    if (daysAway <= 16) {
+      const startHour = race.startTime ? Number(String(race.startTime).slice(0, 2)) : 7;
+      const w = await getRaceWeather(race.lat, race.lng, raceDate, isNaN(startHour) ? 7 : startHour);
+      if (w) {
+        weather = w;
+        // Heat: adjust each land segment (swim is water-temp driven).
+        for (const seg of forecast.segments) {
+          if (seg.sport === "run") seg.timeMin = Math.round(seg.timeMin * heatFactor(w.feelsLikeC) * 10) / 10;
+          if (seg.sport === "bike") seg.timeMin = Math.round(seg.timeMin * windFactor(w.windKph) * heatPowerFactor(w.feelsLikeC) * 10) / 10;
+        }
+        const transitions = forecast.transitionsMin || 0;
+        forecast.totalMin = Math.round((forecast.segments.reduce((a, seg) => a + seg.timeMin, 0) + transitions) * 10) / 10;
+        if (forecast.goalTimeMin != null) forecast.goalDeltaMin = Math.round((forecast.totalMin - forecast.goalTimeMin) * 10) / 10;
+        forecast.note = ((forecast.note ? forecast.note + " " : "") + `Live weather ${w.hourlyMatched.slice(0, 16).replace("T", " ")}: ${w.tempC}°C (feels ${w.feelsLikeC}°C), wind ${w.windKph}km/h, ${w.condition} — heat and wind adjustments applied (TrainingPeaks / J Appl Physiol 2024).`);
+      }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     forecast,
+    weather,
     distance,
     race: race ? { id: race.id, name: race.name, distance: race.distance, date: race.date, priority: race.priority } : null,
     pmc: pmc ? { ctl: pmc.current.ctl, atl: pmc.current.atl, tsb: pmc.current.tsb, formZone: pmc.formZone, rampRate7d: pmc.rampRate7d } : null,

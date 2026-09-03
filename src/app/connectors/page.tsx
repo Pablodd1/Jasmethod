@@ -226,7 +226,12 @@ export default function ConnectorsPage() {
                       <Cloud className="w-5 h-5" />
                     </div>
                     <div>
-                      <div className="font-display font-bold capitalize">{p.name}</div>
+                      <div className="font-display font-bold capitalize flex items-center gap-1.5">
+                        {p.name}
+                        <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${p.method === "oauth" && p.configured ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                          {p.method === "oauth" && p.configured ? (lang === "es" ? "Auto" : "Auto") : lang === "es" ? "Archivo" : "Upload"}
+                        </span>
+                      </div>
                       <div className="text-xs text-slate-500 max-w-[240px]">{p.description}</div>
                     </div>
                   </div>
@@ -299,6 +304,19 @@ export default function ConnectorsPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* Strava bridge — the best automatic path for Garmin/COROS today */}
+        <div className="card border-emerald-200 bg-emerald-50/60">
+          <div className="flex gap-3">
+            <RefreshCw className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="text-sm text-emerald-900">
+              <strong>{lang === "es" ? "Tienes Garmin o COROS? El puente automático:" : "Garmin or COROS? The automatic bridge:"}</strong>{" "}
+              {lang === "es"
+                ? "1) Conecta tu reloj con Strava (en la app del reloj: Ajustes → Aplicaciones → Strava) — se hace una sola vez. 2) Conecta Strava aquí arriba. Desde ese momento cada entrenamiento del reloj entra solo a esta app, sin subir nada."
+                : "1) Link your watch to Strava (in the watch app: Settings → Applications → Strava) — a one-time setup. 2) Connect Strava above. From then on every watch workout lands in this app by itself — no manual uploads."}
+            </div>
+          </div>
         </div>
 
         <div className="card bg-ocean-50 border-ocean-200">

@@ -292,6 +292,7 @@ model Connector {
   refreshEnc  String?
   expiresAt   DateTime?
   scope       String?
+  externalRef String?  // provider-side athlete id (e.g. Strava athlete_id) for webhook matching
   lastSyncAt  DateTime?
   lastSyncCount Int?
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -344,6 +345,8 @@ model Race {
   date        DateTime
   startTime   String?  // "07:30"
   location    String?
+  lat         Float?   // venue latitude (auto-geocoded from location)
+  lng         Float?   // venue longitude
   targetTempC Float?   // expected race-day temperature (for heat adjustment)
   humidity    Float?   // % (optional — folded into heat index)
   baseElevM   Float?   // venue base elevation (thin-air altitude)
