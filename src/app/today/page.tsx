@@ -109,13 +109,13 @@ export default function TodayPage() {
           )}
         </div>
 
-        {/* Top actions: Check In | Skip — then the training stays on screen */}
+        {/* Top actions: compact Check In | Skip — short labels, single line */}
         <div className="grid grid-cols-2 gap-3">
-          <Link href="/checkin" className="btn-primary justify-center">
-            <ClipboardCheck className="w-4 h-4" /> {es ? "Check In" : "Check In"}
+          <Link href="/checkin" className="btn-primary justify-center !py-2">
+            <ClipboardCheck className="w-4 h-4" /> {es ? "Chequeo" : "Check In"}
           </Link>
-          <Link href="/calendar" className="btn-secondary justify-center">
-            <SkipForward className="w-4 h-4" /> {es ? "Saltar — entreno como está" : "Skip — train as prescribed"}
+          <Link href="/calendar" className="btn-secondary justify-center !py-2">
+            <SkipForward className="w-4 h-4" /> {es ? "Saltar" : "Skip"}
           </Link>
         </div>
 
