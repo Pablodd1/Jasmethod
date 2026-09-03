@@ -69,7 +69,7 @@ export default function RacesPage() {
         </div>
 
         <Link href="/races/forecast" className="btn-primary justify-center w-fit">
-          <Gauge className="w-4 h-4" /> Race Forecast
+          <Gauge className="w-4 h-4" /> AdvanzedRacing
         </Link>
 
         {err && <div className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}

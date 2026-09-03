@@ -93,7 +93,7 @@ export default function FitnessPage() {
 
               {/* Race predictions */}
               <div className="card">
-                <h2 className="font-display font-bold text-lg mb-2 flex items-center gap-2"><Target className="w-5 h-5 text-coral-500" /> Race Predictions</h2>
+                <h2 className="font-display font-bold text-lg mb-2 flex items-center gap-2"><Target className="w-5 h-5 text-coral-500" /> AdvanzedRacing Predictions</h2>
                 {preds.length === 0 ? (
                   <p className="text-sm text-slate-400">Add your FTP / run &amp; swim threshold paces in Profile to see predictions.</p>
                 ) : (

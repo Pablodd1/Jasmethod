@@ -180,12 +180,12 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     source: "TriDot",
   },
   racex: {
-    abbr: "RaceX",
+    abbr: "AdvanzedRacing",
     plain: {
-      en: "RaceX (TriDot) — a race-day performance prediction from your current fitness and the course.",
-      es: "RaceX (TriDot) — una predicción del día de carrera a partir de tu condición actual y el recorrido.",
+      en: "AdvanzedRacing — JasMiamiMethod's race-day prediction engine (same idea as TriDot's RaceX): your current fitness + the course + the weather, in one number.",
+      es: "AdvanzedRacing — el motor de predicción de carrera de JasMiamiMethod (la misma idea que RaceX de TriDot): tu condición actual + el recorrido + el clima, en un solo número.",
     },
-    source: "TriDot",
+    source: "JasMiamiMethod (concept: TriDot RaceX)",
   },
 };
 

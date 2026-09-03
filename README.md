@@ -96,7 +96,7 @@ JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting th
 | `stimulation.ts` (new) | Music (YouTube), brain training, breathing pairing per phase (pre/during/post/night) |
 | `gear.ts` | Equipment intelligence: power meters, aero, swim, HR, cadence — with citations |
 | `research.ts` | Evidence base: 27 peer-reviewed sources with claim/ref/level/population; `sourcesFor()` API |
-| `fitness.ts` | TSS estimation, PMC, race prediction, heat/altitude factors |
+| `fitness.ts` | TSS estimation, PMC, race prediction (AdvanzedRacing), heat/altitude factors |
 | `coach.ts` | Gemini AI coach briefing with rule-based fallback + source citations |
 | `importers.ts` | Garmin TCX, Apple Health XML, Whoop CSV, Strava OAuth, Garmin OAuth (new), Google Calendar OAuth (new), DNA parsers |
 | `i18n.ts` | 5-language dictionary with fallback |
@@ -250,7 +250,7 @@ Reviewed against the official industry terminology (TrainingPeaks glossary: TSS/
 
 - **Login flow**: every login (form + one-tap) now lands on the **Daily Check-in** before anything else.
 - **Daily Check-in is the consolidated module**: HRV readiness hero (formerly the standalone VFC & Recovery page) and the **Cognitive Check** (Stroop) now live inside the check-in. `/metrics` and `/brain` routes remain for full history but are OUT of the main navigation.
-- **Race Prediction absorbs Performance**: the "Rendimiento" tab is out of the navigation; the Fitness/Fatigue/Form (PMC) view is linked from the Race Forecast page (the AI prediction engine consumes that same load data).
+- **Race Prediction absorbs Performance**: the "Rendimiento" tab is out of the navigation; the Fitness/Fatigue/Form (PMC) view is linked from the AdvanzedRacing page (the AI prediction engine consumes that same load data).
 - **Mandatory conditioning rule (hardcoded)**: every plan generator (triathlon, single-sport, HYROX, boxing) now includes **plyometrics 1-2×/week** alongside sport-specific lifting — a dedicated plyo session (1× base, 2nd added in build/peak), explicit plyo prescriptions in every strength description, protected from the easy/quality split demotion. Evidence: Rønnestad & Mujika 2014 + Ramírez-Campillo 2022 plyo meta (added to research.ts).
 
 ### Same day — live beta-test fix pass (QA as athlete, full click-through)
