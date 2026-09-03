@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Home, CalendarDays, Dumbbell, Apple,
+  Home, CalendarDays, Dumbbell, Apple, Play,
   FlaskConical, Settings, Waves, LogOut, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield, Trophy,
   TestTubes, Moon, Bike, Dna, BookOpen,
 } from "lucide-react";
@@ -11,6 +11,7 @@ import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
 
 const NAV = [
+  { href: "/today", key: "nav.today", icon: Play },
   { href: "/dashboard", key: "nav.dashboard", icon: Home },
   { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
   { href: "/calendar", key: "nav.calendar", icon: CalendarDays },

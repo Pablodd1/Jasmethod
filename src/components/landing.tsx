@@ -15,6 +15,7 @@ import {
   Pill,
   Swords,
   Waves,
+  Watch,
   Zap,
 } from "lucide-react";
 import { SiteHeader, SiteFooter } from "@/components/site-shell";
@@ -75,6 +76,7 @@ const FUNCTIONS: { icon: typeof Activity; titleKey: string; textKey: string }[] 
   { icon: Moon, titleKey: "pub.fn4.title", textKey: "pub.fn4.text" },
   { icon: FlaskConical, titleKey: "pub.fn5.title", textKey: "pub.fn5.text" },
   { icon: Apple, titleKey: "pub.fn6.title", textKey: "pub.fn6.text" },
+  { icon: Watch, titleKey: "pub.fn7.title", textKey: "pub.fn7.text" },
 ];
 
 // The six engines we coach — triathlon, HYROX, swim, bike, run, boxing.

@@ -16,6 +16,7 @@ export const LANGS: { code: Lang; label: string; native: string }[] = [
 
 const S: Record<string, Partial<Record<Lang, string>>> = {
   // ---- nav ----
+  "nav.today": { en: "Today", es: "Hoy", ht: "Jodi a", fr: "Aujourd'hui", ru: "Сегодня" },
   "nav.dashboard": { en: "Dashboard", es: "Panel", ht: "Tablodbò", fr: "Tableau de bord", ru: "Главная" },
   "nav.fitness": { en: "Performance", es: "Rendimiento", ht: "Pèfòmans", fr: "Performance", ru: "Результаты" },
   "nav.calendar": { en: "Calendar", es: "Calendario", ht: "Kalandriye", fr: "Calendrier", ru: "Календарь" },
@@ -294,6 +295,8 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   "pub.fn5.text": { en: "Store panels and get flags against athlete-adjusted ranges (endurance ferritin, vitamin D, B12), plus DNA trait highlights that change training.", es: "Guarda tus paneles y recibe alertas contra rangos ajustados al atleta (ferritina de resistencia, vitamina D, B12), más rasgos de ADN que cambian el entrenamiento.", ht: "Sere panno yo epi resevwa alèt kont ranje ajiste pou atlèt (feritin andirans, vitamin D, B12), plis karakteristik ADN ki chanje antrennman.", ru: "Храните панели и получайте флаги по спортивным диапазонам (ферритин, витамин D, B12), плюс ДНК-черты, меняющие тренировки." },
   "pub.fn6.title": { en: "Nutrition, fuel & ergogenics", es: "Nutrición, combustible y ergogénicos", ht: "Nitrisyon, gaz ak èrgojenik", ru: "Питание, топливо и эргогеники" },
   "pub.fn6.text": { en: "Personal protein targets, race-day fueling and evidence-graded ergogenic picks — de-duplicated so you're never told to take caffeine twice.", es: "Objetivos personales de proteína, combustible para el día de carrera y ayudas ergogénicas calificadas por evidencia — sin duplicados, para que nunca te digan dos veces que tomes cafeína.", ht: "Objektif pwoteyin pèsonèl, gaz jou kous ak èrgojenik klase pa prèv — san doublon, pou yo pa janm di ou pran kafeyin de fwa.", ru: "Личные нормы белка, топливо на гонку и эргогеники по доказательности — без дублей, чтобы не советовали кофеин дважды." },
+  "pub.fn7.title": { en: "Your watch, your chat", es: "Tu reloj, tu chat", ht: "Mont ou, chat ou", fr: "Ta montre, ton chat", ru: "Твои часы, твой чат" },
+  "pub.fn7.text": { en: "Connect Garmin, COROS, Strava, Whoop or Apple Health — data syncs daily and today's session ships to your watch (.FIT) and your Telegram the moment you want it.", es: "Conecta Garmin, COROS, Strava, Whoop o Apple Health — los datos se sincronizan a diario y la sesión de hoy va a tu reloj (.FIT) y a tu Telegram cuando la quieras.", ht: "Konekte Garmin, COROS, Strava, Whoop oswa Apple Health — done yo senkronize chak jou e pi seans jodi a ale nan mont ou (.FIT) ak Telegram ou.", fr: "Connectez Garmin, COROS, Strava, Whoop ou Apple Health — les données se synchronisent chaque jour et la séance du jour part vers votre montre (.FIT) et votre Telegram.", ru: "Подключите Garmin, COROS, Strava, Whoop или Apple Health — данные синхронизируются ежедневно, а тренировка дня уходит на часы (.FIT) и в Telegram." },
 
   // ---- landing: glance + how-it-works steps ----
   "pub.glance.dailyCheckin": { en: "Daily check-in", es: "Chequeo diario", ht: "Tcheke chak jou", ru: "Ежедневный чек-ин" },

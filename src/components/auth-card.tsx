@@ -16,7 +16,7 @@ export function AuthCard({
   initialMode = "login",
   title = "Sign in to your method",
   subtitle = "Or register — free for athletes.",
-  redirectTo = "/checkin",
+  redirectTo = "/today",
 }: AuthCardProps) {
   const [mode, setMode] = useState<"login" | "signup">(initialMode);
   const [email, setEmail] = useState("");
