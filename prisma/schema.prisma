@@ -147,6 +147,7 @@ model Workout {
   planned    Boolean  @default(true)
   completed  Boolean  @default(false)
   approved   Boolean  @default(false) // athlete approved → .FIT generated for watch import
+  regenCount Int      @default(0) // workout regenerations used (max 3)
   notes      String?
   avgHr      Int?
   maxHr      Int?

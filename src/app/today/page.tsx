@@ -28,6 +28,11 @@ export default function TodayPage() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [tgMsg, setTgMsg] = useState<string | null>(null);
+  const [regenBusy, setRegenBusy] = useState(false);
+  const [regenMsg, setRegenMsg] = useState<string | null>(null);
+  const [askBusy, setAskBusy] = useState(false);
+  const [askQ, setAskQ] = useState("");
+  const [askA, setAskA] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/today");
@@ -72,6 +77,30 @@ export default function TodayPage() {
     } catch { /* the approve button on checkin shows detailed errors */ } finally {
       setApproving(false);
     }
+  }
+
+  async function regenerate(mode: "variant" | "alternate") {
+    if (!primary) return;
+    setRegenBusy(true); setRegenMsg(null);
+    try {
+      const res = await fetch("/api/workout/regenerate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: primary.id, mode }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setRegenMsg(d.error || "Failed"); }
+      else { setRegenMsg(es ? `✓ Nueva sesión (${d.regensLeft} restantes)` : `✓ New session (${d.regensLeft} left)`); load(); }
+    } catch (e: any) { setRegenMsg(e.message); } finally { setRegenBusy(false); }
+  }
+
+  async function askJasai() {
+    if (!askQ.trim()) return;
+    setAskBusy(true); setAskA(null);
+    try {
+      const res = await fetch("/api/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: askQ }) });
+      const d = await res.json();
+      setAskA(d.answer || d.error || "—");
+    } catch (e: any) { setAskA(e.message); } finally { setAskBusy(false); }
   }
 
   async function sendTelegram() {
@@ -213,6 +242,18 @@ export default function TodayPage() {
               </Link>
             </div>
             {tgMsg && <div className="px-4 pb-4 text-xs text-slate-500">{tgMsg}</div>}
+            {/* Regeneration: same goal, new session — up to 3 times */}
+            <div className="px-4 pb-4 border-t border-sand-100 pt-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-slate-400 mr-1">{es ? "¿No te gusta esta sesión?" : "Don't like this session?"}</span>
+              <button onClick={() => regenerate("variant")} disabled={regenBusy} className="btn-secondary !py-1.5 text-xs">
+                🔄 {es ? "Variante" : "Variant"}
+              </button>
+              <button onClick={() => regenerate("alternate")} disabled={regenBusy} className="btn-secondary !py-1.5 text-xs">
+                🔀 {es ? "Otro deporte (mismo objetivo)" : "Alternate sport (same goal)"}
+              </button>
+              {primary.regenCount > 0 && <span className="text-[10px] text-slate-400">{es ? "regeneraciones usadas" : "regens used"}: {primary.regenCount}/3</span>}
+              {regenMsg && <span className="text-[11px] text-slate-500 w-full">{regenMsg}</span>}
+            </div>
             {data.devices?.count > 0 && (
               <div className="px-4 pb-4 flex items-center gap-2 text-[11px] text-slate-400">
                 <RefreshCw className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`} />
@@ -221,6 +262,22 @@ export default function TodayPage() {
             )}
           </div>
         )}
+
+        {/* JASAI assistant — ask anything: the app, sports science, nutrition */}
+        <div className="card">
+          <div className="font-display font-bold mb-2">🤖 {es ? "Pregunta a JASAI" : "Ask JASAI"}</div>
+          <div className="flex gap-2">
+            <input
+              className="input flex-1"
+              value={askQ}
+              onChange={(e) => setAskQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") askJasai(); }}
+              placeholder={es ? "¿Cómo uso mis zonas? ¿Qué comer antes de competir? ¿Cómo conecto mi reloj?" : "How do I use my zones? What to eat pre-race? How do I connect my watch?"}
+            />
+            <button onClick={askJasai} disabled={askBusy} className="btn-primary shrink-0">{askBusy ? "…" : (es ? "Preguntar" : "Ask")}</button>
+          </div>
+          {askA && <div className="mt-3 text-sm text-slate-700 bg-ocean-50 border border-ocean-200 rounded-xl p-3 leading-relaxed">{askA}</div>}
+        </div>
 
         {/* Navigation onward */}
         <div className="flex flex-wrap gap-2 text-sm">
