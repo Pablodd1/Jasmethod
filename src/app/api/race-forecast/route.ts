@@ -124,7 +124,7 @@ export async function GET(req: Request) {
     forecast,
     weather,
     distance,
-    race: race ? { id: race.id, name: race.name, distance: race.distance, date: race.date, priority: race.priority } : null,
+    race: race ? { id: race.id, name: race.name, distance: race.distance, date: race.date, priority: race.priority, goalTimeMin: race.goalTimeMin ?? null, resultMin: race.resultMin ?? null, predictionErrorPct: (race.resultMin != null && forecast?.totalMin) ? Math.round(((forecast.totalMin - race.resultMin) / race.resultMin) * 1000) / 10 : null } : null,
     pmc: pmc ? { ctl: pmc.current.ctl, atl: pmc.current.atl, tsb: pmc.current.tsb, formZone: pmc.formZone, rampRate7d: pmc.rampRate7d } : null,
     physiology: { ftp, lthr, runPaceBase: profile?.runPaceBase ?? null, swimPaceBase: profile?.swimPaceBase ?? null },
   });

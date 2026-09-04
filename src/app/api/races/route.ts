@@ -52,6 +52,7 @@ export async function POST(req: Request) {
         humidity: f(b.humidity),
         baseElevM: f(b.baseElevM),
         goalTimeMin: f(b.goalTimeMin),
+        resultMin: f(b.resultMin),
         priority: b.priority !== undefined ? parseInt(b.priority, 10) : 1,
         bikeElevM: f(b.bikeElevM),
         bikeTerrain: b.bikeTerrain || null,
@@ -79,7 +80,7 @@ export async function PUT(req: Request) {
     const existing = await prisma.race.findFirst({ where: { id: b.id, userId: user.id } });
     if (!existing) return NextResponse.json({ error: "Race not found" }, { status: 404 });
     const data: Record<string, any> = {};
-    const FLOAT_KEYS = ["targetTempC", "humidity", "baseElevM", "goalTimeMin", "bikeElevM", "runElevM", "waterTempC"];
+    const FLOAT_KEYS = ["targetTempC", "humidity", "baseElevM", "goalTimeMin", "resultMin", "bikeElevM", "runElevM", "waterTempC"];
     for (const [k, v] of Object.entries(b)) {
       if (k === "id" || v === undefined) continue;
       if (k === "date") data[k] = new Date(v as string);

@@ -5,8 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Home, CalendarDays, Dumbbell, Apple, Play,
   FlaskConical, Settings, Waves, LogOut, Flag, ClipboardCheck, Bell, Globe, Gauge, Shield, Trophy,
-  TestTubes, Moon, Bike, Dna, BookOpen,
-} from "lucide-react";
+  TestTubes, Moon, Bike, Dna, BookOpen, Layers } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
 
@@ -16,6 +15,7 @@ const NAV = [
   { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
   { href: "/calendar", key: "nav.calendar", icon: CalendarDays },
   { href: "/training", key: "nav.training", icon: Dumbbell },
+  { href: "/hyrox", key: "nav.hyrox", icon: Layers },
   { href: "/races", key: "nav.races", icon: Flag },
   { href: "/races/forecast", key: "nav.forecast", icon: Gauge },
   { href: "/prs", key: "nav.prs", icon: Trophy },

@@ -852,13 +852,13 @@ export interface HyroxStation {
 }
 
 export const HYROX_STATIONS: HyroxStation[] = [
-  { key: "ski", name: "SkiErg", spec: "1000m", women: "—", men: "—", pro: "—", focus: "Lats, shoulders, core + aerobic. Arrive off Run 1 — don't spike HR here." },
+  { key: "ski", name: "SkiErg", spec: "1000m", women: "—", men: "—", pro: "—", focus: "Lats, shoulders, core + aerobic. Arrive off Run 1 — don't spike HR here. 2026/27: clarified SkiErg standard — full handle return, no partial pulls." },
   { key: "sledpush", name: "Sled Push", spec: "50m (4×12.5m)", women: "102kg", men: "152kg", pro: "202kg", focus: "Legs, posterior chain, calves. Raw strength + grip shoes." },
   { key: "sledpull", name: "Sled Pull", spec: "50m (4×12.5m)", women: "78kg", men: "103kg", pro: "153kg", focus: "Glutes, back, biceps, grip. Hand-over-hand rope under fatigue." },
-  { key: "burpee", name: "Burpee Broad Jumps", spec: "80m", women: "—", men: "—", pro: "—", focus: "Full body + biggest HR spike of the race. Pacing beats sprinting." },
+  { key: "burpee", name: "Burpee Broad Jumps", spec: "80m", women: "—", men: "—", pro: "—", focus: "Full body + biggest HR spike of the race. Pacing beats sprinting. 2026/27: tighter burpee broad-jump movement standard — full hip extension every rep." },
   { key: "row", name: "Rowing", spec: "1000m", women: "—", men: "—", pro: "—", focus: "Back, legs, aerobic. Go conservative early — pays off late." },
   { key: "farmers", name: "Farmers Carry", spec: "200m", women: "2×16kg", men: "2×24kg", pro: "2×32kg", focus: "Grip, traps, postural endurance. Grip is already compromised here." },
-  { key: "lunges", name: "Sandbag Lunges", spec: "100m", women: "10kg", men: "20kg", pro: "30kg", focus: "Quads, hip flexors. Knee-to-floor standard fails when hip flexors are tight." },
+  { key: "lunges", name: "Sandbag Lunges", spec: "100m", women: "10kg", men: "20kg", pro: "30kg", focus: "Quads, hip flexors. Knee-to-floor standard fails when hip flexors are tight. 2026/27: clarified lunge standard — sandbag penalty (not DQ) on first fault; incomplete station = DQ." },
   { key: "wallball", name: "Wall Balls", spec: "100 reps", women: "4kg", men: "6kg", pro: "9kg", focus: "Squat mechanics, shoulders, lungs. Everything is loaded by this point." },
 ];
 

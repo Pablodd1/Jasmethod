@@ -351,6 +351,7 @@ model Race {
   humidity    Float?   // % (optional — folded into heat index)
   baseElevM   Float?   // venue base elevation (thin-air altitude)
   goalTimeMin Float?   // target finish time in minutes
+  resultMin  Float?     // ACTUAL finish time logged after the race - feeds prediction accuracy tracking
   priority    Int      @default(1) // 1 = A-race (anchor), 2 = B, 3 = C
   bikeElevM   Float?   // total climb on the bike leg (m)
   bikeTerrain String?  // flat | rolling | hilly | mountain

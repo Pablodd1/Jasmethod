@@ -16,6 +16,7 @@ export const LANGS: { code: Lang; label: string; native: string }[] = [
 
 const S: Record<string, Partial<Record<Lang, string>>> = {
   // ---- nav ----
+  "nav.hyrox": { en: "HYROX Splits", es: "Parciales HYROX", ht: "HYROX Splits", fr: "Splits HYROX", ru: "Сплиты HYROX" },
   "nav.today": { en: "Today", es: "Hoy", ht: "Jodi a", fr: "Aujourd'hui", ru: "Сегодня" },
   "nav.dashboard": { en: "Dashboard", es: "Panel", ht: "Tablodbò", fr: "Tableau de bord", ru: "Главная" },
   "nav.fitness": { en: "Performance", es: "Rendimiento", ht: "Pèfòmans", fr: "Performance", ru: "Результаты" },
