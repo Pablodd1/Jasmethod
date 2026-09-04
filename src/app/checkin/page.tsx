@@ -261,7 +261,6 @@ export default function CheckinPage() {
                 <div className="text-sm mt-0.5">{readiness.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(readiness.deltaPct)}%</div>
               </div>
               <p className="text-sm leading-relaxed max-w-md opacity-95">{readiness.advice}</p>
-              <a href="/metrics" className="text-xs underline opacity-90">{lang === "es" ? "Historial de VFC →" : "HRV history →"}</a>
             </div>
           </div>
         )}

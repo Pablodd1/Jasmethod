@@ -6,6 +6,7 @@ import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
 import { fmtTime, fmtSecPerKm, fmtSecPer100m, FORECASTABLE_DISTANCES, type ForecastResult } from "@/lib/raceforecast";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 const SPORT_ICON: Record<string, any> = { swim: Waves, bike: Bike, run: Zap };
 
@@ -23,6 +24,7 @@ export default function RaceForecastPage() {
   const [raceId, setRaceId] = useState<string>("");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [pmc, setPmc] = useState<any>(null);
 
   async function loadRaces() {
     const res = await fetch("/api/races");
@@ -40,6 +42,8 @@ export default function RaceForecastPage() {
   }
 
   useEffect(() => {
+    fetch("/api/fitness").then((r) => r.json()).then((d) => setPmc(d.pmc || null)).catch(() => {});
+
     if (!user) return;
     loadRaces();
     loadForecast();
@@ -54,7 +58,7 @@ export default function RaceForecastPage() {
             <h1 className="font-display text-2xl font-bold flex items-center gap-2">
               <Gauge className="w-6 h-6 text-coral-500" /> {t(lang, "fc.title")}
             </h1>
-            <p className="text-slate-500 text-sm mt-1"> Performance curve (Fitness/Fatigue/Form) lives in the <a href="/fitness" className="underline">Performance view</a>. {t(lang, "fc.subtitle")}</p>
+            <p className="text-slate-500 text-sm mt-1">{t(lang, "fc.subtitle")}</p>
           </div>
         </div>
 
@@ -92,8 +96,43 @@ export default function RaceForecastPage() {
         ) : (
           <ForecastView data={data} forecast={data?.forecast} lang={lang} />
         )}
+      {/* PMC — the performance curve this engine learns from */}
+      <PmcCard pmc={pmc} lang={lang} />
+
       </div>
     </ProtectedPage>
+  );
+}
+
+function PmcCard({ pmc, lang }: { pmc: any; lang: string }) {
+  const es = lang === "es";
+  if (!pmc?.series?.length) {
+    return (
+      <div className="card text-center py-8 text-sm text-slate-400">
+        {es ? "La curva de rendimiento (Fitness/Fatiga/Form) aparece al completar entrenamientos." : "The performance curve (Fitness/Fatigue/Form) appears as you complete workouts."}
+      </div>
+    );
+  }
+  return (
+    <div className="card">
+      <div className="font-display font-bold mb-1">{es ? "Tu curva de rendimiento" : "Your performance curve"}</div>
+      <div className="text-xs text-slate-500 mb-3">
+        {es ? "Esta es la data que AdvanzedRacing usa para predecir: " : "This is the data AdvanzedRacing predicts from: "}
+        CTL (Fitness) {Math.round(pmc.current.ctl)} · ATL (Fatigue) {Math.round(pmc.current.atl)} · TSB (Form) {Math.round(pmc.current.tsb)}.
+      </div>
+      <div className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={pmc.series}>
+            <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} minTickGap={24} />
+            <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} />
+            <Tooltip contentStyle={{ fontSize: 12 }} />
+            <Line type="monotone" dataKey="ctl" name={es ? "Fitness (CTL)" : "Fitness (CTL)"} stroke="#0ea5e9" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="atl" name={es ? "Fatiga (ATL)" : "Fatigue (ATL)"} stroke="#f59e0b" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="tsb" name={es ? "Forma (TSB)" : "Form (TSB)"} stroke="#10b981" dot={false} strokeWidth={2} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   );
 }
 
