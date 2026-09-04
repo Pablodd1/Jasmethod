@@ -12,6 +12,7 @@ const DEMO_PASSWORD = "demo1234";
 const DEMO_ACCOUNTS: Record<string, { name: string; avatar: string; sex: "male" | "female" | null; goal: string; hours: number; level: string }> = {
   "jeand.duno@gmail.com": { name: "Jeand", avatar: "🏃‍♂️", sex: "male", goal: "run-only", hours: 6, level: "amateur" },
   "kathy@jasmiamimethod.com": { name: "Kathy", avatar: "🏃‍♀️", sex: "female", goal: "run-only", hours: 5, level: "amateur" },
+  "fedra@jasmiamimethod.com": { name: "Fedra", avatar: "🦩", sex: "female", goal: "run-only", hours: 5, level: "beginner" },
   "jas@jasmiamimethod.com": { name: "Jas", avatar: "🥉", sex: null, goal: "olympic", hours: 8, level: "amateur" },
   "andres@jasmiamimethod.com": { name: "Andres", avatar: "🏋️", sex: "male", goal: "hyrox", hours: 7, level: "amateur" },
   "juliaburtseva@gmail.com": { name: "Julia", avatar: "🎽", sex: "female", goal: "run-only", hours: 6, level: "beginner" },
