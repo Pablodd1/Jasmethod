@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { whoopExchangeToken, whoopGetDaily } from "@/lib/importers";
 
@@ -30,11 +31,11 @@ export async function GET(req: Request) {
       where: { userId_provider: { userId: session.userId, provider: "whoop" } },
       create: {
         userId: session.userId, provider: "whoop", status: "connected",
-        tokenEnc: token.access_token, refreshEnc: token.refresh_token,
+        tokenEnc: encryptSecret(token.access_token), refreshEnc: encryptSecret(token.refresh_token),
         expiresAt: new Date(Date.now() + token.expires_in * 1000),
         scope: "read:recovery read:sleep read:cycles",
       },
-      update: { status: "connected", tokenEnc: token.access_token, refreshEnc: token.refresh_token, expiresAt: new Date(Date.now() + token.expires_in * 1000) },
+      update: { status: "connected", tokenEnc: encryptSecret(token.access_token), refreshEnc: encryptSecret(token.refresh_token), expiresAt: new Date(Date.now() + token.expires_in * 1000) },
     });
 
     let imported = 0;

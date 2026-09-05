@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword, createSession, setSessionCookie } from "@/lib/auth";
 import { sendEmail, welcomeEmail } from "@/lib/email";
 import { youthPolicy } from "@/lib/cycle";
+import { rateLimit, clientIp } from "@/lib/ratelimit";
 
 export async function POST(req: Request) {
   try {
@@ -12,6 +13,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email, password, and name are required." }, { status: 400 });
     }
     const normalized = String(email).toLowerCase().trim();
+    const rl = rateLimit(`signup:${clientIp(req)}`, 5, 60 * 60 * 1000);
+    if (!rl.ok) {
+      return NextResponse.json({ error: "Too many signups from this network — try again later." }, { status: 429 });
+    }
     const existing = await prisma.user.findUnique({ where: { email: normalized } });
     if (existing) {
       return NextResponse.json({ error: "An account with this email already exists. Try logging in." }, { status: 409 });

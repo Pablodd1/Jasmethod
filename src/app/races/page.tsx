@@ -53,6 +53,13 @@ export default function RacesPage() {
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
+  async function saveResult(id: string, value: string) {
+    const v = value === "" ? null : parseFloat(value);
+    if (value !== "" && (isNaN(v as number) || (v as number) <= 0)) return;
+    await fetch("/api/races", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, resultMin: v }) });
+    load();
+  }
+
   async function del(id: string) {
     await fetch(`/api/races?id=${id}`, { method: "DELETE" });
     load();
@@ -89,6 +96,24 @@ export default function RacesPage() {
                     </div>
                   </div>
                   <button onClick={() => del(r.id)} className="text-slate-400 hover:text-coral-600"><Trash2 className="w-4 h-4" /></button>
+                </div>
+                <div className="mt-2 flex flex-wrap items-end gap-2">
+                  <div>
+                    <label className="label !text-[10px] !mb-0.5">{lang === "es" ? "Resultado real (min)" : "Actual result (min)"}</label>
+                    <input
+                      className="input !py-1 !px-2 text-xs w-28"
+                      type="number"
+                      step="0.01"
+                      defaultValue={r.resultMin ?? ""}
+                      onBlur={(e) => saveResult(r.id, e.target.value)}
+                      placeholder={r.goalTimeMin ? `goal ${r.goalTimeMin}` : "—"}
+                    />
+                  </div>
+                  {r.resultMin != null && (
+                    <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">
+                      🏁 {r.resultMin} min {r.goalTimeMin ? (r.resultMin <= r.goalTimeMin ? "· 🎯 goal beaten" : `· +${Math.round((r.resultMin - r.goalTimeMin) * 10) / 10} vs goal`) : ""}
+                    </span>
+                  )}
                 </div>
                 <div className="mt-2 text-xs text-slate-500 space-y-0.5">
                   {r.weather && (

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Crypto roundtrip (token encryption)
+        run: TOKEN_ENCRYPTION_KEY=ci-test-key npx tsx scripts/crypto-check.ts
+
+      - name: Unit tests (science, adaptation, regen, hyrox, i18n)
+        run: |
+          npx tsx src/lib/adaptive.test.ts
+          npx tsx src/lib/fitness.test.ts
+          npx tsx src/lib/i18n.test.ts
+          npx tsx src/lib/regen.test.ts
+          npx tsx src/lib/hyrox.test.ts
+
+      - name: Production build
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+          NEXT_PUBLIC_APP_URL: http://localhost:3000

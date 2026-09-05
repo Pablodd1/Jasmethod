@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { stravaExchangeToken, stravaGetActivities, stravaActivityToWorkout } from "@/lib/importers";
 
@@ -42,16 +43,16 @@ export async function GET(req: Request) {
         userId: session.userId,
         provider: "strava",
         status: "connected",
-        tokenEnc: token.access_token,
-        refreshEnc: token.refresh_token,
+        tokenEnc: encryptSecret(token.access_token),
+        refreshEnc: encryptSecret(token.refresh_token),
         expiresAt: new Date(token.expires_at * 1000),
         scope: "activity:read_all",
         externalRef: token.athlete?.id != null ? String(token.athlete.id) : undefined,
       },
       update: {
         status: "connected",
-        tokenEnc: token.access_token,
-        refreshEnc: token.refresh_token,
+        tokenEnc: encryptSecret(token.access_token),
+        refreshEnc: encryptSecret(token.refresh_token),
         expiresAt: new Date(token.expires_at * 1000),
         ...(token.athlete?.id != null ? { externalRef: String(token.athlete.id) } : {}),
       },

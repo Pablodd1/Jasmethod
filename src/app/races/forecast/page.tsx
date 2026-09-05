@@ -96,6 +96,16 @@ export default function RaceForecastPage() {
         ) : (
           <ForecastView data={data} forecast={data?.forecast} lang={lang} />
         )}
+      {/* Prediction accuracy: predicted vs the actual logged result */}
+      {data?.race?.resultMin != null && data?.forecast?.totalMin != null && (
+        <div className="card border-emerald-200 bg-emerald-50/60">
+          <div className="text-sm text-emerald-900">
+            🎯 {lang === "es" ? "Precisión de AdvanzedRacing" : "AdvanzedRacing accuracy"}: {lang === "es" ? "predicho" : "predicted"} <strong>{fmtTime(data.forecast.totalMin)}</strong> · {lang === "es" ? "real" : "actual"} <strong>{fmtTime(data.race.resultMin)}</strong> · {lang === "es" ? "error" : "error"} <strong>{data.race.predictionErrorPct > 0 ? "+" : ""}{data.race.predictionErrorPct}%</strong>
+            {Math.abs(data.race.predictionErrorPct) <= 5 ? (lang === "es" ? " — dentro del 5%: predicción de confianza." : " — within 5%: high-trust prediction.") : ""}
+          </div>
+        </div>
+      )}
+
       {/* PMC — the performance curve this engine learns from */}
       <PmcCard pmc={pmc} lang={lang} />
 

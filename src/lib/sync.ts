@@ -6,6 +6,7 @@
 // handled inline). COROS/Apple/Garmin-TCX arrive via file import instead.
 
 import { prisma } from "./db";
+import { encryptSecret, decryptSecret } from "./crypto";
 import { sendEmail } from "./email";
 import {
   stravaRefreshToken, stravaGetActivities, stravaActivityToWorkout,
@@ -77,14 +78,14 @@ export async function syncUserConnectors(userId: string, onlyProvider?: string):
     const since = conn.lastSyncAt ? new Date(conn.lastSyncAt.getTime() - 86400000) : new Date(Date.now() - 30 * 86400000);
     try {
       if (conn.provider === "strava") {
-        let access = conn.tokenEnc!;
+        let access = decryptSecret(conn.tokenEnc!);
         if (conn.expiresAt && conn.expiresAt < new Date() && conn.refreshEnc && process.env.STRAVA_CLIENT_ID) {
           const t = await stravaRefreshToken(
             { clientId: process.env.STRAVA_CLIENT_ID!, clientSecret: process.env.STRAVA_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/strava/callback` },
-            conn.refreshEnc
+            decryptSecret(conn.refreshEnc)
           );
           access = t.access_token;
-          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: t.access_token, refreshEnc: t.refresh_token, expiresAt: new Date(t.expires_at * 1000) } });
+          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: encryptSecret(t.access_token), refreshEnc: encryptSecret(t.refresh_token), expiresAt: new Date(t.expires_at * 1000) } });
         }
         const activities = await stravaGetActivities(access, since, 30);
         let imported = 0;
@@ -100,14 +101,14 @@ export async function syncUserConnectors(userId: string, onlyProvider?: string):
         await prisma.connector.update({ where: { id: conn.id }, data: { lastSyncAt: new Date(), lastSyncCount: imported } });
 
       } else if (conn.provider === "garmin") {
-        let access = conn.tokenEnc!;
+        let access = decryptSecret(conn.tokenEnc!);
         if (conn.expiresAt && conn.expiresAt < new Date() && conn.refreshEnc && process.env.GARMIN_CLIENT_ID) {
           const t = await garminRefreshToken(
             { clientId: process.env.GARMIN_CLIENT_ID!, clientSecret: process.env.GARMIN_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/garmin/callback` },
-            conn.refreshEnc
+            decryptSecret(conn.refreshEnc)
           );
           access = t.access_token;
-          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: t.access_token, refreshEnc: t.refresh_token, expiresAt: new Date(Date.now() + (t.expires_in || 3600) * 1000) } });
+          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: encryptSecret(t.access_token), refreshEnc: encryptSecret(t.refresh_token), expiresAt: new Date(Date.now() + (t.expires_in || 3600) * 1000) } });
         }
         const activities = await garminGetActivities(access, since);
         let imported = 0;
@@ -123,14 +124,14 @@ export async function syncUserConnectors(userId: string, onlyProvider?: string):
         await prisma.connector.update({ where: { id: conn.id }, data: { lastSyncAt: new Date(), lastSyncCount: imported } });
 
       } else if (conn.provider === "google_cal") {
-        let access = conn.tokenEnc!;
+        let access = decryptSecret(conn.tokenEnc!);
         if (conn.expiresAt && conn.expiresAt < new Date() && conn.refreshEnc && process.env.GOOGLE_CLIENT_ID) {
           const t = await googleCalRefreshToken(
             { clientId: process.env.GOOGLE_CLIENT_ID!, clientSecret: process.env.GOOGLE_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/google-cal/callback` },
-            conn.refreshEnc
+            decryptSecret(conn.refreshEnc)
           );
           access = t.access_token;
-          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: t.access_token, refreshEnc: t.refresh_token, expiresAt: new Date(Date.now() + (t.expires_in || 3600) * 1000) } });
+          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: encryptSecret(t.access_token), refreshEnc: encryptSecret(t.refresh_token), expiresAt: new Date(Date.now() + (t.expires_in || 3600) * 1000) } });
         }
         const events = await googleCalGetEvents(access, 14);
         let imported = 0;
@@ -148,14 +149,14 @@ export async function syncUserConnectors(userId: string, onlyProvider?: string):
         await prisma.connector.update({ where: { id: conn.id }, data: { lastSyncAt: new Date(), lastSyncCount: imported } });
 
       } else if (conn.provider === "oura") {
-        let access = conn.tokenEnc!;
+        let access = decryptSecret(conn.tokenEnc!);
         if (conn.expiresAt && conn.expiresAt < new Date() && conn.refreshEnc && process.env.OURA_CLIENT_ID) {
           const t = await ouraRefreshToken(
             { clientId: process.env.OURA_CLIENT_ID!, clientSecret: process.env.OURA_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/oura/callback` },
-            conn.refreshEnc
+            decryptSecret(conn.refreshEnc)
           );
           access = t.access_token;
-          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: t.access_token, refreshEnc: t.refresh_token, expiresAt: new Date(Date.now() + t.expires_in * 1000) } });
+          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: encryptSecret(t.access_token), refreshEnc: encryptSecret(t.refresh_token), expiresAt: new Date(Date.now() + t.expires_in * 1000) } });
         }
         const days = Math.min(90, Math.max(1, Math.ceil((Date.now() - since.getTime()) / 86400000)));
         const daily = await ouraGetDaily(access, days);
@@ -175,14 +176,14 @@ export async function syncUserConnectors(userId: string, onlyProvider?: string):
         results.push({ provider: "oura", ok: true, imported });
 
       } else if (conn.provider === "whoop") {
-        let access = conn.tokenEnc!;
+        let access = decryptSecret(conn.tokenEnc!);
         if (conn.expiresAt && conn.expiresAt < new Date() && conn.refreshEnc && process.env.WHOOP_CLIENT_ID) {
           const t = await whoopRefreshToken(
             { clientId: process.env.WHOOP_CLIENT_ID!, clientSecret: process.env.WHOOP_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/whoop/callback` },
-            conn.refreshEnc
+            decryptSecret(conn.refreshEnc)
           );
           access = t.access_token;
-          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: t.access_token, refreshEnc: t.refresh_token, expiresAt: new Date(Date.now() + t.expires_in * 1000) } });
+          await prisma.connector.update({ where: { id: conn.id }, data: { tokenEnc: encryptSecret(t.access_token), refreshEnc: encryptSecret(t.refresh_token), expiresAt: new Date(Date.now() + t.expires_in * 1000) } });
         }
         const days = Math.min(90, Math.max(1, Math.ceil((Date.now() - since.getTime()) / 86400000)));
         const daily = await whoopGetDaily(access, days);

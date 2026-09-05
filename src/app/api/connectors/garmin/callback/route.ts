@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { garminExchangeToken, garminGetActivities, garminActivityToWorkout } from "@/lib/importers";
 
@@ -35,15 +36,15 @@ export async function GET(req: Request) {
         userId: session.userId,
         provider: "garmin",
         status: "connected",
-        tokenEnc: token.access_token,
-        refreshEnc: token.refresh_token,
+        tokenEnc: encryptSecret(token.access_token),
+        refreshEnc: encryptSecret(token.refresh_token),
         expiresAt: new Date(Date.now() + (token.expires_in || 3600) * 1000),
         scope: "activities",
       },
       update: {
         status: "connected",
-        tokenEnc: token.access_token,
-        refreshEnc: token.refresh_token,
+        tokenEnc: encryptSecret(token.access_token),
+        refreshEnc: encryptSecret(token.refresh_token),
         expiresAt: new Date(Date.now() + (token.expires_in || 3600) * 1000),
       },
     });

@@ -58,6 +58,9 @@ async function call(method, path, body, expect = 200, label = path) {
   await call("GET", "/api/hyrox/split-planner?target=75&pace=270", undefined, 200, "HYROX planner");
   await call("POST", "/api/assistant", { question: "smoke test" }, 200, "assistant");
 
+  // AI endpoints respond (Gemini when keyed; localized fallback otherwise)
+  await call("GET", "/api/coach", undefined, 200, "JASAI briefing");
+
   // guards
   await fetch(BASE + "/api/admin", { headers: { cookie } }).then((r) => {
     if (r.status !== 403) { console.error(`✗ admin guard: expected 403, got ${r.status}`); process.exit(1); }
