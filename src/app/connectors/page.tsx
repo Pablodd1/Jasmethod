@@ -118,8 +118,8 @@ export default function ConnectorsPage() {
           : ["Click \"Connect Google Calendar\" and log in.", "Allow calendar read access.", "The coach sees your busy time and fits training around it."];
       case "apple":
         return es
-          ? ["En iPhone: app Salud → tu foto de perfil → «Exportar todos los datos de salud».", "Descomprime export.zip y busca export.xml.", "Sube export.xml aquí."]
-          : ["On iPhone: Health app → your profile photo → \"Export All Health Data\".", "Unzip the export.zip to find export.xml.", "Upload export.xml here."];
+          ? ["En el iPhone abre la app Salud → toca tu foto/nombre arriba → baja hasta «Exportar todos los datos de salud» → confirma.", "Apple prepara un .zip y lo envía por correo (puede tardar de minutos a horas) — descarga ese zip.", "Descomprime el zip y sube el archivo export.xml aquí abajo."]
+          : ["On iPhone open the Health app → tap your picture/name at top → scroll to \"Export All Health Data\" → confirm.", "Apple builds a .zip and emails it to you (minutes to hours) — download that zip.", "Unzip it and upload the export.xml file below."];
       case "whoop":
         return p.method === "oauth" && p.configured
           ? (es
