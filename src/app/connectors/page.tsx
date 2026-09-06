@@ -127,7 +127,7 @@ export default function ConnectorsPage() {
             : ["Click \"Connect Whoop\" and log in.", "Authorize read access.", "Recovery, HRV & sleep sync automatically."])
           : (es
             ? ["App Whoop → Más → Ajustes → «Exportar datos» → solicita el archivo — llega por correo de Whoop.", "El correo trae un .zip: descomprímelo y sube aquí el CSV de recuperación (recovery).", "VFC, sueño y puntuación quedan guardados para el análisis del coach."]
-            : ["Whoop app → More → Settings → \"Export your data\" → request it — arrives by Whoop email.", "The email contains a .zip: unzip it and upload the recovery CSV here.", "HRV, sleep and recovery scores are stored for the coach's analysis."];
+            : ["Whoop app → More → Settings → \"Export your data\" → request it — arrives by Whoop email.", "The email contains a .zip: unzip it and upload the recovery CSV here.", "HRV, sleep and recovery scores are stored for the coach's analysis."]);
       case "coros":
         return es
           ? ["COROS sincronizará solo vía API cuando esté configurado.", "Para acceso oficial a la API: api@coros.com.", "Mientras tanto, sube un archivo .fit o .tcx aquí."]
