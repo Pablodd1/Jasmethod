@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ClipboardCheck, SkipForward, Send, Watch, Flame, Dumbbell, Waves, Bike, Zap,
+  ClipboardCheck, SkipForward, Send, Watch, Flame, Dumbbell, Waves, Bike, Zap, Eye,
   HeartPulse, Wind, UtensilsCrossed, RefreshCw, CalendarDays, Moon, Play, CloudSun,
 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
@@ -193,11 +193,20 @@ export default function TodayPage() {
             <div className="p-4 space-y-2.5">
               {data.ergos?.recommended?.length > 0 && (
                 <Block color="bg-orange-50 border-orange-200" icon={<Flame className="w-4 h-4 text-orange-500" />} title={es ? "PRE — Ayudas ergogénicas (45-60 min antes)" : "PRE — Ergogenic aids (45-60 min before)"}>
+                  <div className="text-xs text-sky-700 bg-sky-50 rounded-lg px-2 py-1.5 mb-1.5">💧 {es ? "AGUA: 400-600 ml en los 60 min previos (+ pizca de sal en calor). Llega hidratado, no busques hidratarte durante." : "WATER: 400-600 ml in the last 60 min (+ pinch of salt in heat). Arrive hydrated."}</div>
                   {data.ergos.recommended.map((e: any) => (
                     <div key={e.key} className="text-xs text-slate-600">• <strong>{e.name}</strong> — {e.dose} ({e.evidence})</div>
                   ))}
                 </Block>
               )}
+              <Block color="bg-fuchsia-50 border-fuchsia-200" icon={<Eye className="w-4 h-4 text-fuchsia-600" />} title={es ? "VISUALIZACIÓN — 2 min, SIN TELÉFONO" : "VISUALIZATION — 2 min, PHONE AWAY"}>
+                <p className="text-sm text-slate-700">
+                  {es
+                    ? `Cierra los ojos y véete ejecutando "${primary?.title || "la sesión"}": el lugar, la ropa, el ritmo de tus piernas, la respiración controlada en el esfuerzo. Ve el momento difícil y te ves superándolo con calma. Luego deja el teléfono y ejecuta — las catecolaminas del scrolling roban la motivación que el entreno necesita.`
+                    : `Close your eyes and see yourself executing "${primary?.title || "the session"}": the place, the kit, your leg rhythm, controlled breathing at effort. See the hard moment and watch yourself pass it calmly. Then put the phone away and execute — scrolling's catecholamines steal the drive your training needs.`}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">{es ? "Práctica de imagery 2-5 min pre-sesión mejora ejecución y autoconfianza (Liu et al. 2025, meta-análisis)." : "2-5 min pre-session imagery improves execution and self-confidence (Liu et al. 2025 meta-analysis)."}</p>
+              </Block>
               <Block color="bg-sky-50 border-sky-200" icon={<Play className="w-4 h-4 text-sky-600" />} title={es ? "CALENTAMIENTO" : "WARM-UP"}>
                 <p className="text-sm text-slate-700">{data.detail?.wu}</p>
               </Block>

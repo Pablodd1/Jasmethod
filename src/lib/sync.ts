@@ -11,7 +11,7 @@ import { sendEmail } from "./email";
 import {
   stravaRefreshToken, stravaGetActivities, stravaActivityToWorkout,
   garminRefreshToken, garminGetActivities, garminActivityToWorkout,
-  googleCalRefreshToken, googleCalGetEvents,
+  googleCalRefreshToken, googleCalGetEvents, googleCalUpsertEvent,
   ouraRefreshToken, ouraGetDaily,
   whoopRefreshToken, whoopGetDaily,
 } from "./importers";
@@ -146,6 +146,49 @@ export async function syncUserConnectors(userId: string, onlyProvider?: string):
         }
         total += imported;
         results.push({ provider: "google_cal", ok: true, imported });
+
+        // ---- PUBLISH: mirror our planned workouts (next 14 days) onto the
+        // athlete's Google Calendar so they can plan their schedule around
+        // training. Upsert via stored google event id (notes: gcalPush:<id>).
+        const soon = new Date(Date.now() + 14 * 86400000);
+        const planned = await prisma.workout.findMany({
+          where: { userId, planned: true, date: { gte: new Date(), lte: soon } },
+          orderBy: { date: "asc" },
+        });
+        const existingLinks = await prisma.calendarEvent.findMany({
+          where: { userId, type: "workout", notes: { startsWith: "gcalPush:" } },
+          select: { notes: true, title: true, date: true },
+        }).catch(() => []);
+        const linkByTitleDate = new Map<string, string>();
+        for (const l of existingLinks as any[]) {
+          const gid = (l.notes || "").replace("gcalPush:", "");
+          if (gid) linkByTitleDate.set(`${l.title}|${new Date(l.date).toISOString().slice(0, 10)}`, gid);
+        }
+        let published = 0;
+        for (const w of planned) {
+          const d = new Date(w.date);
+          const [sh, sm] = (w.startTime || "07:00").split(":").map(Number);
+          d.setHours(sh || 7, sm || 0, 0, 0);
+          const summary = `🏋️ ${w.title} · ${w.durationMin}min${w.intensity ? " " + w.intensity.toUpperCase() : ""}`;
+          const key = `${summary}|${w.date.toISOString().slice(0, 10)}`;
+          const existingGoogleId = linkByTitleDate.get(`${w.title}|${w.date.toISOString().slice(0, 10)}`) || null;
+          const gid = await googleCalUpsertEvent(access, {
+            summary,
+            description: w.notes || undefined,
+            start: d,
+            durationMin: w.durationMin,
+            workoutId: w.id,
+            existingGoogleId,
+          }).catch(() => null);
+          if (gid && !existingGoogleId) {
+            await prisma.calendarEvent.create({
+              data: { userId, title: summary, date: w.date, type: "workout", notes: `gcalPush:${gid}` },
+            }).catch(() => {});
+          }
+          if (gid) published++;
+        }
+        results.push({ provider: "google_cal_push", ok: true, imported: published });
+
         await prisma.connector.update({ where: { id: conn.id }, data: { lastSyncAt: new Date(), lastSyncCount: imported } });
 
       } else if (conn.provider === "oura") {

@@ -1,19 +1,53 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Apple, Droplets, UtensilsCrossed, Calculator, Info } from "lucide-react";
+import { Apple, Droplets, UtensilsCrossed, Calculator, Info, Camera, Loader2 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { NUTRITION_GUIDELINES } from "@/lib/science";
 
 export default function NutritionPage() {
   const { user } = useAuth();
+  const lang = (user?.language || "es") as string;
   const [daily, setDaily] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ meal: "breakfast", food: "", calories: "", proteinG: "", carbsG: "", fatG: "" });
   const [waterForm, setWaterForm] = useState({ ml: "250", source: "water" });
   const [saved, setSaved] = useState(false);
+  // Smart photo logging: picture -> Gemini vision -> macros -> editable form
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState<string | null>(null);
+
+  function analyzePhoto(file: File) {
+    setPhotoBusy(true); setPhotoMsg(null);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const res = await fetch("/api/nutrition/photo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: reader.result }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Analysis failed");
+        setForm({
+          meal: form.meal,
+          food: d.analysis.food || "",
+          calories: d.analysis.calories != null ? String(d.analysis.calories) : "",
+          proteinG: d.analysis.proteinG != null ? String(d.analysis.proteinG) : "",
+          carbsG: d.analysis.carbsG != null ? String(d.analysis.carbsG) : "",
+          fatG: d.analysis.fatG != null ? String(d.analysis.fatG) : "",
+        });
+        setPhotoMsg(d.analysis.notes || "✓ Revisa y ajusta antes de guardar");
+      } catch (e: any) {
+        setPhotoMsg("✗ " + (e.message || "Error"));
+      } finally {
+        setPhotoBusy(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
 
   async function load() {
     const res = await fetch("/api/nutrition?days=7");
@@ -64,6 +98,26 @@ export default function NutritionPage() {
         <div className="grid md:grid-cols-2 gap-6">
           <div className="card">
             <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><UtensilsCrossed className="w-5 h-5 text-ocean-500" /> Log Food</h2>
+            {/* Smart photo logging */}
+            <div className="rounded-xl border border-ocean-200 bg-ocean-50/60 p-3 mb-1">
+              <div className="text-xs font-semibold text-ocean-900 mb-2 flex items-center gap-1.5">
+                <Camera className="w-4 h-4" /> {lang === "es" ? "Foto inteligente — toma una foto del plato o del empaque" : "Smart photo — snap your plate or the package label"}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  id="food-photo"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) analyzePhoto(f); e.currentTarget.value = ""; }}
+                />
+                <button type="button" disabled={photoBusy} onClick={() => document.getElementById("food-photo")?.click()} className="btn-primary text-xs">
+                  {photoBusy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {lang === "es" ? "Analizando…" : "Analyzing…"}</> : <><Camera className="w-3.5 h-3.5" /> {lang === "es" ? "Tomar / subir foto" : "Take / upload photo"}</>}
+                </button>
+              </div>
+              {photoMsg && <div className="text-[11px] text-slate-600 mt-2 leading-relaxed">{photoMsg}</div>}
+            </div>
             <form onSubmit={logFood} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>

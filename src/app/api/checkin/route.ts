@@ -81,6 +81,7 @@ export async function POST(req: Request) {
       motivation: parseInt(b.motivation ?? "3", 10),
       energy: parseInt(b.energy ?? "3", 10),
       stress: parseInt(b.stress ?? "3", 10),
+      mood: b.mood ? parseInt(b.mood, 10) : undefined,
       sick: Boolean(b.sick),
       menstrual: b.menstrual === true,
       cycleDay: b.cycleDay ? parseInt(b.cycleDay, 10) : undefined,

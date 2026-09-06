@@ -243,6 +243,7 @@ export interface Checkin {
   stress: number;    // 1-5 (5 = very stressed)
   sick: boolean;     // ill/injured today
   menstrual?: boolean; // female-specific flag
+  mood?: number;       // 1-5 (5 = great) — distinct from motivation: how you FEEL
   cycleDay?: number; // day of menstrual cycle (1-35) — enables phase-aware training
   weightKg?: number; // morning fasted weight (objective daily signal)
   rhr?: number;      // morning resting HR
@@ -264,6 +265,7 @@ export function adaptSession(checkin: Checkin): Adaptation {
   score -= (soreness - 3) * 6;   // ±12
   score += (energy - 3) * 8;     // ±16
   score += (motivation - 3) * 4; // ±8
+  if (checkin.mood) score += (checkin.mood - 3) * 4; // ±8
   score -= (stress - 3) * 5;     // ±10
   if (checkin.menstrual) score -= 10;
   if (sick) score -= 40;

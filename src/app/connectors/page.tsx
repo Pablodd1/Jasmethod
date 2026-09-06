@@ -262,15 +262,15 @@ export default function ConnectorsPage() {
                   {p.method === "upload" && (
                     <div className="space-y-2">
                       <div className="flex gap-2">
-                        <input id={`file-${p.id}`} type="file" className="input text-xs" accept={p.id === "garmin" ? ".tcx,.xml,.fit,.csv" : p.id === "apple" ? ".xml" : ".csv,.txt"} />
+                        <input id={`file-${p.id}`} type="file" className="input text-xs" accept={p.id === "garmin" ? ".tcx,.xml,.csv" : p.id === "apple" ? ".xml" : ".csv,.txt"} />
                         <button onClick={() => uploadImport(p.id)} disabled={importing === p.id} className="btn-secondary shrink-0">
                           <Upload className="w-4 h-4" /> {importing === p.id ? (lang === "es" ? "Importando…" : "Importing…") : t(lang, "conn.import")}
                         </button>
                       </div>
                       <div className="text-[10px] text-slate-400">
                         {lang === "es"
-                          ? (p.id === "garmin" ? "Acepta .tcx, .xml, .fit de Garmin Connect, o el Activities.csv (Actividades → Exportar CSV) para importar TODO tu historial de golpe." : p.id === "apple" ? "Acepta el export.xml de Apple Health." : "Acepta el CSV exportado de Whoop.")
-                          : (p.id === "garmin" ? "Accepts .tcx, .xml, .fit from Garmin Connect, or the Activities.csv (Activities → Export CSV) to import your WHOLE history at once." : p.id === "apple" ? "Accepts the Apple Health export.xml." : "Accepts the CSV exported from Whoop.")}
+                          ? (p.id === "garmin" ? "Acepta .tcx, .xml de Garmin Connect, o el Activities.csv (Actividades → Exportar CSV) para importar TODO tu historial de golpe." : p.id === "apple" ? "Acepta el export.xml de Apple Health." : "Acepta el CSV exportado de Whoop.")
+                          : (p.id === "garmin" ? "Accepts .tcx, .xml from Garmin Connect, or the Activities.csv (Activities → Export CSV) to import your WHOLE history at once." : p.id === "apple" ? "Accepts the Apple Health export.xml." : "Accepts the CSV exported from Whoop.")}
                       </div>
                     </div>
                   )}

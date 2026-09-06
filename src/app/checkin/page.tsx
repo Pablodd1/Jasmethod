@@ -12,6 +12,7 @@ import { Activity } from "lucide-react";
 
 const QUESTIONS = [
   { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great — hours matter but how you FEEL matters more" },
+  { key: "mood", label: "Mood", hint: "1 = low, 5 = excellent — how you FEEL emotionally today (different from motivation)" },
   { key: "soreness", label: "Muscle soreness", hint: "1 = fresh legs, 5 = wrecked — legs, back, shoulders combined" },
   { key: "motivation", label: "Motivation", hint: "1 = none, 5 = fired up — want to train, not just should" },
   { key: "energy", label: "Energy", hint: "1 = drained, 5 = buzzing — overall, since waking" },
@@ -39,7 +40,7 @@ export default function CheckinPage() {
   const { user } = useAuth();
   const router = useRouter();
   const lang = (user?.language || "es") as Lang;
-  const [answers, setAnswers] = useState<any>({ sleep: "3", soreness: "3", motivation: "3", energy: "3", stress: "3", sick: false, menstrual: false, weightKg: "", rhr: "", hrv: "", sleepHours: "" });
+  const [answers, setAnswers] = useState<any>({ sleep: "3", mood: "3", soreness: "3", motivation: "3", energy: "3", stress: "3", sick: false, menstrual: false, weightKg: "", rhr: "", hrv: "", sleepHours: "" });
   const [result, setResult] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");

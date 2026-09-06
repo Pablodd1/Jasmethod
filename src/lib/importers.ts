@@ -445,7 +445,7 @@ export function googleCalAuthUrl(cfg: GoogleCalConfig, state: string): string {
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
     response_type: "code",
-    scope: "https://www.googleapis.com/auth/calendar.readonly",
+    scope: "https://www.googleapis.com/auth/calendar.events", // read + write: we also publish the training plan
     access_type: "offline",
     prompt: "consent",
     state,
@@ -726,4 +726,36 @@ export function parseGarminActivitiesCsv(csv: string): GarminActivity[] {
     });
   }
   return out;
+}
+
+// ---------- Google Calendar: publish training sessions (write) ----------
+const GCAL_API = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+
+export interface GcalEventInput {
+  summary: string;
+  description?: string;
+  start: Date;
+  durationMin: number;
+  workoutId: string;
+  existingGoogleId?: string | null; // when set, update instead of create
+}
+
+export async function googleCalUpsertEvent(accessToken: string, ev: GcalEventInput): Promise<string | null> {
+  const end = new Date(ev.start.getTime() + ev.durationMin * 60000);
+  const body = {
+    summary: ev.summary,
+    description: ev.description,
+    start: { dateTime: ev.start.toISOString() },
+    end: { dateTime: end.toISOString() },
+    reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 30 }] },
+    extendedProperties: { private: { jmmWorkoutId: ev.workoutId } },
+  };
+  const res = await fetch(ev.existingGoogleId ? `${GCAL_API}/${ev.existingGoogleId}` : GCAL_API, {
+    method: ev.existingGoogleId ? "PATCH" : "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch(() => null);
+  if (!res || !res.ok) return null;
+  const data = await res.json().catch(() => null);
+  return data?.id || null;
 }
