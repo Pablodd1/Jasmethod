@@ -126,8 +126,8 @@ export default function ConnectorsPage() {
             ? ["Pulsa «Conectar Whoop» e inicia sesión.", "Autoriza el acceso de lectura.", "Recuperación, VFC y sueño sincronizan solos."]
             : ["Click \"Connect Whoop\" and log in.", "Authorize read access.", "Recovery, HRV & sleep sync automatically."])
           : (es
-            ? ["App Whoop → Perfil → Ajustes → Exportar datos.", "Espera el correo con el CSV del ciclo.", "Sube el CSV aquí."]
-            : ["Whoop app → Profile → Settings → Export Data.", "Wait for the cycle CSV email.", "Upload the CSV here."]);
+            ? ["App Whoop → Más → Ajustes → Conexiones → Strava: conéctalo una vez — tus actividades con FC llegan solas vía Strava.", "Para VFC/recuperación/sueño (no van a Strava): Whoop → Exportar datos → CSV del ciclo.", "Sube el CSV aquí y el coach lee tu recuperación real."]
+            : ["Whoop app → More → Settings → Connections → Strava: connect once — your HR activities flow in automatically via Strava.", "For HRV/recovery/sleep (Strava doesn't carry those): Whoop → Export Data → cycle CSV.", "Upload the CSV here and the coach reads your real recovery."]);
       case "coros":
         return es
           ? ["COROS sincronizará solo vía API cuando esté configurado.", "Para acceso oficial a la API: api@coros.com.", "Mientras tanto, sube un archivo .fit o .tcx aquí."]
