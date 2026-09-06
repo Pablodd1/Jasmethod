@@ -27,6 +27,19 @@ export async function GET(req: Request) {
     const session = await prisma.authSession.findUnique({ where: { tokenHash: hashToken(sessionToken) } });
     if (!session) return NextResponse.redirect(`${baseUrl}/connectors?error=session_expired`);
 
+    // Fetch the Whoop user id (basic profile) so webhooks can match events to
+    // this athlete; stored in externalRef like the Strava connector does.
+    let whoopUserId: string | undefined;
+    try {
+      const prof = await fetch("https://api.prod.whoop.com/developer/v1/user/profile/basic", {
+        headers: { Authorization: `Bearer ${token.access_token}` },
+      });
+      if (prof.ok) {
+        const pd = await prof.json();
+        whoopUserId = pd?.id != null ? String(pd.id) : undefined;
+      }
+    } catch { /* best-effort */ }
+
     await prisma.connector.upsert({
       where: { userId_provider: { userId: session.userId, provider: "whoop" } },
       create: {
@@ -34,8 +47,9 @@ export async function GET(req: Request) {
         tokenEnc: encryptSecret(token.access_token), refreshEnc: encryptSecret(token.refresh_token),
         expiresAt: new Date(Date.now() + token.expires_in * 1000),
         scope: "read:recovery read:sleep read:cycles",
+        externalRef: whoopUserId,
       },
-      update: { status: "connected", tokenEnc: encryptSecret(token.access_token), refreshEnc: encryptSecret(token.refresh_token), expiresAt: new Date(Date.now() + token.expires_in * 1000) },
+      update: { status: "connected", tokenEnc: encryptSecret(token.access_token), refreshEnc: encryptSecret(token.refresh_token), expiresAt: new Date(Date.now() + token.expires_in * 1000), ...(whoopUserId ? { externalRef: whoopUserId } : {}) },
     });
 
     let imported = 0;
