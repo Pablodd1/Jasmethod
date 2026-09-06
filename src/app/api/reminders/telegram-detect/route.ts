@@ -18,7 +18,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   return NextResponse.json({
     code: pairingCode(user.id),
-    botUsername: process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || null,
+    botUsername: process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || process.env.TELEGRAM_BOT_USERNAME || null,
     configured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
   });
 }
