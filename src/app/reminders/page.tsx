@@ -20,6 +20,18 @@ export default function RemindersPage() {
   const [pairing, setPairing] = useState<{ code: string; botUsername: string | null; configured: boolean } | null>(null);
   const [pairBusy, setPairBusy] = useState(false);
   const [pairMsg, setPairMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [chatSaved, setChatSaved] = useState(false);
+
+  // Chat ID persists immediately — no Save button needed.
+  async function saveChatId(value: string) {
+    const v = value.trim();
+    if (!v || v === (savedChatIdRef.current || "")) return;
+    await fetch("/api/reminders", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telegramChatId: v, telegramEnabled: true }) });
+    savedChatIdRef.current = v;
+    setChatSaved(true);
+    setTimeout(() => setChatSaved(false), 3000);
+  }
+  const savedChatIdRef = { current: prefs.telegramChatId || "" };
 
   async function loadPairing() {
     const res = await fetch("/api/reminders/telegram-detect");
@@ -137,8 +149,15 @@ export default function RemindersPage() {
                 </div>
                 <div>
                   <label className="label">{lang === "es" ? "O pega tu Chat ID manualmente" : "Or paste your Chat ID manually"}</label>
-                  <input className="input" value={prefs.telegramChatId} onChange={(e) => set("telegramChatId", e.target.value)} placeholder="e.g. 123456789" />
-                  <div className="text-[10px] text-slate-400 mt-1">{lang === "es" ? "Copia el número de @userinfobot si prefieres el método manual." : "Copy the number from @userinfobot if you prefer the manual method."}</div>
+                  <input
+                    className="input"
+                    value={prefs.telegramChatId}
+                    onChange={(e) => set("telegramChatId", e.target.value)}
+                    onBlur={(e) => saveChatId(e.target.value)}
+                    placeholder="e.g. 123456789"
+                  />
+                  <div className="text-[10px] text-slate-400 mt-1">{lang === "es" ? "Copia el número de @userinfobot — se guarda solo al salir del campo." : "Copy the number from @userinfobot — it saves automatically when you leave the field."}</div>
+                  {chatSaved && <div className="text-[11px] text-emerald-600 mt-1">✓ {lang === "es" ? "Chat ID guardado permanentemente" : "Chat ID saved permanently"}</div>}
                 </div>
               </div>
             )}
