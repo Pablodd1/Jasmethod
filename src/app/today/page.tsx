@@ -204,6 +204,14 @@ export default function TodayPage() {
                 </p>
               </div>
               <div className="p-5 space-y-4">
+                <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                  💧 {es ? "AGUA PRE: 400-600 ml en los 60 min previos (+ pizca de sal en calor)." : "WATER PRE: 400-600 ml in the last 60 min (+ pinch of salt in heat)."}
+                </div>
+                <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs text-fuchsia-900">
+                  🧠 {es ? "VISUALIZACIÓN (2 min, sin teléfono)" : "VISUALIZATION (2 min, phone away)"} — {es
+                    ? "cierra los ojos, véete ejecutando la secuencia de abajo: el lugar, el ritmo, la respiración en el esfuerzo. El scrolling roba las catecholaminas que el entreno necesita (Liu 2025)."
+                    : "close your eyes, see yourself executing the sequence below: the place, the rhythm, your breathing at effort. Scrolling steals the catecholamines training needs (Liu 2025)."}
+                </div>
                 {session.prescription.steps.length ? (
                   <ol className="space-y-2">
                     {session.prescription.steps.map((s: any, i: number) => (
