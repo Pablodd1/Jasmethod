@@ -288,13 +288,13 @@ export default function ConnectorsPage() {
         return es
           ? [
               "Pulsa «Conectar Google Calendar» e inicia sesión.",
-              "Permite el acceso de solo lectura al calendario.",
-              "El coach ve tus horas ocupadas y adapta el entrenamiento a tu agenda.",
+              "Permite el acceso al calendario.",
+              "El coach ve tus horas ocupadas, adapta el entrenamiento y publica el plan en tu calendario.",
             ]
           : [
               'Click "Connect Google Calendar" and log in.',
-              "Allow calendar read access.",
-              "The coach sees your busy time and fits training around it.",
+              "Allow Calendar access.",
+              "The coach reads busy time, fits training around it, and publishes the plan to your calendar.",
             ];
       case "apple":
         return es
@@ -603,11 +603,17 @@ export default function ConnectorsPage() {
                       </div>
                     ))}
                   {p.method === "unavailable" && (
-                    <p className="text-sm text-slate-500">
-                      {lang === "es"
-                        ? "Conexión no configurada."
-                        : "Connection not configured."}
-                    </p>
+                    <div className="text-sm text-slate-500">
+                      <p>
+                        {lang === "es"
+                          ? "Conexión no configurada por el propietario."
+                          : "Connection not configured by the owner."}
+                      </p>
+                      <p className="text-[10px] text-amber-600 mt-1">
+                        {lang === "es" ? "Ajuste necesario: " : "Required setting: "}
+                        {(p.setupEnv || []).join(" / ")}
+                      </p>
+                    </div>
                   )}
                   {p.method === "upload" && (
                     <div className="space-y-2">
