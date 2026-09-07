@@ -1,22 +1,41 @@
+import { storeActivity } from "@/lib/activity-store";
+import { dayBounds, parseDate } from "@/lib/dates";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { parseTcx, parseAppleHealth, parseWhoopCsv, parseGarminActivitiesCsv } from "@/lib/importers";
+import {
+  parseTcx,
+  parseAppleHealth,
+  parseWhoopCsv,
+  parseGarminActivitiesCsv,
+} from "@/lib/importers";
 
 // POST /api/import — multipart upload. source: tcx | garmin | coros (all parsed
 // as TCX), apple | applehealth (Apple Health export.xml), whoop (cycle CSV).
 export async function POST(req: Request) {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const form = await req.formData();
     const source = String(form.get("source") || "");
     const file = form.get("file") as File | null;
-    if (!file) return NextResponse.json({ error: "No file provided." }, { status: 400 });
+    if (!file)
+      return NextResponse.json({ error: "No file provided." }, { status: 400 });
 
     // Normalize: the Connectors page posts the provider id as the source.
-    const src = source === "garmin" || source === "coros" ? "tcx" : source === "apple" ? "applehealth" : source;
+    const src =
+      source === "garmin" || source === "coros"
+        ? "tcx"
+        : source === "apple"
+          ? "applehealth"
+          : source;
 
+    if (file.size > 40 * 1024 * 1024)
+      return NextResponse.json(
+        { error: "File exceeds 40 MB. Export a smaller date range." },
+        { status: 413 },
+      );
     const text = await file.text();
     let workouts: any[] = [];
     let extra: Record<string, any> = {};
@@ -26,7 +45,21 @@ export async function POST(req: Request) {
       // bulk export — detect by content so either file just works.
       workouts = text.trimStart().startsWith("<")
         ? parseTcx(text)
-        : parseGarminActivitiesCsv(text).map((a) => ({ date: a.date, sport: a.sport, title: a.title, durationMin: a.durationMin, distanceKm: a.distanceKm ?? undefined, avgHr: a.avgHr ?? undefined, maxHr: a.maxHr ?? undefined, avgPower: a.avgPower ?? undefined, np: a.np ?? undefined, tss: a.tss ?? undefined, calories: a.calories ?? undefined, source: "garmin", externalId: a.externalId }));
+        : parseGarminActivitiesCsv(text).map((a) => ({
+            date: a.date,
+            sport: a.sport,
+            title: a.title,
+            durationMin: a.durationMin,
+            distanceKm: a.distanceKm ?? undefined,
+            avgHr: a.avgHr ?? undefined,
+            maxHr: a.maxHr ?? undefined,
+            avgPower: a.avgPower ?? undefined,
+            np: a.np ?? undefined,
+            tss: a.tss ?? undefined,
+            calories: a.calories ?? undefined,
+            source: "garmin",
+            externalId: a.externalId,
+          }));
     } else if (src === "applehealth") {
       const ah = parseAppleHealth(text);
       workouts = ah.workouts;
@@ -36,6 +69,7 @@ export async function POST(req: Request) {
         weightLogs: ah.weightLogs,
         hrvLogs: ah.hrvLogs,
         hrLogs: ah.hrLogs,
+        sleepLogs: ah.sleepLogs,
       };
     } else if (src === "whoop") {
       const cycles = parseWhoopCsv(text);
@@ -44,73 +78,110 @@ export async function POST(req: Request) {
       for (const c of cycles) {
         const d = new Date(c.day);
         if (isNaN(d.getTime())) continue;
-        const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
-        const existing = await prisma.dailyMetrics.findUnique({ where: { userId_date: { userId: user.id, date: dayStart } } });
+        const dayStart = dayBounds(
+          user.timezone,
+          parseDate(c.day, user.timezone),
+        ).start;
+        const existing = await prisma.dailyMetrics.findUnique({
+          where: { userId_date: { userId: user.id, date: dayStart } },
+        });
         const data = {
           hrv: c.hrv ?? undefined,
           restingHr: c.restingHr ?? undefined,
-          recoveryScore: c.recoveryScore !== undefined ? Math.round(c.recoveryScore) : undefined,
+          recoveryScore:
+            c.recoveryScore !== undefined
+              ? Math.round(c.recoveryScore)
+              : undefined,
           sleepHours: c.sleepHours ?? undefined,
           source: "whoop",
+          hrvType: "rmssd",
         };
         if (existing) {
-          await prisma.dailyMetrics.update({ where: { id: existing.id }, data });
+          await prisma.dailyMetrics.update({
+            where: { id: existing.id },
+            data,
+          });
         } else {
-          await prisma.dailyMetrics.create({ data: { userId: user.id, date: dayStart, ...data } });
+          await prisma.dailyMetrics.create({
+            data: { userId: user.id, date: dayStart, ...data },
+          });
         }
         created++;
       }
-      return NextResponse.json({ ok: true, source, metricsImported: created, workoutsImported: 0 });
-    } else {
-      return NextResponse.json({ error: "Unknown source. Use tcx, garmin, coros, apple, applehealth, or whoop." }, { status: 400 });
-    }
-
-    // Store imported workouts (dedupe by externalId)
-    let imported = 0;
-    for (const w of workouts) {
-      const existing = await prisma.workout.findFirst({ where: { userId: user.id, externalId: w.externalId } });
-      if (existing) continue;
-      await prisma.workout.create({
-        data: {
-          userId: user.id,
-          date: w.date,
-          sport: w.sport,
-          title: w.title,
-          type: "endurance",
-          durationMin: w.durationMin,
-          distanceKm: w.distanceKm ?? undefined,
-          avgHr: w.avgHr,
-          maxHr: w.maxHr,
-          avgPower: w.avgPower,
-          calories: w.calories,
-          planned: false,
-          completed: true,
-          source: w.source,
-          externalId: w.externalId,
-        },
+      return NextResponse.json({
+        ok: true,
+        source,
+        metricsImported: created,
+        workoutsImported: 0,
       });
-      imported++;
+    } else {
+      return NextResponse.json(
+        {
+          error:
+            "Unknown source. Use tcx, garmin, coros, apple, applehealth, or whoop.",
+        },
+        { status: 400 },
+      );
     }
 
-    // Persist Apple Health metrics
-    if (source === "applehealth" && extra.hrvLogs?.length) {
-      const latest = extra.hrvLogs[extra.hrvLogs.length - 1];
-      const dayStart = new Date(latest.date); dayStart.setHours(0, 0, 0, 0);
-      const existing = await prisma.dailyMetrics.findUnique({ where: { userId_date: { userId: user.id, date: dayStart } } });
-      const data = { hrv: Math.round(latest.ms * 100) / 100, source: "apple" };
-      if (existing) await prisma.dailyMetrics.update({ where: { id: existing.id }, data });
-      else await prisma.dailyMetrics.create({ data: { userId: user.id, date: dayStart, ...data } });
+    let imported = 0,
+      metricsImported = 0;
+    for (const w of workouts)
+      if (await storeActivity(user.id, user.timezone, w)) imported++;
+    if (src === "applehealth") {
+      const daily = new Map<string, any>();
+      for (const [logs, field, value] of [
+        [extra.hrvLogs, "hrv", "ms"],
+        [extra.hrLogs, "restingHr", "bpm"],
+        [extra.weightLogs, "weightKg", "kg"],
+        [extra.sleepLogs, "sleepHours", "hours"],
+      ] as any[]) {
+        for (const row of logs || []) {
+          const { key, start } = dayBounds(user.timezone, new Date(row.date));
+          const d = daily.get(key) || { date: start, source: "apple" };
+          d[field] =
+            field === "sleepHours" ? (d[field] || 0) + row[value] : row[value];
+          if (field === "restingHr") d[field] = Math.round(d[field]);
+          if (field === "hrv") d.hrvType = "sdnn";
+          daily.set(key, d);
+        }
+      }
+      for (const d of Array.from(daily.values())) {
+        await prisma.dailyMetrics.upsert({
+          where: { userId_date: { userId: user.id, date: d.date } },
+          create: { userId: user.id, ...d },
+          update: d,
+        });
+        metricsImported++;
+      }
     }
+    if (!workouts.length && !metricsImported)
+      return NextResponse.json(
+        {
+          error:
+            "No supported records found. Check the source and file format.",
+        },
+        { status: 400 },
+      );
 
     return NextResponse.json({
       ok: true,
       source,
       workoutsImported: imported,
+      metricsImported,
       workoutsFound: workouts.length,
-      extra: Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, Array.isArray(v) ? v.length : v])),
+      extra: Object.fromEntries(
+        Object.entries(extra).map(([k, v]) => [
+          k,
+          Array.isArray(v) ? v.length : v,
+        ]),
+      ),
     });
   } catch (e: any) {
     console.error("import error:", e);
-    return NextResponse.json({ error: e.message || "Import failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: e.message || "Import failed" },
+      { status: 500 },
+    );
   }
 }

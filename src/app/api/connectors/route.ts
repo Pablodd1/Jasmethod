@@ -1,59 +1,112 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { stravaAuthUrl, garminAuthUrl, googleCalAuthUrl, ouraAuthUrl, whoopAuthUrl } from "@/lib/importers";
-
-// GET /api/connectors — list connector status + OAuth URLs if configured
 export async function GET() {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const connectors = await prisma.connector.findMany({ where: { userId: user.id } });
-
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  const stravaConfigured = Boolean(process.env.STRAVA_CLIENT_ID && process.env.STRAVA_CLIENT_SECRET);
-  const stravaUrl = stravaConfigured
-    ? stravaAuthUrl({
-        clientId: process.env.STRAVA_CLIENT_ID!,
-        clientSecret: process.env.STRAVA_CLIENT_SECRET!,
-        redirectUri: `${baseUrl}/api/connectors/strava/callback`,
-      })
-    : null;
-  const garminConfigured = Boolean(process.env.GARMIN_CLIENT_ID && process.env.GARMIN_CLIENT_SECRET);
-  const garminUrl = garminConfigured
-    ? garminAuthUrl({
-        clientId: process.env.GARMIN_CLIENT_ID!,
-        clientSecret: process.env.GARMIN_CLIENT_SECRET!,
-        redirectUri: `${baseUrl}/api/connectors/garmin/callback`,
-      }, `garmin-${user.id}`)
-    : null;
-  const googleConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-  const googleUrl = googleConfigured
-    ? googleCalAuthUrl({
-        clientId: process.env.GOOGLE_CLIENT_ID!,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-        redirectUri: `${baseUrl}/api/connectors/google-cal/callback`,
-      }, `gcal-${user.id}`)
-    : null;
-
-  const ouraConfigured = Boolean(process.env.OURA_CLIENT_ID && process.env.OURA_CLIENT_SECRET);
-  const ouraUrl = ouraConfigured
-    ? ouraAuthUrl({ clientId: process.env.OURA_CLIENT_ID!, clientSecret: process.env.OURA_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/oura/callback` })
-    : null;
-  const whoopConfigured = Boolean(process.env.WHOOP_CLIENT_ID && process.env.WHOOP_CLIENT_SECRET);
-  const whoopUrl = whoopConfigured
-    ? whoopAuthUrl({ clientId: process.env.WHOOP_CLIENT_ID!, clientSecret: process.env.WHOOP_CLIENT_SECRET!, redirectUri: `${baseUrl}/api/connectors/whoop/callback` }, `whoop-${user.id}`)
-    : null;
-
-  // Provider metadata for the UI
-  const providers = [
-    { id: "strava", name: "Strava", description: "Pull all activities & previous records", status: connectors.find((c) => c.provider === "strava")?.status || "disconnected", configured: stravaConfigured, connectUrl: stravaUrl, method: "oauth" },
-    { id: "garmin", name: "Garmin", description: garminConfigured ? "Connect Garmin Connect — pull activities automatically" : "Upload .TCX exports (Connect → Activities → Export)", status: connectors.find((c) => c.provider === "garmin")?.status || "disconnected", configured: true, connectUrl: garminUrl, method: garminConfigured ? "oauth" : "upload" },
-    { id: "google_cal", name: "Google Calendar", description: googleConfigured ? "See your meetings & busy time — the coach fits training around your schedule" : "Add GOOGLE_CLIENT_ID/SECRET to sync Gmail Calendar", status: connectors.find((c) => c.provider === "google_cal")?.status || "disconnected", configured: googleConfigured, connectUrl: googleUrl, method: "oauth" },
-    { id: "apple", name: "Apple Health", description: "Upload export.zip → export.xml", status: connectors.find((c) => c.provider === "apple")?.status || "disconnected", configured: true, method: "upload" },
-    { id: "whoop", name: "Whoop", description: whoopConfigured ? "Connect Whoop — recovery, HRV & sleep sync automatically" : "Add WHOOP_CLIENT_ID/SECRET for auto-sync, or upload cycle CSV export", status: connectors.find((c) => c.provider === "whoop")?.status || "disconnected", configured: true, connectUrl: whoopUrl, method: whoopConfigured ? "oauth" : "upload" },
-    { id: "coros", name: "COROS", description: "COROS watches — via Terra API (activities, sleep, daily) or manual FIT/TCX upload. Official API requires application at api@coros.com", status: connectors.find((c) => c.provider === "coros")?.status || "disconnected", configured: Boolean(process.env.TERRA_API_KEY && process.env.TERRA_DEV_ID), method: "api" },
-    { id: "oura", name: "Oura / Aura Ring", description: ouraConfigured ? "Connect Oura — sleep, readiness & HRV sync automatically" : "Add OURA_CLIENT_ID/SECRET to enable OAuth", status: connectors.find((c) => c.provider === "oura")?.status || "disconnected", configured: ouraConfigured, connectUrl: ouraUrl, method: ouraConfigured ? "oauth" : "api" },
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const connectors = await prisma.connector.findMany({
+    where: { userId: user.id },
+    select: {
+      provider: true,
+      status: true,
+      lastSyncAt: true,
+      lastSyncCount: true,
+      lastError: true,
+      syncStartedAt: true,
+    },
+  });
+  const configs = [
+    {
+      id: "strava",
+      name: "Strava",
+      env: "STRAVA",
+      description: "Import recorded activities. Sync after connecting.",
+    },
+    {
+      id: "google_cal",
+      name: "Google Calendar",
+      env: "GOOGLE",
+      path: "google-cal",
+      description:
+        "Import busy time and publish your upcoming planned workouts.",
+    },
+    {
+      id: "oura",
+      name: "Oura",
+      env: "OURA",
+      description: "Import sleep, HRV and readiness. Sync after connecting.",
+    },
+    {
+      id: "whoop",
+      name: "Whoop",
+      env: "WHOOP",
+      description: "Import recovery, HRV and sleep; or upload cycle CSV.",
+    },
   ];
-
-  return NextResponse.json({ providers, connectors });
+  const providers: any[] = configs.map((p) => {
+    const configured = !!(
+      process.env[`${p.env}_CLIENT_ID`] && process.env[`${p.env}_CLIENT_SECRET`]
+    );
+    return {
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      configured: p.id === "whoop" || configured,
+      method: configured
+        ? "oauth"
+        : p.id === "whoop"
+          ? "upload"
+          : "unavailable",
+      connectUrl: configured
+        ? `/api/connectors/${p.path || p.id}/authorize`
+        : null,
+      status:
+        connectors.find((c) => c.provider === p.id)?.status || "disconnected",
+    };
+  });
+  providers.push(
+    ...[
+      {
+        id: "garmin",
+        name: "Garmin / COROS",
+        description:
+          "Upload TCX or Garmin activities CSV. Direct watch sync is not enabled.",
+      },
+      {
+        id: "apple",
+        name: "Apple Health",
+        description:
+          "Upload export.xml from your Apple Health export (maximum 40 MB).",
+      },
+    ].map((p) => ({
+      ...p,
+      method: "upload",
+      configured: true,
+      status:
+        connectors.find((c) => c.provider === p.id)?.status || "disconnected",
+    })),
+  );
+  return Response.json({
+    providers: providers.map((p) => ({
+      ...p,
+      ...connectors.find((c) => c.provider === p.id),
+    })),
+    connectors,
+  });
+}
+export async function DELETE(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const { provider } = await req.json();
+  await prisma.connector.updateMany({
+    where: { userId: user.id, provider: String(provider) },
+    data: {
+      status: "disconnected",
+      tokenEnc: null,
+      refreshEnc: null,
+      expiresAt: null,
+      lastError: null,
+      syncStartedAt: null,
+    },
+  });
+  return Response.json({ ok: true });
 }

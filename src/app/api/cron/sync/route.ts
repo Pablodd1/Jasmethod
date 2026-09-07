@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { syncUserConnectors, notifyAdminsSyncFailure } from "@/lib/sync";
+import { syncUserConnectors } from "@/lib/sync";
 
 // GET|POST /api/cron/sync — pull new data for EVERY athlete with connected
 // devices. Scheduled daily at 05:00 America/New_York via vercel.json
@@ -13,6 +13,11 @@ import { syncUserConnectors, notifyAdminsSyncFailure } from "@/lib/sync";
 async function run(req: Request) {
   // Auth: if CRON_SECRET is configured, require the matching bearer token.
   const secret = process.env.CRON_SECRET;
+  if (!secret)
+    return NextResponse.json(
+      { error: "Cron is not configured" },
+      { status: 503 },
+    );
   if (secret) {
     const auth = req.headers.get("authorization") || "";
     if (auth !== `Bearer ${secret}`) {
@@ -22,24 +27,37 @@ async function run(req: Request) {
 
   const startedAt = Date.now();
   const connected = await prisma.connector.findMany({
-    where: { status: "connected" },
+    where: {
+      status: { in: ["connected", "error"] },
+      provider: { in: ["strava", "google_cal", "whoop", "oura"] },
+    },
     select: { userId: true },
     distinct: ["userId"],
   });
 
-  const perUser: { userId: string; email: string; name: string; total: number; failures: { provider: string; error: string }[] }[] = [];
+  const perUser: {
+    userId: string;
+    email: string;
+    name: string;
+    total: number;
+    failures: { provider: string; error: string }[];
+  }[] = [];
   for (const { userId } of connected) {
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true },
+    });
     const { results, total } = await syncUserConnectors(userId);
-    const failures = results.filter((r) => !r.ok).map((r) => ({ provider: r.provider, error: r.error || "unknown" }));
-    perUser.push({ userId, email: user?.email || "?", name: user?.name || "?", total, failures });
-    // Per-athlete alert email (throttled inside sync lib).
-    if (failures.length && user) {
-      const full = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true } });
-      if (full) {
-        try { await notifyAdminsSyncFailure(full, results.filter((r) => !r.ok)); } catch { /* ignore */ }
-      }
-    }
+    const failures = results
+      .filter((r) => !r.ok)
+      .map((r) => ({ provider: r.provider, error: r.error || "unknown" }));
+    perUser.push({
+      userId,
+      email: user?.email || "?",
+      name: user?.name || "?",
+      total,
+      failures,
+    });
   }
 
   const failedUsers = perUser.filter((u) => u.failures.length > 0);
@@ -55,5 +73,9 @@ async function run(req: Request) {
   return NextResponse.json(summary);
 }
 
-export async function GET(req: Request) { return run(req); }
-export async function POST(req: Request) { return run(req); }
+export async function GET(req: Request) {
+  return run(req);
+}
+export async function POST(req: Request) {
+  return run(req);
+}

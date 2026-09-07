@@ -45,6 +45,8 @@ model User {
   supplement  SupplementProfile?
   reminder    ReminderPref?
   cognitive   CognitiveTest[]
+  auditActions AuditLog[] @relation("AuditActor")
+  auditSubjects AuditLog[] @relation("AuditSubject")
 }
 
 model AuthSession {
@@ -113,6 +115,8 @@ model TrainingPlan {
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   days        PlanDay[]
+
+  @@index([userId, status, startDate])
 }
 
 model PlanDay {
@@ -126,6 +130,8 @@ model PlanDay {
   dayOff    Boolean  @default(false) // picked rest day: 20 min Z1 + breathing protocol replaces planned sessions
   plan      TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   sessions  Workout[]
+
+  @@index([planId, date])
 }
 
 // ---------- WORKOUTS ----------
@@ -160,11 +166,19 @@ model Workout {
   preWeightKg  Float?  // pre-session body weight (hydration tracking)
   postWeightKg Float?  // post-session body weight
   recovery     String? // post-workout ANS recovery cooldown note (rotates daily)
+  originalPlan String? // immutable base used when recalculating daily adaptations
+  prescription String? // effective structured prescription shared by UI/export
+  feedbackStatus String? // completed | partial | skipped
+  actualDurationMin Int?
+  feedbackNote String?
+  feedbackAt DateTime?
+  matchedPlanId String? // planned session fulfilled by an imported activity
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   planDay    PlanDay? @relation(fields: [planDayId], references: [id], onDelete: SetNull)
 
   @@index([userId, date])
+  @@index([userId, source, externalId])
 }
 
 // ---------- METRICS: SLEEP / HRV / RECOVERY ----------
@@ -174,6 +188,7 @@ model DailyMetrics {
   userId        String
   date          DateTime
   hrv           Float?   // ms (RMSSD)
+  hrvType       String?  // rmssd | sdnn; never combine different measurement types
   restingHr     Int?
   sleepScore    Int?     // 0-100
   recoveryScore Int?     // 0-100 readiness
@@ -296,6 +311,8 @@ model Connector {
   externalRef String?  // provider-side athlete id (e.g. Strava athlete_id) for webhook matching
   lastSyncAt  DateTime?
   lastSyncCount Int?
+  lastError String?
+  syncStartedAt DateTime?
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, provider])
@@ -312,7 +329,41 @@ model CalendarEvent {
   endTime   String?
   type      String   // workout | race | appointment | note
   notes     String?
+  externalId String?
+  workoutId String?
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, externalId])
+  @@unique([userId, workoutId])
+  @@index([userId, date])
+}
+
+// Administrative changes are attributable; no passwords or connector tokens here.
+model AuditLog {
+  id String @id @default(cuid())
+  actorId String
+  subjectId String
+  action String
+  entityId String?
+  before String?
+  after String?
+  note String?
+  createdAt DateTime @default(now())
+  actor User @relation("AuditActor", fields: [actorId], references: [id], onDelete: Cascade)
+  subject User @relation("AuditSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([subjectId, createdAt])
+}
+
+model ReminderDelivery {
+  id String @id @default(cuid())
+  userId String
+  day String
+  channel String
+  status String
+  error String?
+  createdAt DateTime @default(now())
+  @@unique([userId, day, channel])
 }
 
 model MotivationPref {

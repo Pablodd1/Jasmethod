@@ -1,61 +1,80 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
-import { variantFor, alternateFor } from "@/lib/regen";
-
-export const dynamic = "force-dynamic";
-
-const MAX_REGENS = 3;
-
-// POST /api/workout/regenerate — the athlete doesn't like today's workout.
-//   { id, mode: "variant" | "alternate" }
-// variant:   same sport/intensity/duration, different structure (seeded by
-//            regenCount so each press gives a NEW session, up to 3 total).
-// alternate: same training goal expressed in a different modality — aerobic
-//            days swap run/bike/swim; quality/strength days become sport-
-//            specific plyometrics or power work (mandatory-rule compliant).
-// The workout is rewritten in place: duration and weekly intent preserved.
+import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
+import { prescribeToday } from "@/lib/adaptive";
+import { baseWorkout } from "@/lib/prescription";
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
+    const { actor, athlete } = await trainingAccess(req);
     const b = await req.json();
-    const workout = await prisma.workout.findFirst({ where: { id: b.id, userId: user.id, planned: true } });
-    if (!workout) return NextResponse.json({ error: "Workout not found" }, { status: 404 });
-    if ((workout.regenCount || 0) >= MAX_REGENS) {
-      return NextResponse.json({ error: "Regeneration limit reached (3) — this session has given all it has. Execute it or rest.", status: "limit" }, { status: 429 });
-    }
-
-    const profile = await prisma.athleteProfile.findUnique({ where: { userId: user.id } });
-    const seed = (workout.regenCount || 0) + 1; // 1, 2, 3 -> different structures each time
-    const zone = workout.intensity || "z2";
-
-    let next: { sport: string; type: string; intensity?: string; title: string; description: string };
-    if (b.mode === "alternate") {
-      next = alternateFor(workout.sport, workout.type, zone, workout.durationMin, profile?.goal || "");
-    } else {
-      const v = variantFor(workout.sport, workout.type, zone, workout.durationMin, seed);
-      next = { sport: workout.sport, type: workout.type, intensity: workout.intensity || undefined, title: v.title, description: v.description };
-    }
-
-    const updated = await prisma.workout.update({
-      where: { id: workout.id },
-      data: {
-        sport: next.sport as any,
-        type: next.type,
-        intensity: next.intensity ?? workout.intensity,
-        title: next.title,
-        notes: next.description,
-        regenCount: { increment: 1 },
-      },
+    if (b.mode && b.mode !== "variant")
+      throw new ApiError(
+        "Edit the sport in your plan to choose another modality.",
+      );
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${athlete.id}))`;
+      const w = await tx.workout.findFirst({
+        where: { id: String(b.id), userId: athlete.id, planned: true },
+        include: { planDay: true },
+      });
+      if (!w) throw new ApiError("Workout not found", 404);
+      if (
+        athlete.profile?.injured ||
+        w.completed ||
+        w.durationMin < 20 ||
+        w.planDay?.dayOff ||
+        !["run", "bike", "swim"].includes(w.sport)
+      )
+        throw new ApiError(
+          "Variants are available for unfinished run, bike and swim sessions of at least 20 minutes.",
+        );
+      if (w.regenCount >= 3)
+        throw new ApiError("All three variants have been used.", 429);
+      const seed = w.regenCount + 1;
+      const base = { ...baseWorkout(w), variantSeed: seed };
+      const p = prescribeToday({
+        session: { ...w, variantSeed: seed },
+        adaptation: {
+          verdict: "full",
+          durationFactor: 1,
+          intensityCap: w.intensity || "z2",
+        },
+        profile: athlete.profile,
+      });
+      if (w.prescription) {
+        const old = JSON.parse(w.prescription);
+        p.scaled = old.scaled;
+        p.verdict = old.verdict;
+      }
+      const updated = await tx.workout.update({
+        where: { id: w.id },
+        data: {
+          originalPlan: JSON.stringify(base),
+          prescription: JSON.stringify(p),
+          notes: p.detail.main,
+          regenCount: seed,
+          approved: false,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.id,
+          subjectId: athlete.id,
+          action: "workout.variant",
+          entityId: w.id,
+          before: w.prescription,
+          after: JSON.stringify(p),
+        },
+      });
+      return updated;
     });
-
-    return NextResponse.json({
+    return Response.json({
       ok: true,
-      workout: updated,
-      regensLeft: MAX_REGENS - updated.regenCount,
+      workout: result,
+      regensLeft: 3 - result.regenCount,
+      message:
+        "Workout structure updated; duration and intensity are preserved.",
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
+  } catch (e) {
+    return errorResponse(e);
   }
 }

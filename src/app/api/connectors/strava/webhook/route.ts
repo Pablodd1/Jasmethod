@@ -22,8 +22,11 @@ export async function GET(req: Request) {
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
   const expected = process.env.STRAVA_VERIFY_TOKEN;
-  if (mode === "subscribe" && expected && token !== expected) {
-    return NextResponse.json({ error: "verify_token mismatch" }, { status: 403 });
+  if (mode === "subscribe" && (!expected || token !== expected)) {
+    return NextResponse.json(
+      { error: "verify_token mismatch" },
+      { status: 403 },
+    );
   }
   if (mode === "subscribe" && challenge) {
     return NextResponse.json({ "hub.challenge": challenge });
@@ -37,17 +40,52 @@ export async function GET(req: Request) {
 // connected strava user for that owner id) and sync immediately.
 export async function POST(req: Request) {
   try {
+    const secret = process.env.STRAVA_WEBHOOK_SECRET;
+    if (!secret || new URL(req.url).searchParams.get("key") !== secret)
+      return NextResponse.json(
+        { error: "Invalid webhook key" },
+        { status: 401 },
+      );
     const body = await req.json();
-    if (body?.object_type === "athlete" && body?.aspect_type === "deauthorize") {
-      const stravaId = String(body.athlete_id ?? "");
-      await prisma.connector.updateMany({ where: { provider: "strava", externalRef: stravaId }, data: { status: "disconnected" } }).catch(() => {});
+    if (
+      process.env.STRAVA_SUBSCRIPTION_ID &&
+      String(body.subscription_id) !== process.env.STRAVA_SUBSCRIPTION_ID
+    )
+      return NextResponse.json(
+        { error: "Wrong subscription" },
+        { status: 403 },
+      );
+    if (
+      body?.object_type === "athlete" &&
+      body?.updates?.authorized === "false"
+    ) {
+      const stravaId = String(body.owner_id ?? "");
+      await prisma.connector
+        .updateMany({
+          where: { provider: "strava", externalRef: stravaId },
+          data: { status: "disconnected" },
+        })
+        .catch(() => {});
       return NextResponse.json({ ok: true });
     }
-    if (body?.object_type === "activity" && body?.aspect_type === "create") {
+    if (
+      body?.object_type === "activity" &&
+      ["create", "update"].includes(body?.aspect_type)
+    ) {
       const ownerId = String(body.owner_id ?? "");
       // Match the athlete by the strava athlete id saved at OAuth time.
-      const conn = await prisma.connector.findFirst({ where: { provider: "strava", status: "connected", externalRef: ownerId } });
-      if (conn) await syncUserConnectors(conn.userId, "strava").catch(() => {});
+      const conn = await prisma.connector.findFirst({
+        where: {
+          provider: "strava",
+          status: "connected",
+          externalRef: ownerId,
+        },
+      });
+      if (conn) {
+        const sync = await syncUserConnectors(conn.userId, "strava");
+        if (sync.results.some((r) => !r.ok))
+          return NextResponse.json({ error: "Sync failed" }, { status: 503 });
+      }
     }
     // Strava only needs a 200 — respond fast, process again if retried.
     return NextResponse.json({ ok: true });

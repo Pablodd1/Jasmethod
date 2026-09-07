@@ -10,3 +10,6 @@ prisma/dev.db-journal
 .vercel
 .env*
 !.env.example
+
+.playwright-cli/
+output/playwright/

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { AuthProvider, useAuth } from "./auth";
+import { useAuth } from "./auth";
 import { AppShell, MobileNav } from "./app-shell";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -33,9 +33,5 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export function ProtectedPage({ children }: { children: React.ReactNode }) {
-  return (
-    <AuthProvider>
-      <AuthGate>{children}</AuthGate>
-    </AuthProvider>
-  );
+  return <AuthGate>{children}</AuthGate>;
 }

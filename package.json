@@ -4,20 +4,28 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma migrate deploy && prisma generate && next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:deploy": "prisma migrate deploy",
+    "admin:grant": "tsx scripts/grant-admin.ts",
+    "test": "tsx --test src/lib/*.test.ts",
+    "test:integration": "tsx scripts/integration-check.ts",
+    "test:sync": "tsx scripts/sync-check.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@garmin/fitsdk": "^21.214.0",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "date-fns": "^3.6.0",
+    "date-fns-tz": "^3.2.0",
+    "fast-xml-parser": "^5.11.1",
     "lucide-react": "^0.454.0",
     "next": "^14.2.15",
     "nodemailer": "^6.9.16",
