@@ -208,6 +208,7 @@ export default function TrainingPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <a href="/protocols" className="btn-primary">Training protocols</a>
             <a href="/api/training/export" className="btn-secondary">
               <Download className="w-4 h-4" /> Download all training
             </a>

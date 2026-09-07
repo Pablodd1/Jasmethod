@@ -215,9 +215,8 @@ export default function TodayPage() {
                           {i + 1}. {s.name}
                         </span>
                         <strong>
-                          {Math.floor(s.seconds / 60)}:
-                          {String(s.seconds % 60).padStart(2, "0")} ·{" "}
-                          {s.zone.toUpperCase()}
+                          {s.reps ? `${s.reps} reps` : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
+                          {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
                         </strong>
                       </li>
                     ))}

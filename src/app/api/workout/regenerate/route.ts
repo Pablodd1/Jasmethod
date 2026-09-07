@@ -17,6 +17,7 @@ export async function POST(req: Request) {
         include: { planDay: true },
       });
       if (!w) throw new ApiError("Workout not found", 404);
+      if (baseWorkout(w).protocol) throw new ApiError("Use Training protocols to select a different structured protocol.");
       if (
         athlete.profile?.injured ||
         w.completed ||

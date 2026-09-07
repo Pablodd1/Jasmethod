@@ -142,16 +142,41 @@ export async function updateWorkout(
       "notes",
       "startTime",
     ];
-    if (prescriptionFields.some((k) => body[k] !== undefined)) {
+    const changedPrescriptionFields = prescriptionFields.filter(
+      (key) =>
+        data[key] !== undefined &&
+        data[key] !== existing[key as keyof typeof existing],
+    );
+    if (changedPrescriptionFields.length) {
       // An explicit edit establishes a new base; measured results stay separate.
       const base = {
         ...baseWorkout(existing),
         ...Object.fromEntries(
-          prescriptionFields
-            .filter((k) => data[k] !== undefined)
-            .map((k) => [k === "notes" ? "description" : k, data[k]]),
+          changedPrescriptionFields.map((k) => [
+            k === "notes" ? "description" : k,
+            data[k],
+          ]),
         ),
       };
+      // A free-form prescription edit supersedes the selected protocol. A
+      // title/time edit alone retains its exact set and recovery structure.
+      if (
+        base.protocol &&
+        ["durationMin", "intensity", "sport", "notes"].some((key) =>
+          changedPrescriptionFields.includes(key),
+        )
+      ) {
+        delete base.protocol;
+        base.type = ["strength", "mobility", "hyrox", "boxing"].includes(
+          base.sport,
+        )
+          ? base.sport
+          : base.intensity === "z1"
+            ? "recovery"
+            : base.intensity === "z2"
+              ? "endurance"
+              : "interval";
+      }
       data.type = base.type;
       data.durationMin = base.durationMin;
       data.intensity = base.intensity;

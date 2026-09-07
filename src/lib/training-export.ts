@@ -251,6 +251,7 @@ export function buildTrainingBundle(data: TrainingExportData, created = new Date
             type: String(session.type || "endurance"),
             prescription:
               typeof session.prescription === "string" ? session.prescription : null,
+            originalPlan: typeof session.originalPlan === "string" ? session.originalPlan : null,
             lthr: data.profile?.lthr,
             ftp: data.profile?.ftp,
           },

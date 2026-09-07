@@ -1,10 +1,12 @@
 // JasMiamiMethod — AI Coach (Gemini Flash via Google AI Studio, direct API).
-// Caches one briefing per user/day and serves instantly; generation runs fire-and-forget
+// Caches a briefing for the current athlete context and serves instantly; generation runs fire-and-forget
 // in the background and backfills the cache. (ponytail: in-memory Map — survives across
 // requests in one server process; swap for a DB row if you go multi-instance.)
 
+import { createHash } from "node:crypto";
+import { protocolCoachContext } from "./protocols";
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash"; // 3.6 = latest on generateContent; 3.7 needs the new Interactions API
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 interface Briefing {
   mode: "gemini" | "fallback";
@@ -83,7 +85,16 @@ const FALLBACK: Record<string, { green: string; amber: string; red: string; swap
   },
 };
 
-function fallbackBriefing(c: CoachContext): Briefing {
+export function fallbackBriefing(c: CoachContext): Briefing {
+  if (c.profile?.injured) return { mode: "fallback", headline: "RECOVERY REVIEW", briefing: "The injury flag is active. Training is paused pending a recovery review.", adaptation: "Use the current rest prescription and review symptoms with your clinician or coach.", sources: [] };
+  const assigned = c.todaySession?.prescription;
+  if (assigned) {
+    try {
+      const p = typeof assigned === "string" ? JSON.parse(assigned) : assigned;
+      return { mode: "fallback", headline: `${String(p.verdict || "planned").toUpperCase()} · ${p.title}`, briefing: "Your saved prescription is the current training instruction. Complete today's check-in before starting.", adaptation: p.detail?.main || "Review the session in Today.", sources: p.sources || [] };
+    } catch {}
+  }
+  if (!c.readiness) return { mode: "fallback", headline: "CHECK IN", briefing: "Current recovery data is insufficient for a readiness judgment.", adaptation: c.todaySession ? `Review “${c.todaySession.title}” and complete today's check-in; the plan has not been increased.` : "No session is prescribed. Review your plan or take the planned rest day.", sources: [] };
   const L = FALLBACK[c.language || "en"] || FALLBACK.en;
   const r = c.readiness?.score ?? 60;
   const state = r >= 75 ? "GREEN" : r >= 55 ? "AMBER" : "RED";
@@ -105,8 +116,9 @@ function buildPrompt(c: CoachContext): string {
   const m = c.latestMetric || {};
   const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", ht: "Haitian Creole", fr: "French", ru: "Russian" };
   const langName = LANG_NAMES[c.language || "es"] || "English";
-  return `You are JASAI, a science-backed triathlon coach for ${c.name || "this athlete"}.
+  return `You are JASAI, a research-informed training coach for ${c.name || "this athlete"}.
 Athlete profile: sex=${p.sex || "n/a"}, age=${p.birthYear ? new Date().getFullYear() - p.birthYear : "n/a"}, experience=${p.experience || "n/a"}, goal=${p.goal || "n/a"}.
+Injury flag: ${p.injured ? "active: training paused" : "not recorded"}.
 Physiology: VO2max=${p.vo2max ?? "n/a"}, LTHR=${p.lthr ?? "n/a"}, FTP=${p.ftp ?? "n/a"}.
 Readiness score (0-100): ${c.readiness?.score ?? "n/a"} — ${c.readiness?.advice ?? "no HRV data"}.
 Latest morning metric: HRV=${m.hrv ?? "n/a"} ms, restingHR=${m.restingHr ?? m.rhr ?? "n/a"}, sleep=${m.sleepHours ?? "n/a"} h.
@@ -116,12 +128,13 @@ Blood flags: ${c.bloodFlags.length ? c.bloodFlags.join("; ") : "none on file"}.
 DNA highlights: ${c.dnaHighlights.length ? c.dnaHighlights.join("; ") : "none on file"}.
 Athlete history (analyze this BEFORE advising):
 ${c.historyDigest || "no history yet"}
+${protocolCoachContext(c.todaySession ? [c.todaySession] : [])}
 
-Coaching rules: use sports-science reasoning (Seiler polarized distribution, Plews/Buchheit HRV baselines, Foster session-RPE load) on the data above. If HRV/sleep/stress trend down for 2+ days, recommend recovery; if adherence is below 60%, scale the load down rather than demanding more; if benchmarks are improving and readiness is high, encourage progression. Reference the trend when it matters (e.g. "third low-energy morning this week"). Never invent data not shown above.
+Coaching rules: use only current observations to judge readiness. Missing or stale HRV means uncertainty, not a red day. Review symptoms and performance with recovery trends; a single wearable score is not a diagnosis. Completion alone is not permission to increase training. An injury flag or saved rest decision takes precedence. Never invent measurements or sources. Do not override the saved prescription; propose changes through the reviewed protocol workflow.
 
 Language: respond entirely in ${langName}.
 
-Respond in strict JSON: {"headline": "<GREEN|AMBER|RED> DAY — short tag", "briefing": "<2-3 sentences, coach voice, Miami-flavored, evidence-based>", "adaptation": "<one concrete change to today's training based on readiness>", "sources": ["<author year>", ...]}.
+Respond in strict JSON: {"headline": "<GREEN|AMBER|RED|CHECK IN> — short tag", "briefing": "<2-3 sentences>", "adaptation": "<explain the saved prescription or the next review step>", "sources": ["<verified author year>", ...]}.
 Keep it tight. No markdown. Under 90 words total.`;
 }
 
@@ -161,21 +174,22 @@ function geminiBriefing(c: CoachContext): Promise<Briefing> {
 // Otherwise returns fallback immediately and kicks off background JASAI generation
 // that backfills the cache (so the next load shows the real model output).
 export function getCoachBriefing(userId: string, c: CoachContext): Briefing {
-  const tk = todayKey();
+  const tk = todayKey() + createHash("sha256").update(JSON.stringify(c)).digest("hex");
   const hit = cache.get(userId);
   if (hit && hit.date === tk) return hit.briefing;
 
-  if (!pending.has(userId)) {
-    pending.add(userId);
+  const pendingKey = userId + tk;
+  if (!pending.has(pendingKey)) {
+    pending.add(pendingKey);
     geminiBriefing(c).then((b) => {
       // ponytail: only cache a real model result. Caching fallback would pin the
       // user to rule-based output all day after a single 429/timeout — wrong.
       if (b.mode === "gemini") {
         cache.set(userId, { date: tk, briefing: b });
       }
-      pending.delete(userId);
-    }).catch(() => pending.delete(userId));
+      pending.delete(pendingKey);
+    }).catch(() => pending.delete(pendingKey));
   }
-  // serve anything we already have (stale from yesterday) or fallback
-  return hit?.briefing ?? fallbackBriefing(c);
+  // Changed athlete data must not reuse advice from an older context.
+  return fallbackBriefing(c);
 }

@@ -3,6 +3,9 @@ export interface WorkoutStep {
   seconds: number;
   zone: string;
   phase: "warmup" | "active" | "recovery" | "cooldown";
+  reps?: number;
+  note?: string;
+  target?: { type: "open" | "power" | "heartRate"; low?: number; high?: number };
 }
 export function structuredSteps(
   minutes: number,

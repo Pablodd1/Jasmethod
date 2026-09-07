@@ -1,5 +1,6 @@
 import { Encoder, Profile } from "@garmin/fitsdk";
 import { structuredSteps, type WorkoutStep } from "./prescription";
+import { buildProtocol, protocolFromWorkout } from "./protocols";
 
 export function workoutToFitSpec(
   w: {
@@ -10,6 +11,7 @@ export function workoutToFitSpec(
     ftp?: number | null;
     type?: string;
     prescription?: string | null;
+    originalPlan?: string | null;
   },
   detail?: { zone?: string | null },
 ) {
@@ -23,6 +25,10 @@ export function workoutToFitSpec(
       const saved = JSON.parse(w.prescription);
       if (Array.isArray(saved.steps)) steps = saved.steps;
     } catch {}
+  }
+  else {
+    const protocol = protocolFromWorkout(w);
+    if (protocol) steps = buildProtocol(protocol, w.durationMin).steps;
   }
   return { ...w, steps };
 }
@@ -52,8 +58,11 @@ export function buildFitWorkout(
   } as any);
   spec.steps.forEach((step, i) => {
     const zone = Math.max(1, Math.min(7, Number(step.zone.slice(1)) || 2));
-    const power = spec.sport === "bike" && spec.ftp;
-    const high = power
+    const power = step.target ? step.target.type === "power" : spec.sport === "bike" && spec.ftp;
+    const heartRate = step.target ? step.target.type === "heartRate" : spec.lthr;
+    const high = step.target
+      ? step.target.high == null ? undefined : step.target.high + (power ? 1000 : 100)
+      : power
       ? Math.round(
           spec.ftp! * [0, 0.55, 0.75, 0.9, 1.05, 1.2, 1.5, 1.5][zone],
         ) + 1000
@@ -65,14 +74,14 @@ export function buildFitWorkout(
     encoder.onMesg(Profile.MesgNum.WORKOUT_STEP, {
       messageIndex: i,
       wktStepName: step.name,
-      durationType: "time",
-      durationValue: step.seconds * 1000,
+      durationType: step.reps ? "reps" : "time",
+      durationValue: step.reps ?? step.seconds * 1000,
       intensity: step.phase,
-      targetType: power ? "power" : spec.lthr ? "heartRate" : "open",
+      targetType: power ? "power" : heartRate ? "heartRate" : "open",
       targetValue: 0,
       ...(high
         ? {
-            customTargetValueLow: power ? 1000 : 100,
+            customTargetValueLow: (step.target?.low || 0) + (power ? 1000 : 100),
             customTargetValueHigh: high,
           }
         : {}),
