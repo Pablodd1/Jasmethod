@@ -5,6 +5,7 @@
 
 import { createHash } from "node:crypto";
 import { protocolCoachContext } from "./protocols";
+import { geminiAnswer, geminiGenerationConfig } from "./gemini-response";
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
@@ -149,22 +150,23 @@ function geminiBriefing(c: CoachContext): Promise<Briefing> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: buildPrompt(c) }] }],
-        // NOTE: no `temperature` — Gemini 3.x flash is a thinking model and rejects it.
-        generationConfig: { maxOutputTokens: 1024, responseMimeType: "application/json" },
+        generationConfig: { ...geminiGenerationConfig(GEMINI_MODEL), responseMimeType: "application/json" },
       }),
       signal: ctrl.signal,
     }).then(async (res) => {
       clearTimeout(t);
       if (!res.ok) { console.error("[coach] Gemini HTTP", res.status); return resolve(fallbackBriefing(c)); }
       const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const text = geminiAnswer(data);
+      if (!text) return resolve(fallbackBriefing(c));
       const parsed = JSON.parse(text);
+      if (!parsed || ![parsed.headline, parsed.briefing, parsed.adaptation].every((value) => typeof value === "string" && value.trim())) return resolve(fallbackBriefing(c));
       resolve({
         mode: "gemini",
         headline: parsed.headline || fallbackBriefing(c).headline,
         briefing: parsed.briefing || fallbackBriefing(c).briefing,
         adaptation: parsed.adaptation || fallbackBriefing(c).adaptation,
-        sources: Array.isArray(parsed.sources) ? parsed.sources : [],
+        sources: Array.isArray(parsed.sources) ? parsed.sources.filter((source: unknown) => typeof source === "string") : [],
       });
     }).catch((e) => { clearTimeout(t); console.error("[coach] Gemini error:", String(e?.message || e)); resolve(fallbackBriefing(c)); });
   });

@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { buildZoneTable } from "@/lib/science";
 import { dayBounds } from "@/lib/dates";
 import { protocolCoachContext } from "@/lib/protocols";
+import { geminiAnswer, geminiGenerationConfig } from "@/lib/gemini-response";
 
 export const dynamic = "force-dynamic";
 
@@ -54,13 +55,14 @@ Rules: use the athlete's real numbers when relevant; be concise (max 120 words);
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: `${system}\n${grounding}\n\nQuestion: ${q}` }] }],
-          generationConfig: { maxOutputTokens: 400 },
+          generationConfig: geminiGenerationConfig(model),
         }),
         signal: AbortSignal.timeout(20000),
       }).catch(() => null);
       if (res && res.ok) {
         const data = await res.json();
-        answer = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+        answer = geminiAnswer(data);
+        if (!answer) console.warn("[assistant] No complete Gemini answer", data?.candidates?.[0]?.finishReason || "empty");
       } else {
         answer = "";
       }
