@@ -153,6 +153,12 @@ export default function AthletePage({ params }: { params: { id: string } }) {
                   </option>
                 ))}
               </select>
+              <a
+                className="btn-secondary"
+                href={`/api/training/export?athleteId=${encodeURIComponent(params.id)}`}
+              >
+                Download complete training export
+              </a>
             </div>
             {tab === "Overview" && (
               <>

@@ -33,6 +33,18 @@ once for the whole platform.
 | **Strava** | strava.com/settings/api | Needs YOUR Strava subscription ($79.99/yr; student $39.99; medical 25% off). Standard tier = 10 athletes; apply beyond. Athletes themselves pay nothing, free accounts work. |
 | **Oura** | cloud.ouraring.com | Free dev account. Redirect `…/api/connectors/oura/callback`. |
 | **Google Calendar** | console.cloud.google.com (Calendar API + OAuth client) | Free. Redirect `…/api/connectors/google-cal/callback`. |
+
+For Google Calendar, enable the Google Calendar API, create a **Web application**
+OAuth client, and register this exact authorized redirect URI:
+`https://jasmiamimethod.vercel.app/api/connectors/google-cal/callback`. Add its
+client ID and secret to Vercel Production as `GOOGLE_CLIENT_ID` and
+`GOOGLE_CLIENT_SECRET`, then redeploy. Scheme, hostname, path, and trailing slash
+must match exactly.
+
+WHOOP's generated OAuth `state` value is eight characters, as required by its
+developer documentation. After either provider returns, the Connections page
+runs one real sync and reports whether the token was verified and how many rows
+were imported.
 | **Garmin (direct)** | developer.garmin.com | ❌ Program paused (no reopening date). Use: Garmin CSV/TCX/FIT upload (live today) or the Strava bridge once Strava is active. |
 | **COROS (direct)** | email api@coros.com | Free but manual approval. Otherwise Strava bridge / file upload. |
 

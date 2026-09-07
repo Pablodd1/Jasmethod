@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Plug,
   Upload,
@@ -23,6 +23,7 @@ export default function ConnectorsPage() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const handledCallback = useRef(false);
   // Real-time sync progress: devices sync ONE per request so the bar moves
   // truthfully (no fake animation). Athlete sees per-device status + elapsed.
   const [sync, setSync] = useState<{
@@ -149,7 +150,51 @@ export default function ConnectorsPage() {
     setLoading(false);
   }
   useEffect(() => {
-    if (user) load();
+    if (!user) return;
+    load();
+    if (handledCallback.current) return;
+    handledCallback.current = true;
+    const query = new URLSearchParams(window.location.search);
+    const error = query.get("error");
+    const ok = query.get("ok");
+    if (error) {
+      const messages: Record<string, string> = {
+        session_expired: "Your login expired during authorization. Sign in and connect again.",
+        invalid_state: "The authorization response could not be verified. Connect again.",
+        authorization_declined: "Authorization was cancelled or declined.",
+        connection_failed: "Authorization returned, but the provider connection could not be saved. Connect again.",
+      };
+      setErr(messages[error] || "The provider connection failed.");
+      window.history.replaceState({}, "", "/connectors");
+      return;
+    }
+    if (!ok) return;
+    const provider = ok === "google-cal" ? "google_cal" : ok;
+    const name = provider === "google_cal" ? "Google Calendar" : provider === "whoop" ? "WHOOP" : provider;
+    setMsg(`${name} authorized. Verifying the connection and importing data…`);
+    setSyncing(true);
+    fetch("/api/connectors/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider }),
+    })
+      .then(async (res) => {
+        const body = await res.json();
+        const result = body.synced?.[0];
+        if (!res.ok || !result?.ok)
+          throw new Error(result?.error || body.error || "Verification failed");
+        setErr("");
+        setMsg(`${name} connected and verified. ${result.imported || 0} records imported.`);
+      })
+      .catch((e) => {
+        setMsg(`${name} authorization was saved.`);
+        setErr(`${name} data check failed: ${e.message}`);
+      })
+      .finally(() => {
+        setSyncing(false);
+        load();
+        window.history.replaceState({}, "", "/connectors");
+      });
   }, [user]);
 
   async function uploadImport(source: string) {
@@ -553,8 +598,7 @@ export default function ConnectorsPage() {
                           {lang === "es"
                             ? "(Ajuste del servidor: "
                             : "(Server setting: "}
-                          {p.id.toUpperCase()}_CLIENT_ID / {p.id.toUpperCase()}
-                          _CLIENT_SECRET)
+                          {(p.setupEnv || []).join(" / ")})
                         </div>
                       </div>
                     ))}

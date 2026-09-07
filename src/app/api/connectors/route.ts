@@ -51,6 +51,7 @@ export async function GET() {
       name: p.name,
       description: p.description,
       configured: p.id === "whoop" || configured,
+      setupEnv: [`${p.env}_CLIENT_ID`, `${p.env}_CLIENT_SECRET`],
       method: configured
         ? "oauth"
         : p.id === "whoop"
