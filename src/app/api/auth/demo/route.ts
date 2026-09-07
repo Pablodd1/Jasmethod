@@ -92,14 +92,6 @@ const DEMO_ACCOUNTS: Record<
 };
 
 export async function POST(req: Request) {
-  if (
-    process.env.NODE_ENV === "production" ||
-    process.env.ENABLE_LOCAL_DEMO !== "1"
-  )
-    return NextResponse.json(
-      { error: "Demo login is disabled. Sign in with your own account." },
-      { status: 403 },
-    );
   try {
     const body = await req.json();
     const email = String(body?.email || "")

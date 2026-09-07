@@ -31,7 +31,7 @@ The dashboard loads AI commentary independently of core data and requests a boun
 - Syncs have a database lease, bounded network timeouts and visible failures. Safe provider reads retry transient failures once. Direct Garmin/COROS integration is not offered; supported files remain available.
 - WHOOP webhooks verify their signed body and timestamp. Strava callbacks require a configured secret in the registered callback URL; an optional subscription ID further limits requests.
 - Cron routes fail closed without `CRON_SECRET`. Reminder delivery respects enabled channels, records failures and suppresses duplicate daily delivery attempts. Missing SMTP does not count as a sent email. An interrupted pending delivery is not automatically replayed, because the external delivery outcome may be unknown.
-- Public one-tap tester buttons were removed. Demo login/seed require explicit local opt-in and cannot run in production. Existing accounts with shared demo passwords still need password rotation before real use; the admin-grant script refuses that shared password.
+- Free one-tap access remains available for the eight original whitelisted athlete accounts. Existing accounts are reused without changing their profile, plans, workouts, metrics or history; a button cannot bypass a password that the athlete has changed. The optional data seed still requires explicit local opt-in.
 
 Provider behavior was checked against [Garmin FIT SDK](https://developer.garmin.com/fit/), [Google Calendar events](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert), [Oura API v2](https://cloud.ouraring.com/v2/docs) and [WHOOP webhooks](https://developer.whoop.com/docs/developing/webhooks/). Provider tests use fixtures. Live OAuth consent, token refresh, real watch import and external delivery still require acceptance tests with configured accounts.
 
@@ -39,11 +39,11 @@ Provider behavior was checked against [Garmin FIT SDK](https://developer.garmin.
 
 1. Configure the deployment's server environment: `DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_APP_URL`, and a strong `TOKEN_ENCRYPTION_KEY`. Add provider credentials, `CRON_SECRET` and delivery settings only for services you intend to enable. Keep secrets in the hosting platform's environment settings.
 2. Back up the existing database. Apply the additive schema migration with `npm run db:deploy`, using the direct database connection. Build with `npm ci` and `npm run build`; start with `npm start`. Builds no longer mutate a database automatically, so the migration command must be part of the release procedure.
-3. Create Jasmel's account through ordinary registration if it does not already exist. Use a unique password. Run `npm run admin:grant -- exact-account-email@example.com` against the intended deployment database. This grants the existing account and writes an operator audit entry; it does not infer an owner from a name or email domain.
+3. The deployment migration promotes an existing `jasmel@jasmiamimethod.com` or `jasmelacosta@gmail.com` account to full administrator without changing its athlete data. Jasmel signs in with the account's normal password; administrator access is deliberately absent from the public one-tap buttons. If neither account exists when the migration runs, create the account with a unique password and run `npm run admin:grant -- exact-account-email@example.com`.
 4. Sign in normally and open `/admin`. Confirm the expected athlete list, save a controlled profile/session change and verify its history entry.
 5. Register new OAuth callback URLs. For Strava webhook delivery, register `/api/connectors/strava/webhook?key=<STRAVA_WEBHOOK_SECRET>` and configure the verification token. Reconnect accounts whose scopes changed, then test one sync per provider.
 
-The live URL and exact Jasmel email were not supplied during implementation. No live roles, production database, external calendars or deployments were changed.
+No production database, external calendar or deployment was changed directly by this local implementation.
 
 ## Verification
 

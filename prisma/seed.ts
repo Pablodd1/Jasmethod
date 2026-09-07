@@ -342,14 +342,18 @@ async function seedPersona(p: Persona) {
       email: p.email,
       passwordHash: hashPassword(PASSWORD),
       name: p.name,
-      role: "athlete",
+      role: p.email === "jasmel@jasmiamimethod.com" ? "admin" : "athlete",
       avatar: p.avatar,
       profile: { create: p.profile },
       motivation: {
         create: { dailyQuote: true, emailDigest: false, style: p.style },
       },
     },
-    update: { name: p.name, avatar: p.avatar },
+    update: {
+      name: p.name,
+      avatar: p.avatar,
+      ...(p.email === "jasmel@jasmiamimethod.com" ? { role: "admin" } : {}),
+    },
   });
 
   const start = new Date();
