@@ -16,6 +16,7 @@ import {
   Save,
   X,
   Swords,
+  Download,
 } from "lucide-react";
 import { workoutDetail } from "@/lib/workout-view";
 import { dateKey } from "@/lib/dates";
@@ -206,11 +207,22 @@ export default function TrainingPage() {
               by hand.
             </p>
           </div>
-          <span className="chip chip-z2">
-            <Layers className="w-3.5 h-3.5" /> {completedCount}/{totalCount}{" "}
-            sessions
-          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <a href="/api/training/export" className="btn-secondary">
+              <Download className="w-4 h-4" /> Download all training
+            </a>
+            <span className="chip chip-z2">
+              <Layers className="w-3.5 h-3.5" /> {completedCount}/{totalCount}{" "}
+              sessions
+            </span>
+          </div>
         </div>
+
+        <p className="text-xs text-slate-500 -mt-4">
+          The ZIP includes your complete training history and analytics data as
+          CSV, the active plan as an importable calendar, and structured FIT
+          files for compatible Garmin/COROS workflows.
+        </p>
 
         {/* Generator */}
         <div className="card">

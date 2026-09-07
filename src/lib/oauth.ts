@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
-import { randomBytes, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "./auth";
 import { prisma } from "./db";
 import { encryptSecret } from "./crypto";
 import * as api from "./importers";
+import { createOAuthState, validOAuthState } from "./oauth-state";
 
 const providers = {
   strava: {
@@ -53,7 +53,7 @@ export async function authorize(req: Request, provider: string) {
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
   try {
     const { p, cfg } = config(provider),
-      state = randomBytes(32).toString("hex");
+      state = createOAuthState(provider);
     cookies().set(
       `jmm_oauth_${provider}`,
       JSON.stringify({ state, userId: user.id }),
@@ -99,9 +99,7 @@ export async function callback(req: Request, provider: string) {
   if (
     !expected ||
     expected.userId !== user.id ||
-    !/^([a-f0-9]{64})$/.test(state) ||
-    state.length !== expected.state?.length ||
-    !timingSafeEqual(Buffer.from(state), Buffer.from(expected.state))
+    !validOAuthState(state, expected.state, provider)
   )
     return redirect("invalid_state");
   const code = u.searchParams.get("code");
@@ -146,7 +144,10 @@ export async function callback(req: Request, provider: string) {
     });
     return NextResponse.redirect(`${base}/connectors?ok=${provider}&pending=1`);
   } catch (e) {
-    console.error("OAuth callback failed for", provider);
+    const reason = String(e instanceof Error ? e.message : e)
+      .replace(/Bearer\s+\S+/gi, "[redacted]")
+      .slice(0, 250);
+    console.error("OAuth callback failed", { provider, reason });
     return redirect("connection_failed");
   }
 }

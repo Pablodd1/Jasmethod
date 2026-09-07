@@ -44,7 +44,7 @@ Current state: a webapp with locally tested core workflows. See the release guid
 |---|---|---|
 | Strava | Official OAuth2 (auth/exchange/refresh/activities) | ✅ Working (needs STRAVA_CLIENT_ID/SECRET in env) |
 | Garmin | **New** official Garmin Connect OAuth2 + TCX manual fallback | ✅ Code complete (needs GARMIN_CLIENT_ID/SECRET) |
-| Google Calendar (Gmail) | **New** OAuth2 read-only — imports meetings as appointments; coach uses busy time | ✅ Code complete (needs GOOGLE_CLIENT_ID/SECRET) |
+| Google Calendar (Gmail) | OAuth2 — imports busy time and publishes planned workouts | ✅ Code complete (needs GOOGLE_CLIENT_ID/SECRET) |
 | Whoop | CSV upload parser | ✅ Working (manual) |
 | Oura Ring | API v2 — provider scaffolded | ⚠️ Needs OURA_CLIENT_ID/SECRET |
 | Apple Health | export.xml parser | ✅ Working (manual) |
@@ -65,7 +65,7 @@ Current state: a webapp with locally tested core workflows. See the release guid
 
 | Requested | Built | Status |
 |---|---|---|
-| Integrate with Google Calendar so users see other activities/meetings | Google Calendar OAuth (read-only), imports 14 days of events as `appointment` type | ✅ Code complete (needs GOOGLE_CLIENT_ID/SECRET) |
+| Integrate with Google Calendar so users see other activities/meetings | Google Calendar OAuth imports events and publishes planned workouts | ✅ Code complete (needs GOOGLE_CLIENT_ID/SECRET) |
 | Coach makes training decisions based on availability | Check-in computes busy count + hours today → `busyNote` ("4 meetings ~5h busy. Medium day — compact session fits"); dashboard shows amber calendar card with today's commitments; plan days are draggable in /calendar | ✅ Complete |
 
 ### 2.6 Nutrition, ergogenics & stimulation (latest)
@@ -146,6 +146,7 @@ Current state: a webapp with locally tested core workflows. See the release guid
 | `/api/connectors/strava/callback` | GET | Strava OAuth → token + import |
 | `/api/connectors/garmin/callback` | GET | Garmin OAuth → token + import (new) |
 | `/api/connectors/google-cal/callback` | GET | Google Calendar OAuth → events as appointments (new) |
+| `/api/training/export` | GET | Authenticated ZIP: full history/metrics CSV, ICS plan, structured FIT files |
 | `/api/import` | POST | manual file uploads (TCX/Apple/Whoop) |
 | `/api/coach` | GET | Gemini daily briefing with sources |
 
