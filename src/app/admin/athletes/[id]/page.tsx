@@ -125,6 +125,7 @@ export default function AthletePage({ params }: { params: { id: string } }) {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Link href={`/protocols?athleteId=${encodeURIComponent(params.id)}`} className="btn-secondary">Training protocols</Link>
               {[
                 "Overview",
                 "Training",

@@ -1,38 +1,33 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { hrvReadiness } from "@/lib/science";
+import { currentHrvReadiness } from "@/lib/coach-readiness";
+import { dayBounds, addDaysKey, dateKey } from "@/lib/dates";
+import { prescribeToday } from "@/lib/adaptive";
+import { baseWorkout } from "@/lib/prescription";
 import { getCoachBriefing } from "@/lib/coach";
 
 // GET /api/coach — gathers the athlete's day and asks JASAI for a briefing
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const now = new Date(), { start, end } = dayBounds(user.timezone, now);
 
   const profile = await prisma.athleteProfile.findUnique({ where: { userId: user.id } });
   const [metrics, plans, blood, dna, todayWorkouts, checkins7, workouts4w, benchmarks] = await Promise.all([
-    prisma.dailyMetrics.findMany({ where: { userId: user.id }, orderBy: { date: "asc" }, take: 14 }),
-    prisma.trainingPlan.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 1 }),
+    prisma.dailyMetrics.findMany({ where: { userId: user.id, date: { gte: new Date(+now - 28 * 86400000), lt: end } }, orderBy: { date: "desc" }, take: 28 }),
+    prisma.trainingPlan.findMany({ where: { userId: user.id, status: "active" }, orderBy: { createdAt: "desc" }, take: 1 }),
     prisma.bloodResult.findMany({ where: { panel: { user: { id: user.id } } } }),
     prisma.geneticVariant.findMany({ where: { dnaResult: { user: { id: user.id } } } }),
-    prisma.workout.findMany({ where: { userId: user.id, date: { gte: new Date(new Date().toISOString().slice(0, 10)) } }, take: 3 }),
+    prisma.workout.findMany({ where: { userId: user.id, planned: true, date: { gte: start, lt: end } }, include: { planDay: { select: { dayOff: true } } }, orderBy: [{ completed: "asc" }, { startTime: "asc" }], take: 3 }),
     // Long-term memory: last 7 check-ins, 4 weeks of training, benchmark history
-    prisma.dailyCheckin.findMany({ where: { userId: user.id }, orderBy: { date: "desc" }, take: 7 }),
-    prisma.workout.findMany({ where: { userId: user.id, date: { gte: new Date(Date.now() - 28 * 86400000) } }, orderBy: { date: "asc" } }),
+    prisma.dailyCheckin.findMany({ where: { userId: user.id, date: { lt: end } }, orderBy: { date: "desc" }, take: 7 }),
+    prisma.workout.findMany({ where: { userId: user.id, date: { gte: new Date(+now - 28 * 86400000), lte: now } }, orderBy: { date: "asc" } }),
     prisma.benchmarkTest.findMany({ where: { userId: user.id, completed: true }, orderBy: { date: "asc" } }),
   ]);
 
-  // Readiness from last 7 HRV
-  let readiness: { score: number; advice: string } | null = null;
-  const withHrv = metrics.filter((m) => m.hrv).slice(-7);
-  if (withHrv.length >= 3) {
-    const latest = withHrv[withHrv.length - 1];
-    const baseline = withHrv.slice(0, -1).map((m) => m.hrv!);
-    const mean = baseline.reduce((a, b) => a + b, 0) / baseline.length;
-    const sd = Math.sqrt(baseline.reduce((a, b) => a + (b - mean) ** 2, 0) / baseline.length);
-    const r = hrvReadiness(latest.hrv!, baseline, sd);
-    readiness = { score: r.score, advice: r.advice };
-  }
+  const readiness = currentHrvReadiness(metrics, user.timezone, now);
+  const withHrv = metrics.filter((m) => m.hrv && dateKey(m.date, user.timezone) === dateKey(now, user.timezone));
 
   // Blood flags: any value outside reference
   const bloodFlags: string[] = [];
@@ -66,17 +61,16 @@ export async function GET() {
   // 4-week completed load per calendar week (Mon-anchored).
   const weekBuckets = new Map<string, { minutes: number; sessions: number }>();
   for (const w of workouts4w) {
-    if (!w.completed) continue;
-    const d = new Date(w.date);
-    const monday = new Date(d); monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    const key = monday.toISOString().slice(0, 10);
+    if (!w.completed || w.matchedPlanId) continue;
+    const localKey = dateKey(w.date, user.timezone);
+    const key = addDaysKey(localKey, -((new Date(`${localKey}T12:00Z`).getUTCDay() + 6) % 7));
     const b = weekBuckets.get(key) || { minutes: 0, sessions: 0 };
-    b.minutes += w.durationMin; b.sessions += 1;
+    b.minutes += w.actualDurationMin ?? w.durationMin; b.sessions += 1;
     weekBuckets.set(key, b);
   }
   const loadTrend = Array.from(weekBuckets.entries()).sort().map(([wk, b]) => `wk${wk.slice(5)}: ${b.sessions} sessions/${Math.round(b.minutes / 60)}h`);
   const planned4w = workouts4w.filter((w) => w.planned).length;
-  const done4w = workouts4w.filter((w) => w.completed).length;
+  const done4w = workouts4w.filter((w) => w.planned && (w.completed || w.matchedPlanId) && !["partial", "skipped"].includes(w.feedbackStatus || "")).length;
   const adherence = planned4w > 0 ? Math.round((done4w / planned4w) * 100) : null;
   // Benchmark progression per test type (first -> latest, direction-aware).
   const byType = new Map<string, number[]>();
@@ -104,7 +98,7 @@ export async function GET() {
     zones: null,
     readiness,
     latestMetric: withHrv[withHrv.length - 1] || null,
-    todaySession: todayWorkouts[0] || null,
+    todaySession: todayWorkouts[0] ? { ...todayWorkouts[0], prescription: todayWorkouts[0].planDay?.dayOff || user.profile?.injured ? JSON.stringify(prescribeToday({ session: baseWorkout(todayWorkouts[0]), adaptation: { verdict: "rest", durationFactor: 0, intensityCap: "z1" } })) : todayWorkouts[0].prescription } : null,
     planName: plans[0]?.name || null,
     bloodFlags,
     dnaHighlights: dnaHighlights.slice(0, 4),

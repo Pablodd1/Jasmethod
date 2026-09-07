@@ -8,6 +8,7 @@
 // Casa et al. 2000 (hydration/sweat rate), Ely et al. 2007 (heat pacing).
 
 import { heatIndex, altitudeFactor } from "./fitness";
+import { buildProtocol, type ProtocolSpec } from "./protocols";
 
 // ---------- 1. AUTONOMIC NERVOUS SYSTEM RECOVERY (post-workout) ----------
 // Vagal / parasympathetic techniques. Rotate daily (index), layer weekly theme
@@ -1062,6 +1063,7 @@ import {
 } from "./prescription";
 
 export interface DailyPrescription {
+  protocol?: ProtocolSpec;
   intensity: string;
   type: string;
   steps: WorkoutStep[];
@@ -1077,7 +1079,7 @@ export interface DailyPrescription {
     breathing: string;
     study: string;
   };
-  targets: { hr?: string; power?: string; pace?: string; rpe: number };
+  targets: { hr?: string; power?: string; pace?: string; effort?: string; rpe: number };
   scaled: { originalMin: number; factor: number; reason: string };
   sources: string[];
 }
@@ -1092,6 +1094,7 @@ export function prescribeToday(opts: {
     description?: string | null;
     startTime?: string | null;
     variantSeed?: number;
+    protocol?: ProtocolSpec;
   };
   adaptation: { verdict: string; durationFactor: number; intensityCap: string };
   busyNote?: string | null;
@@ -1104,6 +1107,25 @@ export function prescribeToday(opts: {
 }): DailyPrescription {
   const { session, adaptation, profile } = opts;
   const rest = adaptation.verdict === "rest" || session.durationMin <= 0;
+  if (session.protocol && !rest) {
+    const budget = Math.min(session.durationMin * Math.min(1, adaptation.durationFactor), (opts.busyHrs || 0) >= 6 ? 25 : Infinity);
+    const capped = Number(adaptation.intensityCap.slice(1)) < Number((session.intensity || "z2").slice(1));
+    const pausePower = ["speed", "power", "anaerobic-capacity"].includes(session.protocol.id) && adaptation.verdict !== "full";
+    if (!capped && !pausePower && adaptation.verdict !== "easy") {
+      try {
+        const p = buildProtocol(session.protocol, budget);
+        return { ...p, title: session.title, startTime: session.startTime, verdict: adaptation.verdict, scaled: { ...p.scaled, originalMin: session.durationMin, factor: p.durationMin / session.durationMin, reason: `Readiness: ${adaptation.verdict}. Whole bouts retained with full recovery.` } };
+      } catch { /* The minimum complete dose does not fit; prescribe easy work. */ }
+    }
+    const easy = prescribeToday({
+      ...opts,
+      session: { ...session, protocol: undefined, sport: session.sport === "strength" ? "mobility" : session.sport, type: "recovery", title: "Easy movement · protocol paused" },
+      adaptation: { verdict: "easy", durationFactor: Math.min(1, adaptation.durationFactor), intensityCap: "z1" },
+    });
+    easy.scaled.reason = "The protocol was paused because readiness or available time cannot support its complete work and recovery periods.";
+    easy.detail.main = `${easy.detail.main} Use gentle, comfortable movement; no hard repetitions or loaded power work.`;
+    return easy;
+  }
   const durationMin = rest
     ? 0
     : Math.max(

@@ -60,6 +60,7 @@ export async function POST(req: Request) {
         durationMin: workout.durationMin,
         type: workout.type,
         prescription: workout.prescription,
+        originalPlan: workout.originalPlan,
         lthr: profile?.lthr,
         ftp: profile?.ftp,
       },

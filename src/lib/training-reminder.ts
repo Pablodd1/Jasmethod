@@ -41,7 +41,7 @@ export async function trainingReminder(
     lines.push(
       `${p.title}: ${p.durationMin} min`,
       ...p.steps.map(
-        (s: any) => `${s.name}: ${s.seconds / 60} min, ${s.zone.toUpperCase()}`,
+        (s: any) => `${s.name}: ${s.reps ? `${s.reps} reps` : `${s.seconds / 60} min`}${s.target?.type === "open" ? "" : `, ${s.zone.toUpperCase()}`}`,
       ),
     );
   }

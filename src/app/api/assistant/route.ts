@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { buildZoneTable } from "@/lib/science";
+import { dayBounds } from "@/lib/dates";
+import { protocolCoachContext } from "@/lib/protocols";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +19,11 @@ export async function POST(req: Request) {
     const q = String(question || "").trim().slice(0, 500);
     if (!q) return NextResponse.json({ error: "Ask a question first." }, { status: 400 });
 
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const end = new Date(today); end.setDate(end.getDate() + 1);
+    const { start: today, end } = dayBounds(user.timezone);
     const [profile, todayWorkouts, lastCheckin, plan, race] = await Promise.all([
       prisma.athleteProfile.findUnique({ where: { userId: user.id } }),
       prisma.workout.findMany({ where: { userId: user.id, date: { gte: today, lt: end }, planned: true }, orderBy: { date: "asc" } }),
-      prisma.dailyCheckin.findFirst({ where: { userId: user.id }, orderBy: { date: "desc" } }),
+      prisma.dailyCheckin.findFirst({ where: { userId: user.id, date: { gte: today, lt: end } }, orderBy: { date: "desc" } }),
       prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" } }),
       prisma.race.findFirst({ where: { userId: user.id, date: { gte: today } }, orderBy: [{ priority: "asc" }, { date: "asc" }] }),
     ]);
@@ -42,6 +43,7 @@ You may be asked: how to use the app (Today page = today's session with full pre
 Athlete: ${user.name}. Goal: ${profile?.goal || "unknown"}. Experience: ${profile?.experience || "unknown"}. FTP ${profile?.ftp ?? "?"}W, LTHR ${profile?.lthr ?? "?"}bpm, run threshold ${profile?.runPaceBase ?? "?"}s/km, swim ${profile?.swimPaceBase ?? "?"}s/100m.
 Active plan: ${plan?.name || "none"}. Today's session: ${todayWorkouts[0] ? `${todayWorkouts[0].title} ${todayWorkouts[0].durationMin}min ${todayWorkouts[0].intensity || ""}` : "none"}. Readiness ${readiness || "no check-ins yet"}. Next race: ${race ? `${race.name} ${new Date(race.date).toISOString().slice(0, 10)}` : "none"}.
 Rules: use the athlete's real numbers when relevant; be concise (max 120 words); science-backed, no medical diagnosis (suggest a physician for injury/illness); reply entirely in ${langNames[user.language] || "Spanish"}; plain language, no markdown.`;
+    const grounding = `${protocolCoachContext(todayWorkouts)}\nInjury flag: ${profile?.injured ? "active: pause training" : "not recorded"}. Missing check-ins mean recovery is unknown.`;
 
     const key = process.env.GEMINI_API_KEY;
     const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
@@ -51,9 +53,10 @@ Rules: use the athlete's real numbers when relevant; be concise (max 120 words);
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `${system}\n\nQuestion: ${q}` }] }],
+          contents: [{ parts: [{ text: `${system}\n${grounding}\n\nQuestion: ${q}` }] }],
           generationConfig: { maxOutputTokens: 400 },
         }),
+        signal: AbortSignal.timeout(20000),
       }).catch(() => null);
       if (res && res.ok) {
         const data = await res.json();

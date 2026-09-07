@@ -339,6 +339,227 @@ async function main() {
     overview.analysis.insights.some((x: any) => x.title.includes("partial")),
   );
   assert.equal(await db.workout.count({ where: { userId: b.id } }), 0);
+  // Protocol assignment uses an isolated athlete and existing session identity.
+  const c = await account("athlete", "protocol");
+  await db.athleteProfile.update({
+    where: { userId: c.id },
+    data: { experience: "advanced", birthYear: 1990 },
+  });
+  const protocolPlan = await db.trainingPlan.create({
+    data: {
+      userId: c.id,
+      name: "Protocol integration",
+      level: "advanced",
+      distance: "cycle",
+      weeks: 4,
+      startDate: day.start,
+      raceDate: localDate(addDaysKey(day.key, 28), c.timezone),
+      days: {
+        create: { date: day.start, week: 1, dayOfWeek: 1, focus: "bike" },
+      },
+    },
+    include: { days: true },
+  });
+  const protocolSession = await db.workout.create({
+    data: {
+      userId: c.id,
+      planDayId: protocolPlan.days[0].id,
+      date: day.start,
+      sport: "bike",
+      title: "Protocol slot",
+      type: "endurance",
+      intensity: "z2",
+      durationMin: 60,
+      planned: true,
+    },
+  });
+  const history = await db.workout.create({
+    data: {
+      userId: c.id,
+      date: localDate(addDaysKey(day.key, -4), c.timezone),
+      sport: "run",
+      title: "Retained imported record",
+      type: "endurance",
+      durationMin: 30,
+      completed: true,
+      planned: false,
+      source: "garmin",
+    },
+  });
+  const protocolPath = `/api/protocols?athleteId=${c.id}`;
+  const protocolRequest = {
+    mode: "preview",
+    sessionId: protocolSession.id,
+    protocolId: "aerobic-power",
+  };
+  await request("/api/protocols", "", "GET", undefined, 401);
+  await request(protocolPath, b.cookie, "GET", undefined, 403);
+  await request("/api/protocols", b.cookie, "POST", protocolRequest, 404);
+  const catalog = (await request(protocolPath, admin.cookie)).data;
+  assert.equal(catalog.protocols.length, 8);
+  assert.equal(catalog.athlete.id, c.id);
+  assert.equal(catalog.sessions.length, 1);
+  const preview = (
+    await request(protocolPath, admin.cookie, "POST", protocolRequest)
+  ).data;
+  assert.equal(preview.preview.durationMin, 40);
+  assert.equal(
+    preview.preview.verdict,
+    "planned",
+    "no check-in cannot imply verified readiness",
+  );
+  assert.equal(preview.blocks.length, 0);
+  assert.equal(
+    (await db.workout.findUniqueOrThrow({ where: { id: protocolSession.id } }))
+      .title,
+    "Protocol slot",
+    "preview never changes a workout",
+  );
+  await request(protocolPath, admin.cookie, "POST", {
+    ...protocolRequest,
+    mode: "apply",
+    previewToken: preview.previewToken,
+  });
+  const assigned = await db.workout.findUniqueOrThrow({
+    where: { id: protocolSession.id },
+  });
+  assert.equal(assigned.type, "protocol:aerobic-power");
+  assert.equal(
+    JSON.parse(assigned.prescription!).steps.filter(
+      (s: any) => s.phase === "active",
+    ).length,
+    4,
+  );
+  assert.equal(await db.workout.count({ where: { userId: c.id } }), 2);
+  assert.deepEqual(
+    await db.workout.findUniqueOrThrow({ where: { id: history.id } }),
+    history,
+  );
+  assert.equal(
+    (await request("/api/auth/me", admin.cookie)).data.user.id,
+    admin.id,
+  );
+  await request(
+    protocolPath,
+    admin.cookie,
+    "POST",
+    { ...protocolRequest, mode: "apply", previewToken: preview.previewToken },
+    409,
+  );
+  await request(
+    "/api/workout/regenerate",
+    c.cookie,
+    "POST",
+    { id: protocolSession.id },
+    400,
+  );
+  await request("/api/checkin", c.cookie, "POST", good);
+  const protocolToday = (await request("/api/today", c.cookie)).data
+    .sessions[0];
+  assert.equal(
+    protocolToday.prescription.steps.filter((s: any) => s.phase === "active")
+      .length,
+    4,
+  );
+  const protocolFit = await fetch(
+    `${base}/api/workout/approve?sessionId=${protocolSession.id}`,
+    { method: "POST", headers: { cookie: c.cookie } },
+  );
+  assert.equal(protocolFit.status, 200);
+  const protocolDecoder = new Decoder(
+    Stream.fromByteArray(new Uint8Array(await protocolFit.arrayBuffer())),
+  );
+  assert.equal(protocolDecoder.checkIntegrity(), true);
+  const decodedProtocol = protocolDecoder.read();
+  assert.deepEqual(decodedProtocol.errors, []);
+  assert.equal(
+    (decodedProtocol.messages as any).workoutStepMesgs.filter(
+      (s: any) => s.intensity === "active",
+    ).length,
+    4,
+  );
+  await request("/api/checkin", c.cookie, "POST", low);
+  assert.equal(
+    (await request("/api/today", c.cookie)).data.sessions[0].intensity,
+    "z1",
+  );
+  await request(protocolPath, admin.cookie, "POST", protocolRequest, 400);
+  await request("/api/checkin", c.cookie, "DELETE");
+  assert.equal(
+    (
+      await request("/api/today", c.cookie)
+    ).data.sessions[0].prescription.steps.filter(
+      (s: any) => s.phase === "active",
+    ).length,
+    4,
+  );
+  const beforeRename = await db.workout.findUniqueOrThrow({
+    where: { id: protocolSession.id },
+  });
+  await request(`/api/plan?athleteId=${c.id}`, admin.cookie, "PUT", {
+    sessionId: protocolSession.id,
+    title: "Controlled interval practice",
+    durationMin: beforeRename.durationMin,
+    intensity: beforeRename.intensity,
+    sport: beforeRename.sport,
+    notes: beforeRename.notes,
+    startTime: beforeRename.startTime,
+  });
+  assert.equal(
+    (await request("/api/today", c.cookie)).data.sessions[0].title,
+    "Controlled interval practice",
+  );
+  assert.ok(
+    JSON.parse(
+      (
+        await db.workout.findUniqueOrThrow({
+          where: { id: protocolSession.id },
+        })
+      ).originalPlan!,
+    ).protocol,
+  );
+  await request(`/api/plan?athleteId=${c.id}`, admin.cookie, "PUT", {
+    sessionId: protocolSession.id,
+    durationMin: 35,
+  });
+  const manuallyEdited = await db.workout.findUniqueOrThrow({
+    where: { id: protocolSession.id },
+  });
+  assert.equal(JSON.parse(manuallyEdited.originalPlan!).protocol, undefined);
+  assert.equal(manuallyEdited.type, "interval");
+  await db.planDay.update({
+    where: { id: protocolPlan.days[0].id },
+    data: { dayOff: true },
+  });
+  await request(protocolPath, admin.cookie, "POST", protocolRequest, 400);
+  await db.planDay.update({
+    where: { id: protocolPlan.days[0].id },
+    data: { dayOff: false },
+  });
+  await db.athleteProfile.update({
+    where: { userId: c.id },
+    data: { injured: true },
+  });
+  await request(protocolPath, admin.cookie, "POST", protocolRequest, 400);
+  await db.athleteProfile.update({
+    where: { userId: c.id },
+    data: { injured: false },
+  });
+  await db.workout.update({
+    where: { id: protocolSession.id },
+    data: { completed: true },
+  });
+  await request(protocolPath, admin.cookie, "POST", protocolRequest, 400);
+  assert.ok(
+    await db.auditLog.findFirst({
+      where: {
+        actorId: admin.id,
+        subjectId: c.id,
+        action: "workout.protocol",
+        entityId: protocolSession.id,
+      },
+    }),
+  );
   for (const path of [
     "/today",
     "/admin",
