@@ -4,17 +4,31 @@
 import { sendEmail } from "./email";
 import { buildSessionDetail } from "./science";
 
-export async function sendTelegram(chatId: string, text: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendTelegram(
+  chatId: string,
+  text: string,
+): Promise<{ ok: boolean; error?: string }> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return { ok: false, error: "TELEGRAM_BOT_TOKEN not configured" };
   try {
-    const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
-    });
+    const resp = await fetch(
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          disable_web_page_preview: true,
+        }),
+      },
+    );
     const data = await resp.json();
-    if (!data.ok) return { ok: false, error: data.description || `Telegram HTTP ${resp.status}` };
+    if (!data.ok)
+      return {
+        ok: false,
+        error: data.description || `Telegram HTTP ${resp.status}`,
+      };
     return { ok: true };
   } catch (e: any) {
     return { ok: false, error: String(e.message || e) };
@@ -27,12 +41,23 @@ export interface ReminderMessage {
   html: string;
 }
 
-export function buildReminder(name: string, session: { title: string; durationMin: number; intensity?: string; recovery?: string } | null, tempC?: number): ReminderMessage {
+export function buildReminder(
+  name: string,
+  session: {
+    title: string;
+    durationMin: number;
+    intensity?: string;
+    recovery?: string;
+  } | null,
+  tempC?: number,
+): ReminderMessage {
   const sessionLine = session
     ? `Today's session: ${session.title} — ${session.durationMin} min${session.intensity ? ` (${session.intensity})` : ""}.`
     : "Rest day — recovery is a training session too.";
   const tempLine = tempC !== undefined ? `Race-day temp ~${tempC}°C — ` : "";
-  const recoveryLine = session?.recovery ? `\nAfter the session: ${session.recovery}` : "";
+  const recoveryLine = session?.recovery
+    ? `\nAfter the session: ${session.recovery}`
+    : "";
   const subject = `🏊🚴🏃 ${name} — ${session ? "Training reminder" : "Recovery day"}`;
   const text = `Good morning, ${name}.\n${sessionLine}\n${tempLine}Fuel 60-90g carbs/h on long sessions, hydrate early.\n${recoveryLine}`;
   const html = `<div style="font-family:system-ui;max-width:600px;margin:auto;background:#f0f9ff;border-radius:16px;padding:32px;border:1px solid #bae8ff">
@@ -72,19 +97,33 @@ export function buildDailyPlanMessage(inp: DailyPlanInput): ReminderMessage {
   const lines: string[] = [`JASAI · ${dateLabel}'s training plan`];
   if (!sessions.length) {
     lines.push("");
-    lines.push("☁️ DAY OFF — active recovery protocol (a day off is NOT zero):");
-    lines.push("• 20 min Zone 1 in any modality — walk, spin, swim, stretch, yoga");
-    lines.push("• Breathing: pick one, 2-5 min — box (4-4-4-4), physiological sigh, or 4-7-8");
+    lines.push(
+      "☁️ DAY OFF — active recovery protocol (a day off is NOT zero):",
+    );
+    lines.push(
+      "• 20 min Zone 1 in any modality — walk, spin, swim, stretch, yoga",
+    );
+    lines.push(
+      "• Breathing: pick one, 2-5 min — box (4-4-4-4), physiological sigh, or 4-7-8",
+    );
     lines.push("• Sleep 8h. This IS the workout — recovery compounds.");
   } else {
     for (const s of sessions) {
       const detail = buildSessionDetail(
-        { sport: s.sport || "run", type: s.type || "endurance", zone: s.intensity || "z2", minutes: s.durationMin, description: s.description || "" },
+        {
+          sport: s.sport || "run",
+          type: s.type || "endurance",
+          zone: s.intensity || "z2",
+          minutes: s.durationMin,
+          description: s.description || "",
+        },
         s.recovery,
       );
       lines.push("");
       lines.push(`🏷 ${s.title}`);
-      lines.push(`   ${s.durationMin} min · ${(s.intensity || "Z2").toUpperCase()} · ${s.type || ""}${s.sport ? ` · ${s.sport}` : ""}`);
+      lines.push(
+        `   ${s.durationMin} min · ${(s.intensity || "Z2").toUpperCase()} · ${s.type || ""}${s.sport ? ` · ${s.sport}` : ""}`,
+      );
       lines.push(`   🔥 WU: ${detail.wu}`);
       lines.push(`   ✅ MAIN: ${detail.main}`);
       lines.push(`   🧊 CD: ${detail.cd}`);
@@ -104,11 +143,22 @@ export function buildDailyPlanMessage(inp: DailyPlanInput): ReminderMessage {
 }
 
 export async function sendReminder(
-  opts: { email: string; name: string; telegramChatId?: string },
+  opts: { email?: string; name: string; telegramChatId?: string },
   message: ReminderMessage,
-): Promise<{ email: { ok: boolean; error?: string }; telegram: { ok: boolean; error?: string } | null }> {
-  const email = await sendEmail({ to: opts.email, subject: message.subject, html: message.html, text: message.text });
+): Promise<{
+  email: { ok: boolean; error?: string };
+  telegram: { ok: boolean; error?: string } | null;
+}> {
+  const email = opts.email
+    ? await sendEmail({
+        to: opts.email,
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
+      })
+    : { ok: false, error: "Email disabled by preference" };
   let telegram: { ok: boolean; error?: string } | null = null;
-  if (opts.telegramChatId) telegram = await sendTelegram(opts.telegramChatId, message.text);
+  if (opts.telegramChatId)
+    telegram = await sendTelegram(opts.telegramChatId, message.text);
   return { email, telegram };
 }

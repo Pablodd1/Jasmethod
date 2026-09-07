@@ -8,7 +8,12 @@
 // production and tokens are encrypted transparently — decrypt() accepts both
 // encrypted and legacy plaintext values, so nothing breaks on upgrade.
 
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  scryptSync,
+} from "crypto";
 
 const PREFIX = "enc:v1:";
 let warned = false;
@@ -17,8 +22,14 @@ let key: Buffer | null = null;
 function getKey(): Buffer | null {
   const raw = process.env.TOKEN_ENCRYPTION_KEY;
   if (!raw) {
+    if (process.env.NODE_ENV === "production")
+      throw new Error(
+        "TOKEN_ENCRYPTION_KEY is required for OAuth in production",
+      );
     if (!warned) {
-      console.warn("[crypto] TOKEN_ENCRYPTION_KEY not set — OAuth tokens stored UNENCRYPTED (demo mode). Set it in production.");
+      console.warn(
+        "[crypto] TOKEN_ENCRYPTION_KEY not set — OAuth tokens stored UNENCRYPTED (demo mode). Set it in production.",
+      );
       warned = true;
     }
     return null;
@@ -42,12 +53,19 @@ export function decryptSecret(value: string | null | undefined): string {
   if (!value) return "";
   if (!value.startsWith(PREFIX)) return value; // legacy plaintext
   const k = getKey();
-  if (!k) return value; // encrypted value but no key — leave as-is (caller will fail auth, which alerts)
+  if (!k) throw new Error("Encryption key missing");
   try {
     const [ivB64, tagB64, ctB64] = value.slice(PREFIX.length).split(":");
-    const decipher = createDecipheriv("aes-256-gcm", k, Buffer.from(ivB64, "base64"));
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      k,
+      Buffer.from(ivB64, "base64"),
+    );
     decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-    return Buffer.concat([decipher.update(Buffer.from(ctB64, "base64")), decipher.final()]).toString("utf8");
+    return Buffer.concat([
+      decipher.update(Buffer.from(ctB64, "base64")),
+      decipher.final(),
+    ]).toString("utf8");
   } catch {
     return "";
   }

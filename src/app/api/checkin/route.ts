@@ -1,324 +1,420 @@
+export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
-import { adaptSession, recommendFuel, recommendErgogenics, temperatureAdjustment, recoveryFor, morningWeightTrend, postWorkoutFuel, prescribeToday, type Checkin, type SupplementPrefs } from "@/lib/adaptive";
+import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
+import { dayBounds, busyHours, addDaysKey, localDate } from "@/lib/dates";
+import {
+  adaptSession,
+  prescribeToday,
+  recommendFuel,
+  recommendErgogenics,
+  recoveryFor,
+  postWorkoutFuel,
+  morningWeightTrend,
+  type Checkin,
+} from "@/lib/adaptive";
+import { baseWorkout } from "@/lib/prescription";
 import { hrvReadiness } from "@/lib/science";
 import { stimPlan } from "@/lib/stimulation";
 import { cycleAdvice, youthPolicy, proteinPerKg } from "@/lib/cycle";
-import { t, type Lang } from "@/lib/i18n";
 import { fuelBrandsFor } from "@/lib/fuelbrands";
 import { sourcesFor } from "@/lib/research";
 
-function dayStart(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
-
-function loadPrefs(s: { enabled: boolean; likes?: string | null; dislikes?: string | null; optsOut?: string | null } | null): SupplementPrefs {
-  const arr = (v?: string | null) => { try { const p = v ? JSON.parse(v) : []; return Array.isArray(p) ? p : []; } catch { return []; } };
-  return { enabled: s?.enabled ?? true, likes: arr(s?.likes), dislikes: arr(s?.dislikes), optsOut: arr(s?.optsOut) };
-}
-
-function translatedRecovery(lang: Lang) {
+const sources = () =>
+  sourcesFor(["seiler2009", "buchheit2014", "jeukendrup2014", "thomas2016"]);
+const recovery = () => {
   const r = recoveryFor(new Date());
-  return {
-    key: r.dailyKey,
-    name: t(lang, `rec.${r.dailyKey}.name`),
-    minutes: r.technique.minutes,
-    instructions: t(lang, `rec.${r.dailyKey}.instr`),
-    weeklyTheme: r.weeklyTheme,
-    monthlyFocus: r.monthlyFocus,
-  };
-}
-
-// Core evidence backing today's recommendations (ranked human studies)
-const CORE_SOURCE_IDS = ["seiler2009", "buchheit2014", "jeukendrup2014", "thomas2016", "ais2021", "goldstein2010", "casa2000"];
-
-// GET /api/checkin — today's check-in + live recommendations
-export async function GET() {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const today = dayStart(new Date());
-  const lang = (user.language || "es") as Lang;
-  const checkin = await prisma.dailyCheckin.findUnique({ where: { userId_date: { userId: user.id, date: today } } });
-  const todaySession = await prisma.workout.findFirst({
-    where: { userId: user.id, date: { gte: today, lt: new Date(today.getTime() + 86400000) }, planned: true },
-    orderBy: { date: "asc" },
-  });
-  const recovery = translatedRecovery(lang);
-  const fuelBrands = fuelBrandsFor(todaySession?.durationMin || 0);
-  const sources = sourcesFor(CORE_SOURCE_IDS);
-  // Today's appointments — surface them even before submitting the checkin
-  const todayAppointments = await prisma.calendarEvent.findMany({
-    where: { userId: user.id, type: "appointment", date: { gte: today, lt: new Date(today.getTime() + 86400000) } },
-    orderBy: { date: "asc" },
-    select: { title: true, startTime: true, endTime: true },
-  });
-  // HRV readiness (consolidated from the former standalone VFC page): last 7
-  // days of RMSSD vs the latest reading, Buchheit 2014 / Plews 2013 model.
-  const last7 = await prisma.dailyMetrics.findMany({
-    where: { userId: user.id, hrv: { not: null } },
-    orderBy: { date: "desc" },
-    take: 7,
-  });
-  let readiness: { score: number; advice: string; deltaPct: number } | null = null;
-  if (last7.length >= 3) {
-    const latest = last7[0].hrv!;
-    const baseline = last7.slice(1).map((m) => m.hrv!).reverse();
-    const mean = baseline.reduce((a, b) => a + b, 0) / baseline.length;
-    const sd = Math.sqrt(baseline.reduce((a, b) => a + (b - mean) ** 2, 0) / baseline.length);
-    readiness = hrvReadiness(latest, baseline, sd);
-  }
-  return NextResponse.json({ checkin, recovery, fuelBrands, sources, language: lang, readiness, calendar: { busyCount: todayAppointments.length, appointments: todayAppointments } });
-}
-
-// POST /api/checkin — submit the daily questionnaire; returns adaptation + fuel + ergos
-export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  return { ...r.technique, key: r.dailyKey };
+};
+function array(value?: string | null) {
   try {
-    const b = await req.json();
-    const checkin: Checkin = {
-      sleep: parseInt(b.sleep ?? "3", 10),
-      soreness: parseInt(b.soreness ?? "3", 10),
-      motivation: parseInt(b.motivation ?? "3", 10),
-      energy: parseInt(b.energy ?? "3", 10),
-      stress: parseInt(b.stress ?? "3", 10),
-      mood: b.mood ? parseInt(b.mood, 10) : undefined,
-      sick: Boolean(b.sick),
-      menstrual: b.menstrual === true,
-      cycleDay: b.cycleDay ? parseInt(b.cycleDay, 10) : undefined,
-      weightKg: b.weightKg ? parseFloat(b.weightKg) : undefined,
-      rhr: b.rhr ? parseInt(b.rhr, 10) : undefined,
-    };
-    // Manual biometrics for athletes without a synced device but with an HR
-    // watch/app: HRV (RMSSD) + sleep hours, analyzed alongside weight/RHR.
-    const hrv = b.hrv ? parseFloat(b.hrv) : undefined;
-    const sleepHours = b.sleepHours ? parseFloat(b.sleepHours) : undefined;
-
-    // 7-day baselines from stored daily metrics — so morning weight + RHR are
-    // actually analyzed, not just collected.
-    const since = new Date(Date.now() - 12 * 86400000);
-    const metrics = await prisma.dailyMetrics.findMany({ where: { userId: user.id, date: { gte: since } }, orderBy: { date: "asc" } });
-    const rhrs = metrics.filter((m) => m.restingHr).map((m) => m.restingHr as number);
-    if (checkin.rhr && rhrs.length >= 3) {
-      checkin.rhrBaseline = Math.round(rhrs.slice(0, -1).reduce((a, v) => a + v, 0) / (rhrs.length - 1));
-    }
-
-    // Today's planned session (for fuel/ergo context + adaptation note)
-    const start = dayStart(new Date());
-    const end = new Date(start); end.setDate(end.getDate() + 1);
-    const todaySession = await prisma.workout.findFirst({
-      where: { userId: user.id, date: { gte: start, lt: end }, planned: true },
-      orderBy: { date: "asc" },
-      select: { id: true, sport: true, title: true, type: true, intensity: true, durationMin: true, startTime: true, planDay: { select: { notes: true } } },
-    });
-    const userProfile = await prisma.athleteProfile.findUnique({ where: { userId: user.id } });
-
-    // Female-cycle + youth awareness (sex/age-specific coaching)
-    const cycle = cycleAdvice(checkin.cycleDay, userProfile?.sex ?? null);
-    const youth = youthPolicy(userProfile?.birthYear ?? null);
-    const protein = {
-      perKg: proteinPerKg(userProfile?.sex ?? null, todaySession?.sport === "strength", userProfile?.birthYear ?? null),
-      note: cycle ? `Female athlete, ${cycle.label} phase → ~${cycle.proteinPerKg.toFixed(1)} g/kg/day (Williamson 2023).` : `Protein target ~${(proteinPerKg(userProfile?.sex ?? null, todaySession?.sport === "strength", userProfile?.birthYear ?? null)).toFixed(1)} g/kg/day (ISSN 2017).`,
-    };
-
-    const adaptation = adaptSession(checkin);
-
-    // Lifestyle awareness: today's appointments from calendar (meetings, busy time).
-    // The coach uses this to keep the prescription realistic — no 2-hour ride on
-    // a day with 4 back-to-back meetings.
-    const todayAppointments = await prisma.calendarEvent.findMany({
-      where: { userId: user.id, type: "appointment", date: { gte: start, lt: end } },
-      orderBy: { date: "asc" },
-      select: { title: true, startTime: true, endTime: true },
-    });
-    const busyCount = todayAppointments.length;
-    let busyHrs = 0;
-    let busyNote = null;
-    if (busyCount > 0) {
-      busyHrs = todayAppointments.reduce((s, a) => {
-        if (a.startTime && a.endTime) {
-          const [sh, sm] = a.startTime.split(":").map(Number);
-          const [eh, em] = a.endTime.split(":").map(Number);
-          return s + Math.max(0, (eh * 60 + em) - (sh * 60 + sm)) / 60;
-        }
-        return s + 1; // all-day or unknown length ≈ 1h
-      }, 0);
-      busyNote = `${busyCount} meeting${busyCount > 1 ? "s" : ""} on your calendar today (~${Math.round(busyHrs)}h busy). ${
-        busyHrs >= 6 ? "Heavy day — keep training short and high-yield if you train at all." :
-        busyHrs >= 3 ? "Medium day — a compact session fits if you schedule it between commitments." :
-        "Light calendar — normal session fits."
-      }`;
-    }
-
-    // fuel: heat factor if an A-race is within 7 days
-    let heatFactor = 1;
-    const nearRace = await prisma.race.findFirst({
-      where: { userId: user.id, priority: 1, date: { gte: start, lte: new Date(start.getTime() + 7 * 86400000) } },
-      orderBy: { date: "asc" },
-    });
-    if (nearRace?.targetTempC != null) heatFactor = temperatureAdjustment(nearRace.targetTempC).hydrationFactor;
-
-    const fuel = todaySession
-      ? recommendFuel({ durationMin: todaySession.durationMin, intensity: todaySession.intensity || "z2", heatFactor })
-      : recommendFuel({ durationMin: 0, intensity: "z1" });
-
-    // ergos: match to today's session + respect supplement prefs
-    const sp = await prisma.supplementProfile.findUnique({ where: { userId: user.id } });
-    const prefs = loadPrefs(sp as any);
-    const ergos = todaySession
-      ? recommendErgogenics(prefs, { sport: todaySession.sport, type: todaySession.type, durationMin: todaySession.durationMin, intensity: todaySession.intensity || undefined })
-      : { recommended: [], reason: "Rest day — no ergogenic aids needed." };
-    const ergosIncludeCaffeine = (ergos.recommended || []).some((e: any) => e.key === "caffeine");
-    if (todaySession && ergosIncludeCaffeine) {
-      fuel.notes += " Caffeine already covered in ergogenic picks — same pre-session timing, no double dose.";
-    }
-
-    // Post-workout recovery fueling + stimulation plan (music/brain/breath)
-    const post = todaySession
-      ? postWorkoutFuel({ durationMin: todaySession.durationMin, intensity: todaySession.intensity || "z2", heatFactor, sport: todaySession.sport })
-      : null;
-    const hardSession = Boolean(todaySession && ["z4","z5","z6","z7","interval","threshold","test","race"].includes(todaySession.intensity || todaySession.type));
-    const stim = {
-      pre: stimPlan("pre", { hardSession }),
-      during: todaySession ? stimPlan("during", { hardSession }) : null,
-      post: stimPlan("post", { hardSession }),
-      night: stimPlan("night", { hardSession }),
-    };
-
-    // THE prescription: detailed session for today, scaled by recovery + calendar.
-    const prescription = todaySession
-      ? prescribeToday({
-          session: {
-            sport: todaySession.sport,
-            title: todaySession.title,
-            type: todaySession.type,
-            intensity: todaySession.intensity,
-            durationMin: todaySession.durationMin,
-            description: todaySession.planDay?.notes || todaySession.title,
-            startTime: todaySession.startTime,
-          },
-          adaptation,
-          busyNote,
-          busyHrs,
-          profile: userProfile ? { lthr: userProfile.lthr, ftp: userProfile.ftp, runPaceBase: userProfile.runPaceBase } : null,
-        })
-      : null;
-    // Persist the scaled plan back onto today's workout so the athlete sees it all day
-    if (prescription && todaySession) {
-      await prisma.workout.update({
-        where: { id: todaySession.id },
-        data: {
-          durationMin: prescription.durationMin,
-          notes: `[Prescribed ${prescription.scaled.reason}] ${prescription.detail.main}`,
+    const x = JSON.parse(value || "[]");
+    return Array.isArray(x) ? x : [];
+  } catch {
+    return [];
+  }
+}
+export async function GET(req: Request) {
+  try {
+    const { athlete: user } = await trainingAccess(req);
+    const { start, end } = dayBounds(user.timezone);
+    const [checkin, metrics, appointments] = await Promise.all([
+      prisma.dailyCheckin.findUnique({
+        where: { userId_date: { userId: user.id, date: start } },
+      }),
+      prisma.dailyMetrics.findMany({
+        where: {
+          userId: user.id,
+          date: { gte: new Date(start.getTime() - 14 * 86400000), lt: end },
+          hrv: { not: null },
         },
-      });
+        orderBy: { date: "desc" },
+        take: 8,
+      }),
+      prisma.calendarEvent.findMany({
+        where: {
+          userId: user.id,
+          type: "appointment",
+          date: { gte: start, lt: end },
+        },
+        select: { title: true, startTime: true, endTime: true },
+      }),
+    ]);
+    const sameType = metrics.filter(
+      (m) => (m.hrvType || "rmssd") === (metrics[0]?.hrvType || "rmssd"),
+    );
+    let readiness = null;
+    if (sameType.length >= 4) {
+      const values = sameType.slice(1).map((m) => m.hrv!);
+      const mean = values.reduce((a, b) => a + b, 0) / values.length;
+      readiness = hrvReadiness(
+        sameType[0].hrv!,
+        values,
+        Math.sqrt(
+          values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length,
+        ),
+      );
     }
-
-    // ---- Tomorrow's session rides today's readiness too ----
-    // Recovery lags one day: a red today softens tomorrow so the calendar
-    // reflects the biometrics immediately (user product rule).
-    const tomorrowStart = new Date(start); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-    const tomorrowSession = await prisma.workout.findFirst({
-      where: { userId: user.id, date: { gte: tomorrowStart, lt: new Date(tomorrowStart.getTime() + 86400000) }, planned: true },
-      orderBy: { date: "asc" },
-      select: { id: true, sport: true, title: true, type: true, intensity: true, durationMin: true, notes: true, planDay: { select: { notes: true } } },
+    return NextResponse.json({
+      checkin,
+      readiness,
+      recovery: recovery(),
+      sources: sources(),
+      fuelBrands: fuelBrandsFor(0),
+      language: user.language,
+      calendar: { busyCount: appointments.length, appointments },
     });
-    let tomorrowAdjustment: { title: string; durationMin: number; note: string } | null = null;
-    if (tomorrowSession) {
-      // carry-over: today's verdict applies at half weight to tomorrow
-      const tomorrowFactor = adaptation.verdict === "rest" ? 0.6 : adaptation.verdict === "easy" ? 0.75 : adaptation.verdict === "trim" ? 0.9 : 1;
-      if (tomorrowFactor < 1) {
-        const newDur = Math.max(20, Math.round(tomorrowSession.durationMin * tomorrowFactor));
-        await prisma.workout.update({
-          where: { id: tomorrowSession.id },
+  } catch (e) {
+    return errorResponse(e);
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const { actor, athlete: user } = await trainingAccess(req);
+    const b = await req.json();
+    for (const key of ["sleep", "soreness", "motivation", "energy", "stress"])
+      if (
+        !Number.isInteger(Number(b[key])) ||
+        Number(b[key]) < 1 ||
+        Number(b[key]) > 5
+      )
+        throw new ApiError(`Choose ${key} from 1 to 5`);
+    const checkin: Checkin = {
+      sleep: +b.sleep,
+      soreness: +b.soreness,
+      motivation: +b.motivation,
+      energy: +b.energy,
+      stress: +b.stress,
+      sick: b.sick === true,
+      menstrual: b.menstrual === true,
+    };
+    for (const [key, max] of Object.entries({
+      mood: 5,
+      cycleDay: 40,
+      weightKg: 350,
+      rhr: 150,
+      hrv: 300,
+      sleepHours: 24,
+      availableMinutes: 1440,
+    })) {
+      if (b[key] === undefined || b[key] === "" || b[key] === null) continue;
+      const value = Number(b[key]);
+      if (!Number.isFinite(value) || value < 0 || value > max)
+        throw new ApiError(`Invalid ${key}`);
+      if (["mood", "cycleDay", "weightKg", "rhr"].includes(key))
+        (checkin as any)[key] = value;
+    }
+    const { start, end, key } = dayBounds(user.timezone);
+    const [metrics, profile, appointments, prefs, feedback] = await Promise.all(
+      [
+        prisma.dailyMetrics.findMany({
+          where: {
+            userId: user.id,
+            date: { gte: new Date(start.getTime() - 14 * 86400000), lt: end },
+          },
+          orderBy: { date: "asc" },
+        }),
+        prisma.athleteProfile.findUnique({ where: { userId: user.id } }),
+        prisma.calendarEvent.findMany({
+          where: {
+            userId: user.id,
+            type: "appointment",
+            date: { gte: start, lt: end },
+          },
+          select: { title: true, startTime: true, endTime: true },
+        }),
+        prisma.supplementProfile.findUnique({ where: { userId: user.id } }),
+        prisma.workout.findFirst({
+          where: {
+            userId: user.id,
+            feedbackAt: { not: null },
+            date: { gte: new Date(start.getTime() - 3 * 86400000), lt: start },
+          },
+          orderBy: { date: "desc" },
+        }),
+      ],
+    );
+    const history = metrics.filter((m) => m.date < start);
+    const rhrs = history
+      .filter((m) => m.restingHr != null)
+      .slice(-7)
+      .map((m) => m.restingHr!);
+    const current = metrics.find((m) => m.date.getTime() === start.getTime());
+    checkin.rhr ??= current?.restingHr ?? undefined;
+    if (rhrs.length >= 3)
+      checkin.rhrBaseline = rhrs.reduce((a, b) => a + b, 0) / rhrs.length;
+    if (profile?.injured) checkin.sick = true;
+    let adaptation = adaptSession(checkin);
+    const hrv = b.hrv != null && b.hrv !== "" ? Number(b.hrv) : current?.hrv;
+    const hrvType = b.hrv ? "rmssd" : current?.hrvType || "rmssd";
+    const hrvs = history
+      .filter((m) => m.hrv != null && (m.hrvType || "rmssd") === hrvType)
+      .slice(-7)
+      .map((m) => m.hrv!);
+    const hrvMean =
+      hrvs.length >= 3 ? hrvs.reduce((a, v) => a + v, 0) / hrvs.length : null;
+    const hrvLow = hrv != null && hrvMean != null && hrv < hrvMean * 0.9;
+    const feedbackCaution = feedback?.rpe != null && feedback.rpe >= 9;
+    if ((hrvLow || feedbackCaution) && adaptation.verdict === "full")
+      adaptation = {
+        ...adaptation,
+        verdict: "trim",
+        durationFactor: 0.85,
+        intensityCap: "z4",
+        message: hrvLow
+          ? "HRV is below your recent baseline; today's plan is conservative. Review how you feel before training."
+          : "Your recent workout felt very hard; today's plan is trimmed.",
+      };
+    const busyHrs = busyHours(appointments, key, user.timezone);
+    const busyNote = `${appointments.length} calendar commitments, ${busyHrs.toFixed(1)} hours busy.`;
+    const saved = await prisma.$transaction(async (tx) => {
+      const sessions = await tx.workout.findMany({
+        where: {
+          userId: user.id,
+          date: { gte: start, lt: end },
+          planned: true,
+          completed: false,
+          OR: [
+            { feedbackStatus: null },
+            { feedbackStatus: { not: "skipped" } },
+          ],
+        },
+        include: { planDay: true },
+        orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
+      });
+      const prescriptions = [];
+      let remaining =
+        b.availableMinutes == null || b.availableMinutes === ""
+          ? Infinity
+          : Number(b.availableMinutes);
+      for (const w of sessions) {
+        const base = baseWorkout(w);
+        const effective = w.planDay?.dayOff
+          ? {
+              ...adaptation,
+              verdict: "rest",
+              durationFactor: 0,
+              intensityCap: "z1",
+            }
+          : adaptation;
+        const limitedBase =
+          Number.isFinite(remaining) && effective.durationFactor > 0
+            ? {
+                ...base,
+                durationMin: Math.min(
+                  base.durationMin,
+                  remaining / effective.durationFactor,
+                ),
+              }
+            : base;
+        const p = prescribeToday({
+          session: limitedBase,
+          adaptation:
+            remaining <= 0
+              ? { ...effective, verdict: "rest", durationFactor: 0 }
+              : effective,
+          busyHrs,
+          busyNote,
+          profile,
+        });
+        p.scaled.originalMin = base.durationMin;
+        p.scaled.factor = base.durationMin
+          ? p.durationMin / base.durationMin
+          : 0;
+        remaining -= p.durationMin;
+        await tx.workout.update({
+          where: { id: w.id },
           data: {
-            durationMin: newDur,
-            notes: `[Adapted from yesterday's check-in — ${adaptation.verdict} day, duration ×${tomorrowFactor}] ${tomorrowSession.planDay?.notes || tomorrowSession.title}`,
+            originalPlan: JSON.stringify(base),
+            prescription: JSON.stringify(p),
+            durationMin: p.durationMin,
+            intensity: p.intensity,
+            type: p.type,
+            title: p.title,
+            notes: p.detail.main,
+            approved: false,
           },
         });
-        tomorrowAdjustment = {
-          title: tomorrowSession.title,
-          durationMin: newDur,
-          note: `Tomorrow adjusted: ${adaptation.verdict} today → duration ×${tomorrowFactor} (${tomorrowSession.durationMin}→${newDur} min). It will re-scale after tomorrow's own check-in.`,
-        };
+        prescriptions.push({ sessionId: w.id, ...p });
       }
-    }
-
-    const saved = await prisma.dailyCheckin.upsert({
-      where: { userId_date: { userId: user.id, date: start } },
-      create: {
-        userId: user.id,
-        date: start,
-        answers: JSON.stringify(checkin),
-        adaptation: JSON.stringify(adaptation),
-        fuel: JSON.stringify(fuel),
-        ergos: JSON.stringify(ergos.recommended.map((e) => e.key)),
-      },
-      update: {
-        answers: JSON.stringify(checkin),
-        adaptation: JSON.stringify(adaptation),
-        fuel: JSON.stringify(fuel),
-        ergos: JSON.stringify(ergos.recommended.map((e) => e.key)),
-      },
-    });
-
-    // Persist morning weight + RHR + HRV + sleep hours into daily metrics so the
-    // trends compound (weight trend, RHR baseline, HRV baseline, sleep tracking).
-    if (checkin.weightKg !== undefined || checkin.rhr !== undefined || hrv !== undefined || sleepHours !== undefined) {
-      await prisma.dailyMetrics.upsert({
+      const check = await tx.dailyCheckin.upsert({
         where: { userId_date: { userId: user.id, date: start } },
-        create: { userId: user.id, date: start, source: "manual", weightKg: checkin.weightKg, restingHr: checkin.rhr, hrv, sleepHours },
+        create: {
+          userId: user.id,
+          date: start,
+          answers: JSON.stringify(checkin),
+          adaptation: JSON.stringify(adaptation),
+        },
         update: {
-          ...(checkin.weightKg !== undefined && { weightKg: checkin.weightKg }),
-          ...(checkin.rhr !== undefined && { restingHr: checkin.rhr }),
-          ...(hrv !== undefined && { hrv }),
-          ...(sleepHours !== undefined && { sleepHours }),
+          answers: JSON.stringify(checkin),
+          adaptation: JSON.stringify(adaptation),
         },
       });
-    }
-
-    // HRV note: morning RMSSD below the 7-day baseline signals under-recovery.
-    const hrvs = metrics.filter((m) => m.hrv).map((m) => m.hrv as number);
-    const hrvBaseline = hrvs.length >= 3 ? Math.round(hrvs.slice(0, -1).reduce((a, v) => a + v, 0) / (hrvs.length - 1)) : null;
-    const hrvNote = hrv == null || hrvBaseline == null ? null
-      : hrv < hrvBaseline * 0.9 ? `HRV ${hrv} ms is well below your ${hrvBaseline} ms baseline — parasympathetic recovery is low, keep today easy.`
-      : hrv > hrvBaseline * 1.1 ? `HRV ${hrv} ms is above your ${hrvBaseline} ms baseline — you're recovering well.`
-      : `HRV ${hrv} ms is in line with your ${hrvBaseline} ms baseline.`;
-    const sleepNote = sleepHours == null ? null
-      : sleepHours < 7 ? `Slept ${sleepHours}h last night — under 7h, prioritize an early night tonight (Mah 2011: sleep extension lifts performance).`
-      : sleepHours >= 8 ? `Slept ${sleepHours}h — solid. Keep the consistent bed/wake time.`
-      : `Slept ${sleepHours}h — decent, but aim for 8h.`;
-
-    // Weight trend (last 3 mornings vs the ones before) + RHR note
-    const weightTrend = morningWeightTrend([
-      ...metrics.map((m) => ({ date: m.date, weightKg: m.weightKg })),
-      ...(checkin.weightKg !== undefined ? [{ date: start, weightKg: checkin.weightKg }] : []),
-    ]);
-    const rhrDelta = checkin.rhr && checkin.rhrBaseline ? checkin.rhr - checkin.rhrBaseline : null;
-    const rhrNote = rhrDelta === null ? null
-      : rhrDelta > 6 ? `RHR ${rhrDelta}+ bpm over baseline — recovery is lagging.`
-      : rhrDelta < -6 ? "RHR below baseline — recovered."
-      : "RHR in range.";
-
+      if (
+        [b.weightKg, b.rhr, b.hrv, b.sleepHours].some(
+          (v) => v !== undefined && v !== "" && v !== null,
+        )
+      ) {
+        const data = {
+          ...(b.weightKg ? { weightKg: Number(b.weightKg) } : {}),
+          ...(b.rhr ? { restingHr: Number(b.rhr) } : {}),
+          ...(b.hrv ? { hrv: Number(b.hrv), hrvType: "rmssd" } : {}),
+          ...(b.sleepHours !== undefined && b.sleepHours !== ""
+            ? { sleepHours: Number(b.sleepHours) }
+            : {}),
+        };
+        await tx.dailyMetrics.upsert({
+          where: { userId_date: { userId: user.id, date: start } },
+          create: { userId: user.id, date: start, source: "manual", ...data },
+          update: data,
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.id,
+          subjectId: user.id,
+          action: "checkin.adapt",
+          entityId: check.id,
+          after: JSON.stringify({
+            verdict: adaptation.verdict,
+            sessions: prescriptions.map((p) => p.sessionId),
+          }),
+        },
+      });
+      return { checkin: check, prescriptions };
+    });
+    const prescription = saved.prescriptions[0] || null;
+    const session = prescription || {
+      sport: "recovery",
+      type: "recovery",
+      intensity: "z1",
+      durationMin: 0,
+    };
+    const fuel = recommendFuel(session);
+    const ergos = session.durationMin
+      ? recommendErgogenics(
+          {
+            enabled: prefs?.enabled ?? false,
+            likes: array(prefs?.likes),
+            dislikes: array(prefs?.dislikes),
+            optsOut: array(prefs?.optsOut),
+          },
+          session,
+        )
+      : { recommended: [], reason: "Rest day" };
+    const hard = Number(session.intensity.slice(1)) >= 4;
     return NextResponse.json({
       ok: true,
-      checkin: saved,
-      adaptation,
+      ...saved,
       prescription,
-      cycle,
-      youth,
-      protein,
+      adaptation,
       fuel,
       ergos,
-      post,
-      stim,
-      recovery: translatedRecovery((user.language || "es") as Lang),
-      fuelBrands: fuelBrandsFor(todaySession?.durationMin || 0),
-      sources: sourcesFor(CORE_SOURCE_IDS),
-      hydration: { weightTrend, rhrNote, hrvNote, sleepNote, rhrBaseline: checkin.rhrBaseline ?? null },
-      calendar: { busyCount, busyNote },
-      tomorrowAdjustment,
+      post: session.durationMin ? postWorkoutFuel(session) : null,
+      stim: {
+        pre: stimPlan("pre", { hardSession: hard }),
+        during: stimPlan("during", { hardSession: hard }),
+        post: stimPlan("post", { hardSession: false }),
+        night: stimPlan("night", { hardSession: false }),
+      },
+      recovery: recovery(),
+      fuelBrands: fuelBrandsFor(session.durationMin),
+      sources: sources(),
+      cycle: cycleAdvice(checkin.cycleDay, profile?.sex ?? null),
+      youth: youthPolicy(profile?.birthYear ?? null),
+      protein: {
+        perKg: proteinPerKg(
+          profile?.sex ?? null,
+          session.sport === "strength",
+          profile?.birthYear ?? null,
+        ),
+        note: "Daily target, adjusted to the saved profile.",
+      },
+      hydration: {
+        weightTrend: morningWeightTrend(metrics),
+        rhrNote: null,
+        hrvNote: hrvLow
+          ? "Below recent baseline; prescription adjusted conservatively."
+          : null,
+        sleepNote: null,
+      },
+      calendar: { busyCount: appointments.length, busyNote },
+      tomorrowAdjustment: null,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
+  } catch (e) {
+    return errorResponse(e);
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const { actor, athlete } = await trainingAccess(req);
+    const { start, end } = dayBounds(athlete.timezone);
+    await prisma.$transaction(async (tx) => {
+      const sessions = await tx.workout.findMany({
+        where: {
+          userId: athlete.id,
+          planned: true,
+          completed: false,
+          date: { gte: start, lt: end },
+          originalPlan: { not: null },
+        },
+      });
+      for (const w of sessions) {
+        const b = baseWorkout(w);
+        await tx.workout.update({
+          where: { id: w.id },
+          data: {
+            title: b.title,
+            sport: b.sport,
+            type: b.type,
+            intensity: b.intensity,
+            durationMin: b.durationMin,
+            notes: b.description,
+            prescription: null,
+            approved: false,
+          },
+        });
+      }
+      await tx.dailyCheckin.deleteMany({
+        where: { userId: athlete.id, date: start },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.id,
+          subjectId: athlete.id,
+          action: "checkin.undo",
+          after: JSON.stringify({ sessions: sessions.map((w) => w.id) }),
+        },
+      });
+    });
+    return NextResponse.json({
+      ok: true,
+      message:
+        "Original sessions restored. Completed results and health measurements were retained.",
+    });
+  } catch (e) {
+    return errorResponse(e);
   }
 }

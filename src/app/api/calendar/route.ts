@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { dayBounds, dateKey, localDate, parseDate } from "@/lib/dates";
+import { errorResponse, ApiError } from "@/lib/access";
 import { getCurrentUser } from "@/lib/auth";
 
 // GET /api/calendar?month=YYYY-MM — calendar events + workouts for the month.
@@ -7,26 +9,52 @@ import { getCurrentUser } from "@/lib/auth";
 // week strip (prev weeks → next week) always has data without extra requests.
 export async function GET(req: Request) {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const url = new URL(req.url);
-  let month = url.searchParams.get("month") || new Date().toISOString().slice(0, 7);
-  const parts = month.split("-");
+  let month =
+    url.searchParams.get("month") ||
+    dateKey(new Date(), user.timezone).slice(0, 7);
+  if (month !== "auto" && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
+    return NextResponse.json({ error: "Invalid month" }, { status: 400 });
+  const parts = (
+    month === "auto" ? dateKey(new Date(), user.timezone).slice(0, 7) : month
+  ).split("-");
   const y = Number(parts[0]);
   const m = Number(parts[1]);
   let start = new Date(y, m - 1, 1);
   let end = new Date(y, m, 1);
   if (month === "auto") {
-    const now = new Date();
+    const now = new Date(y, m - 1, 15);
     start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     end = new Date(now.getFullYear(), now.getMonth() + 2, 1);
   }
 
+  start = localDate(
+    `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-01`,
+    user.timezone,
+  );
+  end = localDate(
+    `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-01`,
+    user.timezone,
+  );
   const [events, workouts, plans] = await Promise.all([
-    prisma.calendarEvent.findMany({ where: { userId: user.id, date: { gte: start, lt: end } }, orderBy: { date: "asc" } }),
-    prisma.workout.findMany({ where: { userId: user.id, date: { gte: start, lt: end } }, orderBy: { date: "asc" } }),
+    prisma.calendarEvent.findMany({
+      where: { userId: user.id, date: { gte: start, lt: end } },
+      orderBy: { date: "asc" },
+    }),
+    prisma.workout.findMany({
+      where: { userId: user.id, date: { gte: start, lt: end } },
+      orderBy: { date: "asc" },
+    }),
     prisma.trainingPlan.findMany({
       where: { userId: user.id, status: "active" },
-      include: { days: { include: { sessions: true } } },
+      include: {
+        days: {
+          where: { date: { gte: start, lt: end } },
+          include: { sessions: true },
+        },
+      },
       orderBy: { startDate: "desc" },
       take: 1,
     }),
@@ -37,14 +65,17 @@ export async function GET(req: Request) {
 // POST /api/calendar — add event
 export async function POST(req: Request) {
   const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await req.json();
     const ev = await prisma.calendarEvent.create({
       data: {
         userId: user.id,
         title: body.title || "Event",
-        date: new Date(body.date || new Date()),
+        date: body.date
+          ? parseDate(body.date, user.timezone)
+          : dayBounds(user.timezone).start,
         startTime: body.startTime,
         endTime: body.endTime,
         type: body.type || "note",

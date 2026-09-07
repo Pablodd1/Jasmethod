@@ -8,6 +8,22 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: jasmethod_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci -d jasmethod_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/jasmethod_ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/jasmethod_ci
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      TOKEN_ENCRYPTION_KEY: isolated-ci-token-key
     steps:
       - uses: actions/checkout@v4
 
@@ -19,11 +35,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prisma client
-        run: npx prisma generate
-        env:
-          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+      - name: Test schema and client
+        run: npm run db:deploy && npx prisma generate
 
       - name: Typecheck
         run: npx tsc --noEmit
@@ -31,17 +44,17 @@ jobs:
       - name: Crypto roundtrip (token encryption)
         run: TOKEN_ENCRYPTION_KEY=ci-test-key npx tsx scripts/crypto-check.ts
 
-      - name: Unit tests (science, adaptation, regen, hyrox, i18n)
-        run: |
-          npx tsx src/lib/adaptive.test.ts
-          npx tsx src/lib/fitness.test.ts
-          npx tsx src/lib/i18n.test.ts
-          npx tsx src/lib/regen.test.ts
-          npx tsx src/lib/hyrox.test.ts
+      - name: Unit and provider contract tests
+        run: npm test
+
+      - name: Database sync and reminder tests
+        run: npm run test:sync
 
       - name: Production build
         run: npm run build
-        env:
-          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
-          NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+      - name: Authenticated integration tests
+        run: |
+          npm start > /tmp/jasmethod-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://localhost:3000/api/auth/me && break; sleep 1; done
+          npm run test:integration

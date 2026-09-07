@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
 import { LANGS, type Lang } from "@/lib/i18n";
 
 interface User {
@@ -9,6 +15,7 @@ interface User {
   email: string;
   role: string;
   language?: string;
+  timezone?: string;
   avatar?: string;
   profile?: any;
   motivation?: any;
@@ -41,7 +48,7 @@ function applyLang(l: Lang) {
   try {
     localStorage.setItem("jmm_lang", l);
   } catch {}
-  document.documentElement.lang = l === "es" ? "es" : l === "ht" ? "ht" : l === "ru" ? "ru" : "en";
+  document.documentElement.lang = l;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -65,6 +72,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/auth/me");
       const data = await res.json();
       setUser(data.user);
+      try {
+        if (data.user) localStorage.setItem("jmm_last_user", data.user.id);
+        else {
+          localStorage.removeItem("jmm_last_user");
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith("jmm_today_"))
+            .forEach((k) => localStorage.removeItem(k));
+        }
+      } catch {}
       // A signed-in user carries their language on the profile.
       if (data.user?.language && isLang(data.user.language)) {
         setLanguageState(data.user.language);
@@ -99,11 +115,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      Object.keys(localStorage)
+        .filter(
+          (k) =>
+            k.startsWith("jmm_today_") ||
+            k.startsWith("jmm_checkin_") ||
+            k === "jmm_last_user",
+        )
+        .forEach((k) => localStorage.removeItem(k));
+    } catch {}
     setUser(null);
     window.location.href = "/";
   }, []);
 
-  return <Ctx.Provider value={{ user, loading, language, setLanguage, refresh, logout }}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider
+      value={{ user, loading, language, setLanguage, refresh, logout }}
+    >
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export const useAuth = () => useContext(Ctx);

@@ -1,3 +1,7 @@
+# Reliability and coaching update
+
+The implementation and deployment steps are documented in [docs/coaching-release.md](docs/coaching-release.md). The historical checklist below is not current verification evidence. External provider connections still require configured accounts and live acceptance testing.
+
 # JasMiamiMethod — Project Master Readme
 
 **The go-to app for Miami athletes: peer-reviewed baselines, race goals, endurance training, recovery, fuel, and natural enhancement — individualized per athlete.**
@@ -12,7 +16,7 @@
 
 JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting the Miami athlete population. It combines a **rule-based training engine grounded in peer-reviewed research** with an **AI coach (Gemini)** that reads the athlete's full data picture. The app covers the complete athlete lifecycle: baseline testing → periodized planning → daily adaptive check-in → race targeting → recovery → fuel → natural ergogenic aids → equipment guidance → multi-language (5 langs).
 
-**Current state: production-grade MVP. 45+ routes, full auth, multi-user, admin dashboard.** All features verified working end-to-end.
+Current state: a webapp with locally tested core workflows. See the release guide for test evidence and deployment requirements.
 
 ---
 

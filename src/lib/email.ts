@@ -21,6 +21,9 @@ function getTransporter(): nodemailer.Transporter | null {
   if (!transporter) {
     transporter = nodemailer.createTransport({
       host,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       port: parseInt(process.env.SMTP_PORT || "587", 10),
       secure: process.env.SMTP_SECURE === "true",
       auth: {
@@ -32,21 +35,19 @@ function getTransporter(): nodemailer.Transporter | null {
   return transporter;
 }
 
-export async function sendEmail(opts: EmailOpts): Promise<{ ok: boolean; error?: string }> {
+export async function sendEmail(
+  opts: EmailOpts,
+): Promise<{ ok: boolean; error?: string }> {
   const t = getTransporter();
   if (!t) {
-    // Dev fallback: log + record
-    console.log(`[EMAIL][DEV] to=${opts.to} subject="${opts.subject}"`);
-    if (opts.userId) {
-      await prisma.sentEmail.create({
-        data: { userId: opts.userId, subject: opts.subject, to: opts.to, status: "sent" },
-      });
-    }
-    return { ok: true };
+    return { ok: false, error: "SMTP is not configured; no email was sent." };
   }
   try {
     await t.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER || "app@jasmiamimethod.com",
+      from:
+        process.env.SMTP_FROM ||
+        process.env.SMTP_USER ||
+        "app@jasmiamimethod.com",
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
@@ -54,7 +55,12 @@ export async function sendEmail(opts: EmailOpts): Promise<{ ok: boolean; error?:
     });
     if (opts.userId) {
       await prisma.sentEmail.create({
-        data: { userId: opts.userId, subject: opts.subject, to: opts.to, status: "sent" },
+        data: {
+          userId: opts.userId,
+          subject: opts.subject,
+          to: opts.to,
+          status: "sent",
+        },
       });
     }
     return { ok: true };
@@ -62,7 +68,13 @@ export async function sendEmail(opts: EmailOpts): Promise<{ ok: boolean; error?:
     console.error("[EMAIL] send failed:", e.message);
     if (opts.userId) {
       await prisma.sentEmail.create({
-        data: { userId: opts.userId, subject: opts.subject, to: opts.to, status: "failed", error: String(e.message || e) },
+        data: {
+          userId: opts.userId,
+          subject: opts.subject,
+          to: opts.to,
+          status: "failed",
+          error: String(e.message || e),
+        },
       });
     }
     return { ok: false, error: String(e.message || e) };
@@ -92,7 +104,12 @@ export function welcomeEmail(name: string): { subject: string; html: string } {
   };
 }
 
-export function dailyMotivationEmail(name: string, quote: string, message: string, todaysSession: string): { subject: string; html: string } {
+export function dailyMotivationEmail(
+  name: string,
+  quote: string,
+  message: string,
+  todaysSession: string,
+): { subject: string; html: string } {
   return {
     subject: `🌅 ${name} — Today's Training & Motivation`,
     html: `

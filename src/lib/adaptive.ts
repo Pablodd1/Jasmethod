@@ -22,15 +22,86 @@ export interface RecoveryTechnique {
 }
 
 export const RECOVERY_TECHNIQUES: RecoveryTechnique[] = [
-  { key: "box", name: "Box Breathing", minutes: 5, instructions: "Inhale 4s → hold 4s → exhale 4s → hold 4s. Repeat for 5 min, seated, eyes closed.", mechanism: "Equal-ratio breathing upregulates parasympathetic tone (HRV) and lowers arousal." },
-  { key: "sigh", name: "Physiological Sigh", minutes: 2, instructions: "Two sharp inhales through the nose (second is a top-up), then one long slow exhale through the mouth. 5-8 rounds.", mechanism: "Fastest known real-time downregulation of stress; drops HR within seconds (Balban 2023)." },
-  { key: "478", name: "4-7-8 Breathing", minutes: 4, instructions: "Inhale 4s → hold 7s → exhale 8s (through mouth). 4-6 rounds. Best before sleep.", mechanism: "Long exhale activates the vagus nerve; sedative for pre-sleep recovery." },
-  { key: "resonance", name: "Resonance Breathing", minutes: 10, instructions: "Breathe at ~5.5 breaths/min (5.5s in, 5.5s out) — no breath hold. 10 min.", mechanism: "Resonance frequency maximizes HRV amplitude; the gold-standard HRV biofeedback protocol (Lehrer 2014)." },
-  { key: "nadi", name: "Alternate-Nostril Breathing", minutes: 5, instructions: "Close right nostril, inhale left; close left, exhale right; continue alternating. 5 min.", mechanism: "Nadi Shodhana balances autonomic outflow and calms sympathetic drive." },
-  { key: "pmr", name: "Progressive Muscle Relaxation", minutes: 8, instructions: "Tense each muscle group 5s then release 10s, feet → calves → quads → glutes → core → hands → arms → shoulders → face.", mechanism: "Reduces muscle tone + cortisol; teaches the body the 'off' signal." },
-  { key: "dive", name: "Cold Face Immersion", minutes: 3, instructions: "Splash or immerse face in cold water (<15°C) for 15-30s, 3 rounds. Breathe slowly between.", mechanism: "Mammalian dive reflex → acute bradycardia + vagal activation." },
-  { key: "legs", name: "Legs-Up-The-Wall", minutes: 10, instructions: "Lie on back, legs vertical against a wall, arms wide. Slow nasal breathing. 10 min.", mechanism: "Facilitates venous return + baroreceptor reset; a passive vagal posture." },
-  { key: "exhale", name: "Extended Exhale (2:1)", minutes: 5, instructions: "Inhale 3s, exhale 6s. 5 min, letting each exhale get longer than the inhale.", mechanism: "Prolonged exhalation is the most direct vagal lever; lowers HR and BP." },
+  {
+    key: "box",
+    name: "Box Breathing",
+    minutes: 5,
+    instructions:
+      "Inhale 4s → hold 4s → exhale 4s → hold 4s. Repeat for 5 min, seated, eyes closed.",
+    mechanism:
+      "Equal-ratio breathing upregulates parasympathetic tone (HRV) and lowers arousal.",
+  },
+  {
+    key: "sigh",
+    name: "Physiological Sigh",
+    minutes: 2,
+    instructions:
+      "Two sharp inhales through the nose (second is a top-up), then one long slow exhale through the mouth. 5-8 rounds.",
+    mechanism:
+      "Fastest known real-time downregulation of stress; drops HR within seconds (Balban 2023).",
+  },
+  {
+    key: "478",
+    name: "4-7-8 Breathing",
+    minutes: 4,
+    instructions:
+      "Inhale 4s → hold 7s → exhale 8s (through mouth). 4-6 rounds. Best before sleep.",
+    mechanism:
+      "Long exhale activates the vagus nerve; sedative for pre-sleep recovery.",
+  },
+  {
+    key: "resonance",
+    name: "Resonance Breathing",
+    minutes: 10,
+    instructions:
+      "Breathe at ~5.5 breaths/min (5.5s in, 5.5s out) — no breath hold. 10 min.",
+    mechanism:
+      "Resonance frequency maximizes HRV amplitude; the gold-standard HRV biofeedback protocol (Lehrer 2014).",
+  },
+  {
+    key: "nadi",
+    name: "Alternate-Nostril Breathing",
+    minutes: 5,
+    instructions:
+      "Close right nostril, inhale left; close left, exhale right; continue alternating. 5 min.",
+    mechanism:
+      "Nadi Shodhana balances autonomic outflow and calms sympathetic drive.",
+  },
+  {
+    key: "pmr",
+    name: "Progressive Muscle Relaxation",
+    minutes: 8,
+    instructions:
+      "Tense each muscle group 5s then release 10s, feet → calves → quads → glutes → core → hands → arms → shoulders → face.",
+    mechanism:
+      "Reduces muscle tone + cortisol; teaches the body the 'off' signal.",
+  },
+  {
+    key: "dive",
+    name: "Cold Face Immersion",
+    minutes: 3,
+    instructions:
+      "Splash or immerse face in cold water (<15°C) for 15-30s, 3 rounds. Breathe slowly between.",
+    mechanism: "Mammalian dive reflex → acute bradycardia + vagal activation.",
+  },
+  {
+    key: "legs",
+    name: "Legs-Up-The-Wall",
+    minutes: 10,
+    instructions:
+      "Lie on back, legs vertical against a wall, arms wide. Slow nasal breathing. 10 min.",
+    mechanism:
+      "Facilitates venous return + baroreceptor reset; a passive vagal posture.",
+  },
+  {
+    key: "exhale",
+    name: "Extended Exhale (2:1)",
+    minutes: 5,
+    instructions:
+      "Inhale 3s, exhale 6s. 5 min, letting each exhale get longer than the inhale.",
+    mechanism:
+      "Prolonged exhalation is the most direct vagal lever; lowers HR and BP.",
+  },
 ];
 
 const WEEKLY_THEMES = [
@@ -65,11 +136,23 @@ export interface RecoveryPlan {
 
 export function recoveryFor(date: Date): RecoveryPlan {
   const di = dayIndex(date);
-  const technique = RECOVERY_TECHNIQUES[((di % RECOVERY_TECHNIQUES.length) + RECOVERY_TECHNIQUES.length) % RECOVERY_TECHNIQUES.length];
+  const technique =
+    RECOVERY_TECHNIQUES[
+      ((di % RECOVERY_TECHNIQUES.length) + RECOVERY_TECHNIQUES.length) %
+        RECOVERY_TECHNIQUES.length
+    ];
   const week = Math.floor(di / 7);
   const month = Math.floor(di / 30);
-  const weeklyTheme = WEEKLY_THEMES[((week % WEEKLY_THEMES.length) + WEEKLY_THEMES.length) % WEEKLY_THEMES.length];
-  const monthlyFocus = MONTHLY_FOCUS[((month % MONTHLY_FOCUS.length) + MONTHLY_FOCUS.length) % MONTHLY_FOCUS.length];
+  const weeklyTheme =
+    WEEKLY_THEMES[
+      ((week % WEEKLY_THEMES.length) + WEEKLY_THEMES.length) %
+        WEEKLY_THEMES.length
+    ];
+  const monthlyFocus =
+    MONTHLY_FOCUS[
+      ((month % MONTHLY_FOCUS.length) + MONTHLY_FOCUS.length) %
+        MONTHLY_FOCUS.length
+    ];
   return {
     technique,
     dailyKey: technique.key,
@@ -92,10 +175,11 @@ export interface DayOffProtocol {
 export function dayOffProtocol(date: Date): DayOffProtocol {
   const rec = recoveryFor(date);
   return {
-    title: "Day Off — 20 min Z1 + Breathing",
-    minutes: 20,
+    title: "Day Off — Rest",
+    minutes: 0,
     zone: "z1",
-    description: `20 minutes in Zone 1 in ANY modality you enjoy (easy walk, spin, swim, stretch, yoga). Then ${rec.technique.minutes} min ${rec.technique.name}: ${rec.technique.instructions}`,
+    description:
+      "No structured workout is prescribed. Rest; comfortable movement and relaxed breathing are optional if you feel well.",
   };
 }
 
@@ -126,7 +210,10 @@ export interface CmjReadiness {
   advice: string;
 }
 
-export function cmjReadiness(todayCm: number, baselineCm: number): CmjReadiness {
+export function cmjReadiness(
+  todayCm: number,
+  baselineCm: number,
+): CmjReadiness {
   const drop = (baselineCm - todayCm) / baselineCm; // positive = worse
   if (drop >= 0.08) {
     return {
@@ -153,7 +240,7 @@ export function cmjReadiness(todayCm: number, baselineCm: number): CmjReadiness 
 export interface TempAdjustment {
   tempC: number;
   category: "cold" | "cool" | "mild" | "warm" | "hot" | "extreme";
-  paceFactor: number;   // multiply target pace (seconds) by this
+  paceFactor: number; // multiply target pace (seconds) by this
   volumeFactor: number; // multiply session duration by this
   hydrationFactor: number; // multiply fluid target by this
   advice: string;
@@ -161,26 +248,79 @@ export interface TempAdjustment {
 
 export function temperatureAdjustment(tempC: number): TempAdjustment {
   // piecewise: baseline neutral 10-18°C
-  let paceFactor = 1, volumeFactor = 1, hydrationFactor = 1, category: TempAdjustment["category"] = "mild", advice = "";
-  if (tempC <= 0) { category = "cold"; paceFactor = 0.98; volumeFactor = 0.95; hydrationFactor = 1.0; advice = "Cold — warm up longer, dress in layers, watch grip on wet roads. Keep intensity; shorten exposure."; }
-  else if (tempC <= 10) { category = "cool"; paceFactor = 0.99; volumeFactor = 1.0; hydrationFactor = 1.0; advice = "Cool — near-ideal for endurance. No adjustment beyond normal hydration."; }
-  else if (tempC <= 18) { category = "mild"; paceFactor = 1.0; volumeFactor = 1.0; hydrationFactor = 1.0; advice = "Mild — optimal range. Train as prescribed."; }
-  else if (tempC <= 24) { category = "warm"; paceFactor = 1.02; volumeFactor = 0.97; hydrationFactor = 1.2; advice = "Warm — ease pace ~2%, pre-hydrate with electrolytes, schedule sessions for shade/morning."; }
-  else if (tempC <= 30) { category = "hot"; paceFactor = 1.05; volumeFactor = 0.9; hydrationFactor = 1.5; advice = "Hot — cut volume ~10%, drop pace ~5%, drink 500-750ml/h with sodium. Heat acclimation sessions count."; }
-  else { category = "extreme"; paceFactor = 1.1; volumeFactor = 0.75; hydrationFactor = 2.0; advice = "Extreme heat — move indoors or to early morning. If outside: 25% volume cut, pace by RPE not target, ice slurry + 750ml+/h fluids."; }
+  let paceFactor = 1,
+    volumeFactor = 1,
+    hydrationFactor = 1,
+    category: TempAdjustment["category"] = "mild",
+    advice = "";
+  if (tempC <= 0) {
+    category = "cold";
+    paceFactor = 0.98;
+    volumeFactor = 0.95;
+    hydrationFactor = 1.0;
+    advice =
+      "Cold — warm up longer, dress in layers, watch grip on wet roads. Keep intensity; shorten exposure.";
+  } else if (tempC <= 10) {
+    category = "cool";
+    paceFactor = 0.99;
+    volumeFactor = 1.0;
+    hydrationFactor = 1.0;
+    advice =
+      "Cool — near-ideal for endurance. No adjustment beyond normal hydration.";
+  } else if (tempC <= 18) {
+    category = "mild";
+    paceFactor = 1.0;
+    volumeFactor = 1.0;
+    hydrationFactor = 1.0;
+    advice = "Mild — optimal range. Train as prescribed.";
+  } else if (tempC <= 24) {
+    category = "warm";
+    paceFactor = 1.02;
+    volumeFactor = 0.97;
+    hydrationFactor = 1.2;
+    advice =
+      "Warm — ease pace ~2%, pre-hydrate with electrolytes, schedule sessions for shade/morning.";
+  } else if (tempC <= 30) {
+    category = "hot";
+    paceFactor = 1.05;
+    volumeFactor = 0.9;
+    hydrationFactor = 1.5;
+    advice =
+      "Hot — cut volume ~10%, drop pace ~5%, drink 500-750ml/h with sodium. Heat acclimation sessions count.";
+  } else {
+    category = "extreme";
+    paceFactor = 1.1;
+    volumeFactor = 0.75;
+    hydrationFactor = 2.0;
+    advice =
+      "Extreme heat — move indoors or to early morning. If outside: 25% volume cut, pace by RPE not target, ice slurry + 750ml+/h fluids.";
+  }
   return { tempC, category, paceFactor, volumeFactor, hydrationFactor, advice };
 }
 
 // ---------- 3. SCHEDULED TESTING (every ~2 months, race-aware) ----------
 export interface ScheduledTest {
   date: Date;
-  type: "ftp" | "lthr" | "cp" | "run5k" | "swim" | "run1k" | "erg" | "strengthBench" | "boxing";
+  type:
+    | "ftp"
+    | "lthr"
+    | "cp"
+    | "run5k"
+    | "swim"
+    | "run1k"
+    | "erg"
+    | "strengthBench"
+    | "boxing";
   name: string;
   skipped: boolean;
   reason?: string;
 }
 
-const TRIATHLON_TEST_TYPES: { type: ScheduledTest["type"]; name: string; cadenceDays: number }[] = [
+const TRIATHLON_TEST_TYPES: {
+  type: ScheduledTest["type"];
+  name: string;
+  cadenceDays: number;
+}[] = [
   { type: "ftp", name: "FTP Test (20-min)", cadenceDays: 56 },
   { type: "lthr", name: "LTHR Test (30-min TT)", cadenceDays: 56 },
   { type: "cp", name: "Critical Power (3+12-min)", cadenceDays: 56 },
@@ -188,31 +328,65 @@ const TRIATHLON_TEST_TYPES: { type: ScheduledTest["type"]; name: string; cadence
   { type: "swim", name: "Swim CSS Test (400/200)", cadenceDays: 56 },
 ];
 
-const HYROX_TEST_TYPES: { type: ScheduledTest["type"]; name: string; cadenceDays: number }[] = [
+const HYROX_TEST_TYPES: {
+  type: ScheduledTest["type"];
+  name: string;
+  cadenceDays: number;
+}[] = [
   { type: "run1k", name: "1km Run TT (race pace)", cadenceDays: 56 },
   { type: "erg", name: "Erg Benchmark (Ski 1km + Row 1km)", cadenceDays: 56 },
-  { type: "strengthBench", name: "Sled + Wall Ball Benchmark", cadenceDays: 56 },
+  {
+    type: "strengthBench",
+    name: "Sled + Wall Ball Benchmark",
+    cadenceDays: 56,
+  },
 ];
 
-const BOXING_TEST_TYPES: { type: ScheduledTest["type"]; name: string; cadenceDays: number }[] = [
-  { type: "boxing", name: "Punch Output Test (3-min bag: punch count + film review)", cadenceDays: 56 },
+const BOXING_TEST_TYPES: {
+  type: ScheduledTest["type"];
+  name: string;
+  cadenceDays: number;
+}[] = [
+  {
+    type: "boxing",
+    name: "Punch Output Test (3-min bag: punch count + film review)",
+    cadenceDays: 56,
+  },
   { type: "run5k", name: "Roadwork Benchmark (5k TT)", cadenceDays: 56 },
-  { type: "strengthBench", name: "Neuromuscular Bench (CMJ + med-ball throw + push-up AMRAP)", cadenceDays: 56 },
+  {
+    type: "strengthBench",
+    name: "Neuromuscular Bench (CMJ + med-ball throw + push-up AMRAP)",
+    cadenceDays: 56,
+  },
 ];
 
-export function scheduleTests(startDate: Date, weeks: number, races: { date: Date }[], opts: { hyrox?: boolean; boxing?: boolean } = {}): ScheduledTest[] {
-  const testTypes = opts.boxing ? BOXING_TEST_TYPES : opts.hyrox ? HYROX_TEST_TYPES : TRIATHLON_TEST_TYPES;
+export function scheduleTests(
+  startDate: Date,
+  weeks: number,
+  races: { date: Date }[],
+  opts: { hyrox?: boolean; boxing?: boolean } = {},
+): ScheduledTest[] {
+  const testTypes = opts.boxing
+    ? BOXING_TEST_TYPES
+    : opts.hyrox
+      ? HYROX_TEST_TYPES
+      : TRIATHLON_TEST_TYPES;
   const out: ScheduledTest[] = [];
   const RACE_GUARD_DAYS = 14; // skip any test within 2 weeks of a race
   const raceDates = races.map((r) => new Date(r.date).getTime());
   // stagger test types across the 6-week block so no single week is overloaded
   const stagger = [0, 14, 28, 35, 7];
-  for (let i = 0; i < weeks * 7; i += 42) { // every 6 weeks — matches the mesocycle taper week
+  for (let i = 0; i < weeks * 7; i += 42) {
+    // every 6 weeks — matches the mesocycle taper week
     testTypes.forEach((tt, j) => {
-      const d = new Date(startDate.getTime() + (i + stagger[j % stagger.length]) * 86400000);
+      const d = new Date(
+        startDate.getTime() + (i + stagger[j % stagger.length]) * 86400000,
+      );
       const end = new Date(startDate.getTime() + weeks * 7 * 86400000);
       if (d.getTime() > end.getTime()) return;
-      const nearRace = raceDates.some((r) => Math.abs(r - d.getTime()) < RACE_GUARD_DAYS * 86400000);
+      const nearRace = raceDates.some(
+        (r) => Math.abs(r - d.getTime()) < RACE_GUARD_DAYS * 86400000,
+      );
       const nearestRace = raceDates.reduce<number | null>((acc, r) => {
         const gap = r - d.getTime();
         if (gap < 0) return acc; // past race, ignore
@@ -227,7 +401,8 @@ export function scheduleTests(startDate: Date, weeks: number, races: { date: Dat
       });
       if (!nearRace && nearestRace !== null && nearestRace < 56 * 86400000) {
         // leave a note when a test lands close to (but outside) the guard window
-        out[out.length - 1].reason = `note — ${Math.round(nearestRace / 86400000)} days before a race; consider moving if fatigued`;
+        out[out.length - 1].reason =
+          `note — ${Math.round(nearestRace / 86400000)} days before a race; consider moving if fatigued`;
       }
     });
   }
@@ -236,37 +411,37 @@ export function scheduleTests(startDate: Date, weeks: number, races: { date: Dat
 
 // ---------- 4. DAILY QUESTIONNAIRE → TRAINING ADAPTATION ----------
 export interface Checkin {
-  sleep: number;     // 1-5 (5 = great)
-  soreness: number;  // 1-5 (5 = very sore)
-  motivation: number;// 1-5
-  energy: number;    // 1-5
-  stress: number;    // 1-5 (5 = very stressed)
-  sick: boolean;     // ill/injured today
+  sleep: number; // 1-5 (5 = great)
+  soreness: number; // 1-5 (5 = very sore)
+  motivation: number; // 1-5
+  energy: number; // 1-5
+  stress: number; // 1-5 (5 = very stressed)
+  sick: boolean; // ill/injured today
   menstrual?: boolean; // female-specific flag
-  mood?: number;       // 1-5 (5 = great) — distinct from motivation: how you FEEL
+  mood?: number; // 1-5 (5 = great) — distinct from motivation: how you FEEL
   cycleDay?: number; // day of menstrual cycle (1-35) — enables phase-aware training
   weightKg?: number; // morning fasted weight (objective daily signal)
-  rhr?: number;      // morning resting HR
+  rhr?: number; // morning resting HR
   rhrBaseline?: number; // 7-day avg RHR, set server-side from daily metrics
 }
 
 export interface Adaptation {
-  score: number;        // 0-100 readiness (lower = back off)
+  score: number; // 0-100 readiness (lower = back off)
   verdict: "full" | "trim" | "easy" | "rest";
-  durationFactor: number;   // multiply session duration
-  intensityCap: string;     // e.g. "z4" — don't exceed
+  durationFactor: number; // multiply session duration
+  intensityCap: string; // e.g. "z4" — don't exceed
   message: string;
 }
 
 export function adaptSession(checkin: Checkin): Adaptation {
   const { sleep, soreness, motivation, energy, stress, sick } = checkin;
   let score = 50;
-  score += (sleep - 3) * 8;      // ±16
-  score -= (soreness - 3) * 6;   // ±12
-  score += (energy - 3) * 8;     // ±16
+  score += (sleep - 3) * 8; // ±16
+  score -= (soreness - 3) * 6; // ±12
+  score += (energy - 3) * 8; // ±16
   score += (motivation - 3) * 4; // ±8
   if (checkin.mood) score += (checkin.mood - 3) * 4; // ±8
-  score -= (stress - 3) * 5;     // ±10
+  score -= (stress - 3) * 5; // ±10
   if (checkin.menstrual) score -= 10;
   if (sick) score -= 40;
   // Objective morning signals: elevated RHR = recovery lagging (Plews 2013),
@@ -278,19 +453,34 @@ export function adaptSession(checkin: Checkin): Adaptation {
   }
   score = Math.max(0, Math.min(100, score));
 
-  let verdict: Adaptation["verdict"], durationFactor: number, intensityCap: string, message: string;
+  let verdict: Adaptation["verdict"],
+    durationFactor: number,
+    intensityCap: string,
+    message: string;
   if (sick || score < 25) {
-    verdict = "rest"; durationFactor = 0; intensityCap = "z1";
-    message = "Full rest or a 20-min Z1 flush. Training now would dig a deeper hole — protect the block.";
+    verdict = "rest";
+    durationFactor = 0;
+    intensityCap = "z1";
+    message =
+      "Full rest or a 20-min Z1 flush. Training now would dig a deeper hole — protect the block.";
   } else if (score < 45) {
-    verdict = "easy"; durationFactor = 0.6; intensityCap = "z2";
-    message = "Easy day. Keep the habit but drop intensity to Z2 and ~60% duration. Sleep is the priority tonight.";
+    verdict = "easy";
+    durationFactor = 0.6;
+    intensityCap = "z2";
+    message =
+      "Easy day. Keep the habit but drop intensity to Z2 and ~60% duration. Sleep is the priority tonight.";
   } else if (score < 65) {
-    verdict = "trim"; durationFactor = 0.85; intensityCap = "z4";
-    message = "Trim the last interval set. Do the main work, cap intensity at threshold, extend the warm-up.";
+    verdict = "trim";
+    durationFactor = 0.85;
+    intensityCap = "z4";
+    message =
+      "Trim the last interval set. Do the main work, cap intensity at threshold, extend the warm-up.";
   } else {
-    verdict = "full"; durationFactor = 1; intensityCap = "z7";
-    message = "Green to go. Take the key session by the horns — chase the quality.";
+    verdict = "full";
+    durationFactor = 1;
+    intensityCap = "z7";
+    message =
+      "Green to go. Take the key session by the horns — chase the quality.";
   }
   return { score, verdict, durationFactor, intensityCap, message };
 }
@@ -307,13 +497,17 @@ export interface HydrationStatus {
   advice: string;
 }
 
-export function analyzeHydration(preKg: number, postKg: number): HydrationStatus {
+export function analyzeHydration(
+  preKg: number,
+  postKg: number,
+): HydrationStatus {
   const lossKg = Math.max(0, Math.round((preKg - postKg) * 100) / 100);
   const pct = preKg > 0 ? Math.round((lossKg / preKg) * 1000) / 10 : 0;
   let flag: HydrationStatus["flag"] = "ok";
-  let advice = lossKg > 0.3
-    ? `Lost ${lossKg} L sweat this session — that's your sweat rate. Replace with fluids + electrolytes.`
-    : "Sweat loss within limits — hydrate normally.";
+  let advice =
+    lossKg > 0.3
+      ? `Lost ${lossKg} L sweat this session — that's your sweat rate. Replace with fluids + electrolytes.`
+      : "Sweat loss within limits — hydrate normally.";
   if (pct > 3) {
     flag = "severe";
     advice = `Lost ${pct}% of body weight (${lossKg} L) — significant dehydration. Replace 150% of the loss with fluids + electrolytes over the next 2h and ease tomorrow's intensity.`;
@@ -332,8 +526,12 @@ export interface WeightTrend {
   advice: string;
 }
 
-export function morningWeightTrend(weights: { date: Date; weightKg: number | null }[]): WeightTrend | null {
-  const vals = weights.filter((w) => w.weightKg).map((w) => w.weightKg as number);
+export function morningWeightTrend(
+  weights: { date: Date; weightKg: number | null }[],
+): WeightTrend | null {
+  const vals = weights
+    .filter((w) => w.weightKg)
+    .map((w) => w.weightKg as number);
   if (vals.length < 4) return null;
   const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
   const recent = avg(vals.slice(-3));
@@ -360,22 +558,60 @@ export interface FuelPlan {
   notes: string;
 }
 
-export function recommendFuel(opts: { durationMin: number; intensity: string; heatFactor?: number; ergosIncludeCaffeine?: boolean }): FuelPlan {
+export function recommendFuel(opts: {
+  durationMin: number;
+  intensity: string;
+  heatFactor?: number;
+  ergosIncludeCaffeine?: boolean;
+}): FuelPlan {
   const { durationMin, intensity } = opts;
   const heat = opts.heatFactor ?? 1;
-  const hard = intensity === "z4" || intensity === "z5" || intensity === "z6" || intensity === "z7" || intensity === "interval" || intensity === "threshold";
-  let carbsPerHourG = 0, sodiumMgPerHour = 0, fluidMlPerHour = 0, caffeineMg: number | undefined;
+  const hard =
+    intensity === "z4" ||
+    intensity === "z5" ||
+    intensity === "z6" ||
+    intensity === "z7" ||
+    intensity === "interval" ||
+    intensity === "threshold";
+  let carbsPerHourG = 0,
+    sodiumMgPerHour = 0,
+    fluidMlPerHour = 0,
+    caffeineMg: number | undefined;
   const notes: string[] = [];
   if (durationMin < 60) {
-    carbsPerHourG = 0; fluidMlPerHour = Math.round(500 * heat); notes.push("Under 60 min — water only; no fuel needed.");
+    carbsPerHourG = 0;
+    fluidMlPerHour = Math.round(500 * heat);
+    notes.push("Under 60 min — water only; no fuel needed.");
   } else if (durationMin < 90) {
-    carbsPerHourG = 30; sodiumMgPerHour = 400; fluidMlPerHour = Math.round(600 * heat); notes.push("30g carbs/h (one gel or 500ml sports drink).");
+    carbsPerHourG = 30;
+    sodiumMgPerHour = 400;
+    fluidMlPerHour = Math.round(600 * heat);
+    notes.push("30g carbs/h (one gel or 500ml sports drink).");
   } else {
-    carbsPerHourG = 60; sodiumMgPerHour = 700; fluidMlPerHour = Math.round(750 * heat); notes.push("60g carbs/h, work up to 90g/h on race day (glucose:fructose 2:1).");
+    carbsPerHourG = 60;
+    sodiumMgPerHour = 700;
+    fluidMlPerHour = Math.round(750 * heat);
+    notes.push(
+      "60g carbs/h, work up to 90g/h on race day (glucose:fructose 2:1).",
+    );
   }
-  if (hard && durationMin >= 45 && !opts.ergosIncludeCaffeine) { caffeineMg = 150; notes.push("Caffeine 150mg 45-60 min pre-session (3 mg/kg personalizable)."); }
-  else if (hard && durationMin >= 45) { notes.push("Caffeine already covered in your ergogenic picks — same pre-session timing."); }
-  return { carbsPerHourG, sodiumMgPerHour, fluidMlPerHour, caffeineMg, notes: notes.join(" ") };
+  if (hard && durationMin >= 45 && !opts.ergosIncludeCaffeine) {
+    caffeineMg = 150;
+    notes.push(
+      "Caffeine 150mg 45-60 min pre-session (3 mg/kg personalizable).",
+    );
+  } else if (hard && durationMin >= 45) {
+    notes.push(
+      "Caffeine already covered in your ergogenic picks — same pre-session timing.",
+    );
+  }
+  return {
+    carbsPerHourG,
+    sodiumMgPerHour,
+    fluidMlPerHour,
+    caffeineMg,
+    notes: notes.join(" "),
+  };
 }
 
 export interface ErgoOption {
@@ -389,42 +625,130 @@ export interface ErgoOption {
 }
 
 export const ERGOGENIC_LIBRARY: ErgoOption[] = [
-  { key: "caffeine", name: "Caffeine", evidence: "A", dose: "3-6 mg/kg (~200-400mg)", when: "45-60 min pre-workout", benefit: "Lowers perceived exertion, improves endurance + high-intensity output (Goldstein 2010).", caution: "Late-day use can impair sleep — stop by ~2pm." },
-  { key: "citrulline", name: "L-Citrulline Malate", evidence: "A", dose: "6-8 g (2:1 malate) or 3g citrulline", when: "60 min pre-workout", benefit: "Increases nitric oxide availability, reduces fatigue in high-volume and strength sessions; complements beetroot (Bailey 2015, Pérez-Guisado 2010).", caution: "Can cause mild GI upset — start with half dose." },
-  { key: "nitrate", name: "Beetroot / Nitrate", evidence: "A", dose: "6-8 mmol (~400-500mg nitrate)", when: "2-3 h pre-workout, or 6 days loading", benefit: "Improves efficiency + endurance; lowers O2 cost (Jones 2018).", caution: "Avoid antibacterial mouthwash — kills the oral bacteria that convert nitrate." },
-  { key: "creatine", name: "Creatine Monohydrate", evidence: "A", dose: "3-5 g/day", when: "Any time, daily", benefit: "Power, strength, repeat-sprint + recovery; small endurance benefit.", caution: "Expect ~1kg water-weight gain." },
-  { key: "betaAlanine", name: "Beta-Alanine", evidence: "A", dose: "3.2-6.4 g/day (split doses)", when: "Daily, with food", benefit: "Buffers acidosis for 1-4 min efforts (swim/bike/run surges).", caution: "Causes harmless skin tingling (paresthesia)." },
-  { key: "bicarb", name: "Sodium Bicarbonate", evidence: "A", dose: "0.2-0.3 g/kg", when: "90-150 min pre-race (not daily)", benefit: "Buffers high-intensity efforts (800m swim, sprint finish).", caution: "GI distress risk — test in training first, never on race day." },
-  { key: "phosphate", name: "Sodium Phosphate", evidence: "B", dose: "3-5 g/day, 3-6 days", when: "Loading block pre-race", benefit: "Modest VO2max/efficiency gain (B evidence).", caution: "Lower priority than the Group A list." },
+  {
+    key: "caffeine",
+    name: "Caffeine",
+    evidence: "A",
+    dose: "3-6 mg/kg (~200-400mg)",
+    when: "45-60 min pre-workout",
+    benefit:
+      "Lowers perceived exertion, improves endurance + high-intensity output (Goldstein 2010).",
+    caution: "Late-day use can impair sleep — stop by ~2pm.",
+  },
+  {
+    key: "citrulline",
+    name: "L-Citrulline Malate",
+    evidence: "A",
+    dose: "6-8 g (2:1 malate) or 3g citrulline",
+    when: "60 min pre-workout",
+    benefit:
+      "Increases nitric oxide availability, reduces fatigue in high-volume and strength sessions; complements beetroot (Bailey 2015, Pérez-Guisado 2010).",
+    caution: "Can cause mild GI upset — start with half dose.",
+  },
+  {
+    key: "nitrate",
+    name: "Beetroot / Nitrate",
+    evidence: "A",
+    dose: "6-8 mmol (~400-500mg nitrate)",
+    when: "2-3 h pre-workout, or 6 days loading",
+    benefit: "Improves efficiency + endurance; lowers O2 cost (Jones 2018).",
+    caution:
+      "Avoid antibacterial mouthwash — kills the oral bacteria that convert nitrate.",
+  },
+  {
+    key: "creatine",
+    name: "Creatine Monohydrate",
+    evidence: "A",
+    dose: "3-5 g/day",
+    when: "Any time, daily",
+    benefit:
+      "Power, strength, repeat-sprint + recovery; small endurance benefit.",
+    caution: "Expect ~1kg water-weight gain.",
+  },
+  {
+    key: "betaAlanine",
+    name: "Beta-Alanine",
+    evidence: "A",
+    dose: "3.2-6.4 g/day (split doses)",
+    when: "Daily, with food",
+    benefit: "Buffers acidosis for 1-4 min efforts (swim/bike/run surges).",
+    caution: "Causes harmless skin tingling (paresthesia).",
+  },
+  {
+    key: "bicarb",
+    name: "Sodium Bicarbonate",
+    evidence: "A",
+    dose: "0.2-0.3 g/kg",
+    when: "90-150 min pre-race (not daily)",
+    benefit: "Buffers high-intensity efforts (800m swim, sprint finish).",
+    caution: "GI distress risk — test in training first, never on race day.",
+  },
+  {
+    key: "phosphate",
+    name: "Sodium Phosphate",
+    evidence: "B",
+    dose: "3-5 g/day, 3-6 days",
+    when: "Loading block pre-race",
+    benefit: "Modest VO2max/efficiency gain (B evidence).",
+    caution: "Lower priority than the Group A list.",
+  },
 ];
 
 export interface SupplementPrefs {
-  enabled: boolean;          // master switch (user can turn ALL off)
-  likes: string[];           // keys the user liked
-  dislikes: string[];        // keys the user rejected
-  optsOut: string[];         // keys the user explicitly stopped
+  enabled: boolean; // master switch (user can turn ALL off)
+  likes: string[]; // keys the user liked
+  dislikes: string[]; // keys the user rejected
+  optsOut: string[]; // keys the user explicitly stopped
 }
 
-export function recommendErgogenics(prefs: SupplementPrefs, session: { sport: string; type: string; durationMin: number; intensity?: string }): { recommended: ErgoOption[]; reason: string } {
-  if (!prefs.enabled) return { recommended: [], reason: "Ergogenic aids are off. Turn them back on anytime — nothing is pushed on you." };
-  const hard = session.type === "interval" || session.type === "threshold" || (session.intensity === "z4" || session.intensity === "z5" || session.intensity === "z6" || session.intensity === "z7");
+export function recommendErgogenics(
+  prefs: SupplementPrefs,
+  session: {
+    sport: string;
+    type: string;
+    durationMin: number;
+    intensity?: string;
+  },
+): { recommended: ErgoOption[]; reason: string } {
+  if (!prefs.enabled)
+    return {
+      recommended: [],
+      reason:
+        "Ergogenic aids are off. Turn them back on anytime — nothing is pushed on you.",
+    };
+  const hard =
+    session.type === "interval" ||
+    session.type === "threshold" ||
+    session.intensity === "z4" ||
+    session.intensity === "z5" ||
+    session.intensity === "z6" ||
+    session.intensity === "z7";
   const long = session.durationMin >= 90;
   const strength = session.sport === "strength";
-  const shortIntense = session.sport === "swim" || session.sport === "run" ? session.type === "interval" || session.type === "threshold" : false;
+  const shortIntense =
+    session.sport === "swim" || session.sport === "run"
+      ? session.type === "interval" || session.type === "threshold"
+      : false;
 
   const picks: ErgoOption[] = [];
-  if (hard || long) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "caffeine")!);
+  if (hard || long)
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "caffeine")!);
   if (long) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "nitrate")!);
-  if (strength || shortIntense) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!);
-  if (shortIntense) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "betaAlanine")!);
-  if (strength || session.type === "volume" || session.durationMin >= 75) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "citrulline")!);
-  if (session.type === "test" || session.type === "race") picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "bicarb")!);
+  if (strength || shortIntense)
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!);
+  if (shortIntense)
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "betaAlanine")!);
+  if (strength || session.type === "volume" || session.durationMin >= 75)
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "citrulline")!);
+  if (session.type === "test" || session.type === "race")
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "bicarb")!);
 
   // respect likes (boost), dislikes + opt-outs (remove), then re-rank by evidence
   const liked = picks.filter((e) => prefs.likes.includes(e.key));
   const neutral = picks.filter((e) => !prefs.likes.includes(e.key));
-  const filtered = [...liked, ...neutral]
-    .filter((e) => !prefs.dislikes.includes(e.key) && !prefs.optsOut.includes(e.key));
+  const filtered = [...liked, ...neutral].filter(
+    (e) => !prefs.dislikes.includes(e.key) && !prefs.optsOut.includes(e.key),
+  );
 
   const reason = filtered.length
     ? `Picks matched to this ${session.sport} ${session.type} session; your prior likes/dislikes are respected.`
@@ -432,7 +756,11 @@ export function recommendErgogenics(prefs: SupplementPrefs, session: { sport: st
   return { recommended: filtered, reason };
 }
 
-export function applySupplementFeedback(prefs: SupplementPrefs, key: string, feedback: "like" | "dislike" | "stop"): SupplementPrefs {
+export function applySupplementFeedback(
+  prefs: SupplementPrefs,
+  key: string,
+  feedback: "like" | "dislike" | "stop",
+): SupplementPrefs {
   const next: SupplementPrefs = {
     ...prefs,
     likes: prefs.likes.filter((k) => k !== key),
@@ -455,23 +783,33 @@ export interface WeightHydration {
   advice: string;
 }
 
-export function hydrationFromWeight(preKg: number, postKg: number, durationMin: number, fluidConsumedMl = 0): WeightHydration {
+export function hydrationFromWeight(
+  preKg: number,
+  postKg: number,
+  durationMin: number,
+  fluidConsumedMl = 0,
+): WeightHydration {
   const loss = Math.max(0, preKg - postKg);
   const pct = preKg > 0 ? (loss / preKg) * 100 : 0;
   const hours = Math.max(durationMin / 60, 0.25);
   const totalSweatL = loss + fluidConsumedMl / 1000;
   const sweatRate = totalSweatL / hours;
-  const status: WeightHydration["status"] = pct > 3 ? "severe" : pct > 2 ? "dehydrated" : "ok";
-  const advice = status === "severe"
-    ? `Severe fluid loss (${pct.toFixed(1)}%). Replace 150% of lost weight (${Math.round(loss * 1500)}ml) over the next 2h with electrolytes. Flag for tomorrow's plan.`
-    : status === "dehydrated"
-      ? `Dehydrated (${pct.toFixed(1)}%). Replace ~${Math.round(loss * 1250)}ml with sodium within 2h.`
-      : `Hydration on point (<2% loss). Replace ~${Math.round(loss * 1000)}ml to be safe.`;
+  const status: WeightHydration["status"] =
+    pct > 3 ? "severe" : pct > 2 ? "dehydrated" : "ok";
+  const advice =
+    status === "severe"
+      ? `Severe fluid loss (${pct.toFixed(1)}%). Replace 150% of lost weight (${Math.round(loss * 1500)}ml) over the next 2h with electrolytes. Flag for tomorrow's plan.`
+      : status === "dehydrated"
+        ? `Dehydrated (${pct.toFixed(1)}%). Replace ~${Math.round(loss * 1250)}ml with sodium within 2h.`
+        : `Hydration on point (<2% loss). Replace ~${Math.round(loss * 1000)}ml to be safe.`;
   return {
     weightLossKg: Math.round(loss * 100) / 100,
     weightLossPct: Math.round(pct * 10) / 10,
     sweatRateLPerH: Math.round(sweatRate * 100) / 100,
-    fluidToReplaceMl: Math.round(loss * (status === "severe" ? 1500 : status === "dehydrated" ? 1250 : 1000)),
+    fluidToReplaceMl: Math.round(
+      loss *
+        (status === "severe" ? 1500 : status === "dehydrated" ? 1250 : 1000),
+    ),
     status,
     advice,
   };
@@ -480,15 +818,15 @@ export function hydrationFromWeight(preKg: number, postKg: number, durationMin: 
 // ---------- 7. RACE VENUE (elevation / terrain / water) ----------
 export interface VenueProfile {
   targetTempC?: number;
-  humidity?: number;     // % — folded into heat index
-  baseElevM?: number;    // venue base elevation (thin-air altitude)
-  bikeElevM?: number;    // total climb on the bike leg
-  bikeTerrain?: string;  // flat | rolling | hilly | mountain
-  runElevM?: number;     // total climb on the run leg
-  runTerrain?: string;   // flat | rolling | hilly | trail
-  swimVenue?: string;    // pool | lake | ocean | river
+  humidity?: number; // % — folded into heat index
+  baseElevM?: number; // venue base elevation (thin-air altitude)
+  bikeElevM?: number; // total climb on the bike leg
+  bikeTerrain?: string; // flat | rolling | hilly | mountain
+  runElevM?: number; // total climb on the run leg
+  runTerrain?: string; // flat | rolling | hilly | trail
+  swimVenue?: string; // pool | lake | ocean | river
   waterTempC?: number;
-  swimCurrent?: string;  // none | mild | strong
+  swimCurrent?: string; // none | mild | strong
 }
 
 export interface DisciplineNote {
@@ -507,14 +845,41 @@ export interface VenueAdjustment {
   overall: string;
 }
 
-function terrainNote(terrain?: string, elevM?: number): { detail: string; training: string } {
+function terrainNote(
+  terrain?: string,
+  elevM?: number,
+): { detail: string; training: string } {
   const elev = elevM ?? 0;
   const t = (terrain || "").toLowerCase();
-  if (t === "trail") return { detail: `Trail terrain, ${elev}m gain.`, training: "Trail runs, technical descents, ankle stability work. Road pace doesn't transfer — train on similar surface." };
-  if (t === "mountain" || elev > 1500) return { detail: `Mountainous / ${elev}m climb.`, training: "Big climbing blocks, low gearing, practice long descents — bike handling under fatigue is the skill." };
-  if (t === "hilly" || elev > 800) return { detail: `Hilly / ${elev}m climb.`, training: "Weekly hill repeats + climbing intervals; train gearing and momentum, not just power." };
-  if (t === "rolling" || elev > 300) return { detail: `Rolling / ${elev}m climb.`, training: "Variable-power work: short surges over rollers, keep momentum through transitions." };
-  return { detail: `Flat / ${elev || 0}m climb.`, training: "Aero/steady-state work; prioritize sustained power over climbing." };
+  if (t === "trail")
+    return {
+      detail: `Trail terrain, ${elev}m gain.`,
+      training:
+        "Trail runs, technical descents, ankle stability work. Road pace doesn't transfer — train on similar surface.",
+    };
+  if (t === "mountain" || elev > 1500)
+    return {
+      detail: `Mountainous / ${elev}m climb.`,
+      training:
+        "Big climbing blocks, low gearing, practice long descents — bike handling under fatigue is the skill.",
+    };
+  if (t === "hilly" || elev > 800)
+    return {
+      detail: `Hilly / ${elev}m climb.`,
+      training:
+        "Weekly hill repeats + climbing intervals; train gearing and momentum, not just power.",
+    };
+  if (t === "rolling" || elev > 300)
+    return {
+      detail: `Rolling / ${elev}m climb.`,
+      training:
+        "Variable-power work: short surges over rollers, keep momentum through transitions.",
+    };
+  return {
+    detail: `Flat / ${elev || 0}m climb.`,
+    training:
+      "Aero/steady-state work; prioritize sustained power over climbing.",
+  };
 }
 
 export function venueAdjustment(v: VenueProfile): VenueAdjustment {
@@ -524,39 +889,84 @@ export function venueAdjustment(v: VenueProfile): VenueAdjustment {
   const swimVenue = (v.swimVenue || "pool").toLowerCase();
   const swimNote: DisciplineNote = { label: "Swim", detail: "", training: "" };
   if (swimVenue === "ocean" || swimVenue === "lake" || swimVenue === "river") {
-    const current = v.swimCurrent === "strong" ? "strong current" : v.swimCurrent === "mild" ? "mild current" : "no significant current";
+    const current =
+      v.swimCurrent === "strong"
+        ? "strong current"
+        : v.swimCurrent === "mild"
+          ? "mild current"
+          : "no significant current";
     swimNote.detail = `Open water (${swimVenue}) — ${current}.`;
-    swimNote.training = "Open-water sessions: sighting every 4-6 strokes, drafting, buoy turns. Pool fitness does not transfer without open-water practice.";
-    if (swimVenue === "ocean") swimNote.training += " Add surf entry/exit practice if applicable.";
+    swimNote.training =
+      "Open-water sessions: sighting every 4-6 strokes, drafting, buoy turns. Pool fitness does not transfer without open-water practice.";
+    if (swimVenue === "ocean")
+      swimNote.training += " Add surf entry/exit practice if applicable.";
   } else {
     swimNote.detail = "Pool swim — controlled conditions.";
-    swimNote.training = "Train in the pool; add open-water skills only if the venue changes.";
+    swimNote.training =
+      "Train in the pool; add open-water skills only if the venue changes.";
   }
 
   let heat: TempAdjustment | undefined;
   if (v.targetTempC !== undefined) {
-    const effective = v.humidity !== undefined ? heatIndex(v.targetTempC, v.humidity) : v.targetTempC;
+    const effective =
+      v.humidity !== undefined
+        ? heatIndex(v.targetTempC, v.humidity)
+        : v.targetTempC;
     heat = temperatureAdjustment(effective);
   }
 
-  let altitude: { vo2factor: number; paceFactor: number; advice: string } | undefined;
+  let altitude:
+    | { vo2factor: number; paceFactor: number; advice: string }
+    | undefined;
   if (v.baseElevM !== undefined) altitude = altitudeFactor(v.baseElevM);
 
   // Wetsuit legality (ITU-style: mandatory <22°C, optional 22-24.5°C, banned >24.5°C)
-  let wetsuit: VenueAdjustment["wetsuit"] = { legal: false, note: "Not applicable — no water temperature set." };
+  let wetsuit: VenueAdjustment["wetsuit"] = {
+    legal: false,
+    note: "Not applicable — no water temperature set.",
+  };
   if (v.waterTempC !== undefined) {
-    if (v.waterTempC < 22) wetsuit = { legal: true, waterTempC: v.waterTempC, note: `${v.waterTempC}°C — wetsuit mandatory/strongly advised (ITU <22°C).` };
-    else if (v.waterTempC <= 24.5) wetsuit = { legal: "optional", waterTempC: v.waterTempC, note: `${v.waterTempC}°C — wetsuit optional (age-group legal 22-24.5°C).` };
-    else wetsuit = { legal: false, waterTempC: v.waterTempC, note: `${v.waterTempC}°C — wetsuit NOT permitted (>24.5°C).` };
+    if (v.waterTempC < 22)
+      wetsuit = {
+        legal: true,
+        waterTempC: v.waterTempC,
+        note: `${v.waterTempC}°C — wetsuit mandatory/strongly advised (ITU <22°C).`,
+      };
+    else if (v.waterTempC <= 24.5)
+      wetsuit = {
+        legal: "optional",
+        waterTempC: v.waterTempC,
+        note: `${v.waterTempC}°C — wetsuit optional (age-group legal 22-24.5°C).`,
+      };
+    else
+      wetsuit = {
+        legal: false,
+        waterTempC: v.waterTempC,
+        note: `${v.waterTempC}°C — wetsuit NOT permitted (>24.5°C).`,
+      };
   }
 
   const overall = [
-    heat ? `Race temp ~${heat.tempC}°C${v.humidity !== undefined ? ` (feels like, ${v.humidity}% RH)` : ""} (${heat.category}) — ${heat.advice}` : null,
+    heat
+      ? `Race temp ~${heat.tempC}°C${v.humidity !== undefined ? ` (feels like, ${v.humidity}% RH)` : ""} (${heat.category}) — ${heat.advice}`
+      : null,
     altitude ? `Altitude: ${altitude.advice}` : null,
-    `Bike: ${bike.detail}`, `Run: ${run.detail}`, `Swim: ${swimNote.detail}`,
-  ].filter(Boolean).join(" ");
+    `Bike: ${bike.detail}`,
+    `Run: ${run.detail}`,
+    `Swim: ${swimNote.detail}`,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  return { bike: { label: "Bike", ...bike }, run: { label: "Run", ...run }, swim: swimNote, heat, altitude, wetsuit, overall };
+  return {
+    bike: { label: "Bike", ...bike },
+    run: { label: "Run", ...run },
+    swim: swimNote,
+    heat,
+    altitude,
+    wetsuit,
+    overall,
+  };
 }
 
 // ---------- POST-WORKOUT RECOVERY FUELING ----------
@@ -565,7 +975,7 @@ export function venueAdjustment(v: VenueProfile): VenueAdjustment {
 export interface PostWorkoutFuel {
   carbsG: number;
   proteinG: number;
-  ratio: string;          // carb:protein
+  ratio: string; // carb:protein
   sodiumMg: number;
   fluidMl: number;
   window: string;
@@ -573,34 +983,69 @@ export interface PostWorkoutFuel {
   notes: string;
 }
 
-export function postWorkoutFuel(opts: { durationMin: number; intensity: string; heatFactor?: number; sport?: string }): PostWorkoutFuel {
+export function postWorkoutFuel(opts: {
+  durationMin: number;
+  intensity: string;
+  heatFactor?: number;
+  sport?: string;
+}): PostWorkoutFuel {
   const heat = opts.heatFactor ?? 1;
-  const hard = ["z4", "z5", "z6", "z7", "interval", "threshold", "test", "race"].includes(opts.intensity);
+  const hard = [
+    "z4",
+    "z5",
+    "z6",
+    "z7",
+    "interval",
+    "threshold",
+    "test",
+    "race",
+  ].includes(opts.intensity);
   const long = opts.durationMin >= 90;
   const strength = opts.sport === "strength";
 
   // Base: 0.8-1.2 g/kg/h carb + 0.3-0.4 g/kg protein in the recovery window.
   // Scale by session demand: long/hard → more carbs; strength → more protein.
-  let carbsG = 30, proteinG = 15, ratio = "2:1";
-  let examples = "Banana + 250ml chocolate milk, or a shake (30g carb / 15g protein).";
+  let carbsG = 30,
+    proteinG = 15,
+    ratio = "2:1";
+  let examples =
+    "Banana + 250ml chocolate milk, or a shake (30g carb / 15g protein).";
   if (long) {
-    carbsG = 60; proteinG = 20; ratio = "3:1";
-    examples = "Rice bowl with chicken (60g carb / 20g protein), or 2× recovery shakes within 2h.";
+    carbsG = 60;
+    proteinG = 20;
+    ratio = "3:1";
+    examples =
+      "Rice bowl with chicken (60g carb / 20g protein), or 2× recovery shakes within 2h.";
   } else if (strength) {
-    carbsG = 25; proteinG = 25; ratio = "1:1";
-    examples = "Whey or plant shake (25g protein) + fruit; protein matters most after strength.";
+    carbsG = 25;
+    proteinG = 25;
+    ratio = "1:1";
+    examples =
+      "Whey or plant shake (25g protein) + fruit; protein matters most after strength.";
   }
   if (hard && !long) {
-    carbsG = 40; proteinG = 20; ratio = "2:1";
+    carbsG = 40;
+    proteinG = 20;
+    ratio = "2:1";
     examples = "Bagel + Greek yogurt + honey, or a 40/20 recovery drink.";
   }
 
   const sodiumMg = Math.round(300 * heat);
   const fluidMl = Math.round(600 * heat);
-  const window = "Within 30-60 min post-session (the sooner after hard sessions, the better)";
+  const window =
+    "Within 30-60 min post-session (the sooner after hard sessions, the better)";
   const notes = `Electrolytes: ${sodiumMg}mg sodium + ${fluidMl}ml fluid (${heat > 1 ? `+${Math.round((heat - 1) * 100)}% for heat` : "normal conditions"}). ${hard ? "Hard session — prioritize the window." : long ? "Long session — glycogen refill matters for tomorrow." : "Keep it light — this was an easy day."}`;
 
-  return { carbsG, proteinG, ratio, sodiumMg, fluidMl, window, examples, notes };
+  return {
+    carbsG,
+    proteinG,
+    ratio,
+    sodiumMg,
+    fluidMl,
+    window,
+    examples,
+    notes,
+  };
 }
 
 // ---------- DAILY PRESCRIPTION (the "don't think, just execute" step) ----------
@@ -609,75 +1054,116 @@ export function postWorkoutFuel(opts: { durationMin: number; intensity: string; 
 // calendar busy time, and their own HR/power baselines. Science-backed detail
 // comes from buildSessionDetail (WU/CD templates, main-set generator).
 import { buildSessionDetail } from "./science";
+import {
+  structuredSteps,
+  stepsText,
+  zoneTargets,
+  type WorkoutStep,
+} from "./prescription";
 
 export interface DailyPrescription {
+  intensity: string;
+  type: string;
+  steps: WorkoutStep[];
   title: string;
   sport: string;
   durationMin: number;
   startTime?: string | null; // "HH:mm" when a fixed session time is scheduled
   verdict: string;
-  detail: { wu: string; main: string; cd: string; breathing: string; study: string };
+  detail: {
+    wu: string;
+    main: string;
+    cd: string;
+    breathing: string;
+    study: string;
+  };
   targets: { hr?: string; power?: string; pace?: string; rpe: number };
   scaled: { originalMin: number; factor: number; reason: string };
   sources: string[];
 }
 
 export function prescribeToday(opts: {
-  session: { sport: string; title: string; type: string; intensity?: string | null; durationMin: number; description?: string | null; startTime?: string | null };
+  session: {
+    sport: string;
+    title: string;
+    type: string;
+    intensity?: string | null;
+    durationMin: number;
+    description?: string | null;
+    startTime?: string | null;
+    variantSeed?: number;
+  };
   adaptation: { verdict: string; durationFactor: number; intensityCap: string };
   busyNote?: string | null;
   busyHrs?: number;
-  profile?: { lthr?: number | null; ftp?: number | null; runPaceBase?: number | null } | null;
+  profile?: {
+    lthr?: number | null;
+    ftp?: number | null;
+    runPaceBase?: number | null;
+  } | null;
 }): DailyPrescription {
   const { session, adaptation, profile } = opts;
-  const factor = adaptation.durationFactor;
-  const heavyDay = (opts.busyHrs || 0) >= 6;
-
-  // Time-box: heavy calendar day → shrink to a high-yield 20-25 min version.
-  let durationMin = Math.max(20, Math.round(session.durationMin * factor));
-  let reason = `Recovery ${adaptation.verdict} → duration ×${factor}`;
-  if (heavyDay && durationMin > 25) {
-    durationMin = 25;
-    reason += `; heavy calendar (${opts.busyHrs}h busy) → capped at 25 min high-yield`;
-  }
-
+  const rest = adaptation.verdict === "rest" || session.durationMin <= 0;
+  const durationMin = rest
+    ? 0
+    : Math.max(
+        1,
+        Math.min(
+          (opts.busyHrs || 0) >= 6 ? 25 : Infinity,
+          Math.round(session.durationMin * adaptation.durationFactor),
+        ),
+      );
+  const originalZone = Number((session.intensity || "z2").slice(1)) || 2;
+  const intensity =
+    "z" + Math.min(originalZone, Number(adaptation.intensityCap.slice(1)) || 2);
+  const type = rest
+    ? "recovery"
+    : ["strength", "mobility", "hyrox", "boxing"].includes(session.sport)
+      ? session.type
+      : intensity === "z1"
+        ? "recovery"
+        : Number(intensity.slice(1)) <= 2
+          ? "endurance"
+          : session.type;
+  const steps = structuredSteps(
+    durationMin,
+    intensity,
+    type,
+    session.variantSeed,
+  );
   const detail = buildSessionDetail({
     sport: session.sport,
-    type: session.type,
-    zone: adaptation.intensityCap === "z1" ? "z1" : session.intensity || "z2",
+    type,
+    zone: intensity,
     minutes: durationMin,
-    description: session.description || "",
+    description: "",
   });
-
-  // Pacing targets from the athlete's own baselines (not generic).
-  const targets: DailyPrescription["targets"] = { rpe: adaptation.verdict === "rest" ? 2 : adaptation.verdict === "easy" ? 4 : adaptation.verdict === "trim" ? 6 : 7 };
-  if (profile?.lthr && adaptation.intensityCap !== "z1") {
-    const cap = adaptation.intensityCap === "z2" ? 0.85 : adaptation.intensityCap === "z4" ? 0.95 : 1.05;
-    targets.hr = `${Math.round(profile.lthr * 0.8)}-${Math.round(profile.lthr * cap)} bpm`;
-  }
-  if (profile?.ftp && session.sport === "bike") {
-    targets.power = `≤${Math.round((profile.ftp * (adaptation.intensityCap === "z2" ? 0.75 : adaptation.intensityCap === "z4" ? 0.9 : 1.05))) / 1} W`;
-  }
-  if (profile?.runPaceBase && session.sport === "run") {
-    const pace = profile.runPaceBase;
-    targets.pace = adaptation.intensityCap === "z2"
-      ? `${Math.round((pace * 1.15) / 5) * 5}-${Math.round((pace * 1.3) / 5) * 5} sec/km`
-      : `~${Math.round((pace * 0.95) / 5) * 5} sec/km`;
-  }
-
-  const sources = ["Friel", "Seiler 2009", "Billat 2001"];
-  if (adaptation.verdict === "rest" || adaptation.verdict === "easy") sources.push("Plews 2013", "Lehrer 2014");
-
+  detail.wu = steps.length
+    ? `Warm up for ${steps[0].seconds / 60} min at Z1.`
+    : "No warm-up needed.";
+  detail.main = rest
+    ? "Rest today. The planned hard session is paused."
+    : stepsText(steps);
+  detail.cd = steps.length
+    ? `Cool down for ${steps[steps.length - 1].seconds / 60} min at Z1.`
+    : "Resume training after reassessing readiness.";
   return {
-    title: session.title,
+    title: rest ? "Rest and recover" : session.title,
     sport: session.sport,
     durationMin,
+    intensity,
+    type,
+    steps,
     startTime: session.startTime ?? null,
     verdict: adaptation.verdict,
     detail,
-    targets,
-    scaled: { originalMin: session.durationMin, factor, reason },
-    sources,
+    targets: rest ? { rpe: 0 } : zoneTargets(intensity, session.sport, profile),
+    scaled: {
+      originalMin: session.durationMin,
+      factor: session.durationMin ? durationMin / session.durationMin : 0,
+      reason: `Readiness: ${adaptation.verdict}${(opts.busyHrs || 0) >= 6 ? "; limited by calendar availability" : ""}`,
+    },
+    sources: ["Seiler 2009", "Plews 2013"],
   };
 }
 
@@ -686,19 +1172,47 @@ export function prescribeToday(opts: {
 // their weeks (≥85% sessions completed), the next cycle can push harder.
 // If they're missing sessions (<60%), prescribe a deload before injury does.
 // ponytail: simple completion-% heuristic; per-zone TRAC-style load model if precision matters
-export function progressionAdvice(recentWeeks: { weekStart: Date; planned: number; completed: number }[]): {
+export function progressionAdvice(
+  recentWeeks: { weekStart: Date; planned: number; completed: number }[],
+): {
   status: "on_track" | "push" | "deload";
   pct: number;
   message: string;
 } {
   const valid = recentWeeks.filter((w) => w.planned > 0);
-  if (!valid.length) return { status: "on_track", pct: 0, message: "Complete your first training week to unlock progression tracking." };
+  if (!valid.length)
+    return {
+      status: "on_track",
+      pct: 0,
+      message:
+        "Complete your first training week to unlock progression tracking.",
+    };
   const planned = valid.reduce((s, w) => s + w.planned, 0);
   const completed = valid.reduce((s, w) => s + w.completed, 0);
   const pct = Math.round((completed / planned) * 100);
   const last3 = valid.slice(-3);
-  const last3Pct = last3.length ? Math.round((last3.reduce((s, w) => s + w.completed, 0) / last3.reduce((s, w) => s + w.planned, 0)) * 100) : pct;
-  if (last3Pct >= 85) return { status: "push", pct, message: `${last3Pct}% completion over the last 3 weeks — you're absorbing the load. The next cycle pushes +5-8%. Keep sleeping.` };
-  if (last3Pct < 60) return { status: "deload", pct, message: `${last3Pct}% completion — life is winning. Next week auto-scales down ~20% (volume, not intensity). Missing sessions is data, not failure.` };
-  return { status: "on_track", pct, message: `${pct} completion — steady. The plan ramps as designed.` };
+  const last3Pct = last3.length
+    ? Math.round(
+        (last3.reduce((s, w) => s + w.completed, 0) /
+          last3.reduce((s, w) => s + w.planned, 0)) *
+          100,
+      )
+    : pct;
+  if (last3Pct >= 85)
+    return {
+      status: "push",
+      pct,
+      message: `${last3Pct}% completion over the last 3 weeks — you're absorbing the load. The next cycle pushes +5-8%. Keep sleeping.`,
+    };
+  if (last3Pct < 60)
+    return {
+      status: "deload",
+      pct,
+      message: `${last3Pct}% completion — life is winning. Next week auto-scales down ~20% (volume, not intensity). Missing sessions is data, not failure.`,
+    };
+  return {
+    status: "on_track",
+    pct,
+    message: `${pct} completion — steady. The plan ramps as designed.`,
+  };
 }

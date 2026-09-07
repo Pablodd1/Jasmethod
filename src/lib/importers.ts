@@ -1,3 +1,7 @@
+import { providerFetch } from "./provider-fetch";
+import { createHash } from "crypto";
+import { dateKey, DEFAULT_TIMEZONE } from "./dates";
+import { XMLParser } from "fast-xml-parser";
 // Data importers: Garmin TCX, Apple Health XML (export.xml), Whoop CSV,
 // Strava API (OAuth), and 23andMe/Ancestry DNA raw files.
 // All return normalized shapes the app stores in its own schema.
@@ -26,7 +30,8 @@ export function parseTcx(xml: string): ImportedWorkout[] {
   const activityRegex = /<Activity[^>]*>([\s\S]*?)<\/Activity>/g;
   const trackpointRegex = /<Trackpoint>([\s\S]*?)<\/Trackpoint>/g;
   const timeRegex = /<Time>([^<]+)<\/Time>/;
-  const hrRegex = /<HeartRateBpm[^>]*>[\s\S]*?<Value>(\d+)<\/Value>[\s\S]*?<\/HeartRateBpm>/;
+  const hrRegex =
+    /<HeartRateBpm[^>]*>[\s\S]*?<Value>(\d+)<\/Value>[\s\S]*?<\/HeartRateBpm>/;
   const distRegex = /<DistanceMeters>([\d.]+)<\/DistanceMeters>/;
   const calRegex = /<Calories>(\d+)<\/Calories>/;
   const powerRegex = /<Watts>([\d.]+)<\/Watts>/;
@@ -40,10 +45,15 @@ export function parseTcx(xml: string): ImportedWorkout[] {
     const block = m[1];
     const sportRaw = (sports[actIdx] || "other").toLowerCase();
     actIdx++;
-    const sport: ImportedWorkout["sport"] = sportRaw.includes("swim") ? "swim"
-      : sportRaw.includes("running") ? "run"
-      : sportRaw.includes("biking") || sportRaw.includes("cycling") ? "bike"
-      : sportRaw.includes("strength") ? "strength" : "other";
+    const sport: ImportedWorkout["sport"] = sportRaw.includes("swim")
+      ? "swim"
+      : sportRaw.includes("running")
+        ? "run"
+        : sportRaw.includes("biking") || sportRaw.includes("cycling")
+          ? "bike"
+          : sportRaw.includes("strength")
+            ? "strength"
+            : "other";
 
     const times: string[] = [];
     const hrs: number[] = [];
@@ -64,12 +74,21 @@ export function parseTcx(xml: string): ImportedWorkout[] {
     if (times.length === 0) continue;
     const start = new Date(times[0]);
     const end = new Date(times[times.length - 1]);
-    const durationMin = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
+    const durationMin = Math.max(
+      1,
+      Math.round((end.getTime() - start.getTime()) / 60000),
+    );
     const cal = block.match(calRegex);
-    const avgHr = hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : undefined;
+    const avgHr = hrs.length
+      ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length)
+      : undefined;
     const maxHr = hrs.length ? Math.max(...hrs) : undefined;
-    const avgPower = powers.length ? Math.round(powers.reduce((a, b) => a + b, 0) / powers.length) : undefined;
-    const idBase = block.match(/<Id>([^<]+)<\/Id>/)?.[1] || `${start.toISOString()}-${sport}`;
+    const avgPower = powers.length
+      ? Math.round(powers.reduce((a, b) => a + b, 0) / powers.length)
+      : undefined;
+    const idBase =
+      block.match(/<Id>([^<]+)<\/Id>/)?.[1] ||
+      `${start.toISOString()}-${sport}`;
 
     workouts.push({
       externalId: `tcx:${idBase}`,
@@ -105,66 +124,117 @@ export interface AppleHealthData {
 }
 
 export function parseAppleHealth(xml: string): AppleHealthData {
-  const out: AppleHealthData = { workouts: [], weightLogs: [], sleepLogs: [], hrLogs: [], hrvLogs: [] };
-  const recordRegex = /<Record\s+([^>]*)\/>/g;
-  const workoutRegex = /<Workout\s+([^>]*)\/>/g;
-  const attr = (s: string, name: string) => {
-    const m = s.match(new RegExp(`${name}="([^"]*)"`));
-    return m ? m[1] : undefined;
+  const out: AppleHealthData = {
+    workouts: [],
+    weightLogs: [],
+    sleepLogs: [],
+    hrLogs: [],
+    hrvLogs: [],
   };
-
-  let m: RegExpExecArray | null;
-  while ((m = recordRegex.exec(xml)) !== null) {
-    const attrs = m[1];
-    const type = attr(attrs, "type") || "";
-    const value = attr(attrs, "value");
-    const unit = attr(attrs, "unit");
-    const start = attr(attrs, "startDate");
-    if (!start) continue;
-    const date = new Date(start);
-
-    if (type.includes("BodyMass") && unit === "kg" && value) {
-      const kg = parseFloat(value);
-      out.weightLogs.push({ date, kg });
-      if (out.weightLogs.length === 0 || date >= out.weightLogs[out.weightLogs.length - 1].date) { out.bodyMassKg = kg; }
-    } else if (type.includes("Height") && value) {
-      const cm = unit === "cm" ? parseFloat(value) : unit === "m" ? parseFloat(value) * 100 : undefined;
-      if (cm) out.heightCm = cm;
-    } else if (type.includes("StepCount")) {
-      out.stepCount = (out.stepCount || 0) + parseFloat(value || "0");
-    } else if (type.includes("RestingHeartRate") && value) {
-      out.restingHr = Math.round(parseFloat(value));
-    } else if (type.includes("HeartRate") && value) {
-      out.hrLogs.push({ date, bpm: Math.round(parseFloat(value)) });
-    } else if (type.includes("HeartRateVariability") && value) {
-      out.hrvLogs.push({ date, ms: parseFloat(value) });
-    } else if (type.includes("SleepAnalysis") && value) {
-      // Sleep analysis records: value = asleep | inBed | awake
-      out.sleepLogs.push({ date, hours: 0 }); // aggregated separately below
-    }
+  const parsed = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "",
+    parseAttributeValue: false,
+    processEntities: false,
+  }).parse(xml).HealthData;
+  if (!parsed) throw new Error("Expected an Apple Health export.xml file");
+  const list = (v: any): any[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
+  for (const r of list(parsed.Record)) {
+    const date = new Date(r.startDate),
+      value = Number(r.value),
+      type = String(r.type || "");
+    if (!Number.isFinite(date.getTime()) || !Number.isFinite(value)) continue;
+    if (type === "HKQuantityTypeIdentifierHeartRateVariabilitySDNN")
+      out.hrvLogs.push({ date, ms: value });
+    else if (type === "HKQuantityTypeIdentifierRestingHeartRate") {
+      out.restingHr = value;
+      out.hrLogs.push({ date, bpm: value });
+    } else if (type === "HKQuantityTypeIdentifierBodyMass") {
+      const kg =
+        r.unit === "lb" ? value * 0.45359237 : r.unit === "kg" ? value : null;
+      if (kg != null) {
+        out.weightLogs.push({ date, kg });
+        out.bodyMassKg = kg;
+      }
+    } else if (type === "HKQuantityTypeIdentifierHeight")
+      out.heightCm =
+        r.unit === "m"
+          ? value * 100
+          : r.unit === "cm"
+            ? value
+            : r.unit === "in"
+              ? value * 2.54
+              : undefined;
   }
-
-  while ((m = workoutRegex.exec(xml)) !== null) {
-    const attrs = m[1];
-    const activity = attr(attrs, "workoutActivityType") || "other";
-    const start = attr(attrs, "startDate");
-    const end = attr(attrs, "endDate");
-    const dur = attr(attrs, "duration");
-    const dist = attr(attrs, "distance");
-    const cal = attr(attrs, "totalEnergyBurned");
-    if (!start || !end) continue;
-    const sport: ImportedWorkout["sport"] = activity.includes("Swimming") ? "swim"
-      : activity.includes("Cycling") ? "bike"
-      : activity.includes("Running") ? "run"
-      : activity.includes("Strength") ? "strength" : "other";
+  const sleepIntervals = list(parsed.Record)
+    .filter(
+      (r) =>
+        r.type === "HKCategoryTypeIdentifierSleepAnalysis" &&
+        /Asleep/.test(String(r.value)),
+    )
+    .map((r) => ({ date: new Date(r.startDate), end: new Date(r.endDate) }))
+    .filter((r) => Number.isFinite(r.date.getTime()) && r.end > r.date)
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  let previousEnd = 0;
+  for (const r of sleepIntervals) {
+    const start = Math.max(previousEnd, r.date.getTime());
+    if (r.end.getTime() > start)
+      out.sleepLogs.push({
+        date: r.end,
+        hours: (r.end.getTime() - start) / 3600000,
+      });
+    previousEnd = Math.max(previousEnd, r.end.getTime());
+  }
+  for (const w of list(parsed.Workout)) {
+    const date = new Date(w.startDate),
+      end = new Date(w.endDate);
+    if (!Number.isFinite(date.getTime())) continue;
+    const duration = Number(w.duration),
+      unit = String(w.durationUnit || "");
+    const minutes =
+      unit === "min"
+        ? duration
+        : unit === "s"
+          ? duration / 60
+          : unit === "hr"
+            ? duration * 60
+            : (end.getTime() - date.getTime()) / 60000;
+    if (!Number.isFinite(minutes) || minutes <= 0) continue;
+    const type = String(w.workoutActivityType || "");
+    const sport: ImportedWorkout["sport"] = type.includes("Running")
+      ? "run"
+      : type.includes("Cycling")
+        ? "bike"
+        : type.includes("Swimming")
+          ? "swim"
+          : type.includes("Strength")
+            ? "strength"
+            : "other";
+    const stat = list(w.WorkoutStatistics).find((s) =>
+      String(s.type).includes("Distance"),
+    );
+    const distance = Number(w.totalDistance ?? stat?.sum),
+      distanceUnit = w.totalDistanceUnit ?? stat?.unit;
+    const distanceKm = Number.isFinite(distance)
+      ? distanceUnit === "mi"
+        ? distance * 1.609344
+        : distanceUnit === "m"
+          ? distance / 1000
+          : distanceUnit === "km"
+            ? distance
+            : undefined
+      : undefined;
     out.workouts.push({
-      externalId: `apple:${start}`,
+      externalId: `apple:${w.startDate}:${sport}`,
+      date,
       sport,
-      date: new Date(start),
-      durationMin: Math.max(1, Math.round(parseFloat(dur || "0") / 60)),
-      distanceKm: dist ? parseFloat(dist) : undefined,
-      calories: cal ? Math.round(parseFloat(cal)) : undefined,
-      title: `${sport[0].toUpperCase()}${sport.slice(1)} (Apple Health)`,
+      title: `${sport} (Apple Health)`,
+      durationMin: Math.max(1, Math.round(minutes)),
+      distanceKm,
+      calories:
+        w.totalEnergyBurnedUnit === "kcal"
+          ? Number(w.totalEnergyBurned) || undefined
+          : undefined,
       source: "apple",
     });
   }
@@ -189,17 +259,21 @@ export function parseWhoopCsv(csv: string): WhoopCycle[] {
   const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length === 0) return [];
   const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
-  const idx = (name: string) => header.findIndex((h) => h.toLowerCase().includes(name.toLowerCase()));
+  const idx = (name: string) =>
+    header.findIndex((h) => h.toLowerCase().includes(name.toLowerCase()));
   const cycles: WhoopCycle[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const cells = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+    const cells = lines[i]
+      .split(",")
+      .map((c) => c.trim().replace(/^"|"$/g, ""));
     const get = (name: string) => {
       const j = idx(name);
       return j >= 0 ? cells[j] : undefined;
     };
     const day = get("Day") || get("Cycle");
     if (!day) continue;
-    const num = (s?: string) => (s && !isNaN(parseFloat(s)) ? parseFloat(s) : undefined);
+    const num = (s?: string) =>
+      s && !isNaN(parseFloat(s)) ? parseFloat(s) : undefined;
     cycles.push({
       day,
       recoveryScore: num(get("Recovery Score")),
@@ -232,54 +306,98 @@ export function stravaAuthUrl(cfg: StravaConfig): string {
   return `https://www.strava.com/oauth/authorize?${params.toString()}`;
 }
 
-export async function stravaExchangeToken(cfg: StravaConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_at: number; athlete: any }> {
+export async function stravaExchangeToken(
+  cfg: StravaConfig,
+  code: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  athlete: any;
+}> {
   const body = new URLSearchParams({
     client_id: cfg.clientId,
     client_secret: cfg.clientSecret,
     code,
     grant_type: "authorization_code",
   });
-  const resp = await fetch("https://www.strava.com/api/v3/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
-  if (!resp.ok) throw new Error(`Strava token exchange failed: ${resp.status} ${await resp.text()}`);
+  const resp = await providerFetch(
+    "https://www.strava.com/api/v3/oauth/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    },
+  );
+  if (!resp.ok)
+    throw new Error(`Strava token exchange failed: ${resp.status} `);
   return resp.json();
 }
 
-export async function stravaRefreshToken(cfg: StravaConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_at: number }> {
+export async function stravaRefreshToken(
+  cfg: StravaConfig,
+  refreshToken: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+}> {
   const body = new URLSearchParams({
     client_id: cfg.clientId,
     client_secret: cfg.clientSecret,
     refresh_token: refreshToken,
     grant_type: "refresh_token",
   });
-  const resp = await fetch("https://www.strava.com/api/v3/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
+  const resp = await providerFetch(
+    "https://www.strava.com/api/v3/oauth/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    },
+  );
   if (!resp.ok) throw new Error(`Strava refresh failed: ${resp.status}`);
   return resp.json();
 }
 
-export async function stravaGetActivities(accessToken: string, after?: Date, perPage = 30): Promise<any[]> {
-  const params = new URLSearchParams({ per_page: String(perPage) });
-  if (after) params.set("after", String(Math.floor(after.getTime() / 1000)));
-  const resp = await fetch(`https://www.strava.com/api/v3/athlete/activities?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!resp.ok) throw new Error(`Strava activities failed: ${resp.status}`);
-  return resp.json();
+export async function stravaGetActivities(
+  accessToken: string,
+  after?: Date,
+  perPage = 100,
+): Promise<any[]> {
+  const out: any[] = [];
+  perPage = Math.min(200, Math.max(1, perPage));
+  for (let page = 1; page <= 100; page++) {
+    const params = new URLSearchParams({
+      per_page: String(perPage),
+      page: String(page),
+    });
+    if (after) params.set("after", String(Math.floor(after.getTime() / 1000)));
+    const r = await providerFetch(
+      `https://www.strava.com/api/v3/athlete/activities?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!r.ok) throw new Error(`Strava activities failed: ${r.status}`);
+    const batch = await r.json();
+    if (!Array.isArray(batch))
+      throw new Error("Invalid Strava activity response");
+    out.push(...batch);
+    if (batch.length < perPage) return out;
+  }
+  throw new Error("Activity history too large. Import a smaller date range.");
 }
 
 export function stravaActivityToWorkout(a: any): ImportedWorkout {
   const type = (a.type || "").toLowerCase();
-  const sport: ImportedWorkout["sport"] = type.includes("swim") ? "swim"
-    : type.includes("ride") || type.includes("bike") ? "bike"
-    : type.includes("run") ? "run"
-    : type.includes("workout") || type.includes("weight") ? "strength" : "other";
+  const sport: ImportedWorkout["sport"] = type.includes("swim")
+    ? "swim"
+    : type.includes("ride") || type.includes("bike")
+      ? "bike"
+      : type.includes("run")
+        ? "run"
+        : type.includes("workout") || type.includes("weight")
+          ? "strength"
+          : "other";
   return {
     externalId: `strava:${a.id}`,
     sport,
@@ -308,12 +426,18 @@ export function parseDnaRaw(text: string): DNAVariantRaw[] {
   const variants: DNAVariantRaw[] = [];
   const lines = text.split(/\r?\n/);
   for (const line of lines) {
-    if (!line.trim() || line.startsWith("#") || line.startsWith("rsid")) continue;
+    if (!line.trim() || line.startsWith("#") || line.startsWith("rsid"))
+      continue;
     const parts = line.split(/\t/);
     if (parts.length < 4) continue;
     const [rsid, chromosome, position, genotype] = parts.map((p) => p.trim());
     if (!rsid || !rsid.startsWith("rs") || !genotype) continue;
-    variants.push({ rsid, chromosome, position, genotype: genotype.replace(/\s+/g, "") });
+    variants.push({
+      rsid,
+      chromosome,
+      position,
+      genotype: genotype.replace(/\s+/g, ""),
+    });
   }
   return variants;
 }
@@ -363,7 +487,14 @@ export function garminAuthUrl(cfg: GarminConfig, state: string): string {
   return `https://connect.garmin.com/oauth2Confirm?${params.toString()}`;
 }
 
-export async function garminExchangeToken(cfg: GarminConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+export async function garminExchangeToken(
+  cfg: GarminConfig,
+  code: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
   const body = new URLSearchParams({
     client_id: cfg.clientId,
     client_secret: cfg.clientSecret,
@@ -371,38 +502,67 @@ export async function garminExchangeToken(cfg: GarminConfig, code: string): Prom
     grant_type: "authorization_code",
     redirect_uri: cfg.redirectUri,
   });
-  const resp = await fetch("https://diauth.garmin.com/di-oauth2-service/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body: body.toString(),
-  });
-  if (!resp.ok) throw new Error(`Garmin token exchange failed: ${resp.status} ${await resp.text()}`);
+  const resp = await providerFetch(
+    "https://diauth.garmin.com/di-oauth2-service/oauth/token",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: body.toString(),
+    },
+  );
+  if (!resp.ok)
+    throw new Error(`Garmin token exchange failed: ${resp.status} `);
   return resp.json();
 }
 
-export async function garminRefreshToken(cfg: GarminConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+export async function garminRefreshToken(
+  cfg: GarminConfig,
+  refreshToken: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
   const body = new URLSearchParams({
     client_id: cfg.clientId,
     client_secret: cfg.clientSecret,
     refresh_token: refreshToken,
     grant_type: "refresh_token",
   });
-  const resp = await fetch("https://diauth.garmin.com/di-oauth2-service/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body: body.toString(),
-  });
-  if (!resp.ok) throw new Error(`Garmin refresh failed: ${resp.status} ${await resp.text()}`);
+  const resp = await providerFetch(
+    "https://diauth.garmin.com/di-oauth2-service/oauth/token",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: body.toString(),
+    },
+  );
+  if (!resp.ok) throw new Error(`Garmin refresh failed: ${resp.status} `);
   return resp.json();
 }
 
 // Garmin Health API is push-based (no polling): data arrives at our webhook
 // when the watch syncs. This is the authenticated backfill surface.
-export async function garminGetActivities(accessToken: string, _after?: Date): Promise<any[]> {
-  const resp = await fetch("https://apis.garmin.com/wellness-api/rest/activityDetails", {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-  });
-  if (!resp.ok) throw new Error(`Garmin activities failed: ${resp.status} ${await resp.text()}`);
+export async function garminGetActivities(
+  accessToken: string,
+  _after?: Date,
+): Promise<any[]> {
+  const resp = await providerFetch(
+    "https://apis.garmin.com/wellness-api/rest/activityDetails",
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    },
+  );
+  if (!resp.ok) throw new Error(`Garmin activities failed: ${resp.status} `);
   const data = await resp.json();
   return Array.isArray(data) ? data : data.activities || [];
 }
@@ -410,16 +570,32 @@ export async function garminGetActivities(accessToken: string, _after?: Date): P
 export function garminActivityToWorkout(a: any): ImportedWorkout {
   // Health-API activity payloads nest under `activity`; tolerate both shapes.
   const act = a.activity || a;
-  const type = (act.activityType || act.activityId || act.type || "").toString().toLowerCase();
-  const sport: ImportedWorkout["sport"] = type.includes("swim") ? "swim"
-    : type.includes("cycling") || type.includes("bike") ? "bike"
-    : type.includes("run") ? "run"
-    : type.includes("strength") ? "strength" : "other";
-  const durationSec = act.durationInSeconds ?? act.duration ?? a.durationInSeconds ?? 0;
+  const type = (act.activityType || act.activityId || act.type || "")
+    .toString()
+    .toLowerCase();
+  const sport: ImportedWorkout["sport"] = type.includes("swim")
+    ? "swim"
+    : type.includes("cycling") || type.includes("bike")
+      ? "bike"
+      : type.includes("run")
+        ? "run"
+        : type.includes("strength")
+          ? "strength"
+          : "other";
+  const durationSec =
+    act.durationInSeconds ?? act.duration ?? a.durationInSeconds ?? 0;
   return {
-    externalId: String(act.activityId || act.id || a.summaryId || `${Date.now()}-${Math.random()}`),
+    externalId: String(
+      act.activityId ||
+        act.id ||
+        a.summaryId ||
+        `${Date.now()}-${Math.random()}`,
+    ),
     sport,
-    date: new Date((act.startTimeInSeconds ?? a.startTimeInSeconds ?? Date.now() / 1000) * 1000),
+    date: new Date(
+      (act.startTimeInSeconds ?? a.startTimeInSeconds ?? Date.now() / 1000) *
+        1000,
+    ),
     durationMin: Math.round(durationSec / 60),
     distanceKm: act.distanceInMeters ? act.distanceInMeters / 1000 : undefined,
     avgHr: act.averageHr ?? act.averageHeartRateInBeatsPerMinute,
@@ -453,7 +629,14 @@ export function googleCalAuthUrl(cfg: GoogleCalConfig, state: string): string {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-export async function googleCalExchangeToken(cfg: GoogleCalConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+export async function googleCalExchangeToken(
+  cfg: GoogleCalConfig,
+  code: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
   const body = new URLSearchParams({
     client_id: cfg.clientId,
     client_secret: cfg.clientSecret,
@@ -461,190 +644,352 @@ export async function googleCalExchangeToken(cfg: GoogleCalConfig, code: string)
     grant_type: "authorization_code",
     redirect_uri: cfg.redirectUri,
   });
-  const resp = await fetch("https://oauth2.googleapis.com/token", {
+  const resp = await providerFetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
   });
-  if (!resp.ok) throw new Error(`Google token exchange failed: ${resp.status} ${await resp.text()}`);
+  if (!resp.ok)
+    throw new Error(`Google token exchange failed: ${resp.status} `);
   return resp.json();
 }
 
-export async function googleCalRefreshToken(cfg: GoogleCalConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+export async function googleCalRefreshToken(
+  cfg: GoogleCalConfig,
+  refreshToken: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
   const body = new URLSearchParams({
     client_id: cfg.clientId,
     client_secret: cfg.clientSecret,
     refresh_token: refreshToken,
     grant_type: "refresh_token",
   });
-  const resp = await fetch("https://oauth2.googleapis.com/token", {
+  const resp = await providerFetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
   });
-  if (!resp.ok) throw new Error(`Google refresh failed: ${resp.status} ${await resp.text()}`);
+  if (!resp.ok) throw new Error(`Google refresh failed: ${resp.status} `);
   return resp.json();
 }
 
 // Fetch upcoming events from primary calendar (default 14 days).
-export async function googleCalGetEvents(accessToken: string, days = 14): Promise<any[]> {
-  const now = new Date();
-  const end = new Date(now.getTime() + days * 86400000);
+export async function googleCalGetEvents(
+  accessToken: string,
+  days = 14,
+  start = new Date(),
+): Promise<any[]> {
   const params = new URLSearchParams({
-    timeMin: now.toISOString(),
-    timeMax: end.toISOString(),
+    timeMin: start.toISOString(),
+    timeMax: new Date(start.getTime() + days * 86400000).toISOString(),
     singleEvents: "true",
-    orderBy: "startTime",
-    maxResults: "100",
+    showDeleted: "true",
+    maxResults: "250",
   });
-  const resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!resp.ok) throw new Error(`Google calendar events failed: ${resp.status} ${await resp.text()}`);
-  const data = await resp.json();
-  return data.items || [];
+  const out: any[] = [];
+  for (let i = 0; i < 100; i++) {
+    const r = await providerFetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!r.ok) throw new Error(`Google Calendar failed: ${r.status}`);
+    const data = await r.json();
+    out.push(...(data.items || []));
+    if (!data.nextPageToken) return out;
+    params.set("pageToken", data.nextPageToken);
+  }
+  throw new Error(
+    "Calendar pagination limit exceeded; no incomplete snapshot was saved.",
+  );
 }
 
 // ---------- OURA (cloud.ouraring.com v2 — OAuth2 only) ----------
 
-export interface OuraConfig { clientId: string; clientSecret: string; redirectUri: string; }
+export interface OuraConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
 
 export function ouraAuthUrl(cfg: OuraConfig): string {
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
     response_type: "code",
-    scope: "personal email daily sleep readiness hrv",
+    scope: "daily",
   });
   return `https://cloud.ouraring.com/oauth/authorize?${params.toString()}`;
 }
 
-export async function ouraExchangeToken(cfg: OuraConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
-  const body = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, code, grant_type: "authorization_code" });
-  const resp = await fetch("https://api.ouraring.com/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
-  if (!resp.ok) throw new Error(`Oura token exchange failed: ${resp.status} ${await resp.text()}`);
+export async function ouraExchangeToken(
+  cfg: OuraConfig,
+  code: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
+  const body = new URLSearchParams({
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    code,
+    redirect_uri: cfg.redirectUri,
+    grant_type: "authorization_code",
+  });
+  const resp = await providerFetch("https://api.ouraring.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!resp.ok) throw new Error(`Oura token exchange failed: ${resp.status} `);
   return resp.json();
 }
 
-export async function ouraRefreshToken(cfg: OuraConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
-  const body = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" });
-  const resp = await fetch("https://api.ouraring.com/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+export async function ouraRefreshToken(
+  cfg: OuraConfig,
+  refreshToken: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
+  const body = new URLSearchParams({
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+  const resp = await providerFetch("https://api.ouraring.com/oauth/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
   if (!resp.ok) throw new Error(`Oura token refresh failed: ${resp.status}`);
   return resp.json();
 }
 
 // One normalized daily row from Oura sleep + readiness documents.
-export interface OuraDaily { date: string; hrv: number | null; restingHr: number | null; sleepScore: number | null; sleepHours: number | null; readiness: number | null; }
+export interface OuraDaily {
+  date: string;
+  hrv: number | null;
+  restingHr: number | null;
+  sleepScore: number | null;
+  sleepHours: number | null;
+  readiness: number | null;
+}
 
-export async function ouraGetDaily(accessToken: string, days = 30): Promise<OuraDaily[]> {
-  const end = new Date(), start = new Date(Date.now() - days * 86400000);
-  const params = new URLSearchParams({ start_date: start.toISOString().slice(0, 10), end_date: end.toISOString().slice(0, 10) });
-  const hdr = { Authorization: `Bearer ${accessToken}` };
-  const [sleep, readiness] = await Promise.all([
-    fetch(`https://api.ouraring.com/v2/usercollection/sleep?${params}`, { headers: hdr }),
-    fetch(`https://api.ouraring.com/v2/usercollection/readiness?${params}`, { headers: hdr }),
+export async function ouraGetDaily(
+  accessToken: string,
+  days = 30,
+): Promise<OuraDaily[]> {
+  const params = new URLSearchParams({
+    start_date: new Date(Date.now() - days * 86400000)
+      .toISOString()
+      .slice(0, 10),
+    end_date: new Date().toISOString().slice(0, 10),
+  });
+  const get = async (kind: string) => {
+    const query = new URLSearchParams(params),
+      out: any[] = [];
+    for (let i = 0; i < 100; i++) {
+      const r = await providerFetch(
+        `https://api.ouraring.com/v2/usercollection/${kind}?${query}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!r.ok) throw new Error(`Oura ${kind} failed: ${r.status}`);
+      const d = await r.json();
+      out.push(...(d.data || []));
+      if (!d.next_token) return out;
+      query.set("next_token", d.next_token);
+    }
+    throw new Error("Oura pagination limit exceeded");
+  };
+  const [sleep, readiness, scores] = await Promise.all([
+    get("sleep"),
+    get("daily_readiness"),
+    get("daily_sleep"),
   ]);
-  if (!sleep.ok) throw new Error(`Oura sleep failed: ${sleep.status}`);
-  const sd = await sleep.json(), rd = readiness.ok ? await readiness.json() : { data: [] };
-  const rmap = new Map<string, any>((rd.data || []).map((r: any) => [r.day, r]));
   const byDay = new Map<string, OuraDaily>();
-  for (const s of sd.data || []) {
-    const d = byDay.get(s.day) || { date: s.day, hrv: null, restingHr: null, sleepScore: null, sleepHours: null, readiness: null };
-    d.hrv = s.hrv?.average ?? d.hrv;
-    d.restingHr = s.lowest_resting_heart_rate ?? d.restingHr;
-    d.sleepScore = s.score ?? d.sleepScore;
-    d.sleepHours = s.total_sleep_duration != null ? Math.round((s.total_sleep_duration / 3600) * 10) / 10 : d.sleepHours;
+  const row = (key: string) =>
+    byDay.get(key) || {
+      date: key,
+      hrv: null,
+      restingHr: null,
+      sleepScore: null,
+      sleepHours: null,
+      readiness: null,
+    };
+  for (const s of sleep.filter((s) => !s.type || s.type === "long_sleep")) {
+    const d = row(s.day);
+    d.hrv = s.average_hrv ?? null;
+    d.restingHr = s.lowest_heart_rate ?? null;
+    d.sleepHours =
+      s.total_sleep_duration != null ? s.total_sleep_duration / 3600 : null;
     byDay.set(s.day, d);
   }
-  for (const ent of Array.from(rmap.entries())) {
-    const day = ent[0], r = ent[1];
-    const d = byDay.get(day) || { date: day, hrv: null, restingHr: null, sleepScore: null, sleepHours: null, readiness: null };
-    d.readiness = r.score ?? d.readiness;
-    byDay.set(day, d);
+  for (const s of readiness) {
+    const d = row(s.day);
+    d.readiness = s.score ?? null;
+    byDay.set(s.day, d);
+  }
+  for (const s of scores) {
+    const d = row(s.day);
+    d.sleepScore = s.score ?? null;
+    byDay.set(s.day, d);
   }
   return Array.from(byDay.values());
 }
 
 // ---------- WHOOP (developer.whoop.com — OAuth2) ----------
 
-export interface WhoopConfig { clientId: string; clientSecret: string; redirectUri: string; }
+export interface WhoopConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
 
 export function whoopAuthUrl(cfg: WhoopConfig, state: string): string {
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
     response_type: "code",
-    scope: "read:recovery read:sleep read:workout read:body_measurement read:cycles basic:profile",
+    scope: "read:recovery read:sleep read:cycles read:profile offline",
     state,
   });
   return `https://api.prod.whoop.com/oauth/oauth2/auth?${params.toString()}`;
 }
 
-export async function whoopExchangeToken(cfg: WhoopConfig, code: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
-  const body = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, code, grant_type: "authorization_code" });
-  const resp = await fetch("https://api.prod.whoop.com/oauth/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
-  if (!resp.ok) throw new Error(`Whoop token exchange failed: ${resp.status} ${await resp.text()}`);
+export async function whoopExchangeToken(
+  cfg: WhoopConfig,
+  code: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
+  const body = new URLSearchParams({
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    code,
+    redirect_uri: cfg.redirectUri,
+    grant_type: "authorization_code",
+  });
+  const resp = await providerFetch(
+    "https://api.prod.whoop.com/oauth/oauth2/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    },
+  );
+  if (!resp.ok) throw new Error(`Whoop token exchange failed: ${resp.status} `);
   return resp.json();
 }
 
-export async function whoopRefreshToken(cfg: WhoopConfig, refreshToken: string): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
-  const body = new URLSearchParams({ client_id: cfg.clientId, client_secret: cfg.clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" });
-  const resp = await fetch("https://api.prod.whoop.com/oauth/oauth2/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+export async function whoopRefreshToken(
+  cfg: WhoopConfig,
+  refreshToken: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
+  const body = new URLSearchParams({
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+  const resp = await providerFetch(
+    "https://api.prod.whoop.com/oauth/oauth2/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    },
+  );
   if (!resp.ok) throw new Error(`Whoop token refresh failed: ${resp.status}`);
   return resp.json();
 }
 
 // Recovery + sleep per cycle day, normalized.
-export interface WhoopDaily { date: string; recoveryScore: number | null; hrv: number | null; restingHr: number | null; sleepScore: number | null; sleepHours: number | null; }
+export interface WhoopDaily {
+  date: string;
+  recoveryScore: number | null;
+  hrv: number | null;
+  restingHr: number | null;
+  sleepScore: number | null;
+  sleepHours: number | null;
+}
 
-export async function whoopGetDaily(accessToken: string, days = 30): Promise<WhoopDaily[]> {
-  const hdr = { Authorization: `Bearer ${accessToken}` };
-  const end = new Date().toISOString(), start = new Date(Date.now() - days * 86400000).toISOString();
-  const out = new Map<string, WhoopDaily>();
-  // WHOOP Developer API v2 (verified against developer.whoop.com, 2026-08).
-  // Endpoints: /developer/v2/activity/sleep, /developer/v2/recovery,
-  // /developer/v2/activity/workout. All paginate via `next_token`.
-  // Sleep (has scores + hrv + rhr)
-  let url: string | null = `https://api.prod.whoop.com/developer/v2/activity/sleep?start=${start}&end=${end}&limit=25`;
-  const collected: any[] = [];
-  while (url) { // ponytail: manual pagination loop on next_token — Whoop has no offset paging
-    const r: Response = await fetch(url, { headers: hdr });
-    if (!r.ok) throw new Error(`Whoop sleep failed: ${r.status}`);
-    const d: any = await r.json();
-    collected.push(...(d.records || []));
-    url = d.next_token ? `https://api.prod.whoop.com/developer/v2/activity/sleep?start=${start}&end=${end}&limit=25&nextToken=${d.next_token}` : null;
+export async function whoopGetDaily(
+  accessToken: string,
+  days = 30,
+  timezone = DEFAULT_TIMEZONE,
+): Promise<WhoopDaily[]> {
+  const get = async (path: string) => {
+    const params = new URLSearchParams({
+        start: new Date(Date.now() - days * 86400000).toISOString(),
+        end: new Date().toISOString(),
+        limit: "25",
+      }),
+      out: any[] = [];
+    for (let i = 0; i < 100; i++) {
+      const r = await providerFetch(
+        `https://api.prod.whoop.com/developer/v2/${path}?${params}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!r.ok) throw new Error(`Whoop ${path} failed: ${r.status}`);
+      const d = await r.json();
+      out.push(...(d.records || []));
+      if (!d.next_token) return out;
+      params.set("nextToken", d.next_token);
+    }
+    throw new Error("Whoop pagination limit exceeded");
+  };
+  const [sleeps, recovery] = await Promise.all([
+    get("activity/sleep"),
+    get("recovery"),
+  ]);
+  const out = new Map<string, WhoopDaily>(),
+    sleepDays = new Map<string, string>();
+  const row = (key: string) =>
+    out.get(key) || {
+      date: key,
+      recoveryScore: null,
+      hrv: null,
+      restingHr: null,
+      sleepScore: null,
+      sleepHours: null,
+    };
+  for (const s of sleeps) {
+    if (!s.end) continue;
+    const day = dateKey(new Date(s.end), timezone);
+    sleepDays.set(String(s.id), day);
+    if (s.nap) continue;
+    const d = row(day),
+      stage = s.score?.stage_summary;
+    d.sleepScore = s.score?.sleep_performance_percentage ?? null;
+    if (stage)
+      d.sleepHours =
+        ((stage.total_light_sleep_time_milli || 0) +
+          (stage.total_slow_wave_sleep_time_milli || 0) +
+          (stage.total_rem_sleep_time_milli || 0)) /
+        3600000;
+    out.set(day, d);
   }
-  for (const s of collected) {
-    const day = (s.created_at || s.start || "").slice(0, 10);
+  for (const c of recovery) {
+    const day = sleepDays.get(String(c.sleep_id));
     if (!day) continue;
-    const row = out.get(day) || { date: day, recoveryScore: null, hrv: null, restingHr: null, sleepScore: null, sleepHours: null };
-    if (s.score?.sleep_performance_percentage != null) row.sleepScore = Math.round(s.score.sleep_performance_percentage);
-    if (s.score.stage_summary?.total_in_bed_time_milli != null) row.sleepHours = Math.round((s.score.stage_summary.total_in_bed_time_milli / 3600000) * 10) / 10;
-    const hr = s.score.hrv_rmssd_milli ?? s.score.heart_rate_variability?.rms ?? s.score.heart_rate_variability;
-    if (typeof hr === "number") row.hrv = Math.round(hr * 10) / 10;
-    const rhr = s.score.resting_heart_rate;
-    if (typeof rhr === "number") row.restingHr = Math.round(rhr);
-    out.set(day, row);
-  }
-  // recovery (readiness per cycle — v2 field: hrv_rmssd_milli)
-  url = `https://api.prod.whoop.com/developer/v2/recovery?start=${start}&end=${end}&limit=25`;
-  let rec: any = null;
-  const recs: any[] = [];
-  while (url) {
-    const r: Response = await fetch(url, { headers: hdr });
-    if (!r.ok) break; // recovery is optional — don't fail the sync for it
-    rec = await r.json();
-    recs.push(...(rec.records || []));
-    url = rec.next_token ? `https://api.prod.whoop.com/developer/v2/recovery?start=${start}&end=${end}&limit=25&nextToken=${rec.next_token}` : null;
-  }
-  for (const c of recs) {
-    const day = (c.created_at || "").slice(0, 10);
-    if (!day) continue;
-    const row = out.get(day) || { date: day, recoveryScore: null, hrv: null, restingHr: null, sleepScore: null, sleepHours: null };
-    if (c.score?.recovery_score != null) row.recoveryScore = Math.round(c.score.recovery_score);
-    if (row.hrv == null && c.score?.hrv_rmssd_milli != null) row.hrv = Math.round(c.score.hrv_rmssd_milli * 10) / 10;
-    if (row.restingHr == null && c.score?.resting_heart_rate != null) row.restingHr = Math.round(c.score.resting_heart_rate);
-    out.set(day, row);
+    const d = row(day);
+    d.hrv = c.score?.hrv_rmssd_milli ?? null;
+    d.restingHr = c.score?.resting_heart_rate ?? null;
+    d.recoveryScore = c.score?.recovery_score ?? null;
+    out.set(day, d);
   }
   return Array.from(out.values());
 }
@@ -671,12 +1016,19 @@ export interface GarminActivity {
 
 function csvSplit(line: string): string[] {
   const out: string[] = [];
-  let cur = "", inQ = false;
+  let cur = "",
+    inQ = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
-    if (ch === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
-    else if (ch === "," && !inQ) { out.push(cur); cur = ""; }
-    else cur += ch;
+    if (ch === '"') {
+      if (inQ && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else inQ = !inQ;
+    } else if (ch === "," && !inQ) {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
   }
   out.push(cur);
   return out;
@@ -687,14 +1039,25 @@ export function parseGarminActivitiesCsv(csv: string): GarminActivity[] {
   if (lines.length < 2) return [];
   const header = csvSplit(lines[0]).map((h) => h.trim());
   const idx = (name: string) => header.findIndex((h) => h === name);
-  const iType = idx("Activity Type"), iDate = idx("Date"), iTitle = idx("Title"),
-    iDist = idx("Distance"), iCal = idx("Calories"), iTime = idx("Time"),
-    iAvgHr = idx("Avg HR"), iMaxHr = idx("Max HR"), iAvgPwr = idx("Avg Power"),
-    iNP = header.findIndex((h) => h.startsWith("Normalized Power")), iTss = header.findIndex((h) => h.startsWith("Training Stress Score"));
+  const iType = idx("Activity Type"),
+    iDate = idx("Date"),
+    iTitle = idx("Title"),
+    iDist = idx("Distance"),
+    iCal = idx("Calories"),
+    iTime = idx("Time"),
+    iAvgHr = idx("Avg HR"),
+    iMaxHr = idx("Max HR"),
+    iAvgPwr = idx("Avg Power"),
+    iNP = header.findIndex((h) => h.startsWith("Normalized Power")),
+    iTss = header.findIndex((h) => h.startsWith("Training Stress Score"));
 
   const num = (v: string | undefined): number | null => {
     if (v == null) return null;
-    const clean = v.replace(/,/g, "").replace(/^'-/, "-").replace(/'/g, "").trim();
+    const clean = v
+      .replace(/,/g, "")
+      .replace(/^'-/, "-")
+      .replace(/'/g, "")
+      .trim();
     if (clean === "" || clean === "--") return null;
     const n = parseFloat(clean);
     return isNaN(n) ? null : n;
@@ -704,7 +1067,13 @@ export function parseGarminActivitiesCsv(csv: string): GarminActivity[] {
   for (const line of lines.slice(1)) {
     const c = csvSplit(line);
     const type = (c[iType] || "").trim();
-    const sport: GarminActivity["sport"] | null = /Swim/i.test(type) ? "swim" : /Cycling|Bike/i.test(type) ? "bike" : /Run|Jog|Walk/i.test(type) ? "run" : null;
+    const sport: GarminActivity["sport"] | null = /Swim/i.test(type)
+      ? "swim"
+      : /Cycling|Bike/i.test(type)
+        ? "bike"
+        : /Run|Jog|Walk/i.test(type)
+          ? "run"
+          : null;
     if (!sport) continue; // skip strength/other rows the app can't use yet
     const dateStr = (c[iDate] || "").trim();
     const date = new Date(dateStr.replace(" ", "T"));
@@ -715,13 +1084,25 @@ export function parseGarminActivitiesCsv(csv: string): GarminActivity[] {
     const durationMin = Math.round((+tm[1] * 3600 + +tm[2] * 60 + +tm[3]) / 60);
     const rawDist = num(c[iDist]);
     // Garmins: swims in METERS (e.g. "1,620"), run/bike in KM (e.g. "54.09").
-    const distanceKm = rawDist == null ? null : sport === "swim" ? Math.round((rawDist / 1000) * 100) / 100 : rawDist;
+    const distanceKm =
+      rawDist == null
+        ? null
+        : sport === "swim"
+          ? Math.round((rawDist / 1000) * 100) / 100
+          : rawDist;
     const title = (c[iTitle] || type).trim();
     out.push({
-      date, sport, title, durationMin, distanceKm,
-      avgHr: num(c[iAvgHr]), maxHr: num(c[iMaxHr]),
-      avgPower: num(c[iAvgPwr]), np: num(iNP >= 0 ? c[iNP] : undefined),
-      tss: num(iTss >= 0 ? c[iTss] : undefined), calories: num(c[iCal]),
+      date,
+      sport,
+      title,
+      durationMin,
+      distanceKm,
+      avgHr: num(c[iAvgHr]),
+      maxHr: num(c[iMaxHr]),
+      avgPower: num(c[iAvgPwr]),
+      np: num(iNP >= 0 ? c[iNP] : undefined),
+      tss: num(iTss >= 0 ? c[iTss] : undefined),
+      calories: num(c[iCal]),
       externalId: `garmin-csv:${dateStr}:${title}`,
     });
   }
@@ -729,7 +1110,8 @@ export function parseGarminActivitiesCsv(csv: string): GarminActivity[] {
 }
 
 // ---------- Google Calendar: publish training sessions (write) ----------
-const GCAL_API = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+const GCAL_API =
+  "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 
 export interface GcalEventInput {
   summary: string;
@@ -740,22 +1122,54 @@ export interface GcalEventInput {
   existingGoogleId?: string | null; // when set, update instead of create
 }
 
-export async function googleCalUpsertEvent(accessToken: string, ev: GcalEventInput): Promise<string | null> {
-  const end = new Date(ev.start.getTime() + ev.durationMin * 60000);
+export async function googleCalUpsertEvent(
+  accessToken: string,
+  ev: GcalEventInput,
+): Promise<string> {
+  const id =
+    ev.existingGoogleId ||
+    createHash("sha256").update(ev.workoutId).digest("hex");
   const body = {
     summary: ev.summary,
-    description: ev.description,
+    description: ev.description || "",
     start: { dateTime: ev.start.toISOString() },
-    end: { dateTime: end.toISOString() },
-    reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 30 }] },
+    end: {
+      dateTime: new Date(
+        ev.start.getTime() + ev.durationMin * 60000,
+      ).toISOString(),
+    },
     extendedProperties: { private: { jmmWorkoutId: ev.workoutId } },
   };
-  const res = await fetch(ev.existingGoogleId ? `${GCAL_API}/${ev.existingGoogleId}` : GCAL_API, {
-    method: ev.existingGoogleId ? "PATCH" : "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  let r = await providerFetch(`${GCAL_API}/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers,
     body: JSON.stringify(body),
-  }).catch(() => null);
-  if (!res || !res.ok) return null;
-  const data = await res.json().catch(() => null);
-  return data?.id || null;
+  });
+  if (r.status === 404 || r.status === 410) {
+    r = await providerFetch(GCAL_API, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id, ...body }),
+    });
+    if (r.status === 409)
+      r = await providerFetch(`${GCAL_API}/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(body),
+      });
+  }
+  if (!r.ok) throw new Error(`Google Calendar publish failed: ${r.status}`);
+  return (await r.json()).id || id;
+}
+export async function googleCalDeleteEvent(accessToken: string, id: string) {
+  const r = await providerFetch(`${GCAL_API}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!r.ok && r.status !== 404 && r.status !== 410)
+    throw new Error(`Google Calendar delete failed: ${r.status}`);
 }

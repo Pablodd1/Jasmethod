@@ -1,108 +1,77 @@
-import { NextResponse } from "next/server";
+import { trainingReminder } from "@/lib/training-reminder";
 import { prisma } from "@/lib/db";
-import { buildReminder, buildDailyPlanMessage, sendReminder } from "@/lib/notify";
-import { hrvReadiness } from "@/lib/science";
-import { analyzeHydration } from "@/lib/adaptive";
-
-// Never prerender this route at build time — it hits the DB and is cron-only.
+import { dayBounds, addDaysKey, localDate } from "@/lib/dates";
+import { sendEmail } from "@/lib/email";
+import { sendTelegram } from "@/lib/notify";
+import { prescribeToday } from "@/lib/adaptive";
+import { baseWorkout } from "@/lib/prescription";
 export const dynamic = "force-dynamic";
-
-// GET /api/cron/reminders — fired hourly by Vercel cron (0 * * * *). Per user:
-//   reminderHour < 12  → morning reminder: today's session, short.
-//   reminderHour >= 12 → evening detailed plan: tomorrow's sessions in full
-//                        (or day-off protocol) + readiness recommendation.
-// Protected by CRON_SECRET (set as Authorization: Bearer <secret>).
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const hourInTz = (tz: string): number => {
-    try {
-      return Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: tz }).format(new Date()));
-    } catch {
-      return new Date().getHours();
-    }
-  };
-
-  const users = await prisma.user.findMany({ include: { reminder: true } });
-  let sent = 0, skipped = 0;
-  for (const u of users) {
-    const p = u.reminder;
-    if (!p || (!p.emailEnabled && !p.telegramEnabled)) continue;
-    if (hourInTz(u.timezone) !== p.reminderHour) { skipped++; continue; }
-
-    const opts = { email: u.email, name: u.name, telegramChatId: p.telegramEnabled ? p.telegramChatId || undefined : undefined };
-    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-
-    if (p.reminderHour < 12) {
-      // ---- Morning: today's first planned session, short reminder ----
-      const end = new Date(dayStart); end.setDate(end.getDate() + 1);
-      const session = await prisma.workout.findFirst({
-        where: { userId: u.id, date: { gte: dayStart, lt: end }, planned: true },
-        orderBy: { date: "asc" },
-      });
-      const msg = buildReminder(
-        u.name,
-        session ? { title: session.title, durationMin: session.durationMin, intensity: session.intensity || undefined, recovery: session.recovery || undefined } : null,
-      );
-      await sendReminder(opts, msg);
-      sent++;
+  if (!secret)
+    return Response.json({ error: "Cron is not configured" }, { status: 503 });
+  if (req.headers.get("authorization") !== `Bearer ${secret}`)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const users = await prisma.user.findMany({
+    where: {
+      reminder: { OR: [{ emailEnabled: true }, { telegramEnabled: true }] },
+    },
+    include: { reminder: true, profile: true },
+  });
+  let sent = 0,
+    failed = 0,
+    skipped = 0;
+  for (const user of users) {
+    const pref = user.reminder!;
+    const hour = Number(
+      new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        hourCycle: "h23",
+        timeZone: user.timezone,
+      }).format(new Date()),
+    );
+    if (hour !== pref.reminderHour) {
+      skipped++;
       continue;
     }
-
-    // ---- Evening (5pm default): tomorrow's detailed plan + readiness ----
-    const tomorrow = new Date(dayStart); tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowEnd = new Date(tomorrow); tomorrowEnd.setDate(tomorrowEnd.getDate() + 1);
-
-    const [sessions, metrics, lastSession] = await Promise.all([
-      prisma.workout.findMany({
-        where: { userId: u.id, date: { gte: tomorrow, lt: tomorrowEnd }, planned: true },
-        include: { planDay: true },
-        orderBy: { date: "asc" },
-      }),
-      prisma.dailyMetrics.findMany({ where: { userId: u.id, date: { gte: new Date(Date.now() - 30 * 86400000) } }, orderBy: { date: "asc" } }),
-      prisma.workout.findFirst({
-        where: { userId: u.id, date: { lt: dayStart }, completed: true, preWeightKg: { not: null }, postWeightKg: { not: null } },
-        orderBy: { date: "desc" },
-      }),
-    ]);
-
-    // Sweat-loss advice from the most recent weighed session (pre/post kg)
-    const hydration = lastSession?.preWeightKg && lastSession.postWeightKg ? analyzeHydration(lastSession.preWeightKg, lastSession.postWeightKg).advice : null;
-
-    // Readiness from the last 7 days of HRV (same method as /api/metrics)
-    const last7 = metrics.filter((m) => m.hrv).slice(-7);
-    const latest = last7[last7.length - 1];
-    let readiness: { score: number; advice: string } | null = null;
-    if (latest?.hrv && last7.length >= 3) {
-      const baseline = last7.slice(0, -1).map((m) => m.hrv!);
-      const mean = baseline.reduce((a, b) => a + b, 0) / baseline.length;
-      const sd = Math.sqrt(baseline.reduce((a, b) => a + (b - mean) ** 2, 0) / baseline.length);
-      const r = hrvReadiness(latest.hrv, baseline, sd);
-      readiness = { score: r.score, advice: r.advice };
+    const day = dayBounds(user.timezone),
+      key = pref.reminderHour >= 12 ? addDaysKey(day.key, 1) : day.key;
+    const { text, subject, html } = await trainingReminder(user, key);
+    for (const channel of ["email", "telegram"]) {
+      if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)
+        continue;
+      const claimed = await prisma.reminderDelivery.createMany({
+        data: [{ userId: user.id, day: day.key, channel, status: "pending" }],
+        skipDuplicates: true,
+      });
+      if (!claimed.count) {
+        skipped++;
+        continue;
+      }
+      const result =
+        channel === "email"
+          ? await sendEmail({
+              to: user.email,
+              subject,
+              html,
+              text,
+              userId: user.id,
+            })
+          : pref.telegramChatId
+            ? await sendTelegram(pref.telegramChatId, text)
+            : { ok: false, error: "Telegram chat is not configured" };
+      await prisma.reminderDelivery.update({
+        where: {
+          userId_day_channel: { userId: user.id, day: day.key, channel },
+        },
+        data: {
+          status: result.ok ? "sent" : "failed",
+          error: result.error || null,
+        },
+      });
+      if (result.ok) sent++;
+      else failed++;
     }
-
-    // A picked day off replaces the day's sessions (flag lives on the plan day).
-    const dayOff = sessions.length > 0 && sessions.some((s) => s.planDay?.dayOff);
-    const msg = buildDailyPlanMessage({
-      name: u.name,
-      dateLabel: tomorrow.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }),
-      sessions: dayOff ? [] : sessions.map((s) => ({
-        title: s.title,
-        durationMin: s.durationMin,
-        intensity: s.intensity || undefined,
-        type: s.type || undefined,
-        sport: s.sport,
-        description: s.notes || s.planDay?.notes || undefined,
-        recovery: s.recovery || undefined,
-      })),
-      readiness,
-      hydration,
-    });
-    await sendReminder(opts, msg);
-    sent++;
   }
-  return NextResponse.json({ ok: true, sent, skipped });
+  return Response.json({ ok: failed === 0, sent, failed, skipped });
 }

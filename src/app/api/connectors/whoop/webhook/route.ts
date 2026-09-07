@@ -1,3 +1,4 @@
+import { verifyWhoopWebhook } from "@/lib/webhook-auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { syncUserConnectors } from "@/lib/sync";
@@ -13,16 +14,38 @@ export const dynamic = "force-dynamic";
 // Registered URL: https://<domain>/api/connectors/whoop/webhook (model V2).
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const raw = await req.text();
+    if (
+      !verifyWhoopWebhook(
+        raw,
+        req.headers.get("x-whoop-signature-timestamp"),
+        req.headers.get("x-whoop-signature"),
+        process.env.WHOOP_CLIENT_SECRET,
+      )
+    )
+      return NextResponse.json(
+        { error: "Invalid webhook signature" },
+        { status: 401 },
+      );
+    const body = JSON.parse(raw);
     // Whoop webhook payload: { id, workout_id?, user_id, event_type, created_at }
     const whoopUserId = String(body?.user_id ?? "");
-    const eventType = String(body?.event_type ?? "");
+    const eventType = String(body?.type ?? "");
     if (whoopUserId) {
       const conn = await prisma.connector.findFirst({
-        where: { provider: "whoop", status: "connected", externalRef: whoopUserId },
+        where: {
+          provider: "whoop",
+          status: "connected",
+          externalRef: whoopUserId,
+        },
       });
       if (conn) {
-        await syncUserConnectors(conn.userId, "whoop").catch(() => {});
+        const sync = await syncUserConnectors(conn.userId, "whoop");
+        if (sync.results.some((r) => !r.ok))
+          return NextResponse.json(
+            { error: "Sync failed; retry later" },
+            { status: 503 },
+          );
       }
     }
     // Always 200 — Whoop retries on non-2xx and we'd rather stay quiet.

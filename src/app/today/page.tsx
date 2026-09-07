@@ -1,313 +1,455 @@
 "use client";
-
-// TODAY — the athlete's first page after login. The prescribed training pops
-// immediately (mobile-first), with Check In / Skip at the top and the full
-// color-coded arc: pre-fuel → warm-up → main → cool-down → breathing →
-// post-fuel. Device sync runs in the background; send-to-watch and Telegram
-// are one tap each. After sending or saving → Calendar.
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  ClipboardCheck, SkipForward, Send, Watch, Flame, Dumbbell, Waves, Bike, Zap, Eye,
-  HeartPulse, Wind, UtensilsCrossed, RefreshCw, CalendarDays, Moon, Play, CloudSun,
-} from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
-
-const SPORT_ICON: Record<string, any> = { swim: Waves, bike: Bike, run: Zap, strength: Dumbbell, brick: Zap, recovery: HeartPulse, hyrox: Flame, boxing: Zap, mobility: Wind };
-
 export default function TodayPage() {
   const { user } = useAuth();
-  const router = useRouter();
-  const lang = (user?.language || "es") as string;
-  const es = lang === "es";
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const [approving, setApproving] = useState(false);
-  const [tgMsg, setTgMsg] = useState<string | null>(null);
-  const [regenBusy, setRegenBusy] = useState(false);
-  const [regenMsg, setRegenMsg] = useState<string | null>(null);
-  const [askBusy, setAskBusy] = useState(false);
-  const [askQ, setAskQ] = useState("");
-  const [askA, setAskA] = useState<string | null>(null);
-
+  const es = user?.language === "es";
+  const [data, setData] = useState<any>(null),
+    [error, setError] = useState(""),
+    [offline, setOffline] = useState(false),
+    [selected, setSelected] = useState<string | null>(null),
+    [busy, setBusy] = useState(false),
+    [feedback, setFeedback] = useState(false),
+    [message, setMessage] = useState(""),
+    [question, setQuestion] = useState(""),
+    [answer, setAnswer] = useState("");
   const load = useCallback(async () => {
-    const res = await fetch("/api/today");
-    if (res.ok) setData(await res.json());
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { if (user) load(); }, [user, load]);
-
-  // Background device sync: fire once on load (no blocking) — the prescription
-  // re-renders from the freshest biometrics when it lands.
-  useEffect(() => {
-    if (!user || !data || syncing) return;
-    if ((data.devices?.count || 0) === 0) return;
-    setSyncing(true);
-    fetch("/api/connectors/sync", { method: "POST" })
-      .then((r) => r.json())
-      .then((d) => {
-        setSyncMsg(d.message || null);
-        load();
-      })
-      .catch(() => {})
-      .finally(() => setSyncing(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, data?.devices?.count]);
-
-  async function approveAndSend() {
-    setApproving(true);
+    if (!user) return;
     try {
-      const res = await fetch("/api/workout/approve", { method: "POST" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Approve failed");
-      const blob = await res.blob();
-      const dispo = res.headers.get("Content-Disposition") || "";
-      const name = dispo.match(/filename="([^"]+)"/)?.[1] || "workout.fit";
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      // After send → Calendar (per product flow)
-      setTimeout(() => router.push("/calendar"), 900);
-    } catch { /* the approve button on checkin shows detailed errors */ } finally {
-      setApproving(false);
+      const r = await fetch("/api/today");
+      if (!r.ok) throw Error("Could not load today's training");
+      const d = await r.json();
+      setData(d);
+      setOffline(false);
+      setError("");
+      try {
+        localStorage.setItem(`jmm_today_${user.id}`, JSON.stringify(d));
+      } catch {}
+    } catch (e: any) {
+      setError(e.message);
+      try {
+        const saved = localStorage.getItem(`jmm_today_${user.id}`);
+        if (saved) {
+          setData(JSON.parse(saved));
+          setOffline(true);
+        }
+      } catch {}
+    }
+  }, [user]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const session =
+    data?.sessions.find((s: any) => s.id === selected) ||
+    data?.sessions.find(
+      (s: any) => !s.completed && s.feedbackStatus !== "skipped",
+    ) ||
+    data?.sessions[0];
+  async function action(url: string, body: any, method = "POST") {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const r = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const d = await r.json();
+      if (!r.ok) throw Error(d.error || "Request failed");
+      setMessage(d.message || (es ? "Guardado" : "Saved"));
+      setFeedback(false);
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
     }
   }
-
-  async function regenerate(mode: "variant" | "alternate") {
-    if (!primary) return;
-    setRegenBusy(true); setRegenMsg(null);
+  async function download() {
+    if (!session) return;
+    setBusy(true);
+    setError("");
     try {
-      const res = await fetch("/api/workout/regenerate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: primary.id, mode }),
+      const r = await fetch(`/api/workout/approve?sessionId=${session.id}`, {
+        method: "POST",
       });
-      const d = await res.json();
-      if (!res.ok) { setRegenMsg(d.error || "Failed"); }
-      else { setRegenMsg(es ? `✓ Nueva sesión (${d.regensLeft} restantes)` : `✓ New session (${d.regensLeft} left)`); load(); }
-    } catch (e: any) { setRegenMsg(e.message); } finally { setRegenBusy(false); }
+      if (!r.ok) throw Error((await r.json()).error);
+      const blob = await r.blob(),
+        url = URL.createObjectURL(blob),
+        a = document.createElement("a");
+      a.href = url;
+      a.download = "jasmethod-workout.fit";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
-
-  async function askJasai() {
-    if (!askQ.trim()) return;
-    setAskBusy(true); setAskA(null);
-    try {
-      const res = await fetch("/api/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: askQ }) });
-      const d = await res.json();
-      setAskA(d.answer || d.error || "—");
-    } catch (e: any) { setAskA(e.message); } finally { setAskBusy(false); }
-  }
-
-  async function sendTelegram() {
-    setTgMsg("…");
-    const res = await fetch("/api/reminders/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ when: "today" }) });
-    const d = await res.json();
-    const tg = d.result?.telegram;
-    setTgMsg(tg?.ok ? (es ? "✓ Enviado a tu Telegram" : "✓ Sent to your Telegram") : (tg?.error || d.error || "Telegram error"));
-  }
-
-  if (loading) {
-    return (
-      <ProtectedPage>
-        <div className="flex items-center justify-center py-32">
-          <div className="w-8 h-8 border-4 border-ocean-600 border-t-transparent rounded-full animate-spin" />
-        </div>
-      </ProtectedPage>
-    );
-  }
-
-  const primary = data?.sessions?.[0];
-  const SportIcon = primary ? (SPORT_ICON[primary.sport] || Zap) : CalendarDays;
-
   return (
     <ProtectedPage>
-      <div className="space-y-5 max-w-3xl mx-auto md:max-w-none">
-        {/* Header + race countdown */}
+      <div className="space-y-5 max-w-4xl mx-auto">
         <div>
-          <p className="text-xs uppercase tracking-widest text-slate-400">{new Date().toLocaleDateString(es ? "es-ES" : "en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
-          <h1 className="font-display text-3xl font-bold">{es ? "Entrenamiento de hoy" : "Today's Training"}</h1>
+          <p className="text-sm text-slate-500">{data?.date}</p>
+          <h1 className="font-display text-3xl font-bold">
+            {es ? "Entrenamiento de hoy" : "Today's training"}
+          </h1>
           {data?.race && (
-            <p className="text-sm text-coral-600 font-medium mt-1">
-              🏁 {data.race.name} — {es ? "en" : "in"} {data.race.daysAway} {es ? "días" : "days"}
+            <p className="text-sm text-ocean-700">
+              {data.race.name} · {data.race.daysAway} {es ? "días" : "days"}
             </p>
           )}
         </div>
-
-        {/* Top actions: compact Check In | Skip — short labels, single line */}
-        <div className="grid grid-cols-2 gap-3">
-          <Link href="/checkin" className="btn-primary justify-center !py-2">
-            <ClipboardCheck className="w-4 h-4" /> {es ? "Chequeo" : "Check In"}
+        {offline && (
+          <div role="status" className="card bg-amber-50 text-amber-900">
+            {es ? "Copia sin conexión" : "Offline copy"} · {data?.date} ·{" "}
+            {es ? "Actualizada" : "Updated"}{" "}
+            {new Date(data.updatedAt).toLocaleString()}.{" "}
+            {es
+              ? "Conéctate para guardar cambios o recibir una nueva adaptación."
+              : "Reconnect before saving changes or relying on a new adaptation."}
+          </div>
+        )}
+        {error && (
+          <div role="alert" className="card text-red-700">
+            {error}
+            <button className="btn-secondary ml-3" onClick={load}>
+              {es ? "Reintentar" : "Retry"}
+            </button>
+          </div>
+        )}
+        {message && (
+          <p role="status" className="card text-green-800">
+            {message}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Link href="/checkin" className="btn-primary">
+            {es ? "Chequeo de hoy" : "Daily check-in"}
           </Link>
-          <Link href="/calendar" className="btn-secondary justify-center !py-2">
-            <SkipForward className="w-4 h-4" /> {es ? "Saltar" : "Skip"}
+          <Link href="/calendar" className="btn-secondary">
+            {es ? "Calendario" : "Calendar"}
           </Link>
+          <button
+            className="btn-secondary"
+            disabled={busy || offline}
+            onClick={() => action("/api/connectors/sync", {})}
+          >
+            {es ? "Sincronizar dispositivos" : "Sync devices"}
+          </button>
         </div>
-
-        {syncMsg && <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">🔄 {syncing ? (es ? "Sincronizando dispositivos…" : "Syncing devices…") : syncMsg}</div>}
-
-        {/* Empty states */}
-        {data?.dayOff && (
-          <div className="card text-center py-10">
-            <CloudSun className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <p className="font-semibold">{es ? "Día libre — 20 min Z1 + respiración" : "Day off — 20 min Z1 + breathing"}</p>
-            <p className="text-sm text-slate-500 mt-1">{es ? "Un día libre NO es cero: mantiene el flujo y el hábito vivo." : "A day off is NOT zero — blood flow keeps the habit alive."}</p>
+        {!data && !error && (
+          <p role="status">{es ? "Cargando sesión…" : "Loading session…"}</p>
+        )}
+        {data && !data.sessions.length && (
+          <div className="card">
+            <h2 className="font-bold">
+              {es ? "Sin sesiones programadas" : "No sessions planned"}
+            </h2>
+            <Link className="btn-primary mt-3" href="/training">
+              {es ? "Crear plan" : "Create a plan"}
+            </Link>
           </div>
         )}
-        {!primary && !data?.dayOff && (
-          <div className="card text-center py-12">
-            <CalendarDays className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="font-semibold text-slate-600">{es ? "No hay entrenamiento para hoy" : "No training for today"}</p>
-            <p className="text-sm text-slate-400 mt-1">{es ? "Genera tu plan para ver aquí tu sesión de cada día." : "Generate your plan and your daily session appears here."}</p>
-            <Link href="/training" className="btn-primary mt-4 inline-flex">{es ? "Generar plan" : "Generate plan"}</Link>
+        {data?.sessions.length > 1 && (
+          <div className="flex flex-wrap gap-2">
+            {data.sessions.map((s: any) => (
+              <button
+                key={s.id}
+                className={
+                  s.id === session?.id ? "btn-primary" : "btn-secondary"
+                }
+                onClick={() => {
+                  setSelected(s.id);
+                  setFeedback(false);
+                }}
+              >
+                {s.feedbackStatus === "partial" ? "◐ " : s.feedbackStatus === "skipped" ? "× " : s.completed ? "✓ " : ""}
+                {s.title} · {s.durationMin} min
+              </button>
+            ))}
           </div>
         )}
-
-        {/* THE session card */}
-        {primary && !data.dayOff && (
-          <div className="card !p-0 overflow-hidden">
-            <div className={`p-5 text-white bg-gradient-to-br ${primary.sport === "swim" ? "from-sky-600 to-ocean-500" : primary.sport === "bike" ? "from-emerald-600 to-emerald-500" : primary.sport === "run" ? "from-coral-600 to-coral-500" : "from-ocean-700 to-ocean-600"}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <SportIcon className="w-8 h-8" />
-                  <div>
-                    <div className="font-display font-bold text-xl leading-tight">{primary.title}</div>
-                    <div className="text-sm opacity-90">{primary.durationMin} min{primary.intensity ? ` · ${primary.intensity.toUpperCase()}` : ""}{data.targets?.power ? ` · ${data.targets.power}` : ""}</div>
-                  </div>
-                </div>
-                {data.targets?.rpe && <div className="text-right text-xs opacity-90">RPE<br /><span className="font-display text-xl font-bold">{data.targets.rpe}</span>/10</div>}
-              </div>
-              {(data.targets?.hr || data.targets?.pace) && (
-                <div className="mt-3 text-xs bg-white/15 rounded-lg px-2.5 py-1.5 inline-block">
-                  {data.targets.hr && <>❤️ {data.targets.hr} </>}
-                  {data.targets.pace && <>⚡ {data.targets.pace}</>}
-                </div>
-              )}
-            </div>
-
-            {/* Color-coded execution arc */}
-            <div className="p-4 space-y-2.5">
-              {data.ergos?.recommended?.length > 0 && (
-                <Block color="bg-orange-50 border-orange-200" icon={<Flame className="w-4 h-4 text-orange-500" />} title={es ? "PRE — Ayudas ergogénicas (45-60 min antes)" : "PRE — Ergogenic aids (45-60 min before)"}>
-                  <div className="text-xs text-sky-700 bg-sky-50 rounded-lg px-2 py-1.5 mb-1.5">💧 {es ? "AGUA: 400-600 ml en los 60 min previos (+ pizca de sal en calor). Llega hidratado, no busques hidratarte durante." : "WATER: 400-600 ml in the last 60 min (+ pinch of salt in heat). Arrive hydrated."}</div>
-                  {data.ergos.recommended.map((e: any) => (
-                    <div key={e.key} className="text-xs text-slate-600">• <strong>{e.name}</strong> — {e.dose} ({e.evidence})</div>
-                  ))}
-                </Block>
-              )}
-              <Block color="bg-fuchsia-50 border-fuchsia-200" icon={<Eye className="w-4 h-4 text-fuchsia-600" />} title={es ? "VISUALIZACIÓN — 2 min, SIN TELÉFONO" : "VISUALIZATION — 2 min, PHONE AWAY"}>
-                <p className="text-sm text-slate-700">
-                  {es
-                    ? `Cierra los ojos y véete ejecutando "${primary?.title || "la sesión"}": el lugar, la ropa, el ritmo de tus piernas, la respiración controlada en el esfuerzo. Ve el momento difícil y te ves superándolo con calma. Luego deja el teléfono y ejecuta — las catecolaminas del scrolling roban la motivación que el entreno necesita.`
-                    : `Close your eyes and see yourself executing "${primary?.title || "the session"}": the place, the kit, your leg rhythm, controlled breathing at effort. See the hard moment and watch yourself pass it calmly. Then put the phone away and execute — scrolling's catecholamines steal the drive your training needs.`}
+        {session && (
+          <>
+            <div className="card !p-0 overflow-hidden">
+              <div className="bg-ocean-800 text-white p-5">
+                <p className="text-xs uppercase">
+                  {session.feedbackStatus === "partial" ? (es ? "Parcial" : "Partially completed") : session.feedbackStatus === "skipped" ? (es ? "Omitido" : "Skipped") : session.completed
+                    ? es
+                      ? "Completado"
+                      : "Completed"
+                    : session.prescription.verdict}{" "}
+                  · {session.startTime || ""}
                 </p>
-                <p className="text-xs text-slate-400 mt-1">{es ? "Práctica de imagery 2-5 min pre-sesión mejora ejecución y autoconfianza (Liu et al. 2025, meta-análisis)." : "2-5 min pre-session imagery improves execution and self-confidence (Liu et al. 2025 meta-analysis)."}</p>
-              </Block>
-              <Block color="bg-sky-50 border-sky-200" icon={<Play className="w-4 h-4 text-sky-600" />} title={es ? "CALENTAMIENTO" : "WARM-UP"}>
-                <p className="text-sm text-slate-700">{data.detail?.wu}</p>
-              </Block>
-              <Block color="bg-violet-50 border-violet-200" icon={<SportIcon className="w-4 h-4 text-violet-600" />} title={es ? "SERIE PRINCIPAL" : "MAIN SET"}>
-                <p className="text-sm text-slate-700">{data.detail?.main}</p>
-                {data.fuel?.carbsPerHourG > 0 && (
-                  <div className="mt-2 text-xs text-orange-700 bg-orange-50 rounded-lg px-2 py-1.5">
-                    🍌 {es ? "Durante" : "During"}: {data.fuel.carbsPerHourG}g carbs/h · {data.fuel.sodiumMgPerHour}mg {es ? "sodio" : "sodium"}/h · {data.fuel.fluidMlPerHour}ml/h
-                  </div>
-                )}
-              </Block>
-              <Block color="bg-sky-50 border-sky-200" icon={<Wind className="w-4 h-4 text-sky-600" />} title={es ? "VUELTA A LA CALMA" : "COOL-DOWN"}>
-                <p className="text-sm text-slate-700">{data.detail?.cd}</p>
-              </Block>
-              <Block color="bg-emerald-50 border-emerald-200" icon={<HeartPulse className="w-4 h-4 text-emerald-600" />} title={es ? "RESPIRACIÓN + SNS (recuperación)" : "BREATHING + ANS (recovery)"}>
-                <p className="text-sm text-slate-700">{data.detail?.breathing}</p>
-                <p className="text-xs text-slate-400 mt-1">{data.recovery?.name} · {data.recovery?.minutes} min</p>
-              </Block>
-              {data.post && (
-                <Block color="bg-amber-50 border-amber-200" icon={<UtensilsCrossed className="w-4 h-4 text-amber-600" />} title={es ? "POST — Nutrición (30-60 min)" : "POST — Nutrition (30-60 min)"}>
-                  <p className="text-sm text-slate-700"><strong>{data.post.carbsG}g carbs : {data.post.proteinG}g protein</strong> ({data.post.ratio})</p>
-                  <p className="text-xs text-slate-500">{data.post.examples}</p>
-                  <p className="text-xs text-slate-400">{data.post.sodiumMg}mg {es ? "sodio" : "sodium"} · {data.post.fluidMl}ml</p>
-                </Block>
-              )}
-              <Block color="bg-indigo-50 border-indigo-200" icon={<Moon className="w-4 h-4 text-indigo-500" />} title={es ? "NOCHE — Desconexión" : "NIGHT — Wind-down"}>
-                <p className="text-sm text-slate-700">{data.stim?.night?.brain}</p>
-                <p className="text-xs text-slate-400">{data.stim?.night?.breath}</p>
-              </Block>
-            </div>
-
-            {/* Actions: send to watch / telegram / save to calendar */}
-            <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <button onClick={approveAndSend} disabled={approving} className="btn-primary justify-center">
-                <Watch className="w-4 h-4" /> {approving ? "…" : (es ? "Enviar al reloj (.FIT)" : "Send to watch (.FIT)")}
-              </button>
-              <button onClick={sendTelegram} className="btn-secondary justify-center">
-                <Send className="w-4 h-4" /> {es ? "Enviar a Telegram" : "Send to Telegram"}
-              </button>
-              <Link href="/calendar" className="btn-secondary justify-center">
-                <CalendarDays className="w-4 h-4" /> {es ? "Guardar → Calendario" : "Save → Calendar"}
-              </Link>
-            </div>
-            {tgMsg && <div className="px-4 pb-4 text-xs text-slate-500">{tgMsg}</div>}
-            {/* Regeneration: same goal, new session — up to 3 times */}
-            <div className="px-4 pb-4 border-t border-sand-100 pt-3 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-slate-400 mr-1">{es ? "¿No te gusta esta sesión?" : "Don't like this session?"}</span>
-              <button onClick={() => regenerate("variant")} disabled={regenBusy} className="btn-secondary !py-1.5 text-xs">
-                🔄 {es ? "Variante" : "Variant"}
-              </button>
-              <button onClick={() => regenerate("alternate")} disabled={regenBusy} className="btn-secondary !py-1.5 text-xs">
-                🔀 {es ? "Otro deporte (mismo objetivo)" : "Alternate sport (same goal)"}
-              </button>
-              {primary.regenCount > 0 && <span className="text-[10px] text-slate-400">{es ? "regeneraciones usadas" : "regens used"}: {primary.regenCount}/3</span>}
-              {regenMsg && <span className="text-[11px] text-slate-500 w-full">{regenMsg}</span>}
-            </div>
-            {data.devices?.count > 0 && (
-              <div className="px-4 pb-4 flex items-center gap-2 text-[11px] text-slate-400">
-                <RefreshCw className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`} />
-                {es ? "Dispositivos sincronizados en segundo plano" : "Devices synced in the background"}{data.devices.lastSyncAt ? ` · ${new Date(data.devices.lastSyncAt).toLocaleTimeString(es ? "es-ES" : "en-US", { hour: "2-digit", minute: "2-digit" })}` : ""}
+                <h2 className="font-display text-2xl font-bold">
+                  {session.title}
+                </h2>
+                <p className="mt-2">
+                  {session.durationMin} min · {session.intensity.toUpperCase()}
+                  {session.prescription.targets.rpe
+                    ? ` · RPE ${session.prescription.targets.rpe}/10`
+                    : ""}
+                </p>
+                <p className="text-sm opacity-90 mt-1">
+                  {Object.entries(session.prescription.targets)
+                    .filter(([k]) => k !== "rpe")
+                    .map(([, v]) => v)
+                    .join(" · ")}
+                </p>
               </div>
+              <div className="p-5 space-y-4">
+                {session.prescription.steps.length ? (
+                  <ol className="space-y-2">
+                    {session.prescription.steps.map((s: any, i: number) => (
+                      <li
+                        key={i}
+                        className={`flex justify-between gap-3 rounded-lg p-3 ${s.phase === "active" ? "bg-ocean-50" : "bg-slate-50"}`}
+                      >
+                        <span>
+                          {i + 1}. {s.name}
+                        </span>
+                        <strong>
+                          {Math.floor(s.seconds / 60)}:
+                          {String(s.seconds % 60).padStart(2, "0")} ·{" "}
+                          {s.zone.toUpperCase()}
+                        </strong>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p>
+                    {es
+                      ? "Descanso hoy. No hay intervalos ni exportación al reloj."
+                      : "Rest today. No intervals or watch workout are prescribed."}
+                  </p>
+                )}
+                {session.durationMin > 0 && (
+                  <details>
+                    <summary className="cursor-pointer font-medium">
+                      {es ? "Nutrición y recuperación" : "Fuel and recovery"}
+                    </summary>
+                    <p className="text-sm mt-3">
+                      {session.fuel.carbsPerHourG} g carbs/h ·{" "}
+                      {session.fuel.sodiumMgPerHour} mg sodium/h ·{" "}
+                      {session.fuel.fluidMlPerHour} ml/h
+                    </p>
+                    {session.post && (
+                      <p className="text-sm mt-2">
+                        Post: {session.post.carbsG} g carbs ·{" "}
+                        {session.post.proteinG} g protein
+                      </p>
+                    )}
+                    <p className="text-sm mt-2">
+                      {session.prescription.detail.breathing}
+                    </p>
+                  </details>
+                )}
+                <details>
+                  <summary className="cursor-pointer font-medium">
+                    {es ? "¿Por qué esta sesión?" : "Why this session?"}
+                  </summary>
+                  <p className="text-sm mt-2">
+                    {session.prescription.scaled.reason} ·{" "}
+                    {es ? "Plan original" : "Original plan"}:{" "}
+                    {session.prescription.scaled.originalMin} min
+                  </p>
+                  {session.coachNotes && (
+                    <p className="text-xs text-slate-500 mt-2">
+                      {es
+                        ? "Contexto del plan original (la secuencia de arriba es la actual)"
+                        : "Original plan context (the sequence above is current)"}
+                      : {session.coachNotes}
+                    </p>
+                  )}
+                  {data.checkin && (
+                    <button
+                      className="btn-secondary mt-3"
+                      disabled={busy || offline || session.completed}
+                      onClick={() => action("/api/checkin", null, "DELETE")}
+                    >
+                      {es
+                        ? "Deshacer adaptación de hoy"
+                        : "Undo today's adaptation"}
+                    </button>
+                  )}
+                </details>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn-primary"
+                    disabled={busy || offline || session.durationMin === 0}
+                    onClick={download}
+                  >
+                    {es ? "Descargar FIT" : "Download FIT"}
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={busy || offline}
+                    onClick={() => setFeedback(!feedback)}
+                  >
+                    {es ? "Registrar resultado" : "Log workout result"}
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={
+                      busy ||
+                      offline ||
+                      session.completed ||
+                      session.durationMin < 20 ||
+                      !["run", "bike", "swim"].includes(session.sport) ||
+                      session.regenCount >= 3
+                    }
+                    onClick={() =>
+                      action("/api/workout/regenerate", {
+                        id: session.id,
+                        mode: "variant",
+                      })
+                    }
+                  >
+                    {es ? "Otra variante" : "Another variant"} (
+                    {Math.max(0, 3 - session.regenCount)})
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {es
+                    ? "FIT descarga un archivo; impórtalo a un dispositivo compatible."
+                    : "FIT downloads a file; import it into a compatible device. It does not send directly to your watch."}
+                </p>
+              </div>
+            </div>
+            {feedback && (
+              <form
+                className="card space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  action(
+                    "/api/plan",
+                    { sessionId: session.id, ...Object.fromEntries(f) },
+                    "PUT",
+                  );
+                }}
+              >
+                <h3 className="font-bold">
+                  {es ? "¿Cómo fue?" : "How did it go?"}
+                </h3>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <label>
+                    {es ? "Resultado" : "Outcome"}
+                    <select
+                      name="feedbackStatus"
+                      className="input"
+                      defaultValue="completed"
+                    >
+                      <option value="completed">
+                        {es ? "Completado" : "Completed"}
+                      </option>
+                      <option value="partial">
+                        {es ? "Parcial" : "Partial"}
+                      </option>
+                      <option value="skipped">
+                        {es ? "Omitido" : "Skipped"}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    {es ? "Minutos reales" : "Actual minutes"}
+                    <input
+                      name="actualDurationMin"
+                      className="input"
+                      type="number"
+                      min="0"
+                      max="1440"
+                      defaultValue={
+                        session.actualDurationMin ?? session.durationMin
+                      }
+                    />
+                  </label>
+                  <label>
+                    {es ? "Esfuerzo 1–10" : "Effort 1–10"}
+                    <input
+                      name="rpe"
+                      className="input"
+                      type="number"
+                      min="1"
+                      max="10"
+                      defaultValue={session.rpe ?? ""}
+                    />
+                  </label>
+                </div>
+                <textarea
+                  aria-label="Workout feedback"
+                  name="feedbackNote"
+                  className="input"
+                  placeholder={
+                    es
+                      ? "Dificultad, molestias, falta de tiempo…"
+                      : "Difficulty, discomfort, time constraints…"
+                  }
+                />
+                <button disabled={busy} className="btn-primary">
+                  {es ? "Guardar resultado" : "Save result"}
+                </button>
+              </form>
             )}
+          </>
+        )}
+        {data?.connectors.length > 0 && (
+          <div className="card">
+            <Link href="/connectors" className="font-semibold text-ocean-700">
+              {es ? "Estado de conexiones" : "Connection status"} →
+            </Link>
+            {data.connectors.map((c: any) => (
+              <p key={c.provider} className="text-xs mt-2">
+                {c.provider}: {c.lastError || c.status} ·{" "}
+                {es ? "Última sincronización" : "Last sync"}:{" "}
+                {c.lastSyncAt ? new Date(c.lastSyncAt).toLocaleString() : "—"}
+              </p>
+            ))}
           </div>
         )}
-
-        {/* JASAI assistant — ask anything: the app, sports science, nutrition */}
-        <div className="card">
-          <div className="font-display font-bold mb-2">🤖 {es ? "Pregunta a JASAI" : "Ask JASAI"}</div>
-          <div className="flex gap-2">
+        <details className="card">
+          <summary className="cursor-pointer font-semibold">
+            {es ? "Preguntar a JASAI" : "Ask JASAI"}
+          </summary>
+          <form
+            className="flex gap-2 mt-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              try {
+                const r = await fetch("/api/assistant", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ question }),
+                });
+                const d = await r.json();
+                setAnswer(d.answer || d.error);
+              } catch {
+                setAnswer("Unable to reach the assistant.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
             <input
               className="input flex-1"
-              value={askQ}
-              onChange={(e) => setAskQ(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") askJasai(); }}
-              placeholder={es ? "¿Cómo uso mis zonas? ¿Qué comer antes de competir? ¿Cómo conecto mi reloj?" : "How do I use my zones? What to eat pre-race? How do I connect my watch?"}
+              aria-label="Question for coach"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
             />
-            <button onClick={askJasai} disabled={askBusy} className="btn-primary shrink-0">{askBusy ? "…" : (es ? "Preguntar" : "Ask")}</button>
-          </div>
-          {askA && <div className="mt-3 text-sm text-slate-700 bg-ocean-50 border border-ocean-200 rounded-xl p-3 leading-relaxed">{askA}</div>}
-        </div>
-
-        {/* Navigation onward */}
-        <div className="flex flex-wrap gap-2 text-sm">
-          <Link href="/checkin" className="chip chip-z2">✅ {es ? "Check-in" : "Check-in"}</Link>
-          <Link href="/calendar" className="chip chip-z2">📅 {es ? "Calendario" : "Calendar"}</Link>
-          <Link href="/dashboard" className="chip chip-z2">{es ? "Panel" : "Dashboard"}</Link>
-          <Link href="/connectors" className="chip chip-z2">⌚ {es ? "Dispositivos" : "Devices"}</Link>
-        </div>
+            <button disabled={busy || offline} className="btn-primary">
+              {es ? "Preguntar" : "Ask"}
+            </button>
+          </form>
+          {answer && <p className="text-sm mt-3">{answer}</p>}
+        </details>
       </div>
     </ProtectedPage>
-  );
-}
-
-function Block({ color, icon, title, children }: { color: string; icon: any; title: string; children: React.ReactNode }) {
-  return (
-    <div className={`rounded-xl border p-3 ${color}`}>
-      <div className="flex items-center gap-2 mb-1.5">
-        {icon}
-        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{title}</span>
-      </div>
-      {children}
-    </div>
   );
 }
