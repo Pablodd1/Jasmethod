@@ -62,6 +62,15 @@ export const RESEARCH_SOURCES: ResearchSource[] = [
   { id: "hassan2025", claim: "FITLIGHT reactive-agility training improves visual reaction time and visuomotor skill", ref: "Hassan et al. 2025 (FITLIGHT visual-motor RCT, PMC12252139)", level: "A", population: "recreational" },
   { id: "appelbaum2016", claim: "visual-motor skills are trainable and transfer to sport performance", ref: "Appelbaum & Erickson 2016, J Sports Sci 34:842-850 (review)", level: "B", population: "both" },
 
+  // ---- boxing / combat sports: brain health + explosive power (2025) ----
+  { id: "issncombat2025", claim: "combat sport nutrition position stand: macronutrients, making-weight, supplementation framework", ref: "Ricci et al. 2025, ISSN Position Stand, J Int Soc Sports Nutr", level: "B", population: "both" },
+  { id: "brainfitness2025", claim: "brain fitness in combat sports: training load, rest, and pre/post-fight protocols for neuroprotection", ref: "Brain Fitness in Combat Sports review, 2025 (PubMed 42379663)", level: "B", population: "both" },
+  { id: "beauregard2025", claim: "DHA/EPA omega-3 exert neuroprotective effects against experimental TBI; EPA-only may interfere with repair after repeated mTBI", ref: "Beauregard et al. 2025, PLOS ONE (PMC12021223)", level: "A", population: "both" },
+  { id: "heileson2024", claim: "omega-3 supplementation and head-impact biomarkers in contact-sport athletes (multi-site NCAA)", ref: "Heileson et al. 2024 (PMC11489149)", level: "A", population: "both" },
+  { id: "giraldo2025", claim: "creatine monohydrate neuroprotective in mild TBI; integrated into contact-sport nutritional protocols; active trial NCT06644131", ref: "Giraldo et al. 2025, J Int Soc Sports Nutr", level: "A", population: "both" },
+  { id: "betaalanineboxing", claim: "beta-alanine 3.2-6.4g/d improves high-intensity performance and punching power in the final seconds of rounds (4-10 wk trials)", ref: "Beta-alanine in combat sports review (PMC10490143); Korean national boxers study 2018", level: "A", population: "both" },
+  { id: "bellar2015", claim: "alpha-GPC acutely enhances power output and reaction speed (cholinergic mechanism)", ref: "Bellar et al. 2015, J Int Soc Sports Nutr", level: "A", population: "both" },
+
   // ---- plyometrics (mandatory 1-2x/week conditioning rule) ----
   { id: "ramirezcampillo2022", claim: "plyometric jump training improves power, economy and injury resilience; 1-2 sessions/week effective", ref: "Ramírez-Campillo et al. 2022, plyometric jump training meta-analysis (Sports Med)", level: "A", population: "both" },
 

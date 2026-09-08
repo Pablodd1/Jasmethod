@@ -663,7 +663,7 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     dose: "3-5 g/day",
     when: "Any time, daily",
     benefit:
-      "Power, strength, repeat-sprint + recovery; small endurance benefit.",
+      "Power, strength, repeat-sprint + recovery; small endurance benefit. For combat/contact athletes: creatine is also neuroprotective — brain-cell energy (ATP) support after sub-concussive impacts (Giraldo 2025, active mTBI trial NCT06644131).",
     caution: "Expect ~1kg water-weight gain.",
   },
   {
@@ -683,6 +683,28 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     when: "90-150 min pre-race (not daily)",
     benefit: "Buffers high-intensity efforts (800m swim, sprint finish).",
     caution: "GI distress risk — test in training first, never on race day.",
+  },
+  // ---- BOXING / COMBAT BRAIN-HEALTH STACK (2025 ISSN combat position stand) ----
+  {
+    key: "dha",
+    name: "Omega-3 DHA (brain protection)",
+    evidence: "B",
+    dose: "1-2 g DHA + 0.5-1 g EPA daily",
+    when: "Daily with a fat-containing meal (not acute — builds over weeks)",
+    benefit:
+      "DHA is the dominant structural fat in neuronal membranes; higher blood omega-3 = lower neuroaxonal injury markers after a season of repetitive head impacts. Emerging caution: EPA alone may interfere with repair after repeated mTBI — take combined DHA>EPA, not EPA solo (Beauregard 2025; Heileson 2024; ISSN combat 2025).",
+    caution:
+      "Blood-thinning at >3g/d — tell your doctor if on anticoagulants. This is neuroprotection support, NOT a helmet substitute.",
+  },
+  {
+    key: "choline",
+    name: "Alpha-GPC / Citicoline",
+    evidence: "B",
+    dose: "300 mg alpha-GPC (or 250-500 mg citicoline)",
+    when: "60 min pre-session (acute) or daily (chronic)",
+    benefit:
+      "Acetylcholine precursor — the neurotransmitter of reaction time and motor-unit recruitment. Punch sports burn ACh at high rates; supplementation supports cognitive speed under fatigue and may enhance power output (Bellar 2015; ISSN combat 2025).",
+    caution: "Mild headache in a minority — start at half dose.",
   },
   {
     key: "phosphate",
@@ -743,6 +765,17 @@ export function recommendErgogenics(
     picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "citrulline")!);
   if (session.type === "test" || session.type === "race")
     picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "bicarb")!);
+
+  // BOXING / COMBAT: brain protection + explosive-power stack — boxing is an
+  // explosive, brain-inflammation-dependent sport (repetitive sub-concussive
+  // impacts), and most boxers don't know what to take. We guide them.
+  if (session.sport === "boxing") {
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!); // neuroprotective + power (Giraldo 2025)
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "dha")!); // DHA brain protection
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "choline")!); // reaction speed
+    if (!shortIntense)
+      picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "betaAlanine")!); // 1-4 min round buffering
+  }
 
   // respect likes (boost), dislikes + opt-outs (remove), then re-rank by evidence
   const liked = picks.filter((e) => prefs.likes.includes(e.key));
