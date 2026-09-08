@@ -241,17 +241,27 @@ export default function TodayPage() {
                     <summary className="cursor-pointer font-medium">
                       {es ? "Nutrición y recuperación" : "Fuel and recovery"}
                     </summary>
-                    <p className="text-sm mt-3">
-                      {session.fuel.carbsPerHourG} g carbs/h ·{" "}
-                      {session.fuel.sodiumMgPerHour} mg sodium/h ·{" "}
-                      {session.fuel.fluidMlPerHour} ml/h
-                    </p>
-                    <FuelCalculator
-                      carbsPerH={session.fuel.carbsPerHourG}
-                      sodiumPerH={session.fuel.sodiumMgPerHour}
-                      fluidPerH={session.fuel.fluidMlPerHour}
-                      es={es}
-                    />
+                    {session.fuel.carbsPerHourG > 0 ? (
+                      <>
+                        <p className="text-sm mt-3">
+                          {session.fuel.carbsPerHourG} g carbs/h ·{" "}
+                          {session.fuel.sodiumMgPerHour} mg sodium/h ·{" "}
+                          {session.fuel.fluidMlPerHour} ml/h
+                        </p>
+                        <FuelCalculator
+                          carbsPerH={session.fuel.carbsPerHourG}
+                          sodiumPerH={session.fuel.sodiumMgPerHour}
+                          fluidPerH={session.fuel.fluidMlPerHour}
+                          es={es}
+                        />
+                      </>
+                    ) : (
+                      <p className="text-xs text-slate-400 mt-1">
+                        {es
+                          ? "Sesión ligera — no necesitas combustible durante el entreno. Hidrátate normalmente."
+                          : "Light session — no mid-workout fuel needed. Hydrate normally."}
+                      </p>
+                    )}
                     {session.post && (
                       <p className="text-sm mt-2">
                         Post: {session.post.carbsG} g carbs ·{" "}
