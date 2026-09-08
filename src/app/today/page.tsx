@@ -246,6 +246,12 @@ export default function TodayPage() {
                       {session.fuel.sodiumMgPerHour} mg sodium/h ·{" "}
                       {session.fuel.fluidMlPerHour} ml/h
                     </p>
+                    <FuelCalculator
+                      carbsPerH={session.fuel.carbsPerHourG}
+                      sodiumPerH={session.fuel.sodiumMgPerHour}
+                      fluidPerH={session.fuel.fluidMlPerHour}
+                      es={es}
+                    />
                     {session.post && (
                       <p className="text-sm mt-2">
                         Post: {session.post.carbsG} g carbs ·{" "}
@@ -458,5 +464,79 @@ export default function TodayPage() {
         </details>
       </div>
     </ProtectedPage>
+  );
+}
+
+function FuelCalculator({ carbsPerH, sodiumPerH, fluidPerH, es }: { carbsPerH: number; sodiumPerH: number; fluidPerH: number; es: boolean }) {
+  const h = 1; // default shown on render; DOM updates on change
+  const totalCarbs = Math.round(carbsPerH * h);
+  const totalSodium = Math.round(sodiumPerH * h);
+  const totalFluid = Math.round(fluidPerH * h);
+  const iceMl = h >= 1.5 ? 500 : 300;
+  const gels = Math.ceil(totalCarbs / 25);
+  const bottles = Math.ceil(totalFluid / 500);
+
+  return (
+    <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50/70 p-3" id="fuel-calc">
+      <div className="text-xs font-semibold text-orange-800 mb-2">
+        🔢 {es ? "Calculadora de combustible" : "Fuel calculator"}
+      </div>
+      <div className="flex items-center gap-2 mb-2">
+        <label className="text-xs text-slate-600">{es ? "Horas:" : "Hours:"}</label>
+        <input
+          className="input !py-1 !px-2 text-sm w-20"
+          type="number"
+          min="0.5"
+          max="12"
+          step="0.5"
+          defaultValue="1"
+          onChange={(e: any) => {
+            const v = Math.max(0.5, Math.min(12, parseFloat(e.target.value) || 1));
+            const el = e.target.closest("[id=fuel-calc]");
+            if (el) {
+              const c = el.querySelector("[data-carbs]");
+              const n = el.querySelector("[data-sodium]");
+              const f = el.querySelector("[data-fluid]");
+              const i = el.querySelector("[data-ice]");
+              const g = el.querySelector("[data-gels]");
+              const b = el.querySelector("[data-bottles]");
+              if (c) c.textContent = `${Math.round(carbsPerH * v)}g`;
+              if (n) n.textContent = `${Math.round(sodiumPerH * v)}mg`;
+              if (f) f.textContent = `${((fluidPerH * v) / 1000).toFixed(1)}L`;
+              if (i) i.textContent = `${v >= 1.5 ? 500 : 300}ml`;
+              if (g) g.textContent = `${Math.ceil((carbsPerH * v) / 25)} ${es ? "geles" : "gels"}`;
+              if (b) b.textContent = `${Math.ceil((fluidPerH * v) / 500)} × 500ml`;
+            }
+          }}
+        />
+      </div>
+      <div className="grid grid-cols-4 gap-2 text-center">
+        <div className="rounded-lg bg-white px-2 py-1.5">
+          <div className="text-[10px] text-slate-400 uppercase">Carbs</div>
+          <div className="font-bold text-orange-700" data-carbs>{Math.round(carbsPerH)}g</div>
+          <div className="text-[9px] text-slate-400" data-gels>{gels} {es ? "geles" : "gels"}</div>
+        </div>
+        <div className="rounded-lg bg-white px-2 py-1.5">
+          <div className="text-[10px] text-slate-400 uppercase">{es ? "Sodio" : "Sodium"}</div>
+          <div className="font-bold text-orange-700" data-sodium>{Math.round(sodiumPerH)}mg</div>
+          <div className="text-[9px] text-slate-400">{es ? "electrolitos" : "electrolytes"}</div>
+        </div>
+        <div className="rounded-lg bg-white px-2 py-1.5">
+          <div className="text-[10px] text-slate-400 uppercase">{es ? "Líquido" : "Fluid"}</div>
+          <div className="font-bold text-sky-700" data-fluid>{(fluidPerH / 1000).toFixed(1)}L</div>
+          <div className="text-[9px] text-slate-400" data-bottles>{bottles} × 500ml</div>
+        </div>
+        <div className="rounded-lg bg-white px-2 py-1.5">
+          <div className="text-[10px] text-slate-400 uppercase">{es ? "Hielo" : "Ice"}</div>
+          <div className="font-bold text-cyan-700" data-ice>{iceMl}ml</div>
+          <div className="text-[9px] text-slate-400">{es ? "pre-entreno" : "pre-workout"}</div>
+        </div>
+      </div>
+      <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
+        🧊 {es
+          ? "Bebida helada pre-entreno en calor: baja la temperatura central y retrasa la fatiga. Durante: bebe en intervalos de 15 min."
+          : "Pre-workout ice slurry in heat: lowers core temp and delays fatigue. During: drink in 15-min intervals."}
+      </p>
+    </div>
   );
 }

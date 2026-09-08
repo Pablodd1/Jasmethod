@@ -113,7 +113,7 @@ export async function callback(req: Request, provider: string) {
       token.athlete?.id != null ? String(token.athlete.id) : undefined;
     if (provider === "whoop") {
       const r = await fetch(
-        "https://api.prod.whoop.com/developer/v2/user/profile/basic",
+        "https://api.prod.whoop.com/developer/v1/user/profile/basic",
         {
           headers: { Authorization: `Bearer ${token.access_token}` },
           signal: AbortSignal.timeout(15000),
@@ -142,7 +142,29 @@ export async function callback(req: Request, provider: string) {
       create: { userId: user.id, provider: p.key, ...data },
       update: data,
     });
-    return NextResponse.redirect(`${base}/connectors?ok=${provider}&pending=1`);
+
+    // FIRST SYNC on connect — the athlete sees their data immediately,
+    // not just a "connected" badge. Non-blocking (5s cap) so the redirect
+    // is not held hostage by a slow provider.
+    let imported = 0;
+    try {
+      const { syncUserConnectors } = await import("./sync");
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 5000);
+      const result = await Promise.race([
+        syncUserConnectors(user.id, p.key),
+        new Promise<never>((_, rej) => ctrl.signal.addEventListener("abort", () => rej(new Error("sync timeout")))),
+      ]);
+      imported = result?.total || 0;
+      clearTimeout(t);
+    } catch (syncErr) {
+      console.error("First sync after connect failed (non-fatal):", String(syncErr).slice(0, 100));
+      // The 5 AM cron + Sync now button will pick it up.
+    }
+
+    return NextResponse.redirect(
+      `${base}/connectors?ok=${provider}&imported=${imported}`,
+    );
   } catch (e) {
     const reason = String(e instanceof Error ? e.message : e)
       .replace(/Bearer\s+\S+/gi, "[redacted]")

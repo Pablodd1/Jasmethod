@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
+import { useSearchParams } from "next/navigation";
 import { t, type Lang } from "@/lib/i18n";
 
 export default function ConnectorsPage() {
