@@ -50,6 +50,9 @@ assert.ok(heatIndex(30, 80) > 30, "humidity raises feels-like");
 assert.equal(heatIndex(15, 50), 15, "cool temps unchanged");
 const alt = altitudeFactor(2500);
 assert.ok(alt.vo2factor < 1 && alt.paceFactor > 1, "altitude reduces VO2, slows pace");
-assert.equal(altitudeFactor(500).vo2factor, 1, "below 1500m no effect");
+assert.ok(altitudeFactor(100).vo2factor === 1, "below threshold no effect");
+assert.ok(altitudeFactor(500).vo2factor < 1, "Wehrlin-linear starts near sea level (adjudication Conflict 1)");
+const alt5000ft = altitudeFactor(1524); // ~5,000 ft
+assert.ok(alt5000ft.vo2factor > 0.72 && alt5000ft.vo2factor < 0.82, "5,000 ft ≈ 20%+ aerobic power loss per adjudication");
 
 console.log("✓ fitness.test.ts — all assertions passed");

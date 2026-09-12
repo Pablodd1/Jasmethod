@@ -1,51 +1,68 @@
-// JasMiamiMethod — Race Forecast Engine (approach B)
+// JasMiamiMethod — Race Forecast Engine (approach B, adjudicated)
+//
 // Fitness-based prediction from your athlete profile (FTP / run & swim
 // thresholds) + Performance Management Chart (CTL/TSB) + course conditions.
 //
-// It unifies the previously-scattered building blocks — predictRace baseline,
-// venueAdjustment, heatIndex (Rothfusz), altitudeFactor (Bärtsch & Saltin 2008),
-// temperatureAdjustment (Ely 2007 / Casa 2000) and recommendFuel (Thomas 2016) —
-// into ONE transparent, bounded forecast:
+//   adjusted time = baseline time × heat(WBGT) × altitude × terrain × fitness
 //
-//   adjusted time = baseline time × heat × altitude × terrain × climb × fitness
-//
-// Every factor is surfaced as a human-readable bullet so the athlete can see
-// exactly why the number moved. Estimates are heuristics, clearly labeled.
+// Model choices follow the 2026-09-08 adjudication report: WBGT heat model
+// (not linear °F+%RH), Wehrlin-linear altitude (not 1%/1000ft), federation-
+// specific wetsuit legality (not a single cutoff), swim drafting capped at
+// the sourced 15%, and wind + air density inside the bike physics solve.
+// Every model constant lives in forecast-constants.ts with a provenance
+// flag, and the forecast result surfaces that provenance.
 
-import { type PmcResult } from "./fitness";
-import { venueAdjustment, recommendFuel, type VenueProfile, type FuelPlan } from "./adaptive";
+import { type PmcResult, altitudeFactor } from "./fitness";
+import { venueAdjustment, type VenueProfile, type FuelPlan } from "./adaptive";
+import {
+  wbgtC, wbgtCategory, runHeatPaceFactor, bikeHeatPowerFactorFromWbgt,
+  dewPointAdvisory, airDensity, type WbgtResult,
+} from "./weather";
+import { wetsuitVerdict, type WetsuitDecision, type WetsuitCategory, type Federation } from "./wetsuit";
+import { raceFuelPlan, fuelTimeline, kcalFromBikeKj, type RaceFuelPlan, type FuelSlot } from "./race-fuel";
+import { provenanceRows } from "./forecast-constants";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface AthleteSnapshot {
-  ftp?: number | null;        // W
+  ftp?: number | null;          // W
   runPaceBase?: number | null;  // sec/km threshold
   swimPaceBase?: number | null; // sec/100m threshold
   weightKg?: number | null;
   heightCm?: number | null;
-  lthr?: number | null;       // bpm
+  lthr?: number | null;         // bpm
   vo2max?: number | null;
+  age?: number | null;          // wetsuit nuance (British Tri 60+ band)
+  sweatRateMlH?: number | null; // measured — fluid plan
+  sodiumMgPerL?: number | null; // measured — sodium plan
+  gutTrained?: boolean;         // tolerates 90-120 g/h carbs
+  draftSkill?: "none" | "mixed" | "good"; // open-water swim drafting
 }
 
 export interface ForecastVenue {
-  targetTempC?: number | null;
-  humidity?: number | null;   // %
-  baseElevM?: number | null;  // m
-  bikeElevM?: number | null;  // m climb
-  bikeTerrain?: string | null; // flat | rolling | hilly | mountain | trail
-  runElevM?: number | null;   // m climb
-  runTerrain?: string | null; // flat | rolling | hilly | trail
-  swimVenue?: string | null;  // pool | lake | ocean | river
+  targetTempC?: number | null;  // air temperature (°C)
+  humidity?: number | null;     // %
+  solarWm2?: number | null;     // shortwave radiation (WBGT globe estimate)
+  cloudCover?: number | null;   // %
+  windKph?: number | null;
+  baseElevM?: number | null;    // venue base elevation
+  bikeElevM?: number | null;    // m climb
+  bikeTerrain?: string | null;  // flat | rolling | hilly | mountain | trail
+  runElevM?: number | null;     // m climb
+  runTerrain?: string | null;   // flat | rolling | hilly | trail
+  swimVenue?: string | null;    // pool | lake | ocean | river
   waterTempC?: number | null;
-  swimCurrent?: string | null; // none | mild | strong
+  swimCurrent?: string | null;  // none | mild | strong
+  federation?: Federation | string | null; // wetsuit rules
+  category?: WetsuitCategory | string | null; // age_group | elite
 }
 
 export interface ForecastInput {
   athlete: AthleteSnapshot;
   fitness: Pick<PmcResult, "current" | "formZone" | "rampRate7d" | "rampWarning"> | null;
-  distance: string;            // sprint | olympic | half | full | 5k | 10k | half-marathon | marathon | 40k | 100k | 180k | gran-fondo | 750m | 1500m | 1900m | 3800m
+  distance: string;
   venue: ForecastVenue;
   goalTimeMin?: number | null;
 }
@@ -54,16 +71,22 @@ export type ForecastSport = "triathlon" | "swim" | "bike" | "run" | "hyrox";
 
 export interface ForecastSegment {
   sport: "swim" | "bike" | "run";
-  label: string;            // "Swim"
-  distanceLabel: string;    // "1.9 km" / "750 m" / "42.2 km"
+  label: string;
+  distanceLabel: string;
   timeMin: number;
-  pace?: string;            // "1:34 /100m", "4:58 /km"
-  speedKmh?: number;        // bike only
-  powerTargetW?: number;    // bike only
-  intensityFactor?: number; // bike: % FTP
-  hrTarget?: string;        // bpm range
+  pace?: string;
+  speedKmh?: number;
+  powerTargetW?: number;
+  intensityFactor?: number;
+  hrTarget?: string;
   fuel: FuelPlan;
   notes: string[];
+}
+
+export interface ForecastScenario {
+  label: "best" | "worst";
+  totalMin: number;
+  note: string;
 }
 
 export interface ForecastResult {
@@ -71,22 +94,27 @@ export interface ForecastResult {
   distance: string;
   distanceLabel: string;
   confidence: "high" | "medium" | "low";
-  measurementGaps: string[]; // defaults used
-  factors: string[];         // course/fitness adjustments applied
+  measurementGaps: string[];
+  factors: string[];
   segments: ForecastSegment[];
   transitionsMin: number;
   totalMin: number;
   baselineTotalMin: number;
   goalTimeMin: number | null;
-  goalDeltaMin: number | null; // positive = slower than goal
+  goalDeltaMin: number | null;
   note: string;
+  // --- adjudicated-engine additions ---
+  wbgt?: { value: number; zone: string; note: string; dewPointC: number; advisory: string | null; method: string } | null;
+  wetsuit?: WetsuitDecision | null;
+  scenarios?: ForecastScenario[];
+  fuelTotal?: (RaceFuelPlan & { slots: FuelSlot[]; estimatedKcalBurned: number | null }) | null;
+  provenance?: Array<{ key: string; value: unknown; provenance: string; citation: string; note?: string }>;
 }
 
 // ---------------------------------------------------------------------------
 // Distance tables (baseline pacing curves)
 // ---------------------------------------------------------------------------
 
-// Triathlon legs (matches LEGS in fitness.ts)
 const TRI_LEGS: Record<string, { swimM: number; bikeKm: number; runKm: number; transitionMin: number }> = {
   sprint: { swimM: 750, bikeKm: 20, runKm: 5, transitionMin: 2 },
   olympic: { swimM: 1500, bikeKm: 40, runKm: 10, transitionMin: 3 },
@@ -94,15 +122,13 @@ const TRI_LEGS: Record<string, { swimM: number; bikeKm: number; runKm: number; t
   full: { swimM: 3800, bikeKm: 180, runKm: 42.2, transitionMin: 5 },
 };
 
-// Running-only distances (fatigue curves: longer = slower than threshold pace)
-const RUN_DISTANCES: Record<string, { km: number; paceFactor: number; label: string }> = {
-  "5k": { km: 5, paceFactor: 0.95, label: "5 km" },
-  "10k": { km: 10, paceFactor: 0.98, label: "10 km" },
-  "half-marathon": { km: 21.1, paceFactor: 1.05, label: "21.1 km" },
-  marathon: { km: 42.2, paceFactor: 1.12, label: "42.2 km" },
+const RUN_DISTANCES: Record<string, { km: number; label: string }> = {
+  "5k": { km: 5, label: "5 km" },
+  "10k": { km: 10, label: "10 km" },
+  "half-marathon": { km: 21.1, label: "21.1 km" },
+  marathon: { km: 42.2, label: "42.2 km" },
 };
 
-// Cycling-only distances
 const BIKE_DISTANCES: Record<string, { km: number; speedFactor: number; label: string }> = {
   "40k": { km: 40, speedFactor: 1.0, label: "40 km" },
   "100k": { km: 100, speedFactor: 0.97, label: "100 km" },
@@ -110,7 +136,6 @@ const BIKE_DISTANCES: Record<string, { km: number; speedFactor: number; label: s
   "gran-fondo": { km: 130, speedFactor: 0.96, label: "Gran Fondo (~130 km)" },
 };
 
-// Swimming-only distances
 const SWIM_DISTANCES: Record<string, { m: number; label: string }> = {
   "750m": { m: 750, label: "750 m" },
   "1500m": { m: 1500, label: "1500 m" },
@@ -125,83 +150,75 @@ const TRI_DISTANCE_LABELS: Record<string, string> = {
   full: "Full Ironman · 3.8km / 180km / 42.2km",
 };
 
-// Bike baseline speed from FTP for a flat, no-wind TT. Short rides hold a
-// slightly higher sustainable fraction than ultra-distance ones.
-function bikeBaselineSpeedKmh(ftp: number | null | undefined, speedFactor: number): number {
-  const f = ftp ?? 220;
-  return Math.round((f * 0.05 + 20) * speedFactor * 10) / 10;
-}
+// ---------------------------------------------------------------------------
+// Bike physics (Best Bike Split approach): solve steady-state velocity from
+// the rider's power against gravity + rolling resistance + aero drag, with
+// altitude/temperature-corrected air density and ambient wind (loop-course
+// mean headwind projection).
+//   P_wheel = (m·g·grade + m·g·Crr)·v + ½·ρ·CdA·(v+w)²·v
+//   P_rider = P_wheel / drivetrain
+// ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Physics engine (Best Bike Split approach): solve steady-state velocity from
-// the rider's power against gravity + rolling resistance + aero drag.
-//   P = (m·g·sinθ + m·g·Crr·cosθ + ½·ρ·CdA·v_air²) · v_ground / drivetrain
-// Whole-course simplification: gravity uses the average grade implied by
-// elevation gain over distance (segment-level GPX solving is the upgrade path).
-// ---------------------------------------------------------------------------
-function bikePhysicsSpeedKmh(opts: {
+export function bikePhysicsSpeedKmh(opts: {
   ftp: number; weightKg?: number | null; bikeKg?: number;
   elevGainM?: number | null; distanceKm: number; terrain?: string | null;
-  sustainableIF?: number; // fraction of FTP holdable over this distance
-}): { speedKmh: number; powerW: number; model: string } {
-  const ftp = opts.ftp;
+  sustainableIF?: number; sustainableW?: number; // holdable watts override
+  venueElevM?: number | null; tempC?: number | null; windKph?: number | null;
+}): { speedKmh: number; powerW: number; wheelKj: number; rho: number } {
   const m = (opts.weightKg ?? 70) + (opts.bikeKg ?? 9);
-  const powerW = Math.round(ftp * (opts.sustainableIF ?? 0.78)); // holdable watts, not raw FTP
+  const powerW = opts.sustainableW ?? Math.round(opts.ftp * (opts.sustainableIF ?? 0.78));
   const crr = (opts.terrain || "flat") === "trail" ? 0.008 : (opts.terrain || "flat") === "hilly" || (opts.terrain || "flat") === "mountain" ? 0.006 : 0.0045;
-  const cdA = 0.28; // TT/aero position assumption; 0.32 for road position (upgrade knob)
-  const rho = 1.225; // sea-level air density (kg/m³)
-  const drivetrain = 0.976;
-  const pAvail = powerW * drivetrain; // watts reaching the wheel
+  const cdA = 0.28; // TUNED_DEFAULT (range 0.22–0.35) — forecast-constants
+  const rho = airDensity(opts.venueElevM ?? 0, opts.tempC ?? 20);
+  const drivetrain = 0.976; // VERIFIED 0.97–0.98 — forecast-constants
+  const pAvail = powerW * drivetrain;
+  const windMs = ((opts.windKph ?? 0) / 3.6) * 0.5; // loop-course mean projection (HEURISTIC)
 
-  // Average grade over the course from elevation gain (bounded to realistic).
   const grade = Math.min(0.08, Math.max(-0.02, (opts.elevGainM ?? 0) / (opts.distanceKm * 1000)));
   const g = 9.81;
-  // Solve v from P = (m·g·grade + m·g·Crr + ½ρCdA·v²)·v (cubic in v; closed-form
-  // via iterative Newton from 10 m/s — converges in <5 iterations).
   let v = 10;
   for (let i = 0; i < 8; i++) {
-    const f = (m * g * grade + m * g * crr) * v + 0.5 * rho * cdA * v * v * v - pAvail;
-    const df = (m * g * grade + m * g * crr) + 1.5 * rho * cdA * v * v;
+    const f = (m * g * grade + m * g * crr) * v + 0.5 * rho * cdA * Math.pow(v + windMs, 2) * v - pAvail;
+    const df = (m * g * grade + m * g * crr) + 0.5 * rho * cdA * (Math.pow(v + windMs, 2) + 2 * (v + windMs) * v);
     v = Math.max(1, v - f / df);
   }
-  const speedKmh = v * 3.6;
+  const speedMs = v;
+  const timeSec = (opts.distanceKm * 1000) / speedMs;
   return {
-    speedKmh: Math.round(Math.min(70, Math.max(8, speedKmh)) * 10) / 10,
+    speedKmh: Math.round(Math.min(70, Math.max(8, speedMs * 3.6)) * 10) / 10,
     powerW,
-    model: `physics: ${powerW}W vs gravity+Crr+aero (CdA ${cdA}, Crr ${crr}, ${Math.round(grade * 1000) / 10}% avg grade)`,
+    wheelKj: Math.round((pAvail * timeSec) / 1000),
+    rho: Math.round(rho * 1000) / 1000,
   };
 }
 
-// Riegel fatigue: T2 = T1 · (D2/D1)^k. Threshold-pace base at 10k; k > 1 for
-// long-course durability loss (1.06 matches user's multi-sport fatigue model).
-function riegelPace(baseSecPerKm: number, km: number, exponent = 1.06): number {
+// Riegel fatigue: T2 = T1 · (D2/D1)^(k-1) from a threshold-pace base at 10k.
+// k is a TUNED_DEFAULT (1.06, published range ~1.05–1.12); adjacent-distance
+// accuracy ±5%, far-apart ±15–25% — estimates.
+export function riegelPace(baseSecPerKm: number, km: number, exponent = 1.06): number {
   return baseSecPerKm * Math.pow(km / 10, exponent - 1);
 }
 
 // Triathlon transition penalty: bike TSS pre-fatigues the legs. Derate run
-// pace by the fraction of anaerobic/battery cost consumed on the bike leg —
-// heuristically ~2% (sprint) to ~9% (Ironman) vs a fresh standalone run.
+// pace by the fraction of cost consumed on the bike — heuristically ~2%
+// (sprint) to ~9% (Ironman) vs a fresh standalone run. (HEURISTIC)
 function bikeTssRunPenalty(bikeKm: number): number {
-  const approxTss = bikeKm * 0.85; // ~1 TSS/km at race intensity (normalized)
+  const approxTss = bikeKm * 0.85;
   if (approxTss <= 0) return 1;
-  // Penalty grows sub-linearly: sqrt(TSS/100) scaled to ~2-9% across distances.
   return 1 + Math.min(0.09, 0.02 * Math.sqrt(approxTss / 17));
 }
 
-// HYROX compromised-run state-space model: 8 stations × 1km run. Each station
-// (sled push/pull heaviest) spikes lactate; the following run decays until the
-// body clears it. Average pace decay across the race ≈ station cost × recovery.
+// HYROX compromised-run state-space model: 8 stations × 1km run. Each
+// station (sled push/pull heaviest) spikes lactate; the following run decays
+// until the body clears it. (HEURISTIC — deliberately, this is a coaching
+// model, not physics.)
 function hyroxCompromisedRunPace(thresholdSecPerKm: number, fitness?: ForecastInput["fitness"]): {
   avgPaceSecPerKm: number; stationDecay: number; note: string;
 } {
-  // Station metabolic cost multipliers (relative lactate spike), avg across
-  // the 8 HYROX stations: ski 1.6km, sled push, sled pull, burpees, rowing,
-  // farmers carry, sandbag lunges, wall balls.
   const STATION_COSTS = [0.03, 0.05, 0.05, 0.04, 0.03, 0.015, 0.03, 0.04];
-  const avgDecay = STATION_COSTS.reduce((a, b) => a + b, 0) / STATION_COSTS.length; // mean pace derate
-  // Better durability (higher CTL) → less decay between stations.
+  const avgDecay = STATION_COSTS.reduce((a, b) => a + b, 0) / STATION_COSTS.length;
   const ctl = fitness?.current?.ctl ?? 30;
-  const durability = Math.min(1.25, Math.max(0.85, 0.85 + ctl / 150)); // 0.85–1.25
+  const durability = Math.min(1.25, Math.max(0.85, 0.85 + ctl / 150));
   const decay = avgDecay / durability;
   return {
     avgPaceSecPerKm: Math.round(thresholdSecPerKm * (1 + decay)),
@@ -210,13 +227,18 @@ function hyroxCompromisedRunPace(thresholdSecPerKm: number, fitness?: ForecastIn
   };
 }
 
-
 function triRunPaceFactor(distance: string): number {
   return ({ sprint: 0.97, olympic: 1.0, half: 1.05, full: 1.1 } as Record<string, number>)[distance] ?? 1;
 }
 
 function triBikeSpeedFactor(distance: string): number {
   return ({ sprint: 1.0, olympic: 0.99, half: 0.97, full: 0.95 } as Record<string, number>)[distance] ?? 1;
+}
+
+function triIF(distance: string): number {
+  // Midpoints of the coaching bands (TUNED_DEFAULT, range in registry):
+  // sprint 0.85–0.95, olympic 0.80–0.90, half 0.75–0.82, IM 0.70–0.76.
+  return ({ sprint: 0.88, olympic: 0.83, half: 0.78, full: 0.72 } as Record<string, number>)[distance] ?? 0.8;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,19 +296,12 @@ function terrainPaceFactor(terrain?: string | null, elevM?: number | null): numb
   else if (t === "hilly") base = 1.05;
   else if (t === "mountain") base = 1.1;
   else if (t === "trail") base = 1.06;
-  // ~0.5% slower per 100m of accumulated climb (capped so a single giant climb
-  // can't blow the estimate up unrealistically).
   const climbFactor = Math.min(1.15, 1 + (climb / 100) * 0.005);
   return Math.round(base * climbFactor * 1000) / 1000;
 }
 
-function bikeTerrainSpeedFactor(terrain?: string | null, elevM?: number | null): number {
-  // Expressed as a speed divisor (same magnitude, applied to speed).
-  return terrainPaceFactor(terrain, elevM);
-}
-
 // ---------------------------------------------------------------------------
-// Fitness adjustment from PMC (TSB + CTL)
+// Fitness adjustment from PMC (TSB + CTL; target form zone −10..+10)
 // ---------------------------------------------------------------------------
 
 function fitnessPaceFactor(
@@ -299,24 +314,78 @@ function fitnessPaceFactor(
   const notes: string[] = [];
   let pace = 1;
   if (tsb >= 10) {
-    pace = 0.99; // fresh → can hold race pace + a touch more
+    pace = 0.99;
     notes.push(`Form is high (TSB ${Math.round(tsb)}) — fresh legs, no fatigue buffer needed.`);
   } else if (tsb >= -10) {
-    notes.push(`Form neutral (TSB ${Math.round(tsb)}) — standard pacing.`);
+    notes.push(`Form neutral (TSB ${Math.round(tsb)}) — inside the ideal −10..+10 race window.`);
   } else if (tsb >= -30) {
-    pace = 1.02; // fatigued → add a 2% pace buffer
+    pace = 1.02;
     notes.push(`Fatigued (TSB ${Math.round(tsb)}) — pacing eased ~2% to hold form through the race.`);
   } else {
     pace = 1.04;
     notes.push(`Deeply fatigued (TSB ${Math.round(tsb)}) — forecast assumes a careful ~4% buffer; prioritize recovery pre-race.`);
   }
-  // Low CTL relative to a long event = durability risk on the run.
   if (ctl < 40 && (distance === "full" || distance === "half" || distance === "marathon" || distance === "half-marathon")) {
     pace = Math.round(pace * 1.02 * 1000) / 1000;
     notes.push(`CTL ${Math.round(ctl)} is low for this distance — added a durability buffer.`);
   }
   if (fitness.rampRate7d > 8) notes.push(`Ramp rate ${fitness.rampRate7d} CTL/wk is high — this forecast assumes you arrive healthy, not more injured.`);
   return { paceFactor: pace, note: notes.join(" ") || null };
+}
+
+// ---------------------------------------------------------------------------
+// Environment: WBGT + altitude, shared across disciplines
+// ---------------------------------------------------------------------------
+
+const PROVENANCE_KEYS = [
+  "wbgt_weights", "globe_temp_est_coeffs", "heat_run_curve_anchors", "heat_bike_curve_anchors",
+  "power_loss_percent_per_1000ft_altitude", "altitude_pace_transmission",
+  "riegel_b_default", "intensity_factor_bands", "cda_default_tri", "drivetrain_efficiency",
+  "wind_loop_headwind_fraction", "swim_draft_energy_savings_max", "swim_draft_time_transmission",
+  "wetsuit_speed_benefit", "open_water_penalty", "carbs_g_per_hour_bands",
+  "fluid_ml_per_hour_default", "sodium_mg_per_l_default", "tsb_race_target",
+];
+
+interface EnvModel {
+  wbgt: number;
+  windKph: number;
+  runPaceFactor: number;   // heat × altitude on pace
+  bikePowerFactor: number; // heat × altitude on sustainable watts
+  swimPaceFactor: number;  // altitude mainly (swim starts early/cooler)
+}
+
+function buildEnv(v: ForecastVenue, overrides?: { wbgt?: number; windKph?: number }): EnvModel {
+  const tempC = v.targetTempC ?? 20;
+  const rh = v.humidity ?? 60;
+  const w = wbgtC({
+    tempC,
+    humidity: rh,
+    solarWm2: v.solarWm2 ?? undefined,
+    windKph: v.windKph ?? undefined,
+  });
+  const wbgt = Math.max(0, overrides?.wbgt ?? w.wbgtC);
+  const windKph = overrides?.windKph ?? (v.windKph ?? 0);
+  const alt = altitudeFactor(v.baseElevM ?? 0);
+  return {
+    wbgt,
+    windKph,
+    runPaceFactor: runHeatPaceFactor(wbgt) * alt.paceFactor,
+    bikePowerFactor: bikeHeatPowerFactorFromWbgt(wbgt) * alt.vo2factor,
+    swimPaceFactor: alt.paceFactor,
+  };
+}
+
+// Map the detailed race fuel plan onto the segment FuelPlan shape the UI
+// already renders (adds kcal + timing without changing the contract).
+function toFuelPlan(fuel: RaceFuelPlan): FuelPlan {
+  return {
+    carbsPerHourG: fuel.carbsGPerHour,
+    sodiumMgPerHour: fuel.sodiumMgPerHour,
+    fluidMlPerHour: fuel.fluidMlPerHour,
+    kcalPerHour: fuel.kcalPerHour || undefined,
+    caffeineMg: fuel.caffeineMg ?? undefined,
+    notes: [fuel.carbsBand, fuel.notes.join(" "), fuel.caffeineTiming ?? ""].filter(Boolean).join(" "),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -330,7 +399,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
 
   const measurementGaps: string[] = [];
   const factors: string[] = [];
-  const v: VenueProfile = {
+  const v: VenueProfile & { federation?: string; category?: string } = {
     targetTempC: venue.targetTempC ?? undefined,
     humidity: venue.humidity ?? undefined,
     baseElevM: venue.baseElevM ?? undefined,
@@ -341,287 +410,468 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     swimVenue: venue.swimVenue ?? undefined,
     waterTempC: venue.waterTempC ?? undefined,
     swimCurrent: venue.swimCurrent ?? undefined,
+    federation: venue.federation ?? undefined,
+    category: venue.category ?? undefined,
   };
   const venuePlan = venueAdjustment(v);
 
-  // Environmental factors (shared across disciplines)
-  let heatPaceFactor = 1;
-  if (venuePlan.heat) {
-    heatPaceFactor = venuePlan.heat.paceFactor;
-    factors.push(`Heat: feels ~${venuePlan.heat.tempC}°C (${venuePlan.heat.category}) — run/bike pace ×${heatPaceFactor.toFixed(2)}.`);
+  // --- environment model (WBGT + altitude) ---
+  const env = buildEnv(venue);
+  const wbgtInfo = wbgtC({
+    tempC: venue.targetTempC ?? 20,
+    humidity: venue.humidity ?? 60,
+    solarWm2: venue.solarWm2 ?? undefined,
+    windKph: venue.windKph ?? undefined,
+  });
+  const cat = wbgtCategory(wbgtInfo.wbgtC);
+  const dewAdvisory = dewPointAdvisory(wbgtInfo.dewPointC);
+  if (venue.targetTempC != null || venue.humidity != null) {
+    factors.push(`Heat (WBGT): ${wbgtInfo.wbgtC}°C (${cat.zone === "ok" ? "manageable" : cat.zone.replace("_", "-")}) — run pace ×${env.runPaceFactor.toFixed(2)} vs neutral, bike watts held to ${Math.round(env.bikePowerFactor * 100)}% of FTP-based target. ${cat.note}`);
+    if (dewAdvisory) factors.push(dewAdvisory);
   }
-  let altPaceFactor = 1;
-  if (venuePlan.altitude && venuePlan.altitude.paceFactor > 1) {
-    altPaceFactor = venuePlan.altitude.paceFactor;
-    factors.push(`Altitude ${v.baseElevM}m → aerobic power ~${Math.round((1 - venuePlan.altitude.vo2factor) * 100)}% lower; pace ×${altPaceFactor.toFixed(2)}.`);
+  const altInfo = venue.baseElevM != null ? altitudeFactor(venue.baseElevM) : null;
+  if (altInfo && venue.baseElevM != null && venue.baseElevM > 150) {
+    factors.push(`Altitude ${venue.baseElevM}m → sustainable aerobic power ~${Math.round((1 - altInfo.vo2factor) * 100)}% lower (Wehrlin-linear, tunable). ${altInfo.advice}`);
   }
-
-  const envPace = Math.round(heatPaceFactor * altPaceFactor * 1000) / 1000;
-  const envSpeedDivisor = envPace;
+  if (venue.windKph != null && venue.windKph > 10) {
+    factors.push(`Wind ${venue.windKph} kph (loop-course mean projection) is inside the bike physics solve — expect more time loss than the tailwind gives back.`);
+  }
 
   const fit = fitnessPaceFactor(fitness, distance);
   if (fit.note) factors.push(fit.note);
 
   const goalTimeMin = input.goalTimeMin ?? null;
+
+  // --- wetsuit verdict (federation-specific, always surfaced) ---
+  let wetsuit: WetsuitDecision | null = null;
+  let wetsuitPaceFactor = 1;
+  if (venue.waterTempC != null && (sport === "triathlon" || sport === "swim")) {
+    wetsuit = wetsuitVerdict(venue.waterTempC, {
+      federation: venue.federation,
+      category: venue.category,
+      age: athlete.age ?? undefined,
+      swimM: sport === "triathlon" ? TRI_LEGS[distance]?.swimM : (SWIM_DISTANCES[distance]?.m ?? undefined),
+    });
+    factors.push(`Wetsuit (${wetsuit.federation}): ${wetsuit.note} Source: ${wetsuit.citation}. VERIFY against the current rulebook — rules change.`);
+    if (wetsuit.legal !== false && venue.swimVenue && venue.swimVenue.toLowerCase() !== "pool") {
+      wetsuitPaceFactor = 1 - 0.03; // TUNED_DEFAULT buoyancy benefit (2–5%)
+    }
+  }
+
+  // --- swim drafting (0–15% energy per Chatard & Wilson; conservative map) ---
+  const draftSkill = athlete.draftSkill ?? "none";
+  const draftEnergySave = draftSkill === "good" ? 0.13 : draftSkill === "mixed" ? 0.08 : 0;
+  const draftPaceFactor = 1 - draftEnergySave * 0.4; // TUNED_DEFAULT transmission
+  if (draftEnergySave > 0 && sport !== "bike" && sport !== "run" && sport !== "hyrox") {
+    factors.push(`Swim drafting (${draftSkill} feet-skill): ~${Math.round(draftEnergySave * 100)}% energy saved at close distance → conservatively ~${Math.round((1 - draftPaceFactor) * 100)}% faster swim. Sourced cap is 15% — anything more is cycling data, not swimming.`);
+  }
+
   const segments: ForecastSegment[] = [];
   let baselineTotalMin = 0;
-  let totalMin = 0;
   let transitionsMin = 0;
 
-  // --- Triathlon ---
+  // --- fuel (whole race; per-segment views below) ---
+  // Fluid scaling with WBGT is a mild heuristic: +1.2% fluid per WBGT °C
+  // above 18, capped at +25%.
+  const fluidHeat = Math.min(1.25, 1 + Math.max(0, env.wbgt - 18) * 0.012);
+
+  // =======================================================================
+  // Triathlon
+  // =======================================================================
   if (sport === "triathlon") {
     const leg = TRI_LEGS[distance];
     const distanceLabel = TRI_DISTANCE_LABELS[distance] || distance;
-
-    // Swim
-    const swimOpenWater = (v.swimVenue || "pool").toLowerCase() !== "pool";
-    let swimPaceBase = athlete.swimPaceBase ?? 100;
+    const runPaceBase = athlete.runPaceBase ?? 300;
+    if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
+    const swimPaceBase = athlete.swimPaceBase ?? 100;
     if (!athlete.swimPaceBase) measurementGaps.push("No swim threshold — using 1:40/100m default.");
-    let swimPace = swimPaceBase * (swimOpenWater ? 1.05 : 1.0);
-    if (v.swimCurrent === "strong") swimPace *= 1.04;
-    else if (v.swimCurrent === "mild") swimPace *= 1.02;
-    if (v.waterTempC !== undefined && v.waterTempC < 18) swimPace *= 1.03; // cold slows open-water turnover
+    const ftp = athlete.ftp ?? 220;
+    if (!athlete.ftp) measurementGaps.push("No FTP — using 220W default.");
+
+    const openWater = (venue.swimVenue || "pool").toLowerCase() !== "pool";
+    const currentFactor = venue.swimCurrent === "strong" ? 1.04 : venue.swimCurrent === "mild" ? 1.02 : 1;
+    const coldFactor = venue.waterTempC != null && venue.waterTempC < 18 ? 1.03 : 1;
+    const owPenalty = openWater ? 1 + 0.05 : 1; // TUNED_DEFAULT sighting/chop
+    const swimPace = swimPaceBase * owPenalty * currentFactor * coldFactor * wetsuitPaceFactor * draftPaceFactor * env.swimPaceFactor;
     const swimMin = (leg.swimM / 100) * swimPace / 60;
-    const swimFuel = recommendFuel({ durationMin: swimMin, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
-    baselineTotalMin += (leg.swimM / 100) * swimPaceBase / 60; // baseline (flat pool, no current)
+
+    const bikeIF = triIF(distance) * triBikeSpeedFactor(distance);
+    const sustainableW = Math.round(ftp * bikeIF * env.bikePowerFactor);
+    const physics = bikePhysicsSpeedKmh({
+      ftp, weightKg: athlete.weightKg, bikeKg: 9,
+      elevGainM: venue.bikeElevM, distanceKm: leg.bikeKm, terrain: venue.bikeTerrain,
+      sustainableW,
+      venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: env.windKph,
+    });
+    const bikeMin = leg.bikeKm / physics.speedKmh * 60;
+
+    const runBasePace = runPaceBase * triRunPaceFactor(distance);
+    const tssPenalty = bikeTssRunPenalty(leg.bikeKm);
+    const runPace = runBasePace * tssPenalty * env.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor;
+    const runMin = (leg.runKm * runPace) / 60;
+
+    const totalMin = swimMin + bikeMin + runMin + leg.transitionMin;
+    transitionsMin = leg.transitionMin;
+
+    // Baseline = the same course at neutral weather (no heat, no wind) —
+    // altitude/terrain stay in so the delta isolates weather + fitness.
+    const neutralEnv = buildEnv({}, { wbgt: 15, windKph: 0 });
+    const neutralPhysics = bikePhysicsSpeedKmh({
+      ftp, weightKg: athlete.weightKg, bikeKg: 9,
+      elevGainM: venue.bikeElevM, distanceKm: leg.bikeKm, terrain: venue.bikeTerrain,
+      sustainableW: Math.round(ftp * bikeIF * neutralEnv.bikePowerFactor),
+      venueElevM: venue.baseElevM, tempC: 20, windKph: 0,
+    });
+    baselineTotalMin = Math.round(
+      (leg.swimM / 100) * swimPaceBase / 60 +
+      leg.bikeKm / neutralPhysics.speedKmh * 60 +
+      (leg.runKm * runBasePace * tssPenalty * neutralEnv.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor) / 60 +
+      leg.transitionMin,
+    );
+
+    // --- scenarios: weather band (best/expected/worst) ---
+    const scenarioTotals = (o: { wbgt?: number; windKph?: number }) => {
+      const e = buildEnv(venue, o);
+      const ph = bikePhysicsSpeedKmh({
+        ftp, weightKg: athlete.weightKg, bikeKg: 9,
+        elevGainM: venue.bikeElevM, distanceKm: leg.bikeKm, terrain: venue.bikeTerrain,
+        sustainableW: Math.round(ftp * bikeIF * e.bikePowerFactor),
+        venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: e.windKph,
+      });
+      return (
+        swimMin +
+        leg.bikeKm / ph.speedKmh * 60 +
+        (leg.runKm * runBasePace * tssPenalty * e.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor) / 60 +
+        leg.transitionMin
+      );
+    };
+    const scenarios: ForecastScenario[] = [
+      { label: "best", totalMin: Math.round(scenarioTotals({ wbgt: Math.max(0, env.wbgt - 3), windKph: Math.round(env.windKph * 0.7) })), note: "cooler + lighter wind" },
+      { label: "worst", totalMin: Math.round(scenarioTotals({ wbgt: env.wbgt + 3, windKph: Math.min(45, Math.round(env.windKph * 1.3)) })), note: "hotter + windier" },
+    ];
+
+    // --- fuel: whole-race plan + timeline; kcal burn from bike work ---
+    const fuel = raceFuelPlan({
+      durationMin: totalMin,
+      gutTrained: athlete.gutTrained,
+      sweatRateMlH: athlete.sweatRateMlH,
+      sodiumMgPerL: athlete.sodiumMgPerL,
+      heatFactor: fluidHeat,
+      weightKg: athlete.weightKg,
+    });
+    const slots = fuelTimeline(fuel, { discipline: "triathlon", totalMin: Math.round(totalMin), transitionMin: Math.round(swimMin + bikeMin) });
+    const estimatedKcalBurned = kcalFromBikeKj(physics.wheelKj) + Math.round((leg.runKm * (athlete.weightKg ?? 70) * 1.036));
+    fuel.gaps.push(`Calories: ${Math.round(fuel.totalKcalIntake)} kcal from carbs is your INTAKE plan; full expenditure ≈ ${estimatedKcalBurned} kcal (bike work / gross efficiency + run km × weight). You cannot absorb it all — that's normal for long-course; fueling limits the hole, it doesn't close it.`);
+
     segments.push({
       sport: "swim",
       label: "Swim",
       distanceLabel: `${leg.swimM >= 1000 ? leg.swimM / 1000 + " km" : leg.swimM + " m"}`,
       timeMin: Math.round(swimMin),
       pace: fmtSecPer100m(swimPace),
-      fuel: swimFuel,
-      notes: [venuePlan.swim.detail, venuePlan.wetsuit.note].filter(Boolean),
+      fuel: toFuelPlan(fuel),
+      notes: [venuePlan.swim.detail, wetsuit ? `Wetsuit: ${wetsuit.note} (${wetsuit.citation} — verify current rules).` : null,
+        draftEnergySave > 0 ? `Drafting plan: ${draftSkill} skill → target feet/buoy line, sight every 4–6 strokes.` : "Drafting: find feet early — even mixed skill saves ~8% energy vs swimming alone."].filter(Boolean) as string[],
     });
-
-    // Bike — physics engine (Best Bike Split style): solve speed from holdable
-    // watts vs gravity + rolling + aero. Replaces the old FTP heuristic.
-    const ftp = athlete.ftp ?? 220;
-    if (!athlete.ftp) measurementGaps.push("No FTP — using 220W default.");
-    const bikeIF = leg.bikeKm >= 150 ? 0.72 : leg.bikeKm >= 70 ? 0.78 : leg.bikeKm >= 30 ? 0.83 : 0.88;
-    const physics = bikePhysicsSpeedKmh({
-      ftp, weightKg: athlete.weightKg, bikeKg: 9,
-      elevGainM: v.bikeElevM, distanceKm: leg.bikeKm, terrain: v.bikeTerrain,
-      sustainableIF: bikeIF * triBikeSpeedFactor(distance),
-    });
-    const bikeSpeedBase = physics.speedKmh;
-    const bikeDiv = envSpeedDivisor; // terrain/grade now inside the physics solve
-    const bikeSpeed = Math.round((bikeSpeedBase / bikeDiv) * 10) / 10;
-    const bikeMin = leg.bikeKm / bikeSpeed * 60;
-    const bikeFuel = recommendFuel({ durationMin: bikeMin, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
-    baselineTotalMin += leg.bikeKm / bikeSpeedBase * 60;
-    const bikeHr = athlete.lthr ? `${Math.round(athlete.lthr * 0.82)}-${Math.round(athlete.lthr * 0.9)} bpm` : undefined;
     segments.push({
       sport: "bike",
       label: "Bike",
       distanceLabel: `${leg.bikeKm} km`,
       timeMin: Math.round(bikeMin),
-      speedKmh: bikeSpeed,
-      powerTargetW: Math.round(ftp * bikeIF),
-      intensityFactor: bikeIF,
-      hrTarget: bikeHr,
-      fuel: bikeFuel,
-      notes: [venuePlan.bike.detail, venuePlan.bike.training].filter(Boolean),
+      speedKmh: physics.speedKmh,
+      powerTargetW: sustainableW,
+      intensityFactor: Math.round(bikeIF * 100) / 100,
+      hrTarget: athlete.lthr ? `${Math.round(athlete.lthr * 0.82)}-${Math.round(athlete.lthr * 0.9)} bpm` : undefined,
+      fuel: toFuelPlan(fuel),
+      notes: [
+        venuePlan.bike.detail,
+        venuePlan.bike.training,
+        `Physics solve: ${sustainableW}W (${Math.round(bikeIF * env.bikePowerFactor * 100)}% FTP after heat/altitude derate) vs gravity+Crr+aero — CdA 0.28 (tune yours!), Crr by terrain, ρ ${physics.rho} kg/m³ at ${venue.baseElevM ?? 0}m, wind ${env.windKph} kph loop-mean.`,
+        `Energy: ${physics.wheelKj} kJ of wheel work ≈ ${kcalFromBikeKj(physics.wheelKj)} kcal burned.`,
+      ].filter(Boolean),
     });
-
-    // Run — Riegel fatigue curve + triathlon transition penalty: the bike TSS
-    // pre-fatigues the legs, so race-run pace derates vs a fresh run.
-    const runPaceBase = athlete.runPaceBase ?? 300;
-    if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
-    const runBasePace = runPaceBase * triRunPaceFactor(distance);
-    const tssPenalty = bikeTssRunPenalty(leg.bikeKm);
-    const runPace = runBasePace * tssPenalty * envPace * terrainPaceFactor(v.runTerrain, v.runElevM) * fit.paceFactor;
-    const runMin = (leg.runKm * runPace) / 60;
-    const runFuel = recommendFuel({ durationMin: runMin, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
-    baselineTotalMin += (leg.runKm * runBasePace) / 60;
-    const runHr = athlete.lthr ? `${Math.round(athlete.lthr * 0.85)}-${Math.round(athlete.lthr * 0.95)} bpm` : undefined;
     segments.push({
       sport: "run",
       label: "Run",
       distanceLabel: `${leg.runKm} km`,
       timeMin: Math.round(runMin),
       pace: fmtSecPerKm(runPace),
-      hrTarget: runHr,
-      fuel: runFuel,
-      notes: [venuePlan.run.detail, `Transition penalty: bike TSS derates run pace ×${tssPenalty.toFixed(2)} vs fresh (Riegel k=1.06 durability curve).`].filter(Boolean),
+      hrTarget: athlete.lthr ? `${Math.round(athlete.lthr * 0.85)}-${Math.round(athlete.lthr * 0.95)} bpm` : undefined,
+      fuel: toFuelPlan(fuel),
+      notes: [venuePlan.run.detail, `Transition penalty: bike load derates run pace ×${tssPenalty.toFixed(2)} vs fresh. Riegel durability curve k=1.06 (tune to your race history).`].filter(Boolean),
     });
 
-    transitionsMin = leg.transitionMin;
-    baselineTotalMin += leg.transitionMin;
-    totalMin = Math.round(swimMin + bikeMin + runMin + transitionsMin);
-    if (v.bikeTerrain && v.bikeTerrain !== "flat") factors.push(`Bike: ${v.bikeTerrain}${v.bikeElevM ? ` with ${v.bikeElevM}m climb` : ""} — course slows average speed.`);
-    if (v.runTerrain && v.runTerrain !== "flat") factors.push(`Run: ${v.runTerrain}${v.runElevM ? ` with ${v.runElevM}m climb` : ""} — course slows pace.`);
+    const totalRounded = Math.round(totalMin);
+    measurementGaps.push(...fuel.gaps);
+    if (!athlete.gutTrained && totalMin > 150) measurementGaps.push("Gut training: race-day absorption caps around 60–90 g/h carbs unless trained — practice the race fuel plan in training.");
+
+    return buildResult({
+      sport, distance, distanceLabel, confidence: confidenceOf(sport, athlete, fitness),
+      measurementGaps, factors, segments, transitionsMin,
+      totalMin: totalRounded, baselineTotalMin, goalTimeMin,
+      wbgt: venue.targetTempC != null || venue.humidity != null ? {
+        value: wbgtInfo.wbgtC, zone: cat.zone, note: cat.note,
+        dewPointC: wbgtInfo.dewPointC, advisory: dewAdvisory, method: wbgtInfo.method,
+      } : null,
+      wetsuit, scenarios, fuelTotal: { ...fuel, slots, estimatedKcalBurned },
+      note: null,
+    });
   }
 
-  // --- Run only ---
-  else if (sport === "run") {
+  // =======================================================================
+  // Run only
+  // =======================================================================
+  if (sport === "run") {
     const r = RUN_DISTANCES[distance];
     const runPaceBase = athlete.runPaceBase ?? 300;
     if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
-    // Riegel k=1.06 fatigue curve (replaces the flat paceFactor table).
     const runBasePace = riegelPace(runPaceBase, r.km, 1.06);
-    const runPace = runBasePace * envPace * terrainPaceFactor(v.runTerrain, v.runElevM) * fit.paceFactor;
+    const runPace = runBasePace * env.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor;
     const runMin = (r.km * runPace) / 60;
     baselineTotalMin = Math.round((r.km * runBasePace) / 60);
-    const runFuel = recommendFuel({ durationMin: runMin, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
-    const runHr = athlete.lthr ? `${Math.round(athlete.lthr * 0.85)}-${Math.round(athlete.lthr * 0.95)} bpm` : undefined;
+    const fuel = raceFuelPlan({
+      durationMin: runMin, gutTrained: athlete.gutTrained,
+      sweatRateMlH: athlete.sweatRateMlH, sodiumMgPerL: athlete.sodiumMgPerL,
+      heatFactor: fluidHeat, weightKg: athlete.weightKg,
+    });
+    const slots = fuelTimeline(fuel, { discipline: "run", totalMin: Math.round(runMin) });
+    measurementGaps.push(...fuel.gaps);
+    const best = Math.round((r.km * runBasePace * buildEnv(venue, { wbgt: Math.max(0, env.wbgt - 3) }).runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor) / 60);
+    const worst = Math.round((r.km * runBasePace * buildEnv(venue, { wbgt: env.wbgt + 3 }).runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor) / 60);
     segments.push({
       sport: "run",
       label: "Run",
       distanceLabel: r.label,
       timeMin: Math.round(runMin),
       pace: fmtSecPerKm(runPace),
-      hrTarget: runHr,
-      fuel: runFuel,
-      notes: [venuePlan.run.detail].filter(Boolean),
+      hrTarget: athlete.lthr ? `${Math.round(athlete.lthr * 0.85)}-${Math.round(athlete.lthr * 0.95)} bpm` : undefined,
+      fuel: toFuelPlan(fuel),
+      notes: [venuePlan.run.detail, "Riegel k=1.06 from your threshold — ±5% adjacent distances, ±15–25% extrapolated far (5k→marathon). Tune k to your own race history."].filter(Boolean),
     });
-    totalMin = Math.round(runMin);
-    if (v.runTerrain && v.runTerrain !== "flat") factors.push(`Run: ${v.runTerrain}${v.runElevM ? ` with ${v.runElevM}m climb` : ""} — course slows pace.`);
+    return buildResult({
+      sport, distance, distanceLabel: r.label, confidence: confidenceOf(sport, athlete, fitness),
+      measurementGaps, factors, segments, transitionsMin: 0,
+      totalMin: Math.round(runMin), baselineTotalMin, goalTimeMin,
+      wbgt: venue.targetTempC != null || venue.humidity != null ? {
+        value: wbgtInfo.wbgtC, zone: cat.zone, note: cat.note,
+        dewPointC: wbgtInfo.dewPointC, advisory: dewAdvisory, method: wbgtInfo.method,
+      } : null,
+      wetsuit: null,
+      scenarios: [{ label: "best", totalMin: best, note: "cooler" }, { label: "worst", totalMin: worst, note: "hotter" }],
+      fuelTotal: { ...fuel, slots, estimatedKcalBurned: Math.round(r.km * (athlete.weightKg ?? 70) * 1.036) },
+      note: null,
+    });
   }
 
-  // --- Bike only ---
-  else if (sport === "bike") {
+  // =======================================================================
+  // Bike only
+  // =======================================================================
+  if (sport === "bike") {
     const b = BIKE_DISTANCES[distance];
     const ftp = athlete.ftp ?? 220;
     if (!athlete.ftp) measurementGaps.push("No FTP — using 220W default.");
-    const bikeIF = b.km >= 150 ? 0.72 : b.km >= 70 ? 0.78 : b.km >= 30 ? 0.83 : 0.88;
+    const bikeIF = (b.km >= 150 ? 0.72 : b.km >= 70 ? 0.78 : b.km >= 30 ? 0.83 : 0.88) * b.speedFactor;
+    const sustainableW = Math.round(ftp * bikeIF * env.bikePowerFactor);
     const physics = bikePhysicsSpeedKmh({
       ftp, weightKg: athlete.weightKg, bikeKg: 9,
-      elevGainM: v.bikeElevM, distanceKm: b.km, terrain: v.bikeTerrain,
-      sustainableIF: bikeIF * b.speedFactor,
+      elevGainM: venue.bikeElevM, distanceKm: b.km, terrain: venue.bikeTerrain,
+      sustainableW,
+      venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: env.windKph,
     });
-    const bikeSpeedBase = physics.speedKmh;
-    const bikeDiv = envSpeedDivisor; // terrain/grade inside the physics solve
-    const bikeSpeed = Math.round((bikeSpeedBase / bikeDiv) * 10) / 10;
-    const bikeMin = b.km / bikeSpeed * 60;
-    baselineTotalMin = Math.round(b.km / bikeSpeedBase * 60);
-    const bikeFuel = recommendFuel({ durationMin: bikeMin, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
-    const bikeHr = athlete.lthr ? `${Math.round(athlete.lthr * 0.82)}-${Math.round(athlete.lthr * 0.9)} bpm` : undefined;
+    const bikeMin = b.km / physics.speedKmh * 60;
+    const neutralEnv = buildEnv({}, { wbgt: 15, windKph: 0 });
+    const neutralPhysics = bikePhysicsSpeedKmh({
+      ftp, weightKg: athlete.weightKg, bikeKg: 9,
+      elevGainM: venue.bikeElevM, distanceKm: b.km, terrain: venue.bikeTerrain,
+      sustainableW: Math.round(ftp * bikeIF * neutralEnv.bikePowerFactor),
+      venueElevM: venue.baseElevM, tempC: 20, windKph: 0,
+    });
+    baselineTotalMin = Math.round(b.km / neutralPhysics.speedKmh * 60);
+    const fuel = raceFuelPlan({
+      durationMin: bikeMin, gutTrained: athlete.gutTrained,
+      sweatRateMlH: athlete.sweatRateMlH, sodiumMgPerL: athlete.sodiumMgPerL,
+      heatFactor: fluidHeat, weightKg: athlete.weightKg,
+    });
+    const slots = fuelTimeline(fuel, { discipline: "bike", totalMin: Math.round(bikeMin) });
+    measurementGaps.push(...fuel.gaps);
+    const scenarioTotal = (o: { wbgt?: number; windKph?: number }) => {
+      const e = buildEnv(venue, o);
+      const ph = bikePhysicsSpeedKmh({
+        ftp, weightKg: athlete.weightKg, bikeKg: 9,
+        elevGainM: venue.bikeElevM, distanceKm: b.km, terrain: venue.bikeTerrain,
+        sustainableW: Math.round(ftp * bikeIF * e.bikePowerFactor),
+        venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: e.windKph,
+      });
+      return Math.round(b.km / ph.speedKmh * 60);
+    };
     segments.push({
       sport: "bike",
       label: "Bike",
       distanceLabel: b.label,
       timeMin: Math.round(bikeMin),
-      speedKmh: bikeSpeed,
-      powerTargetW: physics.powerW,
-      intensityFactor: bikeIF,
-      hrTarget: bikeHr,
-      fuel: bikeFuel,
-      notes: [venuePlan.bike.detail, venuePlan.bike.training, `Power model: ${physics.model}.`].filter(Boolean),
+      speedKmh: physics.speedKmh,
+      powerTargetW: sustainableW,
+      intensityFactor: Math.round(bikeIF * 100) / 100,
+      hrTarget: athlete.lthr ? `${Math.round(athlete.lthr * 0.82)}-${Math.round(athlete.lthr * 0.9)} bpm` : undefined,
+      fuel: toFuelPlan(fuel),
+      notes: [
+        venuePlan.bike.detail, venuePlan.bike.training,
+        `Physics: ${sustainableW}W (${Math.round(bikeIF * env.bikePowerFactor * 100)}% FTP after heat/altitude derate) — ρ ${physics.rho} kg/m³, wind ${env.windKph} kph loop-mean, CdA 0.28 (tune from field tests).`,
+        `Energy: ${physics.wheelKj} kJ wheel work ≈ ${kcalFromBikeKj(physics.wheelKj)} kcal burned.`,
+      ].filter(Boolean),
     });
-    totalMin = Math.round(bikeMin);
-    if (v.bikeTerrain && v.bikeTerrain !== "flat") factors.push(`Bike: ${v.bikeTerrain}${v.bikeElevM ? ` with ${v.bikeElevM}m climb` : ""} — physics engine solved per-grade velocity.`);
+    return buildResult({
+      sport, distance, distanceLabel: b.label, confidence: confidenceOf(sport, athlete, fitness),
+      measurementGaps, factors, segments, transitionsMin: 0,
+      totalMin: Math.round(bikeMin), baselineTotalMin, goalTimeMin,
+      wbgt: venue.targetTempC != null || venue.humidity != null ? {
+        value: wbgtInfo.wbgtC, zone: cat.zone, note: cat.note,
+        dewPointC: wbgtInfo.dewPointC, advisory: dewAdvisory, method: wbgtInfo.method,
+      } : null,
+      wetsuit: null,
+      scenarios: [
+        { label: "best", totalMin: scenarioTotal({ wbgt: Math.max(0, env.wbgt - 3), windKph: Math.round(env.windKph * 0.7) }), note: "cooler + lighter wind" },
+        { label: "worst", totalMin: scenarioTotal({ wbgt: env.wbgt + 3, windKph: Math.min(45, Math.round(env.windKph * 1.3)) }), note: "hotter + windier" },
+      ],
+      fuelTotal: { ...fuel, slots, estimatedKcalBurned: kcalFromBikeKj(physics.wheelKj) },
+      note: null,
+    });
   }
 
-  // --- HYROX (state-space compromised-run model) ---
-  else if (sport === "hyrox") {
+  // =======================================================================
+  // HYROX (state-space compromised-run model)
+  // =======================================================================
+  if (sport === "hyrox") {
     const runPaceBase = athlete.runPaceBase ?? 300;
     if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
     const hyrox = hyroxCompromisedRunPace(runPaceBase, fitness);
-    // 8 × 1km runs at compromised pace + 8 stations (station time ≈ derived
-    // from the decay: heavier stations cost proportionally more seconds).
     const runMinTotal = (8 * hyrox.avgPaceSecPerKm) / 60;
-    // Station time: ~60-135s each depending on cost; solve so total lands in
-    // the realistic 58-75min window for a mid-field athlete, then scale by CTL.
     const ctl = fitness?.current?.ctl ?? 30;
     const stationScale = Math.min(1.25, Math.max(0.8, 1.05 - ctl / 200));
-    const STATION_SECONDS = [75, 110, 110, 85, 75, 50, 85, 95]; // ski→wall balls
+    const STATION_SECONDS = [75, 110, 110, 85, 75, 50, 85, 95];
     const stationMinTotal = (STATION_SECONDS.reduce((a, b) => a + b, 0) * stationScale) / 60;
-    const runFuel = recommendFuel({ durationMin: runMinTotal + stationMinTotal, intensity: "threshold", heatFactor: venuePlan.heat?.hydrationFactor ?? 1 });
-    baselineTotalMin = Math.round(runMinTotal + stationMinTotal);
+    const totalMin = runMinTotal + stationMinTotal;
+    const fuel = raceFuelPlan({
+      durationMin: totalMin, gutTrained: athlete.gutTrained,
+      sweatRateMlH: athlete.sweatRateMlH, sodiumMgPerL: athlete.sodiumMgPerL,
+      heatFactor: fluidHeat, weightKg: athlete.weightKg,
+    });
     segments.push({
       sport: "run",
       label: "Compromised runs",
       distanceLabel: "8 × 1 km",
       timeMin: Math.round(runMinTotal),
       pace: fmtSecPerKm(hyrox.avgPaceSecPerKm),
-      fuel: runFuel,
+      fuel: toFuelPlan(fuel),
       notes: [hyrox.note, "Each run km is paced at threshold + station decay — fresh legs only for km 1."],
     });
     segments.push({
-      sport: "strength" as any,
+      sport: "run",
       label: "8 functional stations",
       distanceLabel: "ski · sled ×2 · burpees · row · farmers · lunges · wall balls",
       timeMin: Math.round(stationMinTotal),
-      fuel: runFuel,
+      fuel: toFuelPlan(fuel),
       notes: [`Station load scaled ×${stationScale.toFixed(2)} by durability (CTL ${Math.round(ctl)}).`],
     });
     factors.push(`HYROX state-space: mean run-pace decay ${Math.round(hyrox.stationDecay * 100)}% per station.`);
-    totalMin = Math.round(runMinTotal + stationMinTotal);
-  }
-
-  // --- Swim only ---
-  else {
-    const s = SWIM_DISTANCES[distance];
-    const swimOpenWater = (v.swimVenue || "pool").toLowerCase() !== "pool";
-    const swimPaceBase = athlete.swimPaceBase ?? 100;
-    if (!athlete.swimPaceBase) measurementGaps.push("No swim threshold — using 1:40/100m default.");
-    let swimPace = swimPaceBase * (swimOpenWater ? 1.05 : 1.0);
-    if (v.swimCurrent === "strong") swimPace *= 1.04;
-    else if (v.swimCurrent === "mild") swimPace *= 1.02;
-    if (v.waterTempC !== undefined && v.waterTempC < 18) swimPace *= 1.03;
-    const swimMin = (s.m / 100) * swimPace / 60;
-    baselineTotalMin = Math.round((s.m / 100) * swimPaceBase / 60);
-    const swimFuel = recommendFuel({ durationMin: swimMin, intensity: "threshold", heatFactor: 1 });
-    segments.push({
-      sport: "swim",
-      label: "Swim",
-      distanceLabel: s.label,
-      timeMin: Math.round(swimMin),
-      pace: fmtSecPer100m(swimPace),
-      fuel: swimFuel,
-      notes: [venuePlan.swim.detail, venuePlan.wetsuit.note].filter(Boolean),
+    return buildResult({
+      sport, distance, distanceLabel: "HYROX · 8 × 1km + 8 stations",
+      confidence: confidenceOf(sport, athlete, fitness),
+      measurementGaps, factors, segments, transitionsMin: 0,
+      totalMin: Math.round(totalMin), baselineTotalMin: Math.round(totalMin), goalTimeMin,
+      wbgt: null, wetsuit: null, scenarios: [], fuelTotal: null, note: null,
     });
-    totalMin = Math.round(swimMin);
   }
 
-  baselineTotalMin = Math.round(baselineTotalMin);
+  // =======================================================================
+  // Swim only
+  // =======================================================================
+  const s = SWIM_DISTANCES[distance];
+  const swimPaceBase = athlete.swimPaceBase ?? 100;
+  if (!athlete.swimPaceBase) measurementGaps.push("No swim threshold — using 1:40/100m default.");
+  const openWater = (venue.swimVenue || "pool").toLowerCase() !== "pool";
+  const currentFactor = venue.swimCurrent === "strong" ? 1.04 : venue.swimCurrent === "mild" ? 1.02 : 1;
+  const coldFactor = venue.waterTempC != null && venue.waterTempC < 18 ? 1.03 : 1;
+  const swimPace = swimPaceBase * (openWater ? 1 + 0.05 : 1) * currentFactor * coldFactor * wetsuitPaceFactor * draftPaceFactor * env.swimPaceFactor;
+  const swimMin = (s.m / 100) * swimPace / 60;
+  baselineTotalMin = Math.round((s.m / 100) * swimPaceBase / 60);
+  const fuel = raceFuelPlan({ durationMin: swimMin, heatFactor: 1, weightKg: athlete.weightKg });
+  segments.push({
+    sport: "swim",
+    label: "Swim",
+    distanceLabel: s.label,
+    timeMin: Math.round(swimMin),
+    pace: fmtSecPer100m(swimPace),
+    fuel: toFuelPlan(fuel),
+    notes: [venuePlan.swim.detail, wetsuit ? `Wetsuit: ${wetsuit.note} (${wetsuit.citation} — verify current rules).` : null].filter(Boolean) as string[],
+  });
+  return buildResult({
+    sport, distance, distanceLabel: s.label, confidence: confidenceOf(sport, athlete, fitness),
+    measurementGaps, factors, segments, transitionsMin: 0,
+    totalMin: Math.round(swimMin), baselineTotalMin, goalTimeMin,
+    wbgt: null, wetsuit, scenarios: [], fuelTotal: { ...fuel, slots: fuelTimeline(fuel, { discipline: "run", totalMin: Math.round(swimMin) }), estimatedKcalBurned: null },
+    note: null,
+  });
+}
 
-  // Confidence: how many of the athlete's own numbers do we actually have?
+// ---------------------------------------------------------------------------
+// Shared result assembly
+// ---------------------------------------------------------------------------
+
+function confidenceOf(sport: ForecastSport, athlete: AthleteSnapshot, fitness: ForecastInput["fitness"]): ForecastResult["confidence"] {
   const hasFtp = athlete.ftp != null;
   const hasRunPace = athlete.runPaceBase != null;
   const hasSwimPace = athlete.swimPaceBase != null;
   const relevantMeasured =
-    sport === "triathlon"
-      ? [hasFtp, hasRunPace, hasSwimPace].filter(Boolean).length
-      : sport === "bike"
-        ? (hasFtp ? 1 : 0)
-        : sport === "run" || sport === "hyrox"
-          ? (hasRunPace ? 1 : 0)
-          : (hasSwimPace ? 1 : 0);
+    sport === "triathlon" ? [hasFtp, hasRunPace, hasSwimPace].filter(Boolean).length
+    : sport === "bike" ? (hasFtp ? 1 : 0)
+    : sport === "run" || sport === "hyrox" ? (hasRunPace ? 1 : 0)
+    : (hasSwimPace ? 1 : 0);
   const relevantTotal = sport === "triathlon" ? 3 : 1;
-  let confidence: ForecastResult["confidence"] = "low";
-  if (fitness && relevantMeasured >= relevantTotal) confidence = "high";
-  else if (fitness || relevantMeasured >= 1) confidence = "medium";
+  if (fitness && relevantMeasured >= relevantTotal) return "high";
+  if (fitness || relevantMeasured >= 1) return "medium";
+  return "low";
+}
 
-  const goalDeltaMin = goalTimeMin != null ? totalMin - goalTimeMin : null;
+function buildResult(o: {
+  sport: ForecastSport; distance: string; distanceLabel: string;
+  confidence: ForecastResult["confidence"];
+  measurementGaps: string[]; factors: string[]; segments: ForecastSegment[];
+  transitionsMin: number; totalMin: number; baselineTotalMin: number;
+  goalTimeMin: number | null;
+  wbgt: ForecastResult["wbgt"]; wetsuit: WetsuitDecision | null;
+  scenarios: ForecastScenario[]; fuelTotal: ForecastResult["fuelTotal"];
+  note: string | null;
+}): ForecastResult {
+  const goalDeltaMin = o.goalTimeMin != null ? o.totalMin - o.goalTimeMin : null;
+  const worst = Math.max(...o.scenarios.map((s) => s.totalMin), o.totalMin);
+  const best = Math.min(...o.scenarios.map((s) => s.totalMin), o.totalMin);
   const note =
     goalDeltaMin != null && goalDeltaMin > 0
-      ? `Forecast is ~${fmtTime(goalDeltaMin)} slower than your goal time — the gap is ${fmtTime(Math.max(1, goalDeltaMin))}.`
+      ? `Forecast is ~${fmtTime(goalDeltaMin)} slower than your goal — the gap to close is ${fmtTime(Math.max(1, goalDeltaMin))} (worst-case band: ${fmtTime(worst - (o.goalTimeMin ?? 0))} over goal).`
       : goalDeltaMin != null
-        ? `Forecast is on/under goal by ~${fmtTime(Math.abs(goalDeltaMin))}.`
-        : confidence === "low"
+        ? `Forecast is on/under goal by ~${fmtTime(Math.abs(goalDeltaMin))} (band ${fmtTime(best)}–${fmtTime(worst)}).`
+        : o.confidence === "low"
           ? "Confidence is low — complete your setup (FTP, run/swim thresholds) and log a few weeks of training to tighten this."
-          : "Re-run after each benchmark test (FTP / 5k / CSS) to keep the forecast tight.";
-
+          : "Re-run after each benchmark test (FTP / 5k / CSS) and again 48h out with the live weather forecast to keep this tight.";
   return {
-    sport,
-    distance,
-    distanceLabel:
-      sport === "triathlon" ? (TRI_DISTANCE_LABELS[distance] || distance)
-      : sport === "run" ? RUN_DISTANCES[distance].label
-      : sport === "bike" ? BIKE_DISTANCES[distance].label
-      : sport === "hyrox" ? "HYROX · 8 × 1km + 8 stations"
-      : SWIM_DISTANCES[distance].label,
-    confidence,
-    measurementGaps,
-    factors,
-    segments,
-    transitionsMin,
-    totalMin,
-    baselineTotalMin,
-    goalTimeMin,
+    sport: o.sport,
+    distance: o.distance,
+    distanceLabel: o.distanceLabel,
+    confidence: o.confidence,
+    measurementGaps: o.measurementGaps,
+    factors: o.factors,
+    segments: o.segments,
+    transitionsMin: o.transitionsMin,
+    totalMin: o.totalMin,
+    baselineTotalMin: o.baselineTotalMin,
+    goalTimeMin: o.goalTimeMin,
     goalDeltaMin,
     note,
+    wbgt: o.wbgt,
+    wetsuit: o.wetsuit,
+    scenarios: o.scenarios,
+    fuelTotal: o.fuelTotal,
+    provenance: provenanceRows(PROVENANCE_KEYS),
   };
 }

@@ -249,6 +249,29 @@ export default function NutritionPage() {
           )}
         </div>
 
+        {/* Professional testing services */}
+        <div className="card border-vermillion-200 bg-gradient-to-r from-vermillion-50 to-orange-50">
+          <h2 className="font-display font-bold text-lg mb-1 flex items-center gap-2"><Calculator className="w-5 h-5 text-vermillion-500" /> {lang === "es" ? "Servicios profesionales de rendimiento" : "Professional performance testing"}</h2>
+          <p className="text-xs text-slate-500 mb-4">{lang === "es" ? "Estos tests convierten las estimaciones de la app en tus números reales — cada uno actualiza automáticamente tu perfil y tus zonas." : "These tests replace the app's estimates with your real numbers — each one automatically updates your profile and zones."}</p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { name: "VO2max Test", desc: lang === "es" ? "Mide tu consumo máximo de oxígeno — el tamaño real de tu motor aeróbico." : "Measures your max oxygen uptake — the true size of your aerobic engine.", updates: "VO2max + training zones" },
+              { name: "RMR Test", desc: lang === "es" ? "Tasa metabólica en reposo — las calorías que quemas en descanso." : "Resting metabolic rate — the calories you burn at rest.", updates: "Daily calorie target" },
+              { name: "Sweat Test", desc: lang === "es" ? "Mide tu tasa de sudoración y concentración de sodio — reemplaza las estimaciones." : "Measures your sweat rate and sodium concentration — replaces the estimates.", updates: lang === "es" ? "Sodio/líquido por hora" : "Sodium/fluid per hour" },
+              { name: "Bike Fitting", desc: lang === "es" ? "Ajuste biomecánico del sillín — potencia, aerodinámica y prevención de lesiones." : "Biomechanical bike position — power, aerodynamics and injury prevention.", updates: lang === "es" ? "Eficiencia de pedaléo" : "Ride efficiency" },
+            ].map((s2) => (
+              <div key={s2.name} className="bg-white rounded-xl p-3 border border-vermillion-100">
+                <div className="font-semibold text-sm text-vermillion-700">{s2.name}</div>
+                <div className="text-[11px] text-slate-500 mt-1 leading-relaxed">{s2.desc}</div>
+                <div className="text-[10px] text-ocean-600 mt-1">→ {s2.updates}</div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-3">
+            {lang === "es" ? "Contacta a Jasmel Acosta para precios y programación: jasmelacosta@gmail.com" : "Contact Jasmel Acosta for pricing and scheduling: jasmelacosta@gmail.com"}
+          </p>
+        </div>
+
         {/* Guidelines */}
         <div className="card bg-ocean-50 border-ocean-200">
           <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><Calculator className="w-5 h-5 text-ocean-600" /> Your Fueling Guidelines</h2>

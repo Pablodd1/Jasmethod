@@ -9,12 +9,15 @@ import { useAuth } from "@/components/auth";
 const DISTANCES = ["sprint", "olympic", "half", "full", "5k", "10k", "half-marathon", "marathon", "40k", "100k", "180k", "gran-fondo", "750m", "1500m", "1900m", "3800m", "hyrox", "boxing"];
 const TERRAINS = ["flat", "rolling", "hilly", "mountain", "trail"];
 const VENUES = ["pool", "lake", "ocean", "river"];
+const FEDERATIONS = ["USAT", "WORLD_TRIATHLON", "BRITISH_TRIATHLON", "IRONMAN"];
+const CATEGORIES = ["age_group", "elite"];
 
 const empty = {
   name: "", distance: "olympic", date: "", startTime: "", location: "",
   targetTempC: "", humidity: "", baseElevM: "", goalTimeMin: "", priority: "1",
   bikeElevM: "", bikeTerrain: "", runElevM: "", runTerrain: "",
   swimVenue: "", waterTempC: "", swimCurrent: "", notes: "",
+  federation: "", category: "",
 };
 
 export default function RacesPage() {
@@ -176,7 +179,10 @@ export default function RacesPage() {
                 <div><label className="label">Swim venue</label><select className="input" value={form.swimVenue} onChange={(e) => set("swimVenue", e.target.value)}><option value="">—</option>{VENUES.map((v) => <option key={v}>{v}</option>)}</select></div>
                 <div><label className="label">Water temp (°C)</label><input type="number" className="input" value={form.waterTempC} onChange={(e) => set("waterTempC", e.target.value)} placeholder="21" /></div>
                 <div><label className="label">Current</label><select className="input" value={form.swimCurrent} onChange={(e) => set("swimCurrent", e.target.value)}><option value="">—</option><option value="none">None</option><option value="mild">Mild</option><option value="strong">Strong</option></select></div>
+                <div><label className="label">Federation (wetsuit rules)</label><select className="input" value={form.federation} onChange={(e) => set("federation", e.target.value)}><option value="">—</option>{FEDERATIONS.map((f) => <option key={f}>{f}</option>)}</select></div>
+                <div><label className="label">Category</label><select className="input" value={form.category} onChange={(e) => set("category", e.target.value)}><option value="">—</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
               </div>
+              <p className="text-[11px] text-slate-400 mt-2">Federation decides wetsuit legality (USAT forbids ≥28.9°C; World Triathlon elite ≥20°C; British 22°C / 24.6°C for 60+ or &gt;1500m). Always verify the current rulebook.</p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-3">

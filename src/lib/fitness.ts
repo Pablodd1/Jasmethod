@@ -5,6 +5,12 @@ import { dateKey, addDaysKey, DEFAULT_TIMEZONE } from "./dates";
 // Pure functions (no I/O) — unit-testable. Estimates are heuristics, clearly labeled.
 
 import { exponentialMovingAverage } from "./science";
+import {
+  ALTITUDE_PCT_PER_1000FT,
+  ALTITUDE_THRESHOLD_M,
+  ALTITUDE_CAP,
+  ALTITUDE_PACE_TRANSMISSION,
+} from "./forecast-constants";
 
 // ---------- TSS estimation from a completed workout ----------
 export interface WorkoutTssInput {
@@ -270,18 +276,30 @@ export function altitudeFactor(elevM: number): {
   paceFactor: number;
   advice: string;
 } {
-  // Aerobic power falls ~1% per 100m above ~1500m (Bärtsch & Saltin 2008).
-  if (elevM < 1500)
+  // Wehrlin-linear model per the 2026-09-08 adjudication (Conflict 1):
+  // VO2max/aerobic power falls linearly with altitude — ~4.4% per 1,000 ft —
+  // from low altitude. The previous "~1% per 100m above 1500m" rule and the
+  // industry "1% per 1,000 ft" rule of thumb were REJECTED as ~4x
+  // underestimates. Constants are tunable defaults in forecast-constants.ts.
+  if (elevM <= ALTITUDE_THRESHOLD_M.value)
     return {
       vo2factor: 1,
       paceFactor: 1,
-      advice: "Below 1500m — no meaningful altitude effect.",
+      advice: "Low elevation — no meaningful altitude effect.",
     };
-  const drop = Math.min(0.35, ((elevM - 1500) / 100) * 0.01); // cap at -35%
-  const vo2factor = Math.round((1 - drop) * 100) / 100;
+  const metersPer1000ft = 304.8;
+  const drop = Math.min(
+    ALTITUDE_CAP.value,
+    ((ALTITUDE_PCT_PER_1000FT.value / 100) * (elevM - ALTITUDE_THRESHOLD_M.value)) /
+      metersPer1000ft,
+  );
+  const vo2factor = Math.round((1 - drop) * 1000) / 1000;
+  // Pace degrades less than VO2max falls at sub-threshold speeds (slower
+  // speed = lower absolute O2 cost) — transmission factor is a tunable default.
+  const paceFactor = Math.round((1 / (1 - drop * ALTITUDE_PACE_TRANSMISSION.value)) * 1000) / 1000;
   return {
     vo2factor,
-    paceFactor: Math.round((1 / (1 - drop)) * 100) / 100,
-    advice: `Race at ${elevM}m — aerobic power ~${Math.round(drop * 100)}% lower. Arrive 7-14 days early for acclimatization or train with altitude-specific pacing.`,
+    paceFactor,
+    advice: `Race at ${elevM}m (~${Math.round(elevM * 3.28084)} ft) — aerobic power ~${Math.round(drop * 100)}% lower (Wehrlin-linear model, tunable default). Arrive 7-14+ days early, or plan power/pace off these derated numbers, not off sea-level thresholds.`,
   };
 }

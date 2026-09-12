@@ -6,6 +6,7 @@ import {
   Save,
   HeartPulse,
   Zap,
+  Info,
   Plug,
   Dna,
   Bike,
@@ -537,6 +538,19 @@ export default function SettingsPage() {
                 </a>{" "}
                 to fill in your real numbers.
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Where your numbers come from ── */}
+        <div className="card bg-ocean-50 border-ocean-200">
+          <div className="flex gap-3">
+            <Info className="w-5 h-5 text-ocean-600 shrink-0 mt-0.5" />
+            <div className="text-sm text-ocean-900">
+              <strong>{lang === "es" ? "De dónde vienen tus números:" : "Where your numbers come from:"}</strong>{" "}
+              {lang === "es"
+                ? "Los tests de campo (Labs) llenan tus umbrales reales. Los dispositivos sincronizados llenan tus métricas diarias. El chequeo diario adapta el entreno. Cada dato hace el coach más preciso."
+                : "Field tests (Labs) fill your real thresholds. Connected devices fill your daily metrics. The daily check-in adapts the training. Every piece of data makes the coach more precise."}
             </div>
           </div>
         </div>

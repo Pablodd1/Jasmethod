@@ -16,6 +16,8 @@ const numeric: Record<string, [number, number]> = {
   swimPaceBase: [30, 600],
   runPaceBase: [120, 1200],
   hrvBaseline: [1, 300],
+  sweatRateMlH: [100, 3000],
+  sodiumMgPerL: [100, 2500],
 };
 const integers = new Set(["birthYear", "lthr", "restingHr", "maxHr"]);
 const options: Record<string, string[]> = {
@@ -39,8 +41,12 @@ const options: Record<string, string[]> = {
   ],
   trainingWindow: ["any", "morning", "midday", "evening"],
   bikeType: ["road", "tt", "tri", "gravel", "mountain"],
+  draftSkill: ["none", "mixed", "good"],
+  federation: ["USAT", "WORLD_TRIATHLON", "BRITISH_TRIATHLON", "IRONMAN"],
+  category: ["age_group", "elite"],
 };
 const flags = [
+  "gutTrained",
   "injured",
   "hasBikePowerMeter",
   "hasRunPowerMeter",

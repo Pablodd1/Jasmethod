@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Gauge, Waves, Bike, Zap, Fuel, Target, Flag, AlertTriangle, Info, RefreshCw, Clock, Mountain, Thermometer } from "lucide-react";
+import { Gauge, Waves, Bike, Zap, Fuel, Target, Flag, AlertTriangle, Info, RefreshCw, Clock, Mountain, Thermometer, Droplets, FileText, Sparkles } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
@@ -25,6 +25,68 @@ export default function RaceForecastPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [pmc, setPmc] = useState<any>(null);
+  const [brief, setBrief] = useState<{ source: string; text: string } | null>(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [pn, setPn] = useState<any>({
+    sweatRateMlH: "", sodiumMgPerL: "", gutTrained: false,
+    draftSkill: "", federation: "", category: "",
+  });
+  const [pnSaving, setPnSaving] = useState(false);
+  const [pnSaved, setPnSaved] = useState(false);
+
+  async function loadProfile() {
+    try {
+      const res = await fetch("/api/profile");
+      const d = await res.json();
+      if (d?.profile) setPn((prev: any) => ({
+        ...prev,
+        sweatRateMlH: d.profile.sweatRateMlH ?? "",
+        sodiumMgPerL: d.profile.sodiumMgPerL ?? "",
+        gutTrained: d.profile.gutTrained ?? false,
+        draftSkill: d.profile.draftSkill ?? "",
+        federation: d.profile.federation ?? "",
+        category: d.profile.category ?? "",
+      }));
+    } catch { /* best-effort prefill */ }
+  }
+
+  async function savePersonalNumbers() {
+    setPnSaving(true);
+    setPnSaved(false);
+    try {
+      const body: Record<string, unknown> = {
+        sweatRateMlH: pn.sweatRateMlH === "" ? null : Number(pn.sweatRateMlH),
+        sodiumMgPerL: pn.sodiumMgPerL === "" ? null : Number(pn.sodiumMgPerL),
+        gutTrained: Boolean(pn.gutTrained),
+        draftSkill: pn.draftSkill || null,
+        federation: pn.federation || null,
+        category: pn.category || null,
+      };
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        setPnSaved(true);
+        loadForecast();
+      }
+    } finally {
+      setPnSaving(false);
+    }
+  }
+
+  async function loadBrief() {
+    setBriefLoading(true);
+    try {
+      const qs = raceId ? `?id=${encodeURIComponent(raceId)}` : `?distance=${encodeURIComponent(distance)}`;
+      const res = await fetch(`/api/race-forecast/brief${qs}`);
+      const d = await res.json();
+      if (d?.ok) setBrief({ source: d.source, text: d.brief });
+    } finally {
+      setBriefLoading(false);
+    }
+  }
 
   async function loadRaces() {
     const res = await fetch("/api/races");
@@ -47,6 +109,7 @@ export default function RaceForecastPage() {
     if (!user) return;
     loadRaces();
     loadForecast();
+    loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -87,6 +150,63 @@ export default function RaceForecastPage() {
               <RefreshCw className="w-4 h-4" /> {t(lang, "fc.forecast")}
             </button>
           </div>
+
+          {/* Personal race numbers — measured inputs the engine uses directly */}
+          <details className="mt-3 border-t border-sand-200 pt-3">
+            <summary className="text-xs font-semibold text-ocean-700 cursor-pointer">
+              {lang === "es" ? "Tus números de carrera (sudor, federación, bocas)" : "Your race numbers (sweat, federation, drafting)"}
+            </summary>
+            <div className="grid md:grid-cols-3 gap-3 mt-3">
+              <div>
+                <label className="label">{lang === "es" ? "Sudoración (ml/h)" : "Sweat rate (ml/h)"}</label>
+                <input type="number" className="input" value={pn.sweatRateMlH} onChange={(e) => setPn({ ...pn, sweatRateMlH: e.target.value } as any)} placeholder={lang === "es" ? "mide: peso antes/después" : "measure: weigh in/out"} />
+              </div>
+              <div>
+                <label className="label">{lang === "es" ? "Sodio en sudor (mg/L)" : "Sweat sodium (mg/L)"}</label>
+                <input type="number" className="input" value={pn.sodiumMgPerL} onChange={(e) => setPn({ ...pn, sodiumMgPerL: e.target.value } as any)} placeholder="500–1000" />
+              </div>
+              <div>
+                <label className="label">{lang === "es" ? "Piernas en el agua" : "Open-water drafting"}</label>
+                <select className="input" value={pn.draftSkill} onChange={(e) => setPn({ ...pn, draftSkill: e.target.value } as any)}>
+                  <option value="">{lang === "es" ? "Nada / solo" : "None / swim alone"}</option>
+                  <option value="mixed">{lang === "es" ? "A veces pies" : "Mixed"}</option>
+                  <option value="good">{lang === "es" ? "Bueno (pie/olas)" : "Good (on feet)"}</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">{lang === "es" ? "Federación" : "Federation"}</label>
+                <select className="input" value={pn.federation} onChange={(e) => setPn({ ...pn, federation: e.target.value } as any)}>
+                  <option value="">—</option>
+                  <option value="USAT">USAT</option>
+                  <option value="WORLD_TRIATHLON">World Triathlon</option>
+                  <option value="BRITISH_TRIATHLON">British Triathlon</option>
+                  <option value="IRONMAN">Ironman</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">{lang === "es" ? "Categoría" : "Category"}</label>
+                <select className="input" value={pn.category} onChange={(e) => setPn({ ...pn, category: e.target.value } as any)}>
+                  <option value="">—</option>
+                  <option value="age_group">Age group</option>
+                  <option value="elite">Elite</option>
+                </select>
+              </div>
+              <label className="flex items-end gap-2 text-sm text-slate-600 pb-2 cursor-pointer">
+                <input type="checkbox" checked={!!pn.gutTrained} onChange={(e) => setPn({ ...pn, gutTrained: e.target.checked } as any)} className="w-4 h-4" />
+                {lang === "es" ? "Intestino entrenado (90–120 g/h)" : "Gut-trained (90–120 g/h)"}
+              </label>
+            </div>
+            <button onClick={savePersonalNumbers} disabled={pnSaving} className="btn-secondary text-xs mt-3">
+              {pnSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+              {lang === "es" ? "Guardar y recalcular" : "Save & re-forecast"}
+              {pnSaved && <span className="text-emerald-600 ml-1">✓</span>}
+            </button>
+            <p className="text-[11px] text-slate-400 mt-2">
+              {lang === "es"
+                ? "Sin estos datos el motor usa valores poblacionales (500–1000 ml/h, 500–1000 mg/L) y lo dice en el plan."
+                : "Without these the engine uses labeled population defaults (500–1000 ml/h, 500–1000 mg/L) and says so in the plan."}
+            </p>
+          </details>
         </div>
 
         {loading ? (
@@ -94,7 +214,14 @@ export default function RaceForecastPage() {
             <div className="w-8 h-8 border-4 border-ocean-600 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <ForecastView data={data} forecast={data?.forecast} lang={lang} />
+          <ForecastView
+            data={data}
+            forecast={data?.forecast}
+            lang={lang}
+            brief={brief}
+            briefLoading={briefLoading}
+            onBrief={loadBrief}
+          />
         )}
       {/* Prediction accuracy: predicted vs the actual logged result */}
       {data?.race?.resultMin != null && data?.forecast?.totalMin != null && (
@@ -146,7 +273,11 @@ function PmcCard({ pmc, lang }: { pmc: any; lang: string }) {
   );
 }
 
-function ForecastView({ data, forecast, lang }: { data: any; forecast: ForecastResult | null; lang: Lang }) {
+function ForecastView({ data, forecast, lang, brief, briefLoading, onBrief }: {
+  data: any; forecast: ForecastResult | null; lang: Lang;
+  brief: { source: string; text: string } | null; briefLoading: boolean; onBrief: () => void;
+}) {
+  const es = lang === "es";
   if (!forecast) {
     return (
       <div className="card text-center py-16">
@@ -222,7 +353,68 @@ function ForecastView({ data, forecast, lang }: { data: any; forecast: ForecastR
         {forecast.transitionsMin > 0 && (
           <div className="text-xs text-slate-400 mt-3">+ {forecast.transitionsMin} min {t(lang, "fc.transitions")} · total {fmtTime(forecast.totalMin)}</div>
         )}
+
+        {/* Weather scenarios: the honest band, not a single number */}
+        {forecast.scenarios && forecast.scenarios.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-4">
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
+              ☀ {es ? "Mejor clima" : "Best weather"}: {fmtTime(forecast.scenarios.find((x) => x.label === "best")?.totalMin ?? forecast.totalMin)}
+            </span>
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
+              ⛅ {es ? "Pronosticado" : "Expected"}: {fmtTime(forecast.totalMin)}
+            </span>
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200">
+              🔥 {es ? "Peor clima" : "Worst weather"}: {fmtTime(forecast.scenarios.find((x) => x.label === "worst")?.totalMin ?? forecast.totalMin)}
+            </span>
+          </div>
+        )}
+
+        {/* Race-day brief (AI writes prose; the engine owns every number) */}
+        <div className="mt-6">
+          <button onClick={onBrief} disabled={briefLoading} className="btn-secondary text-sm">
+            {briefLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-coral-500" />}
+            {es ? "Generar plan de carrera (brief)" : "Generate race plan brief"}
+            {brief && <span className="ml-1 text-slate-400">({brief.source === "gemini" ? "AI" : "template"})</span>}
+          </button>
+          {brief && (
+            <pre className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-slate-600 bg-sand-50 border border-sand-200 rounded-2xl p-4 font-sans max-h-96 overflow-y-auto">{brief.text}</pre>
+          )}
+        </div>
       </div>
+
+      {/* Conditions: WBGT + wetsuit legality (federation-specific) */}
+      {(forecast.wbgt || forecast.wetsuit) && (
+        <div className="card">
+          <h2 className="font-display font-bold text-lg flex items-center gap-2 mb-3">
+            <Thermometer className="w-5 h-5 text-coral-500" /> {es ? "Condiciones de carrera" : "Race conditions"}
+          </h2>
+          {forecast.wbgt && (
+            <div className="rounded-xl border border-sand-200 bg-sand-50 p-4 text-sm">
+              <div className="font-semibold text-slate-700">
+                WBGT {forecast.wbgt.value}°C · {es ? "punto de rocío" : "dew point"} {forecast.wbgt.dewPointC}°C
+                <span className={`ml-2 text-xs px-2 py-0.5 rounded-full border ${forecast.wbgt.zone === "ok" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : forecast.wbgt.zone === "red_flag" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-700 border-red-200"}`}>
+                  {forecast.wbgt.zone === "ok" ? (es ? "manejable" : "manageable") : forecast.wbgt.zone === "red_flag" ? (es ? "banda roja" : "red flag") : (es ? "banda negra" : "black flag")}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">{forecast.wbgt.note}</p>
+              {forecast.wbgt.advisory && <p className="text-xs text-amber-600 mt-1">{forecast.wbgt.advisory}</p>}
+              <p className="text-[10px] text-slate-400 mt-1">{forecast.wbgt.method}</p>
+            </div>
+          )}
+          {forecast.wetsuit && (
+            <div className="rounded-xl border border-sand-200 bg-sand-50 p-4 text-sm mt-3">
+              <div className="font-semibold text-slate-700 flex items-center gap-2">
+                <Droplets className="w-4 h-4 text-ocean-600" /> {es ? "Traje" : "Wetsuit"} ({forecast.wetsuit.federation})
+                <span className={`text-xs px-2 py-0.5 rounded-full border ${forecast.wetsuit.verdict === "forbidden" ? "bg-red-50 text-red-700 border-red-200" : forecast.wetsuit.verdict === "mandatory" ? "bg-ocean-50 text-ocean-700 border-ocean-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                  {forecast.wetsuit.verdict.replace(/_/g, " ")}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">{forecast.wetsuit.note}</p>
+              <p className="text-[10px] text-slate-400 mt-1">⚠ {forecast.wetsuit.citation} — {es ? "verifica el reglamento vigente" : "verify the current rulebook"}.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Factors */}
       {forecast.factors.length > 0 && (
@@ -246,6 +438,36 @@ function ForecastView({ data, forecast, lang }: { data: any; forecast: ForecastR
         <h2 className="font-display font-bold text-lg flex items-center gap-2 mb-3">
           <Fuel className="w-5 h-5 text-ocean-500" /> {t(lang, "fc.fuelPerLeg")}
         </h2>
+        {forecast.fuelTotal && (
+          <div className="rounded-xl border border-ocean-200 bg-ocean-50/50 p-4 mb-4 text-sm">
+            <div className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-ocean-600" /> {es ? "Plan completo + calorías" : "Full plan + calories"}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div><div className="text-slate-400">{es ? "Carboshidratos" : "Carbs"}</div><strong>{forecast.fuelTotal.carbsGPerHour} g/h</strong> · {forecast.fuelTotal.totalCarbsG} g</div>
+              <div><div className="text-slate-400">{es ? "Calorías (ingesta)" : "Calories (intake)"}</div><strong>~{forecast.fuelTotal.totalKcalIntake} kcal</strong></div>
+              <div><div className="text-slate-400">{es ? "Líquido" : "Fluid"}</div><strong>{forecast.fuelTotal.fluidMlPerHour} ml/h</strong> · {(forecast.fuelTotal.totalFluidMl / 1000).toFixed(1)} L</div>
+              <div><div className="text-slate-400">Sodio</div><strong>{forecast.fuelTotal.sodiumMgPerHour} mg/h</strong> · {forecast.fuelTotal.totalSodiumMg} mg</div>
+            </div>
+            {forecast.fuelTotal.estimatedKcalBurned != null && (
+              <div className="text-xs text-slate-500 mt-2">
+                {es ? "Gasto total estimado" : "Estimated total burn"}: <strong>~{forecast.fuelTotal.estimatedKcalBurned} kcal</strong> — {es ? "la ingesta reemplaza solo una parte; es fisiología normal en distancia larga" : "intake deliberately replaces only part; that's normal long-course physiology"}.
+              </div>
+            )}
+            {forecast.fuelTotal.slots.length > 0 && (
+              <details className="mt-2">
+                <summary className="text-xs font-semibold text-ocean-700 cursor-pointer">{es ? "Cronograma de nutrición" : "Fueling timeline"}</summary>
+                <ul className="mt-1.5 text-xs text-slate-500 space-y-1 list-disc list-inside">
+                  {forecast.fuelTotal.slots.map((s, i) => (
+                    <li key={i}>
+                      <strong>{s.fromMin < 0 ? `${-s.fromMin}' ${es ? "antes" : "before"}` : `${s.fromMin}–${s.toMin}'`}</strong> {s.what}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
         <div className="grid sm:grid-cols-3 gap-4">
           {forecast.segments.map((seg) => (
             <div key={seg.sport} className="rounded-xl border border-sand-200 p-4">

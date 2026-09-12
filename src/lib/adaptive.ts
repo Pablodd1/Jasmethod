@@ -8,6 +8,7 @@
 // Casa et al. 2000 (hydration/sweat rate), Ely et al. 2007 (heat pacing).
 
 import { heatIndex, altitudeFactor } from "./fitness";
+import { wetsuitVerdict } from "./wetsuit";
 import { buildProtocol, type ProtocolSpec } from "./protocols";
 
 // ---------- 1. AUTONOMIC NERVOUS SYSTEM RECOVERY (post-workout) ----------
@@ -555,6 +556,7 @@ export interface FuelPlan {
   carbsPerHourG: number;
   sodiumMgPerHour: number;
   fluidMlPerHour: number;
+  kcalPerHour?: number;
   caffeineMg?: number;
   notes: string;
 }
@@ -861,6 +863,8 @@ export interface VenueProfile {
   swimVenue?: string; // pool | lake | ocean | river
   waterTempC?: number;
   swimCurrent?: string; // none | mild | strong
+  federation?: string;  // USAT | WORLD_TRIATHLON | BRITISH_TRIATHLON | IRONMAN
+  category?: string;    // age_group | elite (wetsuit rules differ)
 }
 
 export interface DisciplineNote {
@@ -954,30 +958,25 @@ export function venueAdjustment(v: VenueProfile): VenueAdjustment {
     | undefined;
   if (v.baseElevM !== undefined) altitude = altitudeFactor(v.baseElevM);
 
-  // Wetsuit legality (ITU-style: mandatory <22°C, optional 22-24.5°C, banned >24.5°C)
+  // Wetsuit legality — federation-specific per the 2026-09-08 adjudication
+  // (Conflict 5, CRITICAL SAFETY). The old single ITU-style cutoff was
+  // rejected: it could DQ an athlete or talk a weaker swimmer out of a
+  // legal, safety-enhancing wetsuit. Bands live in src/lib/wetsuit.ts with
+  // citations and a standing "verify current rulebook" flag.
   let wetsuit: VenueAdjustment["wetsuit"] = {
     legal: false,
     note: "Not applicable — no water temperature set.",
   };
   if (v.waterTempC !== undefined) {
-    if (v.waterTempC < 22)
-      wetsuit = {
-        legal: true,
-        waterTempC: v.waterTempC,
-        note: `${v.waterTempC}°C — wetsuit mandatory/strongly advised (ITU <22°C).`,
-      };
-    else if (v.waterTempC <= 24.5)
-      wetsuit = {
-        legal: "optional",
-        waterTempC: v.waterTempC,
-        note: `${v.waterTempC}°C — wetsuit optional (age-group legal 22-24.5°C).`,
-      };
-    else
-      wetsuit = {
-        legal: false,
-        waterTempC: v.waterTempC,
-        note: `${v.waterTempC}°C — wetsuit NOT permitted (>24.5°C).`,
-      };
+    const wd = wetsuitVerdict(v.waterTempC, {
+      federation: v.federation,
+      category: v.category,
+    });
+    wetsuit = {
+      legal: wd.legal,
+      waterTempC: v.waterTempC,
+      note: `${wd.note} [${wd.citation} — VERIFY against the current rulebook.]`,
+    };
   }
 
   const overall = [

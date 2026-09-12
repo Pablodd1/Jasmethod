@@ -93,6 +93,12 @@ model AthleteProfile {
   hasSmartTrainer    Boolean @default(false)
   hasCadenceSensor   Boolean @default(false)
   hrvBaseline   Float? // ms
+  sweatRateMlH  Float? // measured sweat rate ml/h (pre/post weight test) — fuel planning
+  sodiumMgPerL  Float? // measured sweat sodium mg/L (sweat patch test)
+  gutTrained    Boolean @default(false) // tolerates 90-120 g/h carb mixtures
+  draftSkill    String? // none | mixed | good — open-water swim drafting
+  federation    String? // USAT | WORLD_TRIATHLON | BRITISH_TRIATHLON | IRONMAN — wetsuit rules
+  category      String? // age_group | elite
   injured       Boolean @default(false)
   notes         String?
   user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -412,6 +418,8 @@ model Race {
   swimVenue   String?  // pool | lake | ocean | river
   waterTempC  Float?   // swim water temperature (°C)
   swimCurrent String?  // none | mild | strong
+  federation  String?  // USAT | WORLD_TRIATHLON | BRITISH_TRIATHLON | IRONMAN
+  category    String?  // age_group | elite
   notes       String?
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 

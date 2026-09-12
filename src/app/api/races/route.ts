@@ -61,6 +61,8 @@ export async function POST(req: Request) {
         swimVenue: b.swimVenue || null,
         waterTempC: f(b.waterTempC),
         swimCurrent: b.swimCurrent || null,
+        federation: b.federation || null,
+        category: b.category || null,
         notes: b.notes || null,
       },
     });

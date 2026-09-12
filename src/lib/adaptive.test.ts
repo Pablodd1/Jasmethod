@@ -97,10 +97,12 @@ assert.ok(v.bike.detail.includes("Hilly"), "bike terrain detected");
 assert.ok(v.bike.training.toLowerCase().includes("hill"), "bike training adjusts for hills");
 assert.ok(v.run.detail.includes("Trail"), "run terrain detected");
 assert.ok(v.swim.detail.includes("ocean") && v.swim.detail.includes("strong"), "ocean + current detected");
-assert.equal(v.wetsuit.legal, true, "20°C → wetsuit mandatory");
+assert.equal(v.wetsuit.legal, "optional", "20°C USAT age-group → wetsuit permitted (single-cutoff model removed per adjudication)");
 assert.ok(v.overall.length > 20);
 const warm = venueAdjustment({ swimVenue: "pool", waterTempC: 26 });
-assert.equal(warm.wetsuit.legal, false, "26°C → wetsuit not permitted");
+assert.equal(warm.wetsuit.legal, "optional", "26°C USAT → permitted, no awards (forbidden only ≥28.9°C)");
+const hotWater = venueAdjustment({ swimVenue: "ocean", waterTempC: 29 });
+assert.equal(hotWater.wetsuit.legal, false, "29°C USAT → wetsuit forbidden");
 assert.equal(warm.swim.detail, "Pool swim — controlled conditions.");
 
 // --- HYROX plan generator ---
