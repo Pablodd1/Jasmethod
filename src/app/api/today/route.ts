@@ -74,6 +74,10 @@ export async function GET(req: Request) {
     return Response.json({
       date: key,
       timezone: user.timezone,
+      deviceSummary: {
+        connected: connectors.filter((c: any) => c.status === "connected").length,
+        stale: connectors.some((c: any) => c.status === "connected" && c.lastSyncAt && Date.now() - new Date(c.lastSyncAt).getTime() > 12 * 3600000),
+      },
       sessions,
       connectors,
       checkin: checkin

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { Watch } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
@@ -38,9 +39,24 @@ export default function TodayPage() {
       } catch {}
     }
   }, [user]);
+  // Background auto-sync: if devices are connected and data is stale (>12h),
+  // silently sync on page load. The athlete never has to press anything.
+  const [autoSynced, setAutoSynced] = useState(false);
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!user || !data || autoSynced) return;
+    const cs = data.connectors;
+    if (!cs?.length) return;
+    const connected = cs.filter((c: any) => c.status === "connected");
+    if (!connected.length) return;
+    const stale = connected.some(
+      (c: any) => !c.lastSyncAt || Date.now() - new Date(c.lastSyncAt).getTime() > 12 * 3600000,
+    );
+    if (!stale) return;
+    setAutoSynced(true);
+    fetch("/api/connectors/sync", { method: "POST" })
+      .then(() => load())
+      .catch(() => {});
+  }, [user, data, autoSynced, load]);
   const session =
     data?.sessions.find((s: any) => s.id === selected) ||
     data?.sessions.find(
@@ -128,6 +144,23 @@ export default function TodayPage() {
             {message}
           </p>
         )}
+        {/* Connect devices banner — only when 0 devices connected */}
+        {data?.deviceSummary && data.deviceSummary.connected === 0 && (
+          <div className="card border-ocean-300 bg-ocean-50 flex flex-wrap items-center gap-3 p-4">
+            <Watch className="w-5 h-5 text-ocean-600 shrink-0" />
+            <p className="text-sm flex-1 text-ocean-900 font-medium">
+              {es
+                ? "Conecta tu Whoop, Garmin o COROS — los datos sincronizan automáticamente cada día y el coach los usa para adaptar tu entrenamiento."
+                : "Connect your Whoop, Garmin or COROS — data syncs automatically every day and the coach uses it to adapt your training."}
+            </p>
+            <Link href="/connectors" className="btn-primary text-sm shrink-0">
+              {es ? "Conectar ahora" : "Connect now"}
+            </Link>
+          </div>
+        )}
+
+
+
         <div className="flex flex-wrap gap-2">
           <Link href="/checkin" className="btn-primary">
             {es ? "Chequeo de hoy" : "Daily check-in"}
@@ -476,7 +509,6 @@ export default function TodayPage() {
     </ProtectedPage>
   );
 }
-
 function FuelCalculator({ carbsPerH, sodiumPerH, fluidPerH, es }: { carbsPerH: number; sodiumPerH: number; fluidPerH: number; es: boolean }) {
   const h = 1; // default shown on render; DOM updates on change
   const totalCarbs = Math.round(carbsPerH * h);
