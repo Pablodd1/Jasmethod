@@ -259,32 +259,40 @@ export function tsb(ctl: number, atl: number): number {
 // ---- HRV readiness (Buchheit 2014; Plews et al. 2013) ----
 // Compare morning RMSSD to rolling 7-day baseline; deviation >±1 SD = adjust.
 export function hrvReadiness(hrvToday: number, baseline7d: number[], sd: number): {
-  score: number; // 0-100
+  score: number; // 0-100 — display only, never drives the day-type alone
+  hrvStatus: "high" | "normal" | "low" | "insufficient";
   advice: string;
   deltaPct: number;
 } {
-  const avg = baseline7d.reduce((a, b) => a + b, 0) / baseline7d.length;
+  if (baseline7d.length < 3 || sd <= 0) {
+    return { score: 50, hrvStatus: "insufficient" as const, advice: "Insufficient HRV data — at least 3 days needed for a reliable reading.", deltaPct: 0 };
+  }
+  const avg = baseline7d.reduce((a: number, b: number) => a + b, 0) / baseline7d.length;
   const deltaPct = ((hrvToday - avg) / avg) * 100;
   const z = sd > 0 ? (hrvToday - avg) / sd : 0;
   let score = 50;
+  let hrvStatus: "high" | "normal" | "low" = "normal";
   let advice = "HRV within normal range — proceed with planned session.";
   if (z >= 1) {
     score = 85;
-    advice = "HRV elevated vs baseline — recovery is ahead of schedule. Consider a slightly harder session or enjoy the surplus.";
+    hrvStatus = "high";
+    advice = "HRV elevated vs baseline — recovery is ahead of schedule.";
   } else if (z >= 0.5) {
     score = 70;
+    hrvStatus = "high";
     advice = "HRV slightly elevated — good day to train. Push the key session.";
   } else if (z <= -1) {
     score = 25;
+    hrvStatus = "low";
     advice = "HRV suppressed beyond 1 SD — body is not recovered. Swap the key session for Z1/Z2 or rest. High risk of overreaching (Plews 2013).";
   } else if (z <= -0.5) {
     score = 40;
+    hrvStatus = "low";
     advice = "HRV trending down — keep the session easy and prioritize sleep tonight.";
   }
-  return { score, advice, deltaPct: Math.round(deltaPct * 10) / 10 };
+  return { score, hrvStatus, advice, deltaPct: Math.round(deltaPct * 10) / 10 };
 }
 
-// ---- Training intensity distribution target (Seiler 2009 / Stöggl 2016) ----
 export function intensityDistribution(level: string): { zone1: number; zone2: number; zone3: number } {
   // zone1 = Z1-Z2 (easy), zone2 = Z3 (threshold-ish), zone3 = Z4+ (hard)
   if (level === "pro") return { zone1: 80, zone2: 5, zone3: 15 };
