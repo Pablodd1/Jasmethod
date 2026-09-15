@@ -47,6 +47,7 @@ model User {
   cognitive   CognitiveTest[]
   auditActions AuditLog[] @relation("AuditActor")
   auditSubjects AuditLog[] @relation("AuditSubject")
+  metricObservations MetricObservation[]
 }
 
 model AuthSession {
@@ -495,4 +496,22 @@ model CognitiveTest {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, date])
+}
+
+model MetricObservation {
+  id                String   @id @default(cuid())
+  userId            String
+  observedAt        DateTime
+  metricType        String   // hrv_rmssd | hrv_sdnn | resting_hr | sleep_hours | weight_kg | body_temp | spo2 | ...
+  value             Float
+  unit              String?
+  source            String   // whoop | garmin | oura | strava | manual | apple_health | coros
+  measurementMethod String?  // optical_sensor | chest_strap | manual_entry | derived
+  device            String?  // specific device model if known
+  qualityFlag       String?  // ok | suspect | calibration_needed | incomplete
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, observedAt])
+  @@index([userId, metricType, observedAt])
 }
