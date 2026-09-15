@@ -136,7 +136,10 @@ function computeSubjectiveWellness(input: AthleteStateInput): Dimension {
     return { status: "unknown", confidence: 0.2, reason: "Insufficient subjective data", evidenceClaimIds: claims };
   }
   const avg = parts.reduce((a, b) => a + b, 0) / parts.length;
+  const worst = Math.min(...parts); // single extreme signal matters more than the average
   const confidence = Math.min(0.8, 0.3 + parts.length * 0.15);
+  // A single extreme negative signal (e.g. stress 5/5) triggers caution even if others are neutral
+  if (worst <= -0.9) return { status: "caution", value: worst, confidence, reason: `Strong negative signal detected (${parts.length} signals, worst ${worst.toFixed(2)})`, evidenceClaimIds: claims };
   if (avg >= 0.5) return { status: "good", value: avg, confidence, reason: `Strong subjective wellness (${parts.length} signals, avg +${avg.toFixed(2)})`, evidenceClaimIds: claims };
   if (avg <= -0.5) return { status: "caution", value: avg, confidence, reason: `Low subjective wellness (${parts.length} signals, avg ${avg.toFixed(2)})`, evidenceClaimIds: claims };
   return { status: "neutral", value: avg, confidence, reason: `Moderate subjective wellness (${parts.length} signals)`, evidenceClaimIds: claims };
@@ -164,7 +167,7 @@ function computeTrainingLoadStatus(input: AthleteStateInput): Dimension {
   const ramp = tss.length >= 7
     ? (tss.slice(-3).reduce((a, b) => a + b, 0) / 3) / Math.max(1, tss.slice(0, -3).reduce((a, b) => a + b, 0) / Math.max(1, tss.length - 3)) - 1
     : 0;
-  if (avg > 120 || ramp > 0.3) return { status: "caution", value: avg, confidence: 0.7, reason: `High load (avg TSS ${Math.round(avg)}, ramp ${(ramp * 100).toFixed(0)}%)`, evidenceClaimIds: claims };
+  if (avg > 100 || ramp > 0.3) return { status: "caution", value: avg, confidence: 0.7, reason: `High load (avg TSS ${Math.round(avg)}, ramp ${(ramp * 100).toFixed(0)}%)`, evidenceClaimIds: claims };
   if (avg < 20) return { status: "neutral", value: avg, confidence: 0.5, reason: `Low load (avg TSS ${Math.round(avg)})`, evidenceClaimIds: claims };
   return { status: "neutral", value: avg, confidence: 0.7, reason: `Moderate load (avg TSS ${Math.round(avg)})`, evidenceClaimIds: claims };
 }

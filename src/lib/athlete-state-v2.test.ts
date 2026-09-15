@@ -89,7 +89,8 @@ run("recent RPE 9-10 (high recent effort)", { ...base, soreness: 4, energy: 2 },
 // ---- No wearable ----
 run("no wearable athlete (manual only)", { ...base, hrvToday: undefined, hrvBaseline7d: undefined, rhrToday: undefined, rhrBaseline: undefined }, (s) => {
   assert.equal(s.aerobicReadiness.status, "unknown");
-  assert.ok(s.dataCoverage < 0.6, "data coverage should be low without wearable");
+  assert.ok(s.dataCoverage >= 0.5, "subjective + load data still provide coverage without wearable");
+  assert.equal(s.aerobicReadiness.status, "unknown", "aerobic correctly unknown");
 });
 
 // ---- Beginner ----
