@@ -465,8 +465,21 @@ export default function TodayPage() {
                 {c.provider}: {c.lastError || c.status} ·{" "}
                 {es ? "Última sincronización" : "Last sync"}:{" "}
                 {c.lastSyncAt ? new Date(c.lastSyncAt).toLocaleString() : "—"}
+                {c.lastSyncCount != null && c.lastSyncCount > 0 ? ` · ${c.lastSyncCount} records` : ""}
               </p>
             ))}
+          </div>
+        )}
+        {(!data?.connectors || data.connectors.length === 0) && (
+          <div className="card border-ocean-300 bg-ocean-50/60 p-4">
+            <p className="text-sm font-medium text-ocean-900">
+              ⌚ {es
+                ? "Conecta Whoop, Garmin o COROS — tus datos llegan automáticamente y JASAI los usa para entrenar."
+                : "Connect Whoop, Garmin or COROS — your data syncs automatically and JASAI uses it for coaching."}
+            </p>
+            <Link href="/connectors" className="btn-primary text-sm mt-2 inline-flex">
+              {es ? "Conectar dispositivo →" : "Connect device →"}
+            </Link>
           </div>
         )}
         <details className="card">

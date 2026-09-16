@@ -332,7 +332,7 @@ export default function CalendarPage() {
                 <button
                   key={key}
                   onClick={() => setSelected(key)}
-                  className={`min-h-24 md:min-h-32 rounded-xl border p-1.5 text-left transition-colors cursor-pointer hover:border-ocean-400 ${isToday ? "border-ocean-500 bg-ocean-50" : "border-sand-200 bg-white"} ${inMonth ? "" : "opacity-40"}`}
+                  className={`min-h-16 md:min-h-32 rounded-lg border p-1 text-left transition-colors cursor-pointer hover:border-ocean-400 overflow-hidden ${isToday ? "border-ocean-500 bg-ocean-50" : "border-sand-200 bg-white"} ${inMonth ? "" : "opacity-40"}`}
                 >
                   <div className="text-xs font-semibold mb-1">
                     {format(day, "d")}
