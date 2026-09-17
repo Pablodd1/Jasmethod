@@ -226,7 +226,7 @@ export function prescribeSprintDay(opts: {
     },
 
     aiAdjustable: {
-      canAddRep: !isRaceWeek && phase !== "comp",
+      canAddRep: !isRaceWeek,
       canRemoveRep: true,
       canChangeZone: !isRaceDay,
       canRestDay: true,
