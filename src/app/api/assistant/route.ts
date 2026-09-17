@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { buildZoneTable } from "@/lib/science";
+import { parseTrainingCommand, applyTrainingCommand } from "@/lib/training-commands";
 import { dayBounds } from "@/lib/dates";
 import { protocolCoachContext } from "@/lib/protocols";
 import { geminiAnswer, geminiGenerationConfig } from "@/lib/gemini-response";
@@ -19,6 +20,54 @@ export async function POST(req: Request) {
     const { question } = await req.json();
     const q = String(question || "").trim().slice(0, 500);
     if (!q) return NextResponse.json({ error: "Ask a question first." }, { status: 400 });
+
+    // Check if this is a training modification command
+    const cmd = parseTrainingCommand(q);
+    if (cmd.command !== "NO_CHANGE" && cmd.confidence >= 0.7) {
+      // Fetch today's session and apply the command
+      const todayS = new Date(); todayS.setHours(0, 0, 0, 0);
+      const todayE = new Date(todayS); todayE.setDate(todayE.getDate() + 1);
+      const todaySession = await prisma.workout.findFirst({
+        where: { userId: user.id, date: { gte: todayS, lt: todayE }, planned: true },
+        orderBy: { date: "asc" },
+      });
+      if (todaySession) {
+        // Fetch readiness context for safety checks
+        const lastCheckin = await prisma.dailyCheckin.findFirst({
+          where: { userId: user.id },
+          orderBy: { date: "desc" },
+        });
+        let readinessScore = 60, hrvStatus = "normal", soreness = 3;
+        if (lastCheckin?.adaptation) {
+          try {
+            const a = JSON.parse(lastCheckin.adaptation);
+            readinessScore = a.score ?? 60;
+          } catch {}
+        }
+        const result = applyTrainingCommand(
+          { session: { title: todaySession.title, mainSet: [todaySession.notes || todaySession.title], totalQualityMeters: 300, type: todaySession.type } },
+          cmd,
+          { readinessScore, hrvStatus, soreness },
+        );
+        if (result.allowed) {
+          // Apply to the database
+          await prisma.workout.update({
+            where: { id: todaySession.id },
+            data: {
+              title: result.adjusted.session.title,
+              notes: result.adjusted.session.mainSet.join("; "),
+              durationMin: result.adjusted.session.durationMin ?? todaySession.durationMin,
+            },
+          });
+        }
+        return NextResponse.json({
+          ok: true,
+          answer: result.explanation,
+          trainingModified: result.allowed,
+          command: cmd.command,
+        });
+      }
+    }
 
     const { start: today, end } = dayBounds(user.timezone);
     const [profile, todayWorkouts, lastCheckin, plan, race] = await Promise.all([
