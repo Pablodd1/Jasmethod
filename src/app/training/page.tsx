@@ -247,6 +247,7 @@ export default function TrainingPage() {
                 onChange={(e) => setForm({ ...form, distance: e.target.value })}
               >
                 <option value="sprint">Sprint (750m / 20km / 5km)</option>
+                <option value="track-sprint">Track Sprint (100m / 200m / 400m)</option>
                 <option value="olympic">Olympic (1.5k / 40k / 10k)</option>
                 <option value="half">Half Ironman (1.9k / 90k / 21.1k)</option>
                 <option value="full">Full Ironman (3.8k / 180k / 42.2k)</option>

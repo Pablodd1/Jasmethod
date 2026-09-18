@@ -20,6 +20,7 @@ import {
   buildZoneTable,
   type ZoneTable,
   type PlanSession,
+  generateTrackSprint,
 } from "@/lib/science";
 import {
   recoveryFor,
@@ -134,12 +135,15 @@ export async function POST(req: Request) {
       throw new ApiError("Invalid plan parameters");
     const isHyrox = dist === "hyrox";
     const isBoxing = dist === "boxing";
+    const isTrackSprint = dist === "track-sprint";
     const isSingleSport =
       dist === "cycle" ||
       dist === "swim-only" ||
       dist === "run-only" ||
       dist === "lifting";
-    const generated = isSingleSport
+    const generated = isTrackSprint
+      ? generateTrackSprint({ level, event: "400m", weeks: weeksCount, startDate: start })
+      : isSingleSport
       ? generateSingleSport({
           sport:
             dist === "cycle"

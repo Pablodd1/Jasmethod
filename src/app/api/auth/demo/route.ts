@@ -49,6 +49,14 @@ const DEMO_ACCOUNTS: Record<
     hours: 5,
     level: "beginner",
   },
+  "john@jasmiamimethod.com": {
+    name: "John",
+    avatar: "⚡",
+    sex: "male",
+    goal: "run-only",
+    hours: 12,
+    level: "advanced",
+  },
   "jas@jasmiamimethod.com": {
     name: "Jas",
     avatar: "🥉",
