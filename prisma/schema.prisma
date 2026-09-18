@@ -47,6 +47,7 @@ model User {
   cognitive   CognitiveTest[]
   auditActions AuditLog[] @relation("AuditActor")
   auditSubjects AuditLog[] @relation("AuditSubject")
+  onboarded     Boolean  @default(false) // first-time setup completed
   metricObservations MetricObservation[]
 }
 
