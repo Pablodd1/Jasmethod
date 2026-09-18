@@ -31,6 +31,9 @@ export default function OnboardPage() {
   // Devices
   const [devices, setDevices] = useState<string[]>([]);
 
+  // Baselines (thresholds — can skip, test later in Labs)
+  const [baselines, setBaselines] = useState({ ftp: "", lthr: "", runPaceBase: "", swimPaceBase: "" });
+
   // Race
   const [race, setRace] = useState({ name: "", distance: "olympic", date: "", location: "" });
 
@@ -69,7 +72,7 @@ export default function OnboardPage() {
   const t = (en: string, esp: string) => (lang === "es" ? esp : en);
 
   // Step indicator
-  const STEPS = [t("Welcome", "Bienvenido"), t("Profile", "Perfil"), t("Devices", "Dispositivos"), t("Goal Race", "Carrera objetivo"), t("Done", "Listo")];
+  const STEPS = [t("Welcome", "Bienvenido"), t("Profile", "Perfil"), t("Baselines", "Umbrales"), t("Devices", "Dispositivos"), t("Goal Race", "Carrera objetivo"), t("Done", "Listo")];
 
   return (
     <ProtectedPage>
@@ -167,7 +170,7 @@ export default function OnboardPage() {
         )}
 
         {/* Step 2: Devices */}
-        {step === 2 && (
+        {step === 4 && (
           <div>
             <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
               <Watch className="w-5 h-5 text-ocean-600" /> {lang === "es" ? "Conecta tus dispositivos" : "Connect your devices"}
@@ -207,7 +210,7 @@ export default function OnboardPage() {
         )}
 
         {/* Step 3: Goal race */}
-        {step === 3 && (
+        {step === 4 && (
           <div>
             <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
               <Flag className="w-5 h-5 text-coral-500" /> {lang === "es" ? "Tu carrera objetivo" : "Your goal race"}
