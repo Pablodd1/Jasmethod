@@ -12,7 +12,7 @@ assert.ok(estimateTss({ durationMin: 60, rpe: 7 }) > 0, "RPE fallback");
 // PMC series
 const wk: { date: Date; tssInput: any }[] = [];
 for (let i = 0; i < 60; i++) {
-  const d = new Date("2026-06-01T00:00:00Z"); d.setDate(d.getDate() + i);
+  const d = new Date(); d.setDate(d.getDate() - 60 + i);
   wk.push({ date: d, tssInput: { durationMin: 60, rpe: 5 + (i % 3) } });
 }
 const pmc = computePmc(wk)!;
