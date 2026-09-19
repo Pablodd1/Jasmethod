@@ -107,12 +107,6 @@ export default function OnboardPage() {
                 </div>
               ))}
             </div>
-            <div className="mb-6">
-              <label className="label">{lang === "es" ? "Idioma" : "Language"}</label>
-              <select className="input" value={lang} onChange={(e) => changeLang(e.target.value)}>
-                {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
-              </select>
-            </div>
             <button onClick={() => setStep(1)} className="btn-primary w-full justify-center">
               {lang === "es" ? "Empezar" : "Get started"} <ArrowRight className="w-4 h-4 ml-2" />
             </button>
