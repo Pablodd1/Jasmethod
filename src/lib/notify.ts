@@ -24,13 +24,18 @@ export async function sendTelegram(
       },
     );
     const data = await resp.json();
-    if (!data.ok)
+    if (!data.ok) {
+      // Surface in runtime logs — the cron path otherwise fails silently and
+      // the only trace is the delivery row in the DB.
+      console.error(`[TELEGRAM] send failed to ${chatId}: ${data.description || resp.status}`);
       return {
         ok: false,
         error: data.description || `Telegram HTTP ${resp.status}`,
       };
+    }
     return { ok: true };
   } catch (e: any) {
+    console.error(`[TELEGRAM] send threw for ${chatId}: ${String(e?.message || e)}`);
     return { ok: false, error: String(e.message || e) };
   }
 }
