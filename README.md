@@ -165,7 +165,8 @@ Current state: a webapp with locally tested core workflows. See the release guid
 | `OURA_CLIENT_ID/SECRET` | Oura OAuth | ❌ Need (cloud.ouraring.com) |
 | `GEMINI_API_KEY` | AI coach | ✅ Set |
 | `AUTH_SECRET` | *(not read by DB-session auth — not required for MVP)* | ⚠️ Optional |
-| `TELEGRAM_BOT_TOKEN` | Reminders via Telegram | ⚠️ Optional |
+| `TELEGRAM_BOT_TOKEN` | Reminders via Telegram | ✅ Set |
+| `CRON_SECRET` | **Scheduled delivery (email + Telegram)** — without it every cron run returns 503 and NO scheduled reminders go out for ANY user (silent). Vercel cron auto-sends it as a Bearer token once set. | ✅ Set (2026-09-19 — was missing, killed all scheduled delivery) |
 | SMTP vars | Email reminders | ✅ Set |
 
 **To activate each OAuth:** create the dev app (free), add redirect URI `https://<domain>/api/connectors/<provider>/callback`, put credentials in `.env`, restart.
