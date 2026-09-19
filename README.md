@@ -167,7 +167,9 @@ Current state: a webapp with locally tested core workflows. See the release guid
 | `AUTH_SECRET` | *(not read by DB-session auth — not required for MVP)* | ⚠️ Optional |
 | `TELEGRAM_BOT_TOKEN` | Reminders via Telegram | ✅ Set |
 | `CRON_SECRET` | **Scheduled delivery (email + Telegram)** — without it every cron run returns 503 and NO scheduled reminders go out for ANY user (silent). Vercel cron auto-sends it as a Bearer token once set. | ✅ Set (2026-09-19 — was missing, killed all scheduled delivery) |
-| SMTP vars | Email reminders | ✅ Set |
+| `ADMIN_EMAILS` | Comma-separated emails auto-promoted to `role=admin` on any sign-in path (login/signup/Google/demo). Bootstrap for admin access without DB surgery. | ✅ Set (`jasmelacosta@gmail.com`) |
+| `GOOGLE_CLIENT_ID/SECRET` | **Google Sign-In for all users** (`/api/auth/google`) + Google Calendar connector. One OAuth client, two redirect URIs: `/api/auth/google/callback` and `/api/connectors/google-cal/callback`. | ❌ Need (console.cloud.google.com) |
+| SMTP vars | Email reminders | ✅ Set (⚠️ 2026-09-19: Gmail returns 535 BadCredentials — regenerate app password) |
 
 **To activate each OAuth:** create the dev app (free), add redirect URI `https://<domain>/api/connectors/<provider>/callback`, put credentials in `.env`, restart.
 

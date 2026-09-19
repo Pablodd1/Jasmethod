@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { verifyPassword, createSession, setSessionCookie } from "@/lib/auth";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
+import { syncAdminRole } from "@/lib/admin";
 
 export async function POST(req: Request) {
   try {
@@ -20,6 +21,7 @@ export async function POST(req: Request) {
     if (!user || !verifyPassword(String(password), user.passwordHash)) {
       return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
     }
+    user.role = await syncAdminRole(user);
     const token = await createSession(user.id);
     await setSessionCookie(token, req);
     return NextResponse.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });

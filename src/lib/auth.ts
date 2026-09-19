@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { prisma } from "./db";
 
 const SESSION_COOKIE = "jmm_session";
@@ -71,6 +72,21 @@ export async function setSessionCookie(token: string, req?: Request) {
     maxAge: SESSION_DAYS * 24 * 3600,
     path: "/",
   });
+}
+
+// For flows that return a redirect Response (Google Sign-In callback): attach
+// the session cookie directly to that response instead of the cookie store.
+export function sessionCookieOnResponse(token: string, req: Request, res: NextResponse) {
+  const proto = req.headers.get("x-forwarded-proto")
+    || (req.url?.startsWith("https") ? "https" : "http");
+  res.cookies.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: proto === "https",
+    maxAge: SESSION_DAYS * 24 * 3600,
+    path: "/",
+  });
+  return res;
 }
 
 export async function clearSessionCookie() {
