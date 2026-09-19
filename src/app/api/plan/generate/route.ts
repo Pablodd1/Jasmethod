@@ -125,6 +125,7 @@ export async function POST(req: Request) {
         "full",
         "hyrox",
         "boxing",
+        "track-sprint",
         "cycle",
         "run-only",
         "swim-only",
