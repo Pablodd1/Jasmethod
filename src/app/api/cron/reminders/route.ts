@@ -30,7 +30,11 @@ export async function GET(req: Request) {
         timeZone: user.timezone,
       }).format(new Date()),
     );
-    if (hour !== pref.reminderHour) {
+    // CATCH-UP semantics: deliver at the first cron hour at-or-after the
+    // user's chosen hour (the per-day+channel claim below dedupes). Exact-hour
+    // matching made delivery silently skip whenever Vercel missed an hour or
+    // the plan capped the schedule below hourly.
+    if (hour < pref.reminderHour) {
       skipped++;
       continue;
     }

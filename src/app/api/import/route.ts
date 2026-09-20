@@ -3,6 +3,7 @@ import { dayBounds, parseDate } from "@/lib/dates";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { parseOuraExport } from "@/lib/oura-import";
 import {
   parseTcx,
   parseAppleHealth,
@@ -114,6 +115,30 @@ export async function POST(req: Request) {
         metricsImported: created,
         workoutsImported: 0,
       });
+    } else if (src === "oura" || src === "aura") {
+      const oura = parseOuraExport(text);
+      let created = 0;
+      for (const m of oura.metrics) {
+        const d = new Date(m.date);
+        if (isNaN(d.getTime())) continue;
+        const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
+        const existing = await prisma.dailyMetrics.findUnique({ where: { userId_date: { userId: user.id, date: dayStart } } });
+        const data = {
+          hrv: m.hrv ?? undefined,
+          restingHr: m.restingHr ?? undefined,
+          sleepHours: m.sleepHours ?? undefined,
+          sleepScore: m.sleepScore ?? undefined,
+          recoveryScore: m.recoveryScore ?? undefined,
+          source: "oura",
+        };
+        if (existing) {
+          await prisma.dailyMetrics.update({ where: { id: existing.id }, data });
+        } else {
+          await prisma.dailyMetrics.create({ data: { userId: user.id, date: dayStart, ...data } });
+        }
+        created++;
+      }
+      return NextResponse.json({ ok: true, source: "oura", metricsImported: created, workoutsImported: 0 });
     } else {
       return NextResponse.json(
         {

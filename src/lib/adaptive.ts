@@ -665,8 +665,9 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     dose: "3-5 g/day",
     when: "Any time, daily",
     benefit:
-      "Power, strength, repeat-sprint + recovery; small endurance benefit. For combat/contact athletes: creatine is also neuroprotective — brain-cell energy (ATP) support after sub-concussive impacts (Giraldo 2025, active mTBI trial NCT06644131).",
-    caution: "Expect ~1kg water-weight gain.",
+      "Power, strength, repeat-sprint + recovery; small endurance benefit. 2025 umbrella review of 61 RCT meta-analyses: best-evidenced supplement in sport (Ashtary-Larky 2025). For combat/contact athletes: also neuroprotective — brain-cell energy (ATP) support after sub-concussive impacts (Giraldo 2025, active mTBI trial NCT06644131). Also counters age-related anabolic resistance in masters athletes.",
+    caution:
+      "Expect ~1kg water-weight gain during loading. 2025 safety review: no adverse effects on kidney/liver function in healthy people across the lifespan (Kreider 2025). Monohydrate only — other forms are pricier without better evidence.",
   },
   {
     key: "betaAlanine",
@@ -716,6 +717,29 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     when: "Loading block pre-race",
     benefit: "Modest VO2max/efficiency gain (B evidence).",
     caution: "Lower priority than the Group A list.",
+  },
+  // ---- RECOVERY STACK (2026 meta-analyses) ----
+  {
+    key: "tartCherry",
+    name: "Tart Cherry (Montmorency)",
+    evidence: "B",
+    dose: "30 ml concentrate ×2/day (or 480 mg extract)",
+    when: "Start 4-5 days pre-competition; continue 2-3 days after",
+    benefit:
+      "Anthocyanins speed muscle-function recovery and reduce soreness after hard bouts — 2026 meta-analyses of RCTs confirm recovery benefit (Hagele 2026; Kim 2026). Most useful for multi-day competition or back-to-back hard sessions.",
+    caution:
+      "Contains ~30 g sugar per 30 ml concentrate. Not a daily supplement — use around competition blocks only.",
+  },
+  {
+    key: "collagen",
+    name: "Collagen Peptides + Vitamin C",
+    evidence: "B",
+    dose: "15 g hydrolyzed collagen + 50 mg vitamin C",
+    when: "30-60 min BEFORE training (needs elevated blood amino acids DURING loading)",
+    benefit:
+      "Provides glycine/proline building blocks for tendon and ligament repair when combined with mechanical loading — increases tendon cross-sectional area in RCTs (Bischof 2024; Baar 2017). Targets connective tissue, not muscle.",
+    caution:
+      "Timing matters: it must be taken before loading, not after. Not a substitute for dietary protein.",
   },
 ];
 

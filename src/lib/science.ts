@@ -259,32 +259,40 @@ export function tsb(ctl: number, atl: number): number {
 // ---- HRV readiness (Buchheit 2014; Plews et al. 2013) ----
 // Compare morning RMSSD to rolling 7-day baseline; deviation >±1 SD = adjust.
 export function hrvReadiness(hrvToday: number, baseline7d: number[], sd: number): {
-  score: number; // 0-100
+  score: number; // 0-100 — display only, never drives the day-type alone
+  hrvStatus: "high" | "normal" | "low" | "insufficient";
   advice: string;
   deltaPct: number;
 } {
-  const avg = baseline7d.reduce((a, b) => a + b, 0) / baseline7d.length;
+  if (baseline7d.length < 3 || sd <= 0) {
+    return { score: 50, hrvStatus: "insufficient" as const, advice: "Insufficient HRV data — at least 3 days needed for a reliable reading.", deltaPct: 0 };
+  }
+  const avg = baseline7d.reduce((a: number, b: number) => a + b, 0) / baseline7d.length;
   const deltaPct = ((hrvToday - avg) / avg) * 100;
   const z = sd > 0 ? (hrvToday - avg) / sd : 0;
   let score = 50;
+  let hrvStatus: "high" | "normal" | "low" = "normal";
   let advice = "HRV within normal range — proceed with planned session.";
   if (z >= 1) {
     score = 85;
-    advice = "HRV elevated vs baseline — recovery is ahead of schedule. Consider a slightly harder session or enjoy the surplus.";
+    hrvStatus = "high";
+    advice = "HRV elevated vs baseline — recovery is ahead of schedule.";
   } else if (z >= 0.5) {
     score = 70;
+    hrvStatus = "high";
     advice = "HRV slightly elevated — good day to train. Push the key session.";
   } else if (z <= -1) {
     score = 25;
+    hrvStatus = "low";
     advice = "HRV suppressed beyond 1 SD — body is not recovered. Swap the key session for Z1/Z2 or rest. High risk of overreaching (Plews 2013).";
   } else if (z <= -0.5) {
     score = 40;
+    hrvStatus = "low";
     advice = "HRV trending down — keep the session easy and prioritize sleep tonight.";
   }
-  return { score, advice, deltaPct: Math.round(deltaPct * 10) / 10 };
+  return { score, hrvStatus, advice, deltaPct: Math.round(deltaPct * 10) / 10 };
 }
 
-// ---- Training intensity distribution target (Seiler 2009 / Stöggl 2016) ----
 export function intensityDistribution(level: string): { zone1: number; zone2: number; zone3: number } {
   // zone1 = Z1-Z2 (easy), zone2 = Z3 (threshold-ish), zone3 = Z4+ (hard)
   if (level === "pro") return { zone1: 80, zone2: 5, zone3: 15 };
@@ -896,6 +904,74 @@ export function generateBoxingCamp(opts: {
   return weeksOut;
 }
 
+// ---- Track sprint plan generator (100m / 200m / 400m) ----
+// Velocity-based sprint training — NOT endurance. Zones are % max velocity.
+export function generateTrackSprint(opts: {
+  level: string;
+  event: string; // "100m" | "200m" | "400m"
+  weeks: number;
+  startDate: Date;
+}): GeneratedWeek[] {
+  const { level, event, weeks, startDate } = opts;
+  const sessionsPerWeek = level === "pro" ? 6 : level === "advanced" ? 5 : 4;
+  const isShort = event === "100m" || event === "200m";
+
+  const weeksOut: GeneratedWeek[] = [];
+  for (let w = 1; w <= weeks; w++) {
+    const phase = w <= weeks * 0.3 ? "general_prep" : w <= weeks * 0.6 ? "specific_prep" : w <= weeks - 1 ? "pre_comp" : "comp";
+    const sessions: PlanSession[] = [];
+    const vol = w <= weeks * 0.7 ? 1.0 : 0.6; // reduce volume in competition phase
+
+    // Speed Day 1
+    if (phase === "general_prep") {
+      sessions.push({ sport: "run", title: "Acceleration + Mechanics", minutes: 90, zone: "z5", type: "speed", description: "10 min jog + dynamic drills (leg swings, hip openers, ankle circles ×10 each). A-skips, B-skips 2×20m. 6×20m block starts at 100% effort, rest 2-3 min between reps. 4×20m fly-in at 95% MV, rest 4-6 min. Plyo: box jumps 4×5, bounds 3×20m. Cool: 10 min walk + static stretch." });
+    } else if (phase === "specific_prep") {
+      sessions.push({ sport: "run", title: "Speed Endurance", minutes: 100, zone: "z5", type: "speed", description: isShort ? "10 min jog + drills. 5×120m at 95% max velocity, rest 8-10 min between reps. Plyo: depth jumps 3×5, single-leg bounds 3×6/leg. Cool: 10 min walk + stretch." : "10 min jog + drills. 3×200m at 90-95% max velocity, rest 12-15 min. Plyo: depth jumps 3×5. Cool: 10 min walk + stretch." });
+    } else if (phase === "pre_comp") {
+      sessions.push({ sport: "run", title: "Race Pace Sharpening", minutes: 80, zone: "z5", type: "speed", description: `10 min jog + drills. ${isShort ? "4×60m at race pace, rest 6-8 min. 2×20m fly at 95-100% MV." : "2×150m at race pace, rest 10 min. 1×80m fly at 95% MV."} Volume reduced 40% — sharpen, don't fatigue.` });
+    } else {
+      sessions.push({ sport: "run", title: "Competition Week", minutes: 50, zone: "z5", type: "speed", description: "10 min jog + drills. 3×20m build + 1×40m at 95% MV, full recovery. Race in <7 days." });
+    }
+
+    // Strength Day 1: Heavy lower + core
+    sessions.push({ sport: "strength", title: phase === "general_prep" ? "Strength: Heavy Lower + Core" : phase === "specific_prep" ? "Strength: Power Lower" : "Strength: Maintenance", minutes: 75, zone: "z1", type: "strength", description: phase === "general_prep" ? "Back Squat 4×5 @85% 1RM, RDL 3×6 @80%, Bulgarian Split Squat 3×5/leg, Calf Raise 3×8 loaded. Core: Pallof Press 3×10/side. Plyo primer: box jumps 3×5." : phase === "specific_prep" ? "Power Clean 4×3 @70% 1RM, Trap Bar Jump Squat 4×4 @30% 1RM, Sled Push 4×20m heavy. Core: hanging knee raises 3×10." : "Maintenance: 2×5 back squat @70%, 2×5 power clean @60%, core circuit. No failure." });
+
+    // Speed Day 2: Max Velocity or Speed Endurance
+    if (phase !== "comp") {
+      if (phase === "general_prep") {
+        sessions.push({ sport: "run", title: "Max Velocity Development", minutes: 90, zone: "z5", type: "speed", description: "10 min jog + drills. Fly-in sprints: 4×(20m build + 30m max velocity), rest 4-6 min. Plyo: single-leg bounds 3×6/leg, pogo hops 3×20s. Cool: 10 min walk + stretch." });
+      } else if (phase === "specific_prep") {
+        if (event === "400m") {
+          sessions.push({ sport: "run", title: "Special Endurance I", minutes: 100, zone: "z5", type: "speed", description: "10 min jog + drills. 2×(300m @85% MV, rest 15 min + 150m @95% MV, rest 12 min). Plyo: depth jumps 3×5. Cool: 10 min walk + stretch." });
+        } else {
+          sessions.push({ sport: "run", title: "Speed Endurance I", minutes: 100, zone: "z5", type: "speed", description: "10 min jog + drills. 4×150m at 95% MV with 8-10 min rest. Plyo: depth jumps 3×5. Cool: 10 min walk + stretch." });
+        }
+      } else {
+        sessions.push({ sport: "run", title: "Race Model + Speed", minutes: 90, zone: "z5", type: "speed", description: `10 min jog + drills. ${event === "400m" ? "350m time trial @95% + 2×150m at race pace" : "3×120m at race pace + 2×60m fly at 100% MV"}. Volume reduced 40% — sharpen, don't fatigue.` });
+      }
+    }
+
+    // Tempo Day
+    sessions.push({ sport: "run", title: "Tempo + Core", minutes: 45, zone: "z2", type: "tempo", description: "10 min jog. " + Math.floor(weeks * 0.3) + " × 100m @70% MV with 45s rest (extensive tempo — should feel conversational). Core: 3×(30s plank + 20 side plank/side + 10 dead bugs). Cool: 5 min walk + stretch." });
+
+    // Strength Day 2: Power + Plyo
+    if (phase !== "comp") {
+      sessions.push({ sport: "strength", title: "Explosive Power + Plyo", minutes: 60, zone: "z3", type: "plyo", description: "Power Clean 4×3 @70% 1RM, Trap Bar Jump Squat 4×4 @30% 1RM, Depth Jumps 3×5 from 40cm, Single-Leg Bounds 3×6/leg, Sled Push 4×20m heavy. Full recovery between sets — this is neural training (Ramírez-Campillo 2022)." });
+    }
+
+    // Rest Day
+    sessions.push({ sport: "recovery", title: "Rest + Recovery", minutes: 20, zone: "z1", type: "recovery", description: "Complete rest or 20 min easy walk + breathing (extended exhale 2:1). CNS recovery is when speed adaptations consolidate." });
+
+    weeksOut.push({
+      week: w,
+      theme: event + " " + phase.replace("_", " ") + " — week " + w,
+      sessions,
+      totalMinutes: sessions.reduce((a, s) => a + s.minutes, 0),
+    });
+  }
+  return weeksOut;
+}
+
 // ---- Single-sport plan generator (cycling / swimming / running / lifting-only) ----
 // Same 6-week progression wave as the race plans: base→build→peak→taper,
 // ~6-8% weekly overload, test weeks re-anchor zones. Non-racers get the same
@@ -954,6 +1030,9 @@ export function generateSingleSport(opts: {
   return weeksOut;
 }
 
-// Reference data (blood / DNA / nutrition / motivation) moved to lib/reference.ts
-// in the consolidation sprint — re-exported here so every existing import keeps working.
+
+
+// ---- Track sprint plan generator (100m/200m/400m) ----
+// Returns GeneratedWeek[] so the plan generator route can use it directly.
+
 export { BLOOD_REFERENCE, DNA_TRAITS, NUTRITION_GUIDELINES, MOTIVATION_LIBRARY, dailyMotivation } from "./reference";

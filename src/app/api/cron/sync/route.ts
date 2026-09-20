@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { syncUserConnectors } from "@/lib/sync";
+import { syncAthlinksForAllUsers } from "@/lib/athlinks";
 
-// GET|POST /api/cron/sync — pull new data for EVERY athlete with connected
-// devices. Scheduled daily at 05:00 America/New_York via vercel.json
-// ("0 9 * * *" UTC). Vercel sends `Authorization: Bearer $CRON_SECRET`
-// automatically when CRON_SECRET is set; locally (no secret configured)
-// the endpoint is open for testing.
+// GET|POST /api/cron/sync — reconcile every athlete's connected providers.
+// Runs HOURLY via vercel.json ("0 * * * *" UTC) — the normal user experience
+// never requires pressing Sync (webhooks handle real-time; this is the safety
+// net for missed events). Vercel sends `Authorization: Bearer $CRON_SECRET`
+// automatically when CRON_SECRET is set.
 //
-// Per athlete: sync every connected provider, then notify the admins about
-// any failure. One aggregated admin email at the end covers all athletes.
+// Athlinks (race-history) reconciles at most once per 20h per athlete — race
+// results don't change minute to minute — enforced by lastSyncAt here.
 async function run(req: Request) {
   // Auth: if CRON_SECRET is configured, require the matching bearer token.
   const secret = process.env.CRON_SECRET;
@@ -60,6 +61,19 @@ async function run(req: Request) {
     });
   }
 
+  // Athlinks race-history reconciliation — stale >20h only (daily cadence).
+  let athlinks: Awaited<ReturnType<typeof syncAthlinksForAllUsers>> | null = null;
+  const staleAthlinks = await prisma.connector.findMany({
+    where: {
+      provider: "athlinks",
+      status: { in: ["connected", "error"] },
+      externalRef: { not: null },
+      OR: [{ lastSyncAt: null }, { lastSyncAt: { lt: new Date(Date.now() - 20 * 3600000) } }],
+    },
+    select: { id: true },
+  });
+  if (staleAthlinks.length) athlinks = await syncAthlinksForAllUsers();
+
   const failedUsers = perUser.filter((u) => u.failures.length > 0);
   const summary = {
     ranAt: new Date().toISOString(),
@@ -67,6 +81,9 @@ async function run(req: Request) {
     athletes: connected.length,
     totalImported: perUser.reduce((s, u) => s + u.total, 0),
     failedAthletes: failedUsers.length,
+    athlinks: athlinks
+      ? { users: athlinks.users, imported: athlinks.imported, merged: athlinks.merged, errors: athlinks.errors }
+      : { skipped: true },
     perUser,
   };
   console.log("[cron/sync]", JSON.stringify(summary));

@@ -6,6 +6,7 @@ import {
   createSession,
   setSessionCookie,
 } from "@/lib/auth";
+import { syncAdminRole } from "@/lib/admin";
 
 // One-tap beta/demo login (the "Beta testers — one tap to sign in" buttons).
 // Self-provisioning: on a fresh database the first tap creates the demo
@@ -49,6 +50,14 @@ const DEMO_ACCOUNTS: Record<
     hours: 5,
     level: "beginner",
   },
+  "john@jasmiamimethod.com": {
+    name: "John",
+    avatar: "⚡",
+    sex: "male",
+    goal: "run-only",
+    hours: 12,
+    level: "advanced",
+  },
   "jas@jasmiamimethod.com": {
     name: "Jas",
     avatar: "🥉",
@@ -56,6 +65,14 @@ const DEMO_ACCOUNTS: Record<
     goal: "olympic",
     hours: 8,
     level: "amateur",
+  },
+  "jasmelacosta@gmail.com": {
+    name: "Jasmel",
+    avatar: "👑",
+    sex: "male",
+    goal: "track-sprint",
+    hours: 10,
+    level: "advanced",
   },
   "andres@jasmiamimethod.com": {
     name: "Andres",
@@ -133,6 +150,7 @@ export async function POST(req: Request) {
       );
     }
 
+    user.role = await syncAdminRole(user);
     const token = await createSession(user.id);
     await setSessionCookie(token, req);
     return NextResponse.json({

@@ -47,6 +47,8 @@ model User {
   cognitive   CognitiveTest[]
   auditActions AuditLog[] @relation("AuditActor")
   auditSubjects AuditLog[] @relation("AuditSubject")
+  onboarded     Boolean  @default(false) // first-time setup completed
+  metricObservations MetricObservation[]
 }
 
 model AuthSession {
@@ -420,10 +422,43 @@ model Race {
   swimCurrent String?  // none | mild | strong
   federation  String?  // USAT | WORLD_TRIATHLON | BRITISH_TRIATHLON | IRONMAN
   category    String?  // age_group | elite
+  source      String?  // provenance: "manual" | "athlinks" | ... — who created the record
+  sourceRecordId String? // provider-side result id (dedupe across re-imports)
+  sourceRetrievedAt DateTime? // when the provider record was last pulled
   notes       String?
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, date])
+  @@unique([userId, source, sourceRecordId])
+}
+
+// ---------- OAUTH TRANSACTIONS (mobile-safe connector returns) ----------
+// Maps the OAuth `state` to the Jasmethod user + return URL server-side, so
+// the callback does not depend on browser cookies (in-app mobile browsers
+// drop them). One row per authorization attempt; usedAt marks consumption.
+model OAuthTransaction {
+  id        String   @id @default(cuid())
+  state     String   @unique
+  userId    String
+  provider  String   // whoop | strava | google-cal | oura
+  returnUrl String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+  @@index([userId, provider])
+}
+
+// ---------- WEBHOOK EVENT LEDGER (dedupe + async processing) ----------
+// Every webhook POST is persisted before processing (2xx returned fast);
+// eventId/trace_id uniqueness makes redelivery a no-op.
+model WebhookEvent {
+  id         String   @id @default(cuid())
+  provider   String   // whoop | strava
+  eventId    String   // whoop trace_id / event id, strava event id
+  payload    String?  // raw JSON for later async processing / audit
+  receivedAt DateTime @default(now())
+  processedAt DateTime?
+  @@unique([provider, eventId])
 }
 
 // ---------- SCHEDULED TESTING (FTP/LTHR/CP benchmarks) ----------
@@ -495,4 +530,22 @@ model CognitiveTest {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, date])
+}
+
+model MetricObservation {
+  id                String   @id @default(cuid())
+  userId            String
+  observedAt        DateTime
+  metricType        String   // hrv_rmssd | hrv_sdnn | resting_hr | sleep_hours | weight_kg | body_temp | spo2 | ...
+  value             Float
+  unit              String?
+  source            String   // whoop | garmin | oura | strava | manual | apple_health | coros
+  measurementMethod String?  // optical_sensor | chest_strap | manual_entry | derived
+  device            String?  // specific device model if known
+  qualityFlag       String?  // ok | suspect | calibration_needed | incomplete
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, observedAt])
+  @@index([userId, metricType, observedAt])
 }

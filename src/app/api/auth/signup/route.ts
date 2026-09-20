@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { hashPassword, createSession, setSessionCookie } from "@/lib/auth";
 import { sendEmail, welcomeEmail } from "@/lib/email";
 import { youthPolicy } from "@/lib/cycle";
+import { isAdminEmail } from "@/lib/admin";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
 
 export async function POST(req: Request) {
@@ -35,6 +36,7 @@ export async function POST(req: Request) {
         email: normalized,
         passwordHash: hashPassword(String(password)),
         name: String(name).trim(),
+        role: isAdminEmail(normalized) ? "admin" : "athlete",
         profile: { create: by ? { birthYear: by } : {} },
         motivation: { create: {} },
       },

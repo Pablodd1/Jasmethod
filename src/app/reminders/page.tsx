@@ -21,6 +21,13 @@ export default function RemindersPage() {
   const [pairBusy, setPairBusy] = useState(false);
   const [pairMsg, setPairMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [chatSaved, setChatSaved] = useState(false);
+  // Scheduled-delivery health: proves the cron is actually configured + shows recent deliveries
+  const [health, setHealth] = useState<any>(null);
+
+  async function loadHealth() {
+    const res = await fetch("/api/reminders/health");
+    if (res.ok) setHealth(await res.json());
+  }
 
   // Chat ID persists immediately — no Save button needed.
   async function saveChatId(value: string) {
@@ -46,6 +53,7 @@ export default function RemindersPage() {
       if (d.ok) {
         setPairMsg({ ok: true, text: `${lang === "es" ? "Chat conectado" : "Chat connected"}: ${d.chatId}` });
         load();
+        loadHealth();
       } else {
         setPairMsg({ ok: false, text: d.error || "Not found" });
       }
@@ -62,7 +70,7 @@ export default function RemindersPage() {
     setTelegramConfigured(d.telegramConfigured);
     if (d.prefs) setPrefs({ ...prefs, ...d.prefs, reminderHour: String(d.prefs.reminderHour ?? 6), remindBeforeMin: String(d.prefs.remindBeforeMin ?? 0) });
   }
-  useEffect(() => { if (user) { load(); loadPairing(); } }, [user]);
+  useEffect(() => { if (user) { load(); loadPairing(); loadHealth(); } }, [user]);
 
   const set = (k: string, v: any) => setPrefs((p: any) => ({ ...p, [k]: v }));
 
@@ -99,6 +107,49 @@ export default function RemindersPage() {
 
         {saved && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{t(lang, "rem.saved")}</div>}
         {sent && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">✓ Sent — {sent.result?.email?.ok ? "email ok" : sent.result?.email?.error || "email fallback (no SMTP)"}{sent.result?.telegram ? (sent.result.telegram.ok ? " · telegram ok" : ` · telegram: ${sent.result.telegram.error}`) : ""}</div>}
+
+        {/* Delivery status — makes the scheduled cron visible instead of silent */}
+        {health && (
+          <div className={`card ${health.cronConfigured ? "border-emerald-200 bg-emerald-50/40" : "border-red-200 bg-red-50"}`}>
+            <h2 className="font-display font-bold text-base mb-2 flex items-center gap-2">
+              <span className={`inline-block w-2.5 h-2.5 rounded-full ${health.cronConfigured ? "bg-emerald-500" : "bg-red-500"}`} />
+              {lang === "es" ? "Envío programado" : "Scheduled delivery"}
+            </h2>
+            {health.cronConfigured ? (
+              <p className="text-sm text-emerald-800">
+                ✓ {lang === "es"
+                  ? `Activo — llega a diario a las ${String(health.reminderHour).padStart(2, "0")}:00 (hora local). Si una corrida falla, se recupera en la hora siguiente.`
+                  : `Live — arrives daily at ${String(health.reminderHour).padStart(2, "0")}:00 (your local time). If a run is missed, the next hour catches up.`}
+              </p>
+            ) : (
+              <p className="text-sm text-red-800">
+                ⚠ {lang === "es"
+                  ? "NO configurado en el servidor — el envío automático está apagado para todos. Usa «Enviar ahora» abajo mientras tanto (el administrador debe definir CRON_SECRET en Vercel)."
+                  : "NOT configured on the server — automatic sending is off for everyone. Use “Send now” below in the meantime (admin must set CRON_SECRET in Vercel)."}
+              </p>
+            )}
+            {prefs.telegramEnabled && !health.telegramBound && (
+              <p className="text-sm text-amber-700 mt-2">
+                ⚠ {lang === "es"
+                  ? "Telegram activado pero sin chat vinculado — completa la conexión automática abajo."
+                  : "Telegram is on but no chat is paired — complete the automatic setup below."}
+              </p>
+            )}
+            {health.deliveries?.length > 0 && (
+              <div className="mt-3 space-y-1">
+                {health.deliveries.slice(0, 4).map((d: any, i: number) => (
+                  <div key={i} className="text-xs text-slate-600 flex items-center gap-2">
+                    <span>{d.channel === "telegram" ? "✈️" : "📧"}</span>
+                    <span className="font-mono">{d.day}</span>
+                    <span className={d.status === "sent" ? "text-emerald-600" : d.status === "failed" ? "text-red-600" : "text-slate-400"}>
+                      {d.status}{d.error ? ` — ${d.error}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="card">
           <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><Bell className="w-5 h-5 text-ocean-500" /> {t(lang, "rem.channels")}</h2>

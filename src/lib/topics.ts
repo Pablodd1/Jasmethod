@@ -46,55 +46,69 @@ const SUPPLEMENTS: Topic = {
   index: "01",
   kicker: "Field Guide · Daily Foundations",
   title: "Supplements",
-  subtitle: "The few pills that earn their place in an endurance athlete's routine.",
+  subtitle: "The few pills that earn their place — graded by human-trial evidence through 2026.",
   lede:
-    "Most of the supplement aisle is noise dressed up in a shiny label. For an endurance athlete the shortlist is small, and almost everything on it corrects a specific, measurable deficit — usually revealed by a blood panel, not a marketing claim.",
+    "Most of the supplement aisle is noise dressed up in a shiny label. The shortlist that survives contact with replicated human trials is small: creatine, caffeine, beta-alanine, protein, vitamin D, omega-3 — plus targeted add-ons per sport. Everything here is graded against human trials, not marketing.",
   glance: [
-    { value: "40–60", unit: "ng/mL", label: "Vitamin D target (Holick 2007)" },
-    { value: "50+", unit: "ng/mL", label: "Ferritin floor for endurance athletes (Peeling 2008)" },
-    { value: "200–420", unit: "mg", label: "Magnesium — liver/micro intake range (NIH)" },
-    { value: "3–5", unit: "g/day", label: "Creatine — the one A-grade daily" },
+    { value: "61", unit: "meta-analyses", label: "Creatine umbrella review 2025 — best-evidenced supplement in sport" },
+    { value: "3–5", unit: "g/day", label: "Creatine monohydrate — safe across the lifespan (Kreider 2025)" },
+    { value: "3–6", unit: "mg/kg", label: "Caffeine — the effective dose range (Guest 2021)" },
+    { value: "3.2–6.4", unit: "g/day", label: "Beta-alanine chronic load — 4+ weeks to work (Trexler 2015)" },
   ],
   sections: [
     {
       heading: "Correct a deficit, don't chase a feeling",
       paragraphs: [
         "The rule that separates smart supplementation from fad: a supplement is justified when you have evidence your body is short of something and diet alone isn't fixing it. That evidence is a blood panel looking for low vitamin D, low ferritin, low B12, or a diet history showing a consistent gap (a vegan runner's B12, a heavy sweater's sodium and magnesium).",
-        "Everything else — the multi-vitamin as insurance, the 'immune booster', the pre-digested collagen promise — is spend with weak return. Athletes in heavy training actually have slightly elevated nutrient needs, but real food covers most of it if intake is adequate.",
+        "The 2025 state of the science strengthens this: the ISSN umbrella review of 61 creatine meta-analyses (Ashtary-Larky 2025) and the Kreider 2025 safety review confirm that monohydrate — the cheapest form — is also the only form with replicated evidence, and it's safe in healthy people from adolescents to the elderly. Skip 'buffered' and 'advanced' creatines; pay for training, not labels.",
       ],
       bullets: [
         "Test first: ferritin, vitamin D, B12, hemoglobin. Treat what's low.",
         "One correction at a time — you can't attribute a benefit if you change three variables.",
         "Choose third-party-tested brands (NSF / Informed Sport) for anything you take daily.",
+        "Monohydrate only for creatine; anything else is marketing.",
       ],
     },
     {
-      heading: "The endurance-athlete shortlist",
+      heading: "Sport-specific stacks (what actually differs)",
       paragraphs: [
-        "Vitamin D (1,000–4,000 IU/day, guided by blood level) supports bone, muscle function and immunity; deficiency is common in indoor and dark-hour trainers (Holick 2007).",
-        "Iron is the big one for runners — footstrike hemolysis and heavy training depress ferritin. Women are at highest risk. Target ≥50 ng/mL and treat with iron only if a panel confirms deficiency (Peeling 2008).",
-        "Magnesium (200–420 mg/day) is lost in sweat and implicated in cramping and sleep quality, though the cramp evidence is weaker than folklore suggests.",
-        "Omega-3 helps manage training-induced inflammation; ~1–2 g/day EPA/DHA is a reasonable default if fatty-fish intake is low.",
+        "Sprint/400m: creatine (ATP regeneration), caffeine (RFD + reaction), beta-alanine (the 400m is a 40–75s acidosis battle — carnosine buffering helps), and sodium bicarbonate on race day only if trialed in training.",
+        "Boxing/combat: the brain-protection stack is the differentiator — creatine (brain ATP after sub-concussive impacts), DHA-dominant omega-3 (higher omega-3 index = lower neuroaxonal injury markers; note EPA-only may interfere with repair — take DHA+EPA, not EPA solo), and alpha-GPC for reaction time. Add beta-alanine for 1–4 min round buffering.",
+        "Endurance/tri: caffeine has the strongest evidence of any supplement; nitrate (beetroot) improves economy; carb mixtures (glucose+fructose) raise absorption above 60 g/h; tart cherry for multi-day competition recovery.",
+        "Strength: creatine + 1.6–2.2 g/kg protein daily is the core; citrulline malate adds reps per set; vitamin D if blood level is low.",
+      ],
+    },
+    {
+      heading: "The recovery stack — use around competition, not daily",
+      paragraphs: [
+        "Tart cherry (Montmorency): 2026 meta-analyses of RCTs confirm faster strength recovery and less soreness when taken 4–5 days before and 2–3 days after hard competition (Hagele 2026). Daily use may blunt training adaptation — it's an anti-inflammatory, and inflammation is the signal that drives adaptation. Competition windows only.",
+        "Collagen peptides + vitamin C: 15 g taken 30–60 min BEFORE mechanical loading increases tendon collagen synthesis (Baar 2017; Bischof 2024). Timing before loading is the whole trick — taking it after does little. Useful for tendon-heavy sports and masters athletes.",
+        "Ashwagandha (KSM-66 300–600 mg/day) reduces cortisol and may improve sleep quality — useful in high-stress blocks, not a performance enhancer per se.",
       ],
     },
     {
       heading: "What the app does with this",
       paragraphs: [
-        "JasMiamiMethod stores your blood panels, flags out-of-range markers against athlete-adjusted reference ranges, and surfaces the specific deficit — 'Ferritin 28 ng/mL, aim 50+ for endurance' — instead of a generic multivitamin suggestion. Supplements you opt out of are never recommended again.",
+        "JasMiamiMethod stores your blood panels, flags out-of-range markers against athlete-adjusted reference ranges, and surfaces the specific deficit — 'Ferritin 28 ng/mL, aim 50+ for endurance' — instead of a generic multivitamin suggestion. Daily ergogenic recommendations match your session type, and your likes/dislikes are learned. Supplements you opt out of are never recommended again.",
       ],
     },
   ],
   protocol: {
     title: "The 4-question gate",
-    body: "Before you buy (or keep taking) anything: 1) Is there test evidence of a deficit? 2) Can diet cover it? 3) Is the form/dose matched to the research? 4) Can I measure the outcome? If a supplement fails all four, it's decoration.",
+    body: "Before you buy (or keep taking) anything: 1) Is there replicated human-trial evidence? 2) Is the dose matched to the research? 3) Does it fit MY sport's demand? 4) Can I measure the outcome? If a supplement fails all four, it's decoration.",
   },
   cites: [
+    "Ashtary-Larky et al. 2025 — Creatine umbrella review, 61 meta-analyses (J ISSN)",
+    "Kreider et al. 2025 — Creatine safety across the lifespan (Front Nutr)",
+    "Guest et al. 2021 — Caffeine position stand (J ISSN 18:1)",
+    "Trexler et al. 2015 — Beta-alanine position stand (J ISSN 12:30)",
+    "Beauregard et al. 2025 — Omega-3 & TBI repair, DHA vs EPA (PLOS ONE)",
+    "Hagele et al. 2026 — Tart cherry RCT meta-analysis (MDPI)",
+    "Baar 2017 — Collagen + loading mechanism (J Appl Physiol)",
     "Holick 2007 — Vitamin D deficiency (N Engl J Med 357:266-281)",
     "Peeling et al. 2008 — Iron status in female athletes",
-    "Brutsaert et al. 2003 — Iron & endurance",
-    "ISSN 2018 — Supplements review",
   ],
-  appTie: "Blood panel markers are checked against athlete-specific ranges, not the general-population one — an endurance athlete's 'normal' ferritin is different from a sedentary adult's.",
+  appTie: "Blood panel markers are checked against athlete-specific ranges, ergogenic picks match your session type and sport, and your feedback is learned — opt-outs are permanent.",
 };
 
 // ---------------------------------------------------------------------------

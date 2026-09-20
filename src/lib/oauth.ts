@@ -54,6 +54,20 @@ export async function authorize(req: Request, provider: string) {
   try {
     const { p, cfg } = config(provider),
       state = createOAuthState(provider);
+    // Return URL (mobile app deep link or in-app browser return) rides on the
+    // transaction row, not the query string, so it survives provider redirects.
+    const returnUrl = new URL(req.url).searchParams.get("return");
+    // Server-side transaction: the callback identifies the athlete from this
+    // row — NOT from browser cookies, which in-app mobile browsers drop.
+    await prisma.oAuthTransaction.create({
+      data: {
+        state,
+        userId: user.id,
+        provider: p.key,
+        returnUrl: returnUrl && /^https?:\/\//.test(returnUrl) ? returnUrl : null,
+        expiresAt: new Date(Date.now() + 15 * 60000),
+      },
+    });
     cookies().set(
       `jmm_oauth_${provider}`,
       JSON.stringify({ state, userId: user.id }),
@@ -82,26 +96,56 @@ export async function callback(req: Request, provider: string) {
   const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const redirect = (error: string) =>
     NextResponse.redirect(`${base}/connectors?error=${error}`);
-  const user = await getCurrentUser();
-  if (!user) return redirect("session_expired");
   const u = new URL(req.url),
     state = u.searchParams.get("state") || "";
-  let expected: any;
-  try {
-    expected = JSON.parse(
-      cookies().get(`jmm_oauth_${provider}`)?.value || "null",
-    );
-  } catch {}
+
+  // Resolve the athlete from the server-side transaction row first (mobile
+  // in-app browsers lose cookies AND the session cookie); fall back to the
+  // browser session for older flows.
+  let userId: string | null = null;
+  let returnUrl: string | null = null;
+  const txn = await prisma.oAuthTransaction
+    .findUnique({ where: { state } })
+    .catch(() => null);
+  if (
+    txn &&
+    txn.provider === provider &&
+    !txn.usedAt &&
+    txn.expiresAt > new Date()
+  ) {
+    userId = txn.userId;
+    returnUrl = txn.returnUrl;
+  }
+  if (!userId) {
+    const sessionUser = await getCurrentUser();
+    if (sessionUser) userId = sessionUser.id;
+  }
+  if (!userId) return redirect("session_expired");
+
+  // Consume the transaction atomically — a replayed callback URL is a no-op.
+  const consumed = await prisma.oAuthTransaction.updateMany({
+    where: { state, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+
+  const expected: any = (() => {
+    try {
+      return JSON.parse(
+        cookies().get(`jmm_oauth_${provider}`)?.value || "null",
+      );
+    } catch {
+      return null;
+    }
+  })();
   cookies().set(`jmm_oauth_${provider}`, "", {
     maxAge: 0,
     path: `/api/connectors/${provider}`,
   });
-  if (
-    !expected ||
-    expected.userId !== user.id ||
-    !validOAuthState(state, expected.state, provider)
-  )
-    return redirect("invalid_state");
+  // State check: transaction row (authoritative) OR legacy cookie match.
+  const stateOk =
+    txn?.state === state ||
+    (expected && expected.userId === userId && validOAuthState(state, expected.state, provider));
+  if (!stateOk) return redirect("invalid_state");
   const code = u.searchParams.get("code");
   if (u.searchParams.has("error") || !code)
     return redirect("authorization_declined");
@@ -138,8 +182,8 @@ export async function callback(req: Request, provider: string) {
       ...(externalRef ? { externalRef } : {}),
     };
     await prisma.connector.upsert({
-      where: { userId_provider: { userId: user.id, provider: p.key } },
-      create: { userId: user.id, provider: p.key, ...data },
+      where: { userId_provider: { userId, provider: p.key } },
+      create: { userId, provider: p.key, ...data },
       update: data,
     });
 
@@ -152,19 +196,20 @@ export async function callback(req: Request, provider: string) {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 5000);
       const result = await Promise.race([
-        syncUserConnectors(user.id, p.key),
+        syncUserConnectors(userId, p.key),
         new Promise<never>((_, rej) => ctrl.signal.addEventListener("abort", () => rej(new Error("sync timeout")))),
       ]);
       imported = result?.total || 0;
       clearTimeout(t);
     } catch (syncErr) {
       console.error("First sync after connect failed (non-fatal):", String(syncErr).slice(0, 100));
-      // The 5 AM cron + Sync now button will pick it up.
+      // The hourly reconciliation cron + Refresh now button will pick it up.
     }
 
-    return NextResponse.redirect(
-      `${base}/connectors?ok=${provider}&imported=${imported}`,
-    );
+    const okUrl = new URL(`${base}/connectors`);
+    okUrl.searchParams.set("ok", provider);
+    okUrl.searchParams.set("imported", String(imported));
+    return NextResponse.redirect(returnUrl ? `${returnUrl}${returnUrl.includes("?") ? "&" : "?"}ok=${provider}&imported=${imported}` : okUrl.toString());
   } catch (e) {
     const reason = String(e instanceof Error ? e.message : e)
       .replace(/Bearer\s+\S+/gi, "[redacted]")

@@ -198,7 +198,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="md:hidden fixed top-0 inset-x-0 z-20 bg-ocean-950 text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Waves className="w-6 h-6 text-ocean-300" />
-          <span className="font-display font-bold">JasMiamiMethod</span>
+          <span className="font-display font-bold">JMMai</span>
         </div>
         <div className="flex items-center gap-2">
           <Globe className="w-4 h-4 text-ocean-400" />

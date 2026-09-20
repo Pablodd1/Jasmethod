@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { SiteHeader, SiteFooter } from "@/components/site-shell";
+import { SportProtocolCard } from "@/components/sport-protocol-card";
 import { TOPICS, TOPIC_LIST, type TopicSlug } from "@/lib/topics";
 
 const SLUGS = Object.keys(TOPICS) as TopicSlug[];
@@ -76,6 +77,9 @@ export default function TopicPage({ params }: { params: { slug: string } }) {
                 )}
               </section>
             ))}
+
+            {/* Personalized protocol — signed-in athletes see their sport's stack */}
+            {topic.slug === "supplements" && <SportProtocolCard />}
 
             {/* Protocol callout */}
             <aside className="rounded-2xl border border-vermillion-400/40 bg-vermillion-400/5 p-6 my-8">
