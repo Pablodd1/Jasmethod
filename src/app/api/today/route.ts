@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
-import { prescribeToday, recommendFuel, postWorkoutFuel } from "@/lib/adaptive";
+import { prescribeToday, postWorkoutFuel } from "@/lib/adaptive";
+import {
+  buildFuelingPlan,
+  fuelCurveReference,
+  postFuelPersonalized,
+} from "@/lib/fueling";
 import { baseWorkout } from "@/lib/prescription";
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
@@ -50,6 +55,31 @@ export async function GET(req: Request) {
               : { verdict: "full", durationFactor: 1, intensityCap: "z7" },
           profile: user.profile,
         });
+      // V2 fueling: personalized (weight, sweat rate, sweat sodium, gut
+      // training) with the scrollable session timeline + target curve.
+      const fuel = buildFuelingPlan({
+        durationMin: p.durationMin,
+        intensity: p.intensity,
+        weightKg: user.profile?.weightKg,
+        sweatRateMlH: user.profile?.sweatRateMlH,
+        sodiumMgPerL: user.profile?.sodiumMgPerL,
+        gutTrained: user.profile?.gutTrained,
+        verdict: p.verdict,
+      });
+      const postBase = p.durationMin
+        ? postWorkoutFuel(p)
+        : null;
+      const post = postBase
+        ? {
+            ...postBase,
+            personalized: postFuelPersonalized({
+              durationMin: p.durationMin,
+              intensity: p.intensity,
+              sport: p.sport,
+              weightKg: user.profile?.weightKg,
+            }),
+          }
+        : null;
       return {
         id: w.id,
         title: p.title,
@@ -66,8 +96,9 @@ export async function GET(req: Request) {
         approved: w.approved,
         dayOff: !!w.planDay?.dayOff,
         prescription: p,
-        fuel: recommendFuel(p),
-        post: p.durationMin ? postWorkoutFuel(p) : null,
+        fuel,
+        fuelCurve: fuelCurveReference(!!user.profile?.gutTrained),
+        post,
         coachNotes: baseWorkout(w).description || null,
       };
     });

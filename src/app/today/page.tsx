@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Watch } from "lucide-react";
+import { FuelTimeline } from "@/components/fuel-timeline";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
@@ -279,13 +280,49 @@ export default function TodayPage() {
                     <summary className="cursor-pointer font-medium">
                       {es ? "Nutrición y recuperación" : "Fuel and recovery"}
                     </summary>
-                    {session.fuel.carbsPerHourG > 0 ? (
+                    {/* Pre-session fuel — what to eat before you start */}
+                    {session.fuel?.preSession?.carbsG > 0 && (
+                      <p className="text-sm mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                        🍚 <strong>{es ? "Antes" : "Pre"} ({session.fuel.preSession.timingLabel}):</strong>{" "}
+                        {session.fuel.preSession.carbsG} g {es ? "carbohidratos" : "carbs"} — {session.fuel.preSession.note}
+                      </p>
+                    )}
+                    {session.fuel?.carbsPerHourG > 0 || session.fuel?.fluidMlPerHour ? (
                       <>
                         <p className="text-sm mt-3">
                           {session.fuel.carbsPerHourG} g carbs/h ·{" "}
                           {session.fuel.sodiumMgPerHour} mg sodium/h ·{" "}
                           {session.fuel.fluidMlPerHour} ml/h
+                          {session.fuel.fluidSource === "estimated" && (
+                            <span className="text-[11px] text-slate-400"> ({es ? "estimado" : "estimated"})</span>
+                          )}
                         </p>
+                        {/* The scrollable sugar-vs-hours timeline */}
+                        <div className="mt-3">
+                          <FuelTimeline
+                            segments={session.fuel.segments || []}
+                            curve={session.fuelCurve || []}
+                            carbsPerHourG={session.fuel.carbsPerHourG}
+                            fluidMlPerHour={session.fuel.fluidMlPerHour}
+                            lang={es ? "es" : "en"}
+                          />
+                        </div>
+                        {session.fuel.segments?.length > 0 && (
+                          <ol className="mt-2 space-y-0.5 text-xs text-slate-600">
+                            {session.fuel.segments
+                              .filter((_: any, i: number) => i % 2 === 0) // every other segment keeps the list readable
+                              .map((s: any, i: number) => (
+                                <li key={i} className="font-mono">
+                                  {Math.floor(s.atMin / 60)}:{String(s.atMin % 60).padStart(2, "0")} — {s.label}
+                                </li>
+                              ))}
+                          </ol>
+                        )}
+                        {session.fuel.gutNote && (
+                          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">
+                            🧪 {session.fuel.gutNote}
+                          </p>
+                        )}
                         <FuelCalculator
                           carbsPerH={session.fuel.carbsPerHourG}
                           sodiumPerH={session.fuel.sodiumMgPerHour}
@@ -301,10 +338,15 @@ export default function TodayPage() {
                       </p>
                     )}
                     {session.post && (
-                      <p className="text-sm mt-2">
-                        Post: {session.post.carbsG} g carbs ·{" "}
-                        {session.post.proteinG} g protein
-                      </p>
+                      <>
+                        <p className="text-sm mt-2">
+                          <strong>{es ? "Después" : "Post"}:</strong> {session.post.carbsG} g carbs ·{" "}
+                          {session.post.proteinG} g protein ({session.post.ratio})
+                        </p>
+                        {session.post.personalized?.note && (
+                          <p className="text-xs text-slate-500 mt-1">{session.post.personalized.note}</p>
+                        )}
+                      </>
                     )}
                     <p className="text-sm mt-2">
                       {session.prescription.detail.breathing}
