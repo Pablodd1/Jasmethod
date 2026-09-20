@@ -58,16 +58,18 @@ export function SiteHeader() {
             {t(language, "pub.howItWorks")}
           </Link>
           {/* Logged-in athletes keep the app one tap away on every public page
-              (science guides included) — previously hidden on mobile. */}
-          {user ? (
-            <Link href="/dashboard" className="text-sm font-semibold text-vermillion-600 hover:text-vermillion-500 transition-colors">
-              {t(language, "pub.dashboard")} →
-            </Link>
-          ) : (
-            <Link href="/dashboard" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors hidden sm:inline">
-              {t(language, "pub.dashboard")}
-            </Link>
-          )}
+              (science guides included). Logged-out visitors get the same door:
+              /today redirects to sign-in, then straight back to training. */}
+          <Link
+            href="/today"
+            className={`text-sm font-semibold transition-colors ${
+              user
+                ? "text-vermillion-600 hover:text-vermillion-500"
+                : "text-ink-600 hover:text-ink-900"
+            }`}
+          >
+            {t(language, "pub.dashboard")} →
+          </Link>
           <PublicLanguageSelect compact />
           {!user && (
             <Link

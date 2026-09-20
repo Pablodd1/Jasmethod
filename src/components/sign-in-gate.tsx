@@ -37,6 +37,11 @@ export default function SignInGate() {
               <span className="font-mono text-xs text-vermillion-500 tracking-widest">»</span>
             </div>
 
+            <p className="mt-5 text-sm text-ink-500">
+              🏊 Triathlon · 🏃 Running · 🚴 Cycling · 🔥 HYROX · 🥊 Boxing · ⚡ Track
+              100–400m · 🏋️ Strength
+            </p>
+
             <ul className="mt-8 space-y-3">
               {SUMMARY.map((s) => (
                 <li key={s} className="flex items-start gap-2.5 text-ink-700">
