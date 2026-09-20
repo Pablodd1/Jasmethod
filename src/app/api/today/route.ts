@@ -7,6 +7,7 @@ import {
   fuelCurveReference,
   postFuelPersonalized,
 } from "@/lib/fueling";
+import { autoGenerateStarterPlan } from "@/lib/plan-auto";
 import { baseWorkout } from "@/lib/prescription";
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
@@ -41,7 +42,36 @@ export async function GET(req: Request) {
         where: { userId_date: { userId: user.id, date: start } },
       }),
     ]);
-    const sessions = workouts.map((w) => {
+
+    // "Training is always generated": an athlete with no sessions today and
+    // no active plan (onboarding skipped, plan archived, fresh device login)
+    // gets a starter plan for their sport immediately — defaults cover any
+    // missing profile data. Never duplicates an existing program.
+    let todaysWorkouts = workouts;
+    if (!workouts.length) {
+      const activePlan = await prisma.trainingPlan.findFirst({
+        where: { userId: user.id, status: "active" },
+        select: { id: true },
+      });
+      if (!activePlan) {
+        try {
+          await autoGenerateStarterPlan(user.id);
+          todaysWorkouts = await prisma.workout.findMany({
+            where: {
+              userId: user.id,
+              date: { gte: start, lt: end },
+              planned: true,
+            },
+            include: { planDay: { select: { notes: true, dayOff: true } } },
+            orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
+          });
+        } catch (e) {
+          console.error("today: starter plan generation failed:", e);
+        }
+      }
+    }
+
+    const sessions = todaysWorkouts.map((w) => {
       let p = null;
       try {
         p = w.prescription ? JSON.parse(w.prescription) : null;
