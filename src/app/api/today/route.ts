@@ -136,6 +136,15 @@ export async function GET(req: Request) {
       date: key,
       timezone: user.timezone,
       units: user.profile?.units === "imperial" ? "imperial" : "metric",
+      needsTesting: {
+        vo2max: !user.profile?.vo2max,
+        lthr: !user.profile?.lthr,
+      },
+      vo2maxSource: user.profile?.vo2max
+        ? "measured"
+        : user.profile?.restingHr
+          ? "rhr-formula (Uth–Sørensen 2004)"
+          : null,
       deviceSummary: {
         connected: connectors.filter((c: any) => c.status === "connected").length,
         stale: connectors.some((c: any) => c.status === "connected" && c.lastSyncAt && Date.now() - new Date(c.lastSyncAt).getTime() > 12 * 3600000),

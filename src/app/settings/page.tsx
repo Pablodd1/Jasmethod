@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fmtWeight, fmtHeight } from "@/lib/units";
+import { EstimateBanner } from "@/components/estimate-banner";
 import {
   Save,
   HeartPulse,
@@ -30,6 +31,7 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [form, setForm] = useState<any>({});
   const [vo2Estimate, setVo2Estimate] = useState<any>(null);
+  const [vo2Source, setVo2Source] = useState<string | null>(null);
   const [modules, setModules] = useState<any>({});
 
   async function load() {
@@ -37,6 +39,7 @@ export default function SettingsPage() {
     const d = await res.json();
     setProfile(d.profile);
     setZones(d.zones);
+    setVo2Source(d.vo2maxSource || null);
     if (d.profile) {
       setForm({
         birthYear: d.profile.birthYear || "",
@@ -190,6 +193,12 @@ export default function SettingsPage() {
             ✓ Profile saved — zones updated
           </div>
         )}
+
+        <EstimateBanner
+          vo2maxMissing={!profile?.vo2max}
+          lthrMissing={!profile?.lthr}
+          vo2maxSource={vo2Source}
+        />
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="card">

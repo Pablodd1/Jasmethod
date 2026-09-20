@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Watch } from "lucide-react";
 import { FuelTimeline } from "@/components/fuel-timeline";
+import { EstimateBanner } from "@/components/estimate-banner";
 import { fmtVolumeDual } from "@/lib/units";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -128,6 +129,16 @@ export default function TodayPage() {
             <p className="text-sm text-ocean-700">
               {data.race.name} · {data.race.daysAway} {es ? "días" : "days"}
             </p>
+          )}
+          {data?.needsTesting && (data.needsTesting.vo2max || data.needsTesting.lthr) && (
+            <div className="mt-2">
+              <EstimateBanner
+                compact
+                vo2maxMissing={data.needsTesting.vo2max}
+                lthrMissing={data.needsTesting.lthr}
+                vo2maxSource={data.vo2maxSource}
+              />
+            </div>
           )}
         </div>
         {offline && (

@@ -3,6 +3,27 @@ import { encryptSecret, decryptSecret } from "./crypto";
 import { dayBounds, dateKey, localDate } from "./dates";
 import { storeActivity } from "./activity-store";
 import * as api from "./importers";
+import { buildFuelingPlan } from "./fueling";
+import { sportIcon, calendarDescription, type PlanFormatSession } from "./plan-formats";
+
+// Prescription JSON → exportable steps (defensive: never throw on old data).
+function safeSteps(prescription: string | null): PlanFormatSession["steps"] {
+  if (!prescription) return [];
+  try {
+    const p = JSON.parse(prescription);
+    return Array.isArray(p.steps)
+      ? p.steps.map((s: any) => ({
+          name: String(s.name || "Step"),
+          seconds: Number(s.seconds) || 0,
+          reps: s.reps,
+          zone: String(s.zone || "z2"),
+          note: s.note,
+        }))
+      : [];
+  } catch {
+    return [];
+  }
+}
 export interface SyncResult {
   provider: string;
   ok: boolean;
@@ -29,8 +50,9 @@ export async function syncUserConnectors(
 ): Promise<SyncSummary> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { timezone: true },
+    select: { timezone: true, profile: { select: { weightKg: true, sweatRateMlH: true, sodiumMgPerL: true, gutTrained: true } } },
   });
+  const profile = user.profile;
   const connections = await prisma.connector.findMany({
     where: {
       userId,
@@ -190,9 +212,24 @@ export async function syncUserConnectors(
           const link =
             links.find((l) => l.workoutId === w.id) ||
             links.find((l) => l.notes === `gcalPush:${legacyRemote?.id}`);
+          const fuelPlan = buildFuelingPlan({
+            durationMin: w.durationMin,
+            intensity: w.intensity || "z2",
+            weightKg: profile?.weightKg,
+            sweatRateMlH: profile?.sweatRateMlH,
+            sodiumMgPerL: profile?.sodiumMgPerL,
+            gutTrained: profile?.gutTrained,
+          });
           const gid = await api.googleCalUpsertEvent(access, {
-            summary: `${w.title} · ${w.durationMin} min`,
-            description: w.notes || undefined,
+            summary: `${sportIcon(w.sport)} ${w.title} · ${w.durationMin} min`,
+            description: calendarDescription({
+              title: w.title,
+              sport: w.sport,
+              durationMin: w.durationMin,
+              intensity: w.intensity,
+              steps: safeSteps(w.prescription),
+              fuel: fuelPlan,
+            }),
             start: localDate(
               dateKey(w.date, user.timezone),
               user.timezone,
