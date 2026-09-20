@@ -108,6 +108,21 @@ export async function POST(req: Request) {
       stress: +b.stress,
       sick: b.sick === true,
       menstrual: b.menstrual === true,
+      // Device-free daily loop — persisted with the record and used by
+      // adaptSession (pain/sessionFelt) and the session budget (availableMin).
+      availableMin:
+        b.availableMinutes == null || b.availableMinutes === ""
+          ? undefined
+          : Number(b.availableMinutes),
+      newPain: b.newPain === true || undefined,
+      painLocation:
+        typeof b.painLocation === "string" && b.painLocation.trim()
+          ? b.painLocation.trim().slice(0, 80)
+          : undefined,
+      painAffectsMovement: b.painAffectsMovement === true || undefined,
+      sessionFelt: ["easier", "normal", "harder"].includes(b.sessionFelt)
+        ? b.sessionFelt
+        : undefined,
     };
     for (const [key, max] of Object.entries({
       mood: 5,

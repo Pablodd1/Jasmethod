@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import {
   estimateVo2max,
+  estimateVo2maxFromHr,
   maxHrFromAge,
   estimateLthr,
   buildZoneTable,
@@ -42,19 +43,43 @@ export async function GET(req: Request) {
     restingHr: profile.restingHr || undefined,
   });
 
+  // RHR-based VO2max estimate (Uth–Sørensen 2004: 15.3 × HRmax/HRrest) —
+  // used ONLY when no test exists; a measured value is never replaced.
+  // Needs a measured morning RHR; HRmax may be the Tanaka age estimate.
+  const vo2maxEstimate = !profile.vo2max &&
+    profile.restingHr &&
+    hrMax
+    ? estimateVo2maxFromHr(hrMax, profile.restingHr)
+    : null;
+
   return NextResponse.json({
     profile,
     zones,
     age,
     hrMax,
     lthr,
+    vo2max: profile.vo2max ?? vo2maxEstimate ?? null,
+    vo2maxSource: profile.vo2max
+      ? "lab/measured"
+      : vo2maxEstimate
+        ? "rhr-formula (Uth–Sørensen 2004)"
+        : null,
     provenance: {
-      lthr: profile.lthr ? "saved baseline" : lthr ? "estimated" : "unknown",
+      lthr: profile.lthr ? "saved baseline" : lthr ? "estimated (HRmax-based)" : "unknown",
       maxHr: profile.maxHr
         ? "saved baseline"
         : hrMax
-          ? "age estimate"
+          ? "age estimate (Tanaka 2001)"
           : "unknown",
+      vo2max: profile.vo2max
+        ? "measured"
+        : vo2maxEstimate
+          ? "estimated from resting HR"
+          : "unknown",
+    },
+    needsTesting: {
+      vo2max: !profile.vo2max,
+      lthr: !profile.lthr,
     },
   });
 }

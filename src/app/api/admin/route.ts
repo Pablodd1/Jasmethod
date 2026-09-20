@@ -15,14 +15,26 @@ export async function GET(req: Request) {
       1,
       Math.floor(Number(url.searchParams.get("page")) || 1),
     );
+    // SCOPING: a coach's roster is their ACTIVE assignments; admins see all.
+    const assignedIds = me.role === "coach"
+      ? (
+          await prisma.coachAssignment.findMany({
+            where: { coachId: me.id, status: "active", consent: { not: "revoked" } },
+            select: { athleteId: true },
+          })
+        ).map((a) => a.athleteId)
+      : null;
     const where = q
       ? {
+          ...(assignedIds ? { id: { in: assignedIds } } : {}),
           OR: [
             { name: { contains: q, mode: "insensitive" as const } },
             { email: { contains: q, mode: "insensitive" as const } },
           ],
         }
-      : {};
+      : assignedIds
+        ? { id: { in: assignedIds } }
+        : {};
     const [count, users] = await Promise.all([
       prisma.user.count({ where }),
       prisma.user.findMany({

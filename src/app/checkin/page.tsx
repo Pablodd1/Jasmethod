@@ -330,12 +330,81 @@ export default function CheckinPage() {
                 <input type="checkbox" checked={answers.sick} onChange={(e) => setQ("sick", e.target.checked)} /> Feeling sick or injured today
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={answers.menstrual} onChange={(e) => setQ("menstrual", e.target.checked)} /> Menstrual phase (adjusts readiness)
+                <input type="checkbox" checked={answers.menstrual} onChange={(e) => setQ("menstrual", e.target.checked)} /> {lang === "es" ? "Fase menstrual (guía contextual — tus síntomas mandan)" : "Menstrual phase (contextual guidance — your symptoms lead)"}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 Cycle day (1-35):
                 <input type="number" min={1} max={35} value={answers.cycleDay || ""} onChange={(e) => setQ("cycleDay", e.target.value)} className="input w-20 !py-1 !px-2 text-xs" placeholder="—" />
               </label>
+
+              {/* Device-free daily loop — the three questions that make the
+                  session fit real life (Saw 2015 self-report monitoring). */}
+              <div className="rounded-xl border border-ocean-200 bg-ocean-50/50 p-3 space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wide text-ocean-700">
+                  {lang === "es" ? "Tu día real" : "Your real day"}
+                </div>
+                <div>
+                  <label className="label">{lang === "es" ? "¿Cuántos minutos tienes hoy de verdad?" : "How many minutes do you actually have today?"}</label>
+                  <input
+                    type="number" min={0} max={600} step={5}
+                    className="input"
+                    value={answers.availableMinutes ?? ""}
+                    onChange={(e) => setQ("availableMinutes", e.target.value)}
+                    placeholder={lang === "es" ? "p.ej. 45" : "e.g. 45"}
+                  />
+                  <div className="text-[11px] text-slate-400">
+                    {lang === "es"
+                      ? "La sesión se ajusta a este tiempo — 0 significa descanso activo breve."
+                      : "The session is fitted to this window — 0 means a short active-recovery day."}
+                  </div>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={answers.newPain === true}
+                      onChange={(e) => setQ("newPain", e.target.checked)}
+                    />
+                    {lang === "es" ? "¿Dolor nuevo en un punto concreto? (no el músculo adolorido)" : "Any new pain in a specific spot? (not general soreness)"}
+                  </label>
+                  {answers.newPain === true && (
+                    <div className="mt-2 space-y-2 pl-6">
+                      <input
+                        className="input"
+                        value={answers.painLocation ?? ""}
+                        onChange={(e) => setQ("painLocation", e.target.value)}
+                        placeholder={lang === "es" ? "¿Dónde? p.ej. rodilla izquierda" : "Where? e.g. left knee"}
+                      />
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={answers.painAffectsMovement === true}
+                          onChange={(e) => setQ("painAffectsMovement", e.target.checked)}
+                        />
+                        {lang === "es" ? "¿Cambia tu forma de moverte?" : "Does it change how you move?"}
+                      </label>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="label">{lang === "es" ? "La sesión de ayer se sintió…" : "Yesterday's session felt…"}</label>
+                  <select
+                    className="input"
+                    value={answers.sessionFelt ?? ""}
+                    onChange={(e) => setQ("sessionFelt", e.target.value)}
+                  >
+                    <option value="">{lang === "es" ? "— no contestar —" : "— skip —"}</option>
+                    <option value="easier">{lang === "es" ? "Más fácil de lo esperado" : "Easier than expected"}</option>
+                    <option value="normal">{lang === "es" ? "Como se esperaba" : "As expected"}</option>
+                    <option value="harder">{lang === "es" ? "Más dura de lo esperado" : "Harder than expected"}</option>
+                  </select>
+                  <div className="text-[11px] text-slate-400">
+                    {lang === "es"
+                      ? "Detecta si la dosis actual es demasiado grande."
+                      : "Detects whether the current dose is too big."}
+                  </div>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Morning weight (kg)</label>

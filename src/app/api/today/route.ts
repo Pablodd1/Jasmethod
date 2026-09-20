@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
-import { prescribeToday, recommendFuel, postWorkoutFuel } from "@/lib/adaptive";
+import { prescribeToday, postWorkoutFuel } from "@/lib/adaptive";
+import {
+  buildFuelingPlan,
+  fuelCurveReference,
+  postFuelPersonalized,
+} from "@/lib/fueling";
+import { autoGenerateStarterPlan } from "@/lib/plan-auto";
 import { baseWorkout } from "@/lib/prescription";
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
@@ -36,7 +42,36 @@ export async function GET(req: Request) {
         where: { userId_date: { userId: user.id, date: start } },
       }),
     ]);
-    const sessions = workouts.map((w) => {
+
+    // "Training is always generated": an athlete with no sessions today and
+    // no active plan (onboarding skipped, plan archived, fresh device login)
+    // gets a starter plan for their sport immediately — defaults cover any
+    // missing profile data. Never duplicates an existing program.
+    let todaysWorkouts = workouts;
+    if (!workouts.length) {
+      const activePlan = await prisma.trainingPlan.findFirst({
+        where: { userId: user.id, status: "active" },
+        select: { id: true },
+      });
+      if (!activePlan) {
+        try {
+          await autoGenerateStarterPlan(user.id);
+          todaysWorkouts = await prisma.workout.findMany({
+            where: {
+              userId: user.id,
+              date: { gte: start, lt: end },
+              planned: true,
+            },
+            include: { planDay: { select: { notes: true, dayOff: true } } },
+            orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
+          });
+        } catch (e) {
+          console.error("today: starter plan generation failed:", e);
+        }
+      }
+    }
+
+    const sessions = todaysWorkouts.map((w) => {
       let p = null;
       try {
         p = w.prescription ? JSON.parse(w.prescription) : null;
@@ -50,6 +85,31 @@ export async function GET(req: Request) {
               : { verdict: "full", durationFactor: 1, intensityCap: "z7" },
           profile: user.profile,
         });
+      // V2 fueling: personalized (weight, sweat rate, sweat sodium, gut
+      // training) with the scrollable session timeline + target curve.
+      const fuel = buildFuelingPlan({
+        durationMin: p.durationMin,
+        intensity: p.intensity,
+        weightKg: user.profile?.weightKg,
+        sweatRateMlH: user.profile?.sweatRateMlH,
+        sodiumMgPerL: user.profile?.sodiumMgPerL,
+        gutTrained: user.profile?.gutTrained,
+        verdict: p.verdict,
+      });
+      const postBase = p.durationMin
+        ? postWorkoutFuel(p)
+        : null;
+      const post = postBase
+        ? {
+            ...postBase,
+            personalized: postFuelPersonalized({
+              durationMin: p.durationMin,
+              intensity: p.intensity,
+              sport: p.sport,
+              weightKg: user.profile?.weightKg,
+            }),
+          }
+        : null;
       return {
         id: w.id,
         title: p.title,
@@ -66,14 +126,25 @@ export async function GET(req: Request) {
         approved: w.approved,
         dayOff: !!w.planDay?.dayOff,
         prescription: p,
-        fuel: recommendFuel(p),
-        post: p.durationMin ? postWorkoutFuel(p) : null,
+        fuel,
+        fuelCurve: fuelCurveReference(!!user.profile?.gutTrained),
+        post,
         coachNotes: baseWorkout(w).description || null,
       };
     });
     return Response.json({
       date: key,
       timezone: user.timezone,
+      units: user.profile?.units === "imperial" ? "imperial" : "metric",
+      needsTesting: {
+        vo2max: !user.profile?.vo2max,
+        lthr: !user.profile?.lthr,
+      },
+      vo2maxSource: user.profile?.vo2max
+        ? "measured"
+        : user.profile?.restingHr
+          ? "rhr-formula (Uth–Sørensen 2004)"
+          : null,
       deviceSummary: {
         connected: connectors.filter((c: any) => c.status === "connected").length,
         stale: connectors.some((c: any) => c.status === "connected" && c.lastSyncAt && Date.now() - new Date(c.lastSyncAt).getTime() > 12 * 3600000),

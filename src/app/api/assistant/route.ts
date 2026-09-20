@@ -24,39 +24,84 @@ export async function POST(req: Request) {
     // Check if this is a training modification command
     const cmd = parseTrainingCommand(q);
     if (cmd.command !== "NO_CHANGE" && cmd.confidence >= 0.7) {
-      // Fetch today's session and apply the command
-      const todayS = new Date(); todayS.setHours(0, 0, 0, 0);
-      const todayE = new Date(todayS); todayE.setDate(todayE.getDate() + 1);
+      // Fetch today's session — in the ATHLETE's timezone, not the server's.
+      const { start: cmdDay, end: cmdDayEnd } = dayBounds(user.timezone);
       const todaySession = await prisma.workout.findFirst({
-        where: { userId: user.id, date: { gte: todayS, lt: todayE }, planned: true },
+        where: { userId: user.id, date: { gte: cmdDay, lt: cmdDayEnd }, planned: true },
         orderBy: { date: "asc" },
       });
       if (todaySession) {
-        // Fetch readiness context for safety checks
-        const lastCheckin = await prisma.dailyCheckin.findFirst({
-          where: { userId: user.id },
+        // Readiness context: TODAY's check-in only — a week-old check-in is
+        // not "current readiness", and unknown data must stay unknown so the
+        // safety gates in applyTrainingCommand behave conservatively.
+        const todayCheckin = await prisma.dailyCheckin.findFirst({
+          where: { userId: user.id, date: { gte: cmdDay, lt: cmdDayEnd } },
           orderBy: { date: "desc" },
         });
-        let readinessScore = 60, hrvStatus = "normal", soreness = 3;
-        if (lastCheckin?.adaptation) {
+        let readinessScore: number | undefined;
+        let soreness: number | undefined;
+        let hrvStatus: string | undefined;
+        if (todayCheckin?.adaptation) {
           try {
-            const a = JSON.parse(lastCheckin.adaptation);
-            readinessScore = a.score ?? 60;
+            const a = JSON.parse(todayCheckin.adaptation);
+            readinessScore = a.score;
           } catch {}
         }
+        if (todayCheckin?.answers) {
+          try {
+            const ans = JSON.parse(todayCheckin.answers);
+            soreness = ans.soreness;
+          } catch {}
+        }
+        const [metrics, profileRow] = await Promise.all([
+          prisma.dailyMetrics.findUnique({
+            where: { userId_date: { userId: user.id, date: cmdDay } },
+          }),
+          prisma.athleteProfile.findUnique({
+            where: { userId: user.id },
+            select: { hrvBaseline: true },
+          }),
+        ]);
+        if (metrics?.hrv != null && profileRow?.hrvBaseline != null) {
+          const delta = (metrics.hrv - profileRow.hrvBaseline) / profileRow.hrvBaseline;
+          hrvStatus = delta >= 0.05 ? "high" : delta <= -0.1 ? "low" : "normal";
+        }
         const result = applyTrainingCommand(
-          { session: { title: todaySession.title, mainSet: [todaySession.notes || todaySession.title], totalQualityMeters: 300, type: todaySession.type } },
+          { session: { title: todaySession.title, mainSet: [todaySession.notes || todaySession.title], totalQualityMeters: 300, type: todaySession.type, durationMin: todaySession.durationMin } },
           cmd,
           { readinessScore, hrvStatus, soreness },
         );
         if (result.allowed) {
-          // Apply to the database
+          const before = {
+            title: todaySession.title,
+            durationMin: todaySession.durationMin,
+            notes: todaySession.notes,
+          };
+          // Apply to the database — prescription is invalidated so the Today
+          // view and every export regenerate from the edited session instead
+          // of showing a stale structure that disagrees with this change.
           await prisma.workout.update({
             where: { id: todaySession.id },
             data: {
               title: result.adjusted.session.title,
               notes: result.adjusted.session.mainSet.join("; "),
               durationMin: result.adjusted.session.durationMin ?? todaySession.durationMin,
+              prescription: null,
+            },
+          });
+          await prisma.auditLog.create({
+            data: {
+              actorId: user.id,
+              subjectId: user.id,
+              action: "chat.trainingCommand",
+              entityId: todaySession.id,
+              before: JSON.stringify(before).slice(0, 2000),
+              after: JSON.stringify({
+                command: cmd.command,
+                title: result.adjusted.session.title,
+                durationMin: result.adjusted.session.durationMin ?? todaySession.durationMin,
+              }).slice(0, 2000),
+              note: q.slice(0, 200),
             },
           });
         }

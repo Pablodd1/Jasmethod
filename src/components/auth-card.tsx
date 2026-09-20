@@ -8,7 +8,7 @@ interface AuthCardProps {
   /** show a heading row above the toggle */
   title?: string;
   subtitle?: string;
-  /** flow after success — defaults to /dashboard */
+  /** flow after success — sign-ins go here; signups always enter /onboard */
   redirectTo?: string;
 }
 
@@ -16,7 +16,7 @@ export function AuthCard({
   initialMode = "login",
   title = "Sign in to your method",
   subtitle = "Or register — free for athletes.",
-  redirectTo = "/onboard",
+  redirectTo = "/today",
 }: AuthCardProps) {
   const [mode, setMode] = useState<"login" | "signup">(initialMode);
   const [email, setEmail] = useState("");
@@ -68,7 +68,9 @@ export function AuthCard({
         setBusy(false);
         return;
       }
-      window.location.href = redirectTo;
+      // First-time signups enter the onboarding wizard; sign-ins go straight
+      // to training (the wizard self-skips for onboarded users anyway).
+      window.location.href = mode === "signup" ? "/onboard" : redirectTo === "/onboard" ? "/today" : redirectTo;
     } catch {
       setError("Network error — please try again.");
       setDetail("");

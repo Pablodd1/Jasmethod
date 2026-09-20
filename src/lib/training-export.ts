@@ -1,8 +1,29 @@
 import { dateKey, localDate } from "./dates";
 import { buildFitWorkout, workoutToFitSpec } from "./fit-export";
 import { buildZip, type ZipEntry } from "./zip";
+import { calendarDescription, type PlanFormatSession } from "./plan-formats";
+import { buildFuelingPlan } from "./fueling";
 
 type Row = Record<string, unknown>;
+
+// Prescription JSON → exportable steps (defensive against old/odd data).
+function safeSteps(prescription: unknown): PlanFormatSession["steps"] {
+  if (typeof prescription !== "string") return [];
+  try {
+    const p = JSON.parse(prescription);
+    return Array.isArray(p.steps)
+      ? p.steps.map((s: any) => ({
+          name: String(s.name || "Step"),
+          seconds: Number(s.seconds) || 0,
+          reps: s.reps,
+          zone: String(s.zone || "z2"),
+          note: s.note,
+        }))
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 export interface TrainingExportData {
   athlete: { name: string; email: string; timezone: string };
@@ -28,7 +49,14 @@ export interface TrainingExportData {
       }
     >;
   };
-  profile?: { lthr?: number | null; ftp?: number | null } | null;
+  profile?: {
+    lthr?: number | null;
+    ftp?: number | null;
+    weightKg?: number | null;
+    sweatRateMlH?: number | null;
+    sodiumMgPerL?: number | null;
+    gutTrained?: boolean | null;
+  } | null;
 }
 
 const csvCell = (value: unknown) => {
@@ -83,7 +111,23 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
         `DTSTART:${utcStamp(start)}`,
         `DTEND:${utcStamp(end)}`,
         `SUMMARY:${icsText(session.title)}`,
-        `DESCRIPTION:${icsText(`${session.sport} · ${session.intensity || ""} · ${session.type || ""}\n${session.notes || ""}`)}`,
+        `DESCRIPTION:${icsText(
+          calendarDescription({
+            title: String(session.title),
+            sport: String(session.sport),
+            durationMin: Number(session.durationMin),
+            intensity: (session.intensity as string) ?? null,
+            steps: safeSteps(session.prescription),
+            fuel: buildFuelingPlan({
+              durationMin: Number(session.durationMin),
+              intensity: String(session.intensity || "z2"),
+              weightKg: data.profile?.weightKg,
+              sweatRateMlH: data.profile?.sweatRateMlH,
+              sodiumMgPerL: data.profile?.sodiumMgPerL,
+              gutTrained: !!data.profile?.gutTrained,
+            }),
+          }),
+        )}`,
         "END:VEVENT",
       );
     }

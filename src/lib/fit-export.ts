@@ -19,6 +19,8 @@ export function workoutToFitSpec(
     w.durationMin,
     detail?.zone || "z2",
     w.type || "endurance",
+    0,
+    w.sport,
   );
   if (w.prescription) {
     try {

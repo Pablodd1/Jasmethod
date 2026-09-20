@@ -21,6 +21,25 @@ export default function OnboardPage() {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [lang, setLang] = useState(user?.language || "es");
+  const [checking, setChecking] = useState(true);
+
+  // First-timers only: an athlete who completed onboarding (or already has
+  // profile essentials from another path) is bounced straight to Today —
+  // the wizard never nags returning users. ?redo=1 forces it open.
+  useEffect(() => {
+    if (!user) return;
+    if (new URLSearchParams(window.location.search).get("redo") === "1") {
+      setChecking(false);
+      return;
+    }
+    fetch("/api/onboard")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && d.onboarded && d.profileComplete) router.replace("/today");
+        else setChecking(false);
+      })
+      .catch(() => setChecking(false));
+  }, [user, router]);
 
   // Profile form
   const [profile, setProfile] = useState({
@@ -73,6 +92,16 @@ export default function OnboardPage() {
 
   // Step indicator
   const STEPS = [t("Welcome", "Bienvenido"), t("Profile", "Perfil"), t("Baselines", "Umbrales"), t("Devices", "Dispositivos"), t("Goal Race", "Carrera objetivo"), t("Done", "Listo")];
+
+  if (checking) {
+    return (
+      <ProtectedPage>
+        <div className="max-w-2xl mx-auto py-16 px-4 text-center">
+          <div className="w-10 h-10 border-4 border-ocean-600 border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      </ProtectedPage>
+    );
+  }
 
   return (
     <ProtectedPage>

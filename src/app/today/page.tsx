@@ -2,11 +2,21 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Watch } from "lucide-react";
+import { FuelTimeline } from "@/components/fuel-timeline";
+import { EstimateBanner } from "@/components/estimate-banner";
+import { fmtVolumeDual } from "@/lib/units";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
   const { user } = useAuth();
   const es = user?.language === "es";
+  const [stepsView, setStepsView] = useState<"list" | "cards">("list");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("jmm_steps_view");
+      if (v === "cards" || v === "list") setStepsView(v);
+    } catch {}
+  }, []);
   const [data, setData] = useState<any>(null),
     [error, setError] = useState(""),
     [offline, setOffline] = useState(false),
@@ -84,15 +94,15 @@ export default function TodayPage() {
       setBusy(false);
     }
   }
-  async function download() {
+  async function download(approve = false) {
     if (!session) return;
     setBusy(true);
     setError("");
     try {
       const r = await fetch(`/api/workout/approve?sessionId=${session.id}`, {
-        method: "POST",
+        method: approve ? "POST" : "GET",
       });
-      if (!r.ok) throw Error((await r.json()).error);
+      if (!r.ok) throw Error((await r.json().catch(() => ({}))).error);
       const blob = await r.blob(),
         url = URL.createObjectURL(blob),
         a = document.createElement("a");
@@ -119,6 +129,16 @@ export default function TodayPage() {
             <p className="text-sm text-ocean-700">
               {data.race.name} · {data.race.daysAway} {es ? "días" : "days"}
             </p>
+          )}
+          {data?.needsTesting && (data.needsTesting.vo2max || data.needsTesting.lthr) && (
+            <div className="mt-2">
+              <EstimateBanner
+                compact
+                vo2maxMissing={data.needsTesting.vo2max}
+                lthrMissing={data.needsTesting.lthr}
+                vo2maxSource={data.vo2maxSource}
+              />
+            </div>
           )}
         </div>
         {offline && (
@@ -246,22 +266,94 @@ export default function TodayPage() {
                     : "close your eyes, see yourself executing the sequence below: the place, the rhythm, your breathing at effort. Scrolling steals the catecholamines training needs (Liu 2025)."}
                 </div>
                 {session.prescription.steps.length ? (
-                  <ol className="space-y-2">
-                    {session.prescription.steps.map((s: any, i: number) => (
-                      <li
-                        key={i}
-                        className={`flex justify-between gap-3 rounded-lg p-3 ${s.phase === "active" ? "bg-ocean-50" : "bg-slate-50"}`}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        {es ? "Serie principal" : "Main set"}
+                      </span>
+                      <button
+                        className="ml-auto text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border border-ocean-300 text-ocean-700 hover:bg-ocean-50"
+                        onClick={() => {
+                          const next = stepsView === "list" ? "cards" : "list";
+                          setStepsView(next);
+                          try { localStorage.setItem("jmm_steps_view", next); } catch {}
+                        }}
                       >
-                        <span>
-                          {i + 1}. {s.name}
-                        </span>
-                        <strong>
-                          {s.reps ? `${s.reps} reps` : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
-                          {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
-                        </strong>
-                      </li>
-                    ))}
-                  </ol>
+                        {stepsView === "list"
+                          ? es ? "▤ Tarjetas" : "▤ Cards"
+                          : es ? "☰ Lista" : "☰ List"}
+                      </button>
+                    </div>
+                    {stepsView === "cards" ? (
+                      <div className="space-y-2">
+                        {session.prescription.steps.map((s: any, i: number) => (
+                          <div
+                            key={i}
+                            className={`rounded-xl border p-3 ${
+                              s.phase === "active"
+                                ? "border-ocean-300 bg-ocean-50 shadow-sm"
+                                : s.phase === "recovery"
+                                  ? "border-amber-200 bg-amber-50/60"
+                                  : "border-slate-200 bg-slate-50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`flex-none w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center ${
+                                  s.phase === "active"
+                                    ? "bg-ocean-600 text-white"
+                                    : "bg-slate-300 text-slate-700"
+                                }`}
+                              >
+                                {i + 1}
+                              </span>
+                              <span className="font-semibold text-sm flex-1">{s.name}</span>
+                              <span className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-white border border-slate-200 text-slate-600">
+                                {s.zone.toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 pl-9 flex items-baseline gap-2">
+                              <span className="text-lg font-bold tabular-nums">
+                                {s.reps
+                                  ? `${s.reps} ${es ? "reps" : "reps"}`
+                                  : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
+                              </span>
+                              {!s.reps && (
+                                <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                                  {es ? "min" : "min"}
+                                </span>
+                              )}
+                            </div>
+                            {s.note && (
+                              <div className="pl-9 text-[11px] text-slate-600 mt-1 leading-snug">{s.note}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <ol className="space-y-2">
+                        {session.prescription.steps.map((s: any, i: number) => (
+                          <li
+                            key={i}
+                            className={`rounded-lg p-3 ${s.phase === "active" ? "bg-ocean-50" : "bg-slate-50"}`}
+                          >
+                            <div className="flex justify-between gap-3">
+                              <span>
+                                {i + 1}. {s.name}
+                              </span>
+                              <strong>
+                                {s.reps ? `${s.reps} reps` : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
+                                {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
+                              </strong>
+                            </div>
+                            {s.note && (
+                              <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
                 ) : (
                   <p>
                     {es
@@ -274,13 +366,49 @@ export default function TodayPage() {
                     <summary className="cursor-pointer font-medium">
                       {es ? "Nutrición y recuperación" : "Fuel and recovery"}
                     </summary>
-                    {session.fuel.carbsPerHourG > 0 ? (
+                    {/* Pre-session fuel — what to eat before you start */}
+                    {session.fuel?.preSession?.carbsG > 0 && (
+                      <p className="text-sm mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                        🍚 <strong>{es ? "Antes" : "Pre"} ({session.fuel.preSession.timingLabel}):</strong>{" "}
+                        {session.fuel.preSession.carbsG} g {es ? "carbohidratos" : "carbs"} — {session.fuel.preSession.note}
+                      </p>
+                    )}
+                    {session.fuel?.carbsPerHourG > 0 || session.fuel?.fluidMlPerHour ? (
                       <>
                         <p className="text-sm mt-3">
                           {session.fuel.carbsPerHourG} g carbs/h ·{" "}
                           {session.fuel.sodiumMgPerHour} mg sodium/h ·{" "}
-                          {session.fuel.fluidMlPerHour} ml/h
+                          {fmtVolumeDual(session.fuel.fluidMlPerHour, data?.units === "imperial" ? "imperial" : "metric")}/h
+                          {session.fuel.fluidSource === "estimated" && (
+                            <span className="text-[11px] text-slate-400"> ({es ? "estimado" : "estimated"})</span>
+                          )}
                         </p>
+                        {/* The scrollable sugar-vs-hours timeline */}
+                        <div className="mt-3">
+                          <FuelTimeline
+                            segments={session.fuel.segments || []}
+                            curve={session.fuelCurve || []}
+                            carbsPerHourG={session.fuel.carbsPerHourG}
+                            fluidMlPerHour={session.fuel.fluidMlPerHour}
+                            lang={es ? "es" : "en"}
+                          />
+                        </div>
+                        {session.fuel.segments?.length > 0 && (
+                          <ol className="mt-2 space-y-0.5 text-xs text-slate-600">
+                            {session.fuel.segments
+                              .filter((_: any, i: number) => i % 2 === 0) // every other segment keeps the list readable
+                              .map((s: any, i: number) => (
+                                <li key={i} className="font-mono">
+                                  {Math.floor(s.atMin / 60)}:{String(s.atMin % 60).padStart(2, "0")} — {s.label}
+                                </li>
+                              ))}
+                          </ol>
+                        )}
+                        {session.fuel.gutNote && (
+                          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">
+                            🧪 {session.fuel.gutNote}
+                          </p>
+                        )}
                         <FuelCalculator
                           carbsPerH={session.fuel.carbsPerHourG}
                           sodiumPerH={session.fuel.sodiumMgPerHour}
@@ -296,10 +424,15 @@ export default function TodayPage() {
                       </p>
                     )}
                     {session.post && (
-                      <p className="text-sm mt-2">
-                        Post: {session.post.carbsG} g carbs ·{" "}
-                        {session.post.proteinG} g protein
-                      </p>
+                      <>
+                        <p className="text-sm mt-2">
+                          <strong>{es ? "Después" : "Post"}:</strong> {session.post.carbsG} g carbs ·{" "}
+                          {session.post.proteinG} g protein ({session.post.ratio})
+                        </p>
+                        {session.post.personalized?.note && (
+                          <p className="text-xs text-slate-500 mt-1">{session.post.personalized.note}</p>
+                        )}
+                      </>
                     )}
                     <p className="text-sm mt-2">
                       {session.prescription.detail.breathing}
@@ -339,10 +472,19 @@ export default function TodayPage() {
                   <button
                     className="btn-primary"
                     disabled={busy || offline || session.durationMin === 0}
-                    onClick={download}
+                    onClick={() => download(false)}
                   >
-                    {es ? "Descargar FIT" : "Download FIT"}
+                    <Watch className="w-4 h-4" /> {es ? "Descargar para Garmin (.FIT)" : "Download for Garmin (.FIT)"}
                   </button>
+                  {!session.approved && (
+                    <button
+                      className="btn-secondary"
+                      disabled={busy || offline || session.durationMin === 0}
+                      onClick={() => download(true)}
+                    >
+                      {es ? "Confirmar y exportar" : "Approve & export"}
+                    </button>
+                  )}
                   <button
                     className="btn-secondary"
                     disabled={busy || offline}

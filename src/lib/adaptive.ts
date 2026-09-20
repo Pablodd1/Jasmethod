@@ -425,6 +425,12 @@ export interface Checkin {
   weightKg?: number; // morning fasted weight (objective daily signal)
   rhr?: number; // morning resting HR
   rhrBaseline?: number; // 7-day avg RHR, set server-side from daily metrics
+  // Device-free daily loop (Saw 2015 self-report monitoring):
+  availableMin?: number; // minutes the athlete ACTUALLY has today (0 = no training window)
+  newPain?: boolean; // new LOCAL pain (distinct from general soreness above)
+  painLocation?: string; // where — free text, shown to coach
+  painAffectsMovement?: boolean; // pain changes gait/technique → hard caution
+  sessionFelt?: "easier" | "normal" | "harder"; // yesterday's session vs expected → prescription mismatch signal
 }
 
 export interface Adaptation {
@@ -444,7 +450,11 @@ export function adaptSession(checkin: Checkin): Adaptation {
   score += (motivation - 3) * 4; // ±8
   if (checkin.mood) score += (checkin.mood - 3) * 4; // ±8
   score -= (stress - 3) * 5; // ±10
-  if (checkin.menstrual) score -= 10;
+  // Menstrual phase does NOT auto-penalize readiness (McNulty et al. 2020:
+  // trivial average performance effect across phases; responses are
+  // individual). Symptoms the athlete actually reports — soreness, fatigue,
+  // poor sleep, stress — already flow through their own weights above. The
+  // cycle phase note is contextual guidance only (cycle-tracking.ts).
   if (sick) score -= 40;
   // Objective morning signals: elevated RHR = recovery lagging (Plews 2013),
   // low RHR = recovered. ±6 bpm vs the 7-day baseline.
@@ -453,6 +463,22 @@ export function adaptSession(checkin: Checkin): Adaptation {
     if (rhrDelta > 6) score -= 10;
     else if (rhrDelta < -6) score += 4;
   }
+  // Prescription-mismatch signal: yesterday felt HARDER than expected → the
+  // current dose may be too big (small dip; "easier" never escalates — no
+  // single positive signal raises intensity, engine rule).
+  if (checkin.sessionFelt === "harder") score -= 5;
+  // New LOCAL pain is musculoskeletal caution — distinct from general
+  // soreness. Movement-affected pain is a hard caution; local pain alone is
+  // a moderate one. Never a full-rest verdict by itself (that's for illness
+  // or rock-bottom readiness) — the athlete is routed to professional review
+  // in the message.
+  const painCaution: "none" | "moderate" | "hard" = !checkin.newPain
+    ? "none"
+    : checkin.painAffectsMovement
+      ? "hard"
+      : "moderate";
+  if (painCaution === "hard") score -= 15;
+  else if (painCaution === "moderate") score -= 6;
   score = Math.max(0, Math.min(100, score));
 
   let verdict: Adaptation["verdict"],
@@ -483,6 +509,19 @@ export function adaptSession(checkin: Checkin): Adaptation {
     intensityCap = "z7";
     message =
       "Green to go. Take the key session by the horns — chase the quality.";
+  }
+  // MSK override AFTER the verdict: pain caps intensity regardless of how
+  // good the subjective score looks (a motivated athlete with a changing
+  // gait is exactly the one who trains through something).
+  if (painCaution === "hard") {
+    verdict = verdict === "rest" ? verdict : "easy";
+    durationFactor = Math.min(durationFactor, 0.6);
+    intensityCap = "z2";
+    message = `New pain${checkin.painLocation ? ` (${checkin.painLocation})` : ""} that affects how you move: easy Z1-Z2 only, ~60% duration, pain-free range. If it persists beyond 2-3 days, get it assessed by a professional.`;
+  } else if (painCaution === "moderate") {
+    const capNum = Number(intensityCap.slice(1));
+    if (capNum > 3) intensityCap = "z3";
+    message = `New pain noted${checkin.painLocation ? ` (${checkin.painLocation})` : ""}: intensity capped at Z3 today. Stay pain-free; soreness is fine, sharp local pain is a stop sign.`;
   }
   return { score, verdict, durationFactor, intensityCap, message };
 }
@@ -1159,9 +1198,40 @@ export function prescribeToday(opts: {
     lthr?: number | null;
     ftp?: number | null;
     runPaceBase?: number | null;
+    intensityPct?: number | null; // coach-set multiplier % (null/100 = as planned)
   } | null;
 }): DailyPrescription {
-  const { session, adaptation, profile } = opts;
+  let session = opts.session;
+  const profile = opts.profile;
+  // Coach intensity multiplier folds into the same factors as the daily
+  // check-in: <100 eases (caps zones stepwise, trims duration), >100 sharpens
+  // (raises the planned zone by at most 2, modestly extends duration). A rest
+  // verdict stays a rest verdict — the coach multiplier never overrides it.
+  let { adaptation } = opts;
+  const pct = profile?.intensityPct;
+  if (pct != null && pct !== 100 && adaptation.verdict !== "rest") {
+    const plannedZone = Number((session.intensity || "z2").slice(1)) || 2;
+    const autoCap = Number(adaptation.intensityCap.slice(1)) || 2;
+    if (pct < 100) {
+      const shift = Math.min(2, Math.floor((100 - pct) / 20)); // 80% → -1 zone, 60% → -2
+      adaptation = {
+        ...adaptation,
+        durationFactor: adaptation.durationFactor * Math.max(0.6, pct / 100),
+        intensityCap: "z" + Math.max(1, Math.min(plannedZone - shift, autoCap)),
+      };
+    } else {
+      const bump = Math.min(2, Math.floor((pct - 100) / 10)); // 110% → +1 zone, 120% → +2
+      if (bump > 0) {
+        // Raise the effective planned zone itself — the cap is only a ceiling,
+        // so it could never push a session up.
+        session = { ...session, intensity: "z" + Math.min(7, plannedZone + bump) };
+        adaptation = {
+          ...adaptation,
+          durationFactor: Math.min(adaptation.durationFactor * 1.25, 1.25),
+        };
+      }
+    }
+  }
   const rest = adaptation.verdict === "rest" || session.durationMin <= 0;
   if (session.protocol && !rest) {
     const budget = Math.min(session.durationMin * Math.min(1, adaptation.durationFactor), (opts.busyHrs || 0) >= 6 ? 25 : Infinity);
@@ -1208,6 +1278,7 @@ export function prescribeToday(opts: {
     intensity,
     type,
     session.variantSeed,
+    session.sport,
   );
   const detail = buildSessionDetail({
     sport: session.sport,
