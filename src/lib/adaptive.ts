@@ -1278,6 +1278,7 @@ export function prescribeToday(opts: {
     intensity,
     type,
     session.variantSeed,
+    session.sport,
   );
   const detail = buildSessionDetail({
     sport: session.sport,

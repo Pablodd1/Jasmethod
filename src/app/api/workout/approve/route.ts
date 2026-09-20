@@ -13,7 +13,17 @@ function dayStart(d: Date) {
 // POST /api/workout/approve?sessionId=<id>  (or no body → today's session)
 // Marks the workout approved and returns the structured-workout .FIT file
 // for import into Garmin Connect / COROS Training Hub.
+// GET  /api/workout/approve?sessionId=<id> — the same .FIT WITHOUT marking
+// the session approved: a plain download so any athlete can take the
+// structured session + alerts to their watch at any time.
+export async function GET(req: Request) {
+  return run(req, false);
+}
 export async function POST(req: Request) {
+  return run(req, true);
+}
+
+async function run(req: Request, markApproved: boolean) {
   const user = await getCurrentUser();
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -68,10 +78,11 @@ export async function POST(req: Request) {
     ),
   );
 
-  await prisma.workout.update({
-    where: { id: workout.id },
-    data: { approved: true },
-  });
+  if (markApproved)
+    await prisma.workout.update({
+      where: { id: workout.id },
+      data: { approved: true },
+    });
   const safeName =
     workout.title
       .replace(/[^a-z0-9]+/gi, "-")

@@ -84,15 +84,15 @@ export default function TodayPage() {
       setBusy(false);
     }
   }
-  async function download() {
+  async function download(approve = false) {
     if (!session) return;
     setBusy(true);
     setError("");
     try {
       const r = await fetch(`/api/workout/approve?sessionId=${session.id}`, {
-        method: "POST",
+        method: approve ? "POST" : "GET",
       });
-      if (!r.ok) throw Error((await r.json()).error);
+      if (!r.ok) throw Error((await r.json().catch(() => ({}))).error);
       const blob = await r.blob(),
         url = URL.createObjectURL(blob),
         a = document.createElement("a");
@@ -250,15 +250,20 @@ export default function TodayPage() {
                     {session.prescription.steps.map((s: any, i: number) => (
                       <li
                         key={i}
-                        className={`flex justify-between gap-3 rounded-lg p-3 ${s.phase === "active" ? "bg-ocean-50" : "bg-slate-50"}`}
+                        className={`rounded-lg p-3 ${s.phase === "active" ? "bg-ocean-50" : "bg-slate-50"}`}
                       >
-                        <span>
-                          {i + 1}. {s.name}
-                        </span>
-                        <strong>
-                          {s.reps ? `${s.reps} reps` : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
-                          {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
-                        </strong>
+                        <div className="flex justify-between gap-3">
+                          <span>
+                            {i + 1}. {s.name}
+                          </span>
+                          <strong>
+                            {s.reps ? `${s.reps} reps` : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
+                            {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
+                          </strong>
+                        </div>
+                        {s.note && (
+                          <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
+                        )}
                       </li>
                     ))}
                   </ol>
@@ -339,10 +344,19 @@ export default function TodayPage() {
                   <button
                     className="btn-primary"
                     disabled={busy || offline || session.durationMin === 0}
-                    onClick={download}
+                    onClick={() => download(false)}
                   >
-                    {es ? "Descargar FIT" : "Download FIT"}
+                    <Watch className="w-4 h-4" /> {es ? "Descargar para Garmin (.FIT)" : "Download for Garmin (.FIT)"}
                   </button>
+                  {!session.approved && (
+                    <button
+                      className="btn-secondary"
+                      disabled={busy || offline || session.durationMin === 0}
+                      onClick={() => download(true)}
+                    >
+                      {es ? "Confirmar y exportar" : "Approve & export"}
+                    </button>
+                  )}
                   <button
                     className="btn-secondary"
                     disabled={busy || offline}
