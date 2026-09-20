@@ -49,6 +49,29 @@ model User {
   auditSubjects AuditLog[] @relation("AuditSubject")
   onboarded     Boolean  @default(false) // first-time setup completed
   metricObservations MetricObservation[]
+  coaching      CoachAssignment[] @relation("CoachSide") // athletes this user coaches
+  coachedBy     CoachAssignment[] @relation("AthleteSide") // coaches assigned to this user
+}
+
+// ---------- COACH ASSIGNMENTS (permission boundary) ----------
+// A coach may only see/act on athletes with an ACTIVE assignment. Admins
+// bypass (platform owners). consent tracks the athlete's view: admin-created
+// assignments start "pending" — the athlete-facing grant/revoke toggle is the
+// documented next step; revocation (status="revoked") cuts access immediately.
+model CoachAssignment {
+  id        String   @id @default(cuid())
+  coachId   String
+  athleteId String
+  status    String   @default("active") // active | revoked
+  consent   String   @default("pending") // pending | granted | revoked (athlete-facing)
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  coach     User @relation("CoachSide", fields: [coachId], references: [id], onDelete: Cascade)
+  athlete   User @relation("AthleteSide", fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([coachId, athleteId])
+  @@index([athleteId])
 }
 
 model AuthSession {

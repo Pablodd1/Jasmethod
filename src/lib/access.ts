@@ -12,6 +12,36 @@ export class ApiError extends Error {
 export const canCoach = (user: { role: string }) =>
   user.role === "admin" || user.role === "coach";
 
+// Pure gate for tests: does this assignment row grant access?
+export function assignmentAllows(assignment: {
+  status: string;
+  consent: string;
+} | null): boolean {
+  if (!assignment) return false;
+  if (assignment.status !== "active") return false;
+  // An explicit athlete REVOCATION cuts access even if the row is otherwise
+  // active; "pending" consent still allows coaching in this pilot (admin
+  // creates assignments deliberately) — the athlete grant/revoke toggle is
+  // the documented next step.
+  if (assignment.consent === "revoked") return false;
+  return true;
+}
+
+// Cross-athlete health-data access: admin = platform owner (all athletes);
+// coach = only athletes with an active, non-revoked assignment.
+export async function canAccessAthlete(
+  actor: { id: string; role: string },
+  athleteId: string,
+): Promise<boolean> {
+  if (actor.role === "admin") return true;
+  if (actor.role !== "coach") return false;
+  const assignment = await prisma.coachAssignment.findUnique({
+    where: { coachId_athleteId: { coachId: actor.id, athleteId } },
+    select: { status: true, consent: true },
+  });
+  return assignmentAllows(assignment);
+}
+
 // Explicit per-request scope. It never changes the administrator's login/session.
 export async function trainingAccess(req?: Request) {
   const actor = await getCurrentUser();
@@ -20,6 +50,8 @@ export async function trainingAccess(req?: Request) {
   if (target && target !== actor.id) {
     if (!canCoach(actor))
       throw new ApiError("Administrator access required", 403);
+    if (!(await canAccessAthlete(actor, target)))
+      throw new ApiError("This athlete is not assigned to you", 403);
     const athlete = await prisma.user.findUnique({
       where: { id: target },
       include: { profile: true, motivation: true },

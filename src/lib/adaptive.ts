@@ -425,6 +425,12 @@ export interface Checkin {
   weightKg?: number; // morning fasted weight (objective daily signal)
   rhr?: number; // morning resting HR
   rhrBaseline?: number; // 7-day avg RHR, set server-side from daily metrics
+  // Device-free daily loop (Saw 2015 self-report monitoring):
+  availableMin?: number; // minutes the athlete ACTUALLY has today (0 = no training window)
+  newPain?: boolean; // new LOCAL pain (distinct from general soreness above)
+  painLocation?: string; // where — free text, shown to coach
+  painAffectsMovement?: boolean; // pain changes gait/technique → hard caution
+  sessionFelt?: "easier" | "normal" | "harder"; // yesterday's session vs expected → prescription mismatch signal
 }
 
 export interface Adaptation {
@@ -457,6 +463,22 @@ export function adaptSession(checkin: Checkin): Adaptation {
     if (rhrDelta > 6) score -= 10;
     else if (rhrDelta < -6) score += 4;
   }
+  // Prescription-mismatch signal: yesterday felt HARDER than expected → the
+  // current dose may be too big (small dip; "easier" never escalates — no
+  // single positive signal raises intensity, engine rule).
+  if (checkin.sessionFelt === "harder") score -= 5;
+  // New LOCAL pain is musculoskeletal caution — distinct from general
+  // soreness. Movement-affected pain is a hard caution; local pain alone is
+  // a moderate one. Never a full-rest verdict by itself (that's for illness
+  // or rock-bottom readiness) — the athlete is routed to professional review
+  // in the message.
+  const painCaution: "none" | "moderate" | "hard" = !checkin.newPain
+    ? "none"
+    : checkin.painAffectsMovement
+      ? "hard"
+      : "moderate";
+  if (painCaution === "hard") score -= 15;
+  else if (painCaution === "moderate") score -= 6;
   score = Math.max(0, Math.min(100, score));
 
   let verdict: Adaptation["verdict"],
@@ -487,6 +509,19 @@ export function adaptSession(checkin: Checkin): Adaptation {
     intensityCap = "z7";
     message =
       "Green to go. Take the key session by the horns — chase the quality.";
+  }
+  // MSK override AFTER the verdict: pain caps intensity regardless of how
+  // good the subjective score looks (a motivated athlete with a changing
+  // gait is exactly the one who trains through something).
+  if (painCaution === "hard") {
+    verdict = verdict === "rest" ? verdict : "easy";
+    durationFactor = Math.min(durationFactor, 0.6);
+    intensityCap = "z2";
+    message = `New pain${checkin.painLocation ? ` (${checkin.painLocation})` : ""} that affects how you move: easy Z1-Z2 only, ~60% duration, pain-free range. If it persists beyond 2-3 days, get it assessed by a professional.`;
+  } else if (painCaution === "moderate") {
+    const capNum = Number(intensityCap.slice(1));
+    if (capNum > 3) intensityCap = "z3";
+    message = `New pain noted${checkin.painLocation ? ` (${checkin.painLocation})` : ""}: intensity capped at Z3 today. Stay pain-free; soreness is fine, sharp local pain is a stop sign.`;
   }
   return { score, verdict, durationFactor, intensityCap, message };
 }

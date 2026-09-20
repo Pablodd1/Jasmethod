@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { canCoach, ApiError, errorResponse } from "@/lib/access";
+import { canCoach, canAccessAthlete, ApiError, errorResponse } from "@/lib/access";
 import { coachingSummary } from "@/lib/coaching";
 import { dayBounds } from "@/lib/dates";
 
@@ -14,6 +14,8 @@ export async function GET(
     if (!actor) throw new ApiError("Sign in", 401);
     if (!canCoach(actor))
       throw new ApiError("Administrator access required", 403);
+    if (actor.role !== "admin" && !(await canAccessAthlete(actor, params.id)))
+      throw new ApiError("This athlete is not assigned to you", 403);
     const athlete = await prisma.user.findUnique({
       where: { id: params.id },
       select: {

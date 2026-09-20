@@ -5,6 +5,7 @@ import { dateKey } from "@/lib/dates";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { AdminCoachEditor } from "@/components/admin-coach-editor";
+import { CoachAssignmentsCard } from "@/components/coach-assignments-card";
 
 const FIELDS: [string, string][] = [
   ["birthYear", "Birth year"],
@@ -497,6 +498,10 @@ export default function AthletePage({ params }: { params: { id: string } }) {
               </>
             )}
             {tab === "Profile" && (
+              <>
+              {user?.role === "admin" && (
+                <CoachAssignmentsCard athleteId={params.id} onChanged={load} />
+              )}
               <form
                 className="card space-y-5"
                 onSubmit={(e) => {
@@ -623,6 +628,7 @@ export default function AthletePage({ params }: { params: { id: string } }) {
                   {busy ? "Saving…" : "Save athlete profile"}
                 </button>
               </form>
+              </>
             )}
             {tab === "Recovery" && (
               <>
