@@ -3,11 +3,19 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Watch } from "lucide-react";
 import { FuelTimeline } from "@/components/fuel-timeline";
+import { fmtVolumeDual } from "@/lib/units";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
   const { user } = useAuth();
   const es = user?.language === "es";
+  const [stepsView, setStepsView] = useState<"list" | "cards">("list");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("jmm_steps_view");
+      if (v === "cards" || v === "list") setStepsView(v);
+    } catch {}
+  }, []);
   const [data, setData] = useState<any>(null),
     [error, setError] = useState(""),
     [offline, setOffline] = useState(false),
@@ -247,27 +255,94 @@ export default function TodayPage() {
                     : "close your eyes, see yourself executing the sequence below: the place, the rhythm, your breathing at effort. Scrolling steals the catecholamines training needs (Liu 2025)."}
                 </div>
                 {session.prescription.steps.length ? (
-                  <ol className="space-y-2">
-                    {session.prescription.steps.map((s: any, i: number) => (
-                      <li
-                        key={i}
-                        className={`rounded-lg p-3 ${s.phase === "active" ? "bg-ocean-50" : "bg-slate-50"}`}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        {es ? "Serie principal" : "Main set"}
+                      </span>
+                      <button
+                        className="ml-auto text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border border-ocean-300 text-ocean-700 hover:bg-ocean-50"
+                        onClick={() => {
+                          const next = stepsView === "list" ? "cards" : "list";
+                          setStepsView(next);
+                          try { localStorage.setItem("jmm_steps_view", next); } catch {}
+                        }}
                       >
-                        <div className="flex justify-between gap-3">
-                          <span>
-                            {i + 1}. {s.name}
-                          </span>
-                          <strong>
-                            {s.reps ? `${s.reps} reps` : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
-                            {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
-                          </strong>
-                        </div>
-                        {s.note && (
-                          <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
+                        {stepsView === "list"
+                          ? es ? "▤ Tarjetas" : "▤ Cards"
+                          : es ? "☰ Lista" : "☰ List"}
+                      </button>
+                    </div>
+                    {stepsView === "cards" ? (
+                      <div className="space-y-2">
+                        {session.prescription.steps.map((s: any, i: number) => (
+                          <div
+                            key={i}
+                            className={`rounded-xl border p-3 ${
+                              s.phase === "active"
+                                ? "border-ocean-300 bg-ocean-50 shadow-sm"
+                                : s.phase === "recovery"
+                                  ? "border-amber-200 bg-amber-50/60"
+                                  : "border-slate-200 bg-slate-50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`flex-none w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center ${
+                                  s.phase === "active"
+                                    ? "bg-ocean-600 text-white"
+                                    : "bg-slate-300 text-slate-700"
+                                }`}
+                              >
+                                {i + 1}
+                              </span>
+                              <span className="font-semibold text-sm flex-1">{s.name}</span>
+                              <span className="text-[10px] font-bold uppercase rounded-full px-2 py-0.5 bg-white border border-slate-200 text-slate-600">
+                                {s.zone.toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 pl-9 flex items-baseline gap-2">
+                              <span className="text-lg font-bold tabular-nums">
+                                {s.reps
+                                  ? `${s.reps} ${es ? "reps" : "reps"}`
+                                  : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
+                              </span>
+                              {!s.reps && (
+                                <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                                  {es ? "min" : "min"}
+                                </span>
+                              )}
+                            </div>
+                            {s.note && (
+                              <div className="pl-9 text-[11px] text-slate-600 mt-1 leading-snug">{s.note}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <ol className="space-y-2">
+                        {session.prescription.steps.map((s: any, i: number) => (
+                          <li
+                            key={i}
+                            className={`rounded-lg p-3 ${s.phase === "active" ? "bg-ocean-50" : "bg-slate-50"}`}
+                          >
+                            <div className="flex justify-between gap-3">
+                              <span>
+                                {i + 1}. {s.name}
+                              </span>
+                              <strong>
+                                {s.reps ? `${s.reps} reps` : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
+                                {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
+                              </strong>
+                            </div>
+                            {s.note && (
+                              <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
                 ) : (
                   <p>
                     {es
@@ -292,7 +367,7 @@ export default function TodayPage() {
                         <p className="text-sm mt-3">
                           {session.fuel.carbsPerHourG} g carbs/h ·{" "}
                           {session.fuel.sodiumMgPerHour} mg sodium/h ·{" "}
-                          {session.fuel.fluidMlPerHour} ml/h
+                          {fmtVolumeDual(session.fuel.fluidMlPerHour, data?.units === "imperial" ? "imperial" : "metric")}/h
                           {session.fuel.fluidSource === "estimated" && (
                             <span className="text-[11px] text-slate-400"> ({es ? "estimado" : "estimated"})</span>
                           )}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { fmtWeight, fmtHeight } from "@/lib/units";
 import {
   Save,
   HeartPulse,
@@ -52,6 +53,7 @@ export default function SettingsPage() {
         runPaceBase: d.profile.runPaceBase || "",
         swimPaceBase: d.profile.swimPaceBase || "",
         trainingWindow: d.profile.trainingWindow || "any",
+        units: d.profile.units || "metric",
         raceDate: d.profile.raceDate ? d.profile.raceDate.slice(0, 10) : "",
       });
     }
@@ -322,6 +324,27 @@ export default function SettingsPage() {
                   <p className="text-[11px] text-slate-400 mt-1">
                     New plans get this default start time. You can still move
                     any individual session in the calendar.
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Units</label>
+                  <select
+                    className="input"
+                    value={form.units || "metric"}
+                    onChange={(e) => setForm({ ...form, units: e.target.value })}
+                  >
+                    <option value="metric">
+                      Metric (kg · km · ml · °C)
+                    </option>
+                    <option value="imperial">
+                      Imperial (lb · mi · oz · °F)
+                    </option>
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Display only — your data is stored in metric and converted
+                    wherever you see it. {form.units === "imperial" && form.weightKg
+                      ? `Your weight: ${fmtWeight(Number(form.weightKg), "imperial")} · height: ${fmtHeight(Number(form.heightCm), "imperial")}.`
+                      : ""}
                   </p>
                 </div>
               </div>
