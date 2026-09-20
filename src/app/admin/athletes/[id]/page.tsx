@@ -4,6 +4,7 @@ import Link from "next/link";
 import { dateKey } from "@/lib/dates";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
+import { AdminCoachEditor } from "@/components/admin-coach-editor";
 
 const FIELDS: [string, string][] = [
   ["birthYear", "Birth year"],
@@ -22,6 +23,7 @@ const FIELDS: [string, string][] = [
   ["hrvBaseline", "HRV baseline (ms)"],
 ];
 const GOALS = [
+  "track-sprint",
   "sprint",
   "olympic",
   "half",
@@ -163,6 +165,13 @@ export default function AthletePage({ params }: { params: { id: string } }) {
             </div>
             {tab === "Overview" && (
               <>
+                <AdminCoachEditor
+                  athleteId={params.id}
+                  timezone={data.athlete.timezone || "America/New_York"}
+                  profile={data.athlete.profile}
+                  workouts={data.workouts || []}
+                  onRefresh={load}
+                />
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   {[
                     ["Recorded sessions", data.analysis.completed],

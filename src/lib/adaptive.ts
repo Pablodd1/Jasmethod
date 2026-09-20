@@ -1159,9 +1159,40 @@ export function prescribeToday(opts: {
     lthr?: number | null;
     ftp?: number | null;
     runPaceBase?: number | null;
+    intensityPct?: number | null; // coach-set multiplier % (null/100 = as planned)
   } | null;
 }): DailyPrescription {
-  const { session, adaptation, profile } = opts;
+  let session = opts.session;
+  const profile = opts.profile;
+  // Coach intensity multiplier folds into the same factors as the daily
+  // check-in: <100 eases (caps zones stepwise, trims duration), >100 sharpens
+  // (raises the planned zone by at most 2, modestly extends duration). A rest
+  // verdict stays a rest verdict — the coach multiplier never overrides it.
+  let { adaptation } = opts;
+  const pct = profile?.intensityPct;
+  if (pct != null && pct !== 100 && adaptation.verdict !== "rest") {
+    const plannedZone = Number((session.intensity || "z2").slice(1)) || 2;
+    const autoCap = Number(adaptation.intensityCap.slice(1)) || 2;
+    if (pct < 100) {
+      const shift = Math.min(2, Math.floor((100 - pct) / 20)); // 80% → -1 zone, 60% → -2
+      adaptation = {
+        ...adaptation,
+        durationFactor: adaptation.durationFactor * Math.max(0.6, pct / 100),
+        intensityCap: "z" + Math.max(1, Math.min(plannedZone - shift, autoCap)),
+      };
+    } else {
+      const bump = Math.min(2, Math.floor((pct - 100) / 10)); // 110% → +1 zone, 120% → +2
+      if (bump > 0) {
+        // Raise the effective planned zone itself — the cap is only a ceiling,
+        // so it could never push a session up.
+        session = { ...session, intensity: "z" + Math.min(7, plannedZone + bump) };
+        adaptation = {
+          ...adaptation,
+          durationFactor: Math.min(adaptation.durationFactor * 1.25, 1.25),
+        };
+      }
+    }
+  }
   const rest = adaptation.verdict === "rest" || session.durationMin <= 0;
   if (session.protocol && !rest) {
     const budget = Math.min(session.durationMin * Math.min(1, adaptation.durationFactor), (opts.busyHrs || 0) >= 6 ? 25 : Infinity);
