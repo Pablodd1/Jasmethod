@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { athlinksConfigured } from "@/lib/athlinks";
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -78,10 +79,16 @@ export async function GET() {
         description:
           "Upload export.xml from your Apple Health export (maximum 40 MB).",
       },
+      {
+        id: "athlinks",
+        name: "Athlinks",
+        description:
+          "Your official race-history record: results, places and PRs — matched to your races automatically.",
+      },
     ].map((p) => ({
       ...p,
-      method: "upload",
-      configured: true,
+      method: p.id === "athlinks" ? "athlinks" : "upload",
+      configured: p.id === "athlinks" ? athlinksConfigured() : true,
       status:
         connectors.find((c) => c.provider === p.id)?.status || "disconnected",
     })),

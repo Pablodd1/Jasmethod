@@ -12,6 +12,11 @@ export const dynamic = "force-dynamic";
 // immediately. No verification handshake needed (unlike Strava) — Whoop just
 // fires POSTs to the URL registered in the developer dashboard.
 // Registered URL: https://<domain>/api/connectors/whoop/webhook (model V2).
+//
+// DEDUPE: every verified event is persisted in WebhookEvent keyed by the
+// Whoop event id before processing — a redelivery is acknowledged (2xx) and
+// skipped, never double-synced. Hourly reconciliation catches anything that
+// fails after the ack.
 export async function POST(req: Request) {
   try {
     const raw = await req.text();
@@ -31,6 +36,17 @@ export async function POST(req: Request) {
     // Whoop webhook payload: { id, workout_id?, user_id, event_type, created_at }
     const whoopUserId = String(body?.user_id ?? "");
     const eventType = String(body?.type ?? "");
+    const eventId = String(body?.id ?? body?.trace_id ?? "");
+    if (eventId) {
+      const claimed = await prisma.webhookEvent
+        .createMany({
+          data: [{ provider: "whoop", eventId, payload: raw.slice(0, 8000) }],
+          skipDuplicates: true,
+        })
+        .catch(() => ({ count: 1 })); // ledger failure must never drop the event
+      if (!claimed.count)
+        return NextResponse.json({ ok: true, deduplicated: true });
+    }
     if (whoopUserId) {
       const conn = await prisma.connector.findFirst({
         where: {
@@ -41,6 +57,13 @@ export async function POST(req: Request) {
       });
       if (conn) {
         const sync = await syncUserConnectors(conn.userId, "whoop");
+        if (eventId)
+          await prisma.webhookEvent
+            .updateMany({
+              where: { provider: "whoop", eventId, processedAt: null },
+              data: { processedAt: new Date() },
+            })
+            .catch(() => {});
         if (sync.results.some((r) => !r.ok))
           return NextResponse.json(
             { error: "Sync failed; retry later" },

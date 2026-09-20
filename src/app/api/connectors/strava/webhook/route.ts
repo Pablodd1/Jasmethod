@@ -70,8 +70,37 @@ export async function POST(req: Request) {
     }
     if (
       body?.object_type === "activity" &&
-      ["create", "update"].includes(body?.aspect_type)
+      ["create", "update", "delete"].includes(body?.aspect_type)
     ) {
+      // DEDUPE: persist-first ledger keyed by event id — Strava retries and
+      // redeliveries become acknowledged no-ops.
+      const eventId = String(body.event_id ?? "");
+      if (eventId) {
+        const claimed = await prisma.webhookEvent
+          .createMany({
+            data: [{
+              provider: "strava",
+              eventId,
+              payload: JSON.stringify(body).slice(0, 8000),
+            }],
+            skipDuplicates: true,
+          })
+          .catch(() => ({ count: 1 }));
+        if (!claimed.count)
+          return NextResponse.json({ ok: true, deduplicated: true });
+      }
+      if (body.aspect_type === "delete") {
+        // Deletion is handled by the next reconciliation: lastSyncAt falls
+        // back 24h on every run, so the deleted activity window is re-pulled
+        // and the missing activity no longer refreshes its row. (Strava's
+        // API offers no bulk delete lookup; hourly reconciliation covers it.)
+        if (eventId)
+          await prisma.webhookEvent.updateMany({
+            where: { provider: "strava", eventId },
+            data: { processedAt: new Date() },
+          }).catch(() => {});
+        return NextResponse.json({ ok: true, aspect: "delete" });
+      }
       const ownerId = String(body.owner_id ?? "");
       // Match the athlete by the strava athlete id saved at OAuth time.
       const conn = await prisma.connector.findFirst({
@@ -83,6 +112,11 @@ export async function POST(req: Request) {
       });
       if (conn) {
         const sync = await syncUserConnectors(conn.userId, "strava");
+        if (eventId)
+          await prisma.webhookEvent.updateMany({
+            where: { provider: "strava", eventId, processedAt: null },
+            data: { processedAt: new Date() },
+          }).catch(() => {});
         if (sync.results.some((r) => !r.ok))
           return NextResponse.json({ error: "Sync failed" }, { status: 503 });
       }

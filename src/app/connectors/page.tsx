@@ -9,6 +9,7 @@ import {
   XCircle,
   Cloud,
   RefreshCw,
+  Medal,
 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -500,6 +501,27 @@ export default function ConnectorsPage() {
         <div className="grid md:grid-cols-2 gap-4">
           {providers.map((p) => {
             const connected = p.status === "connected";
+            // Health chip: green = connected & fresh; amber = connected but
+            // delayed (no sync in 26h) or reconnect advised; red = error;
+            // grey = disconnected. Users never see token terminology.
+            const lastSync = p.lastSyncAt ? new Date(p.lastSyncAt).getTime() : 0;
+            const stale = connected && Date.now() - lastSync > 26 * 3600000;
+            const needsReconnect =
+              p.status === "error" && /reconnect|expired|authorization/i.test(p.lastError || "");
+            const chip = !connected && p.status !== "error"
+              ? { cls: "chip chip-z1", dot: "bg-slate-400", label: t(lang, "conn.disconnected") }
+              : needsReconnect
+                ? { cls: "chip chip-z3", dot: "bg-amber-500", label: lang === "es" ? "Reconectar" : "Reconnect needed" }
+                : p.status === "error"
+                  ? { cls: "chip chip-z5", dot: "bg-red-500", label: lang === "es" ? "Error" : "Error" }
+                  : stale
+                    ? { cls: "chip chip-z3", dot: "bg-amber-500", label: lang === "es" ? "Sincronización retrasada" : "Sync delayed" }
+                    : { cls: "chip chip-z2", dot: "bg-emerald-500", label: t(lang, "conn.connected") };
+            if (p.method === "athlinks") {
+              return (
+                <AthlinksCard key={p.id} lang={lang} onDone={load} configured={p.configured} status={p.status} lastError={p.lastError} lastSyncAt={p.lastSyncAt} />
+              );
+            }
             return (
               <div
                 key={p.id}
@@ -561,17 +583,9 @@ export default function ConnectorsPage() {
                       </div>
                     </div>
                   </div>
-                  {connected ? (
-                    <span className="chip chip-z2">
-                      <CheckCircle2 className="w-3 h-3" />{" "}
-                      {t(lang, "conn.connected")}
-                    </span>
-                  ) : (
-                    <span className="chip chip-z1">
-                      <XCircle className="w-3 h-3" />{" "}
-                      {t(lang, "conn.disconnected")}
-                    </span>
-                  )}
+                  <span className={chip.cls}>
+                    <span className={`inline-block w-2 h-2 rounded-full ${chip.dot}`} /> {chip.label}
+                  </span>
                 </div>
 
                 <div className="mt-4">
@@ -737,5 +751,204 @@ export default function ConnectorsPage() {
         </div>
       </div>
     </ProtectedPage>
+  );
+}
+
+// ---- Athlinks card: search → confirm identity → race history flows in ----
+function AthlinksCard({
+  lang,
+  onDone,
+  configured,
+  status,
+  lastError,
+  lastSyncAt,
+}: {
+  lang: Lang;
+  onDone: () => void;
+  configured: boolean;
+  status: string;
+  lastError?: string | null;
+  lastSyncAt?: string | null;
+}) {
+  const [linked, setLinked] = useState(status === "connected");
+  const [query, setQuery] = useState("");
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [raceCount, setRaceCount] = useState<number | null>(null);
+
+  async function search() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/connectors/athlinks/search?q=${encodeURIComponent(query)}`);
+      const d = await r.json();
+      if (!r.ok) setMsg({ ok: false, text: d.error || "Search failed" });
+      else {
+        setCandidates(d.athletes || []);
+        if (!d.athletes?.length)
+          setMsg({ ok: false, text: lang === "es" ? "Sin resultados — prueba otro nombre." : "No matches — try another name." });
+      }
+    } catch {
+      setMsg({ ok: false, text: "Network error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirm(athlete: any) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/connectors/athlinks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ racerId: athlete.racerId, name: athlete.name }),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        setLinked(true);
+        setRaceCount(d.racesImported ?? 0);
+        setMsg({
+          ok: true,
+          text:
+            lang === "es"
+              ? `Conectado: ${d.racesImported} resultados importados${d.racesMerged ? `, ${d.racesMerged} combinados con tus carreras` : ""}.`
+              : `Connected: ${d.racesImported} race results imported${d.racesMerged ? `, ${d.racesMerged} merged with your existing races` : ""}.`,
+        });
+        setCandidates([]);
+        onDone();
+      } else setMsg({ ok: false, text: d.error || "Link failed" });
+    } catch {
+      setMsg({ ok: false, text: "Network error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refresh() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/connectors/athlinks", { method: "PATCH" });
+      const d = await r.json();
+      if (r.ok) {
+        setRaceCount((d.racesImported || 0) + (d.racesMerged || 0));
+        setMsg({ ok: true, text: lang === "es" ? "Historial actualizado." : "Race history refreshed." });
+        onDone();
+      } else setMsg({ ok: false, text: d.error || "Refresh failed" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlink() {
+    await fetch("/api/connectors/athlinks", { method: "DELETE" });
+    setLinked(false);
+    setRaceCount(null);
+    onDone();
+  }
+
+  return (
+    <div className={`card ${linked ? "border-emerald-300" : ""}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${linked ? "bg-emerald-100 text-emerald-600" : "bg-ocean-100 text-ocean-600"}`}>
+            <Medal className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="font-display font-bold">
+              Athlinks{" "}
+              <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${configured ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                {lang === "es" ? "Carreras" : "Races"}
+              </span>
+            </div>
+            <div className="text-xs text-slate-500 max-w-[240px]">
+              {lang === "es"
+                ? "Tu historial oficial de carreras: resultados, puestos y récords — se concilia a diario."
+                : "Your official race history: results, places and PRs — reconciled daily."}
+              {linked && (
+                <span className="block mt-2">
+                  {lang === "es" ? "Última sincronización" : "Last sync"}:{" "}
+                  {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : (lang === "es" ? "aún sin sincronizar" : "not yet synced")}
+                </span>
+              )}
+              {linked && raceCount != null && raceCount > 0 && (
+                <span className="block mt-1 font-semibold text-emerald-700">
+                  {raceCount} {lang === "es" ? "resultados nuevos" : "new results"}
+                </span>
+              )}
+              {lastError && <span className="block text-red-700 mt-1">{lastError}</span>}
+            </div>
+          </div>
+        </div>
+        {linked ? (
+          <span className="chip chip-z2">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" /> {t(lang, "conn.connected")}
+          </span>
+        ) : (
+          <span className="chip chip-z1">
+            <span className="inline-block w-2 h-2 rounded-full bg-slate-400" /> {t(lang, "conn.disconnected")}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4">
+        {!configured ? (
+          <div className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+            {lang === "es"
+              ? "Athlinks aún no está activada en el servidor (se necesita la clave de API de Athlinks)."
+              : "Athlinks isn't enabled on the server yet (the Athlinks API key is needed)."}
+            <div className="text-[10px] text-amber-500 mt-1">(Server setting: ATHLINKS_API_KEY)</div>
+          </div>
+        ) : !linked ? (
+          <div className="space-y-2">
+            <div className="text-xs text-slate-600">
+              {lang === "es"
+                ? "1. Busca tu perfil de atleta. 2. Confirma que eres tú — solo entonces vinculamos tu historial."
+                : "1. Search your athlete profile. 2. Confirm it's you — only then do we link your history."}
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="input flex-1"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={lang === "es" ? "Tu nombre en Athlinks" : "Your name on Athlinks"}
+                onKeyDown={(e) => e.key === "Enter" && query.trim().length >= 3 && search()}
+              />
+              <button onClick={search} disabled={busy || query.trim().length < 3} className="btn-secondary shrink-0">
+                {lang === "es" ? "Buscar" : "Search"}
+              </button>
+            </div>
+            {candidates.map((c) => (
+              <button
+                key={String(c.racerId)}
+                onClick={() => confirm(c)}
+                disabled={busy}
+                className="w-full text-left rounded-xl border border-sand-200 px-3 py-2 text-sm hover:bg-ocean-50"
+              >
+                <span className="font-semibold">{c.name}</span>
+                {c.location && <span className="text-slate-400"> · {c.location}</span>}
+                <span className="block text-[10px] text-slate-400">Athlinks ID: {c.racerId}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <button onClick={refresh} disabled={busy} className="btn-secondary flex-1 justify-center">
+              <RefreshCw className="w-4 h-4" /> {lang === "es" ? "Actualizar historial" : "Refresh race history"}
+            </button>
+            <button onClick={unlink} className="underline text-sm self-center">
+              {lang === "es" ? "Desvincular" : "Unlink"}
+            </button>
+          </div>
+        )}
+        {msg && (
+          <div className={`text-xs rounded-lg px-2 py-1.5 mt-2 ${msg.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+            {msg.text}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
