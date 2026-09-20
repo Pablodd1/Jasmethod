@@ -13,9 +13,9 @@ interface EmailOpts {
   userId?: string;
 }
 
-let transporter: nodemailer.Transporter | null = null;
+let transporter: import("nodemailer").Transporter | null = null;
 
-function getTransporter(): nodemailer.Transporter | null {
+function getTransporter(): import("nodemailer").Transporter | null {
   const host = process.env.SMTP_HOST;
   if (!host) return null;
   if (!transporter) {

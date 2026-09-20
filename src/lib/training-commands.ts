@@ -30,8 +30,28 @@ export interface ParsedCommand {
 export function parseTrainingCommand(text: string): ParsedCommand {
   const t = text.toLowerCase().trim();
 
-  // REST DAY
-  if (/(rest|descanso|day off|skip|no train|cancel|too tired.*rest|enfermo|sick)/.test(t)) {
+  // QUESTIONS ARE NOT COMMANDS — reproduce-guard: "What is a rest day?" used
+  // to trigger REST_DAY. A question only carries a command when it also holds
+  // an explicit imperative verb ("can you make it easier?" is both).
+  const isQuestion =
+    /\?\s*$/.test(t) ||
+    /^(what|why|how|when|who|where|which|is|are|do|does|did|can|could|should|would|will|what's|whats|qué|que|cómo|como|cuándo|cuando|quién|quien|dónde|donde|por qué|es|está|puedo|puede|debería)\b/.test(t);
+  const hasImperative =
+    /\b(make|swap|switch|add|remove|drop|cancel|skip|set|turn|convert|increase|reduce|lower|change|haz|hacer|cambia|cambiar|añade|añadir|agrega|quita|quitar|baja|sube|pon|convierte)\b/.test(t);
+  if (isQuestion && !hasImperative) {
+    return { command: "NO_CHANGE", confidence: 0.2, originalText: text };
+  }
+
+  // NEGATION GUARD — "Do not cancel my workout" used to trigger REST_DAY.
+  // A negated action verb is an instruction to NOT act, i.e. NO_CHANGE.
+  if (/\b(do not|don'?t|dont|never|no)\s+(cancel|skip|rest|remove|drop|change|reduce|increase|delete|quit|modify|touch)\b/.test(t)) {
+    return { command: "NO_CHANGE", confidence: 0.2, originalText: text };
+  }
+
+  // REST DAY — explicit intent only ("make it a rest day", "I need a rest
+  // day", "I'm sick", "cancel today's workout"). Bare keyword presence is not
+  // enough: "rest"/"cancel" appear in questions and negations handled above.
+  if (/(make it|turn this|convert|convierte|haz).*(rest|descanso|day off)|i (need|want|am|feel).*(rest|descanso|sick|enfermo|too tired)|rest day|día de descanso|dia de descanso|i'?m sick|estoy enfermo|(skip|cancel|saltar|cancelar)\b.{0,30}\b(today|workout|session|training|entreno|hoy)/.test(t)) {
     return { command: "REST_DAY", confidence: 0.9, originalText: text };
   }
 
@@ -96,6 +116,7 @@ export function applyTrainingCommand(
       p.session.title = "Rest Day — 20 min Z1 + Breathing";
       p.session.mainSet = ["20 minutes Zone 1 in any modality (walk, easy spin, swim)", "5 min breathing: extended exhale 2:1"];
       p.session.type = "recovery";
+      p.session.durationMin = 20; // keep the record consistent with the description
       return { adjusted: p, explanation: "Session converted to active recovery. Training now would dig a deeper hole — protect the block.", allowed: true };
     }
 
@@ -186,11 +207,22 @@ export function applyTrainingCommand(
     }
 
     case "CHANGE_DURATION": {
-      if (cmd.value && cmd.value >= 20 && cmd.value <= 180) {
-        p.session.durationMin = cmd.value;
-        return { adjusted: p, explanation: `Duration set to ${cmd.value} minutes.`, allowed: true };
+      if (!cmd.value || cmd.value < 20 || cmd.value > 180) {
+        return { adjusted: p, explanation: "Duration must be between 20 and 180 minutes.", allowed: false };
       }
-      return { adjusted: p, explanation: "Duration must be between 20 and 180 minutes.", allowed: false };
+      // Readiness caps the ask: a low-readiness day cannot be extended into a
+      // big session, no matter how it is phrased.
+      const readiness = context.readinessScore ?? 60;
+      const maxAllowed = readiness >= 70 ? 180 : readiness >= 55 ? 120 : 75;
+      if (cmd.value > maxAllowed) {
+        return {
+          adjusted: p,
+          explanation: `Your readiness (${readiness}/100) caps today at ${maxAllowed} minutes — the session stays as prescribed.`,
+          allowed: false,
+        };
+      }
+      p.session.durationMin = cmd.value;
+      return { adjusted: p, explanation: `Duration set to ${cmd.value} minutes.`, allowed: true };
     }
 
     default:

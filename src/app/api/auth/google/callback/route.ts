@@ -64,6 +64,9 @@ export async function GET(req: Request) {
     const isNew = !user;
 
     if (!user) {
+      // Unlike password signup, Google sign-in proves mailbox ownership
+      // (verified email from Google), so creating an account for an
+      // allowlisted admin email here is safe — syncAdminRole below promotes it.
       user = await prisma.user.create({
         data: {
           email,

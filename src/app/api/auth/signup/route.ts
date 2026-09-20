@@ -31,12 +31,25 @@ export async function POST(req: Request) {
     if (!gate.allowed) {
       return NextResponse.json({ error: gate.note }, { status: 403 });
     }
+    // Security: an allowlisted admin email may not self-register. Signup has
+    // no email verification, so allowing it would let anyone claim the owner's
+    // address and (via login-time promotion) the admin role. Admin accounts
+    // pre-exist or are bootstrapped with ADMIN_RECOVERY_TOKEN.
+    if (isAdminEmail(normalized)) {
+      return NextResponse.json(
+        {
+          error:
+            "This email is reserved. If it's yours, sign in or use account recovery.",
+        },
+        { status: 403 },
+      );
+    }
     const user = await prisma.user.create({
       data: {
         email: normalized,
         passwordHash: hashPassword(String(password)),
         name: String(name).trim(),
-        role: isAdminEmail(normalized) ? "admin" : "athlete",
+        role: "athlete",
         profile: { create: by ? { birthYear: by } : {} },
         motivation: { create: {} },
       },

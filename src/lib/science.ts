@@ -519,13 +519,44 @@ export function generatePlan(opts: {
 
     // Enforce the user's easy/quality split on every non-taper week (meso rule:
     // taper/test week keeps race-specific + fresh work as designed).
-    const finalSessions = legacy !== "taper" ? enforceSplit(sessions, splitTarget) : sessions;
+    const splitSessions = legacy !== "taper" ? enforceSplit(sessions, splitTarget) : sessions;
+
+    // ---- BUDGET & INTEGERITY GUARANTEE ----
+    // Sport splits already sum to ~totalMin, but brick/recovery/plyo are added
+    // on top and enforceSplit adjusts minutes — the summed week could exceed
+    // the athlete's availability (reproduced: 8h plan → 9.8h). Trim ONLY easy
+    // endurance volume (never quality, brick, plyo or strength) until the week
+    // fits, then round every session so Workout.durationMin (Int) is never
+    // handed a fraction.
+    const budgetMin = totalMin;
+    let finalSessions = splitSessions;
+    const sumMin = (list: PlanSession[]) => list.reduce((a, s) => a + s.minutes, 0);
+    let excess = sumMin(finalSessions) - budgetMin;
+    if (excess > 0) {
+      const trimmable = finalSessions.filter(
+        (s) => (s.zone === "z1" || s.zone === "z2") && s.type === "endurance" && s.minutes > 25,
+      );
+      const trimmableTotal = trimmable.reduce((a, s) => a + (s.minutes - 20), 0);
+      if (trimmableTotal > 0) {
+        const factor = Math.max(0, 1 - excess / trimmableTotal);
+        finalSessions = finalSessions.map((s) =>
+          trimmable.includes(s) && s.minutes > 25
+            ? { ...s, minutes: Math.max(20, Math.round(s.minutes * factor)) }
+            : s,
+        );
+      }
+    }
+    finalSessions = finalSessions.map((s) => ({
+      ...s,
+      minutes: Math.max(1, Math.round(s.minutes)),
+    }));
 
     weeksOut.push({
       week: w,
       theme: phaseTheme[ph],
       sessions: finalSessions,
-      totalMinutes: totalMin,
+      // Report what the week ACTUALLY contains, after all adjustments.
+      totalMinutes: sumMin(finalSessions),
     });
   }
   return weeksOut;
@@ -578,11 +609,13 @@ export function enforceSplit(sessions: PlanSession[], easyPct: number): PlanSess
     let bestIdx = -1, bestM2 = 0, bestDist = Infinity, bestDir: "promote" | "demote" | null = null;
     work.forEach((s, idx) => {
       if (isEasy(s) && s.zone === "z2" && s.type === "endurance") {
-        const m2 = Math.max(10, Math.min(s.minutes * 1.5, Math.round((100 * E - target * T + target * s.minutes) / (100 + target))));
+        // Round AFTER the clamp — Math.min(s.minutes * 1.5, …) can pass a
+        // fractional bound (45 × 1.5 = 67.5) straight into an Int column.
+        const m2 = Math.round(Math.max(10, Math.min(s.minutes * 1.5, (100 * E - target * T + target * s.minutes) / (100 + target))));
         const dist = Math.abs(((E - m2) / (T - s.minutes + m2)) * 100 - target);
         if (dist < bestDist) { bestDist = dist; bestIdx = idx; bestM2 = m2; bestDir = "promote"; }
       } else if (!isEasy(s) && s.sport !== "brick" && s.type !== "brick" && s.type !== "strength" && s.type !== "plyo") {
-        const m2 = Math.max(10, Math.min(s.minutes * 1.5, Math.round((target * T - target * s.minutes - 100 * E) / (100 - target))));
+        const m2 = Math.round(Math.max(10, Math.min(s.minutes * 1.5, (target * T - target * s.minutes - 100 * E) / (100 - target))));
         const dist = Math.abs(((E + m2) / (T - s.minutes + m2)) * 100 - target);
         if (dist < bestDist) { bestDist = dist; bestIdx = idx; bestM2 = m2; bestDir = "demote"; }
       }

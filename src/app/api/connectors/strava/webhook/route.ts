@@ -72,9 +72,11 @@ export async function POST(req: Request) {
       body?.object_type === "activity" &&
       ["create", "update", "delete"].includes(body?.aspect_type)
     ) {
-      // DEDUPE: persist-first ledger keyed by event id — Strava retries and
-      // redeliveries become acknowledged no-ops.
+      // DEDUPE + RETRY contract: only a PROCESSED event short-circuits a
+      // redelivery; a failed first attempt leaves processedAt null so Strava's
+      // retry re-runs the sync.
       const eventId = String(body.event_id ?? "");
+      let alreadyProcessed = false;
       if (eventId) {
         const claimed = await prisma.webhookEvent
           .createMany({
@@ -86,9 +88,15 @@ export async function POST(req: Request) {
             skipDuplicates: true,
           })
           .catch(() => ({ count: 1 }));
-        if (!claimed.count)
-          return NextResponse.json({ ok: true, deduplicated: true });
+        if (!claimed.count) {
+          const prior = await prisma.webhookEvent
+            .findUnique({ where: { provider_eventId: { provider: "strava", eventId } } })
+            .catch(() => null);
+          alreadyProcessed = !!prior?.processedAt;
+        }
       }
+      if (alreadyProcessed)
+        return NextResponse.json({ ok: true, deduplicated: true });
       if (body.aspect_type === "delete") {
         // Deletion is handled by the next reconciliation: lastSyncAt falls
         // back 24h on every run, so the deleted activity window is re-pulled

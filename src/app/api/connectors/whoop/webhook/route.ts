@@ -37,6 +37,11 @@ export async function POST(req: Request) {
     const whoopUserId = String(body?.user_id ?? "");
     const eventType = String(body?.type ?? "");
     const eventId = String(body?.id ?? body?.trace_id ?? "");
+    // DEDUPE + RETRY contract: the ledger row is claimed on first sight, but
+    // a redelivery only short-circuits if that first attempt SUCCEEDED
+    // (processedAt set). A failed sync leaves processedAt null, so Whoop's
+    // retry re-runs the sync instead of being swallowed as a "duplicate".
+    let alreadyProcessed = false;
     if (eventId) {
       const claimed = await prisma.webhookEvent
         .createMany({
@@ -44,9 +49,15 @@ export async function POST(req: Request) {
           skipDuplicates: true,
         })
         .catch(() => ({ count: 1 })); // ledger failure must never drop the event
-      if (!claimed.count)
-        return NextResponse.json({ ok: true, deduplicated: true });
+      if (!claimed.count) {
+        const prior = await prisma.webhookEvent
+          .findUnique({ where: { provider_eventId: { provider: "whoop", eventId } } })
+          .catch(() => null);
+        alreadyProcessed = !!prior?.processedAt;
+      }
     }
+    if (alreadyProcessed)
+      return NextResponse.json({ ok: true, deduplicated: true });
     if (whoopUserId) {
       const conn = await prisma.connector.findFirst({
         where: {

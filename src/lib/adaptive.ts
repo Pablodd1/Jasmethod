@@ -444,7 +444,11 @@ export function adaptSession(checkin: Checkin): Adaptation {
   score += (motivation - 3) * 4; // ±8
   if (checkin.mood) score += (checkin.mood - 3) * 4; // ±8
   score -= (stress - 3) * 5; // ±10
-  if (checkin.menstrual) score -= 10;
+  // Menstrual phase does NOT auto-penalize readiness (McNulty et al. 2020:
+  // trivial average performance effect across phases; responses are
+  // individual). Symptoms the athlete actually reports — soreness, fatigue,
+  // poor sleep, stress — already flow through their own weights above. The
+  // cycle phase note is contextual guidance only (cycle-tracking.ts).
   if (sick) score -= 40;
   // Objective morning signals: elevated RHR = recovery lagging (Plews 2013),
   // low RHR = recovered. ±6 bpm vs the 7-day baseline.
