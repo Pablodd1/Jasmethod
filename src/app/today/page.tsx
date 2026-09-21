@@ -50,6 +50,11 @@ export default function TodayPage() {
       } catch {}
     }
   }, [user]);
+  // Mount-load: without this the page never fetches — /api/today answers,
+  // but nothing ever asks it (regression from an earlier page rewrite).
+  useEffect(() => {
+    if (user) load();
+  }, [user, load]);
   // Background auto-sync: if devices are connected and data is stale (>12h),
   // silently sync on page load. The athlete never has to press anything.
   const [autoSynced, setAutoSynced] = useState(false);
