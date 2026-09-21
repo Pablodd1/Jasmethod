@@ -110,6 +110,13 @@ export default function TodayPage() {
         method: approve ? "POST" : "GET",
       });
       if (!r.ok) throw Error((await r.json().catch(() => ({}))).error);
+      // Approve also emails the .FIT with import steps — tell the athlete.
+      if (approve && r.headers.get("X-Delivered-Email") === "1")
+        setMessage(
+          es
+            ? "Aprobado ✓ — el archivo .FIT también va de camino a tu correo con los pasos para Garmin."
+            : "Approved ✓ — the .FIT is also on its way to your email with the Garmin import steps."
+        );
       const blob = await r.blob(),
         url = URL.createObjectURL(blob),
         a = document.createElement("a");
