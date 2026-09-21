@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Waves, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
 
@@ -45,7 +45,8 @@ export function SiteHeader() {
     <header className="border-b border-ink-200/70 bg-paper/90 backdrop-blur sticky top-0 z-30">
       <div className="pub-container flex flex-wrap items-center justify-between py-4 gap-4">
         <Link href="/" className="flex items-center gap-2.5">
-          <Waves className="w-6 h-6 text-vermillion-500" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon.svg" alt="JasMiamiMethod" className="w-8 h-8 rounded-lg" />
           <span className="font-display text-lg font-bold tracking-tight text-ink-900">
             JasMiamiMethod
           </span>
@@ -91,7 +92,8 @@ export function SiteFooter() {
     <footer className="border-t border-ink-200/70 mt-20">
       <div className="pub-container py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2 text-ink-600">
-          <Waves className="w-4 h-4 text-vermillion-500" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon.svg" alt="JasMiamiMethod" className="w-5 h-5 rounded" />
           <span className="font-display font-bold text-ink-900">JasMiamiMethod</span>
         </div>
         <p className="micro">
