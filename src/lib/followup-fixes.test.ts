@@ -67,3 +67,20 @@ test("post-fuel note states TOTAL grams, not g/kg/h", () => {
   assert.ok(!/g\/kg\/h/.test(r.note), "misleading unit must be gone");
   assert.match(r.note, /84 g carbs TOTAL/);
 });
+
+// ---- Day-off protocol (owner spec) ----
+import { dayOffProtocol, dayOffProtocolText } from "./day-off";
+
+test("day-off protocol carries sleep, fuel, supplementation and visualization in both languages", () => {
+  for (const lang of ["en", "es"] as const) {
+    const p = dayOffProtocol(lang);
+    const all = JSON.stringify(p);
+    assert.match(all, /8 hours|8 horas/);
+    assert.match(all, /creatin/i);
+    assert.ok(p.essentials.length >= 4, "sleep, fuel, supplementation, movement");
+    assert.strictEqual(p.visualizationFull.length, 8, "full 8-step visualization routine");
+    const t = dayOffProtocolText(lang);
+    assert.match(t, /VISUALIZATION \(2-5 min|VISUALIZACIÓN \(2-5 min/);
+    assert.match(t, /Supplement|SUPLEMENTACIÓN/i);
+  }
+});

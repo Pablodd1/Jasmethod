@@ -6,6 +6,7 @@ import { FuelTimeline } from "@/components/fuel-timeline";
 import { EstimateBanner } from "@/components/estimate-banner";
 import { WorkoutSparkline } from "@/components/workout-sparkline";
 import { fmtVolumeDual } from "@/lib/units";
+import { dayOffProtocol } from "@/lib/day-off";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
@@ -389,11 +390,47 @@ export default function TodayPage() {
                     )}
                   </div>
                 ) : (
-                  <p>
-                    {es
-                      ? "Descanso hoy. No hay intervalos ni exportación al reloj."
-                      : "Rest today. No intervals or watch workout are prescribed."}
-                  </p>
+                  <div>
+                    <p>{es ? "Descanso hoy." : "Rest today."}</p>
+                    {/* The full day-off protocol: sleep/journal, fuel,
+                        supplementation reminder, visualization routine. */}
+                    <div className="mt-3 rounded-xl border border-ocean-200 bg-ocean-50/40 p-4 space-y-2">
+                      {(() => {
+                        const p = dayOffProtocol(es ? "es" : "en");
+                        return (
+                          <>
+                            <div className="font-display font-bold text-ocean-900">{p.title}</div>
+                            {p.essentials.map((e) => (
+                              <div key={e.label} className="flex gap-2 text-sm">
+                                <span className="text-lg leading-none">{e.icon}</span>
+                                <div>
+                                  <span className="font-semibold">{e.label}</span>
+                                  <span className="text-slate-600"> — {e.detail}</span>
+                                </div>
+                              </div>
+                            ))}
+                            <div className="text-sm text-slate-700 border-t border-ocean-200 pt-2">
+                              {p.visualizationShort}
+                            </div>
+                            <details>
+                              <summary className="cursor-pointer text-xs font-semibold text-ocean-700">
+                                {es ? "Protocolo completo de visualización (8 pasos)" : "Full visualization protocol (8 steps)"}
+                              </summary>
+                              <ol className="mt-2 space-y-2">
+                                {p.visualizationFull.map((v) => (
+                                  <li key={v.step} className="text-xs">
+                                    <span className="font-bold">{v.step}</span>{" "}
+                                    <span className="text-slate-600">{v.text}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </details>
+                            <div className="text-xs italic text-ocean-700 pt-1">{p.closing}</div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 )}
                 {session.durationMin > 0 && (
                   <details>

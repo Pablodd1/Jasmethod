@@ -10,6 +10,7 @@ import {
   type PlanFormatSession,
 } from "./plan-formats";
 import { renderDayPng, type GraphicStep } from "./workout-graphic";
+import { dayOffProtocolText } from "./day-off";
 export async function trainingReminder(
   user: { id: string; name: string; timezone: string; profile?: any },
   key: string,
@@ -30,13 +31,16 @@ export async function trainingReminder(
 
   const fmt: PlanFormatSession[] = [];
   const detailLines: string[][] = [];
+  let hasDayOff = false;
   for (const w of sessions) {
     if (
       user.profile?.injured ||
       w.planDay?.dayOff ||
       w.feedbackStatus === "skipped"
-    )
+    ) {
+      if (w.planDay?.dayOff) hasDayOff = true;
       continue;
+    }
     const p = w.prescription
       ? JSON.parse(w.prescription)
       : prescribeToday({
@@ -107,7 +111,11 @@ export async function trainingReminder(
   const dayLabel = key;
   // Creative skins: emoji-dense chat plan (Telegram + fallback text) and a
   // styled Gmail HTML card with the full detail collapsible underneath.
-  const text = telegramPlan(user.name, dayLabel, fmt);
+  const lang = (user as any).language === "es" ? "es" : "en";
+  const dayOffBlock = hasDayOff ? dayOffProtocolText(lang) : "";
+  const text = hasDayOff
+    ? telegramPlan(user.name, dayLabel, fmt) + (dayOffBlock ? `\n\n${dayOffBlock}` : "")
+    : telegramPlan(user.name, dayLabel, fmt);
   const gmail = gmailPlanHtml(user.name, dayLabel, fmt);
   const subject = `Jasmethod — ${key}`;
 
