@@ -5,6 +5,8 @@
 // descriptions (plain-text with icons, safe for ICS/Google). All derive from
 // the same session shape — no surface drifts from the source of truth.
 
+import { createHmac } from "crypto";
+
 export interface PlanFormatSession {
   title: string;
   sport: string;
@@ -12,6 +14,7 @@ export interface PlanFormatSession {
   durationMin: number;
   intensity?: string | null;
   startTime?: string | null;
+  id?: string;
   steps?: {
     name: string;
     seconds: number;
@@ -147,7 +150,9 @@ export function gmailPlanHtml(
 
 // ---- Calendar event descriptions (ICS + Google) ----
 
-export function calendarDescription(s: PlanFormatSession): string {
+export function calendarDescription(
+  s: PlanFormatSession & { id?: string },
+): string {
   const lines: string[] = [
     `${sportIcon(s.sport)} ${s.title} — ${s.durationMin} min ${zoneDot(s.intensity)}${s.intensity ? s.intensity.toUpperCase() : ""}`,
   ];
@@ -165,4 +170,15 @@ export function calendarDescription(s: PlanFormatSession): string {
   if (s.post) lines.push(`🍚 Post: ${s.post.carbsG}g C + ${s.post.proteinG}g P`);
   lines.push("— JasMiamiMethod · check in before training");
   return lines.join("\n");
+}
+
+// Calendar-safe shape link (Google Calendar keeps plain URLs clickable).
+export function shapeLink(sessionId: string): string {
+  const exp = Date.now() + 30 * 86400000;
+  const sig = createHmac("sha256", process.env.CRON_SECRET || "jmm-graphic-dev-secret")
+    .update(`${sessionId}.${exp}`)
+    .digest("hex")
+    .slice(0, 32);
+  const base = process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit";
+  return `${base}/api/workout/graphic?sessionId=${sessionId}&token=${exp}.${sig}&format=png`;
 }

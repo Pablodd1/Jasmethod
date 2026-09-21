@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Watch } from "lucide-react";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { EstimateBanner } from "@/components/estimate-banner";
+import { WorkoutSparkline } from "@/components/workout-sparkline";
 import { fmtVolumeDual } from "@/lib/units";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -265,6 +266,9 @@ export default function TodayPage() {
                     ? "cierra los ojos, véete ejecutando la secuencia de abajo: el lugar, el ritmo, la respiración en el esfuerzo. El scrolling roba las catecholaminas que el entreno necesita (Liu 2025)."
                     : "close your eyes, see yourself executing the sequence below: the place, the rhythm, your breathing at effort. Scrolling steals the catecholamines training needs (Liu 2025)."}
                 </div>
+                {session.prescription.steps.length > 2 && (
+                  <WorkoutSparkline steps={session.prescription.steps} />
+                )}
                 {session.prescription.steps.length ? (
                   <div>
                     <div className="flex items-center gap-2 mb-2">

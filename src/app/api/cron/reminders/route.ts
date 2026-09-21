@@ -2,7 +2,7 @@ import { trainingReminder } from "@/lib/training-reminder";
 import { prisma } from "@/lib/db";
 import { dayBounds, addDaysKey, localDate } from "@/lib/dates";
 import { sendEmail } from "@/lib/email";
-import { sendTelegram } from "@/lib/notify";
+import { sendTelegram, sendTelegramPhoto } from "@/lib/notify";
 import { prescribeToday } from "@/lib/adaptive";
 import { baseWorkout } from "@/lib/prescription";
 export const dynamic = "force-dynamic";
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
     }
     const day = dayBounds(user.timezone),
       key = pref.reminderHour >= 12 ? addDaysKey(day.key, 1) : day.key;
-    const { text, subject, html } = await trainingReminder(user, key);
+    const { text, subject, html, png } = await trainingReminder(user, key);
     for (const channel of ["email", "telegram"]) {
       if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)
         continue;
@@ -60,9 +60,31 @@ export async function GET(req: Request) {
               html,
               text,
               userId: user.id,
+              ...(png
+                ? {
+                    attachments: [
+                      { filename: "todays-shape.png", content: png, cid: "workout-shape" },
+                    ],
+                  }
+                : {}),
             })
           : pref.telegramChatId
-            ? await sendTelegram(pref.telegramChatId, text)
+            ? await (async () => {
+                // The red trail rides as a photo above the full plan text.
+                let first: { ok: boolean; error?: string } = { ok: true };
+                if (png) {
+                  first = await sendTelegramPhoto(
+                    pref.telegramChatId!,
+                    png,
+                    `📈 ${user.name} — ${key} · effort shape`,
+                  );
+                }
+                const plan = await sendTelegram(pref.telegramChatId!, text);
+                return {
+                  ok: first.ok && plan.ok,
+                  error: plan.error || first.error,
+                };
+              })()
             : { ok: false, error: "Telegram chat is not configured" };
       await prisma.reminderDelivery.update({
         where: {

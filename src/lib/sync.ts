@@ -4,7 +4,7 @@ import { dayBounds, dateKey, localDate } from "./dates";
 import { storeActivity } from "./activity-store";
 import * as api from "./importers";
 import { buildFuelingPlan } from "./fueling";
-import { sportIcon, calendarDescription, type PlanFormatSession } from "./plan-formats";
+import { sportIcon, calendarDescription, shapeLink, type PlanFormatSession } from "./plan-formats";
 
 // Prescription JSON → exportable steps (defensive: never throw on old data).
 function safeSteps(prescription: string | null): PlanFormatSession["steps"] {
@@ -222,14 +222,14 @@ export async function syncUserConnectors(
           });
           const gid = await api.googleCalUpsertEvent(access, {
             summary: `${sportIcon(w.sport)} ${w.title} · ${w.durationMin} min`,
-            description: calendarDescription({
+            description: `${calendarDescription({
               title: w.title,
               sport: w.sport,
               durationMin: w.durationMin,
               intensity: w.intensity,
               steps: safeSteps(w.prescription),
               fuel: fuelPlan,
-            }),
+            })}\n📈 Effort shape: ${shapeLink(w.id)}`,
             start: localDate(
               dateKey(w.date, user.timezone),
               user.timezone,

@@ -36,7 +36,9 @@ function getTransporter(): import("nodemailer").Transporter | null {
 }
 
 export async function sendEmail(
-  opts: EmailOpts,
+  opts: EmailOpts & {
+    attachments?: { filename: string; content: Buffer; cid?: string }[];
+  },
 ): Promise<{ ok: boolean; error?: string }> {
   const t = getTransporter();
   if (!t) {
@@ -52,6 +54,15 @@ export async function sendEmail(
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
+      ...(opts.attachments?.length
+        ? {
+            attachments: opts.attachments.map((a) => ({
+              filename: a.filename,
+              content: a.content,
+              ...(a.cid ? { cid: a.cid } : {}),
+            })),
+          }
+        : {}),
     });
     if (opts.userId) {
       await prisma.sentEmail.create({

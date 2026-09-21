@@ -1,7 +1,7 @@
 import { dateKey, localDate } from "./dates";
 import { buildFitWorkout, workoutToFitSpec } from "./fit-export";
 import { buildZip, type ZipEntry } from "./zip";
-import { calendarDescription, type PlanFormatSession } from "./plan-formats";
+import { calendarDescription, shapeLink, type PlanFormatSession } from "./plan-formats";
 import { buildFuelingPlan } from "./fueling";
 
 type Row = Record<string, unknown>;
@@ -112,7 +112,7 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
         `DTEND:${utcStamp(end)}`,
         `SUMMARY:${icsText(session.title)}`,
         `DESCRIPTION:${icsText(
-          calendarDescription({
+          `${calendarDescription({
             title: String(session.title),
             sport: String(session.sport),
             durationMin: Number(session.durationMin),
@@ -126,7 +126,7 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
               sodiumMgPerL: data.profile?.sodiumMgPerL,
               gutTrained: !!data.profile?.gutTrained,
             }),
-          }),
+          })}\n📈 Effort shape: ${shapeLink(String(session.id))}`,
         )}`,
         "END:VEVENT",
       );

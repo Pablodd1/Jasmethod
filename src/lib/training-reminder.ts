@@ -9,6 +9,7 @@ import {
   calendarDescription,
   type PlanFormatSession,
 } from "./plan-formats";
+import { renderDayPng, type GraphicStep } from "./workout-graphic";
 export async function trainingReminder(
   user: { id: string; name: string; timezone: string; profile?: any },
   key: string,
@@ -109,14 +110,42 @@ export async function trainingReminder(
   const text = telegramPlan(user.name, dayLabel, fmt);
   const gmail = gmailPlanHtml(user.name, dayLabel, fmt);
   const subject = `Jasmethod — ${key}`;
-  const html = detailLines.length
-    ? `<div style="font-family:system-ui;max-width:600px;margin:auto">
+
+  // The red trail — the day's real effort shape, one row per session.
+  // PNG for the Telegram photo + Gmail inline; signed public URLs go into
+  // the calendar descriptions so the shape is one click away everywhere.
+  const graphicRows: GraphicStep[][] = fmt.map((s) =>
+    (s.steps || []).map((st) => ({
+      name: st.name,
+      seconds: st.seconds,
+      zone: st.zone,
+      phase: st.phase,
+    })),
+  );
+  const png = graphicRows.length ? renderDayPng(graphicRows) : null;
+  const gmailHtml = `<div style="font-family:system-ui;max-width:600px;margin:auto">
   ${gmail.html}
-  <details style="margin-top:12px">
+  ${
+    graphicRows.length
+      ? `<div style="margin:4px 0 12px"><img src="cid:workout-shape" alt="Today's effort shape — red bars scale with intensity" style="width:100%;max-width:600px;border-radius:8px;border:1px solid #e2e8f0"/></div>`
+      : ""
+  }
+  ${
+    detailLines.length
+      ? `<details style="margin-top:12px">
     <summary style="font-size:12px;color:#64748b">Full session detail (per-step)</summary>
     <pre style="white-space:pre-wrap;font-size:12px;color:#334155;background:#f1f5f9;padding:12px;border-radius:8px">${detailLines.map((l) => l.join("\n")).join("\n\n").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
-  </details>
-</div>`
-    : gmail.html;
-  return { text, subject, html, calendarDescriptions: fmt.map(calendarDescription) };
+  </details>`
+      : ""
+  }
+</div>`;
+  return {
+    text,
+    subject,
+    html: gmailHtml,
+    calendarDescriptions: fmt.map(calendarDescription),
+    png,
+    pngCid: "workout-shape",
+    sessions: fmt.map((s) => ({ title: s.title, sport: s.sport, durationMin: s.durationMin, intensity: s.intensity, steps: s.steps })),
+  };
 }
