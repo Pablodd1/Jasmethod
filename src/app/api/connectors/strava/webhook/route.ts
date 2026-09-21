@@ -40,20 +40,21 @@ export async function GET(req: Request) {
 // connected strava user for that owner id) and sync immediately.
 export async function POST(req: Request) {
   try {
-    const secret = process.env.STRAVA_WEBHOOK_SECRET;
-    if (!secret || new URL(req.url).searchParams.get("key") !== secret)
-      return NextResponse.json(
-        { error: "Invalid webhook key" },
-        { status: 401 },
-      );
+    // Two accepted auth paths: the ?key= secret (legacy registration) OR the
+    // pinned subscription id on every event body (the live registration —
+    // Strava rejects callback URLs with query strings, so the key param
+    // cannot ride on the registered URL).
     const body = await req.json();
-    if (
+    const key = new URL(req.url).searchParams.get("key");
+    const keyOk =
+      process.env.STRAVA_WEBHOOK_SECRET && key === process.env.STRAVA_WEBHOOK_SECRET;
+    const subOk =
       process.env.STRAVA_SUBSCRIPTION_ID &&
-      String(body.subscription_id) !== process.env.STRAVA_SUBSCRIPTION_ID
-    )
+      String(body?.subscription_id) === process.env.STRAVA_SUBSCRIPTION_ID;
+    if (!keyOk && !subOk)
       return NextResponse.json(
-        { error: "Wrong subscription" },
-        { status: 403 },
+        { error: "Invalid webhook credentials" },
+        { status: 401 },
       );
     if (
       body?.object_type === "athlete" &&
