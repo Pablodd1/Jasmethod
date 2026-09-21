@@ -321,6 +321,19 @@ export default function TodayPage() {
                                 {s.zone.toUpperCase()}
                               </span>
                             </div>
+                            {/* The considered metric for THIS step — HR, pace or power */}
+                            {(() => {
+                              const t = s.targets;
+                              const metric = t?.hr || t?.pace || t?.power;
+                              return metric ? (
+                                <div className="pl-9 text-[11px] font-semibold text-ocean-700 mt-1">
+                                  {t?.hr && <span className="mr-2">❤️ {t.hr}</span>}
+                                  {t?.power && <span className="mr-2">⚡ {t.power}</span>}
+                                  {t?.pace && <span className="mr-2">🏃 {t.pace}</span>}
+                                  <span className="text-slate-400 font-normal">RPE {t?.rpe}/10</span>
+                                </div>
+                              ) : null;
+                            })()}
                             <div className="mt-1.5 pl-9 flex items-baseline gap-2">
                               <span className="text-lg font-bold tabular-nums">
                                 {s.reps
@@ -355,6 +368,18 @@ export default function TodayPage() {
                                 {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
                               </strong>
                             </div>
+                            {(() => {
+                              const t = s.targets;
+                              const metric = t?.hr || t?.pace || t?.power;
+                              return metric ? (
+                                <div className="text-[11px] font-semibold text-ocean-700 mt-1">
+                                  {t?.hr && <span className="mr-2">❤️ {t.hr}</span>}
+                                  {t?.power && <span className="mr-2">⚡ {t.power}</span>}
+                                  {t?.pace && <span className="mr-2">🏃 {t.pace}</span>}
+                                  <span className="text-slate-400 font-normal">RPE {t?.rpe}/10</span>
+                                </div>
+                              ) : null;
+                            })()}
                             {s.note && (
                               <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
                             )}

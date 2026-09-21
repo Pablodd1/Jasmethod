@@ -39,12 +39,21 @@ function config(provider: string) {
     clientSecret = process.env[`${p.env}_CLIENT_SECRET`];
   if (!clientId || !clientSecret) throw new Error("not_configured");
   const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  // Redirect URIs are pinned by the PROVIDER's dashboard registration — when
+  // the canonical domain changes (vercel.app → jasmiamimethod.fit), a
+  // recomputed URI stops matching and OAuth dies with
+  // "redirect_uri does not match any pre-registered redirect urls".
+  // <PROVIDER>_REDIRECT_URI pins the exact registered value; env.example documents it.
+  const override = process.env[`${p.env}_REDIRECT_URI`];
   return {
     p,
     cfg: {
       clientId,
       clientSecret,
-      redirectUri: `${base}/api/connectors/${provider}/callback`,
+      redirectUri:
+        override && /^https?:\/\//.test(override)
+          ? override
+          : `${base}/api/connectors/${provider}/callback`,
     },
   };
 }

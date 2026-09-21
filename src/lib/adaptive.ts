@@ -1280,6 +1280,13 @@ export function prescribeToday(opts: {
     session.variantSeed,
     session.sport,
   );
+  // Per-step considered metrics: every step carries the targets that govern
+  // it — zone + HR (LTHR-based) + pace (run) or power (bike) — same math as
+  // the session-level targets, applied per step zone.
+  const stepsWithTargets = steps.map((s) => ({
+    ...s,
+    targets: rest ? undefined : zoneTargets(s.zone, session.sport, profile),
+  }));
   const detail = buildSessionDetail({
     sport: session.sport,
     type,
@@ -1302,7 +1309,7 @@ export function prescribeToday(opts: {
     durationMin,
     intensity,
     type,
-    steps,
+    steps: stepsWithTargets,
     startTime: session.startTime ?? null,
     verdict: adaptation.verdict,
     detail,

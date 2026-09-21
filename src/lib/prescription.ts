@@ -6,6 +6,7 @@ export interface WorkoutStep {
   reps?: number;
   note?: string;
   target?: { type: "open" | "power" | "heartRate"; low?: number; high?: number };
+  targets?: { rpe: number; hr?: string; power?: string; pace?: string };
 }
 
 // ---- Sport-specific step builders (sets, reps, variations) ----
@@ -224,11 +225,15 @@ export function zoneTargets(
     targets.hr = `≤${Math.round(profile.lthr * [0, 0.8, 0.89, 0.94, 1, 1.05, 1.1, 1.1][z])} bpm`;
   if (sport === "bike" && profile?.ftp)
     targets.power = `≤${Math.round(profile.ftp * [0, 0.55, 0.75, 0.9, 1.05, 1.2, 1.5, 1.5][z])} W`;
-  if (sport === "run" && profile?.runPaceBase)
-    targets.pace = `~${Math.round(profile.runPaceBase * [0, 1.4, 1.2, 1.08, 1, 0.95, 0.9, 0.85][z])} sec/km`;
+  if (sport === "run" && profile?.runPaceBase) {
+    const secPerKm = Math.round(
+      profile.runPaceBase * [0, 1.4, 1.2, 1.08, 1, 0.95, 0.9, 0.85][z],
+    );
+    const m = Math.floor(secPerKm / 60);
+    targets.pace = `~${m}:${String(secPerKm - m * 60).padStart(2, "0")}/km`;
+  }
   return targets;
-}
-export function baseWorkout(w: any) {
+}export function baseWorkout(w: any) {
   if (w.originalPlan) {
     try {
       return JSON.parse(w.originalPlan);

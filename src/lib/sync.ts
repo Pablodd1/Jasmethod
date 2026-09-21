@@ -93,7 +93,9 @@ export async function syncUserConnectors(
           {
             clientId: process.env[`${cfg.env}_CLIENT_ID`]!,
             clientSecret: process.env[`${cfg.env}_CLIENT_SECRET`]!,
-            redirectUri: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/connectors/${cfg.path}/callback`,
+            redirectUri:
+              process.env[`${cfg.env}_REDIRECT_URI`] ||
+              `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/connectors/${cfg.path}/callback`,
           },
           decryptSecret(conn.refreshEnc),
         );
