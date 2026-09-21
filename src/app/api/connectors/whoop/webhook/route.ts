@@ -33,10 +33,13 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     const body = JSON.parse(raw);
-    // Whoop webhook payload: { id, workout_id?, user_id, event_type, created_at }
-    const whoopUserId = String(body?.user_id ?? "");
-    const eventType = String(body?.type ?? "");
-    const eventId = String(body?.id ?? body?.trace_id ?? "");
+    // Whoop webhook payload (V2): { event_type, event_id, trace_id, data: {...} }.
+    // DEDUPE IDENTITY: event_id (unique per delivery) then trace_id — NEVER
+    // the data object id, which repeats for every update of the same workout
+    // and would suppress legitimate updates.
+    const whoopUserId = String(body?.user_id ?? body?.data?.user_id ?? "");
+    const eventType = String(body?.event_type ?? body?.type ?? "");
+    const eventId = String(body?.event_id ?? body?.trace_id ?? "");
     // DEDUPE + RETRY contract: the ledger row is claimed on first sight, but
     // a redelivery only short-circuits if that first attempt SUCCEEDED
     // (processedAt set). A failed sync leaves processedAt null, so Whoop's
@@ -68,6 +71,14 @@ export async function POST(req: Request) {
       });
       if (conn) {
         const sync = await syncUserConnectors(conn.userId, "whoop");
+        if (sync.results.some((r) => !r.ok)) {
+          // Leave processedAt NULL so Whoop's retry re-runs the sync — a
+          // failed delivery must never be swallowed as "already processed".
+          return NextResponse.json(
+            { error: "Sync failed; retry later" },
+            { status: 503 },
+          );
+        }
         if (eventId)
           await prisma.webhookEvent
             .updateMany({
@@ -75,11 +86,6 @@ export async function POST(req: Request) {
               data: { processedAt: new Date() },
             })
             .catch(() => {});
-        if (sync.results.some((r) => !r.ok))
-          return NextResponse.json(
-            { error: "Sync failed; retry later" },
-            { status: 503 },
-          );
       }
     }
     // Always 200 — Whoop retries on non-2xx and we'd rather stay quiet.

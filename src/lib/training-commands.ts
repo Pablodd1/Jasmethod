@@ -42,9 +42,13 @@ export function parseTrainingCommand(text: string): ParsedCommand {
     return { command: "NO_CHANGE", confidence: 0.2, originalText: text };
   }
 
-  // NEGATION GUARD — "Do not cancel my workout" used to trigger REST_DAY.
-  // A negated action verb is an instruction to NOT act, i.e. NO_CHANGE.
-  if (/\b(do not|don'?t|dont|never|no)\s+(cancel|skip|rest|remove|drop|change|reduce|increase|delete|quit|modify|touch)\b/.test(t)) {
+  // NEGATION GUARD — "Do not cancel my workout" / "I do not need a rest day"
+  // used to trigger edits. A negated action (within a short window before the
+  // action word) is an instruction to NOT act, i.e. NO_CHANGE.
+  if (
+    /\b(do not|don'?t|dont|never|no|not|avoid)\b[^.?!]{0,24}\b(cancel|skip|rest|rest day|day off|remove|drop|change|reduce|increase|delete|quit|modify|touch|remove)\b/.test(t) ||
+    /\b(cancel|skip|rest day|day off)\b[^.?!]{0,24}\b(no|not|never|needed)\b/.test(t)
+  ) {
     return { command: "NO_CHANGE", confidence: 0.2, originalText: text };
   }
 

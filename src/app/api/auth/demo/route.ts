@@ -6,7 +6,8 @@ import {
   createSession,
   setSessionCookie,
 } from "@/lib/auth";
-import { syncAdminRole } from "@/lib/admin";
+// NOTE: no syncAdminRole here — demo logins must never promote admin
+// allowlisted identities (the route whitelist excludes them by construction).
 
 // One-tap beta/demo login (the "Beta testers — one tap to sign in" buttons).
 // Self-provisioning: on a fresh database the first tap creates the demo
@@ -66,14 +67,10 @@ const DEMO_ACCOUNTS: Record<
     hours: 8,
     level: "amateur",
   },
-  "jasmelacosta@gmail.com": {
-    name: "Jasmel",
-    avatar: "👑",
-    sex: "male",
-    goal: "track-sprint",
-    hours: 10,
-    level: "advanced",
-  },
+  // SECURITY: allowlisted ADMIN_EMAILS addresses are NOT demo accounts — a
+  // demo login could otherwise self-provision (and get promoted to admin)
+  // before the real owner claims the address. Admin bootstrap = the
+  // /admin-recovery token or Google Sign-In mailbox proof.
   "andres@jasmiamimethod.com": {
     name: "Andres",
     avatar: "🏋️",
@@ -150,7 +147,8 @@ export async function POST(req: Request) {
       );
     }
 
-    user.role = await syncAdminRole(user);
+    // Demo logins never touch the admin role — the admin bootstrap lives in
+    // the recovery token and Google Sign-In mailbox proof.
     const token = await createSession(user.id);
     await setSessionCookie(token, req);
     return NextResponse.json({

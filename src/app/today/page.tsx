@@ -463,8 +463,11 @@ export default function TodayPage() {
                           <strong>{es ? "Después" : "Post"}:</strong> {session.post.carbsG} g carbs ·{" "}
                           {session.post.proteinG} g protein ({session.post.ratio})
                         </p>
-                        {session.post.personalized?.note && (
-                          <p className="text-xs text-slate-500 mt-1">{session.post.personalized.note}</p>
+                        {session.post.note && (
+                          <p className="text-xs text-slate-500 mt-1">{session.post.note}</p>
+                        )}
+                        {session.post.examples && (
+                          <p className="text-[11px] text-slate-400 mt-0.5">{session.post.examples}</p>
                         )}
                       </>
                     )}

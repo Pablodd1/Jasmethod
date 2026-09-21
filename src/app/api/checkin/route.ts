@@ -252,6 +252,9 @@ export async function POST(req: Request) {
           busyHrs,
           busyNote,
           profile,
+          // Availability is enforced at the END of prescription — the coach
+          // intensity multiplier can reshape the session but never exceed it.
+          timeBudgetMin: Number.isFinite(remaining) ? remaining : undefined,
         });
         p.scaled.originalMin = base.durationMin;
         p.scaled.factor = base.durationMin

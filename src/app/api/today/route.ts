@@ -99,15 +99,23 @@ export async function GET(req: Request) {
       const postBase = p.durationMin
         ? postWorkoutFuel(p)
         : null;
-      const post = postBase
+      // Personalized numbers are the source of truth; the generic builder
+      // only contributes its food examples (old mixed amounts removed).
+      const postPers = p.durationMin
+        ? postFuelPersonalized({
+            durationMin: p.durationMin,
+            intensity: p.intensity,
+            sport: p.sport,
+            weightKg: user.profile?.weightKg,
+          })
+        : null;
+      const post = postPers
         ? {
-            ...postBase,
-            personalized: postFuelPersonalized({
-              durationMin: p.durationMin,
-              intensity: p.intensity,
-              sport: p.sport,
-              weightKg: user.profile?.weightKg,
-            }),
+            carbsG: postPers.carbsG,
+            proteinG: postPers.proteinG,
+            ratio: postPers.ratio,
+            note: postPers.note,
+            examples: postBase?.examples,
           }
         : null;
       return {

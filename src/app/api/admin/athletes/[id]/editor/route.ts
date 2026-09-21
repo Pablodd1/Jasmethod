@@ -141,10 +141,22 @@ export async function PATCH(
           data.durationMin = Math.round(d);
         }
         if (!Object.keys(data).length) throw new ApiError("Nothing to update");
-        // Editing the plan clears the stale stored prescription so the next
-        // today-view regenerates it from the new session shape.
-        if (data.durationMin !== undefined || data.intensity !== undefined || data.type !== undefined)
+        // Editing the plan refreshes BOTH stored surfaces: the prescription is
+        // regenerated next view, and originalPlan (the regeneration seed) is
+        // updated so the edit can't be silently reverted.
+        if (data.durationMin !== undefined || data.intensity !== undefined || data.type !== undefined || data.title !== undefined) {
           data.prescription = null;
+          try {
+            const op = w.originalPlan ? JSON.parse(w.originalPlan) : {};
+            data.originalPlan = JSON.stringify({
+              ...op,
+              title: data.title ?? w.title,
+              durationMin: data.durationMin ?? w.durationMin,
+              intensity: data.intensity ?? w.intensity,
+              type: data.type ?? w.type,
+            });
+          } catch {}
+        }
         const after = await prisma.workout.update({ where: { id: w.id }, data });
         await audit(actor.id, athlete.id, "admin.editWorkout", w.id,
           { title: w.title, sport: w.sport, type: w.type, intensity: w.intensity, durationMin: w.durationMin, startTime: w.startTime },

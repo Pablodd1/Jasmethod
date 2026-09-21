@@ -244,7 +244,7 @@ export function postFuelPersonalized(opts: {
   const proteinG = Math.round(strength ? Math.max(25, w * 0.4) : w * 0.3);
   const ratio = strength ? "1:1" : long || hard ? "4:1" : "2:1";
   const note = long || hard
-    ? `Next 4 h: ${Math.round(w * 1.0)}-${Math.round(w * 1.2)} g/kg/h carbs total, ${Math.round(w * 0.3)} g protein now. 1.5× any body-weight lost as fluid (with sodium if you sweat salty).`
+    ? `Recovery window (next 4 h): ${carbsG}-${Math.round(w * 1.2)} g carbs TOTAL across the window, ${proteinG} g protein now. Drink ~1.5× the body weight you lost during the session (with sodium if you sweat salty).`
     : `Recovery snack now; normal meal within 2 h. Prioritize protein (${proteinG} g) — the carb demand was modest.`;
   return { carbsG, proteinG, ratio, note };
 }

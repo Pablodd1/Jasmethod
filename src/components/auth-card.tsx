@@ -224,7 +224,6 @@ export function AuthCard({
               { icon: "🎽", label: "Julia", sport: "Run", email: "juliaburtseva@gmail.com" },
               { icon: "🦩", label: "Fedra", sport: "Run", email: "fedra@jasmiamimethod.com" },
               { icon: "⚡", label: "John", sport: "400m", email: "john@jasmiamimethod.com" },
-              { icon: "👑", label: "Jasmel", sport: "Admin", email: "jasmelacosta@gmail.com" },
               { icon: "👟", label: "Arl", sport: "Run", email: "arlenramirez0425@gmail.com" },
               { icon: "⚡", label: "M", sport: "Run", email: "m@jasmiamimethod.com" },
             ].map((acct) => (
