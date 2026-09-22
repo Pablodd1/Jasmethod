@@ -157,25 +157,40 @@ export default function TodayPage() {
       const shareable =
         typeof navigator.canShare === "function" &&
         navigator.canShare({ files: [file] });
+      let shared = false;
       if (shareable) {
-        await navigator.share({
-          files: [file],
-          title: session.title,
-          text: es
-            ? "Importa en Garmin Connect → Entrenamiento → Workouts"
-            : "Import in Garmin Connect → Training → Workouts",
-        });
-        setMessage(
-          es
-            ? "Enviado ✓ — elige Garmin Connect en la hoja para importarlo; se sincroniza solo a tu reloj."
-            : "Sent ✓ — pick Garmin Connect in the sheet to import it; it syncs to your watch automatically."
-        );
-      } else {
+        try {
+          // Chrome requires share() inside the user-activation window; the FIT
+          // fetch can outlive it on slow connections, and the OS may deny the
+          // permission (NotAllowedError → "Permission denied"). Any share
+          // failure degrades to a plain download instead of an error banner.
+          await navigator.share({
+            files: [file],
+            title: session.title,
+            text: es
+              ? "Importa en Garmin Connect → Entrenamiento → Workouts"
+              : "Import in Garmin Connect → Training → Workouts",
+          });
+          shared = true;
+          setMessage(
+            es
+              ? "Enviado ✓ — elige Garmin Connect en la hoja para importarlo; se sincroniza solo a tu reloj."
+              : "Sent ✓ — pick Garmin Connect in the sheet to import it; it syncs to your watch automatically."
+          );
+        } catch (shareErr: any) {
+          if (shareErr?.name === "AbortError") {
+            setBusy(false);
+            return; // user closed the sheet — nothing to do
+          }
+          console.warn("Web Share unavailable (" + (shareErr?.name || "?") + ") — falling back to download");
+        }
+      }
+      if (!shared) {
         await saveBlob(r, "jasmethod-workout.fit");
         setMessage(
           es
-            ? "Archivo descargado — impórtalo en Garmin Connect (web) → Workouts."
-            : "File downloaded — import it in Garmin Connect (web) → Workouts."
+            ? "Archivo descargado — ábrelo o compártelo con la app de Garmin Connect para importarlo."
+            : "File downloaded — open or share it with the Garmin Connect app to import it."
         );
       }
       await load();
@@ -689,8 +704,8 @@ export default function TodayPage() {
                 </div>
                 <p className="text-xs text-slate-500">
                   {es
-                    ? "FIT descarga un archivo; impórtalo a un dispositivo compatible."
-                    : "FIT downloads a file; import it into a compatible device. It does not send directly to your watch."}
+                    ? "«Enviar al reloj» abre la hoja para compartir — elige Garmin Connect para importar el entreno. En escritorio se descarga el archivo (impórtalo en Garmin Connect → Workouts)."
+                    : "“Send to watch” opens your phone’s share sheet — pick Garmin Connect to import the workout. On desktop it downloads the file (import in Garmin Connect → Workouts)."}
                 </p>
               </div>
             </div>
