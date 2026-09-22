@@ -173,6 +173,65 @@ export default function SleepPage() {
             <h2 className="font-display font-bold text-lg mb-3">
               {t(lang, "sleep.history")}
             </h2>
+            {(() => {
+              // Sleep-timing research view: habitual midpoint of sleep +
+              // consistency (SD of midpoint), computed ONLY from records that
+              // carry real bed/wake times. Research framing (sleep regularity
+              // predicts performance and illness risk — Sletten 2023); no
+              // pseudo-precise "circadian age" metric.
+              const timed = sleep.filter((s) => s.bedTime && s.wakeTime);
+              const midpoints: number[] = timed.map((s) => {
+                const bed = new Date(s.bedTime).getTime();
+                const wake = new Date(s.wakeTime).getTime();
+                return ((bed + wake) / 2 / 3600000) % 24; // hours-of-day
+              });
+              if (midpoints.length >= 3) {
+                // Circular mean over the 24-h clock — midpoints near midnight wrap.
+                const rad = midpoints.map((m) => (m / 24) * 2 * Math.PI);
+                const meanRad = Math.atan2(
+                  rad.reduce((a, r) => a + Math.sin(r), 0) / rad.length,
+                  rad.reduce((a, r) => a + Math.cos(r), 0) / rad.length,
+                );
+                const meanH = ((meanRad / (2 * Math.PI)) * 24 + 24) % 24;
+                const sd = Math.sqrt(
+                  midpoints.reduce((a, b) => {
+                    // circular distance to the circular mean, in hours
+                    const d = Math.abs(b - meanH);
+                    return a + Math.min(d, 24 - d) ** 2;
+                  }, 0) / midpoints.length,
+                );
+                const hh = Math.floor(meanH);
+                const mm = Math.round((meanH - hh) * 60) % 60;
+                const chrono =
+                  meanH < 2 ? (lang === "es" ? "matutino" : "morning-leaning")
+                  : meanH <= 4 ? (lang === "es" ? "equilibrado" : "balanced")
+                  : (lang === "es" ? "nocturno" : "night-leaning");
+                const consistency = sd <= 0.75
+                  ? (lang === "es" ? "Muy consistente" : "Very consistent")
+                  : sd <= 1.25
+                    ? (lang === "es" ? "Razonablemente consistente" : "Reasonably consistent")
+                    : (lang === "es" ? "Irregular — fija tu hora de dormir" : "Irregular — anchor your bedtime");
+                return (
+                  <div className="rounded-xl border border-ocean-200 bg-ocean-50/50 p-3 mb-3">
+                    <div className="text-xs font-bold uppercase tracking-wide text-ocean-700 mb-1">
+                      {lang === "es" ? "Tu patrón de sueño" : "Your sleep pattern"} ({midpoints.length} {lang === "es" ? "noches con hora" : "timed nights"})
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-semibold">
+                        {lang === "es" ? "Punto medio de sueño" : "Midpoint of sleep"} ≈ {String(hh).padStart(2, "0")}:{String(mm).padStart(2, "0")}
+                      </span>
+                      {" · "}{chrono}
+                    </div>
+                    <div className="text-xs text-slate-600 mt-0.5">
+                      {consistency} (±{Math.round(sd * 60)} {lang === "es" ? "min" : "min"}) — {lang === "es"
+                        ? "la regularidad del sueño prediere rendimiento y riesgo de enfermedad mejor que una sola noche (Sletten 2023)."
+                        : "sleep regularity predicts performance and illness risk better than any single night (Sletten 2023)."}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
             {sleep.length === 0 ? (
               <p className="text-slate-400 text-sm py-6 text-center">
                 No sleep logged yet. Import from Whoop / Oura / Apple Health in

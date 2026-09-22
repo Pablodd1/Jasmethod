@@ -38,6 +38,7 @@ export default function AdminPage() {
             decisions.
           </p>
         </div>
+        {user?.role === "admin" && <AdminOperations />}
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -144,6 +145,148 @@ function Stat({ label, value }: { label: string; value: any }) {
     <div>
       <div className="font-display text-2xl font-bold">{value}</div>
       <div className="text-xs text-slate-500">{label}</div>
+    </div>
+  );
+}
+
+// ---- Admin operations: exception inbox + coach lifecycle + pilot outcomes ----
+function AdminOperations() {
+  const [inbox, setInbox] = useState<any>(null);
+  const [coaches, setCoaches] = useState<any[]>([]);
+  const [pilot, setPilot] = useState<any>(null);
+  const [open, setOpen] = useState(false);
+
+  async function load() {
+    const [i, c, p] = await Promise.all([
+      fetch("/api/admin/inbox").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/admin/coaches").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/admin/pilot?days=30").then((r) => (r.ok ? r.json() : null)),
+    ]);
+    setInbox(i);
+    setCoaches(c?.coaches || []);
+    setPilot(p);
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  const sevColor: Record<string, string> = {
+    high: "bg-red-50 text-red-700 border-red-200",
+    medium: "bg-amber-50 text-amber-800 border-amber-200",
+    low: "bg-slate-50 text-slate-600 border-slate-200",
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Exception inbox */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display font-bold text-lg">Exception inbox</h2>
+          <button className="btn-secondary !px-3 !py-1 text-xs" onClick={() => setOpen(!open)}>
+            {open ? "Hide" : `Show${inbox?.alerts?.length ? ` (${inbox.alerts.length})` : ""}`}
+          </button>
+        </div>
+        {open && (
+          <div className="mt-3 space-y-1.5 max-h-72 overflow-y-auto">
+            {inbox?.alerts?.length ? (
+              inbox.alerts.map((a: any, i: number) => (
+                <div key={i} className={`flex items-start gap-2 rounded-lg border px-3 py-1.5 text-sm ${sevColor[a.severity] || "border-slate-200"}`}>
+                  <Link href={`/admin/athletes/${a.athleteId}`} className="font-semibold hover:underline">
+                    {a.avatar} {a.athlete}
+                  </Link>
+                  <span className="flex-1">{a.detail}</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wide opacity-70">{a.kind}</span>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-emerald-700">✓ Nothing needs attention — every assigned athlete checked in and all devices are healthy.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Pilot outcomes */}
+      {pilot?.cohort && (
+        <div className="card border-emerald-200">
+          <h2 className="font-display font-bold text-lg">Pilot outcomes — last {pilot.days} days</h2>
+          <p className="text-xs text-slate-500 mt-0.5 mb-3">{pilot.disclaimer}</p>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            {[
+              ["Athletes", pilot.cohort.athletes],
+              ["Adherence", pilot.cohort.avgAdherencePct != null ? `${pilot.cohort.avgAdherencePct}%` : "—"],
+              ["Avg RPE", pilot.cohort.avgRpe ?? "—"],
+              ["Symptom days", pilot.cohort.symptomDayRate != null ? `${pilot.cohort.symptomDayRate}%` : "—"],
+              ["Baselines improved", `${pilot.cohort.improvingBaselines}/${pilot.cohort.trackedBaselines}`],
+            ].map(([l, v]: any) => (
+              <div key={l} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-center">
+                <div className="text-xl font-bold tabular-nums">{v}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Coach management */}
+      <div className="card">
+        <h2 className="font-display font-bold text-lg mb-3">Coaches</h2>
+        <div className="space-y-1.5 mb-3">
+          {coaches.map((c) => (
+            <div key={c.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm">
+              <span>{c.avatar}</span>
+              <span className="font-semibold">{c.name}</span>
+              <span className="text-xs text-slate-400 flex-1 truncate">{c.email}</span>
+              <span className="text-xs text-slate-500">{c.athleteCount} athletes</span>
+              {c.role === "coach" && (
+                <button
+                  className="text-xs underline text-red-600"
+                  onClick={async () => {
+                    if (!confirm(`Deactivate ${c.name}? All assignments will be revoked.`)) return;
+                    await fetch("/api/admin/coaches", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coachId: c.id, action: "deactivate" }) });
+                    load();
+                  }}
+                >
+                  deactivate
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        <CoachCreator onCreated={load} />
+      </div>
+    </div>
+  );
+}
+
+function CoachCreator({ onCreated }: { onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [temp, setTemp] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  return (
+    <div className="rounded-xl border border-ocean-200 bg-ocean-50/40 p-3 space-y-2">
+      <div className="text-xs font-bold uppercase tracking-wide text-ocean-700">Create a coach</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <input className="input" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input" type="email" placeholder="coach@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className="input" placeholder="Temp password (8+)" value={temp} onChange={(e) => setTemp(e.target.value)} />
+      </div>
+      {msg && <div className="text-xs text-slate-600">{msg}</div>}
+      <button
+        className="btn-primary !py-1.5 text-sm"
+        disabled={!name || !email || temp.length < 8}
+        onClick={async () => {
+          const r = await fetch("/api/admin/coaches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email, tempPassword: temp }) });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok) {
+            setMsg(`✓ ${d.coach.name} created — share the temp password privately; they change it after sign-in.`);
+            setName(""); setEmail(""); setTemp("");
+            onCreated();
+          } else setMsg(d.error || "Failed");
+        }}
+      >
+        Create coach account
+      </button>
     </div>
   );
 }
