@@ -64,6 +64,28 @@ const isHard = (intensity: string) =>
     intensity,
   );
 
+// Caffeine eligibility from the athlete's supplement preferences (review
+// finding F: a 70 kg hard-session case still suggested 210 mg after opt-out
+// because no caller passed the flag). Master switch off, an explicit dislike
+// or an opt-out all suppress caffeine everywhere.
+export function caffeineAllowedFromPrefs(p: {
+  enabled?: boolean | null;
+  likes?: string | null;
+  dislikes?: string | null;
+  optsOut?: string | null;
+}): boolean {
+  if (!p || p.enabled === false) return false;
+  const parse = (s?: string | null): string[] => {
+    try {
+      return s ? (JSON.parse(s) as string[]) : [];
+    } catch {
+      return [];
+    }
+  };
+  const blocked = new Set([...parse(p.dislikes), ...parse(p.optsOut)]);
+  return !blocked.has("caffeine");
+}
+
 /** The carb g/h target for a session — the "fuel vs hours" curve. */
 export function carbsPerHourFor(
   durationMin: number,

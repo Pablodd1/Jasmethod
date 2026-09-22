@@ -144,7 +144,19 @@ export function renderDayPng(sessions: GraphicStep[][]): Buffer {
 
 // ---- Signed public URL token (for calendar/Telegram fetching) ----
 
-const secret = () => process.env.CRON_SECRET || "jmm-graphic-dev-secret";
+// Signing secret for the public token path. FAIL CLOSED in production: a
+// missing CRON_SECRET must not silently fall back to a guessable constant
+// (review finding B — remove fallback signing secrets).
+export const graphicSigningSecret = (env: NodeJS.ProcessEnv = process.env): string => {
+  const s = env.CRON_SECRET;
+  if (!s) {
+    if (env.NODE_ENV === "production")
+      throw new Error("CRON_SECRET is required for signed graphic URLs");
+    return "jmm-graphic-dev-secret";
+  }
+  return s;
+};
+const secret = graphicSigningSecret;
 
 export function signGraphicToken(workoutId: string, ttlDays = 30): string {
   const exp = Date.now() + ttlDays * 86400000;

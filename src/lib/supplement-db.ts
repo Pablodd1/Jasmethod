@@ -55,7 +55,7 @@ export const SUPPLEMENT_DB: Supplement[] = [
     citations: [
       { author: "Kreider", year: 2025, journal: "Frontiers in Nutrition", PMID: undefined },
       { author: "Ashtary-Larky", year: 2025, journal: "J ISSN — 61 RCT meta-analysis" },
-      { author: "Wax", year: 2021, journal: "Nutrients — cited 303×", PMID: "33840466" },
+      { author: "Wax", year: 2021, journal: "Nutrients — cited 303×", PMID: "34199588" },
       { author: "Giraldo", year: 2025, journal: "J ISSN — neuroprotective in mTBI" },
     ],
   },
@@ -71,7 +71,7 @@ export const SUPPLEMENT_DB: Supplement[] = [
     mechanism: "Adenosine receptor antagonist → reduces perceived exertion, increases motor unit recruitment and fat oxidation.",
     caution: "≥9 mg/kg increases anxiety, jitters, GI distress. Tachycardia in sensitive individuals. Tolerance develops — cycle off every 4-6 weeks. Stop by 2 PM to protect sleep.",
     citations: [
-      { author: "Guest", year: 2021, journal: "J ISSN — Position Stand, cited 1297×", PMID: "33750591" },
+      { author: "Guest", year: 2021, journal: "J ISSN — Position Stand, cited 1297×", PMID: "33388079" },
       { author: "Grgic", year: 2020, journal: "Scandinavian J Med Sci Sports" },
     ],
   },
@@ -87,7 +87,7 @@ export const SUPPLEMENT_DB: Supplement[] = [
     mechanism: "Increases muscle carnosine → buffers H+ ions → delays fatigue in 1-4 min high-intensity efforts.",
     caution: "Paresthesia (tingling) at doses >800 mg single dose. Harmless and resolves in 30-60 min. Slow-release formulas reduce this.",
     citations: [
-      { author: "Trexler", year: 2015, journal: "J ISSN — Position Stand, cited 668×", PMID: "25636822" },
+      { author: "Trexler", year: 2015, journal: "J ISSN — Position Stand, cited 668×", PMID: "26175657" },
       { author: "Saunders", year: 2017, journal: "Br J Sports Med — meta-analysis in combat sports" },
       { author: "Korean National Team", year: 2018, journal: "Elite boxers — peak power improvement" },
     ],

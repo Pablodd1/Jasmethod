@@ -129,3 +129,36 @@ test("IF is TSS normalized per hour", () => {
   assert.strictEqual(estimateIf("z4", 87, 60), 0.87); // 87 TSS over exactly 1 h
   assert.strictEqual(estimateIf("z2", 0, 30), undefined);
 });
+
+// ---- Review-round-3 fixes ----
+import { caffeineAllowedFromPrefs } from "./fueling";
+
+test("caffeine opt-out propagates: master off, dislike and opt-out all suppress", () => {
+  assert.strictEqual(caffeineAllowedFromPrefs({ enabled: false }), false);
+  assert.strictEqual(
+    caffeineAllowedFromPrefs({ enabled: true, dislikes: '["caffeine"]' }),
+    false,
+  );
+  assert.strictEqual(
+    caffeineAllowedFromPrefs({ enabled: true, optsOut: '["caffeine"]' }),
+    false,
+  );
+  assert.strictEqual(caffeineAllowedFromPrefs({ enabled: true, likes: '["caffeine"]' }), true);
+  assert.strictEqual(caffeineAllowedFromPrefs({ enabled: true }), true);
+  assert.strictEqual(caffeineAllowedFromPrefs({ enabled: null, dislikes: "[]" }), true);
+});
+
+test("graphic signing secret fails closed in production", async () => {
+  const { graphicSigningSecret } = await import("./workout-graphic");
+  assert.throws(
+    () => graphicSigningSecret({ NODE_ENV: "production" }),
+    /CRON_SECRET is required/,
+  );
+  // A defined secret works in production (deterministic per env).
+  assert.strictEqual(
+    graphicSigningSecret({ NODE_ENV: "production", CRON_SECRET: "abc" }),
+    graphicSigningSecret({ NODE_ENV: "production", CRON_SECRET: "abc" }),
+  );
+  // Non-production dev fallback remains for local testing only.
+  assert.strictEqual(graphicSigningSecret({ NODE_ENV: "test" }), "jmm-graphic-dev-secret");
+});

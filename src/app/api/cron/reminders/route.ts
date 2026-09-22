@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     where: {
       reminder: { OR: [{ emailEnabled: true }, { telegramEnabled: true }] },
     },
-    include: { reminder: true, profile: true },
+    include: { reminder: true, profile: true, supplement: true },
   });
   let sent = 0,
     failed = 0,

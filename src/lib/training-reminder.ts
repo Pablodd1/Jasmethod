@@ -11,6 +11,7 @@ import {
 } from "./plan-formats";
 import { renderDayPng, type GraphicStep } from "./workout-graphic";
 import { dayOffProtocolText } from "./day-off";
+import { caffeineAllowedFromPrefs } from "./fueling";
 export async function trainingReminder(
   user: { id: string; name: string; timezone: string; profile?: any },
   key: string,
@@ -53,7 +54,8 @@ export async function trainingReminder(
           profile: user.profile,
         });
     // Fuel plan matched to THIS session (duration + intensity + the
-    // athlete's weight/sweat data): pre, during, post.
+    // athlete's weight/sweat data): pre, during, post. Caffeine honors
+    // the supplement opt-out.
     const fuel = buildFuelingPlan({
       durationMin: p.durationMin,
       intensity: p.intensity,
@@ -63,6 +65,15 @@ export async function trainingReminder(
       gutTrained: user.profile?.gutTrained,
       verdict: p.verdict,
     });
+    if (
+      !caffeineAllowedFromPrefs({
+        enabled: (user as any).supplement?.enabled,
+        likes: (user as any).supplement?.likes,
+        dislikes: (user as any).supplement?.dislikes,
+        optsOut: (user as any).supplement?.optsOut,
+      })
+    )
+      delete (fuel as { caffeineMg?: number }).caffeineMg;
     const post = p.durationMin > 0
       ? postFuelPersonalized({
           durationMin: p.durationMin,

@@ -143,9 +143,12 @@ export async function PATCH(
         if (!Object.keys(data).length) throw new ApiError("Nothing to update");
         // Editing the plan refreshes BOTH stored surfaces: the prescription is
         // regenerated next view, and originalPlan (the regeneration seed) is
-        // updated so the edit can't be silently reverted.
+        // updated so the edit can't be silently reverted. A superseded
+        // prescription also invalidates the watch-side approval — the athlete
+        // must re-send, otherwise the watch keeps executing the old version.
         if (data.durationMin !== undefined || data.intensity !== undefined || data.type !== undefined || data.title !== undefined) {
           data.prescription = null;
+          data.approved = false;
           try {
             const op = w.originalPlan ? JSON.parse(w.originalPlan) : {};
             data.originalPlan = JSON.stringify({

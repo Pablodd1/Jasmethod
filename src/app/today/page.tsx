@@ -328,8 +328,8 @@ export default function TodayPage() {
                 {/* TrainingPeaks-style summary: load · intensity · distance */}
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: "TSS", value: session.tss ?? "—" },
-                    { label: "IF", value: session.if ?? "—" },
+                    { label: es ? "Carga est." : "TSS est.", value: session.tss ?? "—" },
+                    { label: es ? "IF est." : "IF est.", value: session.if ?? "—" },
                     {
                       label: es ? "Distancia" : "Distance",
                       value:

@@ -6,6 +6,7 @@
 // the same session shape — no surface drifts from the source of truth.
 
 import { createHmac } from "crypto";
+import { graphicSigningSecret } from "./workout-graphic";
 
 export interface PlanFormatSession {
   title: string;
@@ -175,7 +176,7 @@ export function calendarDescription(
 // Calendar-safe shape link (Google Calendar keeps plain URLs clickable).
 export function shapeLink(sessionId: string): string {
   const exp = Date.now() + 30 * 86400000;
-  const sig = createHmac("sha256", process.env.CRON_SECRET || "jmm-graphic-dev-secret")
+  const sig = createHmac("sha256", graphicSigningSecret())
     .update(`${sessionId}.${exp}`)
     .digest("hex")
     .slice(0, 32);

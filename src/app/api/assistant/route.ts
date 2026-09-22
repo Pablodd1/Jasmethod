@@ -143,6 +143,8 @@ export async function POST(req: Request) {
                 ? { prescription: restPrescription }
                 : { prescription: null }),
               originalPlan,
+              // A superseded prescription invalidates the watch-side approval.
+              approved: false,
             },
           });
           await prisma.auditLog.create({

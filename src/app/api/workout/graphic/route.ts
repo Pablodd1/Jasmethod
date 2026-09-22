@@ -53,8 +53,15 @@ export async function GET(req: Request) {
     stepsRows = DEMO_SESSIONS;
   } else if (sessionId) {
     if (!token) {
+      // Cookie path: the session user must OWN the workout — a signed-in
+      // athlete must not read another athlete's session shape.
       const user = await getCurrentUser();
       if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const owned = await prisma.workout.findFirst({
+        where: { id: sessionId, userId: user.id },
+        select: { id: true },
+      });
+      if (!owned) return NextResponse.json({ error: "Not found" }, { status: 404 });
     } else if (!verifyGraphicToken(sessionId, token)) {
       return NextResponse.json({ error: "Invalid or expired token" }, { status: 403 });
     }

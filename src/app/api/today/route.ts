@@ -8,6 +8,7 @@ import {
   buildFuelingPlan,
   fuelCurveReference,
   postFuelPersonalized,
+  caffeineAllowedFromPrefs,
 } from "@/lib/fueling";
 import { autoGenerateStarterPlan } from "@/lib/plan-auto";
 import { baseWorkout } from "@/lib/prescription";
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
-    const [workouts, race, connectors, checkin] = await Promise.all([
+    const [workouts, race, connectors, checkin, supplementPrefs] = await Promise.all([
       prisma.workout.findMany({
         where: {
           userId: user.id,
@@ -43,7 +44,16 @@ export async function GET(req: Request) {
       prisma.dailyCheckin.findUnique({
         where: { userId_date: { userId: user.id, date: start } },
       }),
+      prisma.supplementProfile.findUnique({ where: { userId: user.id } }),
     ]);
+
+    // Caffeine opt-out must reach every fuel recommendation (review finding F).
+    const caffeineOk = caffeineAllowedFromPrefs({
+      enabled: supplementPrefs?.enabled,
+      likes: supplementPrefs?.likes,
+      dislikes: supplementPrefs?.dislikes,
+      optsOut: supplementPrefs?.optsOut,
+    });
 
     // "Training is always generated": an athlete with no sessions today and
     // no active plan (onboarding skipped, plan archived, fresh device login)
@@ -97,7 +107,11 @@ export async function GET(req: Request) {
         sodiumMgPerL: user.profile?.sodiumMgPerL,
         gutTrained: user.profile?.gutTrained,
         verdict: p.verdict,
+        ergosIncludeCaffeine: !caffeineOk ? true : undefined,
       });
+      // Explicit suppression: when caffeine is opted out, drop the field
+      // entirely rather than relying on the flag's fallback suggestion.
+      if (!caffeineOk) delete (fuel as { caffeineMg?: number }).caffeineMg;
       const postBase = p.durationMin
         ? postWorkoutFuel(p)
         : null;
