@@ -162,3 +162,36 @@ test("graphic signing secret fails closed in production", async () => {
   // Non-production dev fallback remains for local testing only.
   assert.strictEqual(graphicSigningSecret({ NODE_ENV: "test" }), "jmm-graphic-dev-secret");
 });
+
+// ---- Sprint: snapshots, GPX, 1:1 matching, shadow ----
+import { parseGpxCourse } from "./gpx";
+import { executionScore } from "./fitness";
+
+test("gpx: parses track points into km + ascent; rejects junk", () => {
+  const gpx = `<?xml version="1.0"?><gpx><trk><trkseg>
+    <trkpt lat="25.7617" lon="-80.1918"><ele>2</ele></trkpt>
+    <trkpt lat="25.7627" lon="-80.1928"><ele>5</ele></trkpt>
+    <trkpt lat="25.7637" lon="-80.1938"><ele>3</ele></trkpt>
+    <trkpt lat="25.7647" lon="-80.1948"><ele>10</ele></trkpt>
+  </trkseg></trk></gpx>`;
+  const c = parseGpxCourse(gpx);
+  assert.ok(c);
+  assert.ok(c.km > 0.05 && c.km < 1, `short course km sane, got ${c?.km}`);
+  assert.strictEqual(c.elevM, 10, "ascent: 2→5 (+3), 5→3 (0), 3→10 (+7) = 10 m");
+  assert.strictEqual(parseGpxCourse("<gpx></gpx>"), null);
+  assert.strictEqual(parseGpxCourse("not xml at all"), null);
+});
+
+test("executionScore: one activity cannot satisfy multiple planned sessions", () => {
+  const d = (offset: number) => new Date(Date.now() + offset * 86400000);
+  const planned = [
+    { date: d(0), sport: "run", durationMin: 30 },
+    { date: d(0), sport: "run", durationMin: 30 },
+    { date: d(0), sport: "run", durationMin: 30 },
+  ];
+  const completed = [{ date: d(0), sport: "run", durationMin: 30 }];
+  const r = executionScore(planned, completed)!;
+  // Review repro: old code scored 100 — one activity matched all three.
+  assert.strictEqual(r.completionPct, 33, `one activity matches one session, got ${r.completionPct}%`);
+  assert.ok(r.score < 60);
+});

@@ -309,6 +309,25 @@ export async function syncUserConnectors(
             create: { userId, date, ...data },
             update: data,
           });
+          // PROVENANCE: every device value also lands as an immutable
+          // MetricObservation (review finding D) — the derived daily row can
+          // be rebuilt or audited from raw observations per source.
+          const obs: {
+            userId: string; observedAt: Date; metricType: string;
+            value: number; unit: string; source: string;
+            measurementMethod: string;
+          }[] = [];
+          const push = (type: string, v: number | null | undefined, unit: string) => {
+            if (v != null && Number.isFinite(v))
+              obs.push({ userId, observedAt: date, metricType: type, value: v, unit, source: conn.provider, measurementMethod: "device_sync" });
+          };
+          push("hrv_rmssd", values.hrv, "ms");
+          push("resting_hr", values.restingHr, "bpm");
+          push("sleep_hours", values.sleepHours, "h");
+          push("sleep_score", values.sleepScore, "score");
+          push("recovery_score", values.recoveryScore, "score");
+          if (obs.length)
+            await prisma.metricObservation.createMany({ data: obs, skipDuplicates: false });
           imported++;
         }
       }

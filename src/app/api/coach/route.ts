@@ -59,8 +59,14 @@ export async function GET() {
     try { lastVerdict = JSON.parse(checkins7[0].adaptation || "{}").verdict || ""; } catch {}
   }
   // 4-week completed load per calendar week (Mon-anchored).
+  // AI BOUNDARY (Strava API policy §5.3): Strava-sourced activities are
+  // excluded from the derived load trend sent to the model. The aggregate is
+  // recomputed from eligible (independently acquired / planned-completed)
+  // rows only; a note keeps the omission explicit to the coach view.
+  const restricted4w = workouts4w.filter((w) => w.source === "strava" && w.completed);
+  const eligible4w = workouts4w.filter((w) => !(w.source === "strava" && w.completed));
   const weekBuckets = new Map<string, { minutes: number; sessions: number }>();
-  for (const w of workouts4w) {
+  for (const w of eligible4w) {
     if (!w.completed || w.matchedPlanId) continue;
     const localKey = dateKey(w.date, user.timezone);
     const key = addDaysKey(localKey, -((new Date(`${localKey}T12:00Z`).getUTCDay() + 6) % 7));
@@ -69,6 +75,9 @@ export async function GET() {
     weekBuckets.set(key, b);
   }
   const loadTrend = Array.from(weekBuckets.entries()).sort().map(([wk, b]) => `wk${wk.slice(5)}: ${b.sessions} sessions/${Math.round(b.minutes / 60)}h`);
+  const loadNote = restricted4w.length
+    ? `[${restricted4w.length} Strava-sourced activities excluded from AI context per provider policy]`
+    : null;
   const planned4w = workouts4w.filter((w) => w.planned).length;
   const done4w = workouts4w.filter((w) => w.planned && (w.completed || w.matchedPlanId) && !["partial", "skipped"].includes(w.feedbackStatus || "")).length;
   const adherence = planned4w > 0 ? Math.round((done4w / planned4w) * 100) : null;
@@ -84,6 +93,7 @@ export async function GET() {
   }).join("; ");
 
   const historyDigest = [
+    loadNote,
     checkinTrend.length ? `Last check-ins (older to new): ${checkinTrend.join(" | ")}` : null,
     lastVerdict ? `Previous adaptation verdict: ${lastVerdict}` : null,
     loadTrend.length ? `Completed training by week: ${loadTrend.join(", ")}` : null,

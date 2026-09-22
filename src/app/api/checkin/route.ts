@@ -276,6 +276,43 @@ export async function POST(req: Request) {
         });
         prescriptions.push({ sessionId: w.id, ...p });
       }
+      // SCIENCE V2 SHADOW — run the multi-dimensional engine alongside V1 on
+      // every check-in and persist the comparison (auditable; V1 still drives
+      // prescriptions until COACH_ENGINE_VERSION=v2).
+      let shadowV2: string | null = null;
+      try {
+        const { computeAthleteState, compareShadow } = await import("@/lib/athlete-state-v2");
+        const v2Input = {
+          hrvToday: current?.hrv ?? undefined,
+          hrvBaseline7d:
+            history
+              .filter((m: any) => m.hrv != null)
+              .slice(-7)
+              .map((m: any) => m.hrv as number),
+          hrvStatus:
+            current?.hrv != null && hrvs.length >= 3
+              ? (() => {
+                  const base = hrvs.reduce((a: number, b: number) => a + b, 0) / hrvs.length;
+                  const delta = (current.hrv - base) / base;
+                  return delta >= 0.05 ? "high" : delta <= -0.1 ? "low" : "normal";
+                })()
+              : undefined,
+          sleep: checkin.sleep,
+          soreness: checkin.soreness,
+          energy: checkin.energy,
+          stress: checkin.stress,
+          motivation: checkin.motivation,
+          mood: checkin.mood,
+          painFlag: checkin.newPain === true,
+          sick: checkin.sick === true,
+          menstrualSymptoms: checkin.menstrual === true,
+        };
+        shadowV2 = JSON.stringify(
+          compareShadow(adaptation.score, adaptation.verdict, v2Input),
+        );
+      } catch (shadowErr) {
+        console.error("shadow v2 failed (non-fatal):", shadowErr);
+      }
       const check = await tx.dailyCheckin.upsert({
         where: { userId_date: { userId: user.id, date: start } },
         create: {
@@ -283,10 +320,12 @@ export async function POST(req: Request) {
           date: start,
           answers: JSON.stringify(checkin),
           adaptation: JSON.stringify(adaptation),
+          shadowV2,
         },
         update: {
           answers: JSON.stringify(checkin),
           adaptation: JSON.stringify(adaptation),
+          shadowV2,
         },
       });
       if (
