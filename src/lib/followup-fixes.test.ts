@@ -195,3 +195,26 @@ test("executionScore: one activity cannot satisfy multiple planned sessions", ()
   assert.strictEqual(r.completionPct, 33, `one activity matches one session, got ${r.completionPct}%`);
   assert.ok(r.score < 60);
 });
+
+// ---- Measured course (GPX) applied in the forecast engine ----
+import { forecastRace } from "./raceforecast";
+
+test("forecast applies the measured GPX course to run distance and ascent", () => {
+  const base = forecastRace({
+    athlete: { runPaceBase: 300, weightKg: 70 },
+    fitness: null,
+    distance: "10k",
+    venue: { courseKm: 11.2, courseElevM: 150 },
+    goalTimeMin: null,
+  })!;
+  // Measured 11.2 km + 150 m ascent must be SLOWER than the flat 10k label forecast.
+  const flat = forecastRace({
+    athlete: { runPaceBase: 300, weightKg: 70 },
+    fitness: null,
+    distance: "10k",
+    venue: {},
+    goalTimeMin: null,
+  })!;
+  assert.ok(base.totalMin > flat.totalMin, `measured course (${base.totalMin} min) must be slower than flat label 10k (${flat.totalMin} min)`);
+  assert.match(base.segments[0].distanceLabel, /measured/);
+});

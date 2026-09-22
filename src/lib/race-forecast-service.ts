@@ -137,6 +137,8 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
             swimCurrent: race?.swimCurrent ?? undefined,
             federation: opts.federation ?? race?.federation ?? profile?.federation ?? undefined,
             category: opts.category ?? race?.category ?? profile?.category ?? undefined,
+            courseKm: race?.courseKm ?? undefined,
+            courseElevM: race?.courseElevM ?? undefined,
           },
           goalTimeMin: race?.goalTimeMin ?? undefined,
         })

@@ -57,6 +57,8 @@ export interface ForecastVenue {
   swimCurrent?: string | null;  // none | mild | strong
   federation?: Federation | string | null; // wetsuit rules
   category?: WetsuitCategory | string | null; // age_group | elite
+  courseKm?: number | null;    // MEASURED course distance (uploaded GPX) — overrides the label default legs
+  courseElevM?: number | null; // MEASURED total ascent (uploaded GPX)
 }
 
 export interface ForecastInput {
@@ -393,7 +395,9 @@ function toFuelPlan(fuel: RaceFuelPlan): FuelPlan {
 // ---------------------------------------------------------------------------
 
 export function forecastRace(input: ForecastInput): ForecastResult | null {
-  const { athlete, fitness, distance, venue } = input;
+  const { athlete, fitness, distance } = input;
+  // Reassignable: measured-course (GPX) ascent distribution may replace venue legs.
+  let venue = input.venue;
   const sport = classifyDistance(distance);
   if (!sport) return null;
 
@@ -480,6 +484,24 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
   // =======================================================================
   if (sport === "triathlon") {
     const leg = TRI_LEGS[distance];
+    // MEASURED COURSE (GPX): scale the bike/run legs so their sum matches the
+    // real course distance, and split the measured ascent 75/25 bike/run when
+    // explicit per-leg elevations weren't provided. Swim stays at label
+    // distance (GPX land tracks don't cover open water).
+    let bikeKm = leg.bikeKm;
+    let runKm = leg.runKm;
+    if (venue.courseKm != null && venue.courseKm > 0) {
+      const landPlanned = leg.bikeKm + leg.runKm;
+      const landMeasured = venue.courseKm - leg.swimM / 1000;
+      const factor = Math.max(0.3, landMeasured / landPlanned);
+      bikeKm = +(leg.bikeKm * factor).toFixed(2);
+      runKm = +(leg.runKm * factor).toFixed(2);
+      measurementGaps.push(`Measured course applied: ${venue.courseKm} km total (bike ${bikeKm} / run ${runKm} from GPX).`);
+    }
+    if (venue.courseElevM != null && venue.courseElevM > 0 && venue.bikeElevM == null) {
+      venue = { ...venue, bikeElevM: Math.round(venue.courseElevM * 0.75), runElevM: Math.round(venue.courseElevM * 0.25) };
+      measurementGaps.push(`Measured ascent applied: ${venue.courseElevM} m (split 75% bike / 25% run).`);
+    }
     const distanceLabel = TRI_DISTANCE_LABELS[distance] || distance;
     const runPaceBase = athlete.runPaceBase ?? 300;
     if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
@@ -499,16 +521,16 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     const sustainableW = Math.round(ftp * bikeIF * env.bikePowerFactor);
     const physics = bikePhysicsSpeedKmh({
       ftp, weightKg: athlete.weightKg, bikeKg: 9,
-      elevGainM: venue.bikeElevM, distanceKm: leg.bikeKm, terrain: venue.bikeTerrain,
+      elevGainM: venue.bikeElevM, distanceKm: bikeKm, terrain: venue.bikeTerrain,
       sustainableW,
       venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: env.windKph,
     });
-    const bikeMin = leg.bikeKm / physics.speedKmh * 60;
+    const bikeMin = bikeKm / physics.speedKmh * 60;
 
     const runBasePace = runPaceBase * triRunPaceFactor(distance);
-    const tssPenalty = bikeTssRunPenalty(leg.bikeKm);
+    const tssPenalty = bikeTssRunPenalty(bikeKm);
     const runPace = runBasePace * tssPenalty * env.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor;
-    const runMin = (leg.runKm * runPace) / 60;
+    const runMin = (runKm * runPace) / 60;
 
     const totalMin = swimMin + bikeMin + runMin + leg.transitionMin;
     transitionsMin = leg.transitionMin;
@@ -518,14 +540,14 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     const neutralEnv = buildEnv({}, { wbgt: 15, windKph: 0 });
     const neutralPhysics = bikePhysicsSpeedKmh({
       ftp, weightKg: athlete.weightKg, bikeKg: 9,
-      elevGainM: venue.bikeElevM, distanceKm: leg.bikeKm, terrain: venue.bikeTerrain,
+      elevGainM: venue.bikeElevM, distanceKm: bikeKm, terrain: venue.bikeTerrain,
       sustainableW: Math.round(ftp * bikeIF * neutralEnv.bikePowerFactor),
       venueElevM: venue.baseElevM, tempC: 20, windKph: 0,
     });
     baselineTotalMin = Math.round(
       (leg.swimM / 100) * swimPaceBase / 60 +
-      leg.bikeKm / neutralPhysics.speedKmh * 60 +
-      (leg.runKm * runBasePace * tssPenalty * neutralEnv.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor) / 60 +
+      bikeKm / neutralPhysics.speedKmh * 60 +
+      (runKm * runBasePace * tssPenalty * neutralEnv.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor) / 60 +
       leg.transitionMin,
     );
 
@@ -534,14 +556,14 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       const e = buildEnv(venue, o);
       const ph = bikePhysicsSpeedKmh({
         ftp, weightKg: athlete.weightKg, bikeKg: 9,
-        elevGainM: venue.bikeElevM, distanceKm: leg.bikeKm, terrain: venue.bikeTerrain,
+        elevGainM: venue.bikeElevM, distanceKm: bikeKm, terrain: venue.bikeTerrain,
         sustainableW: Math.round(ftp * bikeIF * e.bikePowerFactor),
         venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: e.windKph,
       });
       return (
         swimMin +
-        leg.bikeKm / ph.speedKmh * 60 +
-        (leg.runKm * runBasePace * tssPenalty * e.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor) / 60 +
+        bikeKm / ph.speedKmh * 60 +
+        (runKm * runBasePace * tssPenalty * e.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor) / 60 +
         leg.transitionMin
       );
     };
@@ -560,7 +582,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       weightKg: athlete.weightKg,
     });
     const slots = fuelTimeline(fuel, { discipline: "triathlon", totalMin: Math.round(totalMin), transitionMin: Math.round(swimMin + bikeMin) });
-    const estimatedKcalBurned = kcalFromBikeKj(physics.wheelKj) + Math.round((leg.runKm * (athlete.weightKg ?? 70) * 1.036));
+    const estimatedKcalBurned = kcalFromBikeKj(physics.wheelKj) + Math.round((runKm * (athlete.weightKg ?? 70) * 1.036));
     fuel.gaps.push(`Calories: ${Math.round(fuel.totalKcalIntake)} kcal from carbs is your INTAKE plan; full expenditure ≈ ${estimatedKcalBurned} kcal (bike work / gross efficiency + run km × weight). You cannot absorb it all — that's normal for long-course; fueling limits the hole, it doesn't close it.`);
 
     segments.push({
@@ -576,7 +598,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     segments.push({
       sport: "bike",
       label: "Bike",
-      distanceLabel: `${leg.bikeKm} km`,
+      distanceLabel: `${bikeKm} km`,
       timeMin: Math.round(bikeMin),
       speedKmh: physics.speedKmh,
       powerTargetW: sustainableW,
@@ -593,7 +615,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     segments.push({
       sport: "run",
       label: "Run",
-      distanceLabel: `${leg.runKm} km`,
+      distanceLabel: `${runKm} km`,
       timeMin: Math.round(runMin),
       pace: fmtSecPerKm(runPace),
       hrTarget: athlete.lthr ? `${Math.round(athlete.lthr * 0.85)}-${Math.round(athlete.lthr * 0.95)} bpm` : undefined,
@@ -622,7 +644,13 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
   // Run only
   // =======================================================================
   if (sport === "run") {
-    const r = RUN_DISTANCES[distance];
+    const rBase = RUN_DISTANCES[distance];
+    // MEASURED COURSE (GPX): the real race distance replaces the label default.
+    const r = venue.courseKm != null && venue.courseKm > 0
+      ? { ...rBase, km: venue.courseKm, label: `${venue.courseKm} km (measured)` }
+      : rBase;
+    if (venue.courseKm != null && venue.courseElevM != null && venue.runElevM == null)
+      venue = { ...venue, runElevM: venue.courseElevM };
     const runPaceBase = athlete.runPaceBase ?? 300;
     if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
     const runBasePace = riegelPace(runPaceBase, r.km, 1.06);
