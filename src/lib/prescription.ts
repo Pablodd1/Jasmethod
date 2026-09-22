@@ -5,6 +5,7 @@ export interface WorkoutStep {
   phase: "warmup" | "active" | "recovery" | "cooldown";
   reps?: number;
   note?: string;
+  group?: string; // repeat-set header this step belongs to ("Repeat 7 × 1 min")
   target?: { type: "open" | "power" | "heartRate"; low?: number; high?: number };
   targets?: { rpe: number; hr?: string; power?: string; pace?: string };
 }
@@ -183,27 +184,52 @@ export function structuredSteps(
       (variant > 0 && type !== "strength")) &&
     minutes >= 20
   ) {
-    const reps = variant
-      ? 2 + variant
-      : Math.min(6, Math.max(2, Math.floor(main / 300)));
-    const recovery = Math.round((main * 0.25) / (reps - 1));
-    const work = Math.floor((main - recovery * (reps - 1)) / reps);
+    // Research-based set design (Seiler's polarized model; Billat 1:1 VO2max;
+    // standard threshold cruise intervals) — pattern picked by the capped
+    // zone, sized to the real main-set budget, and grouped under a
+    // "Repeat N ×" header the athlete (and the .FIT export) can follow.
+    const z = Math.min(7, Number(zone.slice(1)) || 2);
+    type Pattern = {
+      label: string;
+      workSec: number;
+      restSec: number;
+      workZone: string;
+      restZone: string;
+      workName: string;
+      restName: string;
+      cite: string;
+    };
+    const patterns: Pattern[] = [
+      { label: "Speed endurance", workSec: 30, restSec: 90, workZone: "z7", restZone: "z1", workName: "All-out surge", restName: "Float recovery", cite: "neural power + stride mechanics" },
+      { label: "VO₂max repeats · 1:1", workSec: 180, restSec: 180, workZone: "z5", restZone: "z2", workName: "Hard — VO₂max", restName: "Easy — float at Z2", cite: "aerobic power (Seiler 2010)" },
+      { label: "Sweet spot", workSec: 720, restSec: 180, workZone: "z3", restZone: "z1", workName: "Sweet-spot block", restName: "Easy spin", cite: "sustainable power" },
+      { label: "Threshold cruise intervals · 2×", workSec: 1200, restSec: 180, workZone: "z4", restZone: "z2", workName: "Threshold block", restName: "Easy recovery", cite: "lactate threshold (Stepto 1999)" },
+    ];
+    // Pick by intended zone (interval z5-7 → VO2/speed; z4 → threshold; z3 → sweet spot)
+    const idx = z <= 2 ? 2 : z === 3 ? 2 : z === 4 ? 3 : z <= 6 ? 1 : 0;
+    const pat = patterns[Math.min(idx, z <= 2 ? 2 : idx)];
+    const block = pat.workSec + pat.restSec;
+    let reps = Math.max(2, Math.floor(main / block));
+    // Whole-set guarantee: never exceed the main budget (rounding safety).
+    while (reps > 2 && reps * block > main) reps--;
+    const group = `Repeat ${reps} × ${pat.workSec >= 60 ? `${Math.round(pat.workSec / 60)} min` : `${pat.workSec} s`} — ${pat.label} (${pat.cite})`;
+    // Scale work/rest proportionally if a whole number still overruns.
+    const scale = Math.min(1, main / (reps * block));
     for (let i = 0; i < reps; i++) {
       steps.push({
-        name: `Effort ${i + 1}`,
-        seconds:
-          i === reps - 1
-            ? main - recovery * (reps - 1) - work * (reps - 1)
-            : work,
-        zone,
+        name: `${pat.workName} ${i + 1}/${reps}`,
+        seconds: Math.max(20, Math.floor(pat.workSec * scale)),
+        zone: pat.workZone === "z7" && z < 7 ? zone : pat.workZone,
         phase: "active",
+        group,
       });
       if (i < reps - 1)
         steps.push({
-          name: "Easy recovery",
-          seconds: recovery,
-          zone: "z1",
+          name: pat.restName,
+          seconds: Math.max(15, Math.floor(pat.restSec * scale)),
+          zone: pat.restZone,
           phase: "recovery",
+          group,
         });
     }
   } else
@@ -237,9 +263,11 @@ export function zoneTargets(
     lthr?: number | null;
     ftp?: number | null;
     runPaceBase?: number | null;
+    units?: string | null;
   } | null,
 ) {
   const z = Math.max(1, Math.min(7, Number(zone.slice(1)) || 2));
+  const imperial = profile?.units === "imperial";
   const targets: { rpe: number; hr?: string; power?: string; pace?: string } = {
     rpe: [0, 2, 3, 5, 7, 8, 9, 10][z],
   };
@@ -248,13 +276,52 @@ export function zoneTargets(
   if (sport === "bike" && profile?.ftp)
     targets.power = `≤${Math.round(profile.ftp * [0, 0.55, 0.75, 0.9, 1.05, 1.2, 1.5, 1.5][z])} W`;
   if (sport === "run" && profile?.runPaceBase) {
-    const secPerKm = Math.round(
-      profile.runPaceBase * [0, 1.4, 1.2, 1.08, 1, 0.95, 0.9, 0.85][z],
-    );
+    const KM_PER_MI = 1.609344;
+    let secPerKm =
+      profile.runPaceBase * [0, 1.4, 1.2, 1.08, 1, 0.95, 0.9, 0.85][z];
+    if (imperial) secPerKm *= KM_PER_MI; // convert to sec/mile
     const m = Math.floor(secPerKm / 60);
-    targets.pace = `~${m}:${String(secPerKm - m * 60).padStart(2, "0")}/km`;
+    targets.pace = `~${m}:${String(Math.round(secPerKm - m * 60)).padStart(2, "0")}/${imperial ? "mi" : "km"}`;
   }
   return targets;
+}
+
+// ---- Session summary estimates (TrainingPeaks-style header) ----
+const BIKE_KPH: Record<number, number> = { 1: 22, 2: 27, 3: 31, 4: 35, 5: 39, 6: 43, 7: 46 };
+const SWIM_SEC_PER_100: Record<number, number> = { 1: 130, 2: 120, 3: 112, 4: 105, 5: 98, 6: 92, 7: 88 };
+
+export function estimateDistanceKm(
+  sport: string,
+  zone: string,
+  durationMin: number,
+  profile?: { runPaceBase?: number | null; swimPaceBase?: number | null } | null,
+): number | undefined {
+  if (durationMin <= 0) return undefined;
+  const z = Math.max(1, Math.min(7, Number(zone.slice(1)) || 2));
+  const hours = durationMin / 60;
+  if (sport === "run") {
+    const pace = profile?.runPaceBase
+      ? profile.runPaceBase * [0, 1.4, 1.2, 1.08, 1, 0.95, 0.9, 0.85][z]
+      : z >= 5 ? 275 : z >= 4 ? 315 : z >= 3 ? 350 : 400; // sec/km defaults
+    return +((durationMin * 60) / pace).toFixed(2);
+  }
+  if (sport === "bike") return +(BIKE_KPH[z] * hours).toFixed(1);
+  if (sport === "swim") {
+    const pace100 = profile?.swimPaceBase
+      ? profile.swimPaceBase * [0, 1.35, 1.18, 1.08, 1, 0.95, 0.9, 0.85][z]
+      : SWIM_SEC_PER_100[z];
+    return +(((durationMin * 60) / pace100) * 0.1).toFixed(2);
+  }
+  return undefined;
+}
+
+export function estimateIf(
+  zone: string,
+  tss: number,
+  durationMin: number,
+): number | undefined {
+  if (durationMin <= 0 || tss <= 0) return undefined;
+  return +(tss / ((durationMin / 60) * 100)).toFixed(2);
 }export function baseWorkout(w: any) {
   if (w.originalPlan) {
     try {

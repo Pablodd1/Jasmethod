@@ -1,11 +1,12 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Watch } from "lucide-react";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { EstimateBanner } from "@/components/estimate-banner";
 import { WorkoutSparkline } from "@/components/workout-sparkline";
 import { fmtVolumeDual } from "@/lib/units";
+import { fmtDistance } from "@/lib/units";
 import { dayOffProtocol } from "@/lib/day-off";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -271,6 +272,34 @@ export default function TodayPage() {
                 </p>
               </div>
               <div className="p-5 space-y-4">
+                {/* TrainingPeaks-style summary: load · intensity · distance */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "TSS", value: session.tss ?? "—" },
+                    { label: "IF", value: session.if ?? "—" },
+                    {
+                      label: es ? "Distancia" : "Distance",
+                      value:
+                        session.distanceKm != null
+                          ? fmtDistance(session.distanceKm, data?.units === "imperial" ? "imperial" : "metric")
+                          : "—",
+                    },
+                  ].map((m) => (
+                    <div key={m.label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-center">
+                      <div className="text-lg font-bold tabular-nums text-ink-900">{m.value}</div>
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  🍚 {es ? "COMBUSTIBLE PRE" : "PRE-WORKOUT FUEL"}: {session.fuel?.preSession?.carbsG > 0 ? (
+                    <>
+                      <strong>{session.fuel.preSession.carbsG} g {es ? "carbohidratos" : "carbs"} ({session.fuel.preSession.timingLabel})</strong> — {session.fuel.preSession.note}
+                    </>
+                  ) : (
+                    es ? "sesión corta — comida normal 1-2 h antes basta." : "short session — a normal meal 1-2 h before is enough."
+                  )}
+                </div>
                 <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
                   💧 {es ? "AGUA PRE: 400-600 ml en los 60 min previos (+ pizca de sal en calor)." : "WATER PRE: 400-600 ml in the last 60 min (+ pinch of salt in heat)."}
                 </div>
@@ -304,8 +333,14 @@ export default function TodayPage() {
                     {stepsView === "cards" ? (
                       <div className="space-y-2">
                         {session.prescription.steps.map((s: any, i: number) => (
+                          <div key={i}>
+                            {/* Repeat-set header — the TrainingPeaks "Repeat N ×" line */}
+                            {s.group && session.prescription.steps[i - 1]?.group !== s.group && (
+                              <div className="mt-2 mb-1.5 first:mt-0 rounded-lg bg-ink-900 text-paper px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
+                                🔁 {s.group}
+                              </div>
+                            )}
                           <div
-                            key={i}
                             className={`rounded-xl border p-3 ${
                               s.phase === "active"
                                 ? "border-ocean-300 bg-ocean-50 shadow-sm"
@@ -358,13 +393,19 @@ export default function TodayPage() {
                               <div className="pl-9 text-[11px] text-slate-600 mt-1 leading-snug">{s.note}</div>
                             )}
                           </div>
+                          </div>
                         ))}
                       </div>
                     ) : (
                       <ol className="space-y-2">
                         {session.prescription.steps.map((s: any, i: number) => (
+                          <Fragment key={i}>
+                            {s.group && session.prescription.steps[i - 1]?.group !== s.group && (
+                              <div className="mt-2 mb-1.5 first:mt-0 rounded-lg bg-ink-900 text-paper px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
+                                🔁 {s.group}
+                              </div>
+                            )}
                           <li
-                            key={i}
                             className={`rounded-lg p-3 ${s.phase === "active" ? "bg-ocean-50" : "bg-slate-50"}`}
                           >
                             <div className="flex justify-between gap-3">
@@ -392,6 +433,7 @@ export default function TodayPage() {
                               <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
                             )}
                           </li>
+                          </Fragment>
                         ))}
                       </ol>
                     )}

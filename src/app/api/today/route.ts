@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
 import { prescribeToday, postWorkoutFuel } from "@/lib/adaptive";
+import { estimateIf, estimateDistanceKm } from "@/lib/prescription";
+import { estimateTss } from "@/lib/fitness";
 import {
   buildFuelingPlan,
   fuelCurveReference,
@@ -118,6 +120,20 @@ export async function GET(req: Request) {
             examples: postBase?.examples,
           }
         : null;
+      // TrainingPeaks-style summary: load (TSS), intensity factor, distance.
+      const tss = estimateTss({
+        durationMin: p.durationMin,
+        intensity: p.intensity || undefined,
+        ftp: user.profile?.ftp || undefined,
+        lthr: user.profile?.lthr || undefined,
+      });
+      const ifFactor = estimateIf(p.intensity || "z2", tss, p.durationMin);
+      const distanceKm = estimateDistanceKm(
+        p.sport,
+        p.intensity || "z2",
+        p.durationMin,
+        user.profile,
+      );
       return {
         id: w.id,
         title: p.title,
@@ -125,6 +141,9 @@ export async function GET(req: Request) {
         type: p.type,
         durationMin: p.durationMin,
         intensity: p.intensity,
+        tss,
+        if: ifFactor,
+        distanceKm,
         startTime: w.startTime,
         completed: w.completed,
         feedbackStatus: w.feedbackStatus,

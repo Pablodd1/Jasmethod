@@ -84,3 +84,48 @@ test("day-off protocol carries sleep, fuel, supplementation and visualization in
     assert.match(t, /Supplement|SUPLEMENTACIÓN/i);
   }
 });
+
+// ---- TrainingPeaks-style structures + summary metrics ----
+import { estimateDistanceKm, estimateIf, zoneTargets } from "./prescription";
+
+test("interval sets follow research patterns and fit the session budget", () => {
+  // VO2max: z5 interval → 1:1 work:float repeats (Seiler)
+  const vo2 = structuredSteps60();
+  function structuredSteps60() {
+    // local import indirection to keep the file tidy
+    const { structuredSteps } = require("./prescription");
+    return structuredSteps(60, "z5", "interval", 0, "run");
+  }
+  const total = vo2.reduce((a, s) => a + s.seconds, 0);
+  assert.ok(total <= 60 * 60 + 60, `60-min session built ${total}s`);
+  const groups = new Set(vo2.map((s) => s.group).filter(Boolean));
+  assert.strictEqual(groups.size, 1, "one repeat group per set");
+  // threshold z4 → cruise intervals
+  const thr = structuredSteps60z4();
+  function structuredSteps60z4() {
+    const { structuredSteps } = require("./prescription");
+    return structuredSteps(70, "z4", "threshold", 0, "bike");
+  }
+  assert.ok(JSON.stringify(thr).match(/Threshold|cruise/i));
+});
+
+test("pace targets respect the athlete's unit system", () => {
+  const metric = zoneTargets("z4", "run", { lthr: 160, runPaceBase: 300, units: "metric" });
+  assert.match(metric.pace!, /\/km$/);
+  const imperial = zoneTargets("z4", "run", { lthr: 160, runPaceBase: 300, units: "imperial" });
+  assert.match(imperial.pace!, /\/mi$/);
+  // 300 s/km (z4 factor 1.0) × 1.609 = 483 s/mi = 8:03/mi
+  assert.strictEqual(imperial.pace, "~8:03/mi");
+});
+
+test("distance estimates: run from pace, bike from zone speed", () => {
+  const run = estimateDistanceKm("run", "z2", 60, { runPaceBase: 400 });
+  assert.ok(run && run > 7 && run < 8, `60 min z2 at 8:00/km ≈ 7.5 km, got ${run}`);
+  const bike = estimateDistanceKm("bike", "z2", 60, {});
+  assert.ok(bike && bike > 25 && bike < 30, `60 min z2 bike ≈ 27 km, got ${bike}`);
+});
+
+test("IF is TSS normalized per hour", () => {
+  assert.strictEqual(estimateIf("z4", 87, 60), 0.87); // 87 TSS over exactly 1 h
+  assert.strictEqual(estimateIf("z2", 0, 30), undefined);
+});
