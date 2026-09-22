@@ -118,16 +118,69 @@ export default function TodayPage() {
             ? "Aprobado ✓ — el archivo .FIT también va de camino a tu correo con los pasos para Garmin."
             : "Approved ✓ — the .FIT is also on its way to your email with the Garmin import steps."
         );
-      const blob = await r.blob(),
-        url = URL.createObjectURL(blob),
-        a = document.createElement("a");
-      a.href = url;
-      a.download = "jasmethod-workout.fit";
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await saveBlob(r, "jasmethod-workout.fit");
       await load();
     } catch (e: any) {
       setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveBlob(r: Response, name: string) {
+    const blob = await r.blob(),
+      url = URL.createObjectURL(blob),
+      a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  // SEND TO WATCH — the phone-only direct path: fetch the approved .FIT and
+  // open the native share sheet with the file attached. The athlete picks
+  // Garmin Connect from the share sheet; the app imports the structured
+  // workout and syncs it to the watch automatically. Desktop browsers
+  // (no file-share support) fall back to the download.
+  async function sendToWatch() {
+    if (!session) return;
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/workout/approve?sessionId=${session.id}`, {
+        method: "POST",
+      });
+      if (!r.ok) throw Error((await r.json().catch(() => ({}))).error);
+      const file = new File(
+        [await r.blob()],
+        "jasmethod-workout.fit",
+        { type: "application/octet-stream" },
+      );
+      const shareable =
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [file] });
+      if (shareable) {
+        await navigator.share({
+          files: [file],
+          title: session.title,
+          text: es
+            ? "Importa en Garmin Connect → Entrenamiento → Workouts"
+            : "Import in Garmin Connect → Training → Workouts",
+        });
+        setMessage(
+          es
+            ? "Enviado ✓ — elige Garmin Connect en la hoja para importarlo; se sincroniza solo a tu reloj."
+            : "Sent ✓ — pick Garmin Connect in the sheet to import it; it syncs to your watch automatically."
+        );
+      } else {
+        await saveBlob(r, "jasmethod-workout.fit");
+        setMessage(
+          es
+            ? "Archivo descargado — impórtalo en Garmin Connect (web) → Workouts."
+            : "File downloaded — import it in Garmin Connect (web) → Workouts."
+        );
+      }
+      await load();
+    } catch (e: any) {
+      if (e?.name !== "AbortError") setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -595,19 +648,17 @@ export default function TodayPage() {
                   <button
                     className="btn-primary"
                     disabled={busy || offline || session.durationMin === 0}
+                    onClick={() => sendToWatch()}
+                  >
+                    <Watch className="w-4 h-4" /> {es ? "Enviar al reloj" : "Send to watch"}
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={busy || offline || session.durationMin === 0}
                     onClick={() => download(false)}
                   >
-                    <Watch className="w-4 h-4" /> {es ? "Descargar para Garmin (.FIT)" : "Download for Garmin (.FIT)"}
+                    {es ? "Descargar .FIT" : "Download .FIT"}
                   </button>
-                  {!session.approved && (
-                    <button
-                      className="btn-secondary"
-                      disabled={busy || offline || session.durationMin === 0}
-                      onClick={() => download(true)}
-                    >
-                      {es ? "Confirmar y exportar" : "Approve & export"}
-                    </button>
-                  )}
                   <button
                     className="btn-secondary"
                     disabled={busy || offline}

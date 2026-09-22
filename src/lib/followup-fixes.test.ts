@@ -96,9 +96,9 @@ test("interval sets follow research patterns and fit the session budget", () => 
     const { structuredSteps } = require("./prescription");
     return structuredSteps(60, "z5", "interval", 0, "run");
   }
-  const total = vo2.reduce((a, s) => a + s.seconds, 0);
+  const total = vo2.reduce((a: number, s: any) => a + s.seconds, 0);
   assert.ok(total <= 60 * 60 + 60, `60-min session built ${total}s`);
-  const groups = new Set(vo2.map((s) => s.group).filter(Boolean));
+  const groups = new Set(vo2.map((s: any) => s.group).filter(Boolean));
   assert.strictEqual(groups.size, 1, "one repeat group per set");
   // threshold z4 → cruise intervals
   const thr = structuredSteps60z4();
