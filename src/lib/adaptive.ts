@@ -310,6 +310,8 @@ export interface ScheduledTest {
     | "run5k"
     | "swim"
     | "run1k"
+    | "run200m"
+    | "run400m"
     | "erg"
     | "strengthBench"
     | "boxing";
@@ -362,17 +364,31 @@ const BOXING_TEST_TYPES: {
   },
 ];
 
+// SPRINT_TEST_TYPES — 200/400 m benchmark battery (the DB's app_gaps ask:
+// "personal_best_and_split_history" — the athlete's own 200/400 m times).
+const SPRINT_TEST_TYPES: {
+  type: ScheduledTest["type"];
+  name: string;
+  cadenceDays: number;
+}[] = [
+  { type: "run200m", name: "200 m TT (electronic or gated — log wind if known)", cadenceDays: 56 },
+  { type: "run400m", name: "400 m TT (log 200 m split at the mark)", cadenceDays: 56 },
+  { type: "run5k", name: "Aerobic support benchmark (5k TT)", cadenceDays: 56 },
+];
+
 export function scheduleTests(
   startDate: Date,
   weeks: number,
   races: { date: Date }[],
-  opts: { hyrox?: boolean; boxing?: boolean } = {},
+  opts: { hyrox?: boolean; boxing?: boolean; trackSprint?: boolean } = {},
 ): ScheduledTest[] {
-  const testTypes = opts.boxing
-    ? BOXING_TEST_TYPES
-    : opts.hyrox
-      ? HYROX_TEST_TYPES
-      : TRIATHLON_TEST_TYPES;
+  const testTypes = opts.trackSprint
+    ? SPRINT_TEST_TYPES
+    : opts.boxing
+      ? BOXING_TEST_TYPES
+      : opts.hyrox
+        ? HYROX_TEST_TYPES
+        : TRIATHLON_TEST_TYPES;
   const out: ScheduledTest[] = [];
   const RACE_GUARD_DAYS = 14; // skip any test within 2 weeks of a race
   const raceDates = races.map((r) => new Date(r.date).getTime());

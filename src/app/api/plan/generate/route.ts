@@ -306,7 +306,7 @@ export async function POST(req: Request) {
       start,
       weeksCount,
       races.map((r) => ({ date: r.date })),
-      { hyrox: isHyrox, boxing: isBoxing },
+      { hyrox: isHyrox, boxing: isBoxing, trackSprint: isTrackSprint },
     );
     await prisma.benchmarkTest.deleteMany({
       where: { userId: user.id, completed: false },

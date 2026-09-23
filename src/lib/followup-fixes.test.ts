@@ -282,3 +282,14 @@ test("session builder: phase-aware Hart/SET sets with citations and honest coach
   // Taper: volume cut ~50% (meta-analytic −41–60 %)
   assert.ok(taper.rows[0].reps <= 3, `taper reps reduced, got ${taper.rows[0].reps}`);
 });
+
+// ---- Sprint grounding context (JASAI retrieval) ----
+import { sprintContextForPhase } from "./sprint-protocols";
+
+test("sprint grounding context: cited protocol lines per phase", () => {
+  for (const phase of ["fall", "early", "mid", "late", "taper"] as const) {
+    const ctx = sprintContextForPhase(phase);
+    assert.ok(ctx.length > 50, `${phase} context too thin`);
+    assert.match(ctx, /\[[A-E]-[^\]]+\]/, "each line cites its entry id");
+  }
+});

@@ -7,6 +7,7 @@ import { dayBounds } from "@/lib/dates";
 import { protocolCoachContext } from "@/lib/protocols";
 import { geminiAnswer, geminiGenerationConfig } from "@/lib/gemini-response";
 import { meterUsage, logEvent } from "@/lib/telemetry";
+import { sprintContextForPhase, race400Segments } from "@/lib/sprint-protocols";
 
 export const dynamic = "force-dynamic";
 
@@ -197,7 +198,42 @@ You may be asked: how to use the app (Today page = today's session with full pre
 Athlete: ${user.name}. Goal: ${profile?.goal || "unknown"}. Experience: ${profile?.experience || "unknown"}. FTP ${profile?.ftp ?? "?"}W, LTHR ${profile?.lthr ?? "?"}bpm, run threshold ${profile?.runPaceBase ?? "?"}s/km, swim ${profile?.swimPaceBase ?? "?"}s/100m.
 Active plan: ${plan?.name || "none"}. Today's session: ${todayWorkouts[0] ? `${todayWorkouts[0].title} ${todayWorkouts[0].durationMin}min ${todayWorkouts[0].intensity || ""}` : "none"}. Readiness ${readiness || "no check-ins yet"}. Next race: ${race ? `${race.name} ${new Date(race.date).toISOString().slice(0, 10)}` : "none"}.
 Rules: use the athlete's real numbers when relevant; be concise (max 120 words); science-backed, no medical diagnosis (suggest a physician for injury/illness); reply entirely in ${langNames[user.language] || "Spanish"}; plain language, no markdown.`;
-    const grounding = `${protocolCoachContext(todayWorkouts)}\nInjury flag: ${profile?.injured ? "active: pause training" : "not recorded"}. Missing check-ins mean recovery is unknown.`;
+    // Sprint protocol grounding (retrieval only — the model cites these
+    // entry ids, it never invents doses): track-sprint athletes get the
+    // phase-matched protocol lines + their race-model math from a 200m PB.
+    let sprintGrounding = "";
+    if (profile?.goal === "track-sprint") {
+      const week = plan
+        ? Math.max(
+            0,
+            Math.floor(
+              (Date.now() - new Date(plan.startDate).getTime()) / (7 * 86400000),
+            ),
+          )
+        : 0;
+      const phase =
+        week >= (plan?.weeks ?? 12)
+          ? "taper"
+          : week / (plan?.weeks || 12) <= 0.3
+            ? "fall"
+            : week / (plan?.weeks || 12) <= 0.6
+              ? "early"
+              : week / (plan?.weeks || 12) <= 0.85
+                ? "mid"
+                : "taper";
+      sprintGrounding = sprintContextForPhase(phase as any);
+      const pb200 = await prisma.benchmarkTest.findFirst({
+        where: { userId: user.id, type: "run200m", result: { not: null }, skipped: false },
+        orderBy: { date: "desc" },
+        select: { result: true, date: true },
+      });
+      if (pb200?.result) {
+        const { potential, segments } = race400Segments(pb200.result, profile?.experience === "beginner" ? "novice" : "advanced");
+        sprintGrounding += `\nRace model from ${pb200.result}s 200 m PB: 400 m potential ${potential}s; segment targets ${segments.join(" / ")} s.`;
+      }
+    }
+
+    const grounding = `${protocolCoachContext(todayWorkouts)}${sprintGrounding ? `\n${sprintGrounding}` : ""}\nInjury flag: ${profile?.injured ? "active: pause training" : "not recorded"}. Missing check-ins mean recovery is unknown.`;
 
     const key = process.env.GEMINI_API_KEY;
     const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";

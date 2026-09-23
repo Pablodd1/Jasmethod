@@ -12,7 +12,7 @@ import { t, type Lang } from "@/lib/i18n";
 // result units per benchmark type (rec: close the punch-force measurement loop)
 const BENCH_UNIT: Record<string, string> = {
   ftp: "W", lthr: "bpm", cp: "W", run5k: "sec", swim: "sec/100m",
-  run1k: "sec", erg: "m", strengthBench: "cm (med-ball throw)",
+  run1k: "sec", run200m: "sec (200m TT)", run400m: "sec (400m TT)", erg: "m", strengthBench: "cm (med-ball throw)",
   boxing: "punches / N (count in 3 min, or peak N if smart bag)",
 };
 
