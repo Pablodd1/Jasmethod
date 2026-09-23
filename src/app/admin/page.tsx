@@ -154,17 +154,21 @@ function AdminOperations() {
   const [inbox, setInbox] = useState<any>(null);
   const [coaches, setCoaches] = useState<any[]>([]);
   const [pilot, setPilot] = useState<any>(null);
+  const [ops, setOps] = useState<any>(null);
   const [open, setOpen] = useState(false);
+  const [opsOpen, setOpsOpen] = useState(true);
 
   async function load() {
-    const [i, c, p] = await Promise.all([
+    const [i, c, p, o] = await Promise.all([
       fetch("/api/admin/inbox").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/admin/coaches").then((r) => (r.ok ? r.json() : null)),
       fetch("/api/admin/pilot?days=30").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/admin/ops?days=7").then((r) => (r.ok ? r.json() : null)),
     ]);
     setInbox(i);
     setCoaches(c?.coaches || []);
     setPilot(p);
+    setOps(o);
   }
   useEffect(() => {
     load();
@@ -200,6 +204,95 @@ function AdminOperations() {
               ))
             ) : (
               <p className="text-sm text-emerald-700">✓ Nothing needs attention — every assigned athlete checked in and all devices are healthy.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Operations & cost */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display font-bold text-lg">
+            Operations &amp; cost{ops ? ` — last ${ops.days}d` : ""}
+          </h2>
+          <button className="btn-secondary !px-3 !py-1 text-xs" onClick={() => setOpsOpen(!opsOpen)}>
+            {opsOpen ? "Hide" : "Show"}
+          </button>
+        </div>
+        {opsOpen && ops && (
+          <div className="mt-3 space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {[
+                ["Errors", ops.errors.total],
+                ["AI calls", ops.usage.totals.ai_calls],
+                ["AI tokens", ops.usage.totals.ai_input_tokens + ops.usage.totals.ai_output_tokens],
+                ["Active 24h", ops.users.activeLast24h + " / " + ops.users.total],
+                ["DB size", ops.db.sizeMb != null ? ops.db.sizeMb + " MB" : "—"],
+              ].map(([l, v]: any) => (
+                <div key={String(l)} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-center">
+                  <div className="text-xl font-bold tabular-nums">{v}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{String(l)}</div>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="text-2xl font-bold text-emerald-800">
+                ≈ ${ops.usage.estimatedCostUsd}{" "}
+                <span className="text-sm font-normal text-emerald-700">/ month est.</span>
+              </div>
+              <div className="text-[11px] text-emerald-700 mt-0.5">{ops.usage.note}</div>
+            </div>
+            {ops.usage.perUser.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">
+                  Top users by estimated cost
+                </div>
+                <div className="space-y-1">
+                  {ops.usage.perUser.slice(0, 8).map((u: any) => (
+                    <div key={u.userId} className="flex items-center gap-2 text-xs">
+                      <span>{u.avatar}</span>
+                      <span className="font-semibold flex-1 truncate">{u.name}</span>
+                      <span className="text-slate-500">AI {u.ai_calls}×</span>
+                      <span className="text-slate-500">sync {u.db_rows_synced}</span>
+                      <span className="font-semibold tabular-nums">${u.estimatedCostUsd}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {ops.crons.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">
+                  Cron heartbeats
+                </div>
+                {ops.crons.map((c: any, i: number) => (
+                  <div key={i} className="text-xs text-slate-600 flex gap-2">
+                    <span className="font-mono">{c.route}</span>
+                    <span className="text-slate-400">
+                      {new Date(c.at).toLocaleString()} — {c.message.slice(0, 90)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {ops.errors.latest.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">
+                  Latest errors/warnings
+                </div>
+                {ops.errors.latest.map((e: any, i: number) => (
+                  <div key={i} className="text-xs text-slate-600 truncate">
+                    <span className="font-mono text-slate-400">{new Date(e.createdAt).toLocaleString()}</span>{" "}
+                    <span className="font-semibold">[{e.source}]</span> {e.message.slice(0, 110)}
+                  </div>
+                ))}
+              </div>
+            )}
+            {ops.db.topTables.length > 0 && (
+              <div className="text-[11px] text-slate-500">
+                Top tables:{" "}
+                {ops.db.topTables.map((t: any) => `${t.table} ${t.mb}MB`).join(" · ")}
+              </div>
             )}
           </div>
         )}

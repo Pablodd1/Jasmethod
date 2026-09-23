@@ -341,6 +341,11 @@ export async function syncUserConnectors(
           syncStartedAt: null,
         },
       });
+      // Usage metering: rows synced per user (feeds the admin cost panel).
+      if (imported > 0) {
+        const { meterUsage } = await import("./telemetry");
+        await meterUsage(userId, "db_rows_synced", imported);
+      }
       results.push({ provider: conn.provider, ok: true, imported });
     } catch (e: any) {
       const error = String(e?.message || "Provider sync failed")

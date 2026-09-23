@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { dayBounds, addDaysKey, localDate } from "@/lib/dates";
 import { sendEmail } from "@/lib/email";
 import { sendTelegram, sendTelegramPhoto } from "@/lib/notify";
+import { meterUsage, logEvent } from "@/lib/telemetry";
 import { prescribeToday } from "@/lib/adaptive";
 import { baseWorkout } from "@/lib/prescription";
 export const dynamic = "force-dynamic";
@@ -95,9 +96,26 @@ export async function GET(req: Request) {
           error: result.error || null,
         },
       });
-      if (result.ok) sent++;
-      else failed++;
+      if (result.ok) {
+        sent++;
+        await meterUsage(user.id, channel === "email" ? "email_sends" : "telegram_msgs", 1);
+      } else {
+        failed++;
+        await logEvent({
+          kind: "error",
+          source: "cron",
+          route: "/api/cron/reminders:" + channel,
+          userId: user.id,
+          message: result.error || "delivery failed",
+        });
+      }
     }
   }
+  await logEvent({
+    kind: "info",
+    source: "cron",
+    route: "/api/cron/reminders",
+    message: `reminders sent=${sent} failed=${failed} skipped=${skipped}`,
+  });
   return Response.json({ ok: failed === 0, sent, failed, skipped });
 }

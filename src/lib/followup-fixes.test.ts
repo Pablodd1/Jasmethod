@@ -218,3 +218,23 @@ test("forecast applies the measured GPX course to run distance and ascent", () =
   assert.ok(base.totalMin > flat.totalMin, `measured course (${base.totalMin} min) must be slower than flat label 10k (${flat.totalMin} min)`);
   assert.match(base.segments[0].distanceLabel, /measured/);
 });
+
+// ---- Telemetry & cost estimation ----
+import { estimateMonthlyCostUsd, COST_TABLE } from "./telemetry";
+
+test("cost estimation: pure token math from the editable price table", () => {
+  const c = estimateMonthlyCostUsd({
+    ai_calls: 100, ai_input_tokens: 1_000_000, ai_output_tokens: 0,
+    db_rows_synced: 0, fit_exports: 0, telegram_msgs: 0, email_sends: 0, gpx_uploads: 0,
+  });
+  assert.strictEqual(c, COST_TABLE.ai_input_per_1m_tokens);
+  const mixed = estimateMonthlyCostUsd({
+    ai_calls: 0, ai_input_tokens: 0, ai_output_tokens: 2_000_000,
+    db_rows_synced: 0, fit_exports: 0, telegram_msgs: 0, email_sends: 10, gpx_uploads: 0,
+  });
+  assert.strictEqual(mixed, +(2 * COST_TABLE.ai_output_per_1m_tokens + 10 * COST_TABLE.email_per_send).toFixed(4));
+  assert.strictEqual(estimateMonthlyCostUsd({
+    ai_calls: 0, ai_input_tokens: 0, ai_output_tokens: 0, db_rows_synced: 0,
+    fit_exports: 0, telegram_msgs: 5000, email_sends: 0, gpx_uploads: 0,
+  }), 0, "telegram is free");
+});

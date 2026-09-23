@@ -54,6 +54,35 @@ model User {
   forecastSnapshots RaceForecastSnapshot[]
 }
 
+// ---------- TELEMETRY & USAGE METERING ----------
+// AppEvent: error/warn/info ledger (client errors, server 500s, cron
+// outcomes). Critical errors trigger owner Telegram alerts (rate-limited).
+model AppEvent {
+  id        String   @id @default(cuid())
+  kind      String   // error | warn | info
+  source    String   // client | server | cron | sync | ai | delivery
+  route     String?
+  userId    String?
+  message   String
+  meta      String?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+  @@index([route, createdAt])
+}
+// UsageCounter: per-user per-day consumption counters (AI calls/tokens,
+// synced rows, exports, messages) — feeds the admin cost panel.
+model UsageCounter {
+  id     String @id @default(cuid())
+  userId String
+  day    String // YYYY-MM-DD (UTC)
+  metric String // ai_calls | ai_input_tokens | ai_output_tokens | db_rows_synced | fit_exports | telegram_msgs | email_sends | gpx_uploads
+  count  Int    @default(0)
+
+  @@unique([userId, day, metric])
+  @@index([day, metric])
+}
+
 // ---------- COACH ASSIGNMENTS (permission boundary) ----------
 // A coach may only see/act on athletes with an ACTIVE assignment. Admins
 // bypass (platform owners). consent tracks the athlete's view: admin-created

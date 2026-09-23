@@ -6,6 +6,7 @@ import { parseTrainingCommand, applyTrainingCommand } from "@/lib/training-comma
 import { dayBounds } from "@/lib/dates";
 import { protocolCoachContext } from "@/lib/protocols";
 import { geminiAnswer, geminiGenerationConfig } from "@/lib/gemini-response";
+import { meterUsage, logEvent } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -214,9 +215,18 @@ Rules: use the athlete's real numbers when relevant; be concise (max 120 words);
       if (res && res.ok) {
         const data = await res.json();
         answer = geminiAnswer(data);
-        if (!answer) console.warn("[assistant] No complete Gemini answer", data?.candidates?.[0]?.finishReason || "empty");
+        // Usage metering + error telemetry (per user).
+        const um = data?.usageMetadata || {};
+        await meterUsage(user.id, "ai_calls", 1);
+        if (um.promptTokenCount) await meterUsage(user.id, "ai_input_tokens", um.promptTokenCount);
+        if (um.candidatesTokenCount) await meterUsage(user.id, "ai_output_tokens", um.candidatesTokenCount);
+        if (!answer) {
+          console.warn("[assistant] No complete Gemini answer", data?.candidates?.[0]?.finishReason || "empty");
+          await logEvent({ kind: "warn", source: "ai", route: "/api/assistant", userId: user.id, message: `Empty Gemini answer: ${data?.candidates?.[0]?.finishReason || "unknown"}` });
+        }
       } else {
         answer = "";
+        await logEvent({ kind: "warn", source: "ai", route: "/api/assistant", userId: user.id, message: `Gemini unreachable (res ${res ? res.status : "network"})` });
       }
     } else {
       answer = "";

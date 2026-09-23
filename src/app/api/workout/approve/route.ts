@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { buildFitWorkout, workoutToFitSpec } from "@/lib/fit-export";
+import { meterUsage } from "@/lib/telemetry";
 
 function dayStart(d: Date) {
   const x = new Date(d);
@@ -83,6 +84,8 @@ async function run(req: Request, markApproved: boolean) {
       where: { id: workout.id },
       data: { approved: true },
     });
+
+  await meterUsage(user.id, "fit_exports", 1);
 
   const safeNameFit =
     workout.title
