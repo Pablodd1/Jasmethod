@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fmtWeight, fmtHeight } from "@/lib/units";
 import { EstimateBanner } from "@/components/estimate-banner";
+import { PrsCard } from "@/components/prs-card";
 import {
   Save,
   HeartPulse,
@@ -199,6 +200,8 @@ export default function SettingsPage() {
           lthrMissing={!profile?.lthr}
           vo2maxSource={vo2Source}
         />
+
+        <PrsCard lang={lang === "es" ? "es" : "en"} />
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="card">

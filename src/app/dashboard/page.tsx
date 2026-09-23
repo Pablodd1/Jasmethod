@@ -204,10 +204,10 @@ export default function DashboardPage() {
 
   return (
     <ProtectedPage>
-      <div className="space-y-6">
+      <div className="space-y-6 max-w-5xl mx-auto w-full min-w-0">
         {/* Greeting + motivation */}
         <div className="bg-gradient-to-r from-ocean-950 to-ocean-800 rounded-3xl p-6 md:p-8 text-white">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-ocean-300 text-sm font-medium">
                 {t(lang, "dash.greeting").replace(

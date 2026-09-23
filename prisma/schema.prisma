@@ -129,6 +129,7 @@ model AthleteProfile {
   intensityPct  Float?  // coach-set intensity multiplier % (null/100 = as planned; <100 eases, >100 sharpens)
   trainingWindow String @default("any") // any | morning | midday | evening — default session time-of-day
   units        String   @default("metric") // metric | imperial — display-only; storage stays kg/km/ml/°C
+  manualPrs    String?  // JSON: user-entered personal records [{label, value, unit, date}] — track PBs etc. not capturable from devices
   vo2max        Float? // ml/kg/min (measured or estimated)
   lthr          Int?   // lactate threshold HR bpm
   restingHr     Int?

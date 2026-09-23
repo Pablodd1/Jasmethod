@@ -149,8 +149,11 @@ export default function TodayPage() {
         method: "POST",
       });
       if (!r.ok) throw Error((await r.json().catch(() => ({}))).error);
+      // Read the body ONCE — a Response body can only be consumed a single
+      // time; the share + download fallback paths both reuse this buffer.
+      const buf = await r.arrayBuffer();
       const file = new File(
-        [await r.blob()],
+        [buf],
         "jasmethod-workout.fit",
         { type: "application/octet-stream" },
       );
@@ -186,7 +189,9 @@ export default function TodayPage() {
         }
       }
       if (!shared) {
-        await saveBlob(r, "jasmethod-workout.fit");
+        // Reuse the already-read buffer — calling r.blob() again would throw
+        // "body stream already read" (the exact bug reported on desktop).
+        await saveBlob(new Response(buf), "jasmethod-workout.fit");
         setMessage(
           es
             ? "Archivo descargado — ábrelo o compártelo con la app de Garmin Connect para importarlo."

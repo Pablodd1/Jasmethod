@@ -146,5 +146,50 @@ export async function GET() {
       avgPower: w.avgPower,
     }));
 
-  return NextResponse.json({ prs, races, total: prs.length });
+  const profile = await prisma.athleteProfile.findUnique({
+    where: { userId: user.id },
+    select: { manualPrs: true },
+  });
+  let manual: any[] = [];
+  try {
+    manual = profile?.manualPrs ? JSON.parse(profile.manualPrs) : [];
+  } catch {}
+
+  return NextResponse.json({ prs, races, manual, total: prs.length });
+}
+
+// PUT /api/prs — replace the athlete's manual personal records.
+// Body: { manual: [{ label, value, unit, date }] }. Manual PRs cover times
+// devices can't capture (track PBs, gym marks, field tests done by hand).
+export async function PUT(req: Request) {
+  const user = await getCurrentUser();
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const body = await req.json();
+    const list = Array.isArray(body?.manual) ? body.manual : [];
+    if (list.length > 50)
+      return NextResponse.json({ error: "Too many manual PRs (max 50)" }, { status: 400 });
+    const clean = list.map((m: any) => ({
+      label: String(m.label || "").slice(0, 60),
+      value: Number(m.value),
+      unit: String(m.unit || "").slice(0, 20),
+      date: String(m.date || "").slice(0, 10),
+    }));
+    for (const m of clean) {
+      if (!m.label || !Number.isFinite(m.value))
+        return NextResponse.json(
+          { error: "Each PR needs a label and a numeric value" },
+          { status: 400 },
+        );
+    }
+    await prisma.athleteProfile.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, manualPrs: JSON.stringify(clean) },
+      update: { manualPrs: JSON.stringify(clean) },
+    });
+    return NextResponse.json({ ok: true, manual: clean });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
+  }
 }

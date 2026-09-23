@@ -46,7 +46,6 @@ const NAV_MORE = [
   { href: "/hyrox", key: "nav.hyrox", icon: Layers },
   { href: "/races", key: "nav.races", icon: Flag },
   { href: "/races/forecast", key: "nav.forecast", icon: Gauge },
-  { href: "/prs", key: "nav.prs", icon: Trophy },
   { href: "/nutrition", key: "nav.nutrition", icon: Apple },
   { href: "/blood", key: "nav.blood", icon: FlaskConical },
   { href: "/reminders", key: "nav.reminders", icon: Bell },
