@@ -68,6 +68,24 @@ export default function RacesPage() {
     load();
   }
 
+  async function uploadGpx(id: string, file: File) {
+    setErr("");
+    try {
+      const text = await file.text();
+      const res = await fetch(`/api/races/${id}/course`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gpx: text }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw Error(d.error || "GPX upload failed");
+      setErr("");
+      load();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
   const num = (v: any) => (v === "" || v === null || v === undefined ? null : Number(v));
 
   return (
@@ -129,6 +147,28 @@ export default function RacesPage() {
                   {r.bikeTerrain && <div>Bike: {r.bikeTerrain}{r.bikeElevM ? ` (${r.bikeElevM}m climb)` : ""}</div>}
                   {r.runTerrain && <div>Run: {r.runTerrain}{r.runElevM ? ` (${r.runElevM}m)` : ""}</div>}
                   {r.swimVenue && <div><Waves className="w-3 h-3 inline mr-1" />{r.swimVenue}{r.waterTempC != null ? ` · ${r.waterTempC}°C` : ""}{r.swimCurrent && r.swimCurrent !== "none" ? ` · ${r.swimCurrent} current` : ""}</div>}
+                  {(r.courseKm != null || r.courseElevM != null) && (
+                    <div className="bg-emerald-50 text-emerald-800 rounded-lg px-2 py-1">
+                      📐 {lang === "es" ? "Medido (GPX)" : "Measured (GPX)"}: {r.courseKm} km · {r.courseElevM} m {lang === "es" ? "ascenso — aplicado en el pronóstico" : "ascent — applied in the forecast"}
+                    </div>
+                  )}
+                  <div className="pt-1">
+                    <label className="text-[10px] font-semibold uppercase tracking-wide text-ocean-600 cursor-pointer hover:underline">
+                      📐 {r.courseKm != null ? (lang === "es" ? "Reemplazar GPX del recorrido" : "Replace course GPX") : (lang === "es" ? "Subir GPX del recorrido" : "Upload course GPX")}
+                      <input
+                        type="file"
+                        accept=".gpx,text/xml,application/gpx+xml"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          await uploadGpx(r.id, f);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{lang === "es" ? "La distancia y el ascenso reales alimentan el pronóstico." : "Real distance + ascent feed the forecast."}</div>
+                  </div>
                 </div>
               </div>
             ))}

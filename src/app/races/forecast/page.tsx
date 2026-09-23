@@ -223,6 +223,38 @@ export default function RaceForecastPage() {
             onBrief={loadBrief}
           />
         )}
+      {/* Measured course + pre-race snapshot — honest forecasting surfaced */}
+      {(data?.race?.courseKm != null || data?.predictionSnapshot) && (
+        <div className="card border-ocean-200 bg-ocean-50/40">
+          <div className="text-xs font-bold uppercase tracking-wide text-ocean-700 mb-1.5">
+            📐 {lang === "es" ? "Curso medido y snapshot previo" : "Measured course & pre-race snapshot"}
+          </div>
+          {data?.race?.courseKm != null && (
+            <div className="text-sm text-ocean-900">
+              GPX: <strong>{data.race.courseKm} km</strong> · {data.race.courseElevM} m {lang === "es" ? "ascenso medido — aplicado al pronóstico" : "ascent measured — applied to this forecast"}
+            </div>
+          )}
+          {data?.predictionSnapshot ? (
+            <div className="text-xs text-slate-600 mt-1">
+              📸 {lang === "es" ? "Pronóstico previo guardado" : "Pre-race prediction saved"}{" "}
+              {new Date(data.predictionSnapshot.capturedAt).toLocaleDateString()} —{" "}
+              <strong>{fmtTime(data.predictionSnapshot.predictedMin)}</strong> ({data.predictionSnapshot.snapshotCount} {lang === "es" ? "snapshots" : "snapshots"}).
+              {data.race?.resultMin != null && data.predictionSnapshot.errorPct != null && (
+                <>
+                  {" "}{lang === "es" ? "Error del pronóstico PRE-CARRERA" : "PRE-RACE prediction error"}:{" "}
+                  <strong>{data.predictionSnapshot.errorPct > 0 ? "+" : ""}{data.predictionSnapshot.errorPct}%</strong>
+                </>
+              )}
+            </div>
+          ) : data?.race?.courseKm != null ? null : (
+            <div className="text-xs text-slate-500 mt-1">
+              {lang === "es"
+                ? "Sube el GPX del recorrido en Races y el motor usará la distancia y ascenso reales."
+                : "Upload the race GPX in Races and the engine will use the real distance and ascent."}
+            </div>
+          )}
+        </div>
+      )}
       {/* Prediction accuracy: predicted vs the actual logged result */}
       {data?.race?.resultMin != null && data?.forecast?.totalMin != null && (
         <div className="card border-emerald-200 bg-emerald-50/60">
