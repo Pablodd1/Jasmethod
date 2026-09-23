@@ -1,3 +1,4 @@
+import { buildSprintSession } from "./sprint-protocols";
 // JasMiamiMethod — Sports Science Engine
 // Evidence-based training physiology per post-2000 research literature.
 //
@@ -949,19 +950,48 @@ export function generateTrackSprint(opts: {
   const sessionsPerWeek = level === "pro" ? 6 : level === "advanced" ? 5 : 4;
   const isShort = event === "100m" || event === "200m";
 
+  // PROTOCOL KNOWLEDGE BASE (97 cited entries: Hart/Smith/Seagrave coach
+  // practice + SET reviews + pacing models). The Speed-Endurance day is now
+  // built from the database's verbatim sets; every session cites its source.
+  const PHASE_MAP = {
+    general_prep: "fall",
+    specific_prep: "early",
+    pre_comp: "mid",
+    comp: "taper",
+  } as const;
+  const sprintSessionFor = (planPhase: keyof typeof PHASE_MAP, variant: number) => {
+    try {
+      // Lazy require avoided — static import is fine (no cycle: the protocol
+      // lib has no dependency on science.ts).
+      return buildSprintSession(PHASE_MAP[planPhase] as any, variant);
+    } catch {
+      return null;
+    }
+  };
+  const describeRows = (sess: ReturnType<typeof buildSprintSession> | null): string => {
+    if (!sess) return "";
+    const rows = sess.rows
+      .map((r) => `• ${r.name} @ ${r.intensity}, rest ${r.restBetweenRepsMin} min [${r.sourceId}]`)
+      .join(" ");
+    return `10 min jog + drills. ${rows} Rest length is the stimulus: <60 s selects fatigue tolerance, 3-5 min selects quality (PCr resynthesis, Bogdanis 1995). Coach-practice rests — no RCT exists for 200/400 m rest dosing.`;
+  };
+
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
     const phase = w <= weeks * 0.3 ? "general_prep" : w <= weeks * 0.6 ? "specific_prep" : w <= weeks - 1 ? "pre_comp" : "comp";
     const sessions: PlanSession[] = [];
     const vol = w <= weeks * 0.7 ? 1.0 : 0.6; // reduce volume in competition phase
+    const protoSession = sprintSessionFor(PHASE_MAP[phase as keyof typeof PHASE_MAP] as any, w % 4);
 
     // Speed Day 1
     if (phase === "general_prep") {
       sessions.push({ sport: "run", title: "Acceleration + Mechanics", minutes: 90, zone: "z5", type: "speed", description: "10 min jog + dynamic drills (leg swings, hip openers, ankle circles ×10 each). A-skips, B-skips 2×20m. 6×20m block starts at 100% effort, rest 2-3 min between reps. 4×20m fly-in at 95% MV, rest 4-6 min. Plyo: box jumps 4×5, bounds 3×20m. Cool: 10 min walk + static stretch." });
     } else if (phase === "specific_prep") {
-      sessions.push({ sport: "run", title: "Speed Endurance", minutes: 100, zone: "z5", type: "speed", description: isShort ? "10 min jog + drills. 5×120m at 95% max velocity, rest 8-10 min between reps. Plyo: depth jumps 3×5, single-leg bounds 3×6/leg. Cool: 10 min walk + stretch." : "10 min jog + drills. 3×200m at 90-95% max velocity, rest 12-15 min. Plyo: depth jumps 3×5. Cool: 10 min walk + stretch." });
+      const protoDesc = describeRows(protoSession);
+      sessions.push({ sport: "run", title: "Speed Endurance (Hart / SET protocols)", minutes: 100, zone: "z5", type: "speed", description: protoDesc || (isShort ? "10 min jog + drills. 5×120m at 95% max velocity, rest 8-10 min between reps. Plyo: depth jumps 3×5, single-leg bounds 3×6/leg. Cool: 10 min walk + stretch." : "10 min jog + drills. 3×200m at 90-95% max velocity, rest 12-15 min. Plyo: depth jumps 3×5. Cool: 10 min walk + stretch.") });
     } else if (phase === "pre_comp") {
-      sessions.push({ sport: "run", title: "Race Pace Sharpening", minutes: 80, zone: "z5", type: "speed", description: `10 min jog + drills. ${isShort ? "4×60m at race pace, rest 6-8 min. 2×20m fly at 95-100% MV." : "2×150m at race pace, rest 10 min. 1×80m fly at 95% MV."} Volume reduced 40% — sharpen, don't fatigue.` });
+      const midDesc = describeRows(sprintSessionFor(PHASE_MAP["pre_comp" as keyof typeof PHASE_MAP] as any, w % 4));
+      sessions.push({ sport: "run", title: "Race Pace Sharpening", minutes: 80, zone: "z5", type: "speed", description: `10 min jog + drills. ${isShort ? "4×60m at race pace, rest 6-8 min. 2×20m fly at 95-100% MV." : "2×150m at race pace, rest 10 min. 1×80m fly at 95% MV."} ${midDesc} Volume reduced 40% — sharpen, don't fatigue.` });
     } else {
       sessions.push({ sport: "run", title: "Competition Week", minutes: 50, zone: "z5", type: "speed", description: "10 min jog + drills. 3×20m build + 1×40m at 95% MV, full recovery. Race in <7 days." });
     }

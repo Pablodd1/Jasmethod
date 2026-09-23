@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { syncUserConnectors } from "@/lib/sync";
 import { syncAthlinksForAllUsers } from "@/lib/athlinks";
+import { alertOwner, logEvent } from "@/lib/telemetry";
 
 // GET|POST /api/cron/sync — reconcile every athlete's connected providers.
 // Runs HOURLY via vercel.json ("0 * * * *" UTC) — the normal user experience
@@ -75,6 +76,19 @@ async function run(req: Request) {
   if (staleAthlinks.length) athlinks = await syncAthlinksForAllUsers();
 
   const failedUsers = perUser.filter((u) => u.failures.length > 0);
+  // Owner alert: device auth failures mean silently-dead connectors (the
+  // athlete stopped getting data). Rate-limited 12h per kind.
+  for (const u of failedUsers) {
+    for (const f of u.failures) {
+      if (/reconnect|expired|authorization|unauthorized|invalid/i.test(f.error)) {
+        await alertOwner(
+          "sync_auth",
+          `${u.name} — ${f.provider}: ${f.error}`,
+          { cooldownMin: 720 },
+        );
+      }
+    }
+  }
   const summary = {
     ranAt: new Date().toISOString(),
     durationMs: Date.now() - startedAt,
@@ -87,6 +101,7 @@ async function run(req: Request) {
     perUser,
   };
   console.log("[cron/sync]", JSON.stringify(summary));
+  await logEvent({ kind: failedUsers.length ? "warn" : "info", source: "cron", route: "/api/cron/sync", message: "athletes=" + connected.length + " imported=" + summary.totalImported + " failed=" + failedUsers.length });
   return NextResponse.json(summary);
 }
 

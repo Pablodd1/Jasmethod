@@ -4,7 +4,7 @@ import { dayBounds, dateKey, localDate } from "./dates";
 import { storeActivity } from "./activity-store";
 import * as api from "./importers";
 import { buildFuelingPlan } from "./fueling";
-import { sportIcon, calendarDescription, type PlanFormatSession } from "./plan-formats";
+import { sportIcon, calendarDescription, shapeLink, type PlanFormatSession } from "./plan-formats";
 
 // Prescription JSON → exportable steps (defensive: never throw on old data).
 function safeSteps(prescription: string | null): PlanFormatSession["steps"] {
@@ -93,7 +93,9 @@ export async function syncUserConnectors(
           {
             clientId: process.env[`${cfg.env}_CLIENT_ID`]!,
             clientSecret: process.env[`${cfg.env}_CLIENT_SECRET`]!,
-            redirectUri: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/connectors/${cfg.path}/callback`,
+            redirectUri:
+              process.env[`${cfg.env}_REDIRECT_URI`] ||
+              `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/connectors/${cfg.path}/callback`,
           },
           decryptSecret(conn.refreshEnc),
         );
@@ -222,14 +224,14 @@ export async function syncUserConnectors(
           });
           const gid = await api.googleCalUpsertEvent(access, {
             summary: `${sportIcon(w.sport)} ${w.title} · ${w.durationMin} min`,
-            description: calendarDescription({
+            description: `${calendarDescription({
               title: w.title,
               sport: w.sport,
               durationMin: w.durationMin,
               intensity: w.intensity,
               steps: safeSteps(w.prescription),
               fuel: fuelPlan,
-            }),
+            })}\n📈 Effort shape: ${shapeLink(w.id)}`,
             start: localDate(
               dateKey(w.date, user.timezone),
               user.timezone,
@@ -307,6 +309,25 @@ export async function syncUserConnectors(
             create: { userId, date, ...data },
             update: data,
           });
+          // PROVENANCE: every device value also lands as an immutable
+          // MetricObservation (review finding D) — the derived daily row can
+          // be rebuilt or audited from raw observations per source.
+          const obs: {
+            userId: string; observedAt: Date; metricType: string;
+            value: number; unit: string; source: string;
+            measurementMethod: string;
+          }[] = [];
+          const push = (type: string, v: number | null | undefined, unit: string) => {
+            if (v != null && Number.isFinite(v))
+              obs.push({ userId, observedAt: date, metricType: type, value: v, unit, source: conn.provider, measurementMethod: "device_sync" });
+          };
+          push("hrv_rmssd", values.hrv, "ms");
+          push("resting_hr", values.restingHr, "bpm");
+          push("sleep_hours", values.sleepHours, "h");
+          push("sleep_score", values.sleepScore, "score");
+          push("recovery_score", values.recoveryScore, "score");
+          if (obs.length)
+            await prisma.metricObservation.createMany({ data: obs, skipDuplicates: false });
           imported++;
         }
       }
@@ -320,6 +341,11 @@ export async function syncUserConnectors(
           syncStartedAt: null,
         },
       });
+      // Usage metering: rows synced per user (feeds the admin cost panel).
+      if (imported > 0) {
+        const { meterUsage } = await import("./telemetry");
+        await meterUsage(userId, "db_rows_synced", imported);
+      }
       results.push({ provider: conn.provider, ok: true, imported });
     } catch (e: any) {
       const error = String(e?.message || "Provider sync failed")

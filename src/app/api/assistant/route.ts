@@ -6,6 +6,7 @@ import { parseTrainingCommand, applyTrainingCommand } from "@/lib/training-comma
 import { dayBounds } from "@/lib/dates";
 import { protocolCoachContext } from "@/lib/protocols";
 import { geminiAnswer, geminiGenerationConfig } from "@/lib/gemini-response";
+import { meterUsage, logEvent } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -77,16 +78,74 @@ export async function POST(req: Request) {
             durationMin: todaySession.durationMin,
             notes: todaySession.notes,
           };
-          // Apply to the database — prescription is invalidated so the Today
-          // view and every export regenerate from the edited session instead
-          // of showing a stale structure that disagrees with this change.
+          // Apply to the database. CRITICAL: originalPlan is the seed Today
+          // regenerates from when the stored prescription is missing — leaving
+          // it stale resurrected a hard session after a rest-day edit. Every
+          // accepted chat edit rewrites originalPlan to match; a rest day also
+          // persists a complete rest prescription so no surface can rebuild
+          // the hard steps.
+          const newTitle = result.adjusted.session.title;
+          const newDuration = result.adjusted.session.durationMin ?? todaySession.durationMin;
+          const newIntensity = cmd.command === "REST_DAY" ? "z1" : todaySession.intensity;
+          const newType = result.adjusted.session.type ?? todaySession.type;
+          let originalPlan = todaySession.originalPlan;
+          try {
+            const op = originalPlan
+              ? JSON.parse(originalPlan)
+              : {
+                  title: todaySession.title,
+                  sport: todaySession.sport,
+                  type: todaySession.type,
+                  intensity: todaySession.intensity,
+                  durationMin: todaySession.durationMin,
+                  description: todaySession.notes || "",
+                  startTime: todaySession.startTime,
+                };
+            originalPlan = JSON.stringify({
+              ...op,
+              title: newTitle,
+              durationMin: newDuration,
+              intensity: newIntensity,
+              type: newType,
+            });
+          } catch {}
+          const restPrescription =
+            cmd.command === "REST_DAY"
+              ? JSON.stringify({
+                  title: newTitle,
+                  sport: todaySession.sport,
+                  type: "recovery",
+                  durationMin: 20,
+                  intensity: "z1",
+                  steps: [
+                    { name: "Easy movement", seconds: 1200, zone: "z1", phase: "active" },
+                  ],
+                  targets: { rpe: 2 },
+                  startTime: todaySession.startTime,
+                  verdict: "rest",
+                  detail: {
+                    wu: "No warm-up needed.",
+                    main: "20 minutes Zone 1 in any modality (walk, easy spin, swim).",
+                    cd: "Finish with 5 slow nasal breaths.",
+                    breathing: "Extended exhale 2:1 — 5 minutes.",
+                    study: "Recovery is the training stimulus today.",
+                  },
+                })
+              : null;
           await prisma.workout.update({
             where: { id: todaySession.id },
             data: {
-              title: result.adjusted.session.title,
+              title: newTitle,
               notes: result.adjusted.session.mainSet.join("; "),
-              durationMin: result.adjusted.session.durationMin ?? todaySession.durationMin,
-              prescription: null,
+              durationMin: newDuration,
+              ...(newIntensity ? { intensity: newIntensity } : {}),
+              ...(cmd.command === "REST_DAY" ? { type: "recovery" } : {}),
+              ...(restPrescription
+                ? { prescription: restPrescription }
+                : { prescription: null }),
+              originalPlan,
+              // A superseded prescription invalidates the watch-side approval.
+              approved: false,
             },
           });
           await prisma.auditLog.create({
@@ -98,8 +157,8 @@ export async function POST(req: Request) {
               before: JSON.stringify(before).slice(0, 2000),
               after: JSON.stringify({
                 command: cmd.command,
-                title: result.adjusted.session.title,
-                durationMin: result.adjusted.session.durationMin ?? todaySession.durationMin,
+                title: newTitle,
+                durationMin: newDuration,
               }).slice(0, 2000),
               note: q.slice(0, 200),
             },
@@ -156,9 +215,18 @@ Rules: use the athlete's real numbers when relevant; be concise (max 120 words);
       if (res && res.ok) {
         const data = await res.json();
         answer = geminiAnswer(data);
-        if (!answer) console.warn("[assistant] No complete Gemini answer", data?.candidates?.[0]?.finishReason || "empty");
+        // Usage metering + error telemetry (per user).
+        const um = data?.usageMetadata || {};
+        await meterUsage(user.id, "ai_calls", 1);
+        if (um.promptTokenCount) await meterUsage(user.id, "ai_input_tokens", um.promptTokenCount);
+        if (um.candidatesTokenCount) await meterUsage(user.id, "ai_output_tokens", um.candidatesTokenCount);
+        if (!answer) {
+          console.warn("[assistant] No complete Gemini answer", data?.candidates?.[0]?.finishReason || "empty");
+          await logEvent({ kind: "warn", source: "ai", route: "/api/assistant", userId: user.id, message: `Empty Gemini answer: ${data?.candidates?.[0]?.finishReason || "unknown"}` });
+        }
       } else {
         answer = "";
+        await logEvent({ kind: "warn", source: "ai", route: "/api/assistant", userId: user.id, message: `Gemini unreachable (res ${res ? res.status : "network"})` });
       }
     } else {
       answer = "";

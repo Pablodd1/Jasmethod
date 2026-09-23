@@ -40,6 +40,39 @@ export async function sendTelegram(
   }
 }
 
+// sendPhoto — the red workout-shape graphic rides ABOVE the plan text
+// (Telegram caps captions at 1024 chars, so the full plan goes as its own
+// message; callers pair sendPhoto + sendTelegram). The PNG is uploaded
+// directly (multipart) — no hosting required.
+export async function sendTelegramPhoto(
+  chatId: string,
+  png: Buffer,
+  caption: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return { ok: false, error: "TELEGRAM_BOT_TOKEN not configured" };
+  try {
+    const fd = new FormData();
+    fd.append("chat_id", chatId);
+    fd.append("caption", caption.slice(0, 1000));
+    fd.append("photo", new Blob([new Uint8Array(png)], { type: "image/png" }), "shape.png");
+    const resp = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: "POST",
+      body: fd,
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      console.error(`[TELEGRAM] sendPhoto failed to ${chatId}: ${data.description || resp.status}`);
+      return { ok: false, error: data.description || `Telegram HTTP ${resp.status}` };
+    }
+    return { ok: true };
+  } catch (e: any) {
+    console.error(`[TELEGRAM] sendPhoto threw for ${chatId}: ${String(e?.message || e)}`);
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
 export interface ReminderMessage {
   subject: string;
   text: string;
@@ -149,7 +182,7 @@ export function buildDailyPlanMessage(inp: DailyPlanInput): ReminderMessage {
 
 export async function sendReminder(
   opts: { email?: string; name: string; telegramChatId?: string },
-  message: ReminderMessage,
+  message: ReminderMessage & { png?: Buffer | null },
 ): Promise<{
   email: { ok: boolean; error?: string };
   telegram: { ok: boolean; error?: string } | null;
@@ -160,10 +193,29 @@ export async function sendReminder(
         subject: message.subject,
         html: message.html,
         text: message.text,
+        ...(message.png
+          ? {
+              attachments: [
+                { filename: "todays-shape.png", content: message.png, cid: "workout-shape" },
+              ],
+            }
+          : {}),
       })
     : { ok: false, error: "Email disabled by preference" };
   let telegram: { ok: boolean; error?: string } | null = null;
-  if (opts.telegramChatId)
-    telegram = await sendTelegram(opts.telegramChatId, message.text);
+  if (opts.telegramChatId) {
+    // Red trail first (photo), then the full plan text.
+    if (message.png) {
+      const photo = await sendTelegramPhoto(
+        opts.telegramChatId,
+        message.png,
+        `📈 ${opts.name} · effort shape`,
+      );
+      const plan = await sendTelegram(opts.telegramChatId, message.text);
+      telegram = { ok: photo.ok && plan.ok, error: plan.error || photo.error };
+    } else {
+      telegram = await sendTelegram(opts.telegramChatId, message.text);
+    }
+  }
   return { email, telegram };
 }

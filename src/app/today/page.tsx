@@ -1,10 +1,13 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Watch } from "lucide-react";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { EstimateBanner } from "@/components/estimate-banner";
+import { WorkoutSparkline } from "@/components/workout-sparkline";
 import { fmtVolumeDual } from "@/lib/units";
+import { fmtDistance } from "@/lib/units";
+import { dayOffProtocol } from "@/lib/day-off";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
@@ -49,6 +52,11 @@ export default function TodayPage() {
       } catch {}
     }
   }, [user]);
+  // Mount-load: without this the page never fetches — /api/today answers,
+  // but nothing ever asks it (regression from an earlier page rewrite).
+  useEffect(() => {
+    if (user) load();
+  }, [user, load]);
   // Background auto-sync: if devices are connected and data is stale (>12h),
   // silently sync on page load. The athlete never has to press anything.
   const [autoSynced, setAutoSynced] = useState(false);
@@ -103,16 +111,91 @@ export default function TodayPage() {
         method: approve ? "POST" : "GET",
       });
       if (!r.ok) throw Error((await r.json().catch(() => ({}))).error);
-      const blob = await r.blob(),
-        url = URL.createObjectURL(blob),
-        a = document.createElement("a");
-      a.href = url;
-      a.download = "jasmethod-workout.fit";
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      // Approve also emails the .FIT with import steps — tell the athlete.
+      if (approve && r.headers.get("X-Delivered-Email") === "1")
+        setMessage(
+          es
+            ? "Aprobado ✓ — el archivo .FIT también va de camino a tu correo con los pasos para Garmin."
+            : "Approved ✓ — the .FIT is also on its way to your email with the Garmin import steps."
+        );
+      await saveBlob(r, "jasmethod-workout.fit");
       await load();
     } catch (e: any) {
       setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveBlob(r: Response, name: string) {
+    const blob = await r.blob(),
+      url = URL.createObjectURL(blob),
+      a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  // SEND TO WATCH — the phone-only direct path: fetch the approved .FIT and
+  // open the native share sheet with the file attached. The athlete picks
+  // Garmin Connect from the share sheet; the app imports the structured
+  // workout and syncs it to the watch automatically. Desktop browsers
+  // (no file-share support) fall back to the download.
+  async function sendToWatch() {
+    if (!session) return;
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/workout/approve?sessionId=${session.id}`, {
+        method: "POST",
+      });
+      if (!r.ok) throw Error((await r.json().catch(() => ({}))).error);
+      const file = new File(
+        [await r.blob()],
+        "jasmethod-workout.fit",
+        { type: "application/octet-stream" },
+      );
+      const shareable =
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [file] });
+      let shared = false;
+      if (shareable) {
+        try {
+          // Chrome requires share() inside the user-activation window; the FIT
+          // fetch can outlive it on slow connections, and the OS may deny the
+          // permission (NotAllowedError → "Permission denied"). Any share
+          // failure degrades to a plain download instead of an error banner.
+          await navigator.share({
+            files: [file],
+            title: session.title,
+            text: es
+              ? "Importa en Garmin Connect → Entrenamiento → Workouts"
+              : "Import in Garmin Connect → Training → Workouts",
+          });
+          shared = true;
+          setMessage(
+            es
+              ? "Enviado ✓ — elige Garmin Connect en la hoja para importarlo; se sincroniza solo a tu reloj."
+              : "Sent ✓ — pick Garmin Connect in the sheet to import it; it syncs to your watch automatically."
+          );
+        } catch (shareErr: any) {
+          if (shareErr?.name === "AbortError") {
+            setBusy(false);
+            return; // user closed the sheet — nothing to do
+          }
+          console.warn("Web Share unavailable (" + (shareErr?.name || "?") + ") — falling back to download");
+        }
+      }
+      if (!shared) {
+        await saveBlob(r, "jasmethod-workout.fit");
+        setMessage(
+          es
+            ? "Archivo descargado — ábrelo o compártelo con la app de Garmin Connect para importarlo."
+            : "File downloaded — open or share it with the Garmin Connect app to import it."
+        );
+      }
+      await load();
+    } catch (e: any) {
+      if (e?.name !== "AbortError") setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -257,6 +340,34 @@ export default function TodayPage() {
                 </p>
               </div>
               <div className="p-5 space-y-4">
+                {/* TrainingPeaks-style summary: load · intensity · distance */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: es ? "Carga est." : "TSS est.", value: session.tss ?? "—" },
+                    { label: es ? "IF est." : "IF est.", value: session.if ?? "—" },
+                    {
+                      label: es ? "Distancia" : "Distance",
+                      value:
+                        session.distanceKm != null
+                          ? fmtDistance(session.distanceKm, data?.units === "imperial" ? "imperial" : "metric")
+                          : "—",
+                    },
+                  ].map((m) => (
+                    <div key={m.label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-center">
+                      <div className="text-lg font-bold tabular-nums text-ink-900">{m.value}</div>
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  🍚 {es ? "COMBUSTIBLE PRE" : "PRE-WORKOUT FUEL"}: {session.fuel?.preSession?.carbsG > 0 ? (
+                    <>
+                      <strong>{session.fuel.preSession.carbsG} g {es ? "carbohidratos" : "carbs"} ({session.fuel.preSession.timingLabel})</strong> — {session.fuel.preSession.note}
+                    </>
+                  ) : (
+                    es ? "sesión corta — comida normal 1-2 h antes basta." : "short session — a normal meal 1-2 h before is enough."
+                  )}
+                </div>
                 <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
                   💧 {es ? "AGUA PRE: 400-600 ml en los 60 min previos (+ pizca de sal en calor)." : "WATER PRE: 400-600 ml in the last 60 min (+ pinch of salt in heat)."}
                 </div>
@@ -265,6 +376,9 @@ export default function TodayPage() {
                     ? "cierra los ojos, véete ejecutando la secuencia de abajo: el lugar, el ritmo, la respiración en el esfuerzo. El scrolling roba las catecholaminas que el entreno necesita (Liu 2025)."
                     : "close your eyes, see yourself executing the sequence below: the place, the rhythm, your breathing at effort. Scrolling steals the catecholamines training needs (Liu 2025)."}
                 </div>
+                {session.prescription.steps.length > 2 && (
+                  <WorkoutSparkline steps={session.prescription.steps} />
+                )}
                 {session.prescription.steps.length ? (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -287,8 +401,14 @@ export default function TodayPage() {
                     {stepsView === "cards" ? (
                       <div className="space-y-2">
                         {session.prescription.steps.map((s: any, i: number) => (
+                          <div key={i}>
+                            {/* Repeat-set header — the TrainingPeaks "Repeat N ×" line */}
+                            {s.group && session.prescription.steps[i - 1]?.group !== s.group && (
+                              <div className="mt-2 mb-1.5 first:mt-0 rounded-lg bg-ink-900 text-paper px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
+                                🔁 {s.group}
+                              </div>
+                            )}
                           <div
-                            key={i}
                             className={`rounded-xl border p-3 ${
                               s.phase === "active"
                                 ? "border-ocean-300 bg-ocean-50 shadow-sm"
@@ -312,6 +432,19 @@ export default function TodayPage() {
                                 {s.zone.toUpperCase()}
                               </span>
                             </div>
+                            {/* The considered metric for THIS step — HR, pace or power */}
+                            {(() => {
+                              const t = s.targets;
+                              const metric = t?.hr || t?.pace || t?.power;
+                              return metric ? (
+                                <div className="pl-9 text-[11px] font-semibold text-ocean-700 mt-1">
+                                  {t?.hr && <span className="mr-2">❤️ {t.hr}</span>}
+                                  {t?.power && <span className="mr-2">⚡ {t.power}</span>}
+                                  {t?.pace && <span className="mr-2">🏃 {t.pace}</span>}
+                                  <span className="text-slate-400 font-normal">RPE {t?.rpe}/10</span>
+                                </div>
+                              ) : null;
+                            })()}
                             <div className="mt-1.5 pl-9 flex items-baseline gap-2">
                               <span className="text-lg font-bold tabular-nums">
                                 {s.reps
@@ -328,13 +461,19 @@ export default function TodayPage() {
                               <div className="pl-9 text-[11px] text-slate-600 mt-1 leading-snug">{s.note}</div>
                             )}
                           </div>
+                          </div>
                         ))}
                       </div>
                     ) : (
                       <ol className="space-y-2">
                         {session.prescription.steps.map((s: any, i: number) => (
+                          <Fragment key={i}>
+                            {s.group && session.prescription.steps[i - 1]?.group !== s.group && (
+                              <div className="mt-2 mb-1.5 first:mt-0 rounded-lg bg-ink-900 text-paper px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
+                                🔁 {s.group}
+                              </div>
+                            )}
                           <li
-                            key={i}
                             className={`rounded-lg p-3 ${s.phase === "active" ? "bg-ocean-50" : "bg-slate-50"}`}
                           >
                             <div className="flex justify-between gap-3">
@@ -346,20 +485,69 @@ export default function TodayPage() {
                                 {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
                               </strong>
                             </div>
+                            {(() => {
+                              const t = s.targets;
+                              const metric = t?.hr || t?.pace || t?.power;
+                              return metric ? (
+                                <div className="text-[11px] font-semibold text-ocean-700 mt-1">
+                                  {t?.hr && <span className="mr-2">❤️ {t.hr}</span>}
+                                  {t?.power && <span className="mr-2">⚡ {t.power}</span>}
+                                  {t?.pace && <span className="mr-2">🏃 {t.pace}</span>}
+                                  <span className="text-slate-400 font-normal">RPE {t?.rpe}/10</span>
+                                </div>
+                              ) : null;
+                            })()}
                             {s.note && (
                               <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
                             )}
                           </li>
+                          </Fragment>
                         ))}
                       </ol>
                     )}
                   </div>
                 ) : (
-                  <p>
-                    {es
-                      ? "Descanso hoy. No hay intervalos ni exportación al reloj."
-                      : "Rest today. No intervals or watch workout are prescribed."}
-                  </p>
+                  <div>
+                    <p>{es ? "Descanso hoy." : "Rest today."}</p>
+                    {/* The full day-off protocol: sleep/journal, fuel,
+                        supplementation reminder, visualization routine. */}
+                    <div className="mt-3 rounded-xl border border-ocean-200 bg-ocean-50/40 p-4 space-y-2">
+                      {(() => {
+                        const p = dayOffProtocol(es ? "es" : "en");
+                        return (
+                          <>
+                            <div className="font-display font-bold text-ocean-900">{p.title}</div>
+                            {p.essentials.map((e) => (
+                              <div key={e.label} className="flex gap-2 text-sm">
+                                <span className="text-lg leading-none">{e.icon}</span>
+                                <div>
+                                  <span className="font-semibold">{e.label}</span>
+                                  <span className="text-slate-600"> — {e.detail}</span>
+                                </div>
+                              </div>
+                            ))}
+                            <div className="text-sm text-slate-700 border-t border-ocean-200 pt-2">
+                              {p.visualizationShort}
+                            </div>
+                            <details>
+                              <summary className="cursor-pointer text-xs font-semibold text-ocean-700">
+                                {es ? "Protocolo completo de visualización (8 pasos)" : "Full visualization protocol (8 steps)"}
+                              </summary>
+                              <ol className="mt-2 space-y-2">
+                                {p.visualizationFull.map((v) => (
+                                  <li key={v.step} className="text-xs">
+                                    <span className="font-bold">{v.step}</span>{" "}
+                                    <span className="text-slate-600">{v.text}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </details>
+                            <div className="text-xs italic text-ocean-700 pt-1">{p.closing}</div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 )}
                 {session.durationMin > 0 && (
                   <details>
@@ -429,8 +617,11 @@ export default function TodayPage() {
                           <strong>{es ? "Después" : "Post"}:</strong> {session.post.carbsG} g carbs ·{" "}
                           {session.post.proteinG} g protein ({session.post.ratio})
                         </p>
-                        {session.post.personalized?.note && (
-                          <p className="text-xs text-slate-500 mt-1">{session.post.personalized.note}</p>
+                        {session.post.note && (
+                          <p className="text-xs text-slate-500 mt-1">{session.post.note}</p>
+                        )}
+                        {session.post.examples && (
+                          <p className="text-[11px] text-slate-400 mt-0.5">{session.post.examples}</p>
                         )}
                       </>
                     )}
@@ -472,19 +663,17 @@ export default function TodayPage() {
                   <button
                     className="btn-primary"
                     disabled={busy || offline || session.durationMin === 0}
+                    onClick={() => sendToWatch()}
+                  >
+                    <Watch className="w-4 h-4" /> {es ? "Enviar al reloj" : "Send to watch"}
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={busy || offline || session.durationMin === 0}
                     onClick={() => download(false)}
                   >
-                    <Watch className="w-4 h-4" /> {es ? "Descargar para Garmin (.FIT)" : "Download for Garmin (.FIT)"}
+                    {es ? "Descargar .FIT" : "Download .FIT"}
                   </button>
-                  {!session.approved && (
-                    <button
-                      className="btn-secondary"
-                      disabled={busy || offline || session.durationMin === 0}
-                      onClick={() => download(true)}
-                    >
-                      {es ? "Confirmar y exportar" : "Approve & export"}
-                    </button>
-                  )}
                   <button
                     className="btn-secondary"
                     disabled={busy || offline}
@@ -515,8 +704,8 @@ export default function TodayPage() {
                 </div>
                 <p className="text-xs text-slate-500">
                   {es
-                    ? "FIT descarga un archivo; impórtalo a un dispositivo compatible."
-                    : "FIT downloads a file; import it into a compatible device. It does not send directly to your watch."}
+                    ? "«Enviar al reloj» abre la hoja para compartir — elige Garmin Connect para importar el entreno. En escritorio se descarga el archivo (impórtalo en Garmin Connect → Workouts)."
+                    : "“Send to watch” opens your phone’s share sheet — pick Garmin Connect to import the workout. On desktop it downloads the file (import in Garmin Connect → Workouts)."}
                 </p>
               </div>
             </div>

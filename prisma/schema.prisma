@@ -51,6 +51,36 @@ model User {
   metricObservations MetricObservation[]
   coaching      CoachAssignment[] @relation("CoachSide") // athletes this user coaches
   coachedBy     CoachAssignment[] @relation("AthleteSide") // coaches assigned to this user
+  forecastSnapshots RaceForecastSnapshot[]
+}
+
+// ---------- TELEMETRY & USAGE METERING ----------
+// AppEvent: error/warn/info ledger (client errors, server 500s, cron
+// outcomes). Critical errors trigger owner Telegram alerts (rate-limited).
+model AppEvent {
+  id        String   @id @default(cuid())
+  kind      String   // error | warn | info
+  source    String   // client | server | cron | sync | ai | delivery
+  route     String?
+  userId    String?
+  message   String
+  meta      String?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+  @@index([route, createdAt])
+}
+// UsageCounter: per-user per-day consumption counters (AI calls/tokens,
+// synced rows, exports, messages) — feeds the admin cost panel.
+model UsageCounter {
+  id     String @id @default(cuid())
+  userId String
+  day    String // YYYY-MM-DD (UTC)
+  metric String // ai_calls | ai_input_tokens | ai_output_tokens | db_rows_synced | fit_exports | telegram_msgs | email_sends | gpx_uploads
+  count  Int    @default(0)
+
+  @@unique([userId, day, metric])
+  @@index([day, metric])
 }
 
 // ---------- COACH ASSIGNMENTS (permission boundary) ----------
@@ -447,6 +477,8 @@ model Race {
   swimCurrent String?  // none | mild | strong
   federation  String?  // USAT | WORLD_TRIATHLON | BRITISH_TRIATHLON | IRONMAN
   category    String?  // age_group | elite
+  courseKm    Float?   // measured course distance from uploaded GPX (overrides the distance label in forecasts)
+  courseElevM Float?   // measured total elevation gain from uploaded GPX
   source      String?  // provenance: "manual" | "athlinks" | ... — who created the record
   sourceRecordId String? // provider-side result id (dedupe across re-imports)
   sourceRetrievedAt DateTime? // when the provider record was last pulled
@@ -513,9 +545,30 @@ model DailyCheckin {
   adaptation String?  // JSON: Adaptation
   fuel       String?  // JSON: FuelPlan
   ergos      String?  // JSON: string[] of ergo keys recommended
+  shadowV2   String?  // JSON: AthleteStateV2 + ShadowComparison — auditable V2 shadow output
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
+}
+
+// ---------- PRE-RACE FORECAST SNAPSHOTS (honest calibration) ----------
+// Immutable point-in-time record of what the engine predicted BEFORE the
+// race, with the inputs and version used. Accuracy is evaluated against the
+// OLDEST snapshot per race — never recomputed with today's fitness.
+model RaceForecastSnapshot {
+  id           String   @id @default(cuid())
+  userId       String
+  raceId       String
+  raceDate     DateTime
+  capturedAt   DateTime @default(now())
+  predictedMin Float    // central expected finish
+  bestMin      Float?
+  worstMin     Float?
+  inputs       String?  // JSON: fitness/CTL, weather, course, athlete params at capture time
+  engineVersion String  // engine tag so future rewrites stay comparable
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, raceId, capturedAt])
 }
 
 // ---------- SUPPLEMENT / ERGOGENIC PREFERENCES ----------

@@ -236,7 +236,7 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   // ---- public site ----
   "pub.science": { en: "The Science", es: "La ciencia", ht: "Syans lan", ru: "Наука" },
   "pub.howItWorks": { en: "How It Works", es: "Cómo funciona", ht: "Kijan li mache", ru: "Как это работает" },
-  "pub.dashboard": { en: "Dashboard", es: "Panel", ht: "Tablodbò", ru: "Панель" },
+  "pub.dashboard": { en: "Open the app", es: "Abrir la app", ht: "Ouvri app la", ru: "Открыть приложение" },
   "pub.startFree": { en: "Start free", es: "Empezar gratis", ht: "Kòmanse gratis", ru: "Начать бесплатно" },
   "pub.onboarding": { en: "Onboarding", es: "Introducción", ht: "Antre", ru: "Введение" },
   "pub.footerBuilt": { en: "Built on post-2000 human-performance research · Miami, FL", es: "Basado en investigación de rendimiento humano post-2000 · Miami, FL", ht: "Baze sou rechèch pèfòmans imen apre 2000 · Miami, FL", ru: "Основано на исследованиях после 2000 года · Майами, Флорида" },

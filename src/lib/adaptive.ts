@@ -1194,6 +1194,11 @@ export function prescribeToday(opts: {
   adaptation: { verdict: string; durationFactor: number; intensityCap: string };
   busyNote?: string | null;
   busyHrs?: number;
+  // Available time for THIS session — enforced at the very END, after the
+  // readiness factors and the coach intensity multiplier, so no combination
+  // of settings can exceed what the athlete actually has (review finding:
+  // 120% multiplier turned a 30-min limit into 38 min).
+  timeBudgetMin?: number;
   profile?: {
     lthr?: number | null;
     ftp?: number | null;
@@ -1252,16 +1257,24 @@ export function prescribeToday(opts: {
     easy.detail.main = `${easy.detail.main} Use gentle, comfortable movement; no hard repetitions or loaded power work.`;
     return easy;
   }
-  const durationMin = rest
-    ? 0
-    : Math.max(
-        1,
-        Math.min(
-          (opts.busyHrs || 0) >= 6 ? 25 : Infinity,
-          Math.round(session.durationMin * adaptation.durationFactor),
-        ),
-      );
   const originalZone = Number((session.intensity || "z2").slice(1)) || 2;
+  // TIME BUDGET ENFORCED LAST: availability clamps the FINAL duration — after
+  // readiness factors AND the coach multiplier (a 30-min limit stays ≤30 min
+  // even at 120% intensity). Steps then regenerate inside the clamped time.
+  const durationMin = (() => {
+    const d = rest
+      ? 0
+      : Math.max(
+          1,
+          Math.min(
+            (opts.busyHrs || 0) >= 6 ? 25 : Infinity,
+            Math.round(session.durationMin * adaptation.durationFactor),
+          ),
+        );
+    return opts.timeBudgetMin != null
+      ? Math.min(d, Math.max(0, Math.round(opts.timeBudgetMin)))
+      : d;
+  })();
   const intensity =
     "z" + Math.min(originalZone, Number(adaptation.intensityCap.slice(1)) || 2);
   const type = rest
@@ -1280,6 +1293,13 @@ export function prescribeToday(opts: {
     session.variantSeed,
     session.sport,
   );
+  // Per-step considered metrics: every step carries the targets that govern
+  // it — zone + HR (LTHR-based) + pace (run) or power (bike) — same math as
+  // the session-level targets, applied per step zone.
+  const stepsWithTargets = steps.map((s) => ({
+    ...s,
+    targets: rest ? undefined : zoneTargets(s.zone, session.sport, profile),
+  }));
   const detail = buildSessionDetail({
     sport: session.sport,
     type,
@@ -1302,7 +1322,7 @@ export function prescribeToday(opts: {
     durationMin,
     intensity,
     type,
-    steps,
+    steps: stepsWithTargets,
     startTime: session.startTime ?? null,
     verdict: adaptation.verdict,
     detail,

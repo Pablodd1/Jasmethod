@@ -64,6 +64,28 @@ const isHard = (intensity: string) =>
     intensity,
   );
 
+// Caffeine eligibility from the athlete's supplement preferences (review
+// finding F: a 70 kg hard-session case still suggested 210 mg after opt-out
+// because no caller passed the flag). Master switch off, an explicit dislike
+// or an opt-out all suppress caffeine everywhere.
+export function caffeineAllowedFromPrefs(p: {
+  enabled?: boolean | null;
+  likes?: string | null;
+  dislikes?: string | null;
+  optsOut?: string | null;
+}): boolean {
+  if (!p || p.enabled === false) return false;
+  const parse = (s?: string | null): string[] => {
+    try {
+      return s ? (JSON.parse(s) as string[]) : [];
+    } catch {
+      return [];
+    }
+  };
+  const blocked = new Set([...parse(p.dislikes), ...parse(p.optsOut)]);
+  return !blocked.has("caffeine");
+}
+
 /** The carb g/h target for a session — the "fuel vs hours" curve. */
 export function carbsPerHourFor(
   durationMin: number,
@@ -244,7 +266,7 @@ export function postFuelPersonalized(opts: {
   const proteinG = Math.round(strength ? Math.max(25, w * 0.4) : w * 0.3);
   const ratio = strength ? "1:1" : long || hard ? "4:1" : "2:1";
   const note = long || hard
-    ? `Next 4 h: ${Math.round(w * 1.0)}-${Math.round(w * 1.2)} g/kg/h carbs total, ${Math.round(w * 0.3)} g protein now. 1.5× any body-weight lost as fluid (with sodium if you sweat salty).`
+    ? `Recovery window (next 4 h): ${carbsG}-${Math.round(w * 1.2)} g carbs TOTAL across the window, ${proteinG} g protein now. Drink ~1.5× the body weight you lost during the session (with sodium if you sweat salty).`
     : `Recovery snack now; normal meal within 2 h. Prioritize protein (${proteinG} g) — the carb demand was modest.`;
   return { carbsG, proteinG, ratio, note };
 }

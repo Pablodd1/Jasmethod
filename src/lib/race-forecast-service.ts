@@ -29,7 +29,14 @@ export interface ForecastBundle {
   race: {
     id: string; name: string; distance: string; date: Date;
     priority: number; goalTimeMin: number | null; resultMin: number | null;
+    courseKm: number | null; courseElevM: number | null;
     predictionErrorPct: number | null;
+  } | null;
+  predictionSnapshot: {
+    capturedAt: Date;
+    predictedMin: number;
+    errorPct: number | null;
+    snapshotCount: number;
   } | null;
   pmc: { ctl: number; atl: number; tsb: number; formZone: string; rampRate7d: number } | null;
   physiology: { ftp: number | null; lthr: number | null; runPaceBase: number | null; swimPaceBase: number | null };
@@ -130,10 +137,69 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
             swimCurrent: race?.swimCurrent ?? undefined,
             federation: opts.federation ?? race?.federation ?? profile?.federation ?? undefined,
             category: opts.category ?? race?.category ?? profile?.category ?? undefined,
+            courseKm: race?.courseKm ?? undefined,
+            courseElevM: race?.courseElevM ?? undefined,
           },
           goalTimeMin: race?.goalTimeMin ?? undefined,
         })
       : null;
+
+  // ---- PRE-RACE SNAPSHOT (honest calibration) ----
+  // Capture an immutable snapshot of the prediction the FIRST time a race is
+  // forecast (and at most once per 24h while it stays in the future). Later
+  // accuracy evaluation uses the OLDEST snapshot — recomputing an old race
+  // with today's fitness is forbidden (review finding I).
+  let predictionSnapshot: {
+    capturedAt: Date;
+    predictedMin: number;
+    errorPct: number | null;
+    snapshotCount: number;
+  } | null = null;
+  if (race && forecast && race.date > new Date()) {
+    const existing = await prisma.raceForecastSnapshot.findMany({
+      where: { userId, raceId: race.id },
+      orderBy: { capturedAt: "asc" },
+      select: { capturedAt: true, predictedMin: true },
+    });
+    const last = existing[existing.length - 1];
+    const stale = !last || Date.now() - last.capturedAt.getTime() > 24 * 3600000;
+    if (stale) {
+      await prisma.raceForecastSnapshot.create({
+        data: {
+          userId,
+          raceId: race.id,
+          raceDate: race.date,
+          predictedMin: forecast.totalMin,
+          bestMin: forecast.scenarios?.find((s) => s.label === "best")?.totalMin ?? null,
+          worstMin: forecast.scenarios?.find((s) => s.label === "worst")?.totalMin ?? null,
+          inputs: JSON.stringify({
+            ctl: pmc?.current.ctl ?? null,
+            tsb: pmc?.current.tsb ?? null,
+            weather: weather ? { wbgt: weather.wbgt ?? null, tempC: weather.tempC ?? null } : null,
+            ftp: ftp ?? null,
+            lthr: lthr ?? null,
+            distance,
+          }),
+          engineVersion: "engine-v1",
+        },
+      });
+      existing.push({
+        capturedAt: new Date(),
+        predictedMin: forecast.totalMin,
+      });
+    }
+    const oldest = existing[0];
+    if (race.resultMin != null && oldest) {
+      predictionSnapshot = {
+        capturedAt: oldest.capturedAt,
+        predictedMin: oldest.predictedMin,
+        // Honest error: the PRE-RACE prediction vs the actual result.
+        errorPct:
+          Math.round(((oldest.predictedMin - race.resultMin) / race.resultMin) * 1000) / 10,
+        snapshotCount: existing.length,
+      };
+    }
+  }
 
   return {
     ok: true,
@@ -149,12 +215,15 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
           priority: race.priority,
           goalTimeMin: race.goalTimeMin ?? null,
           resultMin: race.resultMin ?? null,
+          courseKm: race.courseKm ?? null,
+          courseElevM: race.courseElevM ?? null,
           predictionErrorPct:
             race.resultMin != null && forecast?.totalMin
               ? Math.round(((forecast.totalMin - race.resultMin) / race.resultMin) * 1000) / 10
               : null,
         }
       : null,
+    predictionSnapshot,
     pmc: pmc
       ? {
           ctl: pmc.current.ctl,

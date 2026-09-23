@@ -27,6 +27,7 @@ import {
   isSameMonth,
   isSameDay,
   addMonths,
+  addDays,
 } from "date-fns";
 import { buildSessionDetail } from "@/lib/science";
 import { dayOffProtocol, temperatureAdjustment } from "@/lib/adaptive";
@@ -51,6 +52,8 @@ function fmtMin(min: number) {
 
 export default function CalendarPage() {
   const { user } = useAuth();
+  const es = user?.language === "es";
+  const [view, setView] = useState<"days" | "month">("days"); // 3-day default
   const [month, setMonth] = useState(new Date());
   const [events, setEvents] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
@@ -153,6 +156,18 @@ export default function CalendarPage() {
     end: endOfMonth(month),
   });
   const leadingBlanks = startOfMonth(month).getDay();
+
+  // 3-day view pool: month events + the wide strip range, deduped by id.
+  const allEvents = (() => {
+    const seen = new Set<string>();
+    const out: any[] = [];
+    for (const e of [...events, ...stripWorkouts]) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      out.push(e);
+    }
+    return out;
+  })();
 
   // Selected day: plan days (with notes + dayOff) + any standalone workouts
   const selDays = selected
@@ -298,8 +313,119 @@ export default function CalendarPage() {
           />
         </div>
 
+        {/* DEFAULT VIEW — 3 big days (yesterday · today · tomorrow), scroll
+            sideways for the following two weeks. Bigger, easier to read than
+            the month grid; toggle below keeps Month available. */}
+        <div className="card p-3 md:p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wide">
+              {es ? "Próximos días — desliza →" : "Your days — scroll sideways →"}
+            </h2>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => {
+                  const el = document.getElementById("days-scroller");
+                  el?.scrollTo({ left: 0, behavior: "smooth" });
+                }}
+                className="btn-secondary !px-3 !py-1 text-xs"
+              >
+                {es ? "Hoy" : "Today"}
+              </button>
+              <button
+                onClick={() => setView("month")}
+                className="btn-secondary !px-3 !py-1 text-xs"
+              >
+                {es ? "Ver mes" : "Month view"}
+              </button>
+            </div>
+          </div>
+          <div id="days-scroller" className="overflow-x-auto pb-2 -mx-1 px-1">
+            <div className="flex gap-3" style={{ width: "max-content" }}>
+              {Array.from({ length: 15 }, (_, i) => addDays(new Date(), i - 1)).map((day) => {
+                const key = format(day, "yyyy-MM-dd");
+                const dayEvents = allEvents.filter(
+                  (e) => dateKey(new Date(e.date), user?.timezone) === key,
+                );
+                const isToday = key === format(new Date(), "yyyy-MM-dd");
+                const isYesterday = key === format(addDays(new Date(), -1), "yyyy-MM-dd");
+                const label = isToday
+                  ? es ? "HOY" : "TODAY"
+                  : isYesterday
+                    ? es ? "AYER" : "YESTERDAY"
+                    : key === format(addDays(new Date(), 1), "yyyy-MM-dd")
+                      ? es ? "MAÑANA" : "TOMORROW"
+                      : "";
+                return (
+                  <div
+                    key={key}
+                    className={`flex-none w-[270px] sm:w-[300px] rounded-2xl border p-3 ${
+                      isToday
+                        ? "border-ocean-400 bg-ocean-50/60 shadow-sm"
+                        : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    <div className="mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-bold ${isToday ? "text-ocean-700" : "text-slate-700"}`}>
+                          {format(day, "EEE d MMM", { locale: undefined })}
+                        </span>
+                        {label && (
+                          <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${isToday ? "bg-ocean-600 text-white" : "bg-slate-200 text-slate-600"}`}>
+                            {label}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2 min-h-[90px]">
+                      {dayEvents.length === 0 && (
+                        <div className="text-[11px] text-slate-300 py-4 text-center">
+                          {es ? "sin eventos" : "no events"}
+                        </div>
+                      )}
+                      {dayEvents.map((e) => {
+                        const isWorkout = e.type !== "appointment" && e.type !== "note";
+                        return (
+                          <div
+                            key={e.id}
+                            className={`rounded-xl border px-3 py-2 ${
+                              e.type === "race"
+                                ? "border-vermillion-300 bg-vermillion-400/10"
+                                : e.type === "appointment"
+                                  ? "border-amber-200 bg-amber-50"
+                                  : "border-slate-200 bg-slate-50"
+                            }`}
+                          >
+                            <div className="text-sm font-semibold leading-tight">{e.title}</div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              {e.startTime ? String(e.startTime).slice(0, 5) : ""} ·{" "}
+                              {e.durationMin ? `${e.durationMin} min` : e.type}{" "}
+                              {e.intensity ? `· ${String(e.intensity).toUpperCase()}` : ""}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
         {/* Calendar grid */}
+        {view === "month" && (
         <div className="card p-3 md:p-5">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wide">
+              {es ? "Vista de mes" : "Month view"}
+            </h2>
+            <button
+              onClick={() => setView("days")}
+              className="btn-secondary !px-3 !py-1 text-xs"
+            >
+              {es ? "← Vista de 3 días" : "← 3-day view"}
+            </button>
+          </div>
           <div className="grid grid-cols-7 gap-1 mb-2">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
               <div
@@ -372,6 +498,8 @@ export default function CalendarPage() {
             })}
           </div>
         </div>
+        )}
+
 
         {/* Legend */}
         <div className="card">
@@ -531,6 +659,7 @@ export default function CalendarPage() {
             </div>
           </div>
         )}
+        {/* END month view (conditional) */}
 
         {/* Move workout form */}
         {moveFor && (

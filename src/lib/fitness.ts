@@ -151,18 +151,28 @@ export function executionScore(
 ): ExecutionScore | null {
   if (!planned.length) return null;
   const day = (d: Date) => d.toISOString().slice(0, 10);
+  // 1:1 matching: each completed activity is CONSUMED when matched, so one
+  // activity can never satisfy several planned workouts (review finding D).
+  const remaining = [...completed];
   let matched = 0,
     durSum = 0;
-  for (const p of planned) {
-    // find a completed workout same day (±1) and same sport
-    const hit = completed.find((c) => {
+  for (const p of [...planned].sort((a, b) => a.date.getTime() - b.date.getTime())) {
+    let bestIdx = -1,
+      bestGap = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const c = remaining[i];
+      if (c.sport !== p.sport) continue;
       const gap =
         Math.abs(
           new Date(day(c.date)).getTime() - new Date(day(p.date)).getTime(),
         ) / 86400000;
-      return gap <= 1 && c.sport === p.sport;
-    });
-    if (hit) {
+      if (gap <= 1 && gap < bestGap) {
+        bestGap = gap;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0) {
+      const hit = remaining.splice(bestIdx, 1)[0];
       matched++;
       durSum += Math.min(1, hit.durationMin / Math.max(1, p.durationMin));
     }

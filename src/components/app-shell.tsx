@@ -80,6 +80,8 @@ function LanguageSelect({
   );
 }
 
+import { ErrorTelemetry } from "./error-telemetry";
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout, refresh } = useAuth();
@@ -99,7 +101,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="hidden md:flex w-60 flex-col bg-ocean-950 text-white fixed inset-y-0 left-0 z-20">
         <div className="px-5 py-6 border-b border-ocean-900">
           <div className="flex items-center gap-2">
-            <Waves className="w-7 h-7 text-ocean-300" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icon.svg" alt="JasMiamiMethod" className="w-8 h-8 rounded-lg" />
             <div>
               <div className="font-display font-bold text-lg leading-tight">
                 JasMiamiMethod
@@ -197,7 +200,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 inset-x-0 z-20 bg-ocean-950 text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Waves className="w-6 h-6 text-ocean-300" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon.svg" alt="JMMai" className="w-7 h-7 rounded-lg" />
           <span className="font-display font-bold">JMMai</span>
         </div>
         <div className="flex items-center gap-2">
@@ -243,7 +247,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <main className="flex-1 min-w-0 md:ml-60 pt-14 md:pt-0">
+      <main className="flex-1 min-w-0 md:ml-60 pt-14 md:pt-0 pb-16 md:pb-6">
+        <ErrorTelemetry />
         <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-8">
           {children}
         </div>

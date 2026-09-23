@@ -40,20 +40,21 @@ export async function GET(req: Request) {
 // connected strava user for that owner id) and sync immediately.
 export async function POST(req: Request) {
   try {
-    const secret = process.env.STRAVA_WEBHOOK_SECRET;
-    if (!secret || new URL(req.url).searchParams.get("key") !== secret)
-      return NextResponse.json(
-        { error: "Invalid webhook key" },
-        { status: 401 },
-      );
+    // Two accepted auth paths: the ?key= secret (legacy registration) OR the
+    // pinned subscription id on every event body (the live registration —
+    // Strava rejects callback URLs with query strings, so the key param
+    // cannot ride on the registered URL).
     const body = await req.json();
-    if (
+    const key = new URL(req.url).searchParams.get("key");
+    const keyOk =
+      process.env.STRAVA_WEBHOOK_SECRET && key === process.env.STRAVA_WEBHOOK_SECRET;
+    const subOk =
       process.env.STRAVA_SUBSCRIPTION_ID &&
-      String(body.subscription_id) !== process.env.STRAVA_SUBSCRIPTION_ID
-    )
+      String(body?.subscription_id) === process.env.STRAVA_SUBSCRIPTION_ID;
+    if (!keyOk && !subOk)
       return NextResponse.json(
-        { error: "Wrong subscription" },
-        { status: 403 },
+        { error: "Invalid webhook credentials" },
+        { status: 401 },
       );
     if (
       body?.object_type === "athlete" &&
@@ -98,16 +99,37 @@ export async function POST(req: Request) {
       if (alreadyProcessed)
         return NextResponse.json({ ok: true, deduplicated: true });
       if (body.aspect_type === "delete") {
-        // Deletion is handled by the next reconciliation: lastSyncAt falls
-        // back 24h on every run, so the deleted activity window is re-pulled
-        // and the missing activity no longer refreshes its row. (Strava's
-        // API offers no bulk delete lookup; hourly reconciliation covers it.)
-        if (eventId)
-          await prisma.webhookEvent.updateMany({
-            where: { provider: "strava", eventId },
-            data: { processedAt: new Date() },
+        // DELETE: actually remove the local activity — re-pulling a window
+        // never removes absent rows (review finding). Strava's object_id is
+        // the externalId stored at import time.
+        const ownerId = String(body.owner_id ?? "");
+        const conn = await prisma.connector.findFirst({
+          where: { provider: "strava", status: "connected", externalRef: ownerId },
+        });
+        if (conn) {
+          const removed = await prisma.workout.deleteMany({
+            where: {
+              userId: conn.userId,
+              source: "strava",
+              externalId: String(body.object_id ?? ""),
+            },
+          });
+          await prisma.auditLog.create({
+            data: {
+              actorId: conn.userId,
+              subjectId: conn.userId,
+              action: "sync.stravaDelete",
+              entityId: String(body.object_id ?? ""),
+              after: JSON.stringify({ removed: removed.count }),
+            },
           }).catch(() => {});
-        return NextResponse.json({ ok: true, aspect: "delete" });
+          if (eventId)
+            await prisma.webhookEvent.updateMany({
+              where: { provider: "strava", eventId },
+              data: { processedAt: new Date() },
+            }).catch(() => {});
+        }
+        return NextResponse.json({ ok: true, aspect: "delete", removed: true });
       }
       const ownerId = String(body.owner_id ?? "");
       // Match the athlete by the strava athlete id saved at OAuth time.
@@ -120,13 +142,15 @@ export async function POST(req: Request) {
       });
       if (conn) {
         const sync = await syncUserConnectors(conn.userId, "strava");
+        if (sync.results.some((r) => !r.ok)) {
+          // processedAt stays NULL — Strava's retry re-runs the sync.
+          return NextResponse.json({ error: "Sync failed" }, { status: 503 });
+        }
         if (eventId)
           await prisma.webhookEvent.updateMany({
             where: { provider: "strava", eventId, processedAt: null },
             data: { processedAt: new Date() },
           }).catch(() => {});
-        if (sync.results.some((r) => !r.ok))
-          return NextResponse.json({ error: "Sync failed" }, { status: 503 });
       }
     }
     // Strava only needs a 200 — respond fast, process again if retried.
