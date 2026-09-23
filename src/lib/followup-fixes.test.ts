@@ -238,3 +238,47 @@ test("cost estimation: pure token math from the editable price table", () => {
     fit_exports: 0, telegram_msgs: 5000, email_sends: 0, gpx_uploads: 0,
   }), 0, "telegram is free");
 });
+
+// ---- Sprint protocol knowledge base (97 cited entries) ----
+import {
+  allSprintProtocols, selectSprintProtocols, getSprintProtocol,
+  predict400From200, race400Segments, speedReserveOpen, buildSprintSession,
+} from "./sprint-protocols";
+
+test("protocol DB loaded: 97 entries, every one with source + evidence tier", () => {
+  const all = allSprintProtocols();
+  assert.strictEqual(all.length, 97);
+  for (const p of all) {
+    assert.ok(p.sources.length >= 1, `${p.id} missing source`);
+    assert.ok(p.evidence_level, `${p.id} missing evidence tier`);
+  }
+});
+
+test("protocol selection filters by domain + event + evidence floor", () => {
+  const se = selectSprintProtocols({ domains: ["speed_endurance"], event: "400", minEvidence: "observational" });
+  assert.ok(se.length >= 4, `speed_endurance 400m observational+ should be ≥4, got ${se.length}`);
+  assert.ok(se.every((p) => p.event.includes("400") && p.domain === "speed_endurance"));
+  assert.ok(getSprintProtocol("A-A15_HART_400M_PROGRAMME"), "Hart entry present");
+});
+
+test("race math: 200→400 prediction, segments and speed reserve (Hart/Badon rules)", () => {
+  assert.strictEqual(predict400From200(22.5), 48.5);
+  const { potential, segments } = race400Segments(22.5, "advanced");
+  assert.strictEqual(potential, 48.5);
+  const sum = segments.reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(sum - potential) < 0.6, `segments sum ${sum} ≈ potential ${potential}`);
+  assert.ok(segments[0] > segments[1], "opening 100 faster than second (positive split)");
+  const open = speedReserveOpen(22.5);
+  assert.ok(open > 22.5 && open < 24, `93-95% opening band, got ${open}`);
+});
+
+test("session builder: phase-aware Hart/SET sets with citations and honest coach-review", () => {
+  const s = buildSprintSession("mid", 0);
+  assert.ok(s.rows.length >= 2);
+  assert.ok(s.rows.some((r) => /Hart|SET/.test(r.sourceId + r.name)));
+  assert.ok(s.sourceIds.includes("A-A15_HART_400M_PROGRAMME"));
+  assert.ok(s.coachReview.length > 0, "rest-dosing honesty surfaced");
+  const taper = buildSprintSession("taper", 0);
+  // Taper: volume cut ~50% (meta-analytic −41–60 %)
+  assert.ok(taper.rows[0].reps <= 3, `taper reps reduced, got ${taper.rows[0].reps}`);
+});
