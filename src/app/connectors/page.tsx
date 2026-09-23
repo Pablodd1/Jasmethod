@@ -347,6 +347,22 @@ export default function ConnectorsPage() {
               "Otherwise upload a .fit/.tcx file here.",
             ];
       case "oura":
+        // Honest state: without server keys the auto flow cannot start — the
+        // old wording promised a connection that doesn't exist yet and left
+        // athletes stranded on Oura's own site.
+        if (!p.configured) {
+          return es
+            ? [
+                "La conexión automática con Oura aún no está activada en el servidor.",
+                "Mientras tanto: registra tu sueño manualmente en la página Sleep (o en el chequeo diario).",
+                "El administrador puede activarla añadiendo las claves de API de Oura.",
+              ]
+            : [
+                "Oura auto-connect isn't enabled on the server yet.",
+                "Meanwhile: log your sleep manually on the Sleep page (or in the daily check-in).",
+                "The administrator can enable it by adding the Oura API keys.",
+              ];
+        }
         return es
           ? [
               "Pulsa «Conectar Oura» e inicia sesión en tu cuenta Oura.",
