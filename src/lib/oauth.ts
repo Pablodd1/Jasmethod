@@ -65,7 +65,19 @@ export async function authorize(req: Request, provider: string) {
       state = createOAuthState(provider);
     // Return URL (mobile app deep link or in-app browser return) rides on the
     // transaction row, not the query string, so it survives provider redirects.
-    const returnUrl = new URL(req.url).searchParams.get("return");
+    const explicitReturn = new URL(req.url).searchParams.get("return");
+    // ORIGIN CAPTURE: an athlete who started on a mirror domain (e.g. the old
+    // jasmiamimethod.vercel.app bookmark) must land back THERE after consent —
+    // redirecting them to the canonical domain drops their session cookie and
+    // the connect looks broken even though the token saved.
+    const origin = new URL(req.url).origin;
+    const appOrigin = process.env.NEXT_PUBLIC_APP_URL || "";
+    const returnUrl =
+      explicitReturn && /^https?:\/\//.test(explicitReturn)
+        ? explicitReturn
+        : appOrigin && origin !== appOrigin
+          ? `${origin}/connectors`
+          : null;
     // Server-side transaction: the callback identifies the athlete from this
     // row — NOT from browser cookies, which in-app mobile browsers drop.
     await prisma.oAuthTransaction.create({
@@ -73,7 +85,7 @@ export async function authorize(req: Request, provider: string) {
         state,
         userId: user.id,
         provider: p.key,
-        returnUrl: returnUrl && /^https?:\/\//.test(returnUrl) ? returnUrl : null,
+        returnUrl,
         expiresAt: new Date(Date.now() + 15 * 60000),
       },
     });
