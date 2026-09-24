@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { syncUserConnectors } from "@/lib/sync";
+import { decryptSecret } from "@/lib/crypto";
+import { storeActivity } from "@/lib/activity-store";
+import * as api from "@/lib/importers";
 
 // Never prerender — webhook.
 export const dynamic = "force-dynamic";
@@ -76,7 +79,14 @@ export async function POST(req: Request) {
       // DEDUPE + RETRY contract: only a PROCESSED event short-circuits a
       // redelivery; a failed first attempt leaves processedAt null so Strava's
       // retry re-runs the sync.
-      const eventId = String(body.event_id ?? "");
+      // Strava webhook payloads carry NO event_id — derive a stable key from
+      // the delivery identity: owner + object + aspect + event_time.
+      const eventId = String(
+        body.event_id ??
+        (body.object_id && body.aspect_type && body.event_time
+          ? `${body.owner_id}:${body.object_id}:${body.aspect_type}:${body.event_time}`
+          : ""),
+      );
       let alreadyProcessed = false;
       if (eventId) {
         const claimed = await prisma.webhookEvent
@@ -100,18 +110,23 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, deduplicated: true });
       if (body.aspect_type === "delete") {
         // DELETE: actually remove the local activity — re-pulling a window
-        // never removes absent rows (review finding). Strava's object_id is
-        // the externalId stored at import time.
+        // never removes absent rows (review finding). Activities are stored
+        // with PREFIXED externalId `strava:${id}` (importers.ts) — match both
+        // prefixed and legacy unprefixed forms.
         const ownerId = String(body.owner_id ?? "");
         const conn = await prisma.connector.findFirst({
-          where: { provider: "strava", status: "connected", externalRef: ownerId },
+          where: { provider: "strava", externalRef: ownerId },
         });
         if (conn) {
+          const objectId = String(body.object_id ?? "");
           const removed = await prisma.workout.deleteMany({
             where: {
               userId: conn.userId,
               source: "strava",
-              externalId: String(body.object_id ?? ""),
+              OR: [
+                { externalId: `strava:${objectId}` },
+                { externalId: objectId },
+              ],
             },
           });
           await prisma.auditLog.create({
@@ -119,7 +134,7 @@ export async function POST(req: Request) {
               actorId: conn.userId,
               subjectId: conn.userId,
               action: "sync.stravaDelete",
-              entityId: String(body.object_id ?? ""),
+              entityId: objectId,
               after: JSON.stringify({ removed: removed.count }),
             },
           }).catch(() => {});
@@ -131,20 +146,48 @@ export async function POST(req: Request) {
         }
         return NextResponse.json({ ok: true, aspect: "delete", removed: true });
       }
+      // Match the athlete whether the connector is healthy OR in error state —
+      // a transient failure must not make later webhook events invisible.
       const ownerId = String(body.owner_id ?? "");
-      // Match the athlete by the strava athlete id saved at OAuth time.
       const conn = await prisma.connector.findFirst({
         where: {
           provider: "strava",
-          status: "connected",
           externalRef: ownerId,
+          status: { in: ["connected", "error"] },
         },
       });
       if (conn) {
-        const sync = await syncUserConnectors(conn.userId, "strava");
-        if (sync.results.some((r) => !r.ok)) {
-          // processedAt stays NULL — Strava's retry re-runs the sync.
-          return NextResponse.json({ error: "Sync failed" }, { status: 503 });
+        // Targeted processing: fetch just the changed activity by ID so
+        // updates to older activities (outside the sync window) survive.
+        const athlete = await prisma.user.findUnique({
+          where: { id: conn.userId },
+          select: { timezone: true },
+        });
+        const tz = athlete?.timezone || "America/New_York";
+        const accessToken = conn.tokenEnc
+          ? decryptSecret(conn.tokenEnc)
+          : null;
+        let stored = false;
+        if (accessToken) {
+          try {
+            const activity = await api.stravaGetActivity(accessToken, String(body.object_id ?? ""));
+            if (activity && !activity.deleted) {
+              stored = await storeActivity(conn.userId, tz, {
+                ...api.stravaActivityToWorkout(activity),
+                source: "strava",
+              });
+            }
+          } catch (fetchErr) {
+            console.warn("[strava webhook] by-ID fetch failed, falling back to sync:", String(fetchErr).slice(0, 120));
+          }
+        }
+        if (!stored) {
+          // Fallback: bounded reconciliation (token refresh, windowed pull).
+          const sync = await syncUserConnectors(conn.userId, "strava");
+          if (sync.results.some((r) => !r.ok)) {
+            // processedAt stays NULL — Strava's retry re-runs the sync.
+            return NextResponse.json({ error: "Sync failed" }, { status: 503 });
+          }
         }
         if (eventId)
           await prisma.webhookEvent.updateMany({

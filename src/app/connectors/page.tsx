@@ -707,7 +707,10 @@ export default function ConnectorsPage() {
                       {t(lang, "conn.oura")}
                     </div>
                   )}
-                  {stepsFor(p, lang).length > 0 && (
+                  {/* Info links are separate from authorization: only show the
+                      vendor portal link for CONFIGURED providers — an
+                      unconfigured provider's CTA is the request button above. */}
+                  {stepsFor(p, lang).length > 0 && p.configured !== false && (
                     <div className="mt-3 text-xs text-slate-600">
                       <div className="font-medium text-ocean-700 mb-1">
                         {lang === "es"

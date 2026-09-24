@@ -35,12 +35,17 @@ export async function GET(req: Request) {
     // user's chosen hour (the per-day+channel claim below dedupes). Exact-hour
     // matching made delivery silently skip whenever Vercel missed an hour or
     // the plan capped the schedule below hourly.
-    if (hour < pref.reminderHour) {
+    // LEAD TIME (user-set, whole hours): the reminder fires this many hours
+    // EARLIER than the chosen hour, so it lands before the session instead of
+    // after (review finding H5 — remindBeforeMin was stored but ignored).
+    const leadHours = Math.min(6, Math.floor((pref.remindBeforeMin || 0) / 60));
+    const effectiveHour = ((pref.reminderHour - leadHours) % 24 + 24) % 24;
+    if (hour < effectiveHour) {
       skipped++;
       continue;
     }
     const day = dayBounds(user.timezone),
-      key = pref.reminderHour >= 12 ? addDaysKey(day.key, 1) : day.key;
+      key = effectiveHour >= 12 ? addDaysKey(day.key, 1) : day.key;
     const { text, subject, html, png } = await trainingReminder(user, key);
     for (const channel of ["email", "telegram"]) {
       if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)

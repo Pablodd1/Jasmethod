@@ -102,15 +102,22 @@ export async function authorize(req: Request, provider: string) {
   }
 }
 export async function callback(req: Request, provider: string) {
+  // NORMALIZE: the route passes the URL segment ("google-cal") but every
+  // stored row (connector, OAuthTransaction) uses the provider map key
+  // ("google_cal"). Without this, the Google callback could never match
+  // its own transaction (review §H2 normalization finding).
+  if (provider === "google-cal") provider = "google_cal";
   const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const redirect = (error: string) =>
     NextResponse.redirect(`${base}/connectors?error=${error}`);
   const u = new URL(req.url),
     state = u.searchParams.get("state") || "";
 
-  // Resolve the athlete from the server-side transaction row first (mobile
-  // in-app browsers lose cookies AND the session cookie); fall back to the
-  // browser session for older flows.
+  // STRICT binding (review §H2): the athlete is whoever STARTED this OAuth
+  // transaction — the server-side row. If the state is known but already
+  // used/expired → reject (replay). If the state is UNKNOWN → reject; we do
+  // NOT fall back to whichever user happens to hold a browser session, which
+  // could store a provider token under the wrong account.
   let userId: string | null = null;
   let returnUrl: string | null = null;
   const txn = await prisma.oAuthTransaction
@@ -124,37 +131,44 @@ export async function callback(req: Request, provider: string) {
   ) {
     userId = txn.userId;
     returnUrl = txn.returnUrl;
-  }
-  if (!userId) {
+  } else if (txn) {
+    // Known state but consumed/expired → replay or late arrival: reject.
+    return redirect("invalid_state");
+  } else {
+    // Unknown state (legacy pre-transaction flow): allow only when a live
+    // session AND a matching signed cookie for the SAME user exist.
     const sessionUser = await getCurrentUser();
-    if (sessionUser) userId = sessionUser.id;
+    const expected: any = (() => {
+      try {
+        return JSON.parse(
+          cookies().get(`jmm_oauth_${provider}`)?.value || "null",
+        );
+      } catch {
+        return null;
+      }
+    })();
+    if (
+      sessionUser &&
+      expected &&
+      expected.userId === sessionUser.id &&
+      validOAuthState(state, expected.state, provider)
+    ) {
+      userId = sessionUser.id;
+    }
   }
   if (!userId) return redirect("session_expired");
 
-  // Consume the transaction atomically — a replayed callback URL is a no-op.
-  const consumed = await prisma.oAuthTransaction.updateMany({
+  // Clear the legacy cookie (if any) — the transaction row is authoritative,
+  // and the strict block above already rejected unknown/mismatched states.
+  await prisma.oAuthTransaction.updateMany({
     where: { state, usedAt: null },
     data: { usedAt: new Date() },
   });
 
-  const expected: any = (() => {
-    try {
-      return JSON.parse(
-        cookies().get(`jmm_oauth_${provider}`)?.value || "null",
-      );
-    } catch {
-      return null;
-    }
-  })();
   cookies().set(`jmm_oauth_${provider}`, "", {
     maxAge: 0,
     path: `/api/connectors/${provider}`,
   });
-  // State check: transaction row (authoritative) OR legacy cookie match.
-  const stateOk =
-    txn?.state === state ||
-    (expected && expected.userId === userId && validOAuthState(state, expected.state, provider));
-  if (!stateOk) return redirect("invalid_state");
   const code = u.searchParams.get("code");
   if (u.searchParams.has("error") || !code)
     return redirect("authorization_declined");
@@ -166,7 +180,7 @@ export async function callback(req: Request, provider: string) {
       token.athlete?.id != null ? String(token.athlete.id) : undefined;
     if (provider === "whoop") {
       const r = await fetch(
-        "https://api.prod.whoop.com/developer/v1/user/profile/basic",
+        "https://api.prod.whoop.com/developer/v2/user/profile/basic",
         {
           headers: { Authorization: `Bearer ${token.access_token}` },
           signal: AbortSignal.timeout(15000),

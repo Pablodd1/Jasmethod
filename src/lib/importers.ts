@@ -413,6 +413,19 @@ export function stravaActivityToWorkout(a: any): ImportedWorkout {
   };
 }
 
+// GET a single activity by ID — used by webhook-driven create/update so
+// edits to older activities (outside the sync window) are not lost.
+export async function stravaGetActivity(
+  accessToken: string,
+  id: string | number,
+): Promise<any> {
+  const r = await providerFetch(`https://www.strava.com/api/v3/activities/${id}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!r.ok) throw new Error(`Strava activity ${id} failed: ${r.status}`);
+  return r.json();
+}
+
 // ---------- 23andMe / Ancestry DNA raw ----------
 // Format: tab-separated: rsid, chromosome, position, genotype
 export interface DNAVariantRaw {
@@ -992,6 +1005,63 @@ export async function whoopGetDaily(
     out.set(day, d);
   }
   return Array.from(out.values());
+}
+
+// WHOOP completed workouts (v2 API) — the activity half of WHOOP ingestion.
+// Returns each workout's external id (`whoop:<id>`), timing, strain kcal and
+// heart rates for storeActivity; sport is "other" (WHOOP doesn't expose the
+// activity type as a Jasmethod sport) and the title marks the strain level.
+export interface WhoopWorkout {
+  externalId: string;
+  start: Date;
+  end: Date;
+  durationMin: number;
+  avgHr?: number;
+  maxHr?: number;
+  calories?: number;
+  strain?: number;
+  title: string;
+}
+
+export async function whoopGetWorkouts(
+  accessToken: string,
+  days = 30,
+): Promise<WhoopWorkout[]> {
+  const out: WhoopWorkout[] = [];
+  let nextToken: string | undefined;
+  for (let i = 0; i < 20; i++) {
+    const params = new URLSearchParams({
+      start: new Date(Date.now() - days * 86400000).toISOString(),
+      end: new Date().toISOString(),
+      limit: "25",
+    });
+    if (nextToken) params.set("nextToken", nextToken);
+    const r = await providerFetch(
+      `https://api.prod.whoop.com/developer/v2/activity/workout?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!r.ok) throw new Error(`Whoop workouts failed: ${r.status}`);
+    const d = await r.json();
+    for (const w of d.records || []) {
+      if (!w.start || !w.end) continue;
+      const startMs = new Date(w.start).getTime();
+      const endMs = new Date(w.end).getTime();
+      out.push({
+        externalId: `whoop:${w.id}`,
+        start: new Date(w.start),
+        end: new Date(w.end),
+        durationMin: Math.max(1, Math.round((endMs - startMs) / 60000)),
+        avgHr: w.score?.average_heart_rate || undefined,
+        maxHr: w.score?.max_heart_rate || undefined,
+        calories: w.score?.kilocalories != null ? Math.round(w.score.kilocalories) : undefined,
+        strain: w.score?.strain || undefined,
+        title: w.score?.strain != null ? `WHOOP Workout (strain ${Math.round(w.score.strain)})` : "WHOOP Workout",
+      });
+    }
+    if (!d.next_token) return out;
+    nextToken = d.next_token;
+  }
+  return out;
 }
 
 // ---------- Garmin Connect "Activities.csv" (activity export) ----------

@@ -330,6 +330,32 @@ export async function syncUserConnectors(
             await prisma.metricObservation.createMany({ data: obs, skipDuplicates: false });
           imported++;
         }
+        // WHOOP completed workouts — the activity half of WHOOP ingestion
+        // (review finding: only daily metrics were imported). Each workout
+        // becomes a completed activity row keyed whoop:<id>, so the daily
+        // prescription can reference real training that Whoop recorded.
+        if (conn.provider === "whoop") {
+          try {
+            const whoopWorkouts = await api.whoopGetWorkouts(access, Math.min(days, 30));
+            for (const wk of whoopWorkouts) {
+              const storedW = await storeActivity(userId, user.timezone, {
+                externalId: wk.externalId,
+                sport: "other",
+                date: wk.start,
+                durationMin: wk.durationMin,
+                avgHr: wk.avgHr,
+                maxHr: wk.maxHr,
+                calories: wk.calories,
+                title: wk.title,
+                source: "whoop",
+              });
+              if (storedW) imported++;
+            }
+          } catch (wkErr) {
+            // Workout ingestion is additive — never fail the whole sync for it.
+            console.warn("[sync] whoop workouts failed:", String(wkErr).slice(0, 120));
+          }
+        }
       }
       await prisma.connector.update({
         where: { id: conn.id },
