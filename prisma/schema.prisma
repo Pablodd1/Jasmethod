@@ -20,7 +20,7 @@ model User {
   name         String
   role         String    @default("athlete") // athlete | coach | admin
   timezone     String    @default("America/New_York")
-  language     String    @default("es") // en | es | ht | fr | ru
+  language     String    @default("en") // en | es | ht | fr | ru — new accounts start English; onboarding can change it
   avatar       String    @default("🧑") // emoji icon face
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
