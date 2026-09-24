@@ -644,6 +644,7 @@ export default function ConnectorsPage() {
                         {lang === "es" ? "Ajuste necesario: " : "Required setting: "}
                         {(p.setupEnv || []).join(" / ")}
                       </p>
+                      <RequestButton provider={p.id} label={p.name} lang={lang} />
                     </div>
                   )}
                   {p.method === "upload" && (
@@ -966,5 +967,54 @@ function AthlinksCard({
         )}
       </div>
     </div>
+  );
+}
+
+// ---- Request-a-connector button: one tap pings the owner's Telegram ----
+function RequestButton({
+  provider,
+  label,
+  lang,
+}: {
+  provider: string;
+  label: string;
+  lang: Lang;
+}) {
+  const [state, setState] = useState<"idle" | "busy" | "sent">("idle");
+  const [localErr, setLocalErr] = useState("");
+  const es = lang === "es";
+  if (state === "sent")
+    return (
+      <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 mt-2">
+        ✓ {es ? "Solicitud enviada — el administrador fue notificado." : "Request sent — the administrator has been notified."}
+      </div>
+    );
+  return (
+    <button
+      className="mt-2 text-[11px] font-semibold rounded-lg px-2.5 py-1.5 border border-ocean-300 text-ocean-700 hover:bg-ocean-50 disabled:opacity-50"
+      disabled={state === "busy"}
+      onClick={async () => {
+        setState("busy");
+        try {
+          const r = await fetch("/api/connectors/request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (r.status === 429)
+            setState("sent"); // already requested — treat as done
+          else if (r.ok) setState("sent");
+          else setLocalErr(d.error || "Failed");
+        } catch {
+          setState("idle");
+        }
+      }}
+    >
+      {localErr && <div className="text-[11px] text-red-600 mt-1">{localErr}</div>}
+      🔔 {state === "busy"
+        ? es ? "Enviando…" : "Sending…"
+        : es ? "Pedir esta conexión" : "Request this connection"}
+    </button>
   );
 }
