@@ -1,0 +1,142 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+import { dayBounds } from "@/lib/dates";
+import { baseWorkout } from "@/lib/prescription";
+import { meterUsage } from "@/lib/telemetry";
+
+export const dynamic = "force-dynamic";
+
+// GET /api/workout/garmin-json?sessionId=<id>
+// Returns the workout in GARMIN CONNECT'S OWN JSON FORMAT — the one format its
+// web "Import Workout" accepts (Training & Planning → Workouts → Import).
+// FIT/TCX are NOT importable into Garmin Connect (activity formats only), so
+// this is the supported path from a web app without the partner-gated Training
+// API. After import: Garmin Connect → send to device → syncs with per-step
+// alerts.
+
+const SPORT_KEY: Record<string, string> = {
+  run: "running",
+  bike: "cycling",
+  swim: "lap_swimming",
+  strength: "strength_training",
+  mobility: "yoga",
+  recovery: "cardio_training",
+  brick: "transition",
+  boxing: "cardio_training",
+  hyrox: "cardio_training",
+  other: "cardio_training",
+};
+
+const STEP_KEY: Record<string, string> = {
+  warmup: "warmup",
+  active: "interval",
+  recovery: "recovery",
+  cooldown: "cooldown",
+};
+
+function zoneNumber(zone: string | null | undefined): number {
+  const z = Number((zone || "z2").replace(/[^1-7]/g, ""));
+  return Math.min(5, Math.max(1, z || 2)); // Garmin HR zones are 1–5
+}
+
+export async function GET(req: Request) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const url = new URL(req.url);
+  const sessionId = url.searchParams.get("sessionId");
+  const { start, end } = dayBounds(user.timezone);
+  const workout = sessionId
+    ? await prisma.workout.findFirst({ where: { id: sessionId, userId: user.id } })
+    : await prisma.workout.findFirst({
+        where: {
+          userId: user.id,
+          date: { gte: start, lt: end },
+          planned: true,
+          completed: false,
+        },
+        orderBy: { date: "asc" },
+      });
+  if (!workout)
+    return NextResponse.json({ error: "No workout to export" }, { status: 404 });
+  if (workout.durationMin <= 0)
+    return NextResponse.json(
+      { error: "Rest day has no workout to export" },
+      { status: 400 },
+    );
+
+  const profile = await prisma.athleteProfile.findUnique({
+    where: { userId: user.id },
+    select: { lthr: true },
+  });
+  const sportKey = SPORT_KEY[workout.sport] || "running";
+
+  // Steps come from the stored prescription (the same structured steps the
+  // athlete sees on Today) or the deterministic fallback.
+  let steps: any[] = [];
+  try {
+    const p = workout.prescription ? JSON.parse(workout.prescription) : null;
+    if (Array.isArray(p?.steps) && p.steps.length) steps = p.steps;
+  } catch {}
+  if (!steps.length) {
+    const { structuredSteps } = await import("@/lib/prescription");
+    steps = structuredSteps(
+      workout.durationMin,
+      workout.intensity || "z2",
+      workout.type || "endurance",
+      0,
+      workout.sport,
+    );
+  }
+
+  const workoutSteps = steps.map((s: any, i: number) => {
+    const step: any = {
+      stepOrder: i + 1,
+      childStepId: null,
+      description: (s.note || workout.notes || "").slice(0, 180) || null,
+      stepType: { stepTypeKey: STEP_KEY[s.phase] || "interval" },
+      endCondition: { conditionTypeKey: "time" },
+      endConditionValue: Math.max(10, Math.round(s.seconds)),
+      preferredEndConditionUnit: { unitKey: "second" },
+      targetValueOne: null,
+      targetValueTwo: null,
+      zone: null,
+    };
+    // When the athlete has an LTHR we attach HR-zone targets (Garmin zones 1-5
+    // approximated from our z1-z7) so the watch beeps inside each step.
+    if (profile?.lthr) {
+      const z = zoneNumber(s.zone);
+      step.targetType = { targetTypeKey: "heart.rate.zone" };
+      step.zone = z;
+    }
+    return step;
+  });
+
+  const payload = {
+    workoutName: workout.title.slice(0, 60),
+    workoutDescription: (workout.notes || "").slice(0, 180) || null,
+    sportType: { sportTypeKey: sportKey },
+    aerobicTrainingEffect: null,
+    anaerobicTrainingEffect: null,
+    workoutSegments: [
+      {
+        segmentOrder: 1,
+        sportType: { sportTypeKey: sportKey },
+        workoutSteps,
+      },
+    ],
+  };
+
+  await meterUsage(user.id, "fit_exports", 1);
+
+  const safeName =
+    workout.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40) ||
+    "workout";
+  return new NextResponse(JSON.stringify(payload, null, 2), {
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Disposition": `attachment; filename="${safeName}-garmin.json"`,
+    },
+  });
+}

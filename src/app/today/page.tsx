@@ -668,16 +668,35 @@ export default function TodayPage() {
                   <button
                     className="btn-primary"
                     disabled={busy || offline || session.durationMin === 0}
-                    onClick={() => sendToWatch()}
+                    onClick={async () => {
+                      setBusy(true);
+                      setError("");
+                      try {
+                        const r = await fetch(`/api/workout/garmin-json?sessionId=${session.id}`);
+                        if (!r.ok) throw Error((await r.json().catch(() => ({}))).error || "Export failed");
+                        await saveBlob(r, "jasmethod-garmin.json");
+                        setMessage(
+                          es
+                            ? "✓ JSON de Garmin descargado — impórtalo en connect.garmin.com → Entrenamiento → Workouts → Importar, y envíalo al reloj. Se abre la guía."
+                            : "✓ Garmin JSON downloaded — import at connect.garmin.com → Training → Workouts → Import Workout, then send to device. Opening the guide."
+                        );
+                        window.open("https://connect.garmin.com/training/workouts", "_blank");
+                        await load();
+                      } catch (e: any) {
+                        setError(e.message);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
                   >
-                    <Watch className="w-4 h-4" /> {es ? "Enviar al reloj" : "Send to watch"}
+                    <Watch className="w-4 h-4" /> {es ? "Enviar a Garmin" : "Send to Garmin"}
                   </button>
                   <button
                     className="btn-secondary"
                     disabled={busy || offline || session.durationMin === 0}
-                    onClick={() => download(false)}
+                    onClick={() => sendToWatch()}
                   >
-                    {es ? "Descargar .FIT" : "Download .FIT"}
+                    {es ? "Compartir .FIT" : "Share .FIT"}
                   </button>
                   <button
                     className="btn-secondary"
@@ -709,8 +728,8 @@ export default function TodayPage() {
                 </div>
                 <p className="text-xs text-slate-500">
                   {es
-                    ? "«Enviar al reloj» abre la hoja para compartir — elige Garmin Connect para importar el entreno. En escritorio se descarga el archivo (impórtalo en Garmin Connect → Workouts)."
-                    : "“Send to watch” opens your phone’s share sheet — pick Garmin Connect to import the workout. On desktop it downloads the file (import in Garmin Connect → Workouts)."}
+                    ? "«Enviar a Garmin» descarga el formato que Garmin Connect importa (connect.garmin.com → Entrenamiento → Workouts → Importar → enviar al dispositivo). «Compartir .FIT» es para apps compatibles o copia USB a /Garmin/Workouts/."
+                    : "“Send to Garmin” downloads the format Garmin Connect imports (connect.garmin.com → Training → Workouts → Import Workout → send to device). “Share .FIT” is for compatible apps or USB copy to /Garmin/Workouts/."}
                 </p>
               </div>
             </div>

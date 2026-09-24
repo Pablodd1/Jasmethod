@@ -317,3 +317,24 @@ test("daily plan opens with the WHY line when provided", () => {
   }]);
   assert.ok(!without.includes("💡"));
 });
+
+// ---- Session caps (owner feedback: 3h scheduled run) ----
+import { capSessionMinutes, generateSingleSport } from "./science";
+
+test("hard sessions cap at 90 min, long at 30% weekly / 150, full-goal 180", () => {
+  const hard = capSessionMinutes({ title: "Tempo / Threshold Run", minutes: 147, type: "threshold" }, 600);
+  assert.strictEqual(hard.minutes, 90, `147-min tempo capped, got ${hard.minutes}`);
+  const long = capSessionMinutes({ title: "Long Aerobic Run (Z2)", minutes: 205, type: "endurance" }, 600);
+  assert.ok(long.minutes <= 150, `205-min long capped ≤150, got ${long.minutes}`);
+  const marathon = capSessionMinutes({ title: "Long Aerobic Run (Z2)", minutes: 200, type: "endurance" }, 700, "full");
+  assert.strictEqual(marathon.minutes, 180);
+  const small = capSessionMinutes({ title: "Long Run", minutes: 90, type: "endurance" }, 300);
+  assert.strictEqual(small.minutes, 90, "already-compliant session untouched");
+});
+
+test("generated single-sport plans respect the caps end-to-end", () => {
+  const weeks = generateSingleSport({ sport: "run", level: "amateur", weeks: 8, startDate: new Date(), weeklyHours: 10 });
+  for (const w of weeks)
+    for (const s of w.sessions)
+      assert.ok(s.minutes <= 180, `week ${w.week} "${s.title}" = ${s.minutes} min exceeds 180`);
+});

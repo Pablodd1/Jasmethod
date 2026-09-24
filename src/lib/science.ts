@@ -378,6 +378,28 @@ export function mesoVolume(weekIndex: number, level: string, raceDates: Date[] =
   return { vol: within * step, phase: "build", block };
 }
 
+// ---- Research-based single-session caps (owner feedback: 3h scheduled run) ----
+// Hard sessions: >90 min of threshold/VO2 work exceeds the stimulus window and
+// degrades recovery (Seiler polarized model). Long endurance: capped at 30% of
+// weekly volume and 150 min (non-marathon) — the classic long-run ceiling;
+// full-distance goal allows up to 180 min. Strength capped at 90.
+export function capSessionMinutes<T extends { title: string; minutes: number; type?: string }>(
+  s: T,
+  weeklyTotalMin: number,
+  goal?: string | null,
+): T {
+  const isHard = /tempo|threshold|interval|vo2|repeat|race pace|sharpen/i.test(s.title) || s.type === "interval" || s.type === "threshold";
+  const isLong = /long/i.test(s.title) || s.type === "endurance";
+  const fullGoal = goal === "full";
+  if (isHard) return { ...s, minutes: Math.min(s.minutes, 90) };
+  if (isLong) {
+    const cap = Math.min(fullGoal ? 180 : 150, Math.round(weeklyTotalMin * 0.3));
+    return { ...s, minutes: Math.min(s.minutes, Math.max(45, cap)) };
+  }
+  if (s.type === "strength") return { ...s, minutes: Math.min(s.minutes, 90) };
+  return s;
+}
+
 export function generatePlan(opts: {
   level: string; // beginner | amateur | advanced | pro
   distance: string; // sprint | olympic | half | full
@@ -552,12 +574,13 @@ export function generatePlan(opts: {
       minutes: Math.max(1, Math.round(s.minutes)),
     }));
 
+    const cappedSessions = finalSessions.map((x) => capSessionMinutes(x, totalMin, distance));
     weeksOut.push({
       week: w,
       theme: phaseTheme[ph],
-      sessions: finalSessions,
+      sessions: cappedSessions,
       // Report what the week ACTUALLY contains, after all adjustments.
-      totalMinutes: sumMin(finalSessions),
+      totalMinutes: sumMin(cappedSessions),
     });
   }
   return weeksOut;
@@ -843,7 +866,7 @@ export function generateHyroxPlan(opts: {
     // RECOVERY + MOBILITY
     sessions.push({ sport: "recovery", title: "Recovery: Mobility + Grip/Ankle Care", minutes: Math.round(otherMin > 0 ? otherMin : 25), zone: "z1", type: "recovery", description: "Hip-flexor, ankle and wrist mobility (lunges + wall balls + farmers carry punish them). Easy Z1 flush. Sleep 8h." });
 
-    weeksOut.push({ week: w, theme: theme[ph], sessions, totalMinutes: totalMin });
+    weeksOut.push({ week: w, theme: theme[ph], sessions: sessions.map((x) => capSessionMinutes(x, totalMin, undefined)), totalMinutes: sessions.map((x) => capSessionMinutes(x, totalMin, undefined)).reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }
@@ -933,7 +956,8 @@ export function generateBoxingCamp(opts: {
     // RECOVERY
     sessions.push({ sport: "recovery", title: "Recovery: Mobility + Wrists/Shoulders", minutes: 25, zone: "z1", type: "recovery", description: "Wrist curls + extensor stretches, thoracic openers, hip mobility (roadwork and pivots tax them). 8h sleep is a training session — motor patterns consolidate overnight (Walker)." });
 
-    weeksOut.push({ week: w, theme: theme[ph], sessions, totalMinutes: totalMin });
+    const csBox = sessions.map((x) => capSessionMinutes(x, totalMin, undefined));
+    weeksOut.push({ week: w, theme: theme[ph], sessions: csBox, totalMinutes: csBox.reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }
@@ -1088,7 +1112,7 @@ export function generateSingleSport(opts: {
       sessions.push({ sport: "mobility", title: "Mobility + Core", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "recovery", description: "Hips, shoulders, spine + anti-rotation core. Mobility is what lets you keep loading heavy." });
     }
 
-    weeksOut.push({ week: w, theme: ph === "taper" ? "Freshness & Sharpening" : ph === "peak" ? "Peak Intensity" : ph === "build" ? "Build: Raise the Ceiling" : "Base: Aerobic Foundation", sessions, totalMinutes: totalMin });
+    weeksOut.push({ week: w, theme: ph === "taper" ? "Freshness & Sharpening" : ph === "peak" ? "Peak Intensity" : ph === "build" ? "Build: Raise the Ceiling" : "Base: Aerobic Foundation", sessions: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)), totalMinutes: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)).reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }
