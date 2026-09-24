@@ -13,3 +13,4 @@ prisma/dev.db-journal
 
 .playwright-cli/
 output/playwright/
+jas2
