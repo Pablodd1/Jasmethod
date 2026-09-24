@@ -818,6 +818,7 @@ export default function TodayPage() {
             </Link>
           </div>
         )}
+        <span id="jasai" className="block scroll-mt-24" />
         <details className="card">
           <summary className="cursor-pointer font-semibold">
             {es ? "Preguntar a JASAI" : "Ask JASAI"}

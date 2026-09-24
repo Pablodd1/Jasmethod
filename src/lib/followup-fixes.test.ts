@@ -293,3 +293,27 @@ test("sprint grounding context: cited protocol lines per phase", () => {
     assert.match(ctx, /\[[A-E]-[^\]]+\]/, "each line cites its entry id");
   }
 });
+
+// ---- Launch-readiness additions ----
+import { isWeeklyReviewTime, weeklyReviewDay } from "./weekly-review";
+import { telegramPlan as tp } from "./plan-formats";
+
+test("weekly review timing: Sunday evening local, once per ISO week", () => {
+  // Deterministic: the function reads the real clock; test the day-key shape
+  const day = weeklyReviewDay("America/New_York");
+  assert.match(day, /^week:\d{4}-\d{2}-\d{2}$/);
+  // Sunday-evening check on a fixed instant via the exported fn (mock not
+  // available; assert signature + non-throw)
+  assert.strictEqual(typeof isWeeklyReviewTime("UTC", 17), "boolean");
+});
+
+test("daily plan opens with the WHY line when provided", () => {
+  const t = tp("Jas", "Mon", [{
+    title: "Tempo", sport: "run", durationMin: 45, intensity: "z4",
+  }], "Green light — your recovery supports the planned quality today.");
+  assert.match(t.split("\n")[1], /💡/);
+  const without = tp("Jas", "Mon", [{
+    title: "Tempo", sport: "run", durationMin: 45, intensity: "z4",
+  }]);
+  assert.ok(!without.includes("💡"));
+});

@@ -25,6 +25,8 @@ import {
   Dna,
   BookOpen,
   Layers,
+  LifeBuoy,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
@@ -36,6 +38,7 @@ const NAV = [
   { href: "/calendar", key: "nav.calendar", icon: CalendarDays },
   { href: "/training", key: "nav.training", icon: Dumbbell },
   { href: "/settings", key: "nav.settings", icon: Settings },
+  { href: "/help", key: "nav.help", icon: LifeBuoy },
   { href: "/admin", key: "nav.admin", icon: Shield, adminOnly: true },
 ];
 
@@ -276,6 +279,14 @@ export function MobileNav() {
           </Link>
         );
       })}
+      {/* JASAI — one tap from ANY page (the AI coach is never buried) */}
+      <Link
+        href="/today#jasai"
+        className="flex flex-col items-center gap-0.5 text-[10px] text-vermillion-500"
+      >
+        <Sparkles className="w-5 h-5" />
+        JASAI
+      </Link>
     </div>
   );
 }

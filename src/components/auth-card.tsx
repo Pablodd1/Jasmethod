@@ -209,6 +209,17 @@ export function AuthCard({
       <p className="micro mt-5 text-center !normal-case !tracking-normal !text-[11px] !text-ink-400">
         Free for athletes. Your blood, DNA and training data stay private.
       </p>
+      <p className="text-[10px] text-ink-400 text-center mt-3 leading-snug">
+        {mode === "signup" ? (
+          <>
+            By creating an account you agree to our{" "}
+            <a href="/terms" className="underline" target="_blank">Terms of Service</a>{" "}
+            and acknowledge JasMiamiMethod is a coaching tool, not medical advice.
+          </>
+        ) : (
+          <a href="/help" className="underline">Need help? Visit Help &amp; Support</a>
+        )}
+      </p>
 
       {mode === "login" && (
         <div className="mt-4 border-t border-ink-200 pt-4">

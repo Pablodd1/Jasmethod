@@ -124,9 +124,21 @@ export async function trainingReminder(
   // styled Gmail HTML card with the full detail collapsible underneath.
   const lang = (user as any).language === "es" ? "es" : "en";
   const dayOffBlock = hasDayOff ? dayOffProtocolText(lang) : "";
+  // THE WHY: one plain sentence derived from the session's own adaptation
+  // verdict — the athlete reads why today looks like this before anything.
+  const firstVerdict = (fmt[0] as any)?.verdict;
+  const whyLine = hasDayOff
+    ? "Recovery day — adaptation happens on rest; sleep is the workout."
+    : firstVerdict === "rest"
+      ? "Full rest prescribed — your body flagged something; honor it."
+      : firstVerdict === "easy" || firstVerdict === "trim"
+        ? `Today is eased (${firstVerdict}) — recovery signals said protect the block.`
+        : firstVerdict === "full"
+          ? "Green light — your recovery supports the planned quality today."
+          : null;
   const text = hasDayOff
-    ? telegramPlan(user.name, dayLabel, fmt) + (dayOffBlock ? `\n\n${dayOffBlock}` : "")
-    : telegramPlan(user.name, dayLabel, fmt);
+    ? telegramPlan(user.name, dayLabel, fmt, whyLine) + (dayOffBlock ? `\n\n${dayOffBlock}` : "")
+    : telegramPlan(user.name, dayLabel, fmt, whyLine);
   const gmail = gmailPlanHtml(user.name, dayLabel, fmt);
   const subject = `Jasmethod — ${key}`;
 

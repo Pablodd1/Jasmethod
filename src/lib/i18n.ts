@@ -36,6 +36,7 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   "nav.gear": { en: "Gear Lab", es: "Laboratorio de equipamiento", ht: "Laboratwa ekipman", fr: "Labo équipement", ru: "Лаборатория снаряжения" },
   "nav.brain": { en: "Brain Training", es: "Entrenamiento cerebral", ht: "Antrennman sèvo", fr: "Entraînement cérébral", ru: "Тренировка мозга" },
   "nav.admin": { en: "Admin", es: "Admin", ht: "Admin", fr: "Admin", ru: "Админ" },
+  "nav.help": { en: "Help", es: "Ayuda", ht: "Èd", fr: "Aide", ru: "Помощь" },
   "nav.reminders": { en: "Reminders", es: "Recordatorios", ht: "Rapèl", fr: "Rappels", ru: "Напоминания" },
   "nav.settings": { en: "Profile & Zones", es: "Perfil y zonas", ht: "Pwofil ak zòn", fr: "Profil et zones", ru: "Профиль и зоны" },
   "nav.science": { en: "Science Guides", es: "Guías científicas", ht: "Gid syans", fr: "Guides scientifiques", ru: "Научные гиды" },

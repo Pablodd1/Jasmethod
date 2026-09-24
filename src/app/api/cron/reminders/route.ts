@@ -4,6 +4,7 @@ import { dayBounds, addDaysKey, localDate } from "@/lib/dates";
 import { sendEmail } from "@/lib/email";
 import { sendTelegram, sendTelegramPhoto } from "@/lib/notify";
 import { meterUsage, logEvent } from "@/lib/telemetry";
+import { buildWeeklyReview, isWeeklyReviewTime, weeklyReviewDay } from "@/lib/weekly-review";
 import { prescribeToday } from "@/lib/adaptive";
 import { baseWorkout } from "@/lib/prescription";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,50 @@ export async function GET(req: Request) {
     }
     const day = dayBounds(user.timezone),
       key = effectiveHour >= 12 ? addDaysKey(day.key, 1) : day.key;
+
+    // WEEKLY REVIEW (Sunday evening, once/week): adherence, best effort,
+    // next week's focus — the retention feature, from the athlete's own data.
+    if (isWeeklyReviewTime(user.timezone, pref.reminderHour)) {
+      try {
+        const lang = (user.language === "es" ? "es" : "en") as "en" | "es";
+        const review = await buildWeeklyReview(user.id, user.timezone, lang);
+        const weekKey = weeklyReviewDay(user.timezone);
+        for (const channel of ["email", "telegram"]) {
+          if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)
+            continue;
+          const claimed = await prisma.reminderDelivery.createMany({
+            data: [{ userId: user.id, day: weekKey, channel: `${channel}:weekly`, status: "pending" }],
+            skipDuplicates: true,
+          });
+          if (!claimed.count) continue;
+          const result =
+            channel === "email"
+              ? await sendEmail({
+                  to: user.email,
+                  subject: review.subject,
+                  text: review.text,
+                  html: `<pre style="white-space:pre-wrap;font-family:system-ui">${review.text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>`,
+                  userId: user.id,
+                })
+              : pref.telegramChatId
+                ? await sendTelegram(pref.telegramChatId, review.text)
+                : { ok: false, error: "Telegram chat is not configured" };
+          await prisma.reminderDelivery.update({
+            where: {
+              userId_day_channel: { userId: user.id, day: weekKey, channel: `${channel}:weekly` },
+            },
+            data: { status: result.ok ? "sent" : "failed", error: result.error || null },
+          }).catch(() => {});
+          if (result.ok) {
+            sent++;
+            await meterUsage(user.id, channel === "email" ? "email_sends" : "telegram_msgs", 1);
+          } else failed++;
+        }
+      } catch (reviewErr) {
+        console.error("[weekly review] failed:", String(reviewErr).slice(0, 140));
+      }
+    }
+
     const { text, subject, html, png } = await trainingReminder(user, key);
     for (const channel of ["email", "telegram"]) {
       if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)

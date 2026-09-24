@@ -61,8 +61,12 @@ export function telegramPlan(
   athleteName: string,
   dateLabel: string,
   sessions: PlanFormatSession[],
+  whyLine?: string | null,
 ): string {
   const lines: string[] = [`⚡️ ${athleteName} — ${dateLabel}`];
+  // THE WHY, first — one plain sentence for why today looks the way it does
+  // (the retention feature: the athlete never wonders what the plan is doing).
+  if (whyLine) lines.push(`💡 ${whyLine}`);
   if (!sessions.length) {
     lines.push("", "☁️ DAY OFF — 20 min Z1 + breathing. Recovery IS training.");
   }
