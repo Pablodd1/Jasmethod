@@ -193,7 +193,10 @@ export async function POST(req: Request) {
               startDate: start,
               weeklyHours: profile.weeklyHours || undefined,
               easyPct: splitTarget,
-              raceDate: raceDate ? race : undefined,
+              // `race` already prefers the explicit date, then the athlete's
+              // A race, then plan-end — pass it unconditionally so the
+              // taper always anchors to a real race when one exists.
+              raceDate: race,
               // B/C races: B races get train-through sharpening in their week;
               // the A race (raceDate above) anchors the taper. Excludes the
               // anchor itself to avoid double-counting the same date.
@@ -363,6 +366,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      plannerVersion: "race-taper-v2",
       plan: {
         id: plan.id,
         name: plan.name,
