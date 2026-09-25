@@ -160,6 +160,46 @@ export async function GET(req: Request) {
         });
       }
     }
+
+    // EVENING FEEDBACK PROMPT (~20:00 local, once/day, Telegram-only): the
+    // one-tap "how did it feel?" nudge — 1 easier / 2 as expected / 3 harder.
+    // The reply feeds sessionFelt so tomorrow adapts even if the athlete
+    // never reopens the app.
+    if (
+      hour >= 20 &&
+      hour < 21 &&
+      pref.telegramEnabled &&
+      pref.telegramChatId
+    ) {
+      const fbKey = `feedback:${day.key}`;
+      const claimed = await prisma.reminderDelivery.createMany({
+        data: [{ userId: user.id, day: fbKey, channel: "telegram", status: "pending" }],
+        skipDuplicates: true,
+      });
+      if (claimed.count) {
+        const { start: dStart, end: dEnd } = dayBounds(user.timezone);
+        const todaySession = await prisma.workout.findFirst({
+          where: {
+            userId: user.id,
+            date: { gte: dStart, lt: dEnd },
+            planned: true,
+            completed: false,
+            durationMin: { gt: 0 },
+          },
+          orderBy: { date: "asc" },
+          select: { title: true, durationMin: true },
+        });
+        const prompt = todaySession
+          ? `🏋️ ${todaySession.title} (${todaySession.durationMin} min) — how did it feel?\n1️⃣ Easier than expected\n2️⃣ As expected\n3️⃣ Harder than expected\n\n(Reply with a number — KCoach adapts tomorrow.)`
+          : `☁️ Rest day — how does the body feel? Reply 1 (fresh) · 2 (ok) · 3 (beat up).`;
+        const fb = await sendTelegram(pref.telegramChatId, prompt);
+        await prisma.reminderDelivery.update({
+          where: { userId_day_channel: { userId: user.id, day: fbKey, channel: "telegram" } },
+          data: { status: fb.ok ? "sent" : "failed", error: fb.error || null },
+        }).catch(() => {});
+        if (fb.ok) await meterUsage(user.id, "telegram_msgs", 1);
+      }
+    }
   }
   await logEvent({
     kind: "info",

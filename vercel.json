@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/sync",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/feedback-ingest",
+      "schedule": "15 * * * *"
     }
   ]
 }

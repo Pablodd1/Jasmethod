@@ -294,3 +294,23 @@ APPLY=1 node scripts/fix-duplicate-plan-days.cjs
 Run it against any environment once after deploying the fix (tested on a
 synthetic old-bug plan: 2 duplicate days → 1 day holding both sessions,
 0 orphans).
+
+## Strava multi-athlete model (verified 2026-09-25)
+
+One Jasmethod developer application (client 281023) serves ALL athletes — each
+athlete consents individually via the Connect button and gets their own
+encrypted token. An athlete's personal Strava membership tier is irrelevant:
+**free Strava accounts can authorize third-party apps** exactly like paid ones.
+
+**The limit that matters is Strava's, not the membership**: a new API app is
+capped at ~1–10 connected athletes until Strava reviews it in the Developer
+Program (API settings page → submit for review, describe the coaching use
+case). After approval the athlete cap is lifted and rate limits rise from the
+default 200 req/15 min · 2,000/day per app. Sources: Strava [rate limits](https://developers.strava.com/docs/rate-limits),
+[getting started](https://developers.strava.com/docs/getting-started),
+[community answer](https://communityhub.strava.com/developers-api-7/how-do-i-increase-athlete-limit-1689).
+
+**Owner action when approaching ~10 connected athletes**: submit the app for
+review at strava.com/settings/api (the same page where the app was created).
+The webhook (subscription 373452) and OAuth flow work identically pre/post
+review — review only lifts the connection cap.
