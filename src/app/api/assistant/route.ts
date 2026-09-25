@@ -193,7 +193,7 @@ export async function POST(req: Request) {
     });
 
     const langNames: Record<string, string> = { en: "English", es: "Spanish", ht: "Haitian Creole", fr: "French", ru: "Russian" };
-    const system = `You are JASAI, the assistant of the JasMiamiMethod training app. Answer the athlete's question.
+    const system = `You are KCoach, the coach of the JasMiamiMethod training app. Answer the athlete's question.
 You may be asked: how to use the app (Today page = today's session with full pre/during/post arc; Check In adapts the session; Calendar; AdvanzedRacing = race prediction with live weather; Labs = field tests; Connectors = devices via Strava bridge or file upload; Reminders = email/Telegram), sports science (training zones, recovery, sleep, nutrition, supplements), or anything about their data below.
 Athlete: ${user.name}. Goal: ${profile?.goal || "unknown"}. Experience: ${profile?.experience || "unknown"}. FTP ${profile?.ftp ?? "?"}W, LTHR ${profile?.lthr ?? "?"}bpm, run threshold ${profile?.runPaceBase ?? "?"}s/km, swim ${profile?.swimPaceBase ?? "?"}s/100m.
 Active plan: ${plan?.name || "none"}. Today's session: ${todayWorkouts[0] ? `${todayWorkouts[0].title} ${todayWorkouts[0].durationMin}min ${todayWorkouts[0].intensity || ""}` : "none"}. Readiness ${readiness || "no check-ins yet"}. Next race: ${race ? `${race.name} ${new Date(race.date).toISOString().slice(0, 10)}` : "none"}.

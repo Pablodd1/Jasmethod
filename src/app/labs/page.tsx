@@ -265,7 +265,7 @@ export default function LabsPage() {
               {!zones.anchorHr && !zones.anchorLthr && !zones.anchorPower && !zones.anchorSwim ? (lang === "es" ? "—" : "—") : null}
             </p>
             <p className="text-xs text-slate-400 mt-2">
-              {lang === "es" ? "Estas zonas alimentan tu Plan de entrenamiento, las sesiones de hoy y el coach JASAI. Actualízalas desde cualquier prueba de arriba. Las tablas completas zona por zona (con descripciones, natación y potencia) viven en " : "These zones power your Training Plan, today's sessions, and the JASAI Coach briefing. Update them from any test above. The full zone-by-zone tables (with descriptions, swim and power) live in "}
+              {lang === "es" ? "Estas zonas alimentan tu Plan de entrenamiento, las sesiones de hoy y el coach KCoach. Actualízalas desde cualquier prueba de arriba. Las tablas completas zona por zona (con descripciones, natación y potencia) viven en " : "These zones power your Training Plan, today's sessions, and the KCoach briefing. Update them from any test above. The full zone-by-zone tables (with descriptions, swim and power) live in "}
               <a href="/settings" className="text-ocean-600 underline">{lang === "es" ? "Perfil y zonas" : "Profile & Zones"}</a>.
             </p>
           </div>

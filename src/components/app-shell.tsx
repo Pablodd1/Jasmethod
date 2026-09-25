@@ -279,13 +279,13 @@ export function MobileNav() {
           </Link>
         );
       })}
-      {/* JASAI — one tap from ANY page (the AI coach is never buried) */}
+      {/* KCoach — one tap from ANY page (the coach is never buried) */}
       <Link
         href="/today#jasai"
         className="flex flex-col items-center gap-0.5 text-[10px] text-vermillion-500"
       >
         <Sparkles className="w-5 h-5" />
-        JASAI
+        KCoach
       </Link>
     </div>
   );

@@ -95,7 +95,7 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   "dash.greeting": { en: "Good morning, {name} ☀️", es: "Buenos días, {name} ☀️" },
   "dash.athlete": { en: "Athlete", es: "Atleta" },
   "dash.motivation": { en: "Today is a brick in the wall. Lay it well.", es: "Hoy es un ladrillo en la pared. Colócalo bien." },
-  "dash.coachJas": { en: "JASAI", es: "JASAI" },
+  "dash.coachJas": { en: "KCoach", es: "KCoach" },
   "dash.ruleBased": { en: "rule-based", es: "basado en reglas" },
   "dash.adaptation": { en: "Adaptation:", es: "Adaptación:" },
   "dash.setupProfile": { en: "Set up your athlete profile", es: "Configura tu perfil de atleta" },

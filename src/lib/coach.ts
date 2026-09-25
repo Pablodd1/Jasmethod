@@ -117,7 +117,7 @@ function buildPrompt(c: CoachContext): string {
   const m = c.latestMetric || {};
   const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", ht: "Haitian Creole", fr: "French", ru: "Russian" };
   const langName = LANG_NAMES[c.language || "es"] || "English";
-  return `You are JASAI, a research-informed training coach for ${c.name || "this athlete"}.
+  return `You are KCoach, a research-informed training coach for ${c.name || "this athlete"}.
 Athlete profile: sex=${p.sex || "n/a"}, age=${p.birthYear ? new Date().getFullYear() - p.birthYear : "n/a"}, experience=${p.experience || "n/a"}, goal=${p.goal || "n/a"}.
 Injury flag: ${p.injured ? "active: training paused" : "not recorded"}.
 Physiology: VO2max=${p.vo2max ?? "n/a"}, LTHR=${p.lthr ?? "n/a"}, FTP=${p.ftp ?? "n/a"}.

@@ -321,7 +321,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* AI Coach (JASAI) briefing */}
+        {/* KCoach briefing */}
         {coach && (
           <div className="bg-gradient-to-r from-coral-500 to-ocean-600 rounded-3xl p-6 md:p-7 text-white flex items-start gap-4">
             <Sparkles className="w-7 h-7 text-white/80 shrink-0 mt-1" />

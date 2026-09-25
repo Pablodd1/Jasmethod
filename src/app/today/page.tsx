@@ -845,8 +845,8 @@ export default function TodayPage() {
           <div className="card border-ocean-300 bg-ocean-50/60 p-4">
             <p className="text-sm font-medium text-ocean-900">
               ⌚ {es
-                ? "Conecta Whoop, Garmin o COROS — tus datos llegan automáticamente y JASAI los usa para entrenar."
-                : "Connect Whoop, Garmin or COROS — your data syncs automatically and JASAI uses it for coaching."}
+                ? "Conecta Whoop, Garmin o COROS — tus datos llegan automáticamente y KCoach los usa para entrenar."
+                : "Connect Whoop, Garmin or COROS — your data syncs automatically and KCoach uses it for coaching."}
             </p>
             <Link href="/connectors" className="btn-primary text-sm mt-2 inline-flex">
               {es ? "Conectar dispositivo →" : "Connect device →"}
@@ -856,7 +856,7 @@ export default function TodayPage() {
         <span id="jasai" className="block scroll-mt-24" />
         <details className="card">
           <summary className="cursor-pointer font-semibold">
-            {es ? "Preguntar a JASAI" : "Ask JASAI"}
+            {es ? "Preguntar a KCoach" : "Ask KCoach"}
           </summary>
           <form
             className="flex gap-2 mt-3"
