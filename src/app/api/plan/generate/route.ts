@@ -112,10 +112,6 @@ export async function POST(req: Request) {
     const start = startDate
       ? toLocalMidnight(String(startDate))
       : dayBounds(user.timezone).start;
-    const race = raceDate
-      ? toLocalMidnight(String(raceDate))
-      : new Date(start.getTime() + weeksCount * 7 * 86400000);
-
     const dist = String(distance || profile.goal || "olympic");
     // All future races feed planning: the A race anchors the taper; B races
     // get train-through sharpening weeks (extraRaces below).
@@ -126,6 +122,13 @@ export async function POST(req: Request) {
     const anchorRaceId = (
       allRaces.find((r) => r.priority === 1) || allRaces[0]
     )?.id;
+    // Taper anchor: explicit raceDate wins; else the athlete's A race; else
+    // the plan-end fallback (so the taper lands on the RACE, never an
+    // arbitrary week).
+    const race = raceDate
+      ? toLocalMidnight(String(raceDate))
+      : allRaces.find((r) => r.id === anchorRaceId)?.date ??
+        new Date(start.getTime() + weeksCount * 7 * 86400000);
     if (
       ![
         "sprint",
