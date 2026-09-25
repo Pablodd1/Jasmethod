@@ -40,6 +40,7 @@ export interface ForecastBundle {
   } | null;
   pmc: { ctl: number; atl: number; tsb: number; formZone: string; rampRate7d: number } | null;
   physiology: { ftp: number | null; lthr: number | null; runPaceBase: number | null; swimPaceBase: number | null };
+  raceDayProjection: string | null;
 }
 
 export async function buildForecastBundle(userId: string, opts: ForecastRequestOpts): Promise<ForecastBundle> {
@@ -80,12 +81,66 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
   if (opts.raceId) {
     race = await prisma.race.findFirst({ where: { id: opts.raceId, userId } });
   } else if (opts.distance) {
-    const races = await prisma.race.findMany({
-      where: { userId, distance: opts.distance },
+    race = await prisma.race.findFirst({
+      where: { userId, distance: opts.distance, date: { gte: new Date() } },
       orderBy: [{ priority: "asc" }, { date: "asc" }],
     });
-    const future = races.filter((r) => r.date.getTime() >= Date.now());
-    race = future[0] || races[0] || null;
+  }
+  // The persisted race record (when forecasting by raceId) may differ from the
+  // picked one only by construction — prefer the fetched record.
+
+  // ---- RACE-DAY PMC PROJECTION (taper-aware forecast) ----
+  // Today's CTL/ATL/TSB is "now". The athlete will follow the plan until the
+  // race — project PMC to RACE DAY by including planned workouts' estimated
+  // TSS (zone + duration), so the forecast sees tapered form, not today's.
+  let raceDayPmc = pmc;
+  let projectedNote: string | null = null;
+  if (race && pmc && new Date(race.date) > new Date()) {
+    const plannedUntil = await prisma.workout.findMany({
+      where: {
+        userId,
+        planned: true,
+        completed: false,
+        date: { gte: new Date(), lt: new Date(race.date) },
+      },
+      orderBy: { date: "asc" },
+      select: { date: true, durationMin: true, intensity: true, rpe: true, sport: true },
+    });
+    if (plannedUntil.length) {
+      const projected = computePmc(
+        [
+          ...completed.map((w) => ({
+            date: w.date,
+            tssInput: {
+              durationMin: w.actualDurationMin ?? w.durationMin,
+              avgPower: w.np ?? w.avgPower,
+              avgHr: w.avgHr,
+              rpe: w.rpe,
+              intensity: w.intensity,
+              tss: w.tss,
+              ftp,
+              lthr,
+            },
+          })),
+          ...plannedUntil.map((w) => ({
+            date: w.date,
+            tssInput: {
+              durationMin: w.durationMin,
+              intensity: w.intensity,
+              rpe: w.rpe,
+              ftp,
+              lthr,
+            },
+          })),
+        ],
+        new Date(race.date),
+        opts.timezone ?? undefined,
+      );
+      if (projected) {
+        raceDayPmc = projected;
+        projectedNote = `Projected to race day from ${plannedUntil.length} planned sessions (taper included): CTL ${Math.round(projected.current.ctl)} / TSB ${Math.round(projected.current.tsb)}.`;
+      }
+    }
   }
 
   const distance = race?.distance ?? opts.distance ?? profile?.goal ?? null;
@@ -118,8 +173,13 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
             sodiumMgPerL: opts.sodiumMgPerL ?? profile?.sodiumMgPerL ?? null,
             gutTrained: opts.gutTrained ?? profile?.gutTrained ?? undefined,
             draftSkill: (opts.draftSkill ?? profile?.draftSkill ?? undefined) as ("none" | "mixed" | "good") | undefined,
+            // Equipment: bike setup changes drag + mass in the bike physics
+            bikeType: profile?.bikeType ?? null,
+            hasAeroBars: profile?.hasAeroBars ?? null,
           },
-          fitness: pmc,
+          // Race-day projected PMC (taper-aware) — falls back to today's when
+          // no race/planned sessions exist.
+          fitness: raceDayPmc,
           distance: distance as string,
           venue: {
             targetTempC: weather?.tempC ?? race?.targetTempC ?? undefined,
@@ -234,5 +294,6 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
         }
       : null,
     physiology: { ftp, lthr, runPaceBase: profile?.runPaceBase ?? null, swimPaceBase: profile?.swimPaceBase ?? null },
+    raceDayProjection: projectedNote,
   };
 }

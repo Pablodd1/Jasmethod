@@ -108,17 +108,26 @@ export async function storeActivity(
         date: { gte: start, lt: end },
       },
     });
-    const match = candidates.filter(
+    const eligible = candidates.filter(
       (w) =>
         Math.abs(w.durationMin - activity.durationMin) <=
         Math.max(10, w.durationMin * 0.3),
     );
-    // Ambiguous double-session days require manual reconciliation.
-    if (match.length === 1)
+    // Multi-candidate days: pick the CLOSEST duration match (relative gap)
+    // instead of leaving the day for manual reconciliation — still strictly
+    // one-to-one; the others stay planned. Ambiguity beyond tolerance is
+    // still manual.
+    if (eligible.length >= 1) {
+      const best = eligible.reduce((a, b) => {
+        const gapA = Math.abs(a.durationMin - activity.durationMin) / Math.max(1, a.durationMin);
+        const gapB = Math.abs(b.durationMin - activity.durationMin) / Math.max(1, b.durationMin);
+        return gapB < gapA ? b : a;
+      });
       await tx.workout.update({
-        where: { id: match[0].id },
+        where: { id: best.id },
         data: { completed: true, matchedPlanId: saved.id },
       });
+    }
     return true;
   });
 }

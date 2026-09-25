@@ -56,6 +56,7 @@ export default function CalendarPage() {
   const [view, setView] = useState<"days" | "month">("days"); // 3-day default
   const [month, setMonth] = useState(new Date());
   const [events, setEvents] = useState<any[]>([]);
+  const [races, setRaces] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [plan, setPlan] = useState<any>(null);
   const [showForm, setShowForm] = useState(false);
@@ -81,6 +82,7 @@ export default function CalendarPage() {
     const d = await res.json();
     setEvents(d.events || []);
     setWorkouts(d.workouts || []);
+    setRaces(d.races || []);
     setPlan(d.plan);
     // Week strip spans prev/next month — one extra request, cached server-side.
     const sres = await fetch("/api/calendar?month=auto");
@@ -161,7 +163,7 @@ export default function CalendarPage() {
   const allEvents = (() => {
     const seen = new Set<string>();
     const out: any[] = [];
-    for (const e of [...events, ...stripWorkouts]) {
+    for (const e of [...events, ...stripWorkouts, ...(races || [])]) {
       if (seen.has(e.id)) continue;
       seen.add(e.id);
       out.push(e);
@@ -383,23 +385,53 @@ export default function CalendarPage() {
                         </div>
                       )}
                       {dayEvents.map((e) => {
-                        const isWorkout = e.type !== "appointment" && e.type !== "note";
+                        const isRace = e.priority != null || e.type === "race";
+                        const raceBadge =
+                          e.priority === 1 ? "A" : e.priority === 2 ? "B" : e.priority === 3 ? "C" : null;
                         return (
                           <div
                             key={e.id}
                             className={`rounded-xl border px-3 py-2 ${
-                              e.type === "race"
-                                ? "border-vermillion-300 bg-vermillion-400/10"
+                              isRace
+                                ? e.priority === 1
+                                  ? "border-vermillion-400 bg-vermillion-400/15 shadow-sm"
+                                  : e.priority === 2
+                                    ? "border-amber-300 bg-amber-50"
+                                    : "border-slate-300 bg-slate-100"
                                 : e.type === "appointment"
                                   ? "border-amber-200 bg-amber-50"
                                   : "border-slate-200 bg-slate-50"
                             }`}
                           >
-                            <div className="text-sm font-semibold leading-tight">{e.title}</div>
+                            <div className="text-sm font-semibold leading-tight flex items-center gap-1.5">
+                              {raceBadge && (
+                                <span
+                                  className={`text-[9px] font-black rounded-full w-5 h-5 flex items-center justify-center shrink-0 ${
+                                    raceBadge === "A"
+                                      ? "bg-vermillion-500 text-white"
+                                      : raceBadge === "B"
+                                        ? "bg-amber-500 text-white"
+                                        : "bg-slate-500 text-white"
+                                  }`}
+                                >
+                                  {raceBadge}
+                                </span>
+                              )}
+                              <span className="truncate">{"priority" in e ? `🏁 ${e.name}` : e.title}</span>
+                            </div>
                             <div className="text-[11px] text-slate-500 mt-0.5">
-                              {e.startTime ? String(e.startTime).slice(0, 5) : ""} ·{" "}
-                              {e.durationMin ? `${e.durationMin} min` : e.type}{" "}
-                              {e.intensity ? `· ${String(e.intensity).toUpperCase()}` : ""}
+                              {"priority" in e ? (
+                                <>
+                                  {e.startTime ? String(e.startTime).slice(0, 5) : ""} · {e.distance}
+                                  {e.location ? ` · ${e.location}` : ""}
+                                </>
+                              ) : (
+                                <>
+                                  {e.startTime ? String(e.startTime).slice(0, 5) : ""} ·{" "}
+                                  {e.durationMin ? `${e.durationMin} min` : e.type}{" "}
+                                  {e.intensity ? `· ${String(e.intensity).toUpperCase()}` : ""}
+                                </>
+                              )}
                             </div>
                           </div>
                         );

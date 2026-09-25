@@ -61,7 +61,17 @@ export async function PUT(req: Request) {
       const patch: Record<string, number> = {};
       if (t.type === "ftp" || t.type === "cp") patch.ftp = Math.round(result);
       if (t.type === "lthr") patch.lthr = Math.round(result);
-      if (p) await prisma.athleteProfile.update({ where: { userId: user.id }, data: patch });
+      // Run threshold from a 5k TT: threshold pace ≈ 5k pace × ~1.06
+      // (Daniels-style: threshold ≈ ~94% of vVO2 ≈ 15-min effort pace).
+      if (t.type === "run5k") {
+        // result is 5k time in seconds → sec/km, then × 1.06 → threshold sec/km
+        const secPerKm = result / 5;
+        patch.runPaceBase = Math.round(secPerKm * 1.06);
+      }
+      // Swim threshold from the CSS test (result in sec/100m IS the CSS)
+      if (t.type === "swim") patch.swimPaceBase = Math.round(result);
+      if (p && Object.keys(patch).length)
+        await prisma.athleteProfile.update({ where: { userId: user.id }, data: patch });
     }
     return NextResponse.json({ ok: true, test: updated });
   } catch (e: any) {

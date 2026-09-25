@@ -117,6 +117,15 @@ export async function POST(req: Request) {
       : new Date(start.getTime() + weeksCount * 7 * 86400000);
 
     const dist = String(distance || profile.goal || "olympic");
+    // All future races feed planning: the A race anchors the taper; B races
+    // get train-through sharpening weeks (extraRaces below).
+    const allRaces = await prisma.race.findMany({
+      where: { userId: user.id, date: { gte: start } },
+      orderBy: [{ priority: "asc" }, { date: "asc" }],
+    });
+    const anchorRaceId = (
+      allRaces.find((r) => r.priority === 1) || allRaces[0]
+    )?.id;
     if (
       ![
         "sprint",
@@ -182,6 +191,12 @@ export async function POST(req: Request) {
               weeklyHours: profile.weeklyHours || undefined,
               easyPct: splitTarget,
               raceDate: raceDate ? race : undefined,
+              // B/C races: B races get train-through sharpening in their week;
+              // the A race (raceDate above) anchors the taper. Excludes the
+              // anchor itself to avoid double-counting the same date.
+              extraRaces: allRaces
+                .filter((r) => r.id !== anchorRaceId && r.date > start)
+                .map((r) => ({ date: r.date, priority: r.priority })),
             });
 
     // Persist plan + plan days + planned workouts
@@ -298,14 +313,11 @@ export async function POST(req: Request) {
       restingHr: profile.restingHr || undefined,
     });
 
-    // Schedule benchmark tests every ~2 months, race-aware
-    const races = await prisma.race.findMany({
-      where: { userId: user.id, date: { gte: start } },
-    });
+    // Schedule benchmark tests every ~2 months, race-aware (allRaces fetched above)
     const scheduledTests = scheduleTests(
       start,
       weeksCount,
-      races.map((r) => ({ date: r.date })),
+      allRaces.map((r) => ({ date: r.date })),
       { hyrox: isHyrox, boxing: isBoxing, trackSprint: isTrackSprint },
     );
     await prisma.benchmarkTest.deleteMany({
@@ -326,7 +338,7 @@ export async function POST(req: Request) {
 
     // Race venue adjustment (temperature + elevation + terrain + water) from the A-race
     let venuePlan = null;
-    const anchorRace = races.find((r) => r.priority === 1) || races[0];
+    const anchorRace = allRaces.find((r) => r.priority === 1) || allRaces[0];
     const temp =
       targetTempC !== undefined
         ? parseFloat(targetTempC)

@@ -8,6 +8,7 @@ import { WorkoutSparkline } from "@/components/workout-sparkline";
 import { fmtVolumeDual } from "@/lib/units";
 import { fmtDistance } from "@/lib/units";
 import { dayOffProtocol } from "@/lib/day-off";
+import { allDeliveryGuides } from "@/lib/device-delivery";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
@@ -726,11 +727,26 @@ export default function TodayPage() {
                     {Math.max(0, 3 - session.regenCount)})
                   </button>
                 </div>
-                <p className="text-xs text-slate-500">
-                  {es
-                    ? "«Enviar a Garmin» descarga el formato que Garmin Connect importa (connect.garmin.com → Entrenamiento → Workouts → Importar → enviar al dispositivo). «Compartir .FIT» es para apps compatibles o copia USB a /Garmin/Workouts/."
-                    : "“Send to Garmin” downloads the format Garmin Connect imports (connect.garmin.com → Training → Workouts → Import Workout → send to device). “Share .FIT” is for compatible apps or USB copy to /Garmin/Workouts/."}
-                </p>
+                {/* Platform delivery guide — Garmin / Apple Watch / COROS */}
+                <details className="mt-1">
+                  <summary className="text-xs font-semibold text-ocean-700 cursor-pointer">
+                    📲 {es ? "Cómo llega a tu reloj (Garmin · Apple · COROS)" : "How it reaches your watch (Garmin · Apple · COROS)"}
+                  </summary>
+                  <div className="grid sm:grid-cols-3 gap-2 mt-2">
+                    {allDeliveryGuides(es ? "es" : "en").map((g) => (
+                      <div key={g.platform} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="font-semibold text-sm mb-1.5">
+                          {g.platform === "garmin" ? "⌚ Garmin" : g.platform === "apple" ? " Apple Watch" : "⏱ COROS"}
+                        </div>
+                        <ol className="list-decimal pl-4 space-y-1 text-[11px] text-slate-600">
+                          {g.steps.map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               </div>
             </div>
             {feedback && (

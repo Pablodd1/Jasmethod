@@ -338,3 +338,81 @@ test("generated single-sport plans respect the caps end-to-end", () => {
     for (const s of w.sessions)
       assert.ok(s.minutes <= 180, `week ${w.week} "${s.title}" = ${s.minutes} min exceeds 180`);
 });
+
+// ---- Complete training loop (S2/S3/S4) ----
+import { mesoVolumeRaces, type PlanRace } from "./science";
+import { bikeSetupPhysics, bikePhysicsSpeedKmh } from "./raceforecast";
+
+test("taper anchors to the A-race date, not the cycle position", () => {
+  const start = new Date("2026-10-01T00:00:00Z");
+  // A race on week 4 (Oct 22 falls in week starting Oct 22 = index 3)
+  const aRace: PlanRace = { date: new Date("2026-10-22T00:00:00Z"), priority: 1 };
+  // Week of race (index 3: Oct 22–28) → deep taper ~0.45
+  const wk3 = mesoVolumeRaces(3, "amateur", [aRace], start);
+  assert.strictEqual(wk3.phase, "taper");
+  assert.ok(wk3.vol < 0.5, `race week vol ${wk3.vol} should be deep taper`);
+  // Week before (index 2: Oct 15–21) → taper ~0.59
+  const wk2 = mesoVolumeRaces(2, "amateur", [aRace], start);
+  assert.strictEqual(wk2.phase, "taper");
+  assert.ok(wk2.vol > wk3.vol && wk2.vol < 0.65, `pre-race week vol ${wk2.vol}`);
+  // Normal week far from race (index 0) is NOT suppressed by a distant race
+  const wk0 = mesoVolumeRaces(0, "amateur", [aRace], start);
+  assert.strictEqual(wk0.phase, "build");
+});
+
+test("B races train through: −20% sharpening week, no taper phase", () => {
+  const start = new Date("2026-10-01T00:00:00Z");
+  const bRace: PlanRace = { date: new Date("2026-10-15T00:00:00Z"), priority: 2 };
+  const wk2 = mesoVolumeRaces(2, "amateur", [bRace], start); // Oct 15 week
+  assert.strictEqual(wk2.phase, "build", "B race week is train-through, not taper");
+  assert.ok(Math.abs(wk2.vol - 0.8 * 1.0) < 0.05, `B-week ~0.8 vol, got ${wk2.vol}`);
+});
+
+test("post-race dips: A −40%, B −15%", () => {
+  const start = new Date("2026-10-01T00:00:00Z");
+  const a: PlanRace = { date: new Date("2026-10-08T00:00:00Z"), priority: 1 };
+  const afterA = mesoVolumeRaces(2, "amateur", [a], start); // week after Oct 8
+  assert.ok(Math.abs(afterA.vol - 0.6) < 0.02, `post-A vol ${afterA.vol} ≈ 0.6`);
+  const b: PlanRace = { date: new Date("2026-10-08T00:00:00Z"), priority: 2 };
+  const afterB = mesoVolumeRaces(2, "amateur", [b], start);
+  assert.ok(Math.abs(afterB.vol - 0.85) < 0.02, `post-B vol ${afterB.vol} ≈ 0.85`);
+});
+
+test("equipment physics: TT vs road vs aero-bars change bike speed", () => {
+  const tt = bikeSetupPhysics({ bikeType: "tt" });
+  const road = bikeSetupPhysics({ bikeType: "road" });
+  const aero = bikeSetupPhysics({ bikeType: "road", hasAeroBars: true });
+  assert.ok(tt.cdA < aero.cdA && aero.cdA < road.cdA, "CdA ordering TT < aero < road");
+  const base = { ftp: 250, weightKg: 70, distanceKm: 40, sustainableW: 200 };
+  const vTT = bikePhysicsSpeedKmh({ ...base, cdA: tt.cdA, bikeKg: tt.bikeKg }).speedKmh;
+  const vRoad = bikePhysicsSpeedKmh({ ...base, cdA: road.cdA, bikeKg: road.bikeKg }).speedKmh;
+  assert.ok(vTT > vRoad + 0.3, `TT faster: ${vTT.toFixed(1)} vs ${vRoad.toFixed(1)} km/h`);
+});
+
+test("taper bonus applies only in the tapered sweet spot with real fitness", () => {
+  // fitnessPaceFactor is private — assert via the exported forecastRace path:
+  // build two athletes (tapered TSB+12 CTL 60 vs untapered TSB 0 CTL 60) and
+  // confirm the tapered one predicts a faster run-only 10k.
+  const mk = (tsb: number, ctl: number) =>
+    ({
+      current: { ctl, atl: ctl - tsb, tsb, formZone: "fresh", rampRate7d: 2, rampWarning: null as any },
+      formZone: "fresh",
+      rampRate7d: 2,
+      rampWarning: null as any,
+    }) as any;
+  const tapered = forecastRace({
+    athlete: { runPaceBase: 300, weightKg: 70 },
+    fitness: mk(12, 60),
+    distance: "10k",
+    venue: {},
+    goalTimeMin: null,
+  })!;
+  const neutral = forecastRace({
+    athlete: { runPaceBase: 300, weightKg: 70 },
+    fitness: mk(0, 60),
+    distance: "10k",
+    venue: {},
+    goalTimeMin: null,
+  })!;
+  assert.ok(tapered.totalMin < neutral.totalMin, `tapered ${tapered.totalMin} < neutral ${neutral.totalMin}`);
+});
