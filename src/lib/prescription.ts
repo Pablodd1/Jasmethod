@@ -201,13 +201,19 @@ export function structuredSteps(
     };
     const patterns: Pattern[] = [
       { label: "Speed endurance", workSec: 30, restSec: 90, workZone: "z7", restZone: "z1", workName: "All-out surge", restName: "Float recovery", cite: "neural power + stride mechanics" },
+      { label: "Rønnestad 30/15 short intervals", workSec: 30, restSec: 15, workZone: "z5", restZone: "z3", workName: "Hard — 30 s", restName: "Float — 15 s at ~50% work intensity", cite: "VO₂max, effort-matched head-to-head — ~2× the gain of long intervals, more time >90% VO₂max (Rønnestad 2015; Almquist 2020)" },
+      { label: "80/160 VO₂max repeats", workSec: 80, restSec: 160, workZone: "z5", restZone: "z2", workName: "Hard — 80 s", restName: "Easy — 160 s", cite: "VO₂max domain (Zone 3) intervals (Trube, citing Ronnestad lineage)" },
       { label: "VO₂max repeats · 1:1", workSec: 180, restSec: 180, workZone: "z5", restZone: "z2", workName: "Hard — VO₂max", restName: "Easy — float at Z2", cite: "aerobic power (Seiler 2010)" },
       { label: "Sweet spot", workSec: 720, restSec: 180, workZone: "z3", restZone: "z1", workName: "Sweet-spot block", restName: "Easy spin", cite: "sustainable power" },
       { label: "Threshold cruise intervals · 2×", workSec: 1200, restSec: 180, workZone: "z4", restZone: "z2", workName: "Threshold block", restName: "Easy recovery", cite: "lactate threshold (Stepto 1999)" },
     ];
-    // Pick by intended zone (interval z5-7 → VO2/speed; z4 → threshold; z3 → sweet spot)
-    const idx = z <= 2 ? 2 : z === 3 ? 2 : z === 4 ? 3 : z <= 6 ? 1 : 0;
-    const pat = patterns[Math.min(idx, z <= 2 ? 2 : idx)];
+    // Pick by intended zone (interval z5-7 → VO2/speed; z4 → threshold; z3 → sweet spot).
+    // Default z5-6 VO2max work is the Rønnestad 30/15 — the effort-matched
+    // head-to-head winner. The regeneration variant rotates to 80/160 and the
+    // classic 1:1 repeats so athletes get variety across the block.
+    const vo2Variant = [1, 2, 3]; // Rønnestad, 80/160, 1:1
+    const idx = z <= 2 ? 4 : z === 3 ? 4 : z === 4 ? 5 : z <= 6 ? vo2Variant[variant % vo2Variant.length] : 0;
+    const pat = patterns[Math.min(idx, z <= 2 ? 4 : idx)];
     const block = pat.workSec + pat.restSec;
     let reps = Math.max(2, Math.floor(main / block));
     // Whole-set guarantee: never exceed the main budget (rounding safety).

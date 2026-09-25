@@ -416,3 +416,22 @@ test("taper bonus applies only in the tapered sweet spot with real fitness", () 
   })!;
   assert.ok(tapered.totalMin < neutral.totalMin, `tapered ${tapered.totalMin} < neutral ${neutral.totalMin}`);
 });
+
+// ---- Max Trube MD protocol enrichment ----
+import { structuredSteps as ss } from "./prescription";
+
+test("z5 interval work defaults to Rønnestad 30/15 — the effort-matched winner", () => {
+  const steps = ss(60, "z5", "interval", 0, "run");
+  const groups = steps.map((s) => s.group || "").filter(Boolean);
+  assert.ok(groups.some((g) => /Rønnestad 30\/15/.test(g)), `group: ${groups.join("; ")}`);
+  const work = steps.find((s) => /Hard — 30 s/.test(s.name));
+  assert.ok(work, "30 s work steps present");
+  const rest = steps.find((s) => /Float — 15 s/.test(s.name));
+  assert.ok(rest && rest.seconds === 15, "15 s float recovery at half intensity");
+});
+
+test("80/160 VO2max and classic 1:1 remain available as variants", () => {
+  const steps = ss(60, "z5", "interval", 1, "run");
+  const groups = steps.map((s) => s.group || "").join("; ");
+  assert.ok(/80\/160/.test(groups) || /1:1/.test(groups), `variant groups: ${groups}`);
+});
