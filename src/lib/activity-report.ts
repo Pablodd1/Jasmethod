@@ -179,7 +179,7 @@ export function computeActivityReport(
       ? `${(units === "imperial" ? activity.distanceKm / KM_PER_MI : activity.distanceKm).toFixed(1)} ${units === "imperial" ? "mi" : "km"}`
       : null;
   lines.push(
-    `${distLine ? `${distLine} in ` : ""}${fmtDuration(activity.durationMin)}${activity.avgHr ? ` · avg HR ${activity.avgHr} bpm${activity.maxHr ? ` (peak ${activity.maxHr})` : ""}` : ""}${activity.calories ? ` · ${activity.calories} kcal` : ""}`.trim(),
+    `${distLine ? `${distLine} in ` : ""}${fmtDuration(activity.durationMin)}${activity.avgHr ? ` · avg HR ${activity.avgHr} bpm${activity.maxHr ? ` (peak ${activity.maxHr})` : ""}` : ""}${activity.calories ? ` · ${activity.calories} kcal` : ""}.`.trim(),
   );
   if (pace && paceHist.length >= 3) {
     const avg30 = paceHist.reduce((a, b) => a + b, 0) / paceHist.length;
