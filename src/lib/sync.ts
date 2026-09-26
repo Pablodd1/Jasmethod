@@ -390,19 +390,28 @@ export async function syncUserConnectors(
   // weightKg ← latest device weight. Runs after every sync cycle from the
   // PERSISTED DailyMetrics, so the profile is always device-current
   // (owner request: the whole app live from devices up).
+  let profileSynced: Record<string, unknown> | null = null;
   try {
-    await syncPhysiologyToProfile(userId);
+    profileSynced = await syncPhysiologyToProfile(userId);
   } catch (e) {
     console.warn("[sync] physiology→profile failed:", String(e).slice(0, 140));
   }
-  return { results, total: results.reduce((sum, r) => sum + r.imported, 0) };
+  return {
+    results,
+    total: results.reduce((sum, r) => sum + r.imported, 0),
+    ...(profileSynced && Object.keys(profileSynced).length
+      ? { profileSynced }
+      : {}),
+  };
 }
 
 // Derive profile physiology from persisted DailyMetrics. Device-sourced only:
 // restingHr and hrvBaseline always follow the devices; weightKg fills a blank
 // or updates a device-sourced weight — a manual athlete-entered weight is
 // never overwritten (provenance tracked in AthleteProfile.weightSource).
-export async function syncPhysiologyToProfile(userId: string): Promise<void> {
+export async function syncPhysiologyToProfile(
+  userId: string,
+): Promise<Record<string, unknown> | null> {
   const metrics = await prisma.dailyMetrics.findMany({
     where: { userId, date: { gte: new Date(Date.now() - 14 * 86400000) } },
     orderBy: { date: "asc" },
@@ -410,7 +419,7 @@ export async function syncPhysiologyToProfile(userId: string): Promise<void> {
       restingHr: true, hrv: true, weightKg: true, source: true,
     },
   });
-  if (!metrics.length) return;
+  if (!metrics.length) return null;
   const latest = [...metrics].reverse().find((m) => m.restingHr != null || m.hrv != null);
   const hrv7 = metrics.slice(-7).map((m) => m.hrv).filter((v): v is number => v != null);
   const latestWeight = [...metrics].reverse().find((m) => m.weightKg != null);
@@ -428,6 +437,7 @@ export async function syncPhysiologyToProfile(userId: string): Promise<void> {
       patch.weightSource = "device";
     }
   }
-  if (Object.keys(patch).length)
-    await prisma.athleteProfile.update({ where: { userId }, data: patch });
+  if (!Object.keys(patch).length) return null;
+  await prisma.athleteProfile.update({ where: { userId }, data: patch });
+  return patch;
 }
