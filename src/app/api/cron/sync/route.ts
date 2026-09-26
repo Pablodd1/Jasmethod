@@ -43,13 +43,14 @@ async function run(req: Request) {
     name: string;
     total: number;
     failures: { provider: string; error: string }[];
+    profileSynced?: Record<string, unknown>;
   }[] = [];
   for (const { userId } of connected) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { email: true, name: true },
     });
-    const { results, total } = await syncUserConnectors(userId);
+    const { results, total, profileSynced } = await syncUserConnectors(userId);
     const failures = results
       .filter((r) => !r.ok)
       .map((r) => ({ provider: r.provider, error: r.error || "unknown" }));
@@ -59,6 +60,7 @@ async function run(req: Request) {
       name: user?.name || "?",
       total,
       failures,
+      profileSynced: profileSynced || undefined,
     });
   }
 
