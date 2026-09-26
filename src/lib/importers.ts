@@ -870,7 +870,7 @@ export function whoopAuthUrl(cfg: WhoopConfig, state: string): string {
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
     response_type: "code",
-    scope: "read:recovery read:sleep read:cycles read:profile offline",
+    scope: "read:recovery read:sleep read:cycles read:profile read:workout offline",
     state,
   });
   return `https://api.prod.whoop.com/oauth/oauth2/auth?${params.toString()}`;
