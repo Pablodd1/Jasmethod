@@ -33,6 +33,8 @@ export interface SyncResult {
 export interface SyncSummary {
   results: SyncResult[];
   total: number;
+  /** Physiology fields the sync applied to AthleteProfile (present when any changed). */
+  profileSynced?: Record<string, unknown>;
 }
 const configs = {
   strava: { env: "STRAVA", path: "strava", refresh: api.stravaRefreshToken },
