@@ -122,6 +122,7 @@ model AthleteProfile {
   sex           String? // male | female
   heightCm      Float?
   weightKg      Float?
+  weightSource  String? // manual | device — device sync may overwrite device-sourced weights only
   experience    String  @default("beginner") // beginner | amateur | advanced | pro
   goal          String? // sprint | olympic | half | full
   raceDate      DateTime?

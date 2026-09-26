@@ -681,7 +681,7 @@ export default function TodayPage() {
                             ? "✓ JSON de Garmin descargado — impórtalo en connect.garmin.com → Entrenamiento → Workouts → Importar, y envíalo al reloj. Se abre la guía."
                             : "✓ Garmin JSON downloaded — import at connect.garmin.com → Training → Workouts → Import Workout, then send to device. Opening the guide."
                         );
-                        window.open("https://connect.garmin.com/training/workouts", "_blank");
+                        window.open("https://connect.garmin.com/modern/training/workouts", "_blank");
                         await load();
                       } catch (e: any) {
                         setError(e.message);

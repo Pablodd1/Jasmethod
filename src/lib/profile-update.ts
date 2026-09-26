@@ -79,6 +79,7 @@ export function profilePatch(body: Record<string, unknown>, timezone: string) {
       )
         throw new ApiError(`Invalid ${key}: expected ${min}–${max}`);
       data[key] = n;
+      if (key === "weightKg") data.weightSource = "manual";
     } else if (options[key]) {
       if (value === null && !["experience", "trainingWindow"].includes(key))
         data[key] = null;

@@ -356,6 +356,38 @@ export async function syncUserConnectors(
             console.warn("[sync] whoop workouts failed:", String(wkErr).slice(0, 120));
           }
         }
+
+        // DYNAMIC PROFILE: the athlete's physiology fields follow the devices.
+        // restingHr ← latest morning RHR; hrvBaseline ← 7-day RMSSD average;
+        // weightKg ← latest device weight (only fills blanks or device-sourced
+        // values — a manual athlete-entered weight is never overwritten).
+        // This is what makes the whole app live: sync → metrics → profile →
+        // prescriptions, no manual re-entry (owner request).
+        if (daily.length >= 3) {
+          const latest = daily[daily.length - 1];
+          const hrv7 = daily
+            .slice(-7)
+            .map((d) => d.hrv)
+            .filter((v) => v != null && Number.isFinite(v));
+          const profilePatch: Record<string, number> = {};
+          if (latest.restingHr != null) profilePatch.restingHr = Math.round(latest.restingHr);
+          if (hrv7.length >= 3)
+            profilePatch.hrvBaseline = Math.round(hrv7.reduce((a, b) => a + b, 0) / hrv7.length);
+          if (latest.weightKg != null) {
+            // Fill a blank weight or replace a previously device-set weight.
+            const cur = await prisma.athleteProfile.findUnique({
+              where: { userId },
+              select: { weightKg: true, weightSource: true },
+            });
+            if (cur && (cur.weightKg == null || cur.weightSource === "device"))
+              profilePatch.weightKg = +Number(latest.weightKg).toFixed(1);
+              (profilePatch as any).weightSource = "device";
+          }
+          if (Object.keys(profilePatch).length)
+            await prisma.athleteProfile
+              .update({ where: { userId }, data: profilePatch })
+              .catch(() => {});
+        }
       }
       await prisma.connector.update({
         where: { id: conn.id },
