@@ -379,9 +379,10 @@ export async function syncUserConnectors(
               where: { userId },
               select: { weightKg: true, weightSource: true },
             });
-            if (cur && (cur.weightKg == null || cur.weightSource === "device"))
+            if (cur && (cur.weightKg == null || cur.weightSource === "device")) {
               profilePatch.weightKg = +Number(latest.weightKg).toFixed(1);
               (profilePatch as any).weightSource = "device";
+            }
           }
           if (Object.keys(profilePatch).length)
             await prisma.athleteProfile
