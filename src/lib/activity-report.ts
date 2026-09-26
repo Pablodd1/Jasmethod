@@ -9,8 +9,7 @@
 // claimed: we store avg/max HR, not HR streams — fabricating them would be a lie.
 
 import { prisma } from "./db";
-import { dateKey, dayBounds } from "./dates";
-import { unitsOf, type UnitSystem } from "./units";
+import { dateKey, dayBounds } from "./dates";import { unitsOf, type UnitSystem } from "./units";
 
 // ---------- pure stat engine (unit-tested) ----------
 
@@ -264,7 +263,10 @@ export async function generateAndDeliverActivityReport(
         }),
         prisma.dailyMetrics.findUnique({
           where: {
-            userId_date: { userId, date: dateKey(activity.date, timezone) },
+            userId_date: {
+              userId,
+              date: dayBounds(timezone, activity.date).start,
+            },
           },
           select: { recoveryScore: true, hrv: true },
         }),
