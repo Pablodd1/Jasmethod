@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { dayBounds } from "./dates";
+import { generateAndDeliverActivityReport } from "./activity-report";
 
 // Provider records remain the source of measured results. A fulfilled plan is
 // linked to the import so it is never counted a second time in training load.
@@ -15,7 +16,8 @@ export async function storeActivity(
     activity.durationMin <= 0
   )
     throw new Error("Activity has invalid date or duration");
-  return prisma.$transaction(async (tx) => {
+  let savedId: string | null = null;
+  const created = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
     const existing = await tx.workout.findFirst({
       where: {
@@ -97,6 +99,7 @@ export async function storeActivity(
         ...data,
       } as any,
     });
+    savedId = saved.id;
     const { start, end } = dayBounds(timezone, new Date(activity.date));
     const candidates = await tx.workout.findMany({
       where: {
@@ -130,4 +133,13 @@ export async function storeActivity(
     }
     return true;
   });
+  // New activity → KCoach Activity Report (post-activity narrative, owner
+  // request 2026-09-26): computed from stored history, persisted on the
+  // workout, pushed to the athlete's Telegram if opted in. Report generation
+  // must never fail the ingest that produced it.
+  if (created && savedId)
+    await generateAndDeliverActivityReport(userId, timezone, savedId).catch(
+      () => {},
+    );
+  return created;
 }

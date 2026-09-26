@@ -270,6 +270,43 @@ export default function TodayPage() {
 
 
 
+        {/* KCoach Activity Reports — post-activity narrative from device sync */}
+        {!!data?.activityReports?.length && (
+          <div className="card p-4 space-y-3">
+            <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              📊 {es ? "Reporte de actividad" : "Activity report"}
+            </h2>
+            {data.activityReports.map(
+              (rep: {
+                id: string;
+                date: string;
+                title: string;
+                sport: string;
+                headline: string;
+                body: string;
+              }) => (
+                <div key={rep.id}>
+                  <p className="text-base font-semibold text-slate-900">
+                    {rep.headline}
+                  </p>
+                  {rep.body && (
+                    <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+                      {rep.body}
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1">
+                    {rep.title} ·{" "}
+                    {new Date(rep.date).toLocaleDateString(es ? "es" : "en", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </p>
+                </div>
+              ),
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2">
           <Link href="/checkin" className="btn-primary">
             {es ? "Chequeo de hoy" : "Daily check-in"}

@@ -238,6 +238,7 @@ model Workout {
   feedbackNote String?
   feedbackAt DateTime?
   matchedPlanId String? // planned session fulfilled by an imported activity
+  insights String? // KCoach activity report (JSON {headline, body}) generated at sync
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   planDay    PlanDay? @relation(fields: [planDayId], references: [id], onDelete: SetNull)

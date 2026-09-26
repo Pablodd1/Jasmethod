@@ -17,35 +17,50 @@ export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
-    const [workouts, race, connectors, checkin, supplementPrefs] = await Promise.all([
-      prisma.workout.findMany({
-        where: {
-          userId: user.id,
-          date: { gte: start, lt: end },
-          planned: true,
-        },
-        include: { planDay: { select: { notes: true, dayOff: true } } },
-        orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
-      }),
-      prisma.race.findFirst({
-        where: { userId: user.id, date: { gte: start } },
-        orderBy: [{ priority: "asc" }, { date: "asc" }],
-      }),
-      prisma.connector.findMany({
-        where: { userId: user.id },
-        select: {
-          provider: true,
-          status: true,
-          lastSyncAt: true,
-          lastSyncCount: true,
-          lastError: true,
-        },
-      }),
-      prisma.dailyCheckin.findUnique({
-        where: { userId_date: { userId: user.id, date: start } },
-      }),
-      prisma.supplementProfile.findUnique({ where: { userId: user.id } }),
-    ]);
+  const [workouts, race, connectors, checkin, supplementPrefs] = await Promise.all([
+    prisma.workout.findMany({
+      where: {
+        userId: user.id,
+        date: { gte: start, lt: end },
+        planned: true,
+      },
+      include: { planDay: { select: { notes: true, dayOff: true } } },
+      orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.race.findFirst({
+      where: { userId: user.id, date: { gte: start } },
+      orderBy: [{ priority: "asc" }, { date: "asc" }],
+    }),
+    prisma.connector.findMany({
+      where: { userId: user.id },
+      select: {
+        provider: true,
+        status: true,
+        lastSyncAt: true,
+        lastSyncCount: true,
+        lastError: true,
+      },
+    }),
+    prisma.dailyCheckin.findUnique({
+      where: { userId_date: { userId: user.id, date: start } },
+    }),
+    prisma.supplementProfile.findUnique({ where: { userId: user.id } }),
+  ]);
+
+  // KCoach Activity Reports — narratives generated at sync time (last 7 days,
+  // newest first) for the Today page report card.
+  const reported = await prisma.workout.findMany({
+    where: {
+      userId: user.id,
+      planned: false,
+      completed: true,
+      insights: { not: null },
+      date: { gte: new Date(start.getTime() - 7 * 86400000) },
+    },
+    orderBy: { date: "desc" },
+    take: 5,
+    select: { id: true, date: true, title: true, sport: true, insights: true },
+  });
 
     // Caffeine opt-out must reach every fuel recommendation (review finding F).
     const caffeineOk = caffeineAllowedFromPrefs({
@@ -191,6 +206,20 @@ export async function GET(req: Request) {
         stale: connectors.some((c: any) => c.status === "connected" && c.lastSyncAt && Date.now() - new Date(c.lastSyncAt).getTime() > 12 * 3600000),
       },
       sessions,
+      activityReports: reported.map((w) => {
+        let parsed: { headline: string; body: string } | null = null;
+        try {
+          parsed = JSON.parse(w.insights!);
+        } catch {}
+        return {
+          id: w.id,
+          date: w.date,
+          title: w.title,
+          sport: w.sport,
+          headline: parsed?.headline || "",
+          body: parsed?.body || "",
+        };
+      }),
       connectors,
       checkin: checkin
         ? {
