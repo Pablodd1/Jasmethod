@@ -1033,7 +1033,19 @@ export function generateTrackSprint(opts: {
   startDate: Date;
 }): GeneratedWeek[] {
   const { level, event, weeks, startDate } = opts;
-  const sessionsPerWeek = level === "pro" ? 6 : level === "advanced" ? 5 : 4;
+  // This template has maximal sprints and loaded plyometrics. An experience
+  // label alone cannot establish readiness; do not expose it to novices.
+  if (!["amateur", "advanced", "pro"].includes(level)) {
+    return Array.from({ length: weeks }, (_, index) => ({
+      week: index + 1,
+      theme: `${event} — coach assessment required`,
+      sessions: [{ sport: "recovery" as const, title: "Sprint baseline and technique review",
+        minutes: 0, zone: "z1" as const, type: "recovery",
+        description: "No automatic sprint dose prescribed. Review training history, injury status, technique and baseline testing with your coach before starting maximal sprints or loaded plyometrics. This is a review placeholder, not a validated beginner protocol." }],
+      totalMinutes: 0,
+    }));
+  }
+
   const isShort = event === "100m" || event === "200m";
 
   // PROTOCOL KNOWLEDGE BASE (97 cited entries: Hart/Smith/Seagrave coach
@@ -1067,7 +1079,7 @@ export function generateTrackSprint(opts: {
     const phase = w <= weeks * 0.3 ? "general_prep" : w <= weeks * 0.6 ? "specific_prep" : w <= weeks - 1 ? "pre_comp" : "comp";
     const sessions: PlanSession[] = [];
     const vol = w <= weeks * 0.7 ? 1.0 : 0.6; // reduce volume in competition phase
-    const protoSession = sprintSessionFor(PHASE_MAP[phase as keyof typeof PHASE_MAP] as any, w % 4);
+    const protoSession = sprintSessionFor(phase, w % 4);
 
     // Speed Day 1
     if (phase === "general_prep") {

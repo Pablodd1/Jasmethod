@@ -8,7 +8,7 @@ const good = { sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick:
 // ---- Coach assignment gate (pure logic) ----
 
 test("assignmentAllows: active grants, revoked/absent/consent-revoked deny", () => {
-  assert.strictEqual(assignmentAllows({ status: "active", consent: "pending" }), true);
+  assert.strictEqual(assignmentAllows({ status: "active", consent: "pending" }), false);
   assert.strictEqual(assignmentAllows({ status: "active", consent: "granted" }), true);
   assert.strictEqual(assignmentAllows({ status: "revoked", consent: "granted" }), false);
   assert.strictEqual(assignmentAllows({ status: "active", consent: "revoked" }), false);

@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${base}/login?google=not-configured`);
   }
   const state = randomBytes(16).toString("hex");
-  const store = cookies();
+  const store = await cookies();
   store.set("jmm_google_signin", state, {
     httpOnly: true,
     sameSite: "lax",

@@ -31,7 +31,7 @@ const LANGS_DISCIPLINES = [
 ];
 
 const SPORTS = ["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "boxing", "hyrox"];
-const TYPES = ["interval", "tempo", "threshold", "endurance", "recovery", "strength", "skill", "race", "test"];
+const TYPES = ["interval", "tempo", "threshold", "endurance", "recovery", "strength", "skill", "race", "test", "speed", "plyo", "volume"];
 const ZONES = ["z1", "z2", "z3", "z4", "z5", "z6", "z7"];
 
 interface W {
@@ -45,6 +45,10 @@ interface W {
   startTime?: string | null;
   planned: boolean;
   completed: boolean;
+  revision?: string;
+  feedbackStatus?: string | null;
+  feedbackAt?: string | null;
+  actualDurationMin?: number | null;
 }
 
 export function AdminCoachEditor({
@@ -52,6 +56,7 @@ export function AdminCoachEditor({
   timezone,
   lang = "en",
   profile,
+  profileRevision,
   workouts,
   onRefresh,
 }: {
@@ -59,9 +64,11 @@ export function AdminCoachEditor({
   timezone: string;
   lang?: "en" | "es";
   profile: { goal?: string | null; intensityPct?: number | null; weeklyHours?: number; experience?: string } | null;
+  profileRevision?: string;
   workouts: W[];
   onRefresh: () => void;
 }) {
+  const [editRevision, setEditRevision] = useState(profileRevision);
   const [goal, setGoal] = useState(profile?.goal || "");
   const [pct, setPct] = useState(String(profile?.intensityPct ?? 100));
   const [hours, setHours] = useState(String(profile?.weeklyHours ?? 8));
@@ -72,6 +79,12 @@ export function AdminCoachEditor({
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [addDay, setAddDay] = useState<string | null>(null);
+
+  useEffect(() => {
+    setGoal(profile?.goal || ""); setPct(String(profile?.intensityPct ?? 100));
+    setHours(String(profile?.weeklyHours ?? 8)); setEditRevision(profileRevision);
+  }, [profileRevision]);
+  const hasHistory = (w: W) => w.completed || !w.planned || Boolean(w.feedbackStatus || w.feedbackAt) || w.actualDurationMin != null;
 
   // Group workouts onto the 7 upcoming days (local to the ATHLETE's timezone —
   // approximate with the server-passed ISO dates; keys from the date part).
@@ -124,6 +137,9 @@ export function AdminCoachEditor({
       }
       onRefresh();
       return true;
+    } catch (error) {
+      setErr((error as Error).message || "Change failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -134,7 +150,8 @@ export function AdminCoachEditor({
     setProfileMsg(null);
     const ok = await call({
       action: "setProfile",
-      goal,
+      expectedRevision: editRevision,
+      goal: goal || null,
       intensityPct: Number(pct),
       weeklyHours: Number(hours),
     });
@@ -152,7 +169,7 @@ export function AdminCoachEditor({
     if (!dragId) return;
     const w = workouts.find((x) => x.id === dragId);
     setDragId(null);
-    if (!w) return;
+    if (!w || hasHistory(w) || busy) return;
     const fmt = new Intl.DateTimeFormat("en-CA", {
       timeZone: timezone,
       year: "numeric",
@@ -161,7 +178,7 @@ export function AdminCoachEditor({
     });
     const fromKey = fmt.format(new Date(w.date));
     if (fromKey === dayKey) return;
-    void call({ action: "moveWorkout", workoutId: w.id, date: dayKey });
+    void call({ action: "moveWorkout", workoutId: w.id, expectedRevision: w.revision, date: dayKey });
   }
 
   return (
@@ -193,7 +210,7 @@ export function AdminCoachEditor({
             <label className="label">Weekly hours</label>
             <input type="number" min={1} max={40} className="input" value={hours} onChange={(e) => setHours(e.target.value)} />
           </div>
-          <button onClick={saveProfile} disabled={savingProfile || busy} className="btn-primary justify-center">
+          <button onClick={saveProfile} disabled={savingProfile || busy || !editRevision} className="btn-primary justify-center">
             <Save className="w-4 h-4" /> {savingProfile ? "Saving…" : "Save profile"}
           </button>
         </div>
@@ -227,10 +244,11 @@ export function AdminCoachEditor({
                   >
                     <CalendarOff className="w-3.5 h-3.5" />
                   </button>
+                  <button title={lang === "es" ? "Permitir entrenamiento" : "Allow training on this day"} disabled={busy} className="px-1 rounded hover:bg-slate-200 text-[10px] text-slate-500" onClick={() => call({ action: "setDayOff", date: d.key, dayOff: false })}>On</button>
                   <button
                     title={lang === "es" ? "Vaciar día" : "Clear day"}
                     className="p-1 rounded hover:bg-slate-200 text-slate-500"
-                    onClick={() => confirm(`Clear all planned sessions on ${d.key}?`) && call({ action: "clearDay", date: d.key })}
+                    onClick={() => confirm(`Clear all planned sessions on ${d.key}?`) && call({ action: "clearDay", date: d.key, revisions: Object.fromEntries(d.items.map(w => [w.id, w.revision])) })}
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -272,7 +290,7 @@ export function AdminCoachEditor({
                   ) : (
                     <div
                       key={w.id}
-                      draggable
+                      draggable={!hasHistory(w) && !busy}
                       onDragStart={() => setDragId(w.id)}
                       onDragEnd={() => setDragId(null)}
                       className={`group rounded-lg border px-2 py-1.5 cursor-grab active:cursor-grabbing ${w.completed ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-white"}`}
@@ -287,13 +305,14 @@ export function AdminCoachEditor({
                           </div>
                         </div>
                         <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button className="p-0.5 rounded hover:bg-slate-200 text-slate-500" onClick={() => setEditing(w.id)}>
+                          <button disabled={hasHistory(w) || busy} title={hasHistory(w) ? "Recorded session is protected" : "Edit planned session"} className="p-0.5 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30" onClick={() => setEditing(w.id)}>
                             <Pencil className="w-3 h-3" />
                           </button>
                           <button
-                            className="p-0.5 rounded hover:bg-red-100 text-red-500"
+                            disabled={hasHistory(w) || busy}
+                            className="p-0.5 rounded hover:bg-red-100 text-red-500 disabled:opacity-30"
                             onClick={() =>
-                              confirm(`Erase "${w.title}" permanently?`) && call({ action: "deleteWorkout", workoutId: w.id })
+                              confirm(`Erase "${w.title}" permanently?`) && call({ action: "deleteWorkout", workoutId: w.id, expectedRevision: w.revision })
                             }
                           >
                             <Trash2 className="w-3 h-3" />
@@ -374,6 +393,7 @@ function EditForm({
   onSave: (p: Record<string, unknown>) => void;
   onCancel: () => void;
 }) {
+  const [revision] = useState(w.revision);
   const [title, setTitle] = useState(w.title);
   const [duration, setDuration] = useState(String(w.durationMin));
   const [zone, setZone] = useState((w.intensity || "z2").replace("Z", "z"));
@@ -390,7 +410,7 @@ function EditForm({
         <button
           className="btn-primary flex-1 justify-center !py-1 text-xs"
           disabled={busy}
-          onClick={() => onSave({ title, durationMin: Number(duration), intensity: zone })}
+          onClick={() => onSave({ expectedRevision: revision, title, durationMin: Number(duration), ...(zone !== (w.intensity || "z2") ? {intensity: zone} : {}) })}
         >
           <Save className="w-3 h-3" /> Save
         </button>

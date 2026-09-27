@@ -1,4 +1,5 @@
 "use client";
+import {BaselineTests} from "@/components/baseline-tests";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -25,6 +26,7 @@ import { t, fmtNum, type Lang } from "@/lib/i18n";
 export default function SettingsPage() {
   const { user } = useAuth();
   const lang = (user?.language || "es") as Lang;
+  const [revision, setRevision] = useState<string>();
   const [profile, setProfile] = useState<any>(null);
   const [zones, setZones] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +40,8 @@ export default function SettingsPage() {
   async function load() {
     const res = await fetch("/api/profile");
     const d = await res.json();
+    if (!res.ok) { setError(d.error || "Could not load profile"); setLoading(false); return; }
+    setRevision(d.revision);
     setProfile(d.profile);
     setZones(d.zones);
     setVo2Source(d.vo2maxSource || null);
@@ -54,6 +58,12 @@ export default function SettingsPage() {
         lthr: d.profile.lthr || "",
         maxHr: d.profile.maxHr || "",
         ftp: d.profile.ftp || "",
+        cp: d.profile.cp ?? "",
+        restingHr: d.profile.restingHr ?? "",
+        hrvBaseline: d.profile.hrvBaseline ?? "",
+        sweatRateMlH: d.profile.sweatRateMlH ?? "",
+        sodiumMgPerL: d.profile.sodiumMgPerL ?? "",
+        injured: d.profile.injured ?? false,
         runPaceBase: d.profile.runPaceBase || "",
         swimPaceBase: d.profile.swimPaceBase || "",
         trainingWindow: d.profile.trainingWindow || "any",
@@ -112,8 +122,7 @@ export default function SettingsPage() {
     e.preventDefault();
     const body: any = {};
     for (const k of Object.keys(form)) {
-      if (form[k] !== "" && form[k] !== null && form[k] !== undefined)
-        body[k] = form[k];
+      body[k] = form[k] === "" ? null : form[k];
     }
     if (body.birthYear) body.birthYear = parseInt(body.birthYear, 10);
     if (body.heightCm) body.heightCm = parseFloat(body.heightCm);
@@ -129,13 +138,13 @@ export default function SettingsPage() {
     const res = await fetch("/api/profile", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({...body, expectedRevision: revision}),
     });
     if (res.ok) {
       setSaved(true);
       load();
       setTimeout(() => setSaved(false), 2500);
-    }
+    } else { const d = await res.json(); setError(d.error || "Could not save profile"); }
   }
 
   if (loading) {
@@ -185,7 +194,7 @@ export default function SettingsPage() {
           <p className="text-slate-500 text-sm">
             {lang === "es"
               ? "Tu fisiología mueve cada sesión. Llena lo que sepas — nosotros estimamos el resto desde la investigación."
-              : "Your physiology drives every session. Fill in what you know — we estimate the rest from the research."}
+              : "Your physiology drives every session. Enter what you know. Missing values remain visible; any estimates are provisional."}
           </p>
         </div>
 
@@ -422,6 +431,8 @@ export default function SettingsPage() {
                       placeholder="e.g. 185"
                     />
                   </div>
+                  {([['cp','Critical power (watts)'],['restingHr','Resting heart rate (bpm)'],['hrvBaseline','Reviewed HRV baseline (ms)'],['sweatRateMlH','Measured sweat rate (mL/hour)'],['sodiumMgPerL','Measured sweat sodium (mg/L)']] as const).map(([field,label])=><label key={field} className="label">{label}<input className="input" type="number" step="any" value={form[field] ?? ''} onChange={e=>setForm({...form,[field]:e.target.value})}/></label>)}
+                  <label className="label flex gap-2 items-center"><input type="checkbox" checked={!!form.injured} onChange={e=>setForm({...form,injured:e.target.checked})}/>Injury restriction active — pause training for review</label>
                   <div>
                     <label className="label">FTP (watts)</label>
                     <input
@@ -690,6 +701,7 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-    </ProtectedPage>
+    <BaselineTests onSaved={load} />
+      </ProtectedPage>
   );
 }

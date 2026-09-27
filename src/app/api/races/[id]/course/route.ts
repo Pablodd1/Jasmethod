@@ -12,14 +12,14 @@ export const dynamic = "force-dynamic";
 // and race views read these instead of the distance-label guess.
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!rateLimit(`gpx:${user.id}`, 10, 60000).ok)
     return NextResponse.json({ error: "Please wait a moment." }, { status: 429 });
   const race = await prisma.race.findFirst({
-    where: { id: params.id, userId: user.id },
+    where: { id: (await params).id, userId: user.id },
   });
   if (!race) return NextResponse.json({ error: "Race not found" }, { status: 404 });
   try {
@@ -60,12 +60,12 @@ export async function POST(
 // GET — current measured course summary
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const race = await prisma.race.findFirst({
-    where: { id: params.id, userId: user.id },
+    where: { id: (await params).id, userId: user.id },
     select: { name: true, courseKm: true, courseElevM: true },
   });
   if (!race) return NextResponse.json({ error: "Race not found" }, { status: 404 });

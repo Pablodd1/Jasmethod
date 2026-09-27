@@ -1,7 +1,27 @@
+import { createHash } from "node:crypto";
 import { prisma } from "./db";
 import { ApiError } from "./access";
 import { dateKey, parseDate, localDate } from "./dates";
 import { baseWorkout } from "./prescription";
+
+export const WORKOUT_TYPES = ["interval", "tempo", "threshold", "endurance", "recovery", "strength", "skill", "race", "test", "speed", "plyo", "volume", "mobility", "hyrox", "boxing"];
+export function validateWorkoutType(value: unknown): string {
+  if (typeof value !== "string" || !WORKOUT_TYPES.includes(value)) throw new ApiError("Invalid workout type");
+  return value;
+}
+export function workoutHasHistory(w: Record<string, any>): boolean {
+  return Boolean(w.completed || !w.planned || w.feedbackStatus || w.feedbackAt || w.feedbackNote ||
+    w.actualDurationMin != null || w.rpe != null || w.avgHr != null || w.avgPower != null ||
+    w.externalId || w.matchedPlanId);
+}
+export function workoutRevision(w: Record<string, any>): string {
+  const keys = ["id", "date", "title", "sport", "type", "durationMin", "intensity", "startTime", "notes", "planned", "completed", "approved", "originalPlan", "prescription", "feedbackStatus", "actualDurationMin", "feedbackNote", "feedbackAt", "rpe", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg", "indoor", "planDayId"];
+  return createHash("sha256").update(JSON.stringify(keys.map(key => w[key] ?? null))).digest("hex");
+}
+export function requireWorkoutRevision(w: Record<string, any>, revision: unknown) {
+  if (typeof revision !== "string" || revision !== workoutRevision(w))
+    throw new ApiError("This session changed or its version is missing. Reload before editing.", 409);
+}
 
 export async function updateWorkout(
   actorId: string,
@@ -10,13 +30,18 @@ export async function updateWorkout(
 ) {
   const id = String(body.sessionId || "");
   if (!id) throw new ApiError("Session is required");
-  return prisma.$transaction(async (tx) => {
+  try { return await prisma.$transaction(async (tx) => {
     const existing = await tx.workout.findFirst({
       where: { id, userId: athlete.id },
       include: { planDay: true },
     });
     if (!existing) throw new ApiError("Session not found", 404);
+    if (body.protectHistory && workoutHasHistory(existing)) throw new ApiError("Recorded sessions and feedback cannot be rewritten by the plan editor.", 409);
+    const prescriptionKeys = ["title", "type", "durationMin", "intensity", "sport", "notes", "startTime", "date", "indoor"];
+    if (prescriptionKeys.some(key => body[key] !== undefined) || body.expectedRevision !== undefined)
+      requireWorkoutRevision(existing, body.expectedRevision);
     const data: Record<string, any> = {};
+    if (body.type !== undefined) data.type = validateWorkoutType(body.type);
     for (const [key, max] of Object.entries({
       durationMin: 1440,
       actualDurationMin: 1440,
@@ -83,6 +108,7 @@ export async function updateWorkout(
         if (typeof body[key] !== "boolean")
           throw new ApiError(`Invalid ${key}`);
         data[key] = body[key];
+        if (key === "completed") data.feedbackAt = new Date();
       }
     if (body.startTime !== undefined) {
       if (body.startTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.startTime))
@@ -101,7 +127,8 @@ export async function updateWorkout(
           existing.actualDurationMin ?? existing.durationMin;
     }
     if (body.date !== undefined) {
-      data.date = parseDate(body.date, athlete.timezone);
+      try { data.date = parseDate(body.date, athlete.timezone); } catch { throw new ApiError("Invalid session date"); }
+      if (data.date.getTime() !== existing.date.getTime()) data.approved = false;
       if (existing.planDay) {
         const targetDate = localDate(
           dateKey(data.date, athlete.timezone),
@@ -131,16 +158,23 @@ export async function updateWorkout(
             },
           });
         }
+        if (day.dayOff && (data.sport || existing.sport) !== "recovery") throw new ApiError("The destination is a rest day. Change its setting before moving training.", 409);
         data.planDayId = day.id;
       }
     }
+    const changesPlan = prescriptionKeys.some(key => data[key] !== undefined &&
+      (key === "date" ? data.date.getTime() !== existing.date.getTime() : data[key] !== existing[key as keyof typeof existing]));
+    if (changesPlan && workoutHasHistory(existing))
+      throw new ApiError("Recorded sessions and feedback cannot be rewritten. Record corrections as feedback instead.", 409);
     const prescriptionFields = [
       "title",
+      "type",
       "durationMin",
       "intensity",
       "sport",
       "notes",
       "startTime",
+      "indoor",
     ];
     const changedPrescriptionFields = prescriptionFields.filter(
       (key) =>
@@ -162,12 +196,12 @@ export async function updateWorkout(
       // title/time edit alone retains its exact set and recovery structure.
       if (
         base.protocol &&
-        ["durationMin", "intensity", "sport", "notes"].some((key) =>
+        ["durationMin", "intensity", "sport", "notes", "type"].some((key) =>
           changedPrescriptionFields.includes(key),
         )
       ) {
         delete base.protocol;
-        base.type = ["strength", "mobility", "hyrox", "boxing"].includes(
+        base.type = data.type ?? (["strength", "mobility", "hyrox", "boxing"].includes(
           base.sport,
         )
           ? base.sport
@@ -175,7 +209,7 @@ export async function updateWorkout(
             ? "recovery"
             : base.intensity === "z2"
               ? "endurance"
-              : "interval";
+              : "interval");
       }
       data.type = base.type;
       data.durationMin = base.durationMin;
@@ -199,5 +233,8 @@ export async function updateWorkout(
       },
     });
     return updated;
-  });
+  }, { isolationLevel: "Serializable" }); } catch (error: any) {
+    if (error.code === "P2034") throw new ApiError("Another session change was saved. Reload and retry.", 409);
+    throw error;
+  }
 }

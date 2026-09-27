@@ -1,0 +1,87 @@
+import assert from 'node:assert/strict';
+import {PrismaClient} from '@prisma/client';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
+import {mkdirSync,writeFileSync} from 'node:fs';
+import {dayBounds} from '../src/lib/dates';
+import {enqueueSyncJob,runSyncJobs} from '../src/lib/background-jobs';
+const url=new URL(process.env.DATABASE_URL||'');
+if(url.hostname!=='127.0.0.1'||url.pathname!=='/jmm_original_integration_utf8_test')throw Error('Only the dedicated loopback integration database is allowed');
+const db=new PrismaClient(),base='http://127.0.0.1:3220',ids:string[]=[],results:string[]=[];
+function passed(name:string){results.push(name);console.log('PASS '+name);}
+async function actor(role:string){const u=await db.user.create({data:{email:`integration-${randomUUID()}@example.invalid`,name:`Test ${role}`,passwordHash:'not-a-login',role,timezone:'UTC',profile:{create:{goal:'run-only',ftp:200,maxHr:190}},motivation:{create:{dailyQuote:true}}}});ids.push(u.id);const token=randomBytes(32).toString('hex');await db.authSession.create({data:{userId:u.id,tokenHash:createHash('sha256').update(token).digest('hex'),expiresAt:new Date(Date.now()+3600000)}});return {...u,cookie:`jmm_session=${token}`};}
+async function call(path:string,cookie:string,body?:any,status=200,method=body?'POST':'GET'){
+ const r=await fetch(base+path,{method,headers:{cookie,'Content-Type':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})});const text=await r.text();assert.equal(r.status,status,`${method} ${path}: ${text.slice(0,500)}`);return text?JSON.parse(text):null;
+}
+async function main(){
+ const a=await actor('athlete'),b=await actor('athlete'),c=await actor('coach'),admin=await actor('admin');
+ const scope=`?athleteId=${a.id}`;
+ await call('/api/profile'+scope,b.cookie,undefined,403);
+ const assignment=await db.coachAssignment.create({data:{athleteId:a.id,coachId:c.id,consent:'pending'}});
+ await call('/api/profile'+scope,c.cookie,undefined,403);
+ const roster=await call('/api/admin',c.cookie);assert.ok(!JSON.stringify(roster).includes(a.email));
+ await call('/api/coaching/assignments',a.cookie,{id:assignment.id,consent:'granted'},200,'PUT');
+ let profile=await call('/api/profile'+scope,c.cookie);assert.equal(profile.profile.ftp,200);passed('Athlete isolation and pending/granted coach consent');
+ const savedProfile=await call('/api/profile'+scope,c.cookie,{ftp:230,expectedRevision:profile.revision,reason:'Reviewed threshold'},200,'PUT');
+ assert.equal(savedProfile.revision,(await call('/api/profile'+scope,c.cookie)).revision);
+ await call('/api/profile',a.cookie,{ftp:250,expectedRevision:profile.revision},409,'PUT');
+ profile=await call('/api/profile',a.cookie);assert.equal(profile.profile.ftp,230);
+ await call('/api/profile',a.cookie,{lthr:220,expectedRevision:profile.revision},400,'PUT');
+ assert.equal((await call('/api/profile',a.cookie)).profile.ftp,230);passed('Shared profile editor prevents stale overwrites and inconsistent HR anchors');
+ await call('/api/benchmarks',a.cookie,{action:'nonsense'},400);
+ const testDate=new Date(Date.now()-86400000).toISOString().slice(0,10);
+ await call('/api/benchmarks',a.cookie,{action:'record',type:'cp',result:275,date:testDate,applyBaseline:true,expectedRevision:profile.revision});
+ profile=await call('/api/profile',a.cookie);assert.equal(profile.profile.cp,275);assert.equal(profile.profile.ftp,230);
+ await call('/api/benchmarks',a.cookie,{action:'record',type:'run5k',result:1200,date:testDate,applyBaseline:true,expectedRevision:profile.revision});
+ assert.equal((await call('/api/profile',a.cookie)).profile.runPaceBase,null);
+ await call('/api/benchmarks',a.cookie,{action:'record',type:'ftp',result:'250watts',date:testDate},400);
+ const stale=profile.revision;
+ await call('/api/profile',a.cookie,{weightKg:70,expectedRevision:profile.revision},200,'PUT');
+ await call('/api/benchmarks',a.cookie,{action:'record',type:'ftp',result:260,date:testDate,applyBaseline:true,expectedRevision:stale},409);
+ passed('Manual tests are validated, auditable and update only the explicitly selected matching baseline');
+ const clientId=randomUUID();await call('/api/coaching/messages',a.cookie,{body:'Please review tomorrow’s session',clientId});
+ await call('/api/coaching/messages',a.cookie,{body:'Please review tomorrow’s session',clientId});
+ assert.equal(await db.coachingMessage.count({where:{athleteId:a.id}}),1);
+ await call('/api/coaching/messages'+scope,c.cookie,{body:'I will review the saved plan before changing it.',clientId:randomUUID()});
+ assert.equal((await call('/api/coaching/messages',a.cookie)).messages.length,2);
+ await call('/api/coaching/messages'+scope,b.cookie,undefined,403);
+ await call('/api/coaching/assignments',a.cookie,{id:assignment.id,consent:'revoked'},200,'PUT');
+ await call('/api/coaching/messages'+scope,c.cookie,undefined,403);
+ await call('/api/coaching/messages'+scope,c.cookie,{body:'Not allowed',clientId:randomUUID()},403);
+ passed('Shared conversation is idempotent, scoped and immediately blocks revoked coaches');
+ const day=dayBounds('UTC').start;
+ const w=await db.workout.create({data:{userId:a.id,date:day,title:'Easy endurance',sport:'run',type:'endurance',durationMin:40,intensity:'z2',planned:true}});
+ await call('/api/checkin',a.cookie,{sleep:4,soreness:2,motivation:4,energy:4,stress:2,sick:false,availableMinutes:30});
+ assert.equal(await db.connector.count({where:{userId:a.id}}),0);
+ const today=await call('/api/today',a.cookie);assert.ok(today.sessions[0].durationMin<=30);assert.equal(today.motivation.source,'JMM coaching cue');
+ assert.equal(await db.dailyMetrics.count({where:{userId:a.id,hrv:{not:null}}}),0);passed('Device-free check-in adapts today without inventing HRV and displays personalized daily cue');
+ await db.motivationPref.update({where:{userId:a.id},data:{dailyQuote:false}});assert.equal((await call('/api/today',a.cookie)).motivation,null);passed('Daily coaching cue opt-out honored');
+ await call('/api/auth/demo','',{email:a.email},410);passed('Shared public demo login disabled');
+ const beforeChat=await db.workout.findUniqueOrThrow({where:{id:w.id}});
+ const chat=await call('/api/assistant',a.cookie,{question:'Make my training harder today',externalConsent:false});
+ assert.equal((await db.workout.findUniqueOrThrow({where:{id:w.id}})).prescription,beforeChat.prescription);
+ assert.ok(chat.answer);passed('Conversation returns an explanation/proposal without rewriting the prescription');
+ const board=await call(`/api/admin/athletes/${a.id}`,admin.cookie);
+ const shown=board.workouts.find((x:any)=>x.id===w.id);
+ await call('/api/plan',a.cookie,{sessionId:w.id,durationMin:25,expectedRevision:shown.revision},200,'PUT');
+ await call('/api/plan',a.cookie,{sessionId:w.id,durationMin:35,expectedRevision:shown.revision},409,'PUT');
+ await call('/api/plan',a.cookie,{sessionId:w.id,feedbackStatus:'skipped',feedbackNote:'Work commitments'},200,'PUT');
+ const board2=await call(`/api/admin/athletes/${a.id}`,admin.cookie);
+ await call(`/api/admin/athletes/${a.id}/editor`,admin.cookie,{action:'deleteWorkout',workoutId:w.id,expectedRevision:board2.workouts.find((x:any)=>x.id===w.id).revision},409,'PATCH');
+ passed('Athlete and coach editors share revision checks and preserve skipped-session history');
+ const audit=await db.auditLog.count({where:{subjectId:a.id}});assert.ok(audit>=5);passed('Profile, baseline and consent changes leave audit records');
+ await call(`/api/admin/athletes/${a.id}`,admin.cookie);passed('Administrator athlete dashboard data loads on migrated database');
+ const queued=await enqueueSyncJob(a.id,'sync','test:'+a.id,{provider:'oura'});
+ assert.equal((await enqueueSyncJob(a.id,'sync','test:'+a.id,{provider:'oura'})).id,queued.id);
+ let executions=0;
+ await Promise.all([runSyncJobs(1,async()=>{executions++;}),runSyncJobs(1,async()=>{executions++;})]);
+ assert.equal(executions,1);assert.equal((await db.syncJob.findUniqueOrThrow({where:{id:queued.id}})).status,'done');
+ const interrupted=await enqueueSyncJob(a.id,'sync','interrupted:'+a.id,{provider:'oura'});
+ await db.syncJob.update({where:{id:interrupted.id},data:{status:'running',attempts:5,leasedUntil:new Date(0)}});
+ await runSyncJobs(1,async()=>{throw Error('Should not run exhausted job');});
+ assert.equal((await db.syncJob.findUniqueOrThrow({where:{id:interrupted.id}})).status,'failed');
+ passed('Real PostgreSQL queue deduplicates jobs, permits one concurrent claim and caps crashed attempts');
+ // Physiology updates preserve a measured athlete reference.
+ assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:a.id}})).ftp,230);
+ console.log(`${results.length} integration scenarios passed`);
+}
+main().then(()=>{mkdirSync('.local',{recursive:true});writeFileSync('.local/coaching-integration.json',JSON.stringify({passed:results.length,results,liveProviders:false,physicalDevices:false},null,2));}).finally(async()=>{await db.syncJob.deleteMany({where:{userId:{in:ids}}});await db.user.deleteMany({where:{id:{in:ids}}});await db.$disconnect();});

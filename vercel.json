@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/feedback-ingest",
       "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/worker",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

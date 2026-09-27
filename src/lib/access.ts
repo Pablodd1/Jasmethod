@@ -19,12 +19,7 @@ export function assignmentAllows(assignment: {
 } | null): boolean {
   if (!assignment) return false;
   if (assignment.status !== "active") return false;
-  // An explicit athlete REVOCATION cuts access even if the row is otherwise
-  // active; "pending" consent still allows coaching in this pilot (admin
-  // creates assignments deliberately) — the athlete grant/revoke toggle is
-  // the documented next step.
-  if (assignment.consent === "revoked") return false;
-  return true;
+  return assignment.consent === "granted";
 }
 
 // Cross-athlete health-data access: admin = platform owner (all athletes);

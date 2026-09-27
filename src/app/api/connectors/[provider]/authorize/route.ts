@@ -1,7 +1,7 @@
 import { authorize } from "@/lib/oauth";
-export function GET(
+export async function GET(
   req: Request,
-  { params }: { params: { provider: string } },
+  { params }: { params: Promise<{ provider: string }> },
 ) {
-  return authorize(req, params.provider);
+  return authorize(req, (await params).provider);
 }

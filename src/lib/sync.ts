@@ -1,6 +1,6 @@
 import { prisma } from "./db";
 import { encryptSecret, decryptSecret } from "./crypto";
-import { dayBounds, dateKey, localDate } from "./dates";
+import { addDaysKey, dayBounds, dateKey, localDate } from "./dates";
 import { storeActivity } from "./activity-store";
 import * as api from "./importers";
 import { buildFuelingPlan } from "./fueling";
@@ -306,14 +306,8 @@ export async function syncUserConnectors(
             ...(values.hrv != null ? { hrvType: "rmssd" } : {}),
             source: conn.provider,
           };
-          await prisma.dailyMetrics.upsert({
-            where: { userId_date: { userId, date } },
-            create: { userId, date, ...data },
-            update: data,
-          });
-          // PROVENANCE: every device value also lands as an immutable
-          // MetricObservation (review finding D) — the derived daily row can
-          // be rebuilt or audited from raw observations per source.
+          // Retain the latest daily snapshot per provider, separately from
+          // the legacy summary row used by existing coaching screens.
           const obs: {
             userId: string; observedAt: Date; metricType: string;
             value: number; unit: string; source: string;
@@ -328,8 +322,9 @@ export async function syncUserConnectors(
           push("sleep_hours", values.sleepHours, "h");
           push("sleep_score", values.sleepScore, "score");
           push("recovery_score", values.recoveryScore, "score");
-          if (obs.length)
-            await prisma.metricObservation.createMany({ data: obs, skipDuplicates: false });
+          await prisma.$transaction(async tx => {
+            await persistDeviceDay(tx, userId, date, conn.provider, data, obs);
+          });
           imported++;
         }
         // WHOOP completed workouts — the activity half of WHOOP ingestion
@@ -342,7 +337,7 @@ export async function syncUserConnectors(
             for (const wk of whoopWorkouts) {
               const storedW = await storeActivity(userId, user.timezone, {
                 externalId: wk.externalId,
-                sport: "other",
+                sport: wk.sport,
                 date: wk.start,
                 durationMin: wk.durationMin,
                 avgHr: wk.avgHr,
@@ -354,8 +349,8 @@ export async function syncUserConnectors(
               if (storedW) imported++;
             }
           } catch (wkErr) {
-            // Workout ingestion is additive — never fail the whole sync for it.
-            console.warn("[sync] whoop workouts failed:", String(wkErr).slice(0, 120));
+            // Missing workout permission or provider failure must remain visible.
+            throw wkErr;
           }
         }
       }
@@ -387,11 +382,8 @@ export async function syncUserConnectors(
       results.push({ provider: conn.provider, ok: false, imported: 0, error });
     }
   }
-  // DYNAMIC PROFILE: the athlete's physiology fields follow the devices —
-  // restingHr ← latest morning RHR; hrvBaseline ← 7-day RMSSD average;
-  // weightKg ← latest device weight. Runs after every sync cycle from the
-  // PERSISTED DailyMetrics, so the profile is always device-current
-  // (owner request: the whole app live from devices up).
+  // Reference physiology is filled only from quality-gated observations.
+  // Explicit profile values are retained until athlete/coach review.
   let profileSynced: Record<string, unknown> | null = null;
   try {
     profileSynced = await syncPhysiologyToProfile(userId);
@@ -407,39 +399,84 @@ export async function syncUserConnectors(
   };
 }
 
-// Derive profile physiology from persisted DailyMetrics. Device-sourced only:
-// restingHr and hrvBaseline always follow the devices; weightKg fills a blank
-// or updates a device-sourced weight — a manual athlete-entered weight is
-// never overwritten (provenance tracked in AthleteProfile.weightSource).
-export async function syncPhysiologyToProfile(
-  userId: string,
-): Promise<Record<string, unknown> | null> {
-  const metrics = await prisma.dailyMetrics.findMany({
-    where: { userId, date: { gte: new Date(Date.now() - 14 * 86400000) } },
-    orderBy: { date: "asc" },
-    select: {
-      restingHr: true, hrv: true, weightKg: true, source: true,
-    },
-  });
-  if (!metrics.length) return null;
-  const latest = [...metrics].reverse().find((m) => m.restingHr != null || m.hrv != null);
-  const hrv7 = metrics.slice(-7).map((m) => m.hrv).filter((v): v is number => v != null);
-  const latestWeight = [...metrics].reverse().find((m) => m.weightKg != null);
-  const patch: Record<string, unknown> = {};
-  if (latest?.restingHr != null) patch.restingHr = Math.round(latest.restingHr);
-  if (hrv7.length >= 3)
-    patch.hrvBaseline = Math.round(hrv7.reduce((a, b) => a + b, 0) / hrv7.length);
-  if (latestWeight?.weightKg != null) {
-    const profile = await prisma.athleteProfile.findUnique({
-      where: { userId },
-      select: { weightKg: true, weightSource: true },
-    });
-    if (profile && (profile.weightKg == null || profile.weightSource === "device")) {
-      patch.weightKg = +Number(latestWeight.weightKg).toFixed(1);
-      patch.weightSource = "device";
-    }
+// Shared snapshot writer; lock serializes device providers for this athlete.
+export async function persistDeviceDay(tx: any, userId: string, date: Date, provider: string, data: any, observations: any[]) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+  await tx.metricObservation.deleteMany({ where: {
+    userId, observedAt: date, source: provider, measurementMethod: "device_sync",
+  }});
+  if (observations.length) await tx.metricObservation.createMany({ data: observations });
+  const previous = await tx.dailyMetrics.findUnique({ where: { userId_date: { userId, date } } });
+  // Legacy check-ins lack field-level provenance: do not replace their values.
+  if (previous?.source === "manual") return;
+  const source = previous && previous.source !== provider ? "mixed" : provider;
+  const projection: Record<string, unknown> = { ...data, source };
+  if (previous?.source === provider) {
+    for (const field of ["hrv", "restingHr", "sleepHours", "sleepScore", "recoveryScore"])
+      if (!(field in data)) projection[field] = null;
+    if (!("hrv" in data)) projection.hrvType = null;
   }
-  if (!Object.keys(patch).length) return null;
-  await prisma.athleteProfile.update({ where: { userId }, data: patch });
+  if (previous) {
+    // A concurrent check-in can become manual without taking the device lock.
+    await tx.dailyMetrics.updateMany({ where: { userId, date, source: { not: "manual" } }, data: projection });
+  } else {
+    await tx.dailyMetrics.create({ data: { userId, date, ...projection } });
+  }
+}
+
+// Seven distinct prior calendar days from one RMSSD source are required.
+// Existing references are never silently replaced: the schema does not yet
+// record who approved an HRV/RHR reference or its measurement method.
+export function physiologyReferencePatch(
+  observations: { observedAt: Date; metricType: string; value: number; source: string; measurementMethod: string | null; qualityFlag?: string | null }[],
+  profile: { hrvBaseline?: number | null; restingHr?: number | null },
+  timezone: string, now = new Date(),
+): Record<string, number> {
+  const today = dateKey(now, timezone);
+  const first = addDaysKey(today, -7);
+  const eligible = observations.filter(o =>
+    ["oura", "whoop"].includes(o.source) && o.measurementMethod === "device_sync" &&
+    (!o.qualityFlag || o.qualityFlag === "ok") &&
+    dateKey(o.observedAt, timezone) >= first && dateKey(o.observedAt, timezone) < today &&
+    Number.isFinite(o.value));
+  const patch: Record<string, number> = {};
+  // A source switch is not evidence that two methods/devices are comparable.
+  for (const [metric, field, min, max] of [
+    ["hrv_rmssd", "hrvBaseline", 1, 300], ["resting_hr", "restingHr", 25, 150],
+  ] as const) {
+    if (profile[field] != null) continue;
+    const rows = eligible.filter(o => o.metricType === metric && o.value >= min && o.value <= max);
+    if (new Set(rows.map(o => o.source)).size !== 1) continue;
+    const days = new Map(rows.map(o => [dateKey(o.observedAt, timezone), o.value]));
+    if (days.size !== 7) continue;
+    patch[field] = Math.round(Array.from(days.values()).reduce((a, b) => a + b, 0) / 7);
+  }
   return patch;
+}
+
+export async function syncPhysiologyToProfile(userId: string): Promise<Record<string, unknown> | null> {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { timezone: true } });
+  const now = new Date();
+  const start = localDate(addDaysKey(dateKey(now, user.timezone), -7), user.timezone);
+  return prisma.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+    const profile = await tx.athleteProfile.findUnique({ where: { userId },
+      select: { hrvBaseline: true, restingHr: true } });
+    if (!profile) return null;
+    const observations = await tx.metricObservation.findMany({ where: {
+      userId, observedAt: { gte: start, lt: dayBounds(user.timezone, now).start },
+      source: { in: ["oura", "whoop"] }, measurementMethod: "device_sync",
+      metricType: { in: ["hrv_rmssd", "resting_hr"] },
+    }, orderBy: { createdAt: "asc" } });
+    const patch = physiologyReferencePatch(observations, profile, user.timezone, now);
+    if (!Object.keys(patch).length) return null;
+    // Conditional per-field writes also preserve a concurrent manual edit,
+    // which is not required to acquire the sync advisory lock.
+    const applied: Record<string, number> = {};
+    for (const [field, value] of Object.entries(patch)) {
+      const result = await tx.athleteProfile.updateMany({ where: { userId, [field]: null }, data: { [field]: value } });
+      if (result.count) applied[field] = value;
+    }
+    return Object.keys(applied).length ? applied : null;
+  });
 }

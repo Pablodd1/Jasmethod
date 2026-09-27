@@ -1,3 +1,4 @@
+import { supplementAllowed } from "./supplement-db";
 // JasMiamiMethod — Adaptive Engine
 // The "changes daily/weekly/monthly, individualized, easy to change" layer.
 // Pure functions (no DB, no I/O) so everything here is unit-testable.
@@ -720,7 +721,7 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     dose: "3-5 g/day",
     when: "Any time, daily",
     benefit:
-      "Power, strength, repeat-sprint + recovery; small endurance benefit. 2025 umbrella review of 61 RCT meta-analyses: best-evidenced supplement in sport (Ashtary-Larky 2025). For combat/contact athletes: also neuroprotective — brain-cell energy (ATP) support after sub-concussive impacts (Giraldo 2025, active mTBI trial NCT06644131). Also counters age-related anabolic resistance in masters athletes.",
+      "Power, strength, repeat-sprint + recovery; small endurance benefit. 2025 umbrella review of 61 RCT meta-analyses: best-evidenced supplement in sport (Ashtary-Larky 2025). Also counters age-related anabolic resistance in masters athletes.",
     caution:
       "Expect ~1kg water-weight gain during loading. 2025 safety review: no adverse effects on kidney/liver function in healthy people across the lifespan (Kreider 2025). Monohydrate only — other forms are pricier without better evidence.",
   },
@@ -741,18 +742,6 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     when: "90-150 min pre-race (not daily)",
     benefit: "Buffers high-intensity efforts (800m swim, sprint finish).",
     caution: "GI distress risk — test in training first, never on race day.",
-  },
-  // ---- BOXING / COMBAT BRAIN-HEALTH STACK (2025 ISSN combat position stand) ----
-  {
-    key: "dha",
-    name: "Omega-3 DHA (brain protection)",
-    evidence: "B",
-    dose: "1-2 g DHA + 0.5-1 g EPA daily",
-    when: "Daily with a fat-containing meal (not acute — builds over weeks)",
-    benefit:
-      "DHA is the dominant structural fat in neuronal membranes; higher blood omega-3 = lower neuroaxonal injury markers after a season of repetitive head impacts. Emerging caution: EPA alone may interfere with repair after repeated mTBI — take combined DHA>EPA, not EPA solo (Beauregard 2025; Heileson 2024; ISSN combat 2025).",
-    caution:
-      "Blood-thinning at >3g/d — tell your doctor if on anticoagulants. This is neuroprotection support, NOT a helmet substitute.",
   },
   {
     key: "choline",
@@ -847,12 +836,9 @@ export function recommendErgogenics(
   if (session.type === "test" || session.type === "race")
     picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "bicarb")!);
 
-  // BOXING / COMBAT: brain protection + explosive-power stack — boxing is an
-  // explosive, brain-inflammation-dependent sport (repetitive sub-concussive
-  // impacts), and most boxers don't know what to take. We guide them.
+  // Combat recommendations concern performance, never protection from head impacts.
   if (session.sport === "boxing") {
-    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!); // neuroprotective + power (Giraldo 2025)
-    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "dha")!); // DHA brain protection
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!); // repeated-effort power
     picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "choline")!); // reaction speed
     if (!shortIntense)
       picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "betaAlanine")!); // 1-4 min round buffering
@@ -862,7 +848,7 @@ export function recommendErgogenics(
   const liked = picks.filter((e) => prefs.likes.includes(e.key));
   const neutral = picks.filter((e) => !prefs.likes.includes(e.key));
   const filtered = [...liked, ...neutral].filter(
-    (e) => !prefs.dislikes.includes(e.key) && !prefs.optsOut.includes(e.key),
+    (e, index, list) => supplementAllowed(e.key, prefs) && list.findIndex(x => x.key === e.key) === index,
   );
 
   const reason = filtered.length
@@ -1353,10 +1339,7 @@ export function prescribeToday(opts: {
 }
 
 // ---------- PROGRESSION OVERSIGHT ----------
-// Watches completed vs planned load week-by-week. If the athlete is nailing
-// their weeks (≥85% sessions completed), the next cycle can push harder.
-// If they're missing sessions (<60%), prescribe a deload before injury does.
-// ponytail: simple completion-% heuristic; per-zone TRAC-style load model if precision matters
+// Summarizes adherence. Completion alone cannot justify dose changes or infer adaptation.
 export function progressionAdvice(
   recentWeeks: { weekStart: Date; planned: number; completed: number }[],
 ): {
@@ -1383,21 +1366,11 @@ export function progressionAdvice(
           100,
       )
     : pct;
-  if (last3Pct >= 85)
-    return {
-      status: "push",
-      pct,
-      message: `${last3Pct}% completion over the last 3 weeks — you're absorbing the load. The next cycle pushes +5-8%. Keep sleeping.`,
-    };
-  if (last3Pct < 60)
-    return {
-      status: "deload",
-      pct,
-      message: `${last3Pct}% completion — life is winning. Next week auto-scales down ~20% (volume, not intensity). Missing sessions is data, not failure.`,
-    };
+  // Completion is adherence, not evidence of recovery or physiological adaptation.
+  // No dose increase/decrease is authorized by this summary alone.
   return {
     status: "on_track",
     pct,
-    message: `${pct} completion — steady. The plan ramps as designed.`,
+    message: `${last3Pct}% completion across ${last3.length} recorded week${last3.length === 1 ? "" : "s"}. ${last3Pct < 60 ? "Review missed sessions and availability with your coach." : "Review effort, recovery and performance trends before changing training load."}`,
   };
 }

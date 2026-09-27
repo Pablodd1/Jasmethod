@@ -61,6 +61,7 @@ export async function GET() {
       connectUrl: configured
         ? `/api/connectors/${p.path || p.id}/authorize`
         : null,
+      capabilities: { imports: true, publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
       status:
         connectors.find((c) => c.provider === p.id)?.status || "disconnected",
     };
@@ -71,7 +72,8 @@ export async function GET() {
         id: "garmin",
         name: "Garmin / COROS",
         description:
-          "Upload TCX or Garmin activities CSV. Direct watch sync is not enabled.",
+          "Upload completed TCX or Garmin activities CSV. Automatic Garmin/COROS imports and structured workout delivery are not implemented.",
+        capabilities: { imports: "file", publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
       },
       {
         id: "apple",

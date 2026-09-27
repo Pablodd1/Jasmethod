@@ -4,9 +4,7 @@ import { FlaskConical, X } from "lucide-react";
 import { useState } from "react";
 
 // Small marketing banner: shown when VO2max / LTHR are not from a real test.
-// Message: your numbers are estimates (validated formula from resting HR —
-// Uth-Sørensen 2004, ~0.8 ml/kg/min accuracy); get the real ones via the
-// 20-min field test (Labs) or a lab test. Dismissible per device.
+// Estimates are provisional and cannot be presented as individual lab accuracy.
 export function EstimateBanner({
   vo2maxMissing,
   lthrMissing,
@@ -39,7 +37,7 @@ export function EstimateBanner({
             ? vo2maxSource?.includes("rhr")
               ? "VO2max estimated from resting HR — refine it with a field test"
               : "No VO2max test yet — add a morning resting HR and we estimate it for you"
-            : "LTHR estimated — a 30-min field test sets your real zones"}
+            : "LTHR estimated — review an appropriate threshold test before updating zones"}
         </span>
         <a href="/labs" className="underline font-semibold flex-none">
           Labs →
@@ -75,29 +73,29 @@ export function EstimateBanner({
           <p className="text-sm text-slate-600 mt-1 leading-snug">
             Right now we estimate{" "}
             {[
-              vo2maxMissing && "VO2max from your resting HR (Uth-Sørensen 2004 formula — accurate to ~±1 ml/kg/min, surprisingly close)",
+              vo2maxMissing && "VO2max from available heart-rate inputs (a provisional estimate, not a laboratory measurement)",
               lthrMissing && "LTHR from your max HR",
             ]
               .filter(Boolean)
               .join(" and ")}
-            . It's a good start — but one test replaces the estimate with{" "}
+            . Accuracy for an individual is uncertain. A suitable reviewed test can help establish{" "}
             <strong>your</strong> physiology:
           </p>
           <ul className="text-sm text-slate-700 mt-2 space-y-1">
             <li>
-              🧪 <strong>Field test (free, 20-30 min):</strong>{" "}
+              🧪 <strong>Field assessment:</strong>{" "}
               <a href="/labs" className="underline text-ocean-700">
                 run it from Labs
               </a>{" "}
-              — 30-min time trial for LTHR, or the 20-min protocol for VO2max.
+              — select a test appropriate to your sport, experience and current health with your coach.
             </li>
             <li>
-              🏥 <strong>Lab test (~$100-250):</strong> the gold standard —
+              🏥 <strong>Laboratory assessment:</strong> the gold standard —
               lactate threshold + gas-exchange VO2max. Upload the results in{" "}
               <a href="/labs" className="underline text-ocean-700">
                 Labs
               </a>{" "}
-              and every zone, prescription and fuel plan recalibrates.
+              then review the baseline change and existing prescriptions before sending updated workouts.
             </li>
           </ul>
         </div>

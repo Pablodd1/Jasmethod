@@ -29,7 +29,7 @@ assert.ok(long.brands.length > short.brands.length, "long sessions → more bran
 
 // research sources
 assert.ok(RESEARCH_SOURCES.length >= 15, "comprehensive evidence base");
-assert.ok(RESEARCH_SOURCES.every((s) => ["A", "B"].includes(s.level)), "levels valid");
+assert.ok(RESEARCH_SOURCES.every((s) => ["A", "B", "C"].includes(s.level)), "levels valid");
 assert.ok(RESEARCH_SOURCES.every((s) => ["recreational", "professional", "both"].includes(s.population)), "populations valid");
 assert.ok(sourcesFor(["seiler2009"]).length === 1, "source lookup by id");
 assert.ok(sourcesFor(["seiler2009"])[0].ref.includes("Seiler"), "correct citation");

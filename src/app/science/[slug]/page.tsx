@@ -12,8 +12,8 @@ export function generateStaticParams() {
   return SLUGS.map((slug) => ({ slug }));
 }
 
-export function generateMetadata({ params }: { params: { slug: string } }): Metadata {
-  const topic = TOPICS[params.slug as TopicSlug];
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const topic = TOPICS[(await params).slug as TopicSlug];
   if (!topic) return { title: "Not found — JasMiamiMethod" };
   return {
     title: `${topic.title} — The Science — JasMiamiMethod`,
@@ -21,8 +21,8 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
   };
 }
 
-export default function TopicPage({ params }: { params: { slug: string } }) {
-  const topic = TOPICS[params.slug as TopicSlug];
+export default async function TopicPage({ params }: { params: Promise<{ slug: string }> }) {
+  const topic = TOPICS[(await params).slug as TopicSlug];
   if (!topic) notFound();
 
   // prev / next navigation across the five guides

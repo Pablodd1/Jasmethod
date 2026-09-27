@@ -1,3 +1,4 @@
+import { workoutRevision } from "@/lib/workout-update";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { dayBounds, dateKey, localDate, parseDate } from "@/lib/dates";
@@ -76,9 +77,9 @@ export async function GET(req: Request) {
   ]);
   return NextResponse.json({
     events,
-    workouts,
+    workouts: workouts.map(w => ({...w, revision: workoutRevision(w)})),
     races,
-    plan: plans[0] || null,
+    plan: plans[0] ? {...plans[0], days: plans[0].days.map(day => ({...day, sessions: day.sessions.map(w => ({...w,revision:workoutRevision(w)}))}))} : null,
   });
 }
 

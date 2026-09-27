@@ -14,3 +14,9 @@ prisma/dev.db-journal
 .playwright-cli/
 output/playwright/
 jas2
+
+.local/
+*-review.log
+install-review.log
+typecheck.log
+build-review.log

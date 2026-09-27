@@ -25,7 +25,9 @@ export async function storeActivity(
       },
     });
     if (existing) {
+      await clearActivityLinks(tx, userId, [existing.id]);
       const fields = [
+        "sport",
         "title",
         "date",
         "durationMin",
@@ -48,6 +50,7 @@ export async function storeActivity(
           actualDurationMin: activity.durationMin,
         },
       });
+      await matchActivity(tx, userId, timezone, { ...existing, ...activity, id: existing.id });
       return false;
     }
     const same = await tx.workout.findFirst({
@@ -97,37 +100,51 @@ export async function storeActivity(
         ...data,
       } as any,
     });
-    const { start, end } = dayBounds(timezone, new Date(activity.date));
-    const candidates = await tx.workout.findMany({
-      where: {
-        userId,
-        planned: true,
-        completed: false,
-        matchedPlanId: null,
-        sport: activity.sport,
-        date: { gte: start, lt: end },
-      },
-    });
-    const eligible = candidates.filter(
-      (w) =>
-        Math.abs(w.durationMin - activity.durationMin) <=
-        Math.max(10, w.durationMin * 0.3),
-    );
-    // Multi-candidate days: pick the CLOSEST duration match (relative gap)
-    // instead of leaving the day for manual reconciliation — still strictly
-    // one-to-one; the others stay planned. Ambiguity beyond tolerance is
-    // still manual.
-    if (eligible.length >= 1) {
-      const best = eligible.reduce((a, b) => {
-        const gapA = Math.abs(a.durationMin - activity.durationMin) / Math.max(1, a.durationMin);
-        const gapB = Math.abs(b.durationMin - activity.durationMin) / Math.max(1, b.durationMin);
-        return gapB < gapA ? b : a;
-      });
-      await tx.workout.update({
-        where: { id: best.id },
-        data: { completed: true, matchedPlanId: saved.id },
-      });
-    }
+    await matchActivity(tx, userId, timezone, saved);
     return true;
+  });
+}
+
+// A duration alone cannot distinguish a morning interval session from an
+// evening easy run. Abstain whenever more than one prescription could fit.
+export function selectUnambiguousPlan<T extends { durationMin: number }>(
+  candidates: T[], actualDurationMin: number,
+): T | null {
+  const eligible = candidates.filter(w =>
+    Math.abs(w.durationMin - actualDurationMin) <= Math.max(10, w.durationMin * 0.3));
+  return eligible.length === 1 ? eligible[0] : null;
+}
+
+async function matchActivity(tx: any, userId: string, timezone: string, activity: any) {
+  const { start, end } = dayBounds(timezone, new Date(activity.date));
+  const candidates = await tx.workout.findMany({ where: {
+    userId, planned: true, completed: false, matchedPlanId: null,
+    feedbackStatus: null,
+    sport: activity.sport, date: { gte: start, lt: end },
+  }});
+  const best = selectUnambiguousPlan<any>(candidates, activity.durationMin);
+  if (best) await tx.workout.update({ where: { id: best.id },
+    data: { completed: true, matchedPlanId: activity.id } });
+}
+
+async function clearActivityLinks(tx: any, userId: string, activityIds: string[]) {
+  // Preserve explicit athlete/coach feedback; only retract automatic completion.
+  await tx.workout.updateMany({ where: { userId, planned: true,
+    matchedPlanId: { in: activityIds }, feedbackStatus: null },
+    data: { completed: false, matchedPlanId: null } });
+  await tx.workout.updateMany({ where: { userId, planned: true,
+    matchedPlanId: { in: activityIds } }, data: { matchedPlanId: null } });
+}
+
+export async function deleteImportedActivities(userId: string, source: string, externalIds: string[]) {
+  if (!externalIds.length) return { count: 0 };
+  return prisma.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+    const rows = await tx.workout.findMany({ where: { userId, source,
+      planned: false, externalId: { in: externalIds } }, select: { id: true } });
+    await clearActivityLinks(tx, userId, rows.map(row => row.id));
+    const deleted = await tx.workout.deleteMany({ where: { userId, source,
+      planned: false, id: { in: rows.map(row => row.id) } } });
+    return deleted;
   });
 }

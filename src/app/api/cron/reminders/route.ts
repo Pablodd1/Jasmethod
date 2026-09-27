@@ -1,3 +1,4 @@
+import { claimDelivery, deliveryFailureStatus, reconcileStaleDeliveries, reminderSchedule } from "@/lib/delivery-claim";
 import { trainingReminder } from "@/lib/training-reminder";
 import { prisma } from "@/lib/db";
 import { dayBounds, addDaysKey, localDate } from "@/lib/dates";
@@ -14,6 +15,8 @@ export async function GET(req: Request) {
     return Response.json({ error: "Cron is not configured" }, { status: 503 });
   if (req.headers.get("authorization") !== `Bearer ${secret}`)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const stale = await reconcileStaleDeliveries();
+  if (stale.count) await logEvent({kind:"warn", source:"cron", route:"/api/cron/reminders", message:`${stale.count} interrupted deliveries need receipt review; not resent.`});
   const users = await prisma.user.findMany({
     where: {
       reminder: { OR: [{ emailEnabled: true }, { telegramEnabled: true }] },
@@ -32,21 +35,9 @@ export async function GET(req: Request) {
         timeZone: user.timezone,
       }).format(new Date()),
     );
-    // CATCH-UP semantics: deliver at the first cron hour at-or-after the
-    // user's chosen hour (the per-day+channel claim below dedupes). Exact-hour
-    // matching made delivery silently skip whenever Vercel missed an hour or
-    // the plan capped the schedule below hourly.
-    // LEAD TIME (user-set, whole hours): the reminder fires this many hours
-    // EARLIER than the chosen hour, so it lands before the session instead of
-    // after (review finding H5 — remindBeforeMin was stored but ignored).
-    const leadHours = Math.min(6, Math.floor((pref.remindBeforeMin || 0) / 60));
-    const effectiveHour = ((pref.reminderHour - leadHours) % 24 + 24) % 24;
-    if (hour < effectiveHour) {
-      skipped++;
-      continue;
-    }
-    const day = dayBounds(user.timezone),
-      key = effectiveHour >= 12 ? addDaysKey(day.key, 1) : day.key;
+    const schedule = reminderSchedule(user.timezone, pref.reminderHour, pref.remindBeforeMin || 0);
+    if (!schedule) { skipped++; continue; }
+    const day = dayBounds(user.timezone), key = schedule.workoutDay;
 
     // WEEKLY REVIEW (Sunday evening, once/week): adherence, best effort,
     // next week's focus — the retention feature, from the athlete's own data.
@@ -58,11 +49,7 @@ export async function GET(req: Request) {
         for (const channel of ["email", "telegram"]) {
           if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)
             continue;
-          const claimed = await prisma.reminderDelivery.createMany({
-            data: [{ userId: user.id, day: weekKey, channel: `${channel}:weekly`, status: "pending" }],
-            skipDuplicates: true,
-          });
-          if (!claimed.count) continue;
+          if (!await claimDelivery(user.id, weekKey, `${channel}:weekly`)) continue;
           const result =
             channel === "email"
               ? await sendEmail({
@@ -79,7 +66,7 @@ export async function GET(req: Request) {
             where: {
               userId_day_channel: { userId: user.id, day: weekKey, channel: `${channel}:weekly` },
             },
-            data: { status: result.ok ? "sent" : "failed", error: result.error || null },
+            data: { status: result.ok ? "sent" : deliveryFailureStatus(result.error), error: result.error || null },
           }).catch(() => {});
           if (result.ok) {
             sent++;
@@ -95,11 +82,7 @@ export async function GET(req: Request) {
     for (const channel of ["email", "telegram"]) {
       if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)
         continue;
-      const claimed = await prisma.reminderDelivery.createMany({
-        data: [{ userId: user.id, day: day.key, channel, status: "pending" }],
-        skipDuplicates: true,
-      });
-      if (!claimed.count) {
+      if (!await claimDelivery(user.id, schedule.claimDay, channel)) {
         skipped++;
         continue;
       }
@@ -139,10 +122,10 @@ export async function GET(req: Request) {
             : { ok: false, error: "Telegram chat is not configured" };
       await prisma.reminderDelivery.update({
         where: {
-          userId_day_channel: { userId: user.id, day: day.key, channel },
+          userId_day_channel: { userId: user.id, day: schedule.claimDay, channel },
         },
         data: {
-          status: result.ok ? "sent" : "failed",
+          status: result.ok ? "sent" : deliveryFailureStatus(result.error),
           error: result.error || null,
         },
       });
@@ -172,11 +155,7 @@ export async function GET(req: Request) {
       pref.telegramChatId
     ) {
       const fbKey = `feedback:${day.key}`;
-      const claimed = await prisma.reminderDelivery.createMany({
-        data: [{ userId: user.id, day: fbKey, channel: "telegram", status: "pending" }],
-        skipDuplicates: true,
-      });
-      if (claimed.count) {
+      if (await claimDelivery(user.id, fbKey, "telegram")) {
         const { start: dStart, end: dEnd } = dayBounds(user.timezone);
         const todaySession = await prisma.workout.findFirst({
           where: {
@@ -195,7 +174,7 @@ export async function GET(req: Request) {
         const fb = await sendTelegram(pref.telegramChatId, prompt);
         await prisma.reminderDelivery.update({
           where: { userId_day_channel: { userId: user.id, day: fbKey, channel: "telegram" } },
-          data: { status: fb.ok ? "sent" : "failed", error: fb.error || null },
+          data: { status: fb.ok ? "sent" : deliveryFailureStatus(fb.error), error: fb.error || null },
         }).catch(() => {});
         if (fb.ok) await meterUsage(user.id, "telegram_msgs", 1);
       }

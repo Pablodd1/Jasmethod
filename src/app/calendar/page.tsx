@@ -68,6 +68,7 @@ export default function CalendarPage() {
   });
   const [selected, setSelected] = useState<string | null>(null); // yyyy-MM-dd
   const [stripWorkouts, setStripWorkouts] = useState<any[]>([]); // prev month → next month for the week strip
+  const [mutationError, setMutationError] = useState("");
   const [moveFor, setMoveFor] = useState<any>(null); // session being moved
   const [moveForm, setMoveForm] = useState({
     date: "",
@@ -116,12 +117,12 @@ export default function CalendarPage() {
   }
 
   async function api(body: any) {
-    const res = await fetch("/api/plan", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return res.ok;
+    setMutationError("");
+    try {
+      const res = await fetch("/api/plan", {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+      if(!res.ok) {const data=await res.json();throw Error(data.error||"Could not save session");}
+      return true;
+    } catch(error) {setMutationError((error as Error).message);return false;}
   }
 
   async function toggleDone(session: any) {
@@ -133,6 +134,7 @@ export default function CalendarPage() {
     if (!moveFor || !moveForm.date) return;
     const ok = await api({
       sessionId: moveFor.id,
+      expectedRevision: moveFor.revision,
       date: moveForm.date,
       startTime: moveForm.time || null,
       indoor: moveForm.indoor,
@@ -207,6 +209,7 @@ export default function CalendarPage() {
   return (
     <ProtectedPage>
       <div className="space-y-6">
+        {mutationError && <p role="alert" className="text-red-700">{mutationError}</p>}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold">
@@ -708,6 +711,7 @@ export default function CalendarPage() {
                 workout
               </h3>
               <p className="text-xs text-slate-400 mb-4">{moveFor.title}</p>
+              {mutationError && <p role="alert" className="text-red-700">{mutationError}</p>}
               <div className="space-y-3">
                 <div>
                   <label className="label">New date</label>
