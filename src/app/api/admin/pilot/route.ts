@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     where: me.role === "coach"
       ? {
           role: "athlete",
-          coachedBy: { some: { coachId: me.id, status: "active" } },
+          coachedBy: { some: { coachId: me.id, status: "active", consent: "granted" } },
         }
       : { role: "athlete" },
     select: { id: true, name: true, avatar: true },

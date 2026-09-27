@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/purity -- Math.random()/performance.now() are the Stroop stimulus itself, invoked from user events, not render output */
 
 // Cognitive check — compact Stroop test (inhibitory control, the pacing-
 // discipline system). Consolidated INTO the Daily Check-in per the product

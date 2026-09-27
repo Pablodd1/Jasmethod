@@ -4,7 +4,7 @@ import { getCurrentUser } from "./auth";
 import { prisma } from "./db";
 import { encryptSecret } from "./crypto";
 import * as api from "./importers";
-import { createOAuthState, validOAuthState } from "./oauth-state";
+import { createOAuthState } from "./oauth-state";
 
 const providers = {
   strava: {
@@ -33,7 +33,8 @@ const providers = {
   },
 };
 function config(provider: string) {
-  const p = providers[provider as keyof typeof providers];
+  const route = provider === "google_cal" ? "google-cal" : provider;
+  const p = providers[route as keyof typeof providers];
   if (!p) throw new Error("unsupported_provider");
   const clientId = process.env[`${p.env}_CLIENT_ID`],
     clientSecret = process.env[`${p.env}_CLIENT_SECRET`];
@@ -53,7 +54,7 @@ function config(provider: string) {
       redirectUri:
         override && /^https?:\/\//.test(override)
           ? override
-          : `${base}/api/connectors/${provider}/callback`,
+          : `${base}/api/connectors/${route}/callback`,
     },
   };
 }
@@ -63,21 +64,16 @@ export async function authorize(req: Request, provider: string) {
   try {
     const { p, cfg } = config(provider),
       state = createOAuthState(provider);
-    // Return URL (mobile app deep link or in-app browser return) rides on the
-    // transaction row, not the query string, so it survives provider redirects.
+    // Only return to a configured app origin; never trust a query-string host.
     const explicitReturn = new URL(req.url).searchParams.get("return");
-    // ORIGIN CAPTURE: an athlete who started on a mirror domain (e.g. the old
-    // jasmiamimethod.vercel.app bookmark) must land back THERE after consent —
-    // redirecting them to the canonical domain drops their session cookie and
-    // the connect looks broken even though the token saved.
-    const origin = new URL(req.url).origin;
-    const appOrigin = process.env.NEXT_PUBLIC_APP_URL || "";
-    const returnUrl =
-      explicitReturn && /^https?:\/\//.test(explicitReturn)
-        ? explicitReturn
-        : appOrigin && origin !== appOrigin
-          ? `${origin}/connectors`
-          : null;
+    const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    let returnUrl: string | null = null;
+    if (explicitReturn) {
+      try {
+        const target = new URL(explicitReturn, base);
+        if (target.origin === new URL(base).origin) returnUrl = target.toString();
+      } catch { /* Invalid optional return target: use the connectors page. */ }
+    }
     // Server-side transaction: the callback identifies the athlete from this
     // row — NOT from browser cookies, which in-app mobile browsers drop.
     await prisma.oAuthTransaction.create({
@@ -89,7 +85,7 @@ export async function authorize(req: Request, provider: string) {
         expiresAt: new Date(Date.now() + 15 * 60000),
       },
     });
-    cookies().set(
+    (await cookies()).set(
       `jmm_oauth_${provider}`,
       JSON.stringify({ state, userId: user.id }),
       {
@@ -103,83 +99,53 @@ export async function authorize(req: Request, provider: string) {
     const url = new URL(p.auth(cfg, state));
     url.searchParams.set("state", state);
     return NextResponse.redirect(url);
-  } catch {
+  } catch (error) {
+    const configurationError = error instanceof Error && ["not_configured", "unsupported_provider"].includes(error.message);
     return Response.json(
       {
-        error:
-          "This connection is not configured. Use a supported file import.",
+        error: configurationError
+          ? "This connection is not configured. Use a supported file import."
+          : "Authorization could not be started. Please retry; if it persists contact support.",
+        code: configurationError ? "provider_unavailable" : "authorization_storage_failed",
       },
       { status: 503 },
     );
   }
 }
 export async function callback(req: Request, provider: string) {
-  // NORMALIZE: the route passes the URL segment ("google-cal") but every
-  // stored row (connector, OAuthTransaction) uses the provider map key
-  // ("google_cal"). Without this, the Google callback could never match
-  // its own transaction (review §H2 normalization finding).
-  if (provider === "google-cal") provider = "google_cal";
+  const route = provider === "google_cal" ? "google-cal" : provider;
+  const canonical = route === "google-cal" ? "google_cal" : route;
   const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const redirect = (error: string) =>
     NextResponse.redirect(`${base}/connectors?error=${error}`);
-  const u = new URL(req.url),
-    state = u.searchParams.get("state") || "";
-
-  // STRICT binding (review §H2): the athlete is whoever STARTED this OAuth
-  // transaction — the server-side row. If the state is known but already
-  // used/expired → reject (replay). If the state is UNKNOWN → reject; we do
-  // NOT fall back to whichever user happens to hold a browser session, which
-  // could store a provider token under the wrong account.
-  let userId: string | null = null;
-  let returnUrl: string | null = null;
-  const txn = await prisma.oAuthTransaction
-    .findUnique({ where: { state } })
-    .catch(() => null);
-  if (
-    txn &&
-    txn.provider === provider &&
-    !txn.usedAt &&
-    txn.expiresAt > new Date()
-  ) {
-    userId = txn.userId;
-    returnUrl = txn.returnUrl;
-  } else if (txn) {
-    // Known state but consumed/expired → replay or late arrival: reject.
+  const u = new URL(req.url), state = u.searchParams.get("state") || "";
+  if (!state) return redirect("invalid_state");
+  // The initiating athlete is bound by a durable transaction, not by the
+  // returning browser session (which may be absent or belong to someone else).
+  let txn;
+  try {
+    txn = await prisma.oAuthTransaction.findUnique({ where: { state } });
+  } catch { return redirect("authorization_storage_failed"); }
+  const now = new Date();
+  if (!txn || txn.provider !== canonical || txn.usedAt || txn.expiresAt <= now)
     return redirect("invalid_state");
-  } else {
-    // Unknown state (legacy pre-transaction flow): allow only when a live
-    // session AND a matching signed cookie for the SAME user exist.
-    const sessionUser = await getCurrentUser();
-    const expected: any = (() => {
-      try {
-        return JSON.parse(
-          cookies().get(`jmm_oauth_${provider}`)?.value || "null",
-        );
-      } catch {
-        return null;
-      }
-    })();
-    if (
-      sessionUser &&
-      expected &&
-      expected.userId === sessionUser.id &&
-      validOAuthState(state, expected.state, provider)
-    ) {
-      userId = sessionUser.id;
-    }
-  }
-  if (!userId) return redirect("session_expired");
-
-  // Clear the legacy cookie (if any) — the transaction row is authoritative,
-  // and the strict block above already rejected unknown/mismatched states.
-  await prisma.oAuthTransaction.updateMany({
-    where: { state, usedAt: null },
-    data: { usedAt: new Date() },
-  });
-
-  cookies().set(`jmm_oauth_${provider}`, "", {
-    maxAge: 0,
-    path: `/api/connectors/${provider}`,
+  let claim;
+  try {
+    claim = await prisma.oAuthTransaction.updateMany({
+      where: { state, provider: canonical, userId: txn.userId, usedAt: null, expiresAt: { gt: now } },
+      data: { usedAt: now },
+    });
+  } catch { return redirect("authorization_storage_failed"); }
+  if (claim.count !== 1) return redirect("invalid_state");
+  const userId = txn.userId;
+  // Revalidate persisted targets, including transactions created by older code.
+  let returnUrl: string | null = null;
+  try {
+    if (txn.returnUrl && new URL(txn.returnUrl).origin === new URL(base).origin)
+      returnUrl = txn.returnUrl;
+  } catch { /* Use the configured app URL. */ }
+  (await cookies()).set(`jmm_oauth_${route}`, "", {
+    maxAge: 0, path: `/api/connectors/${route}`,
   });
   const code = u.searchParams.get("code");
   if (u.searchParams.has("error") || !code)
@@ -200,10 +166,13 @@ export async function callback(req: Request, provider: string) {
       );
       if (!r.ok) throw new Error("Whoop profile authorization failed");
       const profile = await r.json();
-      externalRef = String(profile.user_id ?? profile.id);
+      const identity = profile.user_id ?? profile.id;
+      if (identity == null) throw new Error("Whoop profile identity missing");
+      externalRef = String(identity);
     }
     const data = {
       status: "connected",
+      scope: typeof token.scope === "string" ? token.scope : null,
       tokenEnc: encryptSecret(token.access_token),
       ...(token.refresh_token
         ? { refreshEnc: encryptSecret(token.refresh_token) }
@@ -216,35 +185,20 @@ export async function callback(req: Request, provider: string) {
       lastError: null,
       ...(externalRef ? { externalRef } : {}),
     };
-    await prisma.connector.upsert({
+    await prisma.$transaction(async tx => {
+    await tx.connector.upsert({
       where: { userId_provider: { userId, provider: p.key } },
       create: { userId, provider: p.key, ...data },
       update: data,
     });
 
-    // FIRST SYNC on connect — the athlete sees their data immediately,
-    // not just a "connected" badge. Non-blocking (5s cap) so the redirect
-    // is not held hostage by a slow provider.
-    let imported = 0;
-    try {
-      const { syncUserConnectors } = await import("./sync");
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 5000);
-      const result = await Promise.race([
-        syncUserConnectors(userId, p.key),
-        new Promise<never>((_, rej) => ctrl.signal.addEventListener("abort", () => rej(new Error("sync timeout")))),
-      ]);
-      imported = result?.total || 0;
-      clearTimeout(t);
-    } catch (syncErr) {
-      console.error("First sync after connect failed (non-fatal):", String(syncErr).slice(0, 100));
-      // The hourly reconciliation cron + Refresh now button will pick it up.
-    }
+    await tx.syncJob.create({data:{userId,kind:"sync",dedupeKey:`initial:${p.key}:${userId}:${state}`,payload:JSON.stringify({provider:p.key})}});
+    });
 
-    const okUrl = new URL(`${base}/connectors`);
-    okUrl.searchParams.set("ok", provider);
-    okUrl.searchParams.set("imported", String(imported));
-    return NextResponse.redirect(returnUrl ? `${returnUrl}${returnUrl.includes("?") ? "&" : "?"}ok=${provider}&imported=${imported}` : okUrl.toString());
+    const okUrl = new URL(returnUrl || `${base}/connectors`);
+    okUrl.searchParams.set("ok", p.key);
+    okUrl.searchParams.set("sync", "queued");
+    return NextResponse.redirect(okUrl.toString());
   } catch (e) {
     const reason = String(e instanceof Error ? e.message : e)
       .replace(/Bearer\s+\S+/gi, "[redacted]")

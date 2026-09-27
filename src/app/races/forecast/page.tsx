@@ -1,5 +1,6 @@
 "use client";
 
+import { saveReviewedProfile } from "@/lib/profile-client";
 import { useEffect, useState } from "react";
 import { Gauge, Waves, Bike, Zap, Fuel, Target, Flag, AlertTriangle, Info, RefreshCw, Clock, Mountain, Thermometer, Droplets, FileText, Sparkles } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
@@ -33,11 +34,15 @@ export default function RaceForecastPage() {
   });
   const [pnSaving, setPnSaving] = useState(false);
   const [pnSaved, setPnSaved] = useState(false);
+  const [pnError, setPnError] = useState("");
+  const [revision, setRevision] = useState<string | null>(null);
 
   async function loadProfile() {
     try {
       const res = await fetch("/api/profile");
       const d = await res.json();
+      if (!res.ok) throw Error(d.error || "Could not load profile");
+      setRevision(d.revision);
       if (d?.profile) setPn((prev: any) => ({
         ...prev,
         sweatRateMlH: d.profile.sweatRateMlH ?? "",
@@ -47,12 +52,13 @@ export default function RaceForecastPage() {
         federation: d.profile.federation ?? "",
         category: d.profile.category ?? "",
       }));
-    } catch { /* best-effort prefill */ }
+    } catch(e) { setPnError((e as Error).message); }
   }
 
   async function savePersonalNumbers() {
     setPnSaving(true);
     setPnSaved(false);
+    setPnError("");
     try {
       const body: Record<string, unknown> = {
         sweatRateMlH: pn.sweatRateMlH === "" ? null : Number(pn.sweatRateMlH),
@@ -62,15 +68,12 @@ export default function RaceForecastPage() {
         federation: pn.federation || null,
         category: pn.category || null,
       };
-      const res = await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        setPnSaved(true);
-        loadForecast();
-      }
+      await saveReviewedProfile(body, revision);
+      setPnSaved(true);
+      setRevision(null);
+      setPnError("Saved. Reload to review current values before another change.");
+      loadForecast();
+    } catch(e) { setPnError((e as Error).message);
     } finally {
       setPnSaving(false);
     }
@@ -196,6 +199,7 @@ export default function RaceForecastPage() {
                 {lang === "es" ? "Intestino entrenado (90–120 g/h)" : "Gut-trained (90–120 g/h)"}
               </label>
             </div>
+            {pnError && <div role="status" className="text-sm">{pnError} <button className="underline" onClick={() => window.location.reload()}>Reload and review</button></div>}
             <button onClick={savePersonalNumbers} disabled={pnSaving} className="btn-secondary text-xs mt-3">
               {pnSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
               {lang === "es" ? "Guardar y recalcular" : "Save & re-forecast"}

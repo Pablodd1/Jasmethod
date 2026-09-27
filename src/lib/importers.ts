@@ -1009,10 +1009,12 @@ export async function whoopGetDaily(
 
 // WHOOP completed workouts (v2 API) — the activity half of WHOOP ingestion.
 // Returns each workout's external id (`whoop:<id>`), timing, strain kcal and
-// heart rates for storeActivity; sport is "other" (WHOOP doesn't expose the
-// activity type as a Jasmethod sport) and the title marks the strain level.
+// heart rates for storeActivity. WHOOP v2 exposes sport_name; unknown sports
+// stay other instead of being guessed from heart rate or duration.
+// Source: https://developer.whoop.com/api/ (Workout, v2).
 export interface WhoopWorkout {
   externalId: string;
+  sport: "run" | "bike" | "swim" | "strength" | "other";
   start: Date;
   end: Date;
   durationMin: number;
@@ -1021,6 +1023,15 @@ export interface WhoopWorkout {
   calories?: number;
   strain?: number;
   title: string;
+}
+
+export function whoopSport(name: unknown): WhoopWorkout["sport"] {
+  const normalized = typeof name === "string" ? name.toLowerCase().trim() : "";
+  if (["running", "trail running", "treadmill"].includes(normalized)) return "run";
+  if (["cycling", "mountain biking", "spin"].includes(normalized)) return "bike";
+  if (["swimming"].includes(normalized)) return "swim";
+  if (["weightlifting", "strength training"].includes(normalized)) return "strength";
+  return "other";
 }
 
 export async function whoopGetWorkouts(
@@ -1046,14 +1057,16 @@ export async function whoopGetWorkouts(
       if (!w.start || !w.end) continue;
       const startMs = new Date(w.start).getTime();
       const endMs = new Date(w.end).getTime();
+      if (!w.id || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) continue;
       out.push({
         externalId: `whoop:${w.id}`,
+        sport: whoopSport(w.sport_name),
         start: new Date(w.start),
         end: new Date(w.end),
         durationMin: Math.max(1, Math.round((endMs - startMs) / 60000)),
         avgHr: w.score?.average_heart_rate || undefined,
         maxHr: w.score?.max_heart_rate || undefined,
-        calories: w.score?.kilocalories != null ? Math.round(w.score.kilocalories) : undefined,
+        calories: Number.isFinite(w.score?.kilojoule) ? Math.round(w.score.kilojoule / 4.184) : undefined,
         strain: w.score?.strain || undefined,
         title: w.score?.strain != null ? `WHOOP Workout (strain ${Math.round(w.score.strain)})` : "WHOOP Workout",
       });

@@ -13,8 +13,18 @@ import {
 // Self-provisioning: on a fresh database the first tap creates the demo
 // account with a starter profile; existing accounts are logged in but NEVER
 // modified (no password bypass). Whitelist-only — no arbitrary accounts.
-// NOTE for public launch: remove this route or the whitelist when real users
-// have real passwords (a leaked demo password must not open any account).
+//
+// ENV-GATED (Codex handoff 2026-09-27 review): a shared demo password on a
+// public site is a real leak risk, so the whole route is OFF unless
+// DEMO_LOGIN_ENABLED=true in the host's secret manager. Public launch =
+// leave it off; beta testing = turn it on. GET exposes only the flag so the
+// login card can hide the buttons when disabled.
+const DEMO_ENABLED = process.env.DEMO_LOGIN_ENABLED === "true";
+
+export async function GET() {
+  return NextResponse.json({ enabled: DEMO_ENABLED });
+}
+
 const DEMO_PASSWORD = "demo1234";
 const DEMO_ACCOUNTS: Record<
   string,
@@ -106,6 +116,14 @@ const DEMO_ACCOUNTS: Record<
 };
 
 export async function POST(req: Request) {
+  if (!DEMO_ENABLED)
+    return NextResponse.json(
+      {
+        error:
+          "Shared demo login is disabled. Sign in with your own account.",
+      },
+      { status: 410 },
+    );
   try {
     const body = await req.json();
     const email = String(body?.email || "")

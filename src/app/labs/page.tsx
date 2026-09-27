@@ -1,5 +1,6 @@
 "use client";
 
+import { saveReviewedProfile } from "@/lib/profile-client";
 import { useEffect, useState } from "react";
 import { FlaskConical, Beaker, Droplets, HeartPulse, Bike, Waves, Footprints, Save, Zap, ClipboardList, TrendingUp } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
@@ -47,27 +48,26 @@ export default function LabsPage() {
   const [fuel, setFuel] = useState<any>(null);
   const [sweat, setSweat] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [revision, setRevision] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string>("");
   const [bench, setBench] = useState<any[]>([]);
   const [cmj, setCmj] = useState<{ today: string; base: string } | null>(null);
   const [cmjRes, setCmjRes] = useState<ReturnType<typeof cmjReadiness> | null>(null);
 
   useEffect(() => {
-    fetch("/api/profile").then((r) => r.json()).then((d) => setProfile(d.profile));
+    fetch("/api/profile").then(async r => { const d = await r.json(); if (!r.ok) throw Error(d.error); setProfile(d.profile); setRevision(d.revision); }).catch(e => setSavedMsg(e.message || "Could not load profile"));
     fetch("/api/benchmarks").then((r) => r.json()).then((d) => setBench(d.tests || []));
   }, []);
 
-  function saveZones(payload: Record<string, any>) {
+  async function saveZones(payload: Record<string, any>) {
     setSavedMsg("");
-    fetch("/api/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).then((r) => r.json()).then((d) => {
-      if (d.ok) setSavedMsg("Saved to your profile — zones updated across the app.");
-      else setSavedMsg("Could not save: " + (d.error || "unknown"));
-      setTimeout(() => setSavedMsg(""), 4000);
-    });
+    try {
+      const d = await saveReviewedProfile(payload, revision);
+      setProfile(d.profile);
+      // Invalidate the old revision after a successful write; reload before another edit.
+      setRevision(null);
+      setSavedMsg("Saved to your profile. Reload to review the updated baseline before another change.");
+    } catch(e) { setSavedMsg((e as Error).message); }
   }
 
   // live zone table from current inputs
@@ -78,12 +78,12 @@ export default function LabsPage() {
   return (
     <ProtectedPage>
       <div className="space-y-6">
+        {savedMsg && <div role="status">{savedMsg} <button className="underline" onClick={() => window.location.reload()}>Reload and review</button></div>}
         <div>
           <h1 className="font-display text-2xl md:text-3xl font-bold">{t(lang, "labs.title")}</h1>
           <p className="text-slate-500 mt-1">{lang === "es" ? "Haz las pruebas, obtén zonas reales y llévalas a tu plan. Repite cada 6–8 semanas." : "Run the tests, get real zones, push them into your plan. Re-test every 6–8 weeks."} <span className="text-coral-600 font-medium">{t(lang, "labs.subtitle")}</span></p>
         </div>
 
-        {savedMsg && <div className="card border-emerald-200 bg-emerald-50 text-emerald-800 font-medium">{savedMsg}</div>}
 
         <div className="grid md:grid-cols-2 gap-4">
           {/* VDOT */}
@@ -296,7 +296,7 @@ export default function LabsPage() {
               </div>
             ))}
           </div>
-          <p className="text-xs text-slate-400 mt-3">{lang === "es" ? "Los resultados de FTP/LTHR re-anclan tus zonas automáticamente. Boxeo: registra golpes en 3 min, o fuerza pico en Newtons (la unidad que reporta un saco inteligente)." : "FTP/LTHR results re-anchor your training zones automatically. Boxing: log punch count in 3 min, or peak force in Newtons (the unit a smart bag reports)."}</p>
+          <p className="text-xs text-slate-400 mt-3">{lang === "es" ? "Los resultados se guardan en el historial. Aplica una nueva referencia desde Perfil y zonas. Boxeo: registra golpes en 3 min, o fuerza pico en Newtons (la unidad que reporta un saco inteligente)." : "Results are saved in test history. Apply a new baseline from Profile and zones. Boxing: log punch count in 3 min, or peak force in Newtons (the unit a smart bag reports)."}</p>
         </div>
 
         {/* CMJ NEUROMUSCULAR READINESS (boxing gate) */}

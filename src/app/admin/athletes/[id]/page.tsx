@@ -1,6 +1,9 @@
 "use client";
+import {BaselineTests} from "@/components/baseline-tests";
+import { CoachingConversation } from "@/components/coaching-conversation";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { dateKey } from "@/lib/dates";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -47,7 +50,8 @@ const equipment = [
   "hasSwimPaceTool",
   "hasBikeComputer",
 ];
-export default function AthletePage({ params }: { params: { id: string } }) {
+export default function AthletePage() {
+  const params = useParams<{id: string}>();
   const { user } = useAuth();
   const [data, setData] = useState<any>(null),
     [days, setDays] = useState("30"),
@@ -78,7 +82,7 @@ export default function AthletePage({ params }: { params: { id: string } }) {
         {
           method,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+          body: JSON.stringify(url === "/api/profile" ? {...body, expectedRevision: data.profileRevision} : body),
         },
       );
       const d = await r.json();
@@ -114,7 +118,7 @@ export default function AthletePage({ params }: { params: { id: string } }) {
           <>
             <div className="card bg-ocean-50 border-ocean-200">
               <p className="text-xs uppercase tracking-wide">
-                Administrator workspace · Signed in as {user?.name}
+                Coaching workspace · Signed in as {user?.name}
               </p>
               <h1 className="font-display text-3xl font-bold mt-1">
                 {data.athlete.avatar} {data.athlete.name}
@@ -166,7 +170,10 @@ export default function AthletePage({ params }: { params: { id: string } }) {
             </div>
             {tab === "Overview" && (
               <>
+                <CoachingConversation athleteId={params.id} />
+                <BaselineTests athleteId={params.id} onSaved={load} />
                 <AdminCoachEditor
+                  profileRevision={data.profileRevision}
                   athleteId={params.id}
                   timezone={data.athlete.timezone || "America/New_York"}
                   profile={data.athlete.profile}
@@ -326,6 +333,7 @@ export default function AthletePage({ params }: { params: { id: string } }) {
                       const f = new FormData(e.currentTarget);
                       save("/api/plan", {
                         sessionId: edit.id,
+                        expectedRevision: edit.revision,
                         ...Object.fromEntries(f),
                       });
                     }}

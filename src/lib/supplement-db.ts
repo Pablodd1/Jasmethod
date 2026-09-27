@@ -1,7 +1,7 @@
 // JasMiamiMethod — Complete Supplement Database V2
 //
 // Organized by evidence strength and sport relevance. Every entry cites
-// human trials with PMID/DOI. Updated through September 2026.
+// references of varying completeness. Catalogue education is not a clinical prescription.
 //
 // TIER A = Strong human RCT/meta-analysis evidence, consistently replicated
 // TIER B = Good human evidence but mixed results or fewer trials
@@ -56,7 +56,6 @@ export const SUPPLEMENT_DB: Supplement[] = [
       { author: "Kreider", year: 2025, journal: "Frontiers in Nutrition", PMID: undefined },
       { author: "Ashtary-Larky", year: 2025, journal: "J ISSN — 61 RCT meta-analysis" },
       { author: "Wax", year: 2021, journal: "Nutrients — cited 303×", PMID: "34199588" },
-      { author: "Giraldo", year: 2025, journal: "J ISSN — neuroprotective in mTBI" },
     ],
   },
   {
@@ -134,9 +133,8 @@ export const SUPPLEMENT_DB: Supplement[] = [
     dose: "1–3 g/d combined DHA+EPA; DHA-dominant for brain health; EPA-dominant for inflammation",
     timing: "With meals (fat-soluble)",
     mechanism: "Reduces inflammation, supports cell membrane function, may enhance muscle protein synthesis and reduce muscle loss.",
-    caution: ">3g/d has mild blood-thinning effect. DHA-dominant for brain protection; EPA-only may interfere with TBI repair (2025 finding).",
+    caution: "Discuss use with a clinician if taking anticoagulants. This entry does not establish concussion prevention or treatment.",
     citations: [
-      { author: "Beauregard", year: 2025, journal: "PLOS ONE — neuroprotection in TBI", PMID: "PMC12021223" },
       { author: "Heileson", year: 2024, journal: "Contact sports omega-3 and NfL biomarkers" },
       { author: "Fernández-Lázaro", year: 2024, journal: "Omega-3 and exercise recovery — cited 136×" },
     ],
@@ -246,39 +244,6 @@ export const SUPPLEMENT_DB: Supplement[] = [
   // TIER C — EMERGING EVIDENCE (promising but limited trials)
   // ═══════════════════════════════════════════════════════════
   {
-    id: "creatine_brain",
-    name: "Creatine for Brain Health (neuroprotection)",
-    category: "neuroprotection",
-    tier: "rct",
-    evidenceScore: 5,
-    sports: ["boxing_combat", "contact_sports"],
-    dose: "5–10 g/day (higher than muscle dose — brain uptake is slower)",
-    timing: "Daily, any time",
-    mechanism: "Increases brain phosphocreatine → provides ATP for brain cell recovery after sub-concussive impacts. May reduce concussion severity.",
-    caution: "Emerging evidence — most data from experimental models. Active clinical trial NCT06644131. Not a helmet substitute.",
-    citations: [
-      { author: "Giraldo", year: 2025, journal: "J ISSN — neuroprotective in mTBI" },
-      { author: "Dean", year: 2017, journal: "PMC — cited 105×, creatine and mTBI" },
-      { author: "NCT06644131", year: 2025, journal: "ClinicalTrials.gov — active creatine mTBI trial" },
-    ],
-  },
-  {
-    id: "dha_neuroprotection",
-    name: "Omega-3 DHA (Neuroprotection)",
-    category: "neuroprotection",
-    tier: "rct",
-    evidenceScore: 6,
-    sports: ["boxing_combat", "contact_sports"],
-    dose: "1–2 g DHA daily (DHA-dominant, NOT EPA-only)",
-    timing: "Daily with meals",
-    mechanism: "DHA is the dominant structural fatty acid in neuronal membranes. Higher omega-3 index → lower neurofilament light chain (NfL) after repetitive head impacts.",
-    caution: "⚠️ 2025 MUSC study: EPA-only may INTERFERE with TBI repair. Use DHA-dominant, not EPA-only. >3g/d mild blood thinning.",
-    citations: [
-      { author: "Beauregard", year: 2025, journal: "PLOS ONE — DHA/EPA neuroprotection", PMID: "PMC12021223" },
-      { author: "Heileson", year: 2024, journal: "Contact sports omega-3 and NfL biomarkers" },
-    ],
-  },
-  {
     id: "ashwagandha",
     name: "Ashwagandha (KSM-66)",
     category: "recovery",
@@ -300,17 +265,14 @@ export const SUPPLEMENT_DB: Supplement[] = [
 // Keys map to the platform's plan disciplines via SPORT_KEY_FOR_DISCIPLINE.
 export const SPORT_PROTOCOLS: Record<string, { id: string; priority: number; reason: string }[]> = {
   "sprint_400m": [
-    { id: "creatine_mono", priority: 1, reason: "Neuroprotective + phosphocreatine for 400m ATP demand" },
+    { id: "creatine_mono", priority: 1, reason: "Phosphocreatine availability for repeated high-intensity efforts" },
     { id: "caffeine", priority: 2, reason: "RFD + reaction time for sprint starts" },
     { id: "beta_alanine", priority: 3, reason: "Buffers H+ for 400m (60-240s lactate tolerance)" },
     { id: "bicarbonate", priority: 4, reason: "400m-specific — extracellular buffer for late-race acidosis" },
-    { id: "dha_neuroprotection", priority: 5, reason: "Brain protection for contact-aware sprint athletes" },
   ],
   "boxing_combat": [
-    { id: "creatine_brain", priority: 1, reason: "Neuroprotective after sub-concussive impacts" },
-    { id: "dha_neuroprotection", priority: 2, reason: "DHA structural brain support + NfL reduction" },
     { id: "alpha_gpc", priority: 3, reason: "Reaction time + motor unit recruitment" },
-    { id: "creatine_mono", priority: 4, reason: "Explosive power + repeat effort" },
+    { id: "creatine_mono", priority: 1, reason: "Explosive power + repeat effort" },
     { id: "beta_alanine", priority: 5, reason: "Buffers 1-4 min round efforts" },
     { id: "caffeine", priority: 6, reason: "RFD + pre-training arousal" },
   ],
@@ -376,4 +338,30 @@ export function supplementsForSport(sport: string): { supplement: Supplement; pr
 
 export function recoverySupplements(): Supplement[] {
   return supplementsForSport("recovery_all").map((s) => s.supplement);
+}
+
+/** Shared preference boundary for database IDs and legacy coaching keys.
+ * Corrupt stored preference lists fail closed; never silently ignore an opt-out.
+ */
+export function supplementAllowed(id: string, prefs?: {
+  enabled?: boolean; dislikes?: string | string[] | null; optsOut?: string | string[] | null;
+} | null): boolean {
+  if (prefs?.enabled === false) return false;
+  const aliases: Record<string, string[]> = {
+    creatine_mono: ["creatine"], beta_alanine: ["betaAlanine"],
+    bicarbonate: ["bicarb"], nitrate_beetroot: ["nitrate"],
+    citrulline_malate: ["citrulline"], tart_cherry: ["tartCherry"],
+    collagen_peptides: ["collagen"], omega3_dha: ["dha"], alpha_gpc: ["choline"],
+  };
+  try {
+    const parse = (value?: string | string[] | null): string[] => {
+      if (value == null || value === "") return [];
+      const list = typeof value === "string" ? JSON.parse(value) : value;
+      if (!Array.isArray(list) || list.some(x => typeof x !== "string")) throw new Error("Invalid preferences");
+      return list;
+    };
+    const blocked = new Set([...parse(prefs?.dislikes), ...parse(prefs?.optsOut)]);
+    const family = Object.entries(aliases).find(([key, values]) => key === id || values.includes(id));
+    return !(family ? [family[0], ...family[1]] : [id]).some(key => blocked.has(key));
+  } catch { return false; }
 }

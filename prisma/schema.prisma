@@ -14,6 +14,7 @@ datasource db {
 // ---------- IDENTITY ----------
 
 model User {
+  syncJobs SyncJob[]
   id           String    @id @default(cuid())
   email        String    @unique
   passwordHash String
@@ -52,6 +53,22 @@ model User {
   coaching      CoachAssignment[] @relation("CoachSide") // athletes this user coaches
   coachedBy     CoachAssignment[] @relation("AthleteSide") // coaches assigned to this user
   forecastSnapshots RaceForecastSnapshot[]
+  coachingMessages CoachingMessage[] @relation("MessageAthlete")
+  authoredMessages CoachingMessage[] @relation("MessageAuthor")
+}
+
+// Shared athlete/authorized-coach conversation. Messages do not execute plan edits.
+model CoachingMessage {
+  id String @id @default(cuid())
+  athleteId String
+  authorId String
+  body String
+  clientId String
+  createdAt DateTime @default(now())
+  athlete User @relation("MessageAthlete", fields: [athleteId], references: [id], onDelete: Cascade)
+  author User @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  @@unique([authorId, clientId])
+  @@index([athleteId, createdAt, id])
 }
 
 // ---------- TELEMETRY & USAGE METERING ----------
@@ -422,6 +439,8 @@ model AuditLog {
 }
 
 model ReminderDelivery {
+  attempts Int @default(0)
+  lastAttemptAt DateTime?
   id String @id @default(cuid())
   userId String
   day String
@@ -629,4 +648,23 @@ model MetricObservation {
 
   @@index([userId, observedAt])
   @@index([userId, metricType, observedAt])
+}
+
+model SyncJob {
+  id String @id @default(cuid())
+  userId String
+  kind String
+  dedupeKey String @unique
+  payload String
+  status String @default("pending")
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  leasedUntil DateTime?
+  leaseToken String?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([status, availableAt])
+  @@index([userId, createdAt])
 }

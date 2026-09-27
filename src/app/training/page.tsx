@@ -66,6 +66,7 @@ export default function TrainingPage() {
     Record<
       string,
       {
+        revision: string;
         title: string;
         durationMin: string;
         intensity: string;
@@ -145,8 +146,9 @@ export default function TrainingPage() {
     try {
       await api({
         sessionId,
+        expectedRevision: f.revision,
         title: f.title,
-        durationMin: parseInt(f.durationMin, 10) || 30,
+        durationMin: Number(f.durationMin),
         intensity: f.intensity,
         ...(f.preWeightKg ? { preWeightKg: f.preWeightKg } : {}),
         ...(f.postWeightKg ? { postWeightKg: f.postWeightKg } : {}),
@@ -175,6 +177,7 @@ export default function TrainingPage() {
     setEditing((prev) => ({
       ...prev,
       [s.id]: {
+        revision: s.revision,
         title: s.title,
         durationMin: String(s.durationMin),
         intensity: s.intensity || "z2",

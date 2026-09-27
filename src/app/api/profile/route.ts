@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { trainingAccess, errorResponse } from "@/lib/access";
-import { profilePatch } from "@/lib/profile-update";
+import { saveProfile, profileRevision } from "@/lib/profile-service";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   const profile = await prisma.athleteProfile.findUnique({
     where: { userId: user.id },
   });
-  if (!profile) return NextResponse.json({ profile: null, zones: null });
+  if (!profile) return NextResponse.json({ profile: null, zones: null, revision: profileRevision(null) });
 
   const age = profile.birthYear
     ? new Date().getFullYear() - profile.birthYear
@@ -54,6 +54,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     profile,
+    revision: profileRevision(profile),
     zones,
     age,
     hrMax,
@@ -89,29 +90,8 @@ export async function PUT(req: Request) {
   try {
     const { actor, athlete } = await trainingAccess(req);
     const body = await req.json();
-    const data = profilePatch(body, athlete.timezone);
-    const profile = await prisma.$transaction(async (tx) => {
-      const before = await tx.athleteProfile.findUnique({
-        where: { userId: athlete.id },
-      });
-      const result = await tx.athleteProfile.upsert({
-        where: { userId: athlete.id },
-        create: { userId: athlete.id, ...data },
-        update: data,
-      });
-      await tx.auditLog.create({
-        data: {
-          actorId: actor.id,
-          subjectId: athlete.id,
-          action: "profile.update",
-          entityId: result.id,
-          before: JSON.stringify(before),
-          after: JSON.stringify(result),
-        },
-      });
-      return result;
-    });
-    return NextResponse.json({ ok: true, profile });
+    const profile = await saveProfile(actor.id, athlete, body);
+    return NextResponse.json({ ok: true, profile, revision: profileRevision(profile) });
   } catch (e) {
     return errorResponse(e);
   }

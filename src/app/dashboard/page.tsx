@@ -88,8 +88,11 @@ export default function DashboardPage() {
   const [benchmarks, setBenchmarks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Day index fixed at mount — dailyMotivation is deterministic per day, but
+  // Date.now() is impure and may not run during render (react-hooks/purity).
+  const [dayIndex] = useState(() => Math.floor(Date.now() / 86400000));
   const mot = dailyMotivation(
-    Math.floor(Date.now() / 86400000),
+    dayIndex,
     user?.motivation?.style || "coach",
     user?.language || "en",
   );

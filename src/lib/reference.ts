@@ -105,42 +105,70 @@ export const NUTRITION_GUIDELINES = {
   proteinPost: { target: 0.3, unit: "g/kg within 2h", source: "Phillips & Van Loon 2011" },
 };
 // ---- Daily motivation engine ----
-// Combines science-grounded coaching cues with psychology research
-// (self-determination theory — Ryan & Deci 2000; implementation intentions — Gollwitzer 1999).
-export const MOTIVATION_LIBRARY: { quote: string; science: string; coach: string; es?: { quote: string; coach: string } }[] = [
-  { quote: "The body achieves what the mind believes.", science: "Self-efficacy is one of the strongest predictors of endurance performance (Hagger et al. 2001).", coach: "Today is a brick in the wall. Lay it well.", es: { quote: "El cuerpo logra lo que la mente cree.", coach: "Hoy pones un ladrillo en la pared. Colócalo bien." } },
-  { quote: "Discipline is choosing what you want most over what you want now.", science: "Delay of gratification and habit automation are trainable (Gollwitzer 1999 implementation intentions).", coach: "Set your gear out tonight. Remove the choice, remove the friction.", es: { quote: "La disciplina es elegir lo que más quieres sobre lo que quieres ahora.", coach: "Deja tu equipo listo esta noche. Sin decisión, sin fricción." } },
-  { quote: "You don't rise to the level of your goals. You fall to the level of your systems.", science: "Consistency of training load beats heroic single sessions — CTL is built daily (Coggan).", coach: "One session today beats two tomorrow. Go.", es: { quote: "No subes al nivel de tus metas; caes al nivel de tus sistemas.", coach: "Una sesión hoy vale más que dos mañana. Ve." } },
-  { quote: "Pain is temporary. Quitting lasts forever.", science: "Perceived exertion is modulated by mindset — reframing effort as a positive signal improves performance (Crum & Langer 2007).", coach: "When it hurts in Z4, tell yourself: this is exactly where the adaptation happens.", es: { quote: "El dolor es temporal. Rendirse dura para siempre.", coach: "Cuando duela en Z4, dime: aquí es exactamente donde ocurre la adaptación." } },
-  { quote: "The miracle isn't that I finished. It's that I had the courage to start.", science: "Behavioral activation — starting is the hardest part; once moving, commitment rises (Lewin's task-initiation research).", coach: "Warm-up is the hardest 10 minutes. Get them done and the rest flows.", es: { quote: "El milagro no es que terminé; es que tuve el valor de empezar.", coach: "El calentamiento son los 10 minutos más difíciles. Hazlos y el resto fluye." } },
-  { quote: "Champions are made in the hours others spend sleeping.", science: "Sleep is when training adaptations consolidate — growth hormone, tissue repair, memory of motor patterns (Fullagar 2015, Sports Med).", coach: "Actually — champions ARE made in sleep. 8 hours is a training session. Guard it.", es: { quote: "Los campeones se hacen en las horas que otros gastan durmiendo.", coach: "De hecho — los campeones SE hacen durmiendo. 8 horas son una sesión de entreno. Protégelas." } },
-  { quote: "Run when you can, walk if you must, crawl if you have to; just never give up.", science: "Pacing flexibility preserves performance when conditions change (Abbiss & Laursen 2008).", coach: "Bad day? Cut the pace, keep the time. Load is load.", es: { quote: "Corre cuando puedas, camina si hace falta, gatea si tienes que; pero nunca te rindas.", coach: "¿Mal día? Baja el ritmo, mantén el tiempo. La carga es carga." } },
-  { quote: "What you do every day matters more than what you do once in a while.", science: "Aerobic base requires chronic stimulus — 12+ weeks of consistent Z2 (Seiler 2009).", coach: "The long game is the only game. Today's easy session IS the adaptation.", es: { quote: "Lo que haces cada día importa más que lo que haces de vez en cuando.", coach: "El juego largo es el único juego. La sesión fácil de hoy ES la adaptación." } },
-  { quote: "Sweat is fat crying.", science: "Well — sweat is thermoregulation, but the sentiment stands: hard work signals adaptation (ACSM 2021).", coach: "Hydrate. Electrolytes. Now. Then train.", es: { quote: "El sudor es la grasa llorando.", coach: "Hidrátate. Electrolitos. Ya. Luego entrena." } },
-  { quote: "It never gets easier, you just get faster.", science: "As fitness improves, the same RPE yields higher absolute output — this is the hallmark of adaptation (Foster 1998).", coach: "If today's Z2 feels easier than last month, raise the bar — that's progress.", es: { quote: "Nunca se hace más fácil, solo te haces más rápido.", coach: "Si tu Z2 de hoy se siente más fácil que el mes pasado, sube el listón — eso es progreso." } },
+// Original JMM coaching cues, not attributed quotations or research findings.
+export const MOTIVATION_LIBRARY = [
+  { quote: "Consistency includes recovery.", science: "Completion alone does not demonstrate adaptation.", coach: "Follow the agreed purpose of today's session; more is not automatically better." },
+  { quote: "A useful check-in starts with an honest answer.", science: "Missing measurements are unknown, not evidence of good recovery.", coach: "Share your energy, soreness and available time before training." },
+  { quote: "Preparation makes the next step easier.", science: "A training prescription should retain its intended targets and recovery intervals.", coach: "Review the session steps and prepare your equipment." },
+  { quote: "Feedback is part of training.", science: "Planned and completed training are different observations.", coach: "Record what you actually did and how it felt." },
+  { quote: "An easy day has its own purpose.", science: "A reassuring single metric does not establish readiness for a harder session.", coach: "Keep easy efforts easy. Discuss changes with your coach." },
 ];
 
-// Style prefixes localized (prepended to the coach message).
-const MOTIVATION_PREFIX: Record<string, { tough: string; gentle: string }> = {
-  en: { tough: "No excuses. ", gentle: "You've got this. " },
-  es: { tough: "Sin excusas. ", gentle: "Tú puedes. " },
-  ht: { tough: "Pa gen ekskoz. ", gentle: "Ou kapab. " },
-  fr: { tough: "Aucune excuse. ", gentle: "Tu peux le faire. " },
-  ru: { tough: "Без оправданий. ", gentle: "У тебя получится. " },
-};
-
-export function dailyMotivation(dayIndex: number, style: string = "coach", lang: string = "en"): { quote: string; message: string } {
-  const item = MOTIVATION_LIBRARY[dayIndex % MOTIVATION_LIBRARY.length];
-  const es = lang === "es" && item.es ? item.es : null;
-  const quote = es ? es.quote : item.quote;
-  const coach = es ? es.coach : item.coach;
-  const prefix = MOTIVATION_PREFIX[lang] || MOTIVATION_PREFIX.en;
-  if (style === "science") return { quote, message: item.science };
-  if (style === "tough") return { quote, message: `${prefix.tough}${coach}` };
-  if (style === "gentle") return { quote, message: `${prefix.gentle}${coach}` };
-  return { quote, message: coach };
+export function dailyMotivation(dayIndex: number, style = "coach", lang = "en"): { quote: string; message: string } {
+  const index = Number.isFinite(dayIndex) ? Math.abs(Math.trunc(dayIndex)) % MOTIVATION_LIBRARY.length : 0;
+  if (lang === "es") {
+    const cues = [
+      { quote: "La constancia incluye la recuperación.", message: "Respeta el propósito de la sesión; más no siempre es mejor." },
+      { quote: "Una evaluación útil empieza con una respuesta honesta.", message: "Comparte tu energía, molestias y tiempo disponible antes de entrenar." },
+      { quote: "La preparación facilita el próximo paso.", message: "Revisa los pasos de la sesión y prepara tu equipo." },
+      { quote: "Tus sensaciones son parte del entrenamiento.", message: "Registra lo que hiciste y cómo te sentiste." },
+      { quote: "Un día suave tiene su propio propósito.", message: "Mantén suaves los esfuerzos suaves. Consulta los cambios con tu entrenador." },
+    ];
+    return cues[index];
+  }
+  const item = MOTIVATION_LIBRARY[index];
+  return { quote: item.quote, message: style === "science" ? item.science : item.coach };
 }
 
+export interface DailyMotivationContext {
+  date: string;
+  name?: string | null;
+  goal?: string | null;
+  sessionTitle?: string | null;
+  rest?: boolean;
+  checkinComplete?: boolean;
+  enabled?: boolean;
+  style?: string;
+  lang?: string;
+}
 
-
-
+/** Deterministic, preference-controlled cue. Does not send observations to an AI. */
+export function personalizedDailyMotivation(context: DailyMotivationContext): {
+  quote: string; message: string; source: "JMM coaching cue";
+} | null {
+  if (context.enabled === false) return null;
+  const day = Date.parse(`${context.date.slice(0, 10)}T12:00:00Z`);
+  const cue = dailyMotivation(Number.isFinite(day) ? Math.floor(day / 86400000) : 0, context.style, context.lang);
+  const name = context.name?.trim().slice(0, 60);
+  const goal = context.goal?.trim().slice(0, 120);
+  const session = context.sessionTitle?.trim().slice(0, 160);
+  const action = context.rest
+    ? "Today is for recovery. Rest belongs in your plan; do not add training to make up for it."
+    : context.checkinComplete !== true
+      ? "Complete your daily check-in before deciding whether today's planned session fits how you feel."
+      : session
+        ? `For ${session}, follow the agreed targets and recovery periods. Record the actual session and how it felt.`
+        : "Review today's plan with your coach; no session has been provided in this briefing.";
+  if (context.lang === "es") {
+    const actionEs = context.rest ? "Hoy toca recuperación. Descansa; no añadas entrenamiento para compensar."
+      : context.checkinComplete !== true ? "Completa tu evaluación diaria antes de decidir si la sesión de hoy encaja con cómo te sientes."
+      : session ? `Para ${session}, sigue los objetivos y descansos acordados. Registra lo realizado y tus sensaciones.`
+      : "Revisa el plan de hoy con tu entrenador; este resumen no contiene una sesión.";
+    return { quote: context.rest ? "La recuperación también tiene propósito." : cue.quote,
+      message: `${name ? `${name}, ` : ""}${actionEs}${goal ? ` Tu objetivo: ${goal}.` : ""}${context.rest ? "" : ` ${cue.message}`}`,
+      source: "JMM coaching cue" };
+  }
+  return { quote: context.rest ? "Recovery is purposeful training time." : cue.quote,
+    message: `${name ? `${name}, ` : ""}${action}${goal ? ` Your goal: ${goal}.` : ""}${context.rest ? "" : ` ${cue.message}`}`,
+    source: "JMM coaching cue" };
+}

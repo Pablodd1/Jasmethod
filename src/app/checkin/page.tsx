@@ -274,7 +274,7 @@ export default function CheckinPage() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h2 className="font-display font-bold text-lg flex items-center gap-2"><Mic className="w-5 h-5 text-ocean-600" /> Voice Check-In</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Say it all at once, e.g. "sleep was 4, soreness 2, energy 3, motivation 4, stress 2, weight 74 point 2, resting heart rate 48". Or keep typing below — both work.</p>
+              <p className="text-xs text-slate-500 mt-0.5">Say it all at once, e.g. &quot;sleep was 4, soreness 2, energy 3, motivation 4, stress 2, weight 74 point 2, resting heart rate 48&quot;. Or keep typing below — both work.</p>
             </div>
             <button onClick={startVoice} disabled={listening} className={`btn-primary ${listening ? "opacity-70" : ""}`}>
               <Mic className="w-4 h-4" /> {listening ? "Listening… speak now" : "Start Voice"}

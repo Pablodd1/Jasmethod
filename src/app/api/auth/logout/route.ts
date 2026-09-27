@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { destroySession } from "@/lib/auth";
 
 export async function POST() {
-  const store = cookies();
+  const store = await cookies();
   const token = store.get("jmm_session")?.value;
   if (token) await destroySession(token);
   store.delete("jmm_session");

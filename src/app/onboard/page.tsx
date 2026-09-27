@@ -1,5 +1,7 @@
 "use client";
 
+import { ONBOARDING_STEP, onboardingNext, type OnboardingStep } from "@/lib/onboarding-flow";
+import { saveReviewedProfile, onboardingProfileFields } from "@/lib/profile-client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, Watch, Flag, CheckCircle2, ArrowRight, ArrowLeft, Globe } from "lucide-react";
@@ -18,10 +20,14 @@ export default function OnboardPage() {
   const { user, refresh } = useAuth();
   const router = useRouter();
   const es = user?.language === "es";
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState<OnboardingStep>(ONBOARDING_STEP.welcome);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState<string | null>(null);
+
   const [lang, setLang] = useState(user?.language || "es");
   const [checking, setChecking] = useState(true);
+  useEffect(() => { if (user?.language) setLang(user.language); }, [user?.id, user?.language]);
 
   // First-timers only: an athlete who completed onboarding (or already has
   // profile essentials from another path) is bounced straight to Today —
@@ -47,11 +53,24 @@ export default function OnboardPage() {
     experience: "beginner", goal: "olympic", weeklyHours: "8",
   });
 
-  // Devices
-  const [devices, setDevices] = useState<string[]>([]);
-
-  // Baselines (thresholds — can skip, test later in Labs)
-  const [baselines, setBaselines] = useState({ ftp: "", lthr: "", runPaceBase: "", swimPaceBase: "" });
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    setRevision(null);
+    fetch("/api/profile").then(async r => {
+      const d = await r.json();
+      if (!r.ok) throw Error(d.error || "Could not load profile");
+      if (!active) return;
+      if (d.profile) setProfile({
+        birthYear: String(d.profile.birthYear ?? ""), sex: d.profile.sex ?? "",
+        heightCm: String(d.profile.heightCm ?? ""), weightKg: String(d.profile.weightKg ?? ""),
+        experience: d.profile.experience ?? "beginner", goal: d.profile.goal ?? "olympic",
+        weeklyHours: String(d.profile.weeklyHours ?? 8),
+      });
+      setRevision(d.revision);
+    }).catch(e => { if (active) setError(String(e.message)); });
+    return () => { active = false; };
+  }, [user?.id]);
 
   // Race
   const [race, setRace] = useState({ name: "", distance: "olympic", date: "", location: "" });
@@ -64,34 +83,37 @@ export default function OnboardPage() {
   }
 
   async function saveProfile() {
-    setSaving(true);
-    await fetch("/api/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profile),
-    });
-    setSaving(false);
+    setSaving(true); setError("");
+    try { const result = await saveReviewedProfile(onboardingProfileFields(profile), revision); setRevision(result.revision); return true; }
+    catch(e) { setError((e as Error).message); return false; }
+    finally { setSaving(false); }
   }
 
   async function saveRace() {
-    if (!race.name || !race.date) return;
-    await fetch("/api/races", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...race, priority: 1 }),
-    });
+    if (!race.name || !race.date) return true;
+    setSaving(true); setError("");
+    try {
+      const r = await fetch("/api/races", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({...race, priority:1})});
+      if (!r.ok) { const d = await r.json(); throw Error(d.error || "Could not save race"); }
+      return true;
+    } catch(e) { setError((e as Error).message); return false; }
+    finally { setSaving(false); }
   }
 
   async function finishOnboarding() {
     setSaving(true);
-    await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-    router.push("/today");
+    setError("");
+    try {
+      const r = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      if (!r.ok) throw Error("Could not finish onboarding. Please retry.");
+      router.push("/today");
+    } catch(e) { setError((e as Error).message); } finally { setSaving(false); }
   }
 
   const t = (en: string, esp: string) => (lang === "es" ? esp : en);
 
   // Step indicator
-  const STEPS = [t("Welcome", "Bienvenido"), t("Profile", "Perfil"), t("Baselines", "Umbrales"), t("Devices", "Dispositivos"), t("Goal Race", "Carrera objetivo"), t("Done", "Listo")];
+  const STEPS = [t("Welcome", "Bienvenido"), t("Profile", "Perfil"), t("Devices", "Dispositivos"), t("Goal Race", "Carrera objetivo"), t("Done", "Listo")];
 
   if (checking) {
     return (
@@ -106,6 +128,7 @@ export default function OnboardPage() {
   return (
     <ProtectedPage>
       <div className="max-w-2xl mx-auto py-8 px-4">
+        {error && <div role="alert" className="mb-4 text-red-700">{error} <button type="button" className="underline" onClick={() => window.location.reload()}>Reload and review</button></div>}
         {/* Progress bar */}
         <div className="flex gap-1.5 mb-6">
           {STEPS.map((_, i) => (
@@ -114,20 +137,20 @@ export default function OnboardPage() {
         </div>
 
         {/* Step 0: Language + Welcome */}
-        {step === 0 && (
+        {step === ONBOARDING_STEP.welcome && (
           <div className="text-center py-8">
             <h1 className="font-display text-4xl font-bold mb-2">
               {lang === "es" ? "Bienvenido a JMMai" : "Welcome to JMMai"}
             </h1>
             <p className="text-lg text-slate-600 mb-6">
               {lang === "es"
-                ? "Tu entrenador personal basado en ciencia y biometría. Vamos a configurar tu perfil en 3 pasos."
-                : "Your personal coach powered by science and biometrics. Let's set up your profile in 3 steps."}
+                ? "Tu entrenador personal basado en ciencia y biometría. Vamos a configurar tu perfil de entrenamiento."
+                : "Your personal coach powered by science and biometrics. Let's set up your coaching profile."}
             </p>
             <div className="text-left space-y-3 mb-6">
               {[
                 { icon: "📋", en: "Set your profile — age, goals, experience", es: "Configura tu perfil — edad, metas, experiencia" },
-                { icon: "⌚", en: "Connect your devices — Whoop, Garmin, COROS", es: "Conecta tus dispositivos — Whoop, Garmin, COROS" },
+                { icon: "⌚", en: "Review available connections or continue without a device", es: "Revisa las conexiones disponibles o continúa sin dispositivo" },
                 { icon: "🏁", en: "Add your goal race — we'll build the plan", es: "Añade tu carrera objetivo — creamos el plan" },
               ].map((s, i) => (
                 <div key={i} className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
@@ -136,42 +159,42 @@ export default function OnboardPage() {
                 </div>
               ))}
             </div>
-            <button onClick={() => setStep(1)} className="btn-primary w-full justify-center">
+            <button onClick={() => setStep(ONBOARDING_STEP.profile)} className="btn-primary w-full justify-center">
               {lang === "es" ? "Empezar" : "Get started"} <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>
         )}
 
         {/* Step 1: Profile */}
-        {step === 1 && (
+        {step === ONBOARDING_STEP.profile && (
           <div>
             <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
               <User className="w-5 h-5 text-ocean-600" /> {lang === "es" ? "Tu perfil" : "Your profile"}
             </h2>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="label">{lang === "es" ? "Año de nacimiento" : "Birth year"}</label><input className="input" type="number" placeholder="1995" onChange={(e) => setProfile({ ...profile, birthYear: e.target.value })} /></div>
+                <div><label className="label">{lang === "es" ? "Año de nacimiento" : "Birth year"}</label><input className="input" type="number" placeholder="1995" value={profile.birthYear} onChange={(e) => setProfile({ ...profile, birthYear: e.target.value })} /></div>
                 <div><label className="label">{lang === "es" ? "Sexo" : "Sex"}</label>
-                  <select className="input" onChange={(e) => setProfile({ ...profile, sex: e.target.value })}>
+                  <select className="input" value={profile.sex} onChange={(e) => setProfile({ ...profile, sex: e.target.value })}>
                     <option value="">—</option><option value="male">{lang === "es" ? "Masculino" : "Male"}</option><option value="female">{lang === "es" ? "Femenino" : "Female"}</option>
                   </select>
                 </div>
-                <div><label className="label">{lang === "es" ? "Altura (cm)" : "Height (cm)"}</label><input className="input" type="number" placeholder="175" onChange={(e) => setProfile({ ...profile, heightCm: e.target.value })} /></div>
-                <div><label className="label">{lang === "es" ? "Peso (kg)" : "Weight (kg)"}</label><input className="input" type="number" step="0.1" placeholder="70" onChange={(e) => setProfile({ ...profile, weightKg: e.target.value })} /></div>
+                <div><label className="label">{lang === "es" ? "Altura (cm)" : "Height (cm)"}</label><input className="input" type="number" placeholder="175" value={profile.heightCm} onChange={(e) => setProfile({ ...profile, heightCm: e.target.value })} /></div>
+                <div><label className="label">{lang === "es" ? "Peso (kg)" : "Weight (kg)"}</label><input className="input" type="number" step="0.1" placeholder="70" value={profile.weightKg} onChange={(e) => setProfile({ ...profile, weightKg: e.target.value })} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="label">{lang === "es" ? "Experiencia" : "Experience"}</label>
-                  <select className="input" onChange={(e) => setProfile({ ...profile, experience: e.target.value })} defaultValue="beginner">
+                  <select className="input" value={profile.experience} onChange={(e) => setProfile({ ...profile, experience: e.target.value })}>
                     <option value="beginner">{lang === "es" ? "Principiante" : "Beginner"}</option>
                     <option value="amateur">{lang === "es" ? "Amateur" : "Amateur"}</option>
                     <option value="advanced">{lang === "es" ? "Avanzado" : "Advanced"}</option>
                     <option value="pro">Pro</option>
                   </select>
                 </div>
-                <div><label className="label">{lang === "es" ? "Horas/semana" : "Weekly hours"}</label><input className="input" type="number" defaultValue="8" onChange={(e) => setProfile({ ...profile, weeklyHours: e.target.value })} /></div>
+                <div><label className="label">{lang === "es" ? "Horas/semana" : "Weekly hours"}</label><input className="input" type="number" value={profile.weeklyHours} onChange={(e) => setProfile({ ...profile, weeklyHours: e.target.value })} /></div>
               </div>
               <div><label className="label">{lang === "es" ? "Objetivo" : "Goal"}</label>
-                <select className="input" onChange={(e) => setProfile({ ...profile, goal: e.target.value })} defaultValue="olympic">
+                <select className="input" value={profile.goal} onChange={(e) => setProfile({ ...profile, goal: e.target.value })}>
                   <option value="sprint">Sprint</option>
                   <option value="olympic">Olympic</option>
                   <option value="half">Half Ironman</option>
@@ -184,8 +207,8 @@ export default function OnboardPage() {
               </div>
             </div>
             <div className="flex justify-between mt-6">
-              <button onClick={() => setStep(0)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
-              <button onClick={async () => { await saveProfile(); setStep(2); }} disabled={saving} className="btn-primary">
+              <button onClick={() => setStep(ONBOARDING_STEP.welcome)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
+              <button onClick={async () => { setStep(onboardingNext(ONBOARDING_STEP.profile, await saveProfile())); }} disabled={saving || !revision} className="btn-primary">
                 {saving ? "…" : lang === "es" ? "Guardar perfil" : "Save profile"}
               </button>
             </div>
@@ -193,47 +216,48 @@ export default function OnboardPage() {
         )}
 
         {/* Step 2: Devices */}
-        {step === 4 && (
+        {step === ONBOARDING_STEP.devices && (
           <div>
             <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
               <Watch className="w-5 h-5 text-ocean-600" /> {lang === "es" ? "Conecta tus dispositivos" : "Connect your devices"}
             </h2>
             <p className="text-sm text-slate-500 mb-4">
               {lang === "es"
-                ? "Los datos sincronizan automáticamente cada día a las 5:00 AM. Puedes conectar ahora o más tarde desde Conectores."
-                : "Devices sync automatically every day at 5:00 AM. You can connect now or later from Connectors."}
+                ? "La sincronización programada requiere una conexión autorizada y un servidor configurado. Verifica estado y fechas en Conectores; también puedes continuar sin dispositivo."
+                : "Scheduled synchronization requires an authorized connection and configured server. Check status and timestamps in Connectors; you can also continue without a device."}
             </p>
             <div className="space-y-3">
               <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
                 <span className="text-2xl">⌚</span>
                 <div className="flex-1"><div className="font-semibold text-sm">Whoop</div><div className="text-xs text-slate-500">{lang === "es" ? "VFC, recuperación, sueño, entrenamientos" : "HRV, recovery, sleep, workouts"}</div></div>
-                {devices.includes("whoop") ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <Watch className="w-4 h-4 text-slate-300" />}
+                <Watch className="w-4 h-4 text-slate-300" />
               </div>
               <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
                 <span className="text-2xl">⌚</span>
-                <div className="flex-1"><div className="font-semibold text-sm">Garmin / COROS</div><div className="text-xs text-slate-500">{lang === "es" ? "Exporta Activities.csv desde connect.garmin.com" : "Export Activities.csv from connect.garmin.com"}</div></div>
-                {devices.includes("garmin") ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <Watch className="w-4 h-4 text-slate-300" />}
+                <div className="flex-1"><div className="font-semibold text-sm">Garmin / COROS</div><div className="text-xs text-slate-500">{lang === "es" ? "Garmin: importa Activities.csv o TCX. Garmin/COROS: conexión directa aún no disponible." : "Garmin: import Activities.csv or TCX. Garmin/COROS: direct connection not available yet."}</div></div>
+                <Watch className="w-4 h-4 text-slate-300" />
               </div>
               <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
                 <span className="text-2xl">💍</span>
                 <div className="flex-1"><div className="font-semibold text-sm">Oura Ring</div><div className="text-xs text-slate-500">{lang === "es" ? "Sueño, VFC, recuperación" : "Sleep, HRV, recovery"}</div></div>
-                {devices.includes("oura") ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <Watch className="w-4 h-4 text-slate-300" />}
+                <Watch className="w-4 h-4 text-slate-300" />
               </div>
               <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
                 <span className="text-2xl">🍏</span>
-                <div className="flex-1"><div className="font-semibold text-sm">Apple Health</div><div className="text-xs text-slate-500">{lang === "es" ? "Exporta el health.xml desde el iPhone" : "Export health.xml from iPhone"}</div></div>
-                {devices.includes("apple") ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <Watch className="w-4 h-4 text-slate-300" />}
+                <div className="flex-1"><div className="font-semibold text-sm">Apple Health</div><div className="text-xs text-slate-500">{lang === "es" ? "Importa export.xml desde la exportación de Apple Health" : "Import export.xml from your Apple Health export"}</div></div>
+                <Watch className="w-4 h-4 text-slate-300" />
               </div>
             </div>
+            <a href="/connectors" target="_blank" rel="noopener noreferrer" className="underline text-sm">{lang === "es" ? "Abrir Conectores en otra pestaña" : "Open Connectors in another tab"}</a>
             <div className="flex justify-between mt-6">
-              <button onClick={() => setStep(1)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
-              <button onClick={() => setStep(3)} className="btn-primary">{lang === "es" ? "Siguiente" : "Next"} <ArrowRight className="w-4 h-4 ml-1" /></button>
+              <button onClick={() => setStep(ONBOARDING_STEP.profile)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
+              <button onClick={() => setStep(ONBOARDING_STEP.race)} className="btn-primary">{lang === "es" ? "Siguiente" : "Next"} <ArrowRight className="w-4 h-4 ml-1" /></button>
             </div>
           </div>
         )}
 
         {/* Step 3: Goal race */}
-        {step === 4 && (
+        {step === ONBOARDING_STEP.race && (
           <div>
             <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
               <Flag className="w-5 h-5 text-coral-500" /> {lang === "es" ? "Tu carrera objetivo" : "Your goal race"}
@@ -254,8 +278,8 @@ export default function OnboardPage() {
               <div><label className="label">{lang === "es" ? "Ubicación" : "Location"}</label><input className="input" placeholder="Miami, FL" onChange={(e) => setRace({ ...race, location: e.target.value })} /></div>
             </div>
             <div className="flex justify-between mt-6">
-              <button onClick={() => setStep(2)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
-              <button onClick={async () => { await saveRace(); setStep(4); }} disabled={saving} className="btn-primary">
+              <button onClick={() => setStep(ONBOARDING_STEP.devices)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
+              <button onClick={async () => { setStep(onboardingNext(ONBOARDING_STEP.race, await saveRace())); }} disabled={saving} className="btn-primary">
                 {saving ? "…" : lang === "es" ? "Guardar carrera" : "Save race"}
               </button>
             </div>
@@ -263,7 +287,7 @@ export default function OnboardPage() {
         )}
 
         {/* Step 4: Done */}
-        {step === 4 && (
+        {step === ONBOARDING_STEP.done && (
           <div className="text-center py-12">
             <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
             <h2 className="font-display text-3xl font-bold mb-2">{lang === "es" ? "¡Todo listo!" : "All set!"}</h2>

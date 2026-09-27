@@ -1,4 +1,5 @@
 "use client";
+import { CoachingConversation } from "@/components/coaching-conversation";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Watch } from "lucide-react";
@@ -30,6 +31,9 @@ export default function TodayPage() {
     [message, setMessage] = useState(""),
     [question, setQuestion] = useState(""),
     [answer, setAnswer] = useState("");
+  const [externalConsent, setExternalConsent] = useState(false);
+  const [assistantMode, setAssistantMode] = useState("");
+  const [assistantProposal, setAssistantProposal] = useState<{command:string;value:number|null;sport:string|null;editorUrl:string}|null>(null);
   const load = useCallback(async () => {
     if (!user) return;
     try {
@@ -116,8 +120,8 @@ export default function TodayPage() {
       if (approve && r.headers.get("X-Delivered-Email") === "1")
         setMessage(
           es
-            ? "Aprobado ✓ — el archivo .FIT también va de camino a tu correo con los pasos para Garmin."
-            : "Approved ✓ — the .FIT is also on its way to your email with the Garmin import steps."
+            ? "Aprobado ✓ — el archivo FIT se envió por correo. La recepción en el reloj no está confirmada."
+            : "Approved ✓ — the FIT file was emailed. Watch receipt is not confirmed."
         );
       await saveBlob(r, "jasmethod-workout.fit");
       await load();
@@ -138,8 +142,7 @@ export default function TodayPage() {
   }
   // SEND TO WATCH — the phone-only direct path: fetch the approved .FIT and
   // open the native share sheet with the file attached. The athlete picks
-  // Garmin Connect from the share sheet; the app imports the structured
-  // workout and syncs it to the watch automatically. Desktop browsers
+  // a receiving app from the share sheet; compatibility is unverified. Browsers
   // (no file-share support) fall back to the download.
   async function sendToWatch() {
     if (!session) return;
@@ -172,14 +175,14 @@ export default function TodayPage() {
             files: [file],
             title: session.title,
             text: es
-              ? "Importa en Garmin Connect → Entrenamiento → Workouts"
-              : "Import in Garmin Connect → Training → Workouts",
+              ? "Archivo de entrenamiento JMM; comprueba compatibilidad antes de importar."
+              : "JMM workout file; check compatibility before importing.",
           });
           shared = true;
           setMessage(
             es
-              ? "Enviado ✓ — elige Garmin Connect en la hoja para importarlo; se sincroniza solo a tu reloj."
-              : "Sent ✓ — pick Garmin Connect in the sheet to import it; it syncs to your watch automatically."
+              ? "Compartido ✓ — la hoja de compartir terminó. JMM no puede confirmar recepción en el reloj."
+              : "Shared ✓ — the share sheet completed. JMM cannot confirm watch receipt."
           );
         } catch (shareErr: any) {
           if (shareErr?.name === "AbortError") {
@@ -195,8 +198,8 @@ export default function TodayPage() {
         await saveBlob(new Response(buf), "jasmethod-workout.fit");
         setMessage(
           es
-            ? "Archivo descargado — ábrelo o compártelo con la app de Garmin Connect para importarlo."
-            : "File downloaded — open or share it with the Garmin Connect app to import it."
+            ? "Archivo descargado. Comprueba compatibilidad con tu app y reloj antes de importarlo."
+            : "File downloaded. Check your app and watch compatibility before importing."
         );
       }
       await load();
@@ -259,8 +262,8 @@ export default function TodayPage() {
             <Watch className="w-5 h-5 text-ocean-600 shrink-0" />
             <p className="text-sm flex-1 text-ocean-900 font-medium">
               {es
-                ? "Conecta tu Whoop, Garmin o COROS — los datos sincronizan automáticamente cada día y el coach los usa para adaptar tu entrenamiento."
-                : "Connect your Whoop, Garmin or COROS — data syncs automatically every day and the coach uses it to adapt your training."}
+                ? "Conecta un proveedor disponible o registra los datos manualmente. La conexión directa con Garmin/COROS aún no está implementada."
+                : "Connect an available provider or enter data manually. Direct Garmin/COROS integration is not implemented yet."}
             </p>
             <Link href="/connectors" className="btn-primary text-sm shrink-0">
               {es ? "Conectar ahora" : "Connect now"}
@@ -767,7 +770,7 @@ export default function TodayPage() {
                 {/* Platform delivery guide — Garmin / Apple Watch / COROS */}
                 <details className="mt-1">
                   <summary className="text-xs font-semibold text-ocean-700 cursor-pointer">
-                    📲 {es ? "Cómo llega a tu reloj (Garmin · Apple · COROS)" : "How it reaches your watch (Garmin · Apple · COROS)"}
+                    📲 {es ? "Exportación y compatibilidad (Garmin · Apple · COROS)" : "Export and compatibility (Garmin · Apple · COROS)"}
                   </summary>
                   <div className="grid sm:grid-cols-3 gap-2 mt-2">
                     {allDeliveryGuides(es ? "es" : "en").map((g) => (
@@ -882,8 +885,8 @@ export default function TodayPage() {
           <div className="card border-ocean-300 bg-ocean-50/60 p-4">
             <p className="text-sm font-medium text-ocean-900">
               ⌚ {es
-                ? "Conecta Whoop, Garmin o COROS — tus datos llegan automáticamente y KCoach los usa para entrenar."
-                : "Connect Whoop, Garmin or COROS — your data syncs automatically and KCoach uses it for coaching."}
+                ? "Conecta un proveedor disponible o registra tus datos sin dispositivo."
+                : "Connect an available provider or enter your data without a device."}
             </p>
             <Link href="/connectors" className="btn-primary text-sm mt-2 inline-flex">
               {es ? "Conectar dispositivo →" : "Connect device →"}
@@ -904,12 +907,16 @@ export default function TodayPage() {
                 const r = await fetch("/api/assistant", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ question }),
+                  body: JSON.stringify({ question, externalConsent }),
                 });
                 const d = await r.json();
                 setAnswer(d.answer || d.error);
+                setAssistantMode(d.mode || "");
+                setAssistantProposal(d.proposal || null);
+                setExternalConsent(false);
               } catch {
                 setAnswer("Unable to reach the assistant.");
+                setAssistantMode(""); setAssistantProposal(null);
               } finally {
                 setBusy(false);
               }
@@ -917,6 +924,7 @@ export default function TodayPage() {
           >
             <input
               className="input flex-1"
+              maxLength={1000}
               aria-label="Question for coach"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
@@ -925,10 +933,15 @@ export default function TodayPage() {
               {es ? "Preguntar" : "Ask"}
             </button>
           </form>
+          <label className="flex gap-2 mt-3 text-xs"><input type="checkbox" checked={externalConsent} onChange={e=>setExternalConsent(e.target.checked)}/>{es ? "Enviar solo esta pregunta a Google Gemini, si está habilitado. No incluiré datos importados de proveedores. El contexto guardado no se envía." : "Send only this question to Google Gemini, if enabled. I will not include imported provider data. Saved athlete context is not sent."}</label>
+          {assistantMode && <p className="text-xs text-slate-500 mt-2">{assistantMode === "external_manual_question" ? (es ? "Respuesta de IA externa; no es una prescripción revisada." : "External AI response; not a reviewed prescription.") : (es ? "Ayuda local de JMM; no es una respuesta de IA." : "Local JMM guidance; not an AI response.")}</p>}
           {answer && <p className="text-sm mt-3">{answer}</p>}
+          {assistantProposal && <div className="mt-3 border rounded-lg p-3 text-sm"><p>{es ? "Interpretación para revisar" : "Interpretation to review"}: {assistantProposal.command.replaceAll("_", " ")}{assistantProposal.value != null ? ` (${assistantProposal.value})` : ""}{assistantProposal.sport ? ` → ${assistantProposal.sport}` : ""}</p><p>{es ? "Ninguna sesión ha cambiado." : "No workout has changed."}</p><Link className="btn-secondary mt-2" href={assistantProposal.editorUrl}>{es ? "Abrir editor para revisar y confirmar" : "Open editor to review and confirm"}</Link></div>}
         </details>
       </div>
-    </ProtectedPage>
+    {data?.motivation && <section className="card"><h2 className="font-bold">Your daily coaching cue</h2><p className="text-lg mt-2">{data.motivation.quote}</p><p className="text-sm mt-2">{data.motivation.message}</p><p className="text-xs text-slate-500 mt-2">{data.motivation.source}</p></section>}
+      <CoachingConversation />
+      </ProtectedPage>
   );
 }
 function FuelCalculator({ carbsPerH, sodiumPerH, fluidPerH, es }: { carbsPerH: number; sodiumPerH: number; fluidPerH: number; es: boolean }) {

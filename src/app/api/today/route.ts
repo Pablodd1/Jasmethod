@@ -1,3 +1,4 @@
+import {personalizedDailyMotivation} from "@/lib/reference";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
@@ -189,6 +190,7 @@ export async function GET(req: Request) {
       };
     });
     return Response.json({
+      motivation: personalizedDailyMotivation({date:key,name:user.name,goal:user.profile?.goal,sessionTitle:sessions[0]?.title,rest:!!user.profile?.injured || (!!sessions.length && sessions.every(s=>s.durationMin===0)) || (!!todaysWorkouts.length && todaysWorkouts.every(w=>w.planDay?.dayOff)),checkinComplete:!!checkin,enabled:user.motivation?.dailyQuote !== false,style:user.motivation?.style,lang:user.language}),
       date: key,
       timezone: user.timezone,
       units: user.profile?.units === "imperial" ? "imperial" : "metric",

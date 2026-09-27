@@ -213,7 +213,7 @@ export default function ProtocolWorkspace({
                 </summary>
                 <p className="text-xs text-slate-500 mt-3">
                   These are JMM starting templates for healthy adults, adapted
-                  from research and Galpin's teaching. The exact combined dose
+                  from research and Galpin&apos;s teaching. The exact combined dose
                   is a coaching choice, not a universally validated optimum.
                 </p>
                 <ul className="mt-3 space-y-2 text-sm">
@@ -276,7 +276,7 @@ export default function ProtocolWorkspace({
               {data && !compatible.length && (
                 <p className="text-sm text-slate-600">
                   No compatible unfinished session in the next 8 weeks. Set up
-                  or edit the athlete's plan first.
+                  or edit the athlete&apos;s plan first.
                 </p>
               )}
               <button
