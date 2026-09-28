@@ -117,9 +117,14 @@ export async function syncUserConnectors(
           },
         });
       }
+      // INITIAL BACKFILL vs incremental: the first sync after connecting pulls
+      // a full year of Strava activities (the endpoint paginates far beyond
+      // that) and 180 days of daily biometrics; every later sync only asks for
+      // what happened since last time (+1d overlap). This makes the athlete's
+      // history real on day one instead of a 30-day sliver.
       const since = conn.lastSyncAt
         ? new Date(conn.lastSyncAt.getTime() - 86400000)
-        : new Date(Date.now() - 30 * 86400000);
+        : new Date(Date.now() - (conn.provider === "strava" ? 365 : 180) * 86400000);
       let imported = 0;
       if (conn.provider === "strava") {
         const activities = await api.stravaGetActivities(access, since, 100);
@@ -275,8 +280,11 @@ export async function syncUserConnectors(
           }
         }
       } else {
+        // Biometrics backfill: up to 180 days on first connect (Both APIs
+        // paginate), capped at 90 per incremental run — enough for the daily
+        // loop while staying far from rate limits.
         const days = Math.min(
-          90,
+          conn.lastSyncAt ? 90 : 180,
           Math.max(1, Math.ceil((Date.now() - since.getTime()) / 86400000)),
         );
         const daily: any[] =

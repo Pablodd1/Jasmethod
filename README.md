@@ -179,17 +179,22 @@ Current state: a webapp with locally tested core workflows. See the release guid
 
 ## 6. What's NOT built yet (honest gaps — for the next developer)
 
+Updated 2026-09-28 after the Codex integration + production hardening rounds.
+
+**Shipped since the last revision (no longer gaps):** Oura OAuth (LIVE, keys set 2026-09-28) · token encryption at rest (AES-256-GCM) · login/signup/admin-recovery rate limiting · durable sync job queue with leases/retries + 5-min worker cron · WHOOP OAuth + HMAC webhook · Strava webhook reconciliation incl. deletions · EOD feedback (Telegram one-tap 1/2/3 + Today form + /daily close-the-loop) · daily AI coaching (Gemini + rule-based fallback) · production on jasmiamimethod.fit · KCoach activity reports · race-anchored A/B/C taper + race-day projection · daily-training screen (/daily) · admin sync-health + replay.
+
 | Feature | Why not | Effort |
 |---|---|---|
-| **End-of-day review loop** — athlete rates how the session went; feeds tomorrow's adaptation | Model exists (workout.completed/rpe); no EOD UI | ~0.5 day |
-| **Oura OAuth** | Needs OURA_CLIENT_ID/SECRET | ~0.5 day (pattern exists) |
+| **Direct watch push** (workout lands in Garmin Connect automatically) | Garmin Training API is partner-gated. Working path today: Garmin Connect JSON import (verified) + .FIT share | code ~days after approval |
 | **TrainingPeaks OAuth** | Requires TP partner approval (weeks) | code ~0.5 day after approval |
-| **Live YouTube playlists** (YouTube Data API search) | Static curated links work; live search needs API key + budget | ~1 day |
-| **Extended lifestyle questionnaires** (mood, anxiety) | Not requested in scope yet; checkin covers core | ~0.5 day |
-| **Daily AI call per athlete** | Not enabled; Gemini cost ~$0.0004/day/athlete, 50 athletes < $1/mo — safe to enable | ~1 day |
-| **Production deployment** | Currently local/Vercel-ready; needs env vars + deploy config | ~1 day |
-| **Benchmark trend chart in admin** | Table shows first→latest; sparklines would be nicer | ~0.5 day |
-| **User feedback/support workflow** | Admin sees all accounts; no in-app ticket system | ~1 day |
+| **COROS direct API** | Partner-gated; works today via Strava linkage | code after approval |
+| **Beyond-first-connect backfill UI** (athlete-triggered deeper history pull) | First connect now pulls 365d Strava / 180d biometrics automatically; deeper re-pull is admin-only (`/api/admin/sync/replay`) | ~0.5 day |
+| **Full field-level provenance** (per-value unit/quality flags) | MetricObservation covers per-metric source/time; per-field unit+quality depth pending | ~1-2 days |
+| **Google Sign-In + Calendar connector keys** | Code complete; awaits GOOGLE_CLIENT_ID/SECRET from owner | env only |
+| **SMTP email delivery** | Code complete; awaits SMTP_PASS app password from owner | env only |
+| **Load testing / rate-limit soak** | Not yet exercised above pilot scale | ~1 day |
+| **Science/nutrition expert review** | External review of protocols + supplement claims (IOC/AIS anchors cited in code) | external |
+| **Next.js major upgrades beyond 15.5** | On 15.5.26 (security-current); Next 16 when stable | TBD |
 
 ---
 
