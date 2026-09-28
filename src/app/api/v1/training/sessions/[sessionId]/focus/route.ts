@@ -1,7 +1,8 @@
 // POST /api/v1/training/sessions/[sessionId]/focus — focus-ready toggle.
 // Persisted in the day's check-in answers (focus.<sessionId>) so it survives
 // reloads and rides along with the existing check-in pipeline. Idempotent;
-// the JSON merge is a single atomic upsert (no read-modify-write race).
+// read-modify-write runs under the user's advisory lock (same pattern as
+// activity-store) so concurrent saves can't clobber each other.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
@@ -25,23 +26,29 @@ export async function POST(
       select: { id: true },
     });
     if (!workout) throw new ApiError("Session not found", 404);
-    await prisma.$executeRaw`
-      INSERT INTO "DailyCheckin" ("id", "userId", "date", "answers", "createdAt")
-      VALUES (
-        replace(cast(gen_random_uuid() as text), '-', ''),
-        ${athlete.id},
-        ${start},
-        ${JSON.stringify({ focus: { [sessionId]: body.ready } })},
-        now()
-      )
-      ON CONFLICT ("userId","date") DO UPDATE SET
-        "answers" = jsonb_set(
-          COALESCE("DailyCheckin"."answers"::jsonb, '{}'::jsonb),
-          ARRAY['focus', ${sessionId}],
-          ${JSON.stringify(body.ready)}::jsonb
-        )::text
-    `;
-    return NextResponse.json({ ok: true, focusReady: body.ready });
+    const ok = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${athlete.id}))`;
+      const existing = await tx.dailyCheckin.findUnique({
+        where: { userId_date: { userId: athlete.id, date: start } },
+        select: { answers: true },
+      });
+      let answers: any = {};
+      try {
+        answers = JSON.parse(existing?.answers || "{}");
+      } catch {}
+      answers.focus = { ...(answers.focus || {}), [sessionId]: body.ready };
+      if (existing)
+        await tx.dailyCheckin.update({
+          where: { userId_date: { userId: athlete.id, date: start } },
+          data: { answers: JSON.stringify(answers) },
+        });
+      else
+        await tx.dailyCheckin.create({
+          data: { userId: athlete.id, date: start, answers: JSON.stringify(answers) },
+        });
+      return true;
+    });
+    return NextResponse.json({ ok, focusReady: body.ready });
   } catch (e) {
     return errorResponse(e);
   }
