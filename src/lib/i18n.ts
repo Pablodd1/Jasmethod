@@ -18,6 +18,7 @@ const S: Record<string, Partial<Record<Lang, string>>> = {
   // ---- nav ----
   "nav.hyrox": { en: "HYROX Splits", es: "Parciales HYROX", ht: "HYROX Splits", fr: "Splits HYROX", ru: "Сплиты HYROX" },
   "nav.today": { en: "Today", es: "Hoy", ht: "Jodi a", fr: "Aujourd'hui", ru: "Сегодня" },
+  "nav.daily": { en: "Daily card", es: "Tarjeta diaria", ht: "Kat jounal", fr: "Carte du jour", ru: "Карта дня" },
   "nav.dashboard": { en: "Dashboard", es: "Panel", ht: "Tablodbò", fr: "Tableau de bord", ru: "Главная" },
   "nav.fitness": { en: "Performance", es: "Rendimiento", ht: "Pèfòmans", fr: "Performance", ru: "Результаты" },
   "nav.calendar": { en: "Calendar", es: "Calendario", ht: "Kalandriye", fr: "Calendrier", ru: "Календарь" },

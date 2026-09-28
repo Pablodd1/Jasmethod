@@ -8,6 +8,7 @@ import {
   Dumbbell,
   Apple,
   Play,
+  Zap,
   FlaskConical,
   Settings,
   Waves,
@@ -33,6 +34,7 @@ import { LANGS, t, type Lang } from "@/lib/i18n";
 
 const NAV = [
   { href: "/today", key: "nav.today", icon: Play },
+  { href: "/daily", key: "nav.daily", icon: Zap },
   { href: "/dashboard", key: "nav.dashboard", icon: Home },
   { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
   { href: "/calendar", key: "nav.calendar", icon: CalendarDays },

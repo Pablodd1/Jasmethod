@@ -13,7 +13,7 @@
     "db:studio": "prisma studio",
     "db:deploy": "prisma migrate deploy",
     "admin:grant": "tsx scripts/grant-admin.ts",
-    "test": "tsx --test src/lib/*.test.ts",
+    "test": "tsx --test src/lib/*.test.ts src/components/daily-training/*.test.ts",
     "test:integration": "tsx scripts/integration-check.ts",
     "test:sync": "tsx scripts/sync-check.ts"
   },
