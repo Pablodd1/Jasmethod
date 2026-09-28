@@ -255,6 +255,8 @@ model Workout {
   feedbackNote String?
   feedbackAt DateTime?
   matchedPlanId String? // planned session fulfilled by an imported activity
+  deliveryProvider String? // intervals | garmin-json — where this prescription was published
+  deliveryId String? // provider-side id of the published workout (updates/deletes)
   insights String? // KCoach activity report (JSON {headline, body}) generated at sync
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)

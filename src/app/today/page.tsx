@@ -735,6 +735,35 @@ export default function TodayPage() {
                   <button
                     className="btn-secondary"
                     disabled={busy || offline || session.durationMin === 0}
+                    onClick={async () => {
+                      setBusy(true);
+                      setError("");
+                      try {
+                        const r = await fetch("/api/workout/intervals-push", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ sessionId: session.id }),
+                        });
+                        const d = await r.json().catch(() => ({}));
+                        if (!r.ok) throw Error(d.error || "Push failed");
+                        setMessage(
+                          es
+                            ? "✓ Publicado en tu calendario de Intervals.icu — se sincroniza solo a tu reloj Garmin/COROS enlazado."
+                            : "✓ Published to your Intervals.icu calendar — it syncs automatically to your linked Garmin/COROS watch."
+                        );
+                        await load();
+                      } catch (e: any) {
+                        setError(e.message);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    {es ? "Enviar a Intervals.icu" : "Send to Intervals.icu"}
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={busy || offline || session.durationMin === 0}
                     onClick={() => sendToWatch()}
                   >
                     {es ? "Compartir .FIT" : "Share .FIT"}

@@ -26,6 +26,7 @@ export default function ConnectorsPage() {
   const [err, setErr] = useState("");
   const [syncing, setSyncing] = useState(false);
   const handledCallback = useRef(false);
+  const apiKeyRef = { current: "" };
   // Real-time sync progress: devices sync ONE per request so the bar moves
   // truthfully (no fake animation). Athlete sees per-device status + elapsed.
   const [sync, setSync] = useState<{
@@ -564,7 +565,9 @@ export default function ConnectorsPage() {
                               ? lang === "es"
                                 ? "Archivo"
                                 : "Upload"
-                              : "Unavailable"}
+                              : p.method === "api_key"
+                                ? "API key"
+                                : "Unavailable"}
                         </span>
                       </div>
                       <div className="text-xs text-slate-500 max-w-[240px]">
@@ -605,6 +608,48 @@ export default function ConnectorsPage() {
                 </div>
 
                 <div className="mt-4">
+                  {p.method === "api_key" && (
+                    <div className="space-y-2">
+                      {p.status !== "connected" ? (
+                        <>
+                          <input
+                            type="password"
+                            placeholder={lang === "es" ? "Pega tu API key de Intervals.icu" : "Paste your Intervals.icu API key"}
+                            className="input w-full"
+                            onChange={(e) => (apiKeyRef.current = e.target.value)}
+                          />
+                          <button
+                            className="btn-primary w-full justify-center"
+                            onClick={async () => {
+                              setErr(""); setMsg("");
+                              const r = await fetch("/api/connectors/intervals/connect", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ apiKey: apiKeyRef.current }),
+                              });
+                              const d = await r.json();
+                              if (!r.ok) { setErr(d.error || "Connection failed"); return; }
+                              setMsg(lang === "es" ? `Intervals.icu conectado (${d.athlete}).` : `Intervals.icu connected (${d.athlete}).`);
+                              await load();
+                            }}
+                          >
+                            {lang === "es" ? "Conectar Intervals.icu" : "Connect Intervals.icu"}
+                          </button>
+                          <div className="text-[11px] text-slate-500">
+                            {lang === "es"
+                              ? "1) Crea una cuenta gratis en intervals.icu y enlaza tu Garmin/COROS en Settings → Account Connections. 2) Copia tu API key en Settings → Developer Settings. 3) Pégala aquí."
+                              : "1) Create a free intervals.icu account and link your Garmin/COROS in Settings → Account Connections. 2) Copy your API key from Settings → Developer Settings. 3) Paste it here."}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-xs text-emerald-700">
+                          {lang === "es"
+                            ? "Conectado — usa «Enviar a Intervals.icu» en Hoy para publicar el entrenamiento; llegará a tu reloj automáticamente."
+                            : "Connected — use 'Send to Intervals.icu' on Today to publish a workout; it reaches your watch automatically."}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {p.method === "oauth" &&
                     (p.configured ? (
                       <a

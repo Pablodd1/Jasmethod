@@ -87,9 +87,18 @@ export async function GET() {
         description:
           "Your official race-history record: results, places and PRs — matched to your races automatically.",
       },
+      {
+        id: "intervals",
+        name: "Intervals.icu",
+        description:
+          "Publish your structured workouts to your Intervals.icu calendar — they sync automatically to your linked Garmin, COROS, Wahoo or Suunto watch. Connect with the API key from Intervals.icu → Settings → Developer Settings.",
+        method: "api_key" as const,
+        configured: true,
+        capabilities: { imports: false, publishesStructuredWorkouts: true, automaticDeviceDelivery: true },
+      },
     ].map((p) => ({
       ...p,
-      method: p.id === "athlinks" ? "athlinks" : "upload",
+      method: p.id === "athlinks" ? "athlinks" : p.id === "intervals" ? "api_key" : "upload",
       configured: p.id === "athlinks" ? athlinksConfigured() : true,
       status:
         connectors.find((c) => c.provider === p.id)?.status || "disconnected",
