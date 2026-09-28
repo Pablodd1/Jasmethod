@@ -381,6 +381,28 @@ export async function POST(req: Request) {
         )
       : { recommended: [], reason: "Rest day" };
     const hard = Number(session.intensity.slice(1)) >= 4;
+    // Owner spec: a daily check-in is ALSO a sync trigger — the morning
+    // ritual should pull the freshest device data before the plan adapts.
+    // Fire-and-forget (never blocks or fails the check-in); throttled to once
+    // per 6h per user so re-checking doesn't hammer providers.
+    prisma.connector
+      .count({
+        where: {
+          userId: user.id,
+          status: "connected",
+          provider: { in: ["strava", "whoop", "oura", "google_cal"] },
+          OR: [
+            { lastSyncAt: null },
+            { lastSyncAt: { lt: new Date(Date.now() - 6 * 3600000) } },
+          ],
+        },
+      })
+      .then((n) =>
+        n > 0
+          ? import("@/lib/sync").then((m) => m.syncUserConnectors(user.id))
+          : null,
+      )
+      .catch(() => {});
     return NextResponse.json({
       ok: true,
       ...saved,
