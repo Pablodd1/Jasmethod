@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { encryptSecret } from "@/lib/crypto";
 import { intervalsVerifyKey } from "@/lib/intervals";
 import { logEvent } from "@/lib/telemetry";
@@ -11,24 +11,24 @@ export const dynamic = "force-dynamic";
 // Intervals.icu uses per-athlete API keys (Settings → Developer Settings),
 // not OAuth — so the connect flow is a verified key paste. The key is
 // validated against their API before anything is stored.
+// athleteId (query) lets a COACH/admin paste the key on the athlete's behalf
+// (athlete reads it to them / shares screen) — consent is the athlete handing
+// over their own key; trainingAccess enforces coach relationship or self.
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
+    const { actor, athlete } = await trainingAccess(req);
     const body = await req.json().catch(() => ({}));
     const apiKey = String(body?.apiKey || "").trim();
     if (apiKey.length < 10)
-      return NextResponse.json(
-        { error: "Paste the API key from Intervals.icu → Settings → Developer Settings." },
-        { status: 400 },
+      throw new ApiError(
+        "Paste the API key from Intervals.icu → Settings → Developer Settings.",
       );
     const check = await intervalsVerifyKey(apiKey);
-    if (!check.ok)
-      return NextResponse.json({ error: check.error || "Key rejected" }, { status: 400 });
+    if (!check.ok) throw new ApiError(check.error || "Key rejected");
     await prisma.connector.upsert({
-      where: { userId_provider: { userId: user.id, provider: "intervals" } },
+      where: { userId_provider: { userId: athlete.id, provider: "intervals" } },
       create: {
-        userId: user.id,
+        userId: athlete.id,
         provider: "intervals",
         status: "connected",
         tokenEnc: encryptSecret(apiKey),
@@ -46,17 +46,20 @@ export async function POST(req: Request) {
       kind: "info",
       source: "sync",
       route: "/api/connectors/intervals/connect",
-      message: `user=${user.id} intervals connected (${check.athlete})`,
+      message: `user=${athlete.id} intervals connected (${check.athlete}) by ${actor.id === athlete.id ? "athlete" : "coach"}`,
     });
     return NextResponse.json({ ok: true, athlete: check.athlete });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Failed" }, { status: 500 });
+  } catch (e) {
+    return errorResponse(e);
   }
 }
 
 export async function DELETE(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  await prisma.connector.deleteMany({ where: { userId: user.id, provider: "intervals" } });
-  return NextResponse.json({ ok: true });
+  try {
+    const { athlete } = await trainingAccess(req);
+    await prisma.connector.deleteMany({ where: { userId: athlete.id, provider: "intervals" } });
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return errorResponse(e);
+  }
 }

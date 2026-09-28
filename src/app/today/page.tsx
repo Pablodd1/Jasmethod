@@ -256,6 +256,22 @@ export default function TodayPage() {
             {message}
           </p>
         )}
+        {/* Watch-delivery nudge — structured session exists but Intervals.icu
+            (the automatic watch bridge) isn't connected yet. */}
+        {data?.sessions?.some((s: any) => s.durationMin > 0) &&
+          !data?.connectors?.some((c: any) => c.provider === "intervals" && c.status === "connected") && (
+          <div className="card border-lime-300 bg-lime-50 flex flex-wrap items-center gap-3 p-4">
+            <Watch className="w-5 h-5 text-lime-700 shrink-0" />
+            <p className="text-sm flex-1 text-lime-900 font-medium">
+              {es
+                ? "¿Quieres este entrenamiento en tu reloj automáticamente? Conecta Intervals.icu gratis (2 min) y llegará a tu Garmin/COROS sin descargar nada."
+                : "Want this workout on your watch automatically? Connect Intervals.icu free (2 min) and it reaches your Garmin/COROS with no downloads."}
+            </p>
+            <Link href="/connectors" className="btn-primary text-sm shrink-0">
+              {es ? "Conectar" : "Connect"}
+            </Link>
+          </div>
+        )}
         {/* Connect devices banner — only when 0 devices connected */}
         {data?.deviceSummary && data.deviceSummary.connected === 0 && (
           <div className="card border-ocean-300 bg-ocean-50 flex flex-wrap items-center gap-3 p-4">
