@@ -67,6 +67,7 @@ export interface ForecastVenue {
   solarWm2?: number | null;     // shortwave radiation (WBGT globe estimate)
   cloudCover?: number | null;   // %
   windKph?: number | null;
+  gustsKph?: number | null; // MEASURED gust forecast — drives the honest uncertainty band
   baseElevM?: number | null;    // venue base elevation
   bikeElevM?: number | null;    // m climb
   bikeTerrain?: string | null;  // flat | rolling | hilly | mountain | trail
@@ -598,9 +599,13 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
         leg.transitionMin
       );
     };
+    // Gust-aware band: when the venue carries a real gust forecast, the worst
+    // case rides the GUST speed (not a generic ×1.3), and the best case assumes
+    // partial lulls. Falls back to the legacy multipliers without gust data.
+    const gustDelta = Math.max(0, (venue.gustsKph ?? 0) - (venue.windKph ?? 0));
     const scenarios: ForecastScenario[] = [
-      { label: "best", totalMin: Math.round(scenarioTotals({ wbgt: Math.max(0, env.wbgt - 3), windKph: Math.round(env.windKph * 0.7) })), note: "cooler + lighter wind" },
-      { label: "worst", totalMin: Math.round(scenarioTotals({ wbgt: env.wbgt + 3, windKph: Math.min(45, Math.round(env.windKph * 1.3)) })), note: "hotter + windier" },
+      { label: "best", totalMin: Math.round(scenarioTotals({ wbgt: Math.max(0, env.wbgt - 3), windKph: Math.round(Math.max(0, env.windKph - (gustDelta > 0 ? gustDelta / 2 : env.windKph * 0.3))) })), note: gustDelta > 0 ? "cooler + wind lulls" : "cooler + lighter wind" },
+      { label: "worst", totalMin: Math.round(scenarioTotals({ wbgt: env.wbgt + 3, windKph: gustDelta > 0 ? Math.min(60, Math.round(env.windKph + gustDelta)) : Math.min(45, Math.round(env.windKph * 1.3)) })), note: gustDelta > 0 ? `hotter + gusting to ${Math.round(venue.gustsKph!)} km/h` : "hotter + windier" },
     ];
 
     // --- fuel: whole-race plan + timeline; kcal burn from bike work ---

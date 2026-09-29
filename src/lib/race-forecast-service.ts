@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { computePmc } from "@/lib/fitness";
 import { forecastRace, classifyDistance, type ForecastResult } from "@/lib/raceforecast";
 import { getRaceWeather, type RaceWeather } from "@/lib/weather";
+import { buildBikePacing, buildRunPacing, type PacingTable } from "@/lib/segment-pacing";
 
 export interface ForecastRequestOpts {
   distance?: string | null;
@@ -41,6 +42,8 @@ export interface ForecastBundle {
   pmc: { ctl: number; atl: number; tsb: number; formZone: string; rampRate7d: number } | null;
   physiology: { ftp: number | null; lthr: number | null; runPaceBase: number | null; swimPaceBase: number | null };
   raceDayProjection: string | null;
+  /** Per-segment pacing table when the race has an uploaded GPX profile. */
+  pacing?: PacingTable | null;
 }
 
 export async function buildForecastBundle(userId: string, opts: ForecastRequestOpts): Promise<ForecastBundle> {
@@ -187,6 +190,7 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
             solarWm2: weather?.solarWm2 ?? undefined,
             cloudCover: weather?.cloudCover ?? undefined,
             windKph: weather?.windKph ?? undefined,
+            gustsKph: weather?.gustsKph ?? undefined,
             baseElevM: race?.baseElevM ?? undefined,
             bikeElevM: race?.bikeElevM ?? undefined,
             bikeTerrain: race?.bikeTerrain ?? undefined,
@@ -261,9 +265,39 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
     }
   }
 
+  // Per-segment pacing table (Best-Bike-Split-style, honest edition): built
+  // when the race has an uploaded GPX elevation profile + the needed anchor
+  // (FTP for bike legs, threshold run pace for run legs).
+  let pacing: PacingTable | null = null;
+  try {
+    const sportKind = distance ? (["sprint", "olympic", "half", "full"].includes(distance) ? "triathlon" : distance === "hyrox" ? null : classifyDistance(distance)) : null;
+    const prof: { km: number; elevM: number }[] | null = race?.elevProfile ? JSON.parse(race.elevProfile) : null;
+    if (prof && prof.length >= 4 && race?.courseKm) {
+      if ((sportKind === "triathlon" || sportKind === "bike") && ftp)
+        pacing = buildBikePacing({
+          profile: prof, courseKm: race.courseKm, ftp,
+          weightKg: profile?.weightKg ?? null,
+          bikeType: profile?.bikeType ?? null, hasAeroBars: profile?.hasAeroBars ?? null,
+          tempC: weather?.tempC ?? null, windKph: weather?.windKph ?? null,
+          gustsKph: weather?.gustsKph ?? null, venueElevM: race.baseElevM ?? null,
+          units: profile?.units === "imperial" ? "imperial" : "metric",
+        });
+      else if ((sportKind === "run") && profile?.runPaceBase)
+        pacing = buildRunPacing({
+          profile: prof, courseKm: race.courseKm,
+          runPaceBaseSecPerKm: profile.runPaceBase,
+          windKph: weather?.windKph ?? null, gustsKph: weather?.gustsKph ?? null,
+          tempC: weather?.tempC ?? null,
+        });
+    }
+  } catch {
+    pacing = null; // pacing is additive — never break the forecast for it
+  }
+
   return {
     ok: true,
     forecast,
+    pacing,
     weather,
     distance,
     race: race

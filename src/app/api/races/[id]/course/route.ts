@@ -41,13 +41,18 @@ export async function POST(
       );
     await prisma.race.update({
       where: { id: race.id },
-      data: { courseKm: course.km, courseElevM: course.elevM },
+      data: {
+        courseKm: course.km,
+        courseElevM: course.elevM,
+        elevProfile: JSON.stringify(course.profile),
+      },
     });
     return NextResponse.json({
       ok: true,
       courseKm: course.km,
       courseElevM: course.elevM,
       points: course.points,
+      profilePts: course.profile.length,
     });
   } catch (e: any) {
     return NextResponse.json(

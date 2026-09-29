@@ -503,6 +503,7 @@ model Race {
   category    String?  // age_group | elite
   courseKm    Float?   // measured course distance from uploaded GPX (overrides the distance label in forecasts)
   courseElevM Float?   // measured total elevation gain from uploaded GPX
+  elevProfile String?  // JSON [{km,elevM}] sampled from GPX — per-segment pacing
   source      String?  // provenance: "manual" | "athlinks" | ... — who created the record
   sourceRecordId String? // provider-side result id (dedupe across re-imports)
   sourceRetrievedAt DateTime? // when the provider record was last pulled

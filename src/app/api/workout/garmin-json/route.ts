@@ -113,9 +113,26 @@ export async function GET(req: Request) {
     return step;
   });
 
+  // Fuel-on-delivery: carb/fluid targets ride in the description so they're
+  // visible in Garmin Connect before the workout goes to the watch.
+  let fuelNote: string | null = null;
+  try {
+    const { buildFuelingPlan } = await import("@/lib/fueling");
+    const fuel = buildFuelingPlan({
+      durationMin: workout.durationMin,
+      intensity: workout.intensity || "z2",
+      weightKg: user.profile?.weightKg,
+      sweatRateMlH: user.profile?.sweatRateMlH,
+      sodiumMgPerL: user.profile?.sodiumMgPerL,
+      gutTrained: user.profile?.gutTrained,
+    });
+    fuelNote = `Fuel: ~${fuel.carbsPerHourG} g carbs/h · ~${Math.round(fuel.fluidMlPerHour)} ml/h`;
+  } catch {}
+
   const payload = {
     workoutName: workout.title.slice(0, 60),
-    workoutDescription: (workout.notes || "").slice(0, 180) || null,
+    workoutDescription:
+      [(workout.notes || "").trim(), fuelNote].filter(Boolean).join(" — ").slice(0, 180) || null,
     sportType: { sportTypeKey: sportKey },
     aerobicTrainingEffect: null,
     anaerobicTrainingEffect: null,

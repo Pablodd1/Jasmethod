@@ -6,6 +6,9 @@ export interface GpxCourse {
   km: number;
   elevM: number;
   points: number;
+  /** Elevation profile sampled ~every 1% of course (max 400 pts) — feeds the
+   *  per-segment pacing table. Entries without elevation are excluded. */
+  profile: { km: number; elevM: number }[];
 }
 
 function haversineM(
@@ -50,10 +53,36 @@ export function parseGpxCourse(xml: string): GpxCourse | null {
       if (e != null) prevEle = e;
     }
     if (meters < 100) return null;
+    // Downsample the cumulative-distance/elevation trace for the pacing table.
+    const cum: { km: number; ele: number | null }[] = [];
+    let dist = 0;
+    cum.push({ km: 0, ele: pts[0].ele });
+    for (let i = 1; i < pts.length; i++) {
+      dist += haversineM(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon);
+      cum.push({ km: dist / 1000, ele: pts[i].ele });
+    }
+    const totalKm = dist / 1000;
+    const maxPts = 400;
+    const stepKm = Math.max(0.1, totalKm / maxPts);
+    const profile: { km: number; elevM: number }[] = [];
+    let lastEle: number | null = null;
+    for (const c of cum) {
+      if (c.ele == null) continue;
+      if (!profile.length || c.km - profile[profile.length - 1].km >= stepKm) {
+        profile.push({ km: +c.km.toFixed(2), elevM: Math.round(c.ele) });
+        lastEle = c.ele;
+      } else lastEle = c.ele;
+    }
+    if (lastEle != null && profile.length && cum.length) {
+      const last = cum[cum.length - 1];
+      if (last.ele != null && last.km - profile[profile.length - 1].km > stepKm / 2)
+        profile.push({ km: +last.km.toFixed(2), elevM: Math.round(last.ele) });
+    }
     return {
-      km: Math.round((meters / 1000) * 100) / 100,
+      km: Math.round(totalKm * 100) / 100,
       elevM: Math.round(elevM),
       points: pts.length,
+      profile,
     };
   } catch {
     return null;

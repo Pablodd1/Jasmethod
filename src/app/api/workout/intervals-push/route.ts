@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { decryptSecret } from "@/lib/crypto";
 import { intervalsCreateEvent, type IntervalStep } from "@/lib/intervals";
 import { estimateTss } from "@/lib/fitness";
+import { buildFuelingPlan } from "@/lib/fueling";
 import { baseWorkout, structuredSteps } from "@/lib/prescription";
 import { prescribeToday } from "@/lib/adaptive";
 import { dayBounds, dateKey } from "@/lib/dates";
@@ -62,6 +63,17 @@ export async function POST(req: Request) {
       ftp: (user as any).profile?.ftp || undefined,
       lthr: (user as any).profile?.lthr || undefined,
     });
+    // Fuel-on-delivery: the personalized fuel plan rides WITH the workout.
+    const fuel = buildFuelingPlan({
+      durationMin: p.durationMin ?? workout.durationMin,
+      intensity: p.intensity,
+      weightKg: (user as any).profile?.weightKg,
+      sweatRateMlH: (user as any).profile?.sweatRateMlH,
+      sodiumMgPerL: (user as any).profile?.sodiumMgPerL,
+      gutTrained: (user as any).profile?.gutTrained,
+      verdict: p.verdict,
+    });
+    const fuelLine = `\n\nFuel: ~${fuel.carbsPerHourG} g carbs/h · ~${Math.round(fuel.fluidMlPerHour)} ml/h${fuel.sodiumMgPerHour ? ` · ~${Math.round(fuel.sodiumMgPerHour)} mg Na/h` : ""}.`;
     const description =
       `${(p.intensity || "z2").toUpperCase()} · ${(p.durationMin ?? workout.durationMin)} min · planned TSS ~${tss}\n\n` +
       steps
@@ -70,7 +82,7 @@ export async function POST(req: Request) {
           (s: any, i: number) =>
             `${i + 1}. ${s.name || "Segment"} — ${Math.round(s.seconds / 60)} min ${(s.zone || "").toUpperCase()}${s.note ? ` (${s.note.slice(0, 80)})` : ""}`,
         )
-        .join("\n");
+        .join("\n") + fuelLine;
 
     const created = await intervalsCreateEvent(decryptSecret(conn.tokenEnc)!, {
       dateLocal: dateKey(workout.date, user.timezone),

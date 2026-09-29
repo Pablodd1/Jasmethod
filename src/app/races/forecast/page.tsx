@@ -405,6 +405,57 @@ function ForecastView({ data, forecast, lang, brief, briefLoading, onBrief }: {
           </div>
         )}
 
+        {/* Per-segment pacing table — from the uploaded GPX profile + physics */}
+        {data?.pacing && data.pacing.segments?.length > 0 && (
+          <div className="mt-6 rounded-2xl border border-sand-200 bg-white p-4">
+            <h3 className="font-display font-bold text-sm flex items-center gap-2">
+              📍 {es ? "Plan de ritmo por segmento" : "Per-segment pacing plan"}
+              <span className="text-xs font-normal text-slate-400">
+                {data.pacing.sport === "bike"
+                  ? `${es ? "vatios mantenibles" : "holdable watts"}${data.pacing.cdaUsed ? ` · CdA ${data.pacing.cdaUsed}` : ""}`
+                  : es ? "ritmo objetivo" : "target pace"}
+              </span>
+            </h3>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-sand-200">
+                    <th className="py-1 pr-3">{es ? "Segmento" : "Segment"}</th>
+                    <th className="py-1 pr-3">{es ? "Pendiente" : "Grade"}</th>
+                    <th className="py-1 pr-3">{data.pacing.sport === "bike" ? (es ? "Potencia" : "Power") : (es ? "Ritmo" : "Pace")}</th>
+                    <th className="py-1 pr-3">{es ? "Acumulado" : "Cumulative"}</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {data.pacing.segments.map((r: any, i: number) => (
+                    <tr key={i} className="border-b border-sand-100">
+                      <td className="py-1 pr-3">{r.fromKm}–{r.toKm} km</td>
+                      <td className={`py-1 pr-3 ${r.gradePct > 2 ? "text-red-600" : r.gradePct < -2 ? "text-emerald-600" : ""}`}>
+                        {r.gradePct > 0 ? "+" : ""}{r.gradePct}%
+                      </td>
+                      <td className="py-1 pr-3 font-semibold text-ocean-700">
+                        {r.targetW != null ? `${r.targetW} W · ${r.speedKmh} km/h`
+                          : r.paceSecPerKm != null
+                            ? `${Math.floor(r.paceSecPerKm / 60)}:${String(Math.round(r.paceSecPerKm % 60)).padStart(2, "0")}/km`
+                            : "—"}
+                      </td>
+                      <td className="py-1 pr-3">{Math.floor(r.cumMin / 60)}:{String(Math.round(r.cumMin % 60)).padStart(2, "0")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-500 space-y-0.5">
+              <div>{data.pacing.note}</div>
+              {data.pacing.gustRangeMin && data.pacing.gustRangeMin[1] > data.pacing.gustRangeMin[0] && (
+                <div>
+                  💨 {es ? "Banda por viento/ráfagas" : "Wind/gust band"}: {fmtTime(data.pacing.gustRangeMin[0])} – {fmtTime(data.pacing.gustRangeMin[1])}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Race-day brief (AI writes prose; the engine owns every number) */}
         <div className="mt-6">
           <button onClick={onBrief} disabled={briefLoading} className="btn-secondary text-sm">
