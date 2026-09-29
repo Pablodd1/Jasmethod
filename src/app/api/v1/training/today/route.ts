@@ -8,8 +8,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
-import { prescribeToday, postWorkoutFuel } from "@/lib/adaptive";
-import { baseWorkout } from "@/lib/prescription";
+import { postWorkoutFuel } from "@/lib/adaptive";
+import { effectivePrescription } from "@/lib/effective-prescription";
 import { buildFuelingPlan } from "@/lib/fueling";
 import { zoneTargets } from "@/lib/prescription";
 import type {
@@ -86,17 +86,11 @@ export async function GET(req: Request) {
     if (!workout || workout.planDay?.dayOff || workout.durationMin === 0)
       return new NextResponse(null, { status: 204 });
 
-    // The effective prescription — same source of truth as the Today page.
-    let p: any = null;
-    try {
-      p = workout.prescription ? JSON.parse(workout.prescription) : null;
-    } catch {}
-    if (!p)
-      p = prescribeToday({
-        session: baseWorkout(workout),
-        adaptation: { verdict: "full", durationFactor: 1, intensityCap: "z7" },
-        profile: user.profile,
-      });
+    // The effective prescription — the SHARED safety-gated resolver (injury,
+    // day-off, stale saved prescriptions are rest; Codex review P1-1).
+    const resolved = await effectivePrescription(user.id, workout.id);
+    if (!resolved) return new NextResponse(null, { status: 204 });
+    const p = resolved.prescription;
 
     // Steps → blocks: group consecutive steps by phase into named blocks.
     const rawSteps: any[] = Array.isArray(p.steps) && p.steps.length

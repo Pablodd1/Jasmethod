@@ -36,8 +36,14 @@ export async function POST(req: Request) {
 
   // Clear wedged error state so reconciliation (which retries error-state
   // connectors) treats them as live again.
+  // Lease safety (Codex review P1-9): a retry may still be RUNNING under a
+  // live lease (syncStartedAt < 10 min). Clearing syncStartedAt here would let
+  // a second worker overlap it. Only expired leases are released.
   const cleared = await prisma.connector.updateMany({
-    where: { id: { in: connectors.filter((c) => c.status === "error").map((c) => c.id) } },
+    where: {
+      id: { in: connectors.filter((c) => c.status === "error").map((c) => c.id) },
+      OR: [{ syncStartedAt: null }, { syncStartedAt: { lt: new Date(Date.now() - 10 * 60000) } }],
+    },
     data: { status: "connected", syncStartedAt: null },
   });
 

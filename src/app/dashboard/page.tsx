@@ -522,7 +522,7 @@ export default function DashboardPage() {
               <HeartPulse className="w-4 h-4" /> {t(lang, "dash.hrvToday")}
             </div>
             <div className="font-display text-2xl font-bold">
-              {latestMetric?.hrv ? `${latestMetric.hrv} ms` : "—"}
+              {latestMetric?.hrv != null ? `${Math.round(latestMetric.hrv)} ms` : "—"}
             </div>
             <div className="text-xs text-slate-400 mt-1">
               {latestMetric
@@ -535,7 +535,7 @@ export default function DashboardPage() {
               <Moon className="w-4 h-4" /> {t(lang, "dash.sleep7d")}
             </div>
             <div className="font-display text-2xl font-bold">
-              {latestMetric?.sleepHours ? `${latestMetric.sleepHours}h` : "—"}
+              {latestMetric?.sleepHours != null ? `${latestMetric.sleepHours.toFixed(1)}h` : "—"}
             </div>
             <div className="text-xs text-slate-400 mt-1">
               {t(lang, "dash.targetSleep")}

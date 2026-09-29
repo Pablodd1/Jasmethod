@@ -23,14 +23,20 @@ export async function POST(req: Request) {
   if (!type || !athleteId)
     return NextResponse.json({ error: "Bad payload" }, { status: 400 });
 
-  // Persist first, process async (same pattern as Strava/Whoop webhooks).
-  await prisma.webhookEvent.create({
-    data: {
-      provider: "intervals",
-      eventId: `${type}:${athleteId}:${body?.event_id || Date.now()}`,
-      payload: JSON.stringify(body).slice(0, 8000),
-    },
-  }).catch(() => {});
+  // Persist first (Codex review P1-6): if we cannot record the event we must
+  // NOT acknowledge it — Intervals will retry, which is the correct behavior.
+  // Processing is the durable queue's job; this route only records.
+  try {
+    await prisma.webhookEvent.create({
+      data: {
+        provider: "intervals",
+        eventId: `${type}:${athleteId}:${body?.event_id || Date.now()}`,
+        payload: JSON.stringify(body).slice(0, 8000),
+      },
+    });
+  } catch {
+    return NextResponse.json({ error: "Could not persist event" }, { status: 503 });
+  }
 
   await logEvent({
     kind: "info",

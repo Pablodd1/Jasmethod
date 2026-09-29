@@ -44,6 +44,15 @@ function gradeOf(a: ProfilePoint, b: ProfilePoint): number {
   return ((b.elevM - a.elevM) / dx) * 100; // percent
 }
 
+// All profile samples inside [from,to] (inclusive, clamped) — the fixed
+// boundary-pair sampling missed hills between segment edges (Codex P1-10).
+function samplesIn(profile: ProfilePoint[], from: number, to: number): ProfilePoint[] {
+  const pts: ProfilePoint[] = [{ km: from, elevM: elevAt(profile, from) }];
+  for (const p of profile) if (p.km > from + 1e-6 && p.km < to - 1e-6) pts.push(p);
+  pts.push({ km: to, elevM: elevAt(profile, to) });
+  return pts;
+}
+
 // Segment count scales with distance: ~1 per km, capped for payload size.
 function segmentBounds(profile: ProfilePoint[], totalKm: number): [number, number][] {
   const target = Math.min(40, Math.max(8, Math.round(totalKm)));
@@ -89,38 +98,43 @@ export function buildBikePacing(opts: {
   let cum = 0;
   let cumFast = 0, cumSlow = 0;
   for (const [from, to] of bounds) {
-    const a: ProfilePoint = { km: from, elevM: elevAt(opts.profile, from) };
-    const b: ProfilePoint = { km: to, elevM: elevAt(opts.profile, to) };
+    // Per-sample integration: time over each profile sample inside the
+    // segment (signed elevation change — descents run the physics too, the
+    // solver clamps grades below −2% as unmodeled, stated in the note).
+    const pts = samplesIn(opts.profile, from, to);
     const segKm = Math.max(0.05, to - from);
-    const grade = gradeOf(a, b);
-    const elevGainM = Math.max(0, b.elevM - a.elevM);
-    const r = bikePhysicsSpeedKmh({
-      ftp: opts.ftp,
-      weightKg: opts.weightKg ?? 70,
-      bikeKg: setup.bikeKg,
-      elevGainM,
-      distanceKm: segKm,
-      venueElevM: opts.venueElevM ?? null,
-      tempC: opts.tempC ?? null,
-      windKph: windMean,
-      cdA: setup.cdA,
-    });
-    const tMin = (segKm / r.speedKmh) * 60;
-    // Gust sensitivity: recompute with mean+gust headwind assumption (worst
-    // case) and mean-gust/2 tailwind-assist (best case) as the honest band.
-    const slow = bikePhysicsSpeedKmh({
-      ftp: opts.ftp, weightKg: opts.weightKg ?? 70, bikeKg: setup.bikeKg,
-      elevGainM, distanceKm: segKm, venueElevM: opts.venueElevM ?? null,
-      tempC: opts.tempC ?? null, windKph: windMean + gustDelta, cdA: setup.cdA,
-    });
-    const fast = bikePhysicsSpeedKmh({
-      ftp: opts.ftp, weightKg: opts.weightKg ?? 70, bikeKg: setup.bikeKg,
-      elevGainM, distanceKm: segKm, venueElevM: opts.venueElevM ?? null,
-      tempC: opts.tempC ?? null, windKph: Math.max(0, windMean - gustDelta / 2), cdA: setup.cdA,
-    });
+    let tMin = 0, tSlow = 0, tFast = 0, powerW = 0, n = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      const subKm = Math.max(0.01, b.km - a.km);
+      const elevDelta = b.elevM - a.elevM; // SIGNED — descents count
+      const r = bikePhysicsSpeedKmh({
+        ftp: opts.ftp, weightKg: opts.weightKg ?? 70, bikeKg: setup.bikeKg,
+        elevGainM: elevDelta, distanceKm: subKm,
+        venueElevM: opts.venueElevM ?? null, tempC: opts.tempC ?? null,
+        windKph: windMean, cdA: setup.cdA,
+      });
+      const slow = bikePhysicsSpeedKmh({
+        ftp: opts.ftp, weightKg: opts.weightKg ?? 70, bikeKg: setup.bikeKg,
+        elevGainM: elevDelta, distanceKm: subKm, venueElevM: opts.venueElevM ?? null,
+        tempC: opts.tempC ?? null, windKph: windMean + gustDelta, cdA: setup.cdA,
+      });
+      const fast = bikePhysicsSpeedKmh({
+        ftp: opts.ftp, weightKg: opts.weightKg ?? 70, bikeKg: setup.bikeKg,
+        elevGainM: elevDelta, distanceKm: subKm, venueElevM: opts.venueElevM ?? null,
+        tempC: opts.tempC ?? null, windKph: Math.max(0, windMean - gustDelta / 2), cdA: setup.cdA,
+      });
+      tMin += (subKm / r.speedKmh) * 60;
+      tSlow += (subKm / slow.speedKmh) * 60;
+      tFast += (subKm / fast.speedKmh) * 60;
+      powerW += r.powerW; n++;
+    }
+    if (!n) { tMin = tSlow = tFast = 0; n = 1; }
+    const grade = gradeOf(pts[0], pts[pts.length - 1]);
+    const r = { powerW: Math.round(powerW / n), speedKmh: segKm / (tMin / 60) };
     cum += tMin;
-    cumFast += (segKm / fast.speedKmh) * 60;
-    cumSlow += (segKm / slow.speedKmh) * 60;
+    cumFast += tFast;
+    cumSlow += tSlow;
     segments.push({
       fromKm: +from.toFixed(1),
       toKm: +to.toFixed(1),
@@ -141,7 +155,7 @@ export function buildBikePacing(opts: {
       `Physics: CdA ${setup.cdA} (${opts.bikeType || "road"}${opts.hasAeroBars ? "+aero" : ""}), ` +
       `${opts.tempC != null ? `${Math.round(opts.tempC)}°C, ` : ""}mean wind ${Math.round(windMean)} km/h` +
       (gustDelta > 0 ? `, gusts to ${Math.round((opts.gustsKph ?? windMean))} km/h` : "") +
-      `. Targets are holdable watts per segment, not surges.`,
+      `. Grades below −2% (steep descents) are modeled conservatively flat. Targets are holdable watts per segment, not surges.`,
   };
 }
 
@@ -169,15 +183,21 @@ export function buildRunPacing(opts: {
   const segments: SegmentRow[] = [];
   let cum = 0, cumSlow = 0, cumFast = 0;
   for (const [from, to] of bounds) {
-    const a: ProfilePoint = { km: from, elevM: elevAt(opts.profile, from) };
-    const b: ProfilePoint = { km: to, elevM: elevAt(opts.profile, to) };
+    // Distance-weighted grade over the samples inside the segment — boundary
+    // pairs erased intermediate hills (Codex P1-10).
+    const pts = samplesIn(opts.profile, from, to);
     const segKm = Math.max(0.05, to - from);
-    const grade = gradeOf(a, b);
+    let weighted = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const w = Math.max(0.01, pts[i].km - pts[i - 1].km);
+      weighted += gradeOf(pts[i - 1], pts[i]) * w;
+    }
+    const grade = weighted / segKm;
     const factor = runGradeFactor(grade);
     const pace = opts.runPaceBaseSecPerKm * 1.06 * factor; // threshold ×1.06 → race feel
     cum += (pace * segKm) / 60;
-    cumFast += ((pace * (1 - windAdj / 100) * segKm) / 60);
-    cumSlow += ((pace * (1 + windAdj / 100) * segKm) / 60);
+    cumFast += (pace * (1 - windAdj / 100) * segKm) / 60;
+    cumSlow += (pace * (1 + windAdj / 100) * segKm) / 60;
     segments.push({
       fromKm: +from.toFixed(1),
       toKm: +to.toFixed(1),
@@ -194,7 +214,7 @@ export function buildRunPacing(opts: {
     gustRangeMin: [+cumFast.toFixed(1), +cumSlow.toFixed(1)],
     note:
       `Pace = threshold ×1.06 adjusted per-segment for grade` +
-      (opts.tempC != null ? `, ${Math.round(opts.tempC)}°C` : "") +
+      (opts.tempC != null ? `. Air temp ${Math.round(opts.tempC)}°C is DISPLAYED ONLY — heat effects are not modeled in this table (see the forecast's WBGT factor)` : "") +
       (windMean > 3 ? `, wind ${Math.round(windMean)} km/h (±${windAdj.toFixed(1)}% band)` : "") +
       `. Grade factors are coaching heuristics, not lab measurements.`,
   };

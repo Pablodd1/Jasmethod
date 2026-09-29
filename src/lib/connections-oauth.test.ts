@@ -185,7 +185,7 @@ function exportFixture() {
   };
   return {log,workout,dependencies};
 }
-test('connections: Garmin Connect JSON export preserves the sprint step (5s effort at Garmin 10s minimum) with HR-zone target',async()=>{
+test('connections: Garmin Connect JSON export preserves the sprint step at exact seconds with HR-zone target',async()=>{
   const {dependencies}=exportFixture();
   const route=load(original,'src/app/api/workout/garmin-json/route.ts',dependencies);
   const r=await route.GET(new Request('https://app.example/api/workout/garmin-json?sessionId=w1'));
@@ -196,7 +196,7 @@ test('connections: Garmin Connect JSON export preserves the sprint step (5s effo
   assert.equal(step.stepOrder,1);
   assert.equal(step.stepType.stepTypeKey,'interval');
   assert.equal(step.endCondition.conditionTypeKey,'time');
-  assert.equal(step.endConditionValue,10); // Garmin minimum step length (5s effort clamped)
+  assert.equal(step.endConditionValue,5); // exact seconds preserved — never silently altered
   assert.equal(step.preferredEndConditionUnit.unitKey,'second');
   assert.equal(step.targetType.targetTypeKey,'heart.rate.zone');
 });

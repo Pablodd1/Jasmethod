@@ -110,7 +110,15 @@ export async function storeActivity(
   // request 2026-09-26): computed from stored history, persisted on the
   // workout, pushed to the athlete's Telegram if opted in. Report generation
   // must never fail the ingest that produced it.
-  if (created && savedId)
+  // FLOOD GUARD (Codex review P1-8): reports/notifications are for LIVE
+  // training only. Historical backfill (first-connect imports of months of
+  // activities) generates silently — otherwise one connect = hundreds of
+  // Telegram messages.
+  if (
+    created &&
+    savedId &&
+    Date.now() - new Date(activity.date).getTime() < 48 * 3600000
+  )
     await generateAndDeliverActivityReport(userId, timezone, savedId).catch(
       () => {},
     );

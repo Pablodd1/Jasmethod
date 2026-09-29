@@ -97,7 +97,7 @@ export async function GET(req: Request) {
       description: (s.note || workout.notes || "").slice(0, 180) || null,
       stepType: { stepTypeKey: STEP_KEY[s.phase] || "interval" },
       endCondition: { conditionTypeKey: "time" },
-      endConditionValue: Math.max(10, Math.round(s.seconds)),
+      endConditionValue: Math.max(1, Math.round(s.seconds)), // exact seconds — never silently alter a prescription
       preferredEndConditionUnit: { unitKey: "second" },
       targetValueOne: null,
       targetValueTwo: null,

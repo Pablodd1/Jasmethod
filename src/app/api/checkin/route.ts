@@ -385,24 +385,15 @@ export async function POST(req: Request) {
     // ritual should pull the freshest device data before the plan adapts.
     // Fire-and-forget (never blocks or fails the check-in); throttled to once
     // per 6h per user so re-checking doesn't hammer providers.
-    prisma.connector
-      .count({
-        where: {
-          userId: user.id,
-          status: "connected",
-          provider: { in: ["strava", "whoop", "oura", "google_cal"] },
-          OR: [
-            { lastSyncAt: null },
-            { lastSyncAt: { lt: new Date(Date.now() - 6 * 3600000) } },
-          ],
-        },
-      })
-      .then((n) =>
-        n > 0
-          ? import("@/lib/sync").then((m) => m.syncUserConnectors(user.id))
-          : null,
-      )
-      .catch(() => {});
+    // DURABLE refresh (Codex review P1-7): an in-process fire-and-forget can
+    // die with the serverless request. Enqueue a SyncJob the worker drains;
+    // freshness ordering note: the adaptation below uses the metrics already
+    // on file — the refreshed data lands in DailyMetrics and is consumed by
+    // the NEXT adaptation (or the hourly cron) rather than this response.
+    const { enqueueSyncJob } = await import("@/lib/background-jobs");
+    const hourKey = new Date().toISOString().slice(0, 13); // ≤1 refresh/hour
+    for (const provider of ["strava", "whoop", "oura", "google_cal"] as const)
+      await enqueueSyncJob(user.id, "sync", `checkin:${provider}:${user.id}:${hourKey}`, { provider }).catch(() => {});
     return NextResponse.json({
       ok: true,
       ...saved,

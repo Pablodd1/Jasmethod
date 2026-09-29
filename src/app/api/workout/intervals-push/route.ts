@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { decryptSecret } from "@/lib/crypto";
-import { intervalsCreateEvent, type IntervalStep } from "@/lib/intervals";
+import { intervalsCreateEvent, intervalsUpdateEvent, type IntervalStep } from "@/lib/intervals";
 import { estimateTss } from "@/lib/fitness";
 import { buildFuelingPlan } from "@/lib/fueling";
-import { baseWorkout, structuredSteps } from "@/lib/prescription";
-import { prescribeToday } from "@/lib/adaptive";
+import { structuredSteps } from "@/lib/prescription";
+import { effectivePrescription } from "@/lib/effective-prescription";
 import { dayBounds, dateKey } from "@/lib/dates";
 import { meterUsage } from "@/lib/telemetry";
 
@@ -42,17 +42,16 @@ export async function POST(req: Request) {
         { status: 400 },
       );
 
-    // Effective prescription — same source of truth as Today.
-    let p: any = null;
-    try {
-      p = workout.prescription ? JSON.parse(workout.prescription) : null;
-    } catch {}
-    if (!p)
-      p = prescribeToday({
-        session: baseWorkout(workout),
-        adaptation: { verdict: "full", durationFactor: 1, intensityCap: "z7" },
-        profile: (user as any).profile,
-      });
+    // Effective prescription — SHARED safety-gated resolver (Codex P1-1):
+    // an injured athlete or day-off row is never published to a device.
+    const resolved = await effectivePrescription(user.id, workout.id);
+    if (!resolved) return NextResponse.json({ error: "No session found" }, { status: 404 });
+    const p = resolved.prescription;
+    if (p.verdict === "rest" || (p.durationMin ?? resolved.workout.durationMin) === 0)
+      return NextResponse.json(
+        { error: "This is a rest day — nothing to publish." },
+        { status: 400 },
+      );
     const steps: IntervalStep[] = Array.isArray(p.steps) && p.steps.length
       ? p.steps
       : structuredSteps(p.durationMin ?? workout.durationMin, p.intensity || "z2", workout.type || "endurance", 0, p.sport || workout.sport);
@@ -84,6 +83,23 @@ export async function POST(req: Request) {
         )
         .join("\n") + fuelLine;
 
+    // Publish semantics (Codex review P1-5): re-push UPDATES the existing
+    // Intervals event instead of creating duplicates. Only a first push
+    // creates; the delivery id is required bookkeeping — a lost id is
+    // reported as ambiguous, never as clean success.
+    const priorId = (workout as any).deliveryProvider === "intervals" ? (workout as any).deliveryId : null;
+    if (priorId && intervalsUpdateEvent) {
+      await intervalsUpdateEvent(decryptSecret(conn.tokenEnc)!, priorId, {
+        dateLocal: dateKey(workout.date, user.timezone),
+        sport: p.sport || workout.sport,
+        title: p.title || workout.title,
+        description,
+        trainingLoad: tss,
+        steps,
+      });
+      await meterUsage(user.id, "fit_exports", 1);
+      return NextResponse.json({ ok: true, intervalsId: priorId, updated: true, structured: (p.sport || workout.sport) === "bike" });
+    }
     const created = await intervalsCreateEvent(decryptSecret(conn.tokenEnc)!, {
       dateLocal: dateKey(workout.date, user.timezone),
       sport: p.sport || workout.sport,
@@ -95,10 +111,20 @@ export async function POST(req: Request) {
 
     // Remember the Intervals event id so a re-push can update instead of
     // duplicating (update endpoint wired when we add edit propagation).
-    await prisma.workout.update({
+    if (!created.id)
+      return NextResponse.json(
+        { error: "Intervals accepted the request but returned no event id — treat delivery as ambiguous and check your Intervals calendar before re-pushing." },
+        { status: 502 },
+      );
+    const saved = await prisma.workout.update({
       where: { id: workout.id },
-      data: { deliveryProvider: "intervals", deliveryId: created.id || null },
-    }).catch(() => {});
+      data: { deliveryProvider: "intervals", deliveryId: created.id },
+    }).catch(() => null);
+    if (!saved)
+      return NextResponse.json({
+        ok: true, intervalsId: created.id, structured: (p.sport || workout.sport) === "bike",
+        warning: "Published, but the delivery id could not be saved locally — a future push may create a duplicate.",
+      });
     await meterUsage(user.id, "fit_exports", 1);
     return NextResponse.json({
       ok: true,

@@ -39,22 +39,19 @@ function xmlEscape(s: string): string {
 export function buildZwo(title: string, steps: IntervalStep[]): string {
   const blocks = steps
     .map((s) => {
-      const pct = ZONE_FTP_PCT[(s.zone || "z2").toLowerCase()] ?? 75;
-      const dur = Math.max(5, Math.round(s.seconds));
-      const tag =
-        s.phase === "warmup"
-          ? "Warmup"
-          : s.phase === "cooldown"
-            ? "Cooldown"
-            : s.phase === "recovery"
-              ? "IntervalsT"
-              : "SteadyState";
-      const attrs =
-        tag === "Warmup" || tag === "Cooldown"
-          ? ` Power="${tag === "Warmup" ? pct - 10 : pct}" Duration="${dur}"` // simple steady ramp edge; ZWO ranges need two power points we don't prescribe
-          : ` Power="${pct}" Duration="${dur}"`;
+      // FORMAT FACTS (ZWO spec, verified): Power is a FRACTION of FTP
+      // (0.55 = 55%) — integer percents parse as 100× FTP (Codex P1-2).
+      // Warmup/Cooldown take PowerLow+PowerHigh ramps; recovery is a plain
+      // SteadyState (IntervalsT is a repeat element with its own attrs).
+      // Durations are exact seconds — no clamping.
+      const frac = ((ZONE_FTP_PCT[(s.zone || "z2").toLowerCase()] ?? 75) / 100).toFixed(2);
+      const dur = Math.max(1, Math.round(s.seconds));
       const note = s.note ? ` text="${xmlEscape(s.note.slice(0, 120))}"` : "";
-      return `      <${tag}${attrs}${note}/>`;
+      if (s.phase === "warmup")
+        return `      <Warmup PowerLow="${Math.max(0.3, +frac - 0.15).toFixed(2)}" PowerHigh="${frac}" Duration="${dur}"${note}/>`;
+      if (s.phase === "cooldown")
+        return `      <Cooldown PowerLow="${frac}" PowerHigh="0.4" Duration="${dur}"${note}/>`;
+      return `      <SteadyState Power="${frac}" Duration="${dur}"${note}/>`;
     })
     .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -118,6 +115,37 @@ export async function intervalsCreateEvent(
     );
   const created = await resp.json();
   return { id: String(created.id ?? created.event_id ?? "") };
+}
+
+// Update an existing calendar event (PUT) — the re-push path; keeps edits
+// and plan changes from stacking duplicates on the athlete's calendar.
+export async function intervalsUpdateEvent(
+  apiKey: string,
+  eventId: string,
+  ev: IntervalsEvent,
+): Promise<void> {
+  const structured = ev.sport === "bike" && ev.steps?.length;
+  const body: Record<string, unknown> = {
+    category: "WORKOUT",
+    start_date_local: `${ev.dateLocal}T00:00:00`,
+    type:
+      ev.sport === "bike" ? "Ride" : ev.sport === "run" ? "Run" : ev.sport === "swim" ? "Swim" : "Other",
+    name: ev.title.slice(0, 80),
+    description: ev.description.slice(0, 1000),
+    ...(ev.trainingLoad ? { icu_training_load: Math.round(ev.trainingLoad) } : {}),
+    ...(structured ? { filename: "jmm-workout.zwo", file_contents: buildZwo(ev.title, ev.steps!) } : {}),
+  };
+  const resp = await providerFetch(`${INTERVALS_API}/athlete/0/events/${encodeURIComponent(eventId)}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
+      "Content-Type": "application/json",
+      "User-Agent": "JasMiamiMethod/1.0 (https://jasmiamimethod.fit)",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok)
+    throw new Error(`Intervals.icu update failed: ${resp.status}`);
 }
 
 // Key check for the connect flow — reads the key's own athlete profile.

@@ -763,9 +763,13 @@ export default function TodayPage() {
                         const d = await r.json().catch(() => ({}));
                         if (!r.ok) throw Error(d.error || "Push failed");
                         setMessage(
-                          es
-                            ? "✓ Publicado en tu calendario de Intervals.icu — se sincroniza solo a tu reloj Garmin/COROS enlazado."
-                            : "✓ Published to your Intervals.icu calendar — it syncs automatically to your linked Garmin/COROS watch."
+                          d.structured
+                            ? es
+                              ? "✓ Entrenamiento estructurado publicado en Intervals.icu — se sincroniza a tu Garmin/COROS enlazado."
+                              : "✓ Structured workout published to Intervals.icu — it syncs to your linked Garmin/COROS."
+                            : es
+                              ? "✓ Evento publicado en Intervals.icu con la lista de pasos y combustible (los pasos estructurados de carrera llegarán vía el adaptador de carrera). Verifica la conexión Garmin/COROS en Intervals.icu."
+                              : "✓ Event published to Intervals.icu with the step list and fuel (structured running steps arrive via the run adapter). Check your Garmin/COROS link inside Intervals.icu."
                         );
                         await load();
                       } catch (e: any) {

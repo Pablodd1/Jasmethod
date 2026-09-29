@@ -21,6 +21,7 @@ export async function sendTelegram(
           text,
           disable_web_page_preview: true,
         }),
+        signal: AbortSignal.timeout(20000),
       },
     );
     const data = await resp.json();
