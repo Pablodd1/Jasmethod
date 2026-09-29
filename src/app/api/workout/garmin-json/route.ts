@@ -74,11 +74,23 @@ export async function GET(req: Request) {
 
   // Steps come from the stored prescription (the same structured steps the
   // athlete sees on Today) or the deterministic fallback.
+  // SHARED SAFETY GATE (Codex follow-up F2): exports resolve the effective,
+  // injury/day-off-aware prescription — the raw stored one is never sent.
   let steps: any[] = [];
+  let effectiveIntensity: string | null = null;
   try {
+    const { effectivePrescription } = await import("@/lib/effective-prescription");
+    const resolved = await effectivePrescription(user.id, workout.id);
+    if (resolved) {
+      const p = resolved.prescription;
+      effectiveIntensity = p.intensity || null;
+      if (Array.isArray(p?.steps) && p.steps.length) steps = p.steps;
+    }
+  } catch {
+    // fall back to the stored prescription below rather than failing the export
     const p = workout.prescription ? JSON.parse(workout.prescription) : null;
     if (Array.isArray(p?.steps) && p.steps.length) steps = p.steps;
-  } catch {}
+  }
   if (!steps.length) {
     const { structuredSteps } = await import("@/lib/prescription");
     steps = structuredSteps(
@@ -120,7 +132,7 @@ export async function GET(req: Request) {
     const { buildFuelingPlan } = await import("@/lib/fueling");
     const fuel = buildFuelingPlan({
       durationMin: workout.durationMin,
-      intensity: workout.intensity || "z2",
+      intensity: effectiveIntensity || workout.intensity || "z2",
       weightKg: user.profile?.weightKg,
       sweatRateMlH: user.profile?.sweatRateMlH,
       sodiumMgPerL: user.profile?.sodiumMgPerL,

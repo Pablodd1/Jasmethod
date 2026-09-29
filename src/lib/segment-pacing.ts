@@ -98,15 +98,19 @@ export function buildBikePacing(opts: {
   let cum = 0;
   let cumFast = 0, cumSlow = 0;
   for (const [from, to] of bounds) {
-    // Per-sample integration: time over each profile sample inside the
-    // segment (signed elevation change — descents run the physics too, the
-    // solver clamps grades below −2% as unmodeled, stated in the note).
-    const pts = samplesIn(opts.profile, from, to);
+    // Per-sample time integration with TRUE distances (Codex follow-up F6):
+    // samples closer than 5 m are merged — the old 0.01 km floor doubled the
+    // traveled distance on dense tracks (1 km flat = 3.4 min at 5 m spacing).
+    const raw = samplesIn(opts.profile, from, to);
+    const pts: ProfilePoint[] = [raw[0]];
+    for (const p of raw.slice(1))
+      if (p.km - pts[pts.length - 1].km >= 0.005) pts.push(p);
     const segKm = Math.max(0.05, to - from);
     let tMin = 0, tSlow = 0, tFast = 0, powerW = 0, n = 0;
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1], b = pts[i];
-      const subKm = Math.max(0.01, b.km - a.km);
+      const subKm = b.km - a.km;
+      if (subKm <= 0) continue; // true duplicates skip, never inflate
       const elevDelta = b.elevM - a.elevM; // SIGNED — descents count
       const r = bikePhysicsSpeedKmh({
         ftp: opts.ftp, weightKg: opts.weightKg ?? 70, bikeKg: setup.bikeKg,
@@ -179,31 +183,45 @@ export function buildRunPacing(opts: {
   const gustDelta = Math.max(0, (opts.gustsKph ?? windMean) - windMean);
   // Wind cost on running ≈ v² drag share; a simple honest heuristic: up to ±3%.
   const windAdj = Math.min(3, windMean * 0.08);
+  // Gust band (Codex follow-up F6: gustDelta was computed but unused): the
+  // slow bound rides the gust speed, the fast bound assumes partial lulls.
+  const slowAdj = Math.min(4, (windMean + gustDelta) * 0.08);
+  const fastAdj = Math.min(3, Math.max(0, windMean - gustDelta / 2) * 0.08);
   const bounds = segmentBounds(opts.profile, opts.courseKm);
   const segments: SegmentRow[] = [];
   let cum = 0, cumSlow = 0, cumFast = 0;
   for (const [from, to] of bounds) {
-    // Distance-weighted grade over the samples inside the segment — boundary
-    // pairs erased intermediate hills (Codex P1-10).
-    const pts = samplesIn(opts.profile, from, to);
+    // TIME integration over each sample's own grade (Codex follow-up F6):
+    // distance-weighting grades then applying the nonlinear factor canceled
+    // climbs against descents — a rolling 8 km route predicted identical to
+    // flat. Sum pace × distance per sample instead.
+    const raw = samplesIn(opts.profile, from, to);
+    const pts: ProfilePoint[] = [raw[0]];
+    for (const p of raw.slice(1))
+      if (p.km - pts[pts.length - 1].km >= 0.005) pts.push(p);
     const segKm = Math.max(0.05, to - from);
-    let weighted = 0;
+    let tMin = 0, tSlow = 0, tFast = 0;
     for (let i = 1; i < pts.length; i++) {
-      const w = Math.max(0.01, pts[i].km - pts[i - 1].km);
-      weighted += gradeOf(pts[i - 1], pts[i]) * w;
+      const dx = pts[i].km - pts[i - 1].km;
+      if (dx <= 0) continue;
+      const g = gradeOf(pts[i - 1], pts[i]);
+      const pace = opts.runPaceBaseSecPerKm * 1.06 * runGradeFactor(g);
+      tMin += (pace * dx) / 60;
+      tSlow += (pace * (1 + slowAdj / 100) * dx) / 60;
+      tFast += (pace * (1 - fastAdj / 100) * dx) / 60;
     }
-    const grade = weighted / segKm;
-    const factor = runGradeFactor(grade);
-    const pace = opts.runPaceBaseSecPerKm * 1.06 * factor; // threshold ×1.06 → race feel
-    cum += (pace * segKm) / 60;
-    cumFast += (pace * (1 - windAdj / 100) * segKm) / 60;
-    cumSlow += (pace * (1 + windAdj / 100) * segKm) / 60;
+    if (!tMin) tMin = tSlow = tFast = 0;
+    const grade = gradeOf(pts[0], pts[pts.length - 1]);
+    const avgPace = tMin > 0 ? (tMin * 60) / segKm : opts.runPaceBaseSecPerKm * 1.06;
+    cum += tMin;
+    cumFast += tFast;
+    cumSlow += tSlow;
     segments.push({
       fromKm: +from.toFixed(1),
       toKm: +to.toFixed(1),
       gradePct: +grade.toFixed(1),
-      paceSecPerKm: Math.round(pace),
-      windAdjPct: windAdj > 0.2 ? +windAdj.toFixed(1) : undefined,
+      paceSecPerKm: Math.round(avgPace),
+      windAdjPct: slowAdj > 0.2 ? +slowAdj.toFixed(1) : undefined,
       cumMin: +cum.toFixed(1),
     });
   }
@@ -213,9 +231,10 @@ export function buildRunPacing(opts: {
     totalMin: +cum.toFixed(1),
     gustRangeMin: [+cumFast.toFixed(1), +cumSlow.toFixed(1)],
     note:
-      `Pace = threshold ×1.06 adjusted per-segment for grade` +
+      `Pace = threshold ×1.06 integrated per sample for grade` +
       (opts.tempC != null ? `. Air temp ${Math.round(opts.tempC)}°C is DISPLAYED ONLY — heat effects are not modeled in this table (see the forecast's WBGT factor)` : "") +
-      (windMean > 3 ? `, wind ${Math.round(windMean)} km/h (±${windAdj.toFixed(1)}% band)` : "") +
+      (windMean > 3 ? `, wind ${Math.round(windMean)} km/h` : "") +
+      (gustDelta > 0 ? ` gusting ${Math.round(opts.gustsKph!)}` : "") +
       `. Grade factors are coaching heuristics, not lab measurements.`,
   };
 }

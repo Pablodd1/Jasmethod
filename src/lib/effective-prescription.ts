@@ -5,7 +5,6 @@
 import { prisma } from "./db";
 import { prescribeToday } from "./adaptive";
 import { baseWorkout } from "./prescription";
-import { structuredSteps } from "./prescription";
 
 export async function effectivePrescription(
   userId: string,
@@ -16,6 +15,7 @@ export async function effectivePrescription(
     include: { planDay: { select: { dayOff: true } } },
   });
   if (!workout) return null;
+  const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
   let p: any = null;
   try {
     p = workout.prescription ? JSON.parse(workout.prescription) : null;
@@ -26,16 +26,17 @@ export async function effectivePrescription(
   const rest =
     !!workout.planDay?.dayOff ||
     workout.durationMin === 0 ||
-    !!(await prisma.athleteProfile.findUnique({
-      where: { userId },
-      select: { injured: true },
-    }))?.injured;
+    !!profile?.injured;
   if (!p || rest) {
+    // FALLBACK KEEPS PERSONALIZATION (Codex follow-up F1): the generated
+    // prescription must see FTP/LTHR/pace anchors and the intensity override
+    // exactly like Today's own path — otherwise devices get generic sessions.
     p = prescribeToday({
       session: baseWorkout(workout),
       adaptation: rest
         ? { verdict: "rest", durationFactor: 0, intensityCap: "z1" }
         : { verdict: "full", durationFactor: 1, intensityCap: "z7" },
+      profile: profile ?? undefined,
     });
   }
   return { workout, prescription: p };

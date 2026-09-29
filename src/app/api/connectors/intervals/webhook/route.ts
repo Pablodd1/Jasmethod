@@ -34,7 +34,11 @@ export async function POST(req: Request) {
         payload: JSON.stringify(body).slice(0, 8000),
       },
     });
-  } catch {
+  } catch (e: any) {
+    // Duplicate redelivery = already recorded = accept (Intervals must not
+    // retry forever). ONLY a genuine storage outage returns 503.
+    if (e?.code === "P2002")
+      return NextResponse.json({ ok: true, duplicate: true });
     return NextResponse.json({ error: "Could not persist event" }, { status: 503 });
   }
 

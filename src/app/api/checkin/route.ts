@@ -140,6 +140,32 @@ export async function POST(req: Request) {
       if (["mood", "cycleDay", "weightKg", "rhr"].includes(key))
         (checkin as any)[key] = value;
     }
+    // FRESHNESS BEFORE ADAPTATION (Codex follow-up F5): when device data is
+    // stale, do a BOUNDED inline sync first so the verdict reflects this
+    // morning's HRV/recovery, not yesterday's. Hard-capped at 7s so check-in
+    // never hangs; the durable queue below remains the safety net, and the
+    // refreshed data feeds the NEXT adaptation too.
+    {
+      const stale = await prisma.connector.findFirst({
+        where: {
+          userId: user.id,
+          status: "connected",
+          provider: { in: ["whoop", "oura", "strava"] },
+          OR: [
+            { lastSyncAt: null },
+            { lastSyncAt: { lt: new Date(Date.now() - 6 * 3600000) } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (stale) {
+        const { syncUserConnectors } = await import("@/lib/sync");
+        await Promise.race([
+          syncUserConnectors(user.id).catch(() => {}),
+          new Promise((r) => setTimeout(r, 7000)),
+        ]);
+      }
+    }
     const { start, end, key } = dayBounds(user.timezone);
     const [metrics, profile, appointments, prefs, feedback] = await Promise.all(
       [

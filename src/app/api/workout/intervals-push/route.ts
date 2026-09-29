@@ -87,7 +87,22 @@ export async function POST(req: Request) {
     // Intervals event instead of creating duplicates. Only a first push
     // creates; the delivery id is required bookkeeping — a lost id is
     // reported as ambiguous, never as clean success.
-    const priorId = (workout as any).deliveryProvider === "intervals" ? (workout as any).deliveryId : null;
+    // CONCURRENT-CLAIM (Codex follow-up F4): two simultaneous pushes both read
+    // deliveryId=null and both create externally. Claim the row first with a
+    // conditional update — exactly one request wins the create.
+    const claimToken = `pending:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    const claim = await prisma.workout.updateMany({
+      where: { id: workout.id, deliveryId: null },
+      data: { deliveryProvider: "intervals", deliveryId: claimToken },
+    });
+    const priorId = claim.count === 0
+      ? (await prisma.workout.findUnique({ where: { id: workout.id }, select: { deliveryId: true } }))?.deliveryId
+      : null;
+    if (priorId && priorId.startsWith("pending:"))
+      return NextResponse.json(
+        { error: "A publish for this session is already in progress. Wait a moment, then check your Intervals calendar — avoid double-pushing." },
+        { status: 409 },
+      );
     if (priorId && intervalsUpdateEvent) {
       await intervalsUpdateEvent(decryptSecret(conn.tokenEnc)!, priorId, {
         dateLocal: dateKey(workout.date, user.timezone),
@@ -116,14 +131,14 @@ export async function POST(req: Request) {
         { error: "Intervals accepted the request but returned no event id — treat delivery as ambiguous and check your Intervals calendar before re-pushing." },
         { status: 502 },
       );
-    const saved = await prisma.workout.update({
-      where: { id: workout.id },
-      data: { deliveryProvider: "intervals", deliveryId: created.id },
+    const saved = await prisma.workout.updateMany({
+      where: { id: workout.id, deliveryId: claimToken },
+      data: { deliveryId: created.id },
     }).catch(() => null);
-    if (!saved)
+    if (!saved || saved.count === 0)
       return NextResponse.json({
         ok: true, intervalsId: created.id, structured: (p.sport || workout.sport) === "bike",
-        warning: "Published, but the delivery id could not be saved locally — a future push may create a duplicate.",
+        warning: "Published, but the delivery id could not be saved locally — a future push may create a duplicate. Check your Intervals calendar.",
       });
     await meterUsage(user.id, "fit_exports", 1);
     return NextResponse.json({

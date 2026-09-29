@@ -61,3 +61,34 @@ test("gpx parser now returns a downsampled profile", () => {
   assert.ok(c!.profile.length >= 4 && c!.profile.length <= 400, `profile pts ${c!.profile.length}`);
   assert.ok(c!.profile[0].km === 0 || c!.profile.length > 0);
 });
+
+// ---- Codex follow-up regression tests (F6) ----
+
+test("rolling hills: time integration beats flat — weighted grades canceled terrain", () => {
+  // 8 km with eight 50 m climbs (50 m up / 50 m down per km, between samples)
+  const rolling = Array.from({ length: 81 }, (_, i) => {
+    const half = Math.floor(i / 1) % 2 === 0;
+    return { km: i * 0.1, elevM: (i % 10) < 5 ? (i % 10) * 10 : 50 - ((i % 10) - 5) * 10 };
+  });
+  const flat = Array.from({ length: 81 }, (_, i) => ({ km: i * 0.1, elevM: 0 }));
+  const tRoll = buildRunPacing({ profile: rolling, courseKm: 8, runPaceBaseSecPerKm: 250, windKph: 0 });
+  const tFlat = buildRunPacing({ profile: flat, courseKm: 8, runPaceBaseSecPerKm: 250, windKph: 0 });
+  assert.ok(tRoll.totalMin > tFlat.totalMin + 1, `rolling ${tRoll.totalMin} must exceed flat ${tFlat.totalMin}`);
+});
+
+test("resampling invariance: 2-point vs 201-point flat 1 km give the same time", () => {
+  const coarse = [{ km: 0, elevM: 0 }, { km: 1, elevM: 0 }];
+  const fine = Array.from({ length: 201 }, (_, i) => ({ km: i * 0.005, elevM: 0 }));
+  const a = buildBikePacing({ profile: coarse, courseKm: 1, ftp: 250, weightKg: 75, bikeType: "tt", windKph: 5 });
+  const b = buildBikePacing({ profile: fine, courseKm: 1, ftp: 250, weightKg: 75, bikeType: "tt", windKph: 5 });
+  assert.ok(Math.abs(a.totalMin - b.totalMin) < 0.1, `coarse ${a.totalMin} vs fine ${b.totalMin}`);
+});
+
+test("run gust band: gusts widen the range", () => {
+  const flat = Array.from({ length: 11 }, (_, i) => ({ km: i, elevM: 0 }));
+  const calm = buildRunPacing({ profile: flat, courseKm: 10, runPaceBaseSecPerKm: 250, windKph: 10 });
+  const gusty = buildRunPacing({ profile: flat, courseKm: 10, runPaceBaseSecPerKm: 250, windKph: 10, gustsKph: 45 });
+  const calmWidth = calm.gustRangeMin[1] - calm.gustRangeMin[0];
+  const gustyWidth = gusty.gustRangeMin[1] - gusty.gustRangeMin[0];
+  assert.ok(gustyWidth > calmWidth, `gusty ${gustyWidth} > calm ${calmWidth}`);
+});
