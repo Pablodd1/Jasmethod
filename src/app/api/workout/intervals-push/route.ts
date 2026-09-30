@@ -17,6 +17,10 @@ export const dynamic = "force-dynamic";
 // then syncs it to their linked Garmin/COROS/Wahoo/Suunto automatically —
 // the one fully-open structured-workout bridge (owner request 2026-09-28).
 export async function POST(req: Request) {
+  // Claim bookkeeping lives at function scope so the outer catch can release
+  // a pending claim on ANY failure path.
+  let claimedWorkoutId: string | null = null;
+  let claimedToken: string | null = null;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
@@ -91,6 +95,8 @@ export async function POST(req: Request) {
     // deliveryId=null and both create externally. Claim the row first with a
     // conditional update — exactly one request wins the create.
     const claimToken = `pending:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    claimedWorkoutId = workout.id;
+    claimedToken = claimToken;
     const claim = await prisma.workout.updateMany({
       where: { id: workout.id, deliveryId: null },
       data: { deliveryProvider: "intervals", deliveryId: claimToken },
@@ -133,6 +139,7 @@ export async function POST(req: Request) {
           where: { id: workout.id, deliveryId: claimToken },
           data: { deliveryId: null, deliveryProvider: null },
         }).catch(() => {});
+        claimedToken = null; // released — outer catch must not double-release
         return NextResponse.json({ error: e.message }, { status: 502 });
       }
       // AMBIGUOUS (network/timeout): the request may have reached Intervals.
@@ -173,12 +180,12 @@ export async function POST(req: Request) {
   } catch (e: any) {
     // CLAIM HYGIENE (audit finding): any throw inside the claim window
     // (decrypt, TSS, fuel plan, update path) must not wedge the workout in
-    // pending forever. Release if we still own an unconfirmed claim — the
-    // create-call catch above already handles its own cases.
+    // pending forever. Release our unconfirmed claim if one is held — the
+    // create-call catch above already handles its own definite/ambiguous cases.
     try {
-      if (typeof claimToken === "string" && claimToken)
+      if (claimedWorkoutId)
         await prisma.workout.updateMany({
-          where: { id: workout.id, deliveryId: claimToken },
+          where: { id: claimedWorkoutId, deliveryId: claimedToken ?? undefined },
           data: { deliveryId: null, deliveryProvider: null },
         });
     } catch {}
