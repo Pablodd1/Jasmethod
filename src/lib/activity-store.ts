@@ -50,6 +50,9 @@ export async function storeActivity(
               .map((k) => [k, activity[k]]),
           ),
           actualDurationMin: activity.durationMin,
+          // Corrected measurements invalidate the old report (Codex review #3
+          // P2) — it regenerates on the next report pass from the new values.
+          insights: null,
         },
       });
       await matchActivity(tx, userId, timezone, { ...existing, ...activity, id: existing.id });

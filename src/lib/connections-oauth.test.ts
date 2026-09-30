@@ -180,6 +180,7 @@ function exportFixture() {
     'next/server':{NextResponse},'@/lib/auth':{getCurrentUser:async()=>({id:'athlete-A',timezone:'UTC',email:'athlete@example.test'})},
     '@/lib/db':{prisma:{workout:{findFirst:async()=>workout,update:async()=>{log.approvals++;}},athleteProfile:{findUnique:async()=>({lthr:170})},reminderPref:{findUnique:async()=>{log.prefs++;return{emailEnabled:true}}}}},
     '@/lib/dates':{dayBounds:()=>({start:new Date(),end:new Date()})},'@/lib/telemetry':{meterUsage:async()=>{}},
+    '@/lib/effective-prescription':{effectivePrescription:async()=>({workout:{id:'w1',durationMin:1},prescription:{steps:[{phase:'active',name:'Sprint',seconds:5,zone:'z7',target:{type:'pace',value:3.2}}],intensity:'z7',durationMin:1}})},
     '@/lib/fit-export':{buildFitWorkout:()=>Buffer.from('fixture-file'),workoutToFitSpec:x=>x},
     '@/lib/email':{sendEmail:async()=>{log.emails++;return{ok:true}}},
   };

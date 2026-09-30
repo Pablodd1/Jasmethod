@@ -33,11 +33,13 @@ export async function POST(req: Request) {
         status: "connected",
         tokenEnc: encryptSecret(apiKey),
         scope: "api_key",
+        externalRef: check.athleteId,
         lastSyncAt: new Date(),
       },
       update: {
         status: "connected",
         tokenEnc: encryptSecret(apiKey),
+        externalRef: check.athleteId,
         lastError: null,
         lastSyncAt: new Date(),
       },

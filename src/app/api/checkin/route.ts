@@ -145,6 +145,10 @@ export async function POST(req: Request) {
     // morning's HRV/recovery, not yesterday's. Hard-capped at 7s so check-in
     // never hangs; the durable queue below remains the safety net, and the
     // refreshed data feeds the NEXT adaptation too.
+    // Freshness of the device data behind this adaptation (Codex review #3
+    // P1-5): surfaced explicitly instead of an apparently-normal adaptation
+    // on stale data.
+    let freshness: "synced-now" | "fresh" | "pending" = "fresh";
     {
       const stale = await prisma.connector.findFirst({
         where: {
@@ -159,11 +163,13 @@ export async function POST(req: Request) {
         select: { id: true },
       });
       if (stale) {
+        freshness = "pending";
         const { syncUserConnectors } = await import("@/lib/sync");
-        await Promise.race([
-          syncUserConnectors(user.id).catch(() => {}),
-          new Promise((r) => setTimeout(r, 7000)),
+        const ok = await Promise.race([
+          syncUserConnectors(user.id).then(() => true).catch(() => false),
+          new Promise<boolean>((r) => setTimeout(() => r(false), 7000)),
         ]);
+        freshness = ok ? "synced-now" : "pending";
       }
     }
     const { start, end, key } = dayBounds(user.timezone);
@@ -416,12 +422,25 @@ export async function POST(req: Request) {
     // freshness ordering note: the adaptation below uses the metrics already
     // on file — the refreshed data lands in DailyMetrics and is consumed by
     // the NEXT adaptation (or the hourly cron) rather than this response.
+    // Queue ONLY connected providers (Codex review #3 P2 — device-free users
+    // must not create four no-op jobs per hourly key).
     const { enqueueSyncJob } = await import("@/lib/background-jobs");
     const hourKey = new Date().toISOString().slice(0, 13); // ≤1 refresh/hour
-    for (const provider of ["strava", "whoop", "oura", "google_cal"] as const)
+    const connectedProviders = await prisma.connector.findMany({
+      where: { userId: user.id, status: "connected", provider: { in: ["strava", "whoop", "oura", "google_cal"] } },
+      select: { provider: true },
+    });
+    for (const { provider } of connectedProviders)
       await enqueueSyncJob(user.id, "sync", `checkin:${provider}:${user.id}:${hourKey}`, { provider }).catch(() => {});
     return NextResponse.json({
       ok: true,
+      freshness,
+      freshnessNote:
+        freshness === "synced-now"
+          ? "Device data refreshed before adapting today's plan."
+          : freshness === "pending"
+            ? "Device refresh still running — today's plan may update after the next sync."
+            : "Device data is current.",
       ...saved,
       prescription,
       adaptation,

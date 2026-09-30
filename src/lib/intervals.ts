@@ -109,10 +109,15 @@ export async function intervalsCreateEvent(
     },
     body: JSON.stringify(body),
   });
-  if (!resp.ok)
-    throw new Error(
+  if (!resp.ok) {
+    // DEFINITE rejection: the provider answered and refused — no workout was
+    // created. Callers may safely release their publication claim and retry.
+    const err: any = new Error(
       `Intervals.icu push failed: ${resp.status} ${(await resp.text().catch(() => "")).slice(0, 140)}`,
     );
+    err.definite = true;
+    throw err;
+  }
   const created = await resp.json();
   return { id: String(created.id ?? created.event_id ?? "") };
 }
@@ -151,7 +156,7 @@ export async function intervalsUpdateEvent(
 // Key check for the connect flow — reads the key's own athlete profile.
 export async function intervalsVerifyKey(
   apiKey: string,
-): Promise<{ ok: boolean; athlete?: string; error?: string }> {
+): Promise<{ ok: boolean; athlete?: string; athleteId?: string | null; error?: string }> {
   try {
     const resp = await providerFetch(`${INTERVALS_API}/athlete/0`, {
       headers: {
@@ -161,7 +166,7 @@ export async function intervalsVerifyKey(
     });
     if (!resp.ok) return { ok: false, error: `Intervals.icu rejected the key (${resp.status})` };
     const a = await resp.json();
-    return { ok: true, athlete: String(a.name || a.id || "athlete") };
+    return { ok: true, athlete: String(a.name || a.id || "athlete"), athleteId: a.id != null ? String(a.id) : null };
   } catch (e) {
     return { ok: false, error: String((e as Error).message).slice(0, 120) };
   }

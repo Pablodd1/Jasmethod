@@ -115,14 +115,38 @@ export async function POST(req: Request) {
       await meterUsage(user.id, "fit_exports", 1);
       return NextResponse.json({ ok: true, intervalsId: priorId, updated: true, structured: (p.sport || workout.sport) === "bike" });
     }
-    const created = await intervalsCreateEvent(decryptSecret(conn.tokenEnc)!, {
-      dateLocal: dateKey(workout.date, user.timezone),
-      sport: p.sport || workout.sport,
-      title: p.title || workout.title,
-      description,
-      trainingLoad: tss,
-      steps,
-    });
+    let created: { id: string };
+    try {
+      created = await intervalsCreateEvent(decryptSecret(conn.tokenEnc)!, {
+        dateLocal: dateKey(workout.date, user.timezone),
+        sport: p.sport || workout.sport,
+        title: p.title || workout.title,
+        description,
+        trainingLoad: tss,
+        steps,
+      });
+    } catch (e: any) {
+      if (e?.definite) {
+        // DEFINITE provider rejection: nothing was created — release the
+        // claim so the athlete can retry without duplicate risk.
+        await prisma.workout.updateMany({
+          where: { id: workout.id, deliveryId: claimToken },
+          data: { deliveryId: null, deliveryProvider: null },
+        }).catch(() => {});
+        return NextResponse.json({ error: e.message }, { status: 502 });
+      }
+      // AMBIGUOUS (network/timeout): the request may have reached Intervals.
+      // The claim stays pending for reconciliation; retrying now could create
+      // a duplicate. Surface the ambiguity instead of pretending either way.
+      return NextResponse.json(
+        {
+          error:
+            "The publish did not complete clearly — it may or may not have reached Intervals.icu. Check your Intervals calendar before retrying.",
+          claimPending: true,
+        },
+        { status: 502 },
+      );
+    }
 
     // Remember the Intervals event id so a re-push can update instead of
     // duplicating (update endpoint wired when we add edit propagation).

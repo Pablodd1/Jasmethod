@@ -49,6 +49,34 @@ export async function POST(req: Request) {
     message: `type=${type} athlete=${athleteId}`,
   }).catch(() => {});
 
-  // Intervals expects a fast 200; reconciliation happens in the queue.
-  return NextResponse.json({ ok: true });
+  // CONSUMER (Codex review #3 P1-3): route the event to the athlete via the
+  // stored externalRef, then enqueue a DURABLE refresh of their connected
+  // ingest providers. An Intervals "ACTIVITY_UPLOADED" bell almost always
+  // means the athlete's watch also pushed to Strava/Garmin — the refresh is
+  // what actually moves data into the athlete record and coaching pipeline.
+  const connector = await prisma.connector
+    .findFirst({
+      where: { provider: "intervals", externalRef: athleteId, status: "connected" },
+      select: { userId: true },
+    })
+    .catch(() => null);
+  if (!connector)
+    // Unknown athlete: recorded (above) but nothing to refresh — accepted so
+    // Intervals stops retrying; the mapping is fixed at connect time.
+    return NextResponse.json({ ok: true, routed: false });
+  const { enqueueSyncJob } = await import("@/lib/background-jobs");
+  const connected = await prisma.connector
+    .findMany({
+      where: { userId: connector.userId, status: "connected", provider: { in: ["strava", "whoop", "oura", "google_cal"] } },
+      select: { provider: true },
+    })
+    .catch(() => []);
+  for (const { provider } of connected)
+    await enqueueSyncJob(
+      connector.userId,
+      "sync",
+      `ivwh:${provider}:${connector.userId}:${body?.event_id || type}:${Date.now()}`,
+      { provider },
+    ).catch(() => {});
+  return NextResponse.json({ ok: true, routed: true, providers: connected.length });
 }

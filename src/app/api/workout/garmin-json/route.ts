@@ -8,12 +8,11 @@ import { meterUsage } from "@/lib/telemetry";
 export const dynamic = "force-dynamic";
 
 // GET /api/workout/garmin-json?sessionId=<id>
-// Returns the workout in GARMIN CONNECT'S OWN JSON FORMAT — the one format its
-// web "Import Workout" accepts (Training & Planning → Workouts → Import).
-// FIT/TCX are NOT importable into Garmin Connect (activity formats only), so
-// this is the supported path from a web app without the partner-gated Training
-// API. After import: Garmin Connect → send to device → syncs with per-step
-// alerts.
+// Exports the session in Garmin Connect's own JSON import format (Training &
+// Planning → Workouts → Import). Community-verified import path, not a
+// partner API: import, inspect the received steps, then send to device.
+// Targets: HR-zone approximations (Garmin JSON supports zones 1-5; our z6-z7
+// cap at 5) and per-step power targets for cycling when FTP is known.
 
 const SPORT_KEY: Record<string, string> = {
   run: "running",
@@ -74,33 +73,26 @@ export async function GET(req: Request) {
 
   // Steps come from the stored prescription (the same structured steps the
   // athlete sees on Today) or the deterministic fallback.
-  // SHARED SAFETY GATE (Codex follow-up F2): exports resolve the effective,
-  // injury/day-off-aware prescription — the raw stored one is never sent.
-  let steps: any[] = [];
-  let effectiveIntensity: string | null = null;
-  try {
-    const { effectivePrescription } = await import("@/lib/effective-prescription");
-    const resolved = await effectivePrescription(user.id, workout.id);
-    if (resolved) {
-      const p = resolved.prescription;
-      effectiveIntensity = p.intensity || null;
-      if (Array.isArray(p?.steps) && p.steps.length) steps = p.steps;
-    }
-  } catch {
-    // fall back to the stored prescription below rather than failing the export
-    const p = workout.prescription ? JSON.parse(workout.prescription) : null;
-    if (Array.isArray(p?.steps) && p.steps.length) steps = p.steps;
-  }
-  if (!steps.length) {
-    const { structuredSteps } = await import("@/lib/prescription");
-    steps = structuredSteps(
-      workout.durationMin,
-      workout.intensity || "z2",
-      workout.type || "endurance",
-      0,
-      workout.sport,
+  // SHARED SAFETY GATE — enforced, not decorative (Codex review #3 P1):
+  // a rest verdict or failed resolution NEVER exports, and a rejected session
+  // is never reconstructed from the raw stored prescription.
+  const { effectivePrescription } = await import("@/lib/effective-prescription");
+  const resolved = await effectivePrescription(user.id, workout.id);
+  if (!resolved)
+    return NextResponse.json({ error: "Session could not be resolved safely — export refused" }, { status: 503 });
+  const p = resolved.prescription;
+  if (
+    p.verdict === "rest" ||
+    (p.durationMin ?? resolved.workout.durationMin) === 0 ||
+    !Array.isArray(p.steps) ||
+    p.steps.length === 0
+  )
+    return NextResponse.json(
+      { error: "This is a rest day — there is no workout to export." },
+      { status: 400 },
     );
-  }
+  let steps: any[] = p.steps;
+  const effectiveIntensity: string | null = p.intensity || null;
 
   const workoutSteps = steps.map((s: any, i: number) => {
     const step: any = {
@@ -115,9 +107,19 @@ export async function GET(req: Request) {
       targetValueTwo: null,
       zone: null,
     };
-    // When the athlete has an LTHR we attach HR-zone targets (Garmin zones 1-5
-    // approximated from our z1-z7) so the watch beeps inside each step.
-    if (profile?.lthr) {
+    // Targets preserved per sport (Codex review #3 P1): cycling gets an
+    // exact WATT target from FTP × zone multiplier (the number the athlete
+    // must hold); HR-zone targets (Garmin zones 1-5; our z6-z7 cap at 5 —
+    // a format limit, stated) only when LTHR exists and no power applies.
+    if (sportKey === "cycling" && user.profile?.ftp) {
+      const mult = ({ z1: 0.55, z2: 0.75, z3: 0.9, z4: 1.0, z5: 1.18, z6: 1.45, z7: 1.65 } as Record<string, number>)[
+        (s.zone || "z2").toLowerCase()
+      ] ?? 0.75;
+      step.targetType = { targetTypeKey: "power" };
+      step.targetValueOne = Math.round(user.profile.ftp * mult);
+      step.targetValueTwo = null;
+      step.zone = null;
+    } else if (profile?.lthr) {
       const z = zoneNumber(s.zone);
       step.targetType = { targetTypeKey: "heart.rate.zone" };
       step.zone = z;
