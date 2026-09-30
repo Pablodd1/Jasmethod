@@ -154,7 +154,7 @@ export async function POST(req: Request) {
         where: {
           userId: user.id,
           status: "connected",
-          provider: { in: ["whoop", "oura", "strava"] },
+          provider: { in: ["strava", "whoop", "oura"] }, // device freshness (calendar is push-only)
           OR: [
             { lastSyncAt: null },
             { lastSyncAt: { lt: new Date(Date.now() - 6 * 3600000) } },

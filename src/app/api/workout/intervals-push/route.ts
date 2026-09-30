@@ -103,7 +103,7 @@ export async function POST(req: Request) {
         { error: "A publish for this session is already in progress. Wait a moment, then check your Intervals calendar — avoid double-pushing." },
         { status: 409 },
       );
-    if (priorId && intervalsUpdateEvent) {
+    if (priorId) {
       await intervalsUpdateEvent(decryptSecret(conn.tokenEnc)!, priorId, {
         dateLocal: dateKey(workout.date, user.timezone),
         sport: p.sport || workout.sport,
@@ -171,6 +171,17 @@ export async function POST(req: Request) {
       structured: (p.sport || workout.sport) === "bike",
     });
   } catch (e: any) {
+    // CLAIM HYGIENE (audit finding): any throw inside the claim window
+    // (decrypt, TSS, fuel plan, update path) must not wedge the workout in
+    // pending forever. Release if we still own an unconfirmed claim — the
+    // create-call catch above already handles its own cases.
+    try {
+      if (typeof claimToken === "string" && claimToken)
+        await prisma.workout.updateMany({
+          where: { id: workout.id, deliveryId: claimToken },
+          data: { deliveryId: null, deliveryProvider: null },
+        });
+    } catch {}
     return NextResponse.json({ error: e?.message || "Push failed" }, { status: 502 });
   }
 }

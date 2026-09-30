@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { dayBounds } from "@/lib/dates";
-import { baseWorkout } from "@/lib/prescription";
 import { meterUsage } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
