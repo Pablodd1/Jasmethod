@@ -16,11 +16,29 @@ function route(path:string, modules:Record<string,any>, fetcher:any, env:Record<
  return sandbox.exports as any;
 }
 const user={id:"athlete",name:"SENSITIVE_NAME",language:"en",profile:{ftp:999,secret:"PROVIDER_VALUE"}};
+// Grounded chat context fixture — server-side digest only (no provider
+// payloads, no tokens). The route assembles it from the athlete records.
+const chatCtx={
+ name:"Test Athlete",language:"en",
+ profileSummary:"goal: olympic · level: amateur",
+ anchorsSummary:"FTP 250W · LTHR 170",
+ readinessSummary:"today's verdict: full (factor 1)",
+ metricsSummary:"latest device data: HRV 60ms, recovery 80%",
+ trainingSummary:"active plan \"Olympic\" (12 weeks)",
+ historySummary:"last 30d: 12 completed sessions, 9h total",
+ raceSummary:"next race: Daytona Tri, 30 days out",
+ todaySummary:"Bike: Tempo — 90min Z3",
+};
 function assistant(fetcher:any,env:Record<string,string>={}) {
  return route("src/app/api/assistant/route.ts",{
-  "@/lib/auth":{getCurrentUser:async()=>user},
+  "@/lib/auth":{getCurrentUser:async()=>({...user,timezone:"UTC"})},
   "@/lib/assistant-policy":policy,
   "@/lib/gemini-response":{geminiAnswer:(x:any)=>x.answer||"",geminiGenerationConfig:()=>({temperature:0})},
+  "@/lib/kcoach-chat":{
+   buildChatContext:async()=>chatCtx,
+   localGroundedAnswer:(q:string,c:any)=>`local grounded: ${q} | ${c.raceSummary}`,
+   groundedQuestionPayload:(q:string,c:any)=>({system_instruction:{parts:[{text:"KCoach grounded. Context: "+c.raceSummary}]},contents:[{parts:[{text:q}]}]}),
+  },
  },fetcher,env);
 }
 const request=(body:any)=>new Request("https://jmm.test/api/assistant",{method:"POST",body:JSON.stringify(body)});
@@ -35,22 +53,25 @@ test("conversation commands produce a proposal with zero DB or external model ac
  assert.equal(result.proposal.requiresConfirmation,true);
  assert.equal(calls,0);
 });
-test("external answer requires both operator flag and explicit per-question consent",async()=>{
+test("external answer requires both operator flag and explicit per-question consent — without it the LOCAL grounded answer serves",async()=>{
  let calls=0;const fetcher=async()=>{calls++;return Response.json({answer:"External answer"});};
  for(const [env,consent] of [[{EXTERNAL_AI_ENABLED:"true",GEMINI_API_KEY:"test-key"},false],[{GEMINI_API_KEY:"test-key"},true]] as const){
-  const r=await assistant(fetcher,env).POST(request({question:"How do I use the calendar?",externalConsent:consent}));
-  assert.equal((await r.json()).mode,"local_help");
+  const r=await assistant(fetcher,env).POST(request({question:"How is my race prediction?",externalConsent:consent}));
+  const j=await r.json();
+  assert.equal(j.mode,"kcoach_local");
+  assert.match(j.answer,/local grounded/);
  }
  assert.equal(calls,0);
 });
-test("external payload contains only manual question and fixed instructions, never saved athlete data",async()=>{
+test("consented external payload carries the question + context digest, never raw provider data or client-supplied fields",async()=>{
  let captured="";
- const api=assistant(async(_url:string,init:any)=>{captured=init.body;return Response.json({answer:"General guidance"});},{EXTERNAL_AI_ENABLED:"true",GEMINI_API_KEY:"test-key"});
- const r=await api.POST(request({question:"How do I use the calendar?",externalConsent:true,profile:{extra:"UNTRUSTED_EXTRA_CONTEXT"}}));
- assert.equal((await r.json()).mode,"external_manual_question");
+ const api=assistant(async(_url:string,init:any)=>{captured=init.body;return Response.json({answer:"Grounded answer"});},{EXTERNAL_AI_ENABLED:"true",GEMINI_API_KEY:"test-key"});
+ const r=await api.POST(request({question:"How is my race prediction?",externalConsent:true,profile:{extra:"UNTRUSTED_EXTRA_CONTEXT"}}));
+ assert.equal((await r.json()).mode,"kcoach_ai");
  const payload=JSON.parse(captured);
- assert.equal(payload.contents[0].parts[0].text,"How do I use the calendar?");
- assert.doesNotMatch(captured,/SENSITIVE_NAME|PROVIDER_VALUE|UNTRUSTED_EXTRA_CONTEXT|999/);
+ assert.equal(payload.contents[0].parts[0].text,"How is my race prediction?");
+ assert.match(captured,/Daytona Tri/); // race context IS included (grounded chat)
+ assert.doesNotMatch(captured,/PROVIDER_VALUE|UNTRUSTED_EXTRA_CONTEXT|999/); // raw client fields and device payloads are not
 });
 test("race brief remains deterministic even when external model keys and flags are configured",async()=>{
  let calls=0;
