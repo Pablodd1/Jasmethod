@@ -41,6 +41,7 @@
     "@types/nodemailer": "^6.4.16",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
+    "@typesafe-ai/sdk": "^0.6.0",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.23",
     "prisma": "^5.22.0",
