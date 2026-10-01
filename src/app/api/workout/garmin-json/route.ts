@@ -142,10 +142,18 @@ export async function GET(req: Request) {
     fuelNote = `Fuel: ~${fuel.carbsPerHourG} g carbs/h · ~${Math.round(fuel.fluidMlPerHour)} ml/h`;
   } catch {}
 
+  // Fuel is essential guidance (Codex P2): notes are truncated to RESERVE
+  // room for it, and truncation is marked with an ellipsis rather than
+  // silently dropping the athlete's instructions.
+  const notesRaw = (workout.notes || "").trim();
+  const noteCap = fuelNote ? 120 : 180;
+  const notesShown =
+    notesRaw.length > noteCap ? `${notesRaw.slice(0, noteCap)}…` : notesRaw || null;
+
   const payload = {
     workoutName: workout.title.slice(0, 60),
     workoutDescription:
-      [(workout.notes || "").trim(), fuelNote].filter(Boolean).join(" — ").slice(0, 180) || null,
+      [notesShown, fuelNote].filter(Boolean).join(" — ").slice(0, 180) || null,
     sportType: { sportTypeKey: sportKey },
     aerobicTrainingEffect: null,
     anaerobicTrainingEffect: null,

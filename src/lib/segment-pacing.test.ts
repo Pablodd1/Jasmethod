@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildBikePacing, buildRunPacing } from "./segment-pacing";
+import { buildBikePacing, buildRunPacing, fmtPaceSecPerKm } from "./segment-pacing";
 import { parseGpxCourse } from "./gpx";
 
 // Flat synthetic profile: 40 km at 0 m elevation.
@@ -91,4 +91,16 @@ test("run gust band: gusts widen the range", () => {
   const calmWidth = calm.gustRangeMin[1] - calm.gustRangeMin[0];
   const gustyWidth = gusty.gustRangeMin[1] - gusty.gustRangeMin[0];
   assert.ok(gustyWidth > calmWidth, `gusty ${gustyWidth} > calm ${calmWidth}`);
+});
+
+test("imperial pace CONVERTS (Codex P2 regression): 300 s/km = 8:03/mi, not 5:00/mi", () => {
+  assert.equal(fmtPaceSecPerKm(300, "metric"), "5:00/km");
+  assert.equal(fmtPaceSecPerKm(300, "imperial"), "8:03/mi");
+  assert.equal(fmtPaceSecPerKm(250, "imperial"), "6:42/mi");
+});
+
+test("pace formatter rollover: 299.7 s/km shows 5:00, never 4:60", () => {
+  assert.equal(fmtPaceSecPerKm(299.7, "metric"), "5:00/km");
+  assert.equal(fmtPaceSecPerKm(359.4, "metric"), "5:59/km");
+  assert.equal(fmtPaceSecPerKm(360.4, "metric"), "6:00/km");
 });

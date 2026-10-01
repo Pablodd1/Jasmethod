@@ -239,13 +239,22 @@ export function buildRunPacing(opts: {
   };
 }
 
+/** sec/km → display pace, CONVERTING for imperial (5:00/km ≈ 8:03/mi). */
+export function fmtPaceSecPerKm(secPerKm: number, units: UnitSystem): string {
+  const totalSec = Math.round(
+    secPerKm * (units === "imperial" ? KM_PER_MI : 1),
+  );
+  // Rollover-safe: 299.7s rounds to 300 → "5:00", never "4:60".
+  const m = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${m}:${String(sec).padStart(2, "0")}/${units === "imperial" ? "mi" : "km"}`;
+}
+
 export function fmtPacingRow(r: SegmentRow, units: UnitSystem): string {
   const from = units === "imperial" ? (r.fromKm / KM_PER_MI).toFixed(1) : r.fromKm.toFixed(1);
   const to = units === "imperial" ? (r.toKm / KM_PER_MI).toFixed(1) : r.toKm.toFixed(1);
   const u = units === "imperial" ? "mi" : "km";
-  const pace = r.paceSecPerKm
-    ? `${Math.floor(r.paceSecPerKm / 60)}:${String(Math.round(r.paceSecPerKm % 60)).padStart(2, "0")}/${units === "imperial" ? "mi" : "km"}`
-    : null;
+  const pace = r.paceSecPerKm ? fmtPaceSecPerKm(r.paceSecPerKm, units) : null;
   return `${from}–${to} ${u}: ${r.gradePct > 0 ? "+" : ""}${r.gradePct}%` +
     (r.targetW ? ` · ${r.targetW} W · ${units === "imperial" ? (r.speedKmh! / KM_PER_MI).toFixed(1) : r.speedKmh} ${units === "imperial" ? "mph" : "km/h"}` : "") +
     (pace ? ` · ${pace}` : "") +
