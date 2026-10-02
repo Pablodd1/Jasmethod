@@ -26,7 +26,7 @@ export default function ConnectorsPage() {
   const [err, setErr] = useState("");
   const [syncing, setSyncing] = useState(false);
   const handledCallback = useRef(false);
-  const apiKeyRef = { current: "" };
+  const apiKeyRef = useRef("");
   // Real-time sync progress: devices sync ONE per request so the bar moves
   // truthfully (no fake animation). Athlete sees per-device status + elapsed.
   const [sync, setSync] = useState<{
@@ -425,12 +425,12 @@ export default function ConnectorsPage() {
         </div>
 
         {msg && (
-          <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+          <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
             ✓ {msg}
           </div>
         )}
         {err && (
-          <div className="text-sm text-coral-600 bg-coral-50 border border-coral-200 rounded-lg px-3 py-2">
+          <div role="alert" className="text-sm text-coral-600 bg-coral-50 border border-coral-200 rounded-lg px-3 py-2">
             ✗ {err}
           </div>
         )}
@@ -613,6 +613,7 @@ export default function ConnectorsPage() {
                       {p.status !== "connected" ? (
                         <>
                           <input
+                            aria-label={lang === "es" ? "API key de Intervals.icu" : "Intervals.icu API key"}
                             type="password"
                             placeholder={lang === "es" ? "Pega tu API key de Intervals.icu" : "Paste your Intervals.icu API key"}
                             className="input w-full"
@@ -644,8 +645,8 @@ export default function ConnectorsPage() {
                       ) : (
                         <div className="text-xs text-emerald-700">
                           {lang === "es"
-                            ? "Conectado — usa «Enviar a Intervals.icu» en Hoy para publicar el entrenamiento; llegará a tu reloj automáticamente."
-                            : "Connected — use 'Send to Intervals.icu' on Today to publish a workout; it reaches your watch automatically."}
+                            ? "Conectado. La publicación en Intervals.icu no confirma recepción en el reloj."
+                            : "Connected. Publication to Intervals.icu does not confirm watch receipt."}
                         </div>
                       )}
                     </div>

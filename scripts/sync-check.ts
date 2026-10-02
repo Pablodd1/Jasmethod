@@ -15,6 +15,7 @@ if (
 const original = globalThis.fetch,
   previous = {
     cron: process.env.CRON_SECRET,
+    automatedDelivery: process.env.ENABLE_AUTOMATED_DELIVERY,
     smtp: process.env.SMTP_HOST,
     telegram: process.env.TELEGRAM_BOT_TOKEN,
   };
@@ -150,6 +151,11 @@ async function main() {
     new Request("http://localhost/api/cron/reminders", {
       headers: { authorization: "Bearer local-reminder-test" },
     });
+  delete process.env.ENABLE_AUTOMATED_DELIVERY;
+  const disabled = await (await reminders(req())).json();
+  assert.equal(disabled.enabled, false);
+  assert.equal(await db.reminderDelivery.count({ where: { userId } }), 0);
+  process.env.ENABLE_AUTOMATED_DELIVERY = "true";
   const first = await (await reminders(req())).json();
   assert.equal(first.sent, 0);
   assert.equal(first.failed, 1);
@@ -174,6 +180,7 @@ main()
     globalThis.fetch = original;
     for (const [key, value] of Object.entries({
       CRON_SECRET: previous.cron,
+      ENABLE_AUTOMATED_DELIVERY: previous.automatedDelivery,
       SMTP_HOST: previous.smtp,
       TELEGRAM_BOT_TOKEN: previous.telegram,
     })) {

@@ -1,3 +1,4 @@
+import { automatedDeliveryEnabled } from "@/lib/capabilities";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -21,7 +22,9 @@ export async function GET() {
 
   return NextResponse.json({
     // Server-side delivery prerequisites:
-    cronConfigured: Boolean(process.env.CRON_SECRET),
+    cronConfigured: Boolean(process.env.CRON_SECRET) && automatedDeliveryEnabled(),
+    automatedDeliveryEnabled: automatedDeliveryEnabled(),
+    receiptAvailable: false,
     telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
     smtpConfigured: Boolean(process.env.SMTP_HOST),
     // The user's own binding state:

@@ -1,3 +1,4 @@
+import { SessionResolutionError } from "@/lib/canonical-session";
 // GET /api/v1/training/today — daily-training screen adapter.
 // Maps the athlete's REAL plan/profile/fueling data into the versioned
 // DailyTraining contract (components/daily-training/training-contract.ts).
@@ -8,16 +9,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
-import { postWorkoutFuel } from "@/lib/adaptive";
 import { effectivePrescription } from "@/lib/effective-prescription";
-import { buildFuelingPlan } from "@/lib/fueling";
-import { zoneTargets } from "@/lib/prescription";
+import { buildFuelingPlan, postFuelPersonalized } from "@/lib/fueling";
+import { canonicalBlocks } from "@/components/daily-training/training-contract";
 import type {
-  Block,
   DailyTraining,
   PaceKey,
   PaceRef,
-  Segment,
 } from "@/components/daily-training/training-contract";
 
 export const dynamic = "force-dynamic";
@@ -26,16 +24,6 @@ const KM_PER_MI = 1.609344;
 
 function secPerKmToPerMi(s: number | null): number | null {
   return s == null ? null : Math.round(s * KM_PER_MI);
-}
-
-// Zone → chart kind. Kinds drive color; they are visual, not physiological.
-function kindOf(zone: string | null | undefined, phase?: string): Segment["kind"] {
-  if (phase === "warmup") return "prep";
-  if (phase === "cooldown") return "cool";
-  if (phase === "recovery") return "recover";
-  const z = Number((zone || "z2").replace(/[^1-7]/g, "")) || 2;
-  if (z <= 2) return "easy";
-  return "work";
 }
 
 // Planning density 1-10 from average zone intensity (label says coach score).
@@ -53,7 +41,7 @@ function paceRefs(runPaceBase: number | null | undefined): Record<PaceKey, PaceR
   if (!runPaceBase) {
     const missing: PaceRef = {
       secondsPerMile: null, measuredAt: null, status: "missing",
-      missingReason: "Add a benchmark (5K time or threshold pace) in Profile & Zones",
+      missingReason: "No recent verified running benchmark is available. Effort guidance remains usable; an optional reviewed assessment can refine pace targets.",
     };
     return { mile: missing, "5k": missing, "10k": missing, half: missing, marathon: missing, easy: missing };
   }
@@ -72,8 +60,8 @@ export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
     const { start, end } = dayBounds(user.timezone);
-    const [workout, race] = await Promise.all([
-      prisma.workout.findFirst({
+    const [workouts, race] = await Promise.all([
+      prisma.workout.findMany({
         where: { userId: user.id, date: { gte: start, lt: end }, planned: true },
         orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
         include: { planDay: { select: { dayOff: true } } },
@@ -83,61 +71,17 @@ export async function GET(req: Request) {
         orderBy: [{ priority: "asc" }, { date: "asc" }],
       }),
     ]);
-    if (!workout || workout.planDay?.dayOff || workout.durationMin === 0)
-      return new NextResponse(null, { status: 204 });
-
-    // The effective prescription — the SHARED safety-gated resolver (injury,
-    // day-off, stale saved prescriptions are rest; Codex review P1-1).
+    const selected = new URL(req.url).searchParams.get("sessionId");
+    const workout = selected ? workouts.find(w => w.id === selected) : workouts[0];
+    if (!workout) return selected
+      ? NextResponse.json({ error: "Session not found for today" }, { status: 404 })
+      : new NextResponse(null, { status: 204 });
     const resolved = await effectivePrescription(user.id, workout.id);
-    if (!resolved) return new NextResponse(null, { status: 204 });
-    const p = resolved.prescription;
-
-    // Steps → blocks: group consecutive steps by phase into named blocks.
-    const rawSteps: any[] = Array.isArray(p.steps) && p.steps.length
-      ? p.steps
-      : [];
-    const blocks: Block[] = [];
-    let cur: { title: string; kind: Segment["kind"]; segs: Segment[] } | null = null;
-    const phaseTitle: Record<string, string> = {
-      warmup: "Warm up", active: "Main set", recovery: "Recoveries", cooldown: "Cool down",
-    };
-    for (let i = 0; i < rawSteps.length; i++) {
-      const s = rawSteps[i];
-      const kind = kindOf(s.zone, s.phase);
-      const title = phaseTitle[s.phase] || "Main set";
-      if (!cur || cur.title !== title)
-        blocks.push({ id: `b${blocks.length}`, title, repeat: 1, segments: [] }),
-          (cur = { title, kind, segs: blocks[blocks.length - 1].segments });
-      const zt = zoneTargets(s.zone || "z2", p.sport || workout.sport, user.profile as any);
-      const hrNum = zt.hr ? Number(zt.hr.replace(/[^0-9]/g, "")) || null : null;
-      cur.segs.push({
-        id: `s${i}`,
-        seconds: Math.max(1, Math.round(s.seconds || 60)),
-        kind,
-        title: s.name || s.note?.slice(0, 40) || "Segment",
-        instruction: s.note || "Execute as prescribed.",
-        target: {
-          label: `${(s.zone || "z2").toUpperCase()}${zt.pace ? ` · ${zt.pace}` : ""}${zt.power ? ` · ${zt.power}` : ""}`,
-          paceLowSecondsPerMile: null, paceHighSecondsPerMile: null,
-          rpeLow: zt.rpe ?? null, rpeHigh: null,
-          heartRateBpm: hrNum,
-          note: zt.hr || undefined,
-        },
-      });
-    }
-    if (!blocks.length)
-      return NextResponse.json({ error: "Plan has no structured steps" }, { status: 404 });
-
-    // Session revision: content-derived so a plan change invalidates the screen.
-    const revision = Math.max(
-      1,
-      Math.abs(
-        [...(workout.prescription || ""), workout.id, String(workout.durationMin)]
-          .join("|").length *
-          31 +
-          new Date(workout.createdAt).getTime() % 100000,
-      ) % 1000000,
-    );
+    if (!resolved) return NextResponse.json({ error: "Session is no longer available" }, { status: 404 });
+    const { prescription: p, canonical, targetProfile } = resolved;
+    const rawSteps = canonical.steps;
+    const blocks = canonicalBlocks(rawSteps);
+    const revision = canonical.revisionNumber;
 
     const fuel = buildFuelingPlan({
       durationMin: p.durationMin ?? workout.durationMin,
@@ -148,7 +92,7 @@ export async function GET(req: Request) {
       gutTrained: user.profile?.gutTrained,
       verdict: p.verdict,
     });
-    const post = postWorkoutFuel({ durationMin: p.durationMin, intensity: p.intensity });
+    const post = postFuelPersonalized({ durationMin: canonical.durationMin, intensity: p.intensity, sport: canonical.sport, weightKg: user.profile?.weightKg });
     const checkin = await prisma.dailyCheckin.findUnique({
       where: { userId_date: { userId: user.id, date: start } },
       select: { answers: true },
@@ -161,34 +105,37 @@ export async function GET(req: Request) {
     const metric = user.profile?.units === "imperial" ? "imperial" : "metric";
 
     const plan: DailyTraining = {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      sessions: workouts.map(w => ({ id: w.id, title: w.title, sport: w.sport, startTime: w.startTime })),
       session: {
         id: workout.id,
         revision,
+        sourceRevision: canonical.revision,
+        verdict: canonical.verdict,
+        capability: canonical.capability,
+        durationIsEstimate: canonical.exactTimeSeconds === null,
         dateLocal: dateKey(workout.date, user.timezone),
         timezone: user.timezone,
         sport: p.sport || workout.sport,
         title: p.title || workout.title,
-        subtitle:
-          p.why ||
-          `${(p.intensity || "z2").toUpperCase()} session — execute the targets, let the plan work.`,
+        subtitle: canonical.verdict === "ready" ? (p.why || canonical.reason) : canonical.reason,
         planStatus: completed ? "completed" : "planned",
         totalMinutes: p.durationMin ?? workout.durationMin,
         density: {
-          score: densityOf(rawSteps.length ? rawSteps : [{ seconds: 60 * (p.durationMin || 60), zone: p.intensity || "z2" }]),
+          score: densityOf(rawSteps),
           label: "coach planning score",
           method: "coach_planning",
         },
         calories: {
           kcal: null, method: "none", asOf: null,
-          missingReason: "Energy expenditure comes from your device after the session",
+          missingReason: "No energy expenditure measurement is available; no device is required to train or report effort",
         },
       },
       profile: {
-        paces: paceRefs(user.profile?.runPaceBase ?? null),
+        paces: paceRefs(targetProfile?.runPaceBase ?? null),
         thresholdHeartRate: {
-          bpm: user.profile?.lthr ?? null,
-          status: user.profile?.lthr ? "coach_set" : "missing",
+          bpm: targetProfile?.lthr ?? null,
+          status: targetProfile?.lthr ? "coach_set" : "missing",
           measuredAt: null,
         },
         unitSystem: metric,
@@ -199,7 +146,8 @@ export async function GET(req: Request) {
         focus: {
           title: "Arrive ready",
           items: [
-            "Check today's targets before warming up.",
+            canonical.verdict === "ready" ? "Check today's endpoints, targets and equipment before warming up." : canonical.reason,
+            sportPreparation(canonical.sport),
             race
               ? `Next race: ${race.name} — ${Math.max(0, Math.round((Date.parse(dateKey(race.date, user.timezone)) - Date.parse(dateKey(workout.date, user.timezone))) / 86400000))} days out.`
               : "Hydrate through the day; sleep is part of the session.",
@@ -225,16 +173,16 @@ export async function GET(req: Request) {
           title: "Refuel after",
           items: post
             ? [
-                `~${post.carbsG} g carbs + ~${post.proteinG} g protein within 60 min.`,
-                post.examples || "Examples: chocolate milk, rice + chicken, yogurt + fruit.",
+                post.carbsG == null || post.proteinG == null ? "Personalized recovery amounts unavailable: current weight is not recorded. Choose a familiar meal with carbohydrate and protein." : `~${post.carbsG} g carbs + ~${post.proteinG} g protein (session guidance).`,
+                "Examples, if suitable for your diet: rice with beans, yogurt with fruit, or a sandwich.",
               ]
             : ["Rehydrate and eat a mixed meal within 2 hours."],
-          note: post?.notes || undefined,
+          note: post?.note || undefined,
         },
         downshift: {
           title: "Downshift breathing",
-          items: ["Nose breathing, long exhales, until your breath settles."],
-          note: "Optional — a 2026 trial found slow breathing helped post-interval recovery.",
+          items: ["Let your breathing settle comfortably. Stop the exercise if you feel dizzy or unwell."],
+          note: "Optional relaxation practice; no recovery effect is guaranteed.",
           timerSeconds: 120, inhaleSeconds: 4, exhaleSeconds: 6,
         },
         checkIn: {
@@ -248,6 +196,7 @@ export async function GET(req: Request) {
         actual: workout.feedbackStatus
           ? {
               durationMinutes: workout.actualDurationMin ?? null,
+              actualSport: workout.actualSport ?? null,
               sessionRpe: workout.rpe ?? null,
               comments: workout.feedbackNote ?? null,
             }
@@ -259,6 +208,22 @@ export async function GET(req: Request) {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (e) {
+    if (e instanceof SessionResolutionError) return NextResponse.json({ error: e.message }, { status: e.status });
     return errorResponse(e);
   }
+}
+
+function sportPreparation(sport: string): string {
+  const cues: Record<string, string> = {
+    run: "Choose safe footing and appropriate shoes. Follow the displayed pace or effort, adjusting to terrain and conditions.",
+    bike: "Check brakes, tires and a safe route or trainer setup. Power targets apply only when provided above.",
+    swim: "Confirm pool or open-water venue and safe supervision. Follow only the supplied distances, rests and technique instructions; pool length is not assumed.",
+    strength: "Prepare the listed equipment. Follow exercise, set, rep and rest instructions with controlled technique; do not guess an unspecified load.",
+    mobility: "Use a clear space and comfortable range of motion; do not force a painful stretch.",
+    recovery: "Keep movement comfortable. Recovery guidance is optional; rest if the safety decision asks you to.",
+    boxing: "Prepare the specified protective equipment and space. Preserve round/rest order and controlled technique.",
+    hyrox: "Check station equipment and safe transitions. Follow actual distances, loads and reps only where the plan specifies them.",
+    brick: "Prepare equipment for each component and a safe transition area. Keep the prescribed component order; transitions are not inferred.",
+  };
+  return cues[sport] || "Check the session's equipment and technique requirements. Ask for any missing execution details.";
 }

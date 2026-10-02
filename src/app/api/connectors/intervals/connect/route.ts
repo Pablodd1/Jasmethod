@@ -1,3 +1,4 @@
+import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "@/lib/capabilities";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
@@ -17,6 +18,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const { actor, athlete } = await trainingAccess(req);
+    if (!intervalsConnectorEnabled()) return NextResponse.json({ error: INTERVALS_DISABLED_MESSAGE }, { status: 503 });
     const body = await req.json().catch(() => ({}));
     const apiKey = String(body?.apiKey || "").trim();
     if (apiKey.length < 10)

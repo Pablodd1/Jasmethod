@@ -1,3 +1,4 @@
+import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "@/lib/capabilities";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { syncUserConnectors } from "@/lib/sync";
@@ -18,6 +19,9 @@ export async function POST(req: Request) {
   } catch {
     /* no body = sync everything */
   }
+
+  if (onlyProvider === "intervals" && !intervalsConnectorEnabled())
+    return NextResponse.json({ error: INTERVALS_DISABLED_MESSAGE }, { status: 503 });
 
   const { results, total } = await syncUserConnectors(user.id, onlyProvider);
   const failed = results.filter((r) => !r.ok).length;

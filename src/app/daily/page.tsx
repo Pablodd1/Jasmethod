@@ -2,7 +2,7 @@
 // /daily — the developer-kit daily training screen fed by /api/v1/training/today.
 // Distinct visual format (dark, card-numbered guidance) living alongside Today;
 // both read the same plan. This page handles loading/empty/error states.
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { DailyTrainingScreen } from "@/components/daily-training/DailyTrainingScreen";
 import { isDailyTraining } from "@/components/daily-training/training-contract";
 import type { DailyTraining } from "@/components/daily-training/training-contract";
@@ -19,38 +19,51 @@ async function postEvent(path: string, session: DailyTraining["session"], body: 
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", "X-Idempotency-Key": eventId },
-    body: JSON.stringify({ planRevision: session.revision, eventId, ...body }),
+    body: JSON.stringify({ planRevision: session.revision, expectedRevision: session.sourceRevision, eventId, ...body }),
   });
-  if (!response.ok) throw new Error(`Save failed (${response.status})`);
+  if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || `Save failed (${response.status})`); }
 }
 
 export default function DailyTrainingPage() {
+  const requestSequence = useRef(0);
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [selected, setSelected] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sessionId"));
+  useEffect(() => {
+    const onHistory = () => setSelected(new URLSearchParams(window.location.search).get("sessionId"));
+    window.addEventListener("popstate", onHistory);
+    return () => window.removeEventListener("popstate", onHistory);
+  }, []);
+  function selectSession(id: string) {
+    const url = new URL(window.location.href); url.searchParams.set("sessionId", id);
+    window.history.pushState({}, "", url); setSelected(id);
+  }
   const load = useCallback(async (signal?: AbortSignal) => {
-    setState({ kind: "loading" });
+    const sequence = ++requestSequence.current;
+    const setCurrentState = (next: State) => { if (sequence === requestSequence.current && !signal?.aborted) setState(next); };
+    setCurrentState({ kind: "loading" });
     try {
-      const r = await fetch("/api/v1/training/today", {
+      const r = await fetch(`/api/v1/training/today${selected ? `?sessionId=${encodeURIComponent(selected)}` : ""}`, {
         credentials: "include",
         cache: "no-store",
         signal,
       });
       if (r.status === 401) {
-        setState({ kind: "unauthorized", message: "Sign in to see your training." });
+        setCurrentState({ kind: "unauthorized", message: "Sign in to see your training." });
         return;
       }
-      if (r.status === 204 || r.status === 404) {
-        setState({ kind: "empty", message: "No session is planned for today." });
+      if (r.status === 204) {
+        setCurrentState({ kind: "empty", message: "No session is planned for today." });
         return;
       }
-      if (!r.ok) throw new Error(`Load failed (${r.status})`);
+      if (!r.ok) { const data = await r.json().catch(() => ({})); throw new Error(data.error || `Load failed (${r.status})`); }
       const json: unknown = await r.json();
       if (!isDailyTraining(json)) throw new Error("Unsupported or incomplete plan response");
-      setState({ kind: "ready", plan: json });
+      setCurrentState({ kind: "ready", plan: json });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
-      setState({ kind: "error", message: "Could not load the training plan. Please retry." });
+      setCurrentState({ kind: "error", message: e instanceof Error ? e.message : "Could not load the training plan. Please retry." });
     }
-  }, []);
+  }, [selected]);
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
@@ -59,7 +72,7 @@ export default function DailyTrainingPage() {
 
   if (state.kind !== "ready")
     return (
-      <main className="jmm-screen" role="status">
+      <main className="jmm-screen" role={state.kind === "error" ? "alert" : "status"}>
         <div className="jmm-state">
           <h1>Daily training</h1>
           <p>
@@ -87,6 +100,8 @@ export default function DailyTrainingPage() {
     );
   const session = state.plan.session;
   return (
+    <>
+    {state.plan.sessions && state.plan.sessions.length > 1 && <nav aria-label="Today's sessions" className="jmm-screen jmm-session-switcher"><label>Select today&apos;s session <select value={session.id} onChange={e => selectSession(e.target.value)}>{state.plan.sessions.map(s => <option key={s.id} value={s.id}>{s.startTime ? `${s.startTime} · ` : ""}{s.title} · {s.sport}</option>)}</select></label></nav>}
     <DailyTrainingScreen
       key={`${session.id}-${session.revision}`}
       plan={state.plan}
@@ -105,5 +120,6 @@ export default function DailyTrainingPage() {
         )
       }
     />
+    </>
   );
 }

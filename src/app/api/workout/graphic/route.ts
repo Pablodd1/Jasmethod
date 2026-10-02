@@ -1,10 +1,10 @@
+import { effectivePrescription } from "@/lib/effective-prescription";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import {
   renderWorkoutSvg,
   renderDayPng,
-  stepsForGraphic,
   verifyGraphicToken,
   type GraphicStep,
 } from "@/lib/workout-graphic";
@@ -67,7 +67,14 @@ export async function GET(req: Request) {
     }
     const w = await prisma.workout.findUnique({ where: { id: sessionId } });
     if (!w) return NextResponse.json({ error: "Workout not found" }, { status: 404 });
-    stepsRows = [stepsForGraphic(w)];
+    try {
+      const resolved = await effectivePrescription(w.userId, w.id);
+      if (!resolved || resolved.canonical.verdict !== "ready") return NextResponse.json({ error: "No current executable shape. Review the session and check-in in the app." }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
+      if (resolved.canonical.exactTimeSeconds == null) return NextResponse.json({ error: "This session uses distance, repetitions or lap endpoints. Estimated time cannot be presented as an exact timed shape." }, { status: 422, headers: { "Cache-Control": "private, no-store" } });
+      stepsRows = [resolved.canonical.steps.map(step => ({ name: step.name, seconds: step.seconds, zone: step.zone, phase: step.phase }))];
+    } catch {
+      return NextResponse.json({ error: "Session shape is unavailable. Review the plan in the app." }, { status: 422, headers: { "Cache-Control": "private, no-store" } });
+    }
   } else {
     return NextResponse.json({ error: "sessionId or demo required" }, { status: 400 });
   }
@@ -77,7 +84,7 @@ export async function GET(req: Request) {
     return new NextResponse(svg, {
       headers: {
         "Content-Type": "image/svg+xml",
-        "Cache-Control": sessionId && !token ? "private, max-age=600" : "public, max-age=86400",
+        "Cache-Control": sessionId ? "private, no-store" : "public, max-age=86400",
       },
     });
   }
@@ -85,7 +92,7 @@ export async function GET(req: Request) {
   return new NextResponse(new Uint8Array(png), {
     headers: {
       "Content-Type": "image/png",
-      "Cache-Control": sessionId && !token ? "private, max-age=600" : "public, max-age=86400",
+      "Cache-Control": sessionId ? "private, no-store" : "public, max-age=86400",
     },
   });
 }

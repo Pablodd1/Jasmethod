@@ -1,54 +1,31 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
-import { recoveryFor } from "@/lib/adaptive";
+import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
+import { parseManualWorkout } from "@/lib/manual-workout";
 
-// GET /api/workouts?days=14 — user workouts (planned + completed)
 export async function GET(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const url = new URL(req.url);
-  const days = Math.min(90, parseInt(url.searchParams.get("days") || "14", 10));
-  const since = new Date(Date.now() - days * 86400000);
-  const workouts = await prisma.workout.findMany({
-    where: { userId: user.id, date: { gte: since } },
-    orderBy: { date: "asc" },
-  });
-  return NextResponse.json({ workouts });
+  try {
+    const { athlete } = await trainingAccess(req);
+    const days = Number(new URL(req.url).searchParams.get("days") || "14");
+    if (!Number.isInteger(days) || days < 1 || days > 90) throw new ApiError("days must be 1–90");
+    const workouts = await prisma.workout.findMany({ where: { userId: athlete.id, date: { gte: new Date(Date.now() - days * 86400000) } }, orderBy: { date: "asc" } });
+    return NextResponse.json({ workouts });
+  } catch (error) { return errorResponse(error); }
 }
 
-// POST /api/workouts — log a completed workout (manual)
+// Log only what the athlete explicitly reports. No synthetic sport, minutes,
+// biometrics, recovery prescription or provider side effects.
 export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const body = await req.json();
-    const workout = await prisma.workout.create({
-      data: {
-        userId: user.id,
-        date: new Date(body.date || new Date()),
-        sport: body.sport || "run",
-        title: body.title || "Manual workout",
-        type: body.type || "endurance",
-        durationMin: parseInt(body.durationMin || "30", 10),
-        distanceKm: body.distanceKm !== undefined ? parseFloat(body.distanceKm) : undefined,
-        intensity: body.intensity,
-        rpe: body.rpe !== undefined ? parseInt(body.rpe, 10) : undefined,
-        avgHr: body.avgHr !== undefined ? parseInt(body.avgHr, 10) : undefined,
-        maxHr: body.maxHr !== undefined ? parseInt(body.maxHr, 10) : undefined,
-        avgPower: body.avgPower !== undefined ? parseFloat(body.avgPower) : undefined,
-        calories: body.calories !== undefined ? parseInt(body.calories, 10) : undefined,
-        preWeightKg: body.preWeightKg !== undefined ? parseFloat(body.preWeightKg) : undefined,
-        postWeightKg: body.postWeightKg !== undefined ? parseFloat(body.postWeightKg) : undefined,
-        notes: body.notes,
-        recovery: recoveryFor(new Date(body.date || new Date())).cooldownNote,
-        planned: false,
-        completed: true,
-        source: "manual",
-      },
+    const { actor, athlete } = await trainingAccess(req);
+    const body = await req.json().catch(() => { throw new ApiError("Invalid JSON"); });
+    let parsed;
+    try { parsed = parseManualWorkout(body, athlete.timezone); } catch (error) { throw new ApiError(error instanceof Error ? error.message : "Invalid activity"); }
+    const workout = await prisma.$transaction(async (tx) => {
+      const created = await tx.workout.create({ data: { userId: athlete.id, ...parsed } });
+      await tx.auditLog.create({ data: { actorId: actor.id, subjectId: athlete.id, action: "activity.manual-report", entityId: created.id, after: JSON.stringify(parsed) } });
+      return created;
     });
-    return NextResponse.json({ ok: true, workout });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
-  }
+    return NextResponse.json({ ok: true, workout }, { status: 201 });
+  } catch (error) { return errorResponse(error); }
 }

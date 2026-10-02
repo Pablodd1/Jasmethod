@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
+import { effectivePrescription } from "@/lib/effective-prescription";
 import { dayBounds } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,11 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     if (typeof body?.ready !== "boolean")
       throw new ApiError("ready must be true or false");
+    const resolved = await effectivePrescription(athlete.id, sessionId);
+    if (!resolved) throw new ApiError("Session not found", 404);
+    if (body.expectedRevision !== resolved.canonical.revision)
+      throw new ApiError("This session changed. Refresh before saving focus.", 409);
+    if (resolved.canonical.verdict !== "ready") throw new ApiError("Complete the safety check-in before marking training ready.", 409);
     const { start } = dayBounds(athlete.timezone);
     const workout = await prisma.workout.findFirst({
       where: { id: sessionId, userId: athlete.id },

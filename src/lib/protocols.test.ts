@@ -118,29 +118,14 @@ test("readiness reductions retain the original protocol, pause power, and do not
   assert.ok(short.durationMin <= 10);
 });
 
-test("FIT export retains protocol repetitions and open intensity after check-in undo", () => {
+test("undone check-in cannot resurrect a protocol for FIT and strength export is gated", () => {
   const p = buildProtocol(spec("hypertrophy", "strength", 60));
-  const workout = {
-    ...p,
-    lthr: 170,
-    ftp: 250,
-    prescription: null,
-    originalPlan: JSON.stringify(p),
-  };
-  const fit = buildFitWorkout(workoutToFitSpec(workout));
-  const decoder = new Decoder(Stream.fromByteArray(fit));
-  assert.equal(decoder.checkIntegrity(), true);
-  const { messages, errors } = decoder.read();
-  assert.deepEqual(errors, []);
-  const steps = (messages as any).workoutStepMesgs;
-  const sets = steps.filter((s: any) => s.durationType === "reps");
-  assert.equal(sets.length, 12);
-  assert.ok(sets.every((s: any) => s.durationValue === 10));
-  assert.ok(steps.every((s: any) => s.targetType === "open"));
-  assert.equal(
-    steps.filter((s: any) => s.wktStepName === "Full easy recovery").length,
-    11,
-  );
+  const workout = { ...p, lthr: 170, ftp: 250, prescription: null, originalPlan: JSON.stringify(p) };
+  assert.throws(() => buildFitWorkout(workoutToFitSpec(workout)), /check-in/);
+  const resolved = workoutToFitSpec({ ...workout, prescription: JSON.stringify(p) });
+  assert.equal(resolved.steps.filter(s => s.endpoint.type === "reps").length, 12);
+  assert.ok(resolved.steps.every(s => s.target.type === "open"));
+  assert.throws(() => buildFitWorkout(resolved), /exercise\/set/);
 });
 
 test("schedule review counts other sports, prevents adding intensity, and handles week boundaries", () => {

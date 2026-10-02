@@ -6,6 +6,12 @@ if (process.env.VERCEL_ENV !== "production") {
   process.exit(0);
 }
 
+// Database writes are an explicit operator step, never an npm build lifecycle hook.
+if (process.env.JMM_PRODUCTION_MIGRATIONS_APPROVED !== "true") {
+  console.error("Production migrations require an explicitly authorized operator run with JMM_PRODUCTION_MIGRATIONS_APPROVED=true. No database command was run.");
+  process.exit(1);
+}
+
 if (!process.env.DATABASE_URL || !process.env.DIRECT_URL) {
   console.error(
     "Production migration requires both DATABASE_URL and DIRECT_URL.",

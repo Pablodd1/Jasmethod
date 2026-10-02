@@ -113,7 +113,7 @@ test("Garmin SDK independently decodes FIT CRC, Unicode, duration and power targ
   const { messages, errors } = d.read();
   assert.deepEqual(errors, []);
   const m: any = messages;
-  assert.equal(m.workoutMesgs[0].wktName, base.title);
+  assert.match(m.workoutMesgs[0].wktName, /^JMM-[a-f0-9]{10} Bici 🏁 — Umbral$/);
   assert.equal(m.workoutStepMesgs.length, p.steps.length);
   assert.equal(
     m.workoutStepMesgs.reduce((n: number, s: any) => n + s.durationTime, 0),

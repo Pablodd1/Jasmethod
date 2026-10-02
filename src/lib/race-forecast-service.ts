@@ -1,3 +1,4 @@
+import { FORECAST_AVAILABILITY } from "./forecast-availability";
 // JasMiamiMethod — Race Forecast Service
 // Shared assembly (profile + PMC + race + live weather → engine input) used
 // by both /api/race-forecast and /api/race-forecast/brief.
@@ -24,6 +25,8 @@ export interface ForecastRequestOpts {
 
 export interface ForecastBundle {
   ok: true;
+  reason?: string;
+  message?: string;
   forecast: ForecastResult | null;
   weather: RaceWeather | null;
   distance: string | null;
@@ -47,6 +50,15 @@ export interface ForecastBundle {
 }
 
 export async function buildForecastBundle(userId: string, opts: ForecastRequestOpts): Promise<ForecastBundle> {
+  // Fail closed before reading health data, fetching weather, writing prediction
+  // snapshots or generating GPX pacing. Optional pilot capability is excluded.
+  if (!FORECAST_AVAILABILITY.enabled) return {
+    ok: true, reason: FORECAST_AVAILABILITY.reason, message: FORECAST_AVAILABILITY.message,
+    forecast: null, weather: null, distance: opts.distance ?? null, race: null,
+    predictionSnapshot: null, pmc: null, pacing: null,
+    physiology: { ftp: null, lthr: null, runPaceBase: null, swimPaceBase: null },
+    raceDayProjection: null,
+  };
   const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
 
   // PMC from 90 days of completed training

@@ -71,17 +71,18 @@ test("post-fuel note states TOTAL grams, not g/kg/h", () => {
 // ---- Day-off protocol (owner spec) ----
 import { dayOffProtocol, dayOffProtocolText } from "./day-off";
 
-test("day-off protocol carries sleep, fuel, supplementation and visualization in both languages", () => {
+test("day-off guidance keeps rest optional, avoids default supplements and fixed water targets", () => {
   for (const lang of ["en", "es"] as const) {
     const p = dayOffProtocol(lang);
     const all = JSON.stringify(p);
     assert.match(all, /8 hours|8 horas/);
-    assert.match(all, /creatin/i);
+    assert.doesNotMatch(all, /creatin|20 min Z1|2-3 L/);
+    assert.match(all, /No supplements|No se recomiendan suplementos/);
     assert.ok(p.essentials.length >= 4, "sleep, fuel, supplementation, movement");
     assert.strictEqual(p.visualizationFull.length, 8, "full 8-step visualization routine");
     const t = dayOffProtocolText(lang);
     assert.match(t, /VISUALIZATION \(2-5 min|VISUALIZACIÓN \(2-5 min/);
-    assert.match(t, /Supplement|SUPLEMENTACIÓN/i);
+    assert.match(t, /SUPPLEMENTS|SUPLEMENTOS/i);
   }
 });
 
@@ -144,8 +145,8 @@ test("caffeine opt-out propagates: master off, dislike and opt-out all suppress"
     false,
   );
   assert.strictEqual(caffeineAllowedFromPrefs({ enabled: true, likes: '["caffeine"]' }), true);
-  assert.strictEqual(caffeineAllowedFromPrefs({ enabled: true }), true);
-  assert.strictEqual(caffeineAllowedFromPrefs({ enabled: null, dislikes: "[]" }), true);
+  assert.strictEqual(caffeineAllowedFromPrefs({ enabled: true }), false);
+  assert.strictEqual(caffeineAllowedFromPrefs({ enabled: null, dislikes: "[]" }), false);
 });
 
 test("graphic signing secret fails closed in production", async () => {
@@ -197,7 +198,7 @@ test("executionScore: one activity cannot satisfy multiple planned sessions", ()
 });
 
 // ---- Measured course (GPX) applied in the forecast engine ----
-import { forecastRace } from "./raceforecast";
+import { illustrativeRaceScenario as forecastRace } from "./raceforecast";
 
 test("forecast applies the measured GPX course to run distance and ascent", () => {
   const base = forecastRace({

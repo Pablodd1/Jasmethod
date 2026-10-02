@@ -116,7 +116,8 @@ export interface ForecastResult {
   sport: ForecastSport;
   distance: string;
   distanceLabel: string;
-  confidence: "high" | "medium" | "low";
+  confidence: "high" | "medium" | "low" | "unvalidated";
+  kind?: "illustrative";
   measurementGaps: string[];
   factors: string[];
   segments: ForecastSegment[];
@@ -189,7 +190,8 @@ export function bikePhysicsSpeedKmh(opts: {
   venueElevM?: number | null; tempC?: number | null; windKph?: number | null;
   cdA?: number; // equipment-driven (bikeSetupPhysics); default 0.28 TUNED_DEFAULT
 }): { speedKmh: number; powerW: number; wheelKj: number; rho: number } {
-  const m = (opts.weightKg ?? 70) + (opts.bikeKg ?? 9);
+  if (opts.weightKg == null || !Number.isFinite(opts.weightKg) || opts.weightKg <= 0) throw new Error("Current weight is required for a bike physics scenario");
+  const m = opts.weightKg + (opts.bikeKg ?? 9);
   const powerW = opts.sustainableW ?? Math.round(opts.ftp * (opts.sustainableIF ?? 0.78));
   const crr = (opts.terrain || "flat") === "trail" ? 0.008 : (opts.terrain || "flat") === "hilly" || (opts.terrain || "flat") === "mountain" ? 0.006 : 0.0045;
   const cdA = opts.cdA ?? 0.28; // default TUNED_DEFAULT (range 0.22–0.35); equipment overrides
@@ -423,12 +425,23 @@ function toFuelPlan(fuel: RaceFuelPlan): FuelPlan {
 // Main forecast
 // ---------------------------------------------------------------------------
 
-export function forecastRace(input: ForecastInput): ForecastResult | null {
+/** Personalized prediction is intentionally unavailable for the pilot. */
+export function forecastRace(_input: ForecastInput): ForecastResult | null {
+  return null;
+}
+
+/** Isolated, unvalidated arithmetic scenario. Never used by athlete API routes.
+ * This is not a forecast, a prescription, or a confidence-calibrated model. */
+export function illustrativeRaceScenario(input: ForecastInput): ForecastResult | null {
   const { athlete, fitness, distance } = input;
   // Reassignable: measured-course (GPX) ascent distribution may replace venue legs.
   let venue = input.venue;
   const sport = classifyDistance(distance);
   if (!sport) return null;
+  const valid = (v?: number | null) => v != null && Number.isFinite(v) && v > 0;
+  if ((sport === "run" || sport === "hyrox" || sport === "triathlon") && !valid(athlete.runPaceBase)) return null;
+  if ((sport === "swim" || sport === "triathlon") && !valid(athlete.swimPaceBase)) return null;
+  if ((sport === "bike" || sport === "triathlon") && (!valid(athlete.ftp) || !valid(athlete.weightKg))) return null;
 
   const measurementGaps: string[] = [];
   const factors: string[] = [];
@@ -535,12 +548,9 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       measurementGaps.push(`Measured ascent applied: ${venue.courseElevM} m (split 75% bike / 25% run).`);
     }
     const distanceLabel = TRI_DISTANCE_LABELS[distance] || distance;
-    const runPaceBase = athlete.runPaceBase ?? 300;
-    if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
-    const swimPaceBase = athlete.swimPaceBase ?? 100;
-    if (!athlete.swimPaceBase) measurementGaps.push("No swim threshold — using 1:40/100m default.");
-    const ftp = athlete.ftp ?? 220;
-    if (!athlete.ftp) measurementGaps.push("No FTP — using 220W default.");
+    const runPaceBase = athlete.runPaceBase!;
+    const swimPaceBase = athlete.swimPaceBase!;
+    const ftp = athlete.ftp!;
 
     const openWater = (venue.swimVenue || "pool").toLowerCase() !== "pool";
     const currentFactor = venue.swimCurrent === "strong" ? 1.04 : venue.swimCurrent === "mild" ? 1.02 : 1;
@@ -618,7 +628,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       weightKg: athlete.weightKg,
     });
     const slots = fuelTimeline(fuel, { discipline: "triathlon", totalMin: Math.round(totalMin), transitionMin: Math.round(swimMin + bikeMin) });
-    const estimatedKcalBurned = kcalFromBikeKj(physics.wheelKj) + Math.round((runKm * (athlete.weightKg ?? 70) * 1.036));
+    const estimatedKcalBurned = athlete.weightKg ? kcalFromBikeKj(physics.wheelKj) + Math.round(runKm * athlete.weightKg * 1.036) : null;
     fuel.gaps.push(`Calories: ${Math.round(fuel.totalKcalIntake)} kcal from carbs is your INTAKE plan; full expenditure ≈ ${estimatedKcalBurned} kcal (bike work / gross efficiency + run km × weight). You cannot absorb it all — that's normal for long-course; fueling limits the hole, it doesn't close it.`);
 
     segments.push({
@@ -687,8 +697,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       : rBase;
     if (venue.courseKm != null && venue.courseElevM != null && venue.runElevM == null)
       venue = { ...venue, runElevM: venue.courseElevM };
-    const runPaceBase = athlete.runPaceBase ?? 300;
-    if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
+    const runPaceBase = athlete.runPaceBase!;
     const runBasePace = riegelPace(runPaceBase, r.km, 1.06);
     const runPace = runBasePace * env.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor;
     const runMin = (r.km * runPace) / 60;
@@ -722,7 +731,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       } : null,
       wetsuit: null,
       scenarios: [{ label: "best", totalMin: best, note: "cooler" }, { label: "worst", totalMin: worst, note: "hotter" }],
-      fuelTotal: { ...fuel, slots, estimatedKcalBurned: Math.round(r.km * (athlete.weightKg ?? 70) * 1.036) },
+      fuelTotal: { ...fuel, slots, estimatedKcalBurned: athlete.weightKg ? Math.round(r.km * athlete.weightKg * 1.036) : null },
       note: null,
     });
   }
@@ -732,8 +741,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
   // =======================================================================
   if (sport === "bike") {
     const b = BIKE_DISTANCES[distance];
-    const ftp = athlete.ftp ?? 220;
-    if (!athlete.ftp) measurementGaps.push("No FTP — using 220W default.");
+    const ftp = athlete.ftp!;
     const bikeIF = (b.km >= 150 ? 0.72 : b.km >= 70 ? 0.78 : b.km >= 30 ? 0.83 : 0.88) * b.speedFactor;
     const sustainableW = Math.round(ftp * bikeIF * env.bikePowerFactor);
     const physics = bikePhysicsSpeedKmh({
@@ -806,8 +814,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
   // HYROX (state-space compromised-run model)
   // =======================================================================
   if (sport === "hyrox") {
-    const runPaceBase = athlete.runPaceBase ?? 300;
-    if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
+    const runPaceBase = athlete.runPaceBase!;
     const hyrox = hyroxCompromisedRunPace(runPaceBase, fitness);
     const runMinTotal = (8 * hyrox.avgPaceSecPerKm) / 60;
     const ctl = fitness?.current?.ctl ?? 30;
@@ -851,8 +858,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
   // Swim only
   // =======================================================================
   const s = SWIM_DISTANCES[distance];
-  const swimPaceBase = athlete.swimPaceBase ?? 100;
-  if (!athlete.swimPaceBase) measurementGaps.push("No swim threshold — using 1:40/100m default.");
+  const swimPaceBase = athlete.swimPaceBase!;
   const openWater = (venue.swimVenue || "pool").toLowerCase() !== "pool";
   const currentFactor = venue.swimCurrent === "strong" ? 1.04 : venue.swimCurrent === "mild" ? 1.02 : 1;
   const coldFactor = venue.waterTempC != null && venue.waterTempC < 18 ? 1.03 : 1;
@@ -882,19 +888,8 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
 // Shared result assembly
 // ---------------------------------------------------------------------------
 
-function confidenceOf(sport: ForecastSport, athlete: AthleteSnapshot, fitness: ForecastInput["fitness"]): ForecastResult["confidence"] {
-  const hasFtp = athlete.ftp != null;
-  const hasRunPace = athlete.runPaceBase != null;
-  const hasSwimPace = athlete.swimPaceBase != null;
-  const relevantMeasured =
-    sport === "triathlon" ? [hasFtp, hasRunPace, hasSwimPace].filter(Boolean).length
-    : sport === "bike" ? (hasFtp ? 1 : 0)
-    : sport === "run" || sport === "hyrox" ? (hasRunPace ? 1 : 0)
-    : (hasSwimPace ? 1 : 0);
-  const relevantTotal = sport === "triathlon" ? 3 : 1;
-  if (fitness && relevantMeasured >= relevantTotal) return "high";
-  if (fitness || relevantMeasured >= 1) return "medium";
-  return "low";
+function confidenceOf(_sport: ForecastSport, _athlete: AthleteSnapshot, _fitness: ForecastInput["fitness"]): ForecastResult["confidence"] {
+  return "unvalidated";
 }
 
 function buildResult(o: {
@@ -912,13 +907,14 @@ function buildResult(o: {
   const best = Math.min(...o.scenarios.map((s) => s.totalMin), o.totalMin);
   const note =
     goalDeltaMin != null && goalDeltaMin > 0
-      ? `Forecast is ~${fmtTime(goalDeltaMin)} slower than your goal — the gap to close is ${fmtTime(Math.max(1, goalDeltaMin))} (worst-case band: ${fmtTime(worst - (o.goalTimeMin ?? 0))} over goal).`
+      ? `Illustrative scenario is ~${fmtTime(goalDeltaMin)} slower than your goal — the gap to close is ${fmtTime(Math.max(1, goalDeltaMin))} (worst-case band: ${fmtTime(worst - (o.goalTimeMin ?? 0))} over goal).`
       : goalDeltaMin != null
-        ? `Forecast is on/under goal by ~${fmtTime(Math.abs(goalDeltaMin))} (band ${fmtTime(best)}–${fmtTime(worst)}).`
+        ? `Illustrative scenario is on/under goal by ~${fmtTime(Math.abs(goalDeltaMin))} (band ${fmtTime(best)}–${fmtTime(worst)}).`
         : o.confidence === "low"
           ? "Confidence is low — complete your setup (FTP, run/swim thresholds) and log a few weeks of training to tighten this."
-          : "Re-run after each benchmark test (FTP / 5k / CSS) and again 48h out with the live weather forecast to keep this tight.";
+          : "No personal prediction accuracy or readiness is established by this calculation.";
   return {
+    kind: "illustrative",
     sport: o.sport,
     distance: o.distance,
     distanceLabel: o.distanceLabel,
@@ -931,7 +927,7 @@ function buildResult(o: {
     baselineTotalMin: o.baselineTotalMin,
     goalTimeMin: o.goalTimeMin,
     goalDeltaMin,
-    note,
+    note: "Illustrative arithmetic only; prediction error and likelihood are unvalidated. These scenarios are not confidence intervals. " + note,
     wbgt: o.wbgt,
     wetsuit: o.wetsuit,
     scenarios: o.scenarios,

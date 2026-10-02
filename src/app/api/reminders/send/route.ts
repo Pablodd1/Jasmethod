@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   const message = await trainingReminder(user, key),
     result = await sendReminder(
       {
-        email: prefs.emailEnabled ? user.email : undefined,
+        email: prefs.emailEnabled && !prefs.telegramEnabled ? user.email : undefined,
         name: user.name,
         telegramChatId: prefs.telegramEnabled
           ? prefs.telegramChatId || undefined

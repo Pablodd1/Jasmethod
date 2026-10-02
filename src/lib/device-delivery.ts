@@ -1,29 +1,40 @@
-// Export availability is distinct from provider publication and device receipt.
+// File export, provider publication and watch receipt are different states.
 export type WatchPlatform = "garmin" | "apple" | "coros" | "other";
 export interface DeliveryGuide {
   platform: WatchPlatform;
   label: string;
   steps: string[];
-  file: "garmin-json" | "fit";
+  file: "fit";
+  helpUrl?: string;
+  helpLabel?: string;
 }
+export const GARMIN_WORKOUT_HELP = "https://support.garmin.com/en-US/?faq=lLvhWrmlMv0vGmyGpWjOX6";
 export function deliveryGuideFor(platform: WatchPlatform, lang: "en" | "es" = "en"): DeliveryGuide {
   const es = lang === "es";
   const labels = { garmin: "Garmin", apple: "Apple Watch", coros: "COROS", other: es ? "Otro dispositivo" : "Other device" };
-  const requirements = {
-    garmin: es ? "La entrega automática requiere una integración aprobada con Garmin Training API; aún no está implementada." : "Automatic delivery requires an approved Garmin Training API integration; it is not implemented yet.",
-    coros: es ? "La entrega automática requiere una integración aprobada con COROS; aún no está implementada." : "Automatic delivery requires an approved COROS integration; it is not implemented yet.",
-    apple: es ? "La programación nativa requiere una app con WorkoutKit; JMM web no tiene esa integración." : "Native workout scheduling requires an app with WorkoutKit; JMM web does not have that integration.",
-    other: es ? "Consulta las funciones de importación de tu app y dispositivo." : "Check your app and device's supported import capabilities.",
+  const common = es ? [
+    "La descarga no confirma recepción en el reloj. La compatibilidad con tu modelo y firmware aún no está verificada por JMM.",
+    "Comprueba cada paso, objetivo y transición en el dispositivo antes de entrenar. Las instrucciones completas siguen disponibles en JMM.",
+  ] : [
+    "Downloading does not confirm watch receipt. JMM has not verified compatibility with your model and firmware.",
+    "Check every step, target and transition on the device before training. Full instructions remain available in JMM.",
+  ];
+  const manual = es ? [
+    "Consulta la guía oficial de compatibilidad y el manual de tu modelo. En dispositivos compatibles con acceso a archivos, descarga el entrenamiento FIT.",
+    "Conecta el Garmin a un ordenador con un cable USB de datos y copia el FIT a la carpeta Garmin/NewFiles. Expulsa y desconecta de forma segura.",
+    "En el reloj, abre el perfil de actividad correspondiente y Entrenamiento / Sesiones / Biblioteca de entrenamientos. Los menús y el soporte varían por modelo.",
+    "Algunos Garmin con música/MTP tienen limitaciones de acceso desde Mac y requieren Windows. No todos aparecen en Finder. No se garantiza una ruta solo móvil ni colocación en el calendario de Garmin Connect.",
+  ] : [
+    "Check the official compatibility guide and your model's manual. For a compatible device with supported file access, download the workout FIT.",
+    "Connect the Garmin to a computer with a data-capable USB cable and copy the FIT to Garmin/NewFiles. Safely eject and disconnect.",
+    "On the watch, open the corresponding activity profile, then Training / Workouts / Workout Library. Menu names and support vary by model.",
+    "Some music/MTP Garmin devices have Mac file-access limitations and require Windows. Not every watch appears in Finder. A mobile-only transfer or Garmin Connect calendar placement is not guaranteed.",
+  ];
+  return {
+    platform, label: labels[platform], file: "fit",
+    steps: [...(platform === "garmin" ? manual : [es ? "JMM no tiene entrega nativa verificada para este dispositivo. Consulta la importación compatible de tu app y modelo; la guía web no requiere reloj." : "JMM has no verified native delivery for this device. Check your app and model's supported imports; the web plan needs no watch."]), ...common],
+    ...(platform === "garmin" ? { helpUrl: GARMIN_WORKOUT_HELP, helpLabel: es ? "Guía oficial de compatibilidad Garmin" : "Official Garmin workout compatibility guide" } : {}),
   };
-  const garminImport = es
-    ? "Ruta de importación verificada: descarga el JSON con «Enviar a Garmin», luego en connect.garmin.com → Entrenamiento → Workouts → Importar, y envíalo al reloj."
-    : "Verified import path: download the JSON via \"Send to Garmin\", then connect.garmin.com → Training → Workouts → Import Workout, and send it to your device.";
-  return { platform, label: labels[platform], file: "fit", steps: [
-    requirements[platform],
-    ...(platform === "garmin" ? [garminImport] : []),
-    es ? "Puedes descargar el archivo FIT. La descarga o la hoja de compartir no confirma recepción en el reloj." : "You can download the FIT file. A download or share sheet does not confirm receipt on the watch.",
-    es ? "La compatibilidad de importación debe comprobarse para tu app, versión y dispositivo. Revisa cada paso y objetivo antes de entrenar." : "Import compatibility must be checked for your app, version and device. Review every step and target before training.",
-  ] };
 }
 export function allDeliveryGuides(lang: "en" | "es" = "en"): DeliveryGuide[] {
   return (["garmin", "apple", "coros"] as WatchPlatform[]).map(p => deliveryGuideFor(p, lang));

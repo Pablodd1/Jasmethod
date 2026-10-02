@@ -32,7 +32,7 @@ export async function GET(req: Request) {
   });
 
   if (!bundle.forecast)
-    return NextResponse.json({ ok: false, reason: "not_forecastable", distance: bundle.distance }, { status: 200 });
+    return NextResponse.json({ ok: false, reason: bundle.reason ?? "not_forecastable", message: bundle.message, distance: bundle.distance }, { status: 200 });
 
   const ctx = {
     raceName: bundle.race?.name ?? null,

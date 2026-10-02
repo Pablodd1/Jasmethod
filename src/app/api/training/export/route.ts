@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { prisma } from "@/lib/db";
 import { buildTrainingBundle } from "@/lib/training-export";
+import { effectivePrescription } from "@/lib/effective-prescription";
+import { SessionResolutionError } from "@/lib/canonical-session";
 
 export async function GET(req: Request) {
   try {
@@ -34,7 +36,19 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "desc" },
       }),
     ]);
+    const resolutionErrors: Record<string, string> = {};
+    const resolved = await Promise.all((plan?.days || []).flatMap(day => day.sessions.map(async session => {
+      try { return await effectivePrescription(athlete.id, session.id); }
+      catch (error) {
+        if (!(error instanceof SessionResolutionError)) throw error;
+        resolutionErrors[session.id] = error.message;
+        return null;
+      }
+    })));
+    const resolvedSessions = Object.fromEntries(resolved.filter((r): r is NonNullable<typeof r> => r !== null).map(r => [r.workout.id, r.canonical]));
     const zip = buildTrainingBundle({
+      resolvedSessions,
+      resolutionErrors,
       athlete: {
         name: athlete.name,
         email: athlete.email,

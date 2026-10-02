@@ -52,26 +52,27 @@ test("parser: question WITH imperative carries the command", () => {
 
 // ---- Review-findings regression: command application consistency ----
 
-test("applyTrainingCommand: REST_DAY sets durationMin to 20 (was stale 60)", () => {
+test("applyTrainingCommand: REST_DAY preserves true rest with no exercise", () => {
   const p = { session: { title: "Tempo", mainSet: ["4×5min"], totalQualityMeters: 300, type: "tempo", durationMin: 60 } };
   const r = applyTrainingCommand(p, { command: "REST_DAY", confidence: 0.9, originalText: "rest day" }, {});
   assert.ok(r.allowed);
-  assert.strictEqual(r.adjusted.session.durationMin, 20);
+  assert.strictEqual(r.adjusted.session.durationMin, 0);
+  assert.deepStrictEqual(r.adjusted.steps, []);
 });
 
-test("applyTrainingCommand: CHANGE_DURATION respects readiness caps", () => {
+test("applyTrainingCommand: CHANGE_DURATION never treats readiness as permission to increase volume", () => {
   const p = { session: { title: "Easy", mainSet: ["z2"], totalQualityMeters: 0, type: "endurance", durationMin: 45 } };
   const cmd = { command: "CHANGE_DURATION" as const, value: 180, confidence: 0.9, originalText: "3 hours" };
   const low = applyTrainingCommand(JSON.parse(JSON.stringify(p)), cmd, { readinessScore: 40 });
   assert.ok(!low.allowed, "low readiness must reject 180 min");
   const high = applyTrainingCommand(JSON.parse(JSON.stringify(p)), cmd, { readinessScore: 85 });
-  assert.ok(high.allowed, "high readiness may accept 180 min");
+  assert.ok(!high.allowed, "high readiness alone cannot authorize increased duration");
 });
 
 // ---- Review-findings regression: menstrual flag no longer auto-penalizes ----
 
 test("adaptSession: menstrual flag alone does not reduce the score (McNulty 2020)", () => {
-  const base = { sleep: 4, soreness: 2, energy: 4, stress: 2, motivation: 4, menstrual: false } as any;
+  const base = { sleep: 4, soreness: 2, energy: 4, stress: 2, motivation: 4, sick: false, newPain: false, urgentSymptoms: false, availableMin: 60, menstrual: false } as any;
   const withFlag = { ...base, menstrual: true } as any;
   assert.strictEqual(adaptSession(withFlag).score, adaptSession(base).score);
 });

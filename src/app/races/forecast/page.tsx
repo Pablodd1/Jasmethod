@@ -21,7 +21,7 @@ export default function RaceForecastPage() {
   const { user } = useAuth();
   const lang = (user?.language || "es") as Lang;
   const [races, setRaces] = useState<any[]>([]);
-  const [distance, setDistance] = useState<string>("olympic");
+  const [distance, setDistance] = useState<string>("");
   const [raceId, setRaceId] = useState<string>("");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -128,6 +128,9 @@ export default function RaceForecastPage() {
           </div>
         </div>
 
+        {data?.reason === "personalized_forecasts_disabled" && <div role="status" className="card border-amber-300">
+          {lang === "es" ? "Los pronósticos numéricos personalizados no están disponibles en este piloto. Faltan validación de referencias fechadas, historial, recorrido y error del modelo. El tiempo objetivo es una meta, no una predicción." : data.message}
+        </div>}
         {/* Controls */}
         <div className="card">
           <div className="grid md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
@@ -143,6 +146,7 @@ export default function RaceForecastPage() {
             <div>
               <label className="label">{t(lang, "fc.orDistance")}</label>
               <select className="input" value={distance} onChange={(e) => { setRaceId(""); setDistance(e.target.value); }}>
+                <option value="">{lang === "es" ? "Elige una distancia real" : "Choose an actual distance"}</option>
                 {FORECASTABLE_DISTANCES.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
@@ -202,13 +206,13 @@ export default function RaceForecastPage() {
             {pnError && <div role="status" className="text-sm">{pnError} <button className="underline" onClick={() => window.location.reload()}>Reload and review</button></div>}
             <button onClick={savePersonalNumbers} disabled={pnSaving} className="btn-secondary text-xs mt-3">
               {pnSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-              {lang === "es" ? "Guardar y recalcular" : "Save & re-forecast"}
+              {lang === "es" ? "Guardar referencias declaradas" : "Save reported references"}
               {pnSaved && <span className="text-emerald-600 ml-1">✓</span>}
             </button>
             <p className="text-[11px] text-slate-400 mt-2">
               {lang === "es"
-                ? "Sin estos datos el motor usa valores poblacionales (500–1000 ml/h, 500–1000 mg/L) y lo dice en el plan."
-                : "Without these the engine uses labeled population defaults (500–1000 ml/h, 500–1000 mg/L) and says so in the plan."}
+                ? "Estos valores guardados son referencias declaradas sin fecha/contexto verificados. No activan los pronósticos numéricos durante este piloto."
+                : "Saved values are reported references without verified dates/conditions. They do not unlock personalized numeric forecasts during this pilot."}
             </p>
           </details>
         </div>

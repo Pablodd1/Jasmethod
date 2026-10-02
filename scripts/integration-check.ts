@@ -5,6 +5,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { Decoder, Stream } from "@garmin/fitsdk";
 import { dayBounds, addDaysKey, localDate } from "../src/lib/dates";
+import { workoutRevision } from "../src/lib/workout-update";
 const db = new PrismaClient(),
   base = process.env.TEST_BASE_URL || "http://localhost:3000";
 const database = new URL(process.env.DATABASE_URL || "");
@@ -27,6 +28,17 @@ async function request(
   body?: any,
   status = 200,
 ) {
+  // This legacy suite predates revision-bound writes. Read the same current
+  // fixture revision the UI reads; explicit 409 conflict tests live in test:launch.
+  if (method === "PUT" && body && body.expectedRevision === undefined && [200,400].includes(status)) {
+    if (path.startsWith("/api/profile")) {
+      const current = await request(path, cookie);
+      body = { ...body, expectedRevision: current.data.revision };
+    } else if (path.startsWith("/api/plan") && body.sessionId) {
+      const fixture = await db.workout.findUniqueOrThrow({ where: { id: body.sessionId } });
+      body = { ...body, expectedRevision: workoutRevision(fixture) };
+    }
+  }
   const start = performance.now();
   const r = await fetch(base + path, {
     method,
@@ -66,12 +78,24 @@ async function account(role: string, label: string) {
     },
   });
   created.push(user.id);
+  await db.auditLog.create({ data: { actorId: user.id, subjectId: user.id, action: "profile.setup", after: JSON.stringify({
+    version: "manual-setup-v1", source: "athlete_reported", confirmedAt: new Date().toISOString(),
+    adultConfirmed: true, profileConfirmed: true, goalDescription: "Maintain sustainable endurance fitness",
+    baselineWeeklyMinutes: 360, baselineObservedAt: dayBounds(user.timezone).key,
+    interruptions: "none", restrictions: "none", qualifiedReview: "none_needed", trainingDays: [0,1,2,3,4,5,6],
+    maxSessionMinutes: 180, equipmentAccess: "Synthetic fixture: safe indoor bike, run route, pool", planWeeks: 4,
+  }) } });
   const login = await request("/api/auth/login", "", "POST", {
     email,
     password,
   });
   const cookie = login.response.headers.get("set-cookie")!.split(";")[0];
   return { ...user, cookie };
+}
+async function reviewedPlan(path: string, cookie: string, body: Record<string, unknown>) {
+  const preview = (await request(path, cookie, "POST", { ...body, preview: true })).data;
+  assert.ok(preview.previewToken);
+  return request(path, cookie, "POST", { ...body, previewToken: preview.previewToken });
 }
 async function main() {
   const admin = await account("admin", "admin"),
@@ -108,7 +132,7 @@ async function main() {
     400,
   );
   await request("/api/profile", a.cookie, "PUT", { role: "admin" }, 400);
-  await request(`/api/plan/generate?athleteId=${a.id}`, admin.cookie, "POST", {
+  await reviewedPlan(`/api/plan/generate?athleteId=${a.id}`, admin.cookie, {
     distance: "olympic",
     weeks: 4,
     startDate: day.key,
@@ -145,7 +169,7 @@ async function main() {
     { sessionId: w.id, title: "Intrusion" },
     404,
   );
-  const low = { sleep: 2, motivation: 2, energy: 2, stress: 4, soreness: 4 };
+  const low = { sleep: 2, motivation: 2, energy: 2, stress: 4, soreness: 4, sick: false, newPain: false, urgentSymptoms: false, availableMinutes: 360 };
   const low1 = (await request("/api/checkin", a.cookie, "POST", low)).data;
   const low2 = (await request("/api/checkin", a.cookie, "POST", low)).data;
   assert.deepEqual(
@@ -154,7 +178,7 @@ async function main() {
     "Repeated check-in must not compound reductions",
   );
   assert.ok(low2.prescriptions.length >= 2);
-  const good = { sleep: 5, motivation: 5, energy: 5, stress: 1, soreness: 1 };
+  const good = { sleep: 5, motivation: 5, energy: 5, stress: 1, soreness: 1, sick: false, newPain: false, urgentSymptoms: false, availableMinutes: 360 };
   await request("/api/checkin", a.cookie, "POST", good);
   assert.equal(
     (await db.workout.findUniqueOrThrow({ where: { id: w.id } })).durationMin,
@@ -174,7 +198,7 @@ async function main() {
     a.cookie,
     "POST",
     undefined,
-    400,
+    409,
   );
   await request("/api/plan", a.cookie, "PUT", {
     planDayId: firstDay.id,
@@ -191,7 +215,7 @@ async function main() {
     method: "POST",
     headers: { cookie: a.cookie },
   });
-  assert.equal(fit.status, 200);
+  assert.equal(fit.status, 200, fit.status !== 200 ? await fit.text() : undefined);
   const decoder = new Decoder(
     Stream.fromByteArray(new Uint8Array(await fit.arrayBuffer())),
   );
@@ -315,7 +339,7 @@ async function main() {
     undefined,
     process.env.CRON_SECRET ? 401 : 503,
   );
-  await request(`/api/plan/generate?athleteId=${a.id}`, admin.cookie, "POST", {
+  await reviewedPlan(`/api/plan/generate?athleteId=${a.id}`, admin.cookie, {
     distance: "olympic",
     weeks: 4,
     startDate: day.key,
@@ -451,7 +475,7 @@ async function main() {
     c.cookie,
     "POST",
     { id: protocolSession.id },
-    400,
+    409,
   );
   await request("/api/checkin", c.cookie, "POST", good);
   const protocolToday = (await request("/api/today", c.cookie)).data
@@ -465,7 +489,7 @@ async function main() {
     `${base}/api/workout/approve?sessionId=${protocolSession.id}`,
     { method: "POST", headers: { cookie: c.cookie } },
   );
-  assert.equal(protocolFit.status, 200);
+  assert.equal(protocolFit.status, 200, protocolFit.status !== 200 ? await protocolFit.text() : undefined);
   const protocolDecoder = new Decoder(
     Stream.fromByteArray(new Uint8Array(await protocolFit.arrayBuffer())),
   );
@@ -485,14 +509,10 @@ async function main() {
   );
   await request(protocolPath, admin.cookie, "POST", protocolRequest, 400);
   await request("/api/checkin", c.cookie, "DELETE");
-  assert.equal(
-    (
-      await request("/api/today", c.cookie)
-    ).data.sessions[0].prescription.steps.filter(
-      (s: any) => s.phase === "active",
-    ).length,
-    4,
-  );
+  assert.equal((await request("/api/today", c.cookie)).data.sessions[0].prescription.steps.length, 0,
+    "Removing the current check-in never resurrects executable protocol steps");
+  await request("/api/checkin", c.cookie, "POST", good);
+  assert.equal((await request("/api/today", c.cookie)).data.sessions[0].prescription.steps.filter((s: any) => s.phase === "active").length, 4);
   const beforeRename = await db.workout.findUniqueOrThrow({
     where: { id: protocolSession.id },
   });

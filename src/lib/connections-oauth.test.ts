@@ -9,6 +9,7 @@ const original = process.cwd();
 const {test} = require('node:test');
 const ts = require(path.join(original, 'node_modules/typescript'));
 class NextResponse extends Response {
+  static json(body, init) { return new NextResponse(JSON.stringify(body), {...init, headers: {"Content-Type":"application/json", ...init?.headers}}); }
   static redirect(url) { return new NextResponse(null, {status:307, headers:{location:String(url)}}); }
 }
 function load(root, rel, dependencies, extra={}) {
@@ -175,31 +176,27 @@ test('connections: Strava deletion uses plan-aware activity deletion scoped to o
 function exportFixture() {
   const log={emails:0,approvals:0,prefs:0};
   const workout={id:'w1',userId:'athlete-A',title:'Sprint',sport:'run',durationMin:1,
-    prescription:JSON.stringify({steps:[{phase:'active',name:'Sprint',seconds:5,zone:'z7',target:{type:'pace',value:3.2}}]})};
+    prescription:JSON.stringify({durationMin:1,steps:[{phase:'active',name:'Sprint',seconds:60,zone:'z7',target:{type:'open'}}]})};
+  const helpers = require('./canonical-session');
+  const canonical = helpers.canonicalSession({athleteId:'athlete-A',workout,prescription:workout.prescription,dateLocal:'2026-10-02',timezone:'UTC'});
+  class ApiError extends Error { constructor(message,status=400){super(message);this.status=status;} }
   const dependencies={
-    'next/server':{NextResponse},'@/lib/auth':{getCurrentUser:async()=>({id:'athlete-A',timezone:'UTC',email:'athlete@example.test'})},
-    '@/lib/db':{prisma:{workout:{findFirst:async()=>workout,update:async()=>{log.approvals++;}},athleteProfile:{findUnique:async()=>({lthr:170})},reminderPref:{findUnique:async()=>{log.prefs++;return{emailEnabled:true}}}}},
-    '@/lib/dates':{dayBounds:()=>({start:new Date(),end:new Date()})},'@/lib/telemetry':{meterUsage:async()=>{}},
-    '@/lib/effective-prescription':{effectivePrescription:async()=>({workout:{id:'w1',durationMin:1},prescription:{steps:[{phase:'active',name:'Sprint',seconds:5,zone:'z7',target:{type:'pace',value:3.2}}],intensity:'z7',durationMin:1}})},
-    '@/lib/fit-export':{buildFitWorkout:()=>Buffer.from('fixture-file'),workoutToFitSpec:x=>x},
+    'next/server':{NextResponse},
+    '@/lib/access':{trainingAccess:async()=>({athlete:{id:'athlete-A',timezone:'UTC',email:'athlete@example.test'}}),ApiError,errorResponse:e=>NextResponse.json({error:e.message},{status:e.status||500})},
+    '@/lib/db':{prisma:{workout:{findFirst:async()=>workout,updateMany:async()=>{const count=log.approvals===0?1:0;log.approvals+=count;return{count};}},athleteProfile:{findUnique:async()=>({lthr:170})},reminderPref:{findUnique:async()=>{log.prefs++;return{emailEnabled:true}}}}},
+    '@/lib/telemetry':{meterUsage:async()=>{}},
+    '@/lib/canonical-session':helpers,
+    '@/lib/effective-prescription':{effectivePrescription:async()=>({workout,canonical,prescription:JSON.parse(workout.prescription)})},
+    '@/lib/fit-export':{buildFitWorkout:()=>Buffer.from('fixture-file')},
     '@/lib/email':{sendEmail:async()=>{log.emails++;return{ok:true}}},
   };
   return {log,workout,dependencies};
 }
-test('connections: Garmin Connect JSON export preserves the sprint step at exact seconds with HR-zone target',async()=>{
+test('connections: unsupported Garmin Connect JSON import route is retired',async()=>{
   const {dependencies}=exportFixture();
   const route=load(original,'src/app/api/workout/garmin-json/route.ts',dependencies);
   const r=await route.GET(new Request('https://app.example/api/workout/garmin-json?sessionId=w1'));
-  const data=await r.json();assert.equal(r.status,200);
-  assert.equal(data.workoutName,'Sprint');
-  assert.equal(data.sportType.sportTypeKey,'running');
-  const step=data.workoutSegments[0].workoutSteps[0];
-  assert.equal(step.stepOrder,1);
-  assert.equal(step.stepType.stepTypeKey,'interval');
-  assert.equal(step.endCondition.conditionTypeKey,'time');
-  assert.equal(step.endConditionValue,5); // exact seconds preserved — never silently altered
-  assert.equal(step.preferredEndConditionUnit.unitKey,'second');
-  assert.equal(step.targetType.targetTypeKey,'heart.rate.zone');
+  assert.equal(r.status,410); const data=await r.json(); assert.match(data.error,/FIT|retired|structured/i);
 });
 test('connections: plain FIT GET cannot approve or email even with email preferences enabled',async()=>{
   const {dependencies,log}=exportFixture(); const route=load(original,'src/app/api/workout/approve/route.ts',dependencies);
@@ -212,6 +209,12 @@ test('connections: explicit approval POST still approves and honors email prefer
   const r=await route.POST(new Request('https://app.example/api/workout/approve?sessionId=w1',{method:'POST'}));
   assert.equal(r.status,200);assert.equal(log.approvals,1);assert.equal(log.emails,1);
   assert.equal(r.headers.get('X-Delivered-Email'),'1');
+});
+test('connections: repeated approval does not duplicate email delivery',async()=>{
+  const {dependencies,log}=exportFixture(); const route=load(original,'src/app/api/workout/approve/route.ts',dependencies);
+  const request=()=>new Request('https://app.example/api/workout/approve?sessionId=w1',{method:'POST'});
+  const first=await route.POST(request()); const second=await route.POST(request());
+  assert.equal(first.status,200);assert.equal(second.status,200);assert.equal(log.approvals,1);assert.equal(log.emails,1);assert.equal(log.prefs,1);
 });
 test('connections: WHOOP event retries error-state connectors and does not hide processing exceptions',async()=>{
   let where,processed=0;

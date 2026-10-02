@@ -51,14 +51,14 @@ const end = start + 12 * 7 * 86400000;
 assert.ok(tests.every((t) => t.date.getTime() >= start && t.date.getTime() <= end));
 
 // --- questionnaire adaptation ---
-const green = adaptSession({ sleep: 5, soreness: 1, motivation: 5, energy: 5, stress: 1, sick: false });
+const green = adaptSession({ sleep: 5, soreness: 1, motivation: 5, energy: 5, stress: 1, sick: false, newPain: false, urgentSymptoms: false, availableMin: 60 });
 assert.equal(green.verdict, "full");
 assert.equal(green.durationFactor, 1);
 const trashed = adaptSession({ sleep: 1, soreness: 5, motivation: 1, energy: 1, stress: 5, sick: true });
 assert.equal(trashed.verdict, "rest");
 assert.equal(trashed.durationFactor, 0);
 assert.ok(trashed.score < green.score, "rest score < green score");
-const mid = adaptSession({ sleep: 3, soreness: 3, motivation: 3, energy: 3, stress: 3, sick: false });
+const mid = adaptSession({ sleep: 3, soreness: 3, motivation: 3, energy: 3, stress: 3, sick: false, newPain: false, urgentSymptoms: false, availableMin: 60 });
 assert.ok(mid.verdict === "trim" || mid.verdict === "easy");
 
 // --- fuel ---
@@ -70,7 +70,7 @@ assert.ok(long.fluidMlPerHour >= 750);
 assert.ok(long.caffeineMg && long.caffeineMg > 0, "hard long session should recommend caffeine");
 
 // --- ergogenics: opt-out respected ---
-let prefs: import("./adaptive").SupplementPrefs = { enabled: true, likes: [], dislikes: [], optsOut: [] };
+let prefs: import("./adaptive").SupplementPrefs = { enabled: true, likes: ["caffeine"], dislikes: [], optsOut: [] };
 const rec = recommendErgogenics(prefs, { sport: "run", type: "interval", durationMin: 60, intensity: "z6" });
 assert.ok(rec.recommended.some((e) => e.key === "caffeine"));
 prefs = applySupplementFeedback(prefs, "caffeine", "stop");

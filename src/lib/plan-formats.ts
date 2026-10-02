@@ -16,22 +16,51 @@ export interface PlanFormatSession {
   intensity?: string | null;
   startTime?: string | null;
   id?: string;
+  revision?: string;
+  verdict?: string;
+  appUrl?: string;
   steps?: {
     name: string;
     seconds: number;
     reps?: number;
+    endpoint?: { type: "time"; seconds: number } | { type: "distance"; meters: number } | { type: "reps"; reps: number } | { type: "lap" };
+    targetLabel?: string;
     zone: string;
     note?: string;
     phase?: "warmup" | "active" | "recovery" | "cooldown";
   }[];
   fuel?: {
-    preSession?: { carbsG: number; timingLabel: string };
+    preSession?: { carbsG: number | null; timingLabel: string };
+    fluidSource?: string;
+    sodiumSource?: string;
     carbsPerHourG: number;
     fluidMlPerHour: number;
     sodiumMgPerHour: number;
     segments?: { atMin: number; label: string }[];
   } | null;
-  post?: { carbsG: number; proteinG: number } | null;
+  post?: { carbsG: number | null; proteinG: number | null; note?: string } | null;
+}
+
+// A repetition/distance/open endpoint must never be turned into a timed block.
+export function stepEndpointLabel(step: NonNullable<PlanFormatSession["steps"]>[number]): string {
+  const end = step.endpoint;
+  if (end?.type === "distance") return `${end.meters} m`;
+  if (end?.type === "lap") return "Lap/manual end";
+  if (end?.type === "reps") return `${end.reps} reps`;
+  if (step.reps) return `${step.reps} reps`;
+  const seconds = end?.type === "time" ? end.seconds : step.seconds;
+  return seconds % 60 === 0 ? `${seconds / 60} min` : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+export function postFuelLabel(post: NonNullable<PlanFormatSession["post"]>): string {
+  return post.carbsG != null && post.proteinG != null
+    ? `${post.carbsG}g carbs + ${post.proteinG}g protein`
+    : post.note || "Body mass is unknown. Have a familiar mixed meal; gram targets are unavailable.";
+}
+
+function sessionTimeLabel(session: PlanFormatSession): string {
+  const estimated = session.steps?.some(step => Boolean(step.reps) || (step.endpoint && step.endpoint.type !== "time"));
+  return `${session.durationMin} min${estimated ? " estimated" : ""}`;
 }
 
 // ---- Iconography ----
@@ -68,7 +97,7 @@ export function telegramPlan(
   // (the retention feature: the athlete never wonders what the plan is doing).
   if (whyLine) lines.push(`💡 ${whyLine}`);
   if (!sessions.length) {
-    lines.push("", "☁️ DAY OFF — 20 min Z1 + breathing. Recovery IS training.");
+    lines.push("", "☁️ No exercise is cleared in this reminder. Rest stays rest; review your plan and current check-in in the app.");
   }
   for (const s of sessions) {
     const icon = sportIcon(s.sport);
@@ -76,19 +105,21 @@ export function telegramPlan(
     const zone = s.intensity ? `${s.intensity.toUpperCase()}` : "";
     lines.push(
       "",
-      `${icon} ${time}${s.title} — ${s.durationMin} min ${zoneDot(s.intensity)}${zone}`,
+      `${icon} ${time}${s.title} — ${sessionTimeLabel(s)} ${zoneDot(s.intensity)}${zone}`,
     );
     // First two key steps only — the chat stays a plan, not a novel.
     const key = (s.steps || []).filter((x) => x.phase === "active").slice(0, 2);
     for (const st of key)
       lines.push(
-        `   • ${st.reps ? `${st.reps} reps — ` : ""}${Math.round(st.seconds / 60)} min ${st.name}`,
+        `   • ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}`,
       );
     if (s.fuel?.carbsPerHourG || s.fuel?.fluidMlPerHour)
       lines.push(
         `   ⛽ ${s.fuel.carbsPerHourG}g/h + ${s.fuel.fluidMlPerHour}ml/h`,
       );
-    if (s.post) lines.push(`   🍚 post: ${s.post.carbsG}g C + ${s.post.proteinG}g P`);
+    if (s.post) lines.push(`   🍚 post: ${postFuelLabel(s.post)}`);
+    if (s.appUrl) lines.push(`   Full instructions and feedback: ${s.appUrl}`);
+    if (s.revision) lines.push(`   Plan revision: ${s.revision.slice(0, 12)}`);
   }
   lines.push("", "👉 Check in before training — the plan adapts to your day.");
   return lines.join("\n");
@@ -97,7 +128,7 @@ export function telegramPlan(
 // ---- Gmail (styled HTML email) ----
 
 const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export function gmailPlanHtml(
   athleteName: string,
@@ -116,7 +147,7 @@ export function gmailPlanHtml(
               (st) =>
                 `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px dashed #e2e8f0;font-size:13px;color:#334155">
                    <span>${esc(st.name)}${st.note ? ` <span style="color:#94a3b8">— ${esc(st.note)}</span>` : ""}</span>
-                   <strong style="white-space:nowrap">${st.reps ? `${st.reps} reps` : `${Math.round(st.seconds / 60)}:${String(st.seconds % 60).padStart(2, "0")}`}</strong>
+                   <strong style="white-space:nowrap">${esc(stepEndpointLabel(st))}</strong>
                  </div>`,
             )
             .join("");
@@ -125,21 +156,23 @@ export function gmailPlanHtml(
               ? `<div style="background:#fff7ed;border-radius:8px;padding:6px 10px;margin-top:8px;font-size:12px;color:#9a3412">⛽ ${s.fuel.carbsPerHourG}g carbs/h · ${s.fuel.fluidMlPerHour}ml/h${s.fuel.sodiumMgPerHour ? ` · ${s.fuel.sodiumMgPerHour}mg sodium/h` : ""}</div>`
               : "";
           const postLine = s.post
-            ? `<div style="font-size:12px;color:#475569;margin-top:6px">🍚 Post: ${s.post.carbsG}g carbs + ${s.post.proteinG}g protein</div>`
+            ? `<div style="font-size:12px;color:#475569;margin-top:6px">🍚 Post: ${esc(postFuelLabel(s.post))}</div>`
             : "";
           return `
   <div style="border:1px solid #e2e8f0;border-left:4px solid #0284c7;border-radius:12px;padding:14px 16px;margin-bottom:12px">
     <div style="display:flex;justify-content:space-between;align-items:baseline">
       <strong style="font-size:15px;color:#0f172a">${sportIcon(s.sport)} ${esc(s.title)}</strong>
-      <span style="font-size:13px;color:#475569">${zone} · ${s.durationMin} min</span>
+      <span style="font-size:13px;color:#475569">${zone} · ${sessionTimeLabel(s)}</span>
     </div>
     ${steps ? `<div style="margin-top:8px">${steps}</div>` : ""}
     ${fuelLine}${postLine}
+    ${s.appUrl ? `<p><a href="${esc(s.appUrl)}">Full instructions and feedback</a></p>` : ""}
+    ${s.revision ? `<small>Plan revision: ${esc(s.revision.slice(0, 12))}</small>` : ""}
   </div>`;
         })
         .join("")
     : `<div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;font-size:14px;color:#334155">
-         ☁️ Day off — 20 min Z1 in any modality + breathing protocol. Recovery IS training.
+         ☁️ No exercise is cleared in this reminder. Rest stays rest; review your plan and current check-in in the app.
        </div>`;
 
   const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:600px;margin:auto;background:#f8fafc;border-radius:16px;padding:24px;border:1px solid #e2e8f0">
@@ -159,12 +192,12 @@ export function calendarDescription(
   s: PlanFormatSession & { id?: string },
 ): string {
   const lines: string[] = [
-    `${sportIcon(s.sport)} ${s.title} — ${s.durationMin} min ${zoneDot(s.intensity)}${s.intensity ? s.intensity.toUpperCase() : ""}`,
+    `${sportIcon(s.sport)} ${s.title} — ${sessionTimeLabel(s)} ${zoneDot(s.intensity)}${s.intensity ? s.intensity.toUpperCase() : ""}`,
   ];
   const key = (s.steps || []).filter((x) => x.phase === "active").slice(0, 4);
   for (const st of key)
     lines.push(
-      `• ${st.reps ? `${st.reps} reps — ` : ""}${Math.round(st.seconds / 60)} min ${st.name}${st.note ? ` (${st.note})` : ""}`,
+      `• ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}${st.note ? ` (${st.note})` : ""}`,
     );
   if (s.fuel?.preSession?.carbsG)
     lines.push(`⛽ Pre: ${s.fuel.preSession.carbsG}g ${s.fuel.preSession.timingLabel}`);
@@ -172,7 +205,7 @@ export function calendarDescription(
     lines.push(
       `⛽ During: ${s.fuel.carbsPerHourG}g/h + ${s.fuel.fluidMlPerHour}ml/h`,
     );
-  if (s.post) lines.push(`🍚 Post: ${s.post.carbsG}g C + ${s.post.proteinG}g P`);
+  if (s.post) lines.push(`🍚 Post: ${postFuelLabel(s.post)}`);
   lines.push("— JasMiamiMethod · check in before training");
   return lines.join("\n");
 }

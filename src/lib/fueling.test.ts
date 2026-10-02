@@ -5,6 +5,7 @@ import {
   carbsPerHourFor,
   fuelCurveReference,
   postFuelPersonalized,
+  caffeineAllowedFromPrefs,
 } from "./fueling";
 
 test("carb curve follows the science bands (Jeukendrup 2014)", () => {
@@ -16,8 +17,8 @@ test("carb curve follows the science bands (Jeukendrup 2014)", () => {
   assert.strictEqual(carbsPerHourFor(180, "z4", true), 90, ">2.5h gut-trained: 90 (2:1)");
 });
 
-test("hydration uses the measured sweat rate when present, capped at 1 L/h", () => {
-  const measured = buildFuelingPlan({ durationMin: 120, intensity: "z3", sweatRateMlH: 1400 });
+test("hydration needs dated context before calling supplied sweat measured", () => {
+  const measured = buildFuelingPlan({ durationMin: 120, intensity: "z3", sweatRateMlH: 1400, sweatMeasurement: {observedAt:"2026-09-01",context:"Easy cycling in cool conditions",source:"measured"} });
   assert.strictEqual(measured.fluidMlPerHour, 1000, "absorption cap");
   assert.strictEqual(measured.fluidSource, "measured");
   const estimated = buildFuelingPlan({ durationMin: 120, intensity: "z3" });
@@ -47,7 +48,7 @@ test("timeline segments scale to the session and never appear on short sessions"
 });
 
 test("pre-session and caffeine are weight-personalized", () => {
-  const p = buildFuelingPlan({ durationMin: 150, intensity: "z4", weightKg: 80 });
+  const p = buildFuelingPlan({ durationMin: 150, intensity: "z4", weightKg: 80, caffeineOptIn: true });
   assert.strictEqual(p.preSession.carbsG, 160, "2 g/kg");
   assert.strictEqual(p.caffeineMg, 240, "3 mg/kg");
   const none = buildFuelingPlan({ durationMin: 30, intensity: "z2", weightKg: 80 });
@@ -70,7 +71,7 @@ test("post fuel is weight-personalized with the recovery-window instruction", ()
   assert.strictEqual(hard.proteinG, 21, "0.3 g/kg");
   assert.strictEqual(hard.ratio, "4:1");
   const strength = postFuelPersonalized({ durationMin: 60, intensity: "z3", sport: "strength", weightKg: 70 });
-  assert.ok(strength.proteinG >= 28, "strength: protein-forward");
+  assert.ok(strength.proteinG != null && strength.proteinG >= 28, "strength: protein-forward");
   assert.strictEqual(strength.ratio, "1:1");
 });
 
@@ -80,4 +81,27 @@ test("reference curve is monotonic non-decreasing and honors gut training", () =
     assert.ok(c[i].gPerHour >= c[i - 1].gPerHour, "curve never dips");
   assert.strictEqual(c[c.length - 1].gPerHour, 90);
   assert.strictEqual(fuelCurveReference(false)[4].gPerHour, 60);
+});
+
+
+test("unknown weight never fabricates nutrition totals or caffeine",()=>{
+ const pre=buildFuelingPlan({durationMin:120,intensity:"z4"});
+ const post=postFuelPersonalized({durationMin:120,intensity:"z4"});
+ assert.equal(pre.preSession.carbsG,null);assert.equal(pre.caffeineMg,undefined);
+ assert.equal(post.carbsG,null);assert.equal(post.proteinG,null);assert.match(post.note,/weight is unknown/);
+ assert.match(pre.notes,/overdrinking/);assert.match(pre.notes,/Extra sodium does not/);assert.match(pre.notes,/together, once/);
+});
+test("caffeine is explicit opt-in with valid weight, and opt-outs win",()=>{
+ assert.equal(buildFuelingPlan({durationMin:90,intensity:"z4",weightKg:70}).caffeineMg,undefined);
+ assert.equal(buildFuelingPlan({durationMin:90,intensity:"z4",caffeineOptIn:true}).caffeineMg,undefined);
+ assert.equal(buildFuelingPlan({durationMin:90,intensity:"z4",weightKg:70,caffeineOptIn:true}).caffeineMg,210);
+ assert.equal(caffeineAllowedFromPrefs({enabled:true}),false);
+ assert.equal(caffeineAllowedFromPrefs({enabled:true,likes:'["caffeine"]',optsOut:'["caffeine"]'}),false);
+ assert.equal(caffeineAllowedFromPrefs({enabled:true,likes:'{}'}),false);
+ assert.equal(caffeineAllowedFromPrefs({enabled:true,likes:'["caffeine"]'}),true);
+});
+test("reported sweat remains unverified; heat never relabels it as a measurement",()=>{
+ const p=buildFuelingPlan({durationMin:120,intensity:"z3",sweatRateMlH:700,heatFactor:1.3});
+ assert.equal(p.fluidSource,"reported");assert.equal(p.fluidMlPerHour,700);assert.ok(p.measurementGaps.some(g=>/date\/conditions/.test(g)));
+ assert.throws(()=>buildFuelingPlan({durationMin:60,intensity:"z2",weightKg:NaN}));
 });

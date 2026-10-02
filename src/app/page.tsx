@@ -105,7 +105,7 @@ const COPY = {
     rows: [
       ["Strava", "Completed activities in — from any watch you sync to it.", "Actividades completadas — desde cualquier reloj que sincronices."],
       ["Whoop · Oura", "Recovery, HRV, sleep — absorbed and re-analyzed daily.", "Recuperación, HRV, sueño — absorbidos y re-analizados a diario."],
-      ["Intervals.icu → Garmin/COROS", "Structured workouts delivered to your watch automatically.", "Entrenamientos estructurados entregados a tu reloj automáticamente."],
+      ["Manual workout FIT", "Download supported workouts for compatible devices. USB transfer and device compatibility must be checked.", "Descarga entrenamientos compatibles. Comprueba la transferencia USB y la compatibilidad de tu dispositivo."],
       ["Google Calendar · Telegram · Email", "The day's plan where you already look.", "El plan del día donde ya miras."],
     ],
   },
