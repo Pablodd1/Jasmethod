@@ -4,26 +4,10 @@ import { addDaysKey, dayBounds, dateKey, localDate } from "./dates";
 import { storeActivity } from "./activity-store";
 import * as api from "./importers";
 import { buildFuelingPlan } from "./fueling";
-import { sportIcon, calendarDescription, shapeLink, type PlanFormatSession } from "./plan-formats";
+import { sportIcon, calendarDescription } from "./plan-formats";
+import { effectivePrescription } from "./effective-prescription";
+import { SessionResolutionError } from "./canonical-session";
 
-// Prescription JSON → exportable steps (defensive: never throw on old data).
-function safeSteps(prescription: string | null): PlanFormatSession["steps"] {
-  if (!prescription) return [];
-  try {
-    const p = JSON.parse(prescription);
-    return Array.isArray(p.steps)
-      ? p.steps.map((s: any) => ({
-          name: String(s.name || "Step"),
-          seconds: Number(s.seconds) || 0,
-          reps: s.reps,
-          zone: String(s.zone || "z2"),
-          note: s.note,
-        }))
-      : [];
-  } catch {
-    return [];
-  }
-}
 export interface SyncResult {
   provider: string;
   ok: boolean;
@@ -221,30 +205,34 @@ export async function syncUserConnectors(
           const link =
             links.find((l) => l.workoutId === w.id) ||
             links.find((l) => l.notes === `gcalPush:${legacyRemote?.id}`);
-          const fuelPlan = buildFuelingPlan({
-            durationMin: w.durationMin,
-            intensity: w.intensity || "z2",
-            weightKg: profile?.weightKg,
-            sweatRateMlH: profile?.sweatRateMlH,
-            sodiumMgPerL: profile?.sodiumMgPerL,
-            gutTrained: profile?.gutTrained,
-          });
+          // Calendar delivery has the same safety/revision boundary as the
+          // screen and file. Future or held plans are scheduling placeholders,
+          // with no actionable steps or private safety reasons transmitted.
+          let resolved: Awaited<ReturnType<typeof effectivePrescription>> = null;
+          try { resolved = await effectivePrescription(userId, w.id); }
+          catch (error) { if (!(error instanceof SessionResolutionError)) throw error; }
+          const ready = resolved?.canonical.verdict === "ready";
+          const session = ready ? resolved!.canonical : null;
+          const prescription = ready ? resolved!.prescription : null;
+          const appUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit").replace(/\/$/, "")}/daily?sessionId=${encodeURIComponent(w.id)}`;
+          const fuelPlan = ready ? buildFuelingPlan({
+            durationMin: session!.durationMin, intensity: prescription.intensity,
+            weightKg: profile?.weightKg, sweatRateMlH: profile?.sweatRateMlH,
+            sodiumMgPerL: profile?.sodiumMgPerL, gutTrained: profile?.gutTrained,
+          }) : null;
           const gid = await api.googleCalUpsertEvent(access, {
-            summary: `${sportIcon(w.sport)} ${w.title} · ${w.durationMin} min`,
-            description: `${calendarDescription({
-              title: w.title,
-              sport: w.sport,
-              durationMin: w.durationMin,
-              intensity: w.intensity,
-              steps: safeSteps(w.prescription),
+            summary: ready
+              ? `${sportIcon(session!.sport)} ${session!.title} · ${session!.durationMin} min${session!.exactTimeSeconds == null ? " estimated" : ""}`
+              : `${sportIcon(w.sport)} ${w.title} · provisional plan`,
+            description: ready ? calendarDescription({
+              id: w.id, title: session!.title, sport: session!.sport,
+              durationMin: session!.durationMin, intensity: prescription.intensity,
+              revision: session!.revision, verdict: session!.verdict, appUrl,
+              steps: session!.steps.map(step => ({ ...step, targetLabel: step.target.label })),
               fuel: fuelPlan,
-            })}\n📈 Effort shape: ${shapeLink(w.id)}`,
-            start: localDate(
-              dateKey(w.date, user.timezone),
-              user.timezone,
-              w.startTime || "07:00",
-            ),
-            durationMin: w.durationMin,
+            }) + `\nSummary only. Full warm-up, work, recovery, cooldown and current targets: ${appUrl}\nPlan revision: ${session!.revision}` : `Provisional calendar placeholder only. No exercise is cleared by this entry. Open the session and complete the session-day check-in before training. Planned calendar time may change.\n${appUrl}`,
+            start: localDate(dateKey(w.date, user.timezone), user.timezone, w.startTime || "07:00"),
+            durationMin: session?.durationMin ?? w.durationMin,
             workoutId: w.id,
             existingGoogleId: link?.notes?.slice(9) || legacyRemote?.id,
           });

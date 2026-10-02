@@ -1,11 +1,12 @@
+import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "@/lib/capabilities";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { trainingAccess, errorResponse } from "@/lib/access";
 import { decryptSecret } from "@/lib/crypto";
-import { intervalsCreateEvent, intervalsUpdateEvent, type IntervalStep } from "@/lib/intervals";
+import { intervalsCreateEvent, intervalsUpdateEvent } from "@/lib/intervals";
 import { estimateTss } from "@/lib/fitness";
 import { buildFuelingPlan } from "@/lib/fueling";
-import { structuredSteps } from "@/lib/prescription";
+import { endpointLabel } from "@/components/daily-training/training-contract";
 import { effectivePrescription } from "@/lib/effective-prescription";
 import { dayBounds, dateKey } from "@/lib/dates";
 import { meterUsage } from "@/lib/telemetry";
@@ -13,17 +14,16 @@ import { meterUsage } from "@/lib/telemetry";
 export const dynamic = "force-dynamic";
 
 // POST /api/workout/intervals-push — { sessionId }
-// Publishes the session to the athlete's Intervals.icu calendar. Intervals
-// then syncs it to their linked Garmin/COROS/Wahoo/Suunto automatically —
-// the one fully-open structured-workout bridge (owner request 2026-09-28).
+// Optional calendar-note publication only. Native structured provider export
+// and watch receipt remain unvalidated; no automatic-delivery claim is made.
 export async function POST(req: Request) {
   // Claim bookkeeping lives at function scope so the outer catch can release
   // a pending claim on ANY failure path.
   let claimedWorkoutId: string | null = null;
   let claimedToken: string | null = null;
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
+    const { athlete: user } = await trainingAccess(req);
+    if (!intervalsConnectorEnabled()) return NextResponse.json({ error: INTERVALS_DISABLED_MESSAGE }, { status: 503 });
     const body = await req.json().catch(() => ({}));
     const sessionId = String(body?.sessionId || "");
     const { start, end } = dayBounds(user.timezone);
@@ -51,14 +51,14 @@ export async function POST(req: Request) {
     const resolved = await effectivePrescription(user.id, workout.id);
     if (!resolved) return NextResponse.json({ error: "No session found" }, { status: 404 });
     const p = resolved.prescription;
+    if (body.expectedRevision !== resolved.canonical.revision)
+      return NextResponse.json({ error: "This session changed. Refresh before publishing." }, { status: 409 });
     if (p.verdict === "rest" || (p.durationMin ?? resolved.workout.durationMin) === 0)
       return NextResponse.json(
         { error: "This is a rest day — nothing to publish." },
         { status: 400 },
       );
-    const steps: IntervalStep[] = Array.isArray(p.steps) && p.steps.length
-      ? p.steps
-      : structuredSteps(p.durationMin ?? workout.durationMin, p.intensity || "z2", workout.type || "endurance", 0, p.sport || workout.sport);
+    const steps = resolved.canonical.steps;
 
     const tss = estimateTss({
       durationMin: p.durationMin ?? workout.durationMin,
@@ -77,15 +77,12 @@ export async function POST(req: Request) {
       verdict: p.verdict,
     });
     const fuelLine = `\n\nFuel: ~${fuel.carbsPerHourG} g carbs/h · ~${Math.round(fuel.fluidMlPerHour)} ml/h${fuel.sodiumMgPerHour ? ` · ~${Math.round(fuel.sodiumMgPerHour)} mg Na/h` : ""}.`;
-    const description =
-      `${(p.intensity || "z2").toUpperCase()} · ${(p.durationMin ?? workout.durationMin)} min · planned TSS ~${tss}\n\n` +
-      steps
-        .slice(0, 12)
-        .map(
-          (s: any, i: number) =>
-            `${i + 1}. ${s.name || "Segment"} — ${Math.round(s.seconds / 60)} min ${(s.zone || "").toUpperCase()}${s.note ? ` (${s.note.slice(0, 80)})` : ""}`,
-        )
-        .join("\n") + fuelLine;
+    const fullDescription =
+      `Calendar instructions only; device delivery is unverified. Revision ${resolved.canonical.revision.slice(0, 12)}.\n\n` +
+      steps.map((s, i) => `${i + 1}. ${s.name} — ${endpointLabel(s.endpoint, (user as any).profile?.units !== "imperial", resolved.canonical.sport)} · ${s.target.label}${s.note ? ` · ${s.note}` : ""}`).join("\n") + fuelLine;
+    const description = fullDescription.length > 1000
+      ? fullDescription.slice(0, 875) + "\n[Instructions shortened. Open the selected session in JMM for the complete steps, targets and technique guidance.]"
+      : fullDescription;
 
     // Publish semantics (Codex review P1-5): re-push UPDATES the existing
     // Intervals event instead of creating duplicates. Only a first push
@@ -119,7 +116,7 @@ export async function POST(req: Request) {
         steps,
       });
       await meterUsage(user.id, "fit_exports", 1);
-      return NextResponse.json({ ok: true, intervalsId: priorId, updated: true, structured: (p.sport || workout.sport) === "bike" });
+      return NextResponse.json({ ok: true, intervalsId: priorId, updated: true, structured: false, deviceReceived: false });
     }
     let created: { id: string };
     try {
@@ -168,16 +165,17 @@ export async function POST(req: Request) {
     }).catch(() => null);
     if (!saved || saved.count === 0)
       return NextResponse.json({
-        ok: true, intervalsId: created.id, structured: (p.sport || workout.sport) === "bike",
+        ok: true, intervalsId: created.id, structured: false, deviceReceived: false,
         warning: "Published, but the delivery id could not be saved locally — a future push may create a duplicate. Check your Intervals calendar.",
       });
     await meterUsage(user.id, "fit_exports", 1);
     return NextResponse.json({
       ok: true,
       intervalsId: created.id,
-      structured: (p.sport || workout.sport) === "bike",
+      structured: false, deviceReceived: false,
     });
   } catch (e: any) {
+    if (e?.status === 401 || e?.status === 403 || e?.status === 404) return errorResponse(e);
     // CLAIM HYGIENE (audit finding): any throw inside the claim window
     // (decrypt, TSS, fuel plan, update path) must not wedge the workout in
     // pending forever. Release our unconfirmed claim if one is held — the

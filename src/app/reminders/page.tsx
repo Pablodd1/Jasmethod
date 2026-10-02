@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Bell, Mail, Send, MessageCircle, Save } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -9,9 +9,10 @@ import { t, type Lang } from "@/lib/i18n";
 export default function RemindersPage() {
   const { user } = useAuth();
   const lang = (user?.language || "es") as Lang;
-  const [prefs, setPrefs] = useState<any>({ emailEnabled: true, telegramEnabled: false, telegramChatId: "", reminderHour: "17", remindBeforeMin: "0" });
+  const [prefs, setPrefs] = useState<any>({ emailEnabled: false, telegramEnabled: false, telegramChatId: "", reminderHour: "17", remindBeforeMin: "0" });
   const [telegramConfigured, setTelegramConfigured] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [digestSent, setDigestSent] = useState(false);
@@ -24,26 +25,21 @@ export default function RemindersPage() {
   // Scheduled-delivery health: proves the cron is actually configured + shows recent deliveries
   const [health, setHealth] = useState<any>(null);
 
-  async function loadHealth() {
+  const loadHealth = useCallback(async () => {
     const res = await fetch("/api/reminders/health");
     if (res.ok) setHealth(await res.json());
-  }
+  }, []);
 
   // Chat ID persists immediately — no Save button needed.
   async function saveChatId(value: string) {
-    const v = value.trim();
-    if (!v || v === (savedChatIdRef.current || "")) return;
-    await fetch("/api/reminders", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ telegramChatId: v, telegramEnabled: true }) });
-    savedChatIdRef.current = v;
-    setChatSaved(true);
-    setTimeout(() => setChatSaved(false), 3000);
+    if (value.trim() && value.trim() !== savedChatIdRef.current) setError("Use Detect to verify your private Telegram chat. Pasted IDs cannot enable delivery.");
   }
-  const savedChatIdRef = { current: prefs.telegramChatId || "" };
+  const savedChatIdRef = useRef("");
 
-  async function loadPairing() {
+  const loadPairing = useCallback(async () => {
     const res = await fetch("/api/reminders/telegram-detect");
     if (res.ok) setPairing(await res.json());
-  }
+  }, []);
 
   async function detectChat() {
     setPairBusy(true); setPairMsg(null);
@@ -64,28 +60,36 @@ export default function RemindersPage() {
     }
   }
 
-  async function load() {
+  const load = useCallback(async () => {
     const res = await fetch("/api/reminders");
     const d = await res.json();
     setTelegramConfigured(d.telegramConfigured);
-    if (d.prefs) setPrefs({ ...prefs, ...d.prefs, reminderHour: String(d.prefs.reminderHour ?? 6), remindBeforeMin: String(d.prefs.remindBeforeMin ?? 0) });
-  }
-  useEffect(() => { if (user) { load(); loadPairing(); loadHealth(); } }, [user]);
+    if (d.prefs) { savedChatIdRef.current = d.prefs.telegramChatId || ""; setPrefs((previous: any) => ({ ...previous, ...d.prefs, reminderHour: String(d.prefs.reminderHour ?? 6), remindBeforeMin: String(d.prefs.remindBeforeMin ?? 0) })); }
+  }, []);
+  useEffect(() => { if (user) { load(); loadPairing(); loadHealth(); } }, [user, load, loadPairing, loadHealth]);
 
-  const set = (k: string, v: any) => setPrefs((p: any) => ({ ...p, [k]: v }));
+  const set = (k: string, v: any) => setPrefs((p: any) => ({ ...p, [k]: v, ...(v && k === "emailEnabled" ? { telegramEnabled: false } : {}), ...(v && k === "telegramEnabled" ? { emailEnabled: false } : {}) }));
 
   async function save() {
-    setBusy(true);
-    await fetch("/api/reminders", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...prefs, reminderHour: parseInt(prefs.reminderHour, 10), remindBeforeMin: parseInt(prefs.remindBeforeMin, 10) }) });
-    setBusy(false); setSaved(true); setTimeout(() => setSaved(false), 2500);
+    setBusy(true); setError(null); setSaved(false);
+    try {
+      const res = await fetch("/api/reminders", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...prefs, reminderHour: Number(prefs.reminderHour), remindBeforeMin: Number(prefs.remindBeforeMin) }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save preferences");
+      setSaved(true); setTimeout(() => setSaved(false), 2500);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save preferences"); }
+    finally { setBusy(false); }
   }
 
   async function sendNow(when: "today" | "tomorrow" = "today") {
-    setBusy(true);
-    const res = await fetch("/api/reminders/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ when }) });
-    const d = await res.json();
-    setSent(d);
-    setBusy(false);
+    setBusy(true); setError(null); setSent(null);
+    try {
+      const res = await fetch("/api/reminders/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ when }) });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || data.result?.email?.error || data.result?.telegram?.error || "Delivery was not confirmed");
+      setSent(data);
+    } catch (e) { setError(e instanceof Error ? e.message : "Delivery was not confirmed"); }
+    finally { setBusy(false); }
   }
 
   // Moved here from Settings so every message-delivery control lives on one tab.
@@ -102,11 +106,12 @@ export default function RemindersPage() {
       <div className="space-y-6 max-w-2xl">
         <div>
           <h1 className="font-display text-2xl font-bold">{t(lang, "rem.title")}</h1>
-          <p className="text-slate-500 text-sm">Morning (hour &lt; 12): short reminder of today&apos;s session. Evening (hour ≥ 12, default 17:00): the full detailed plan for tomorrow + readiness recommendation — email and/or Telegram.</p>
+          <p className="text-slate-500 text-sm">Morning (hour &lt; 12): short reminder of today&apos;s session. Evening (hour ≥ 12, default 17:00): the full detailed plan for tomorrow + readiness recommendation — one chosen email or Telegram channel. Future sessions remain pending until a current check-in.</p>
         </div>
 
-        {saved && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{t(lang, "rem.saved")}</div>}
-        {sent && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">✓ Sent — {sent.result?.email?.ok ? "email ok" : sent.result?.email?.error || "email fallback (no SMTP)"}{sent.result?.telegram ? (sent.result.telegram.ok ? " · telegram ok" : ` · telegram: ${sent.result.telegram.error}`) : ""}</div>}
+        {error && <div role="alert" className="text-red-700">{error}</div>}
+        {saved && <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{t(lang, "rem.saved")}</div>}
+        {sent && <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">Provider accepted — {sent.result?.email?.ok ? "email ok" : sent.result?.email?.error || "email not sent"}{sent.result?.telegram ? (sent.result.telegram.ok ? " · telegram ok" : ` · telegram: ${sent.result.telegram.error}`) : ""}</div>}
 
         {/* Delivery status — makes the scheduled cron visible instead of silent */}
         {health && (
@@ -118,14 +123,14 @@ export default function RemindersPage() {
             {health.cronConfigured ? (
               <p className="text-sm text-emerald-800">
                 ✓ {lang === "es"
-                  ? `Activo — llega a diario a las ${String(health.reminderHour).padStart(2, "0")}:00 (hora local). Si una corrida falla, se recupera en la hora siguiente.`
-                  : `Live — arrives daily at ${String(health.reminderHour).padStart(2, "0")}:00 (your local time). If a run is missed, the next hour catches up.`}
+                  ? `Configurado para intentar el envío a las ${String(health.reminderHour).padStart(2, "0")}:00 (hora local). La aceptación del proveedor no confirma lectura.`
+                  : `Configured to attempt delivery at ${String(health.reminderHour).padStart(2, "0")}:00 (your local time). Provider acceptance does not confirm reading.`}
               </p>
             ) : (
               <p className="text-sm text-red-800">
                 ⚠ {lang === "es"
-                  ? "NO configurado en el servidor — el envío automático está apagado para todos. Usa «Enviar ahora» abajo mientras tanto (el administrador debe definir CRON_SECRET en Vercel)."
-                  : "NOT configured on the server — automatic sending is off for everyone. Use “Send now” below in the meantime (admin must set CRON_SECRET in Vercel)."}
+                  ? "El envío automático está desactivado o no configurado. Elige un canal antes de enviar manualmente."
+                  : "Automatic delivery is disabled or not configured. Manual delivery is available only after choosing a channel."}
               </p>
             )}
             {prefs.telegramEnabled && !health.telegramBound && (

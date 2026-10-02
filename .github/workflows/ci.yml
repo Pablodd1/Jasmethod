@@ -14,16 +14,24 @@ jobs:
         env:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci
-          POSTGRES_DB: jasmethod_ci
-        ports: ["5432:5432"]
+          POSTGRES_DB: jmm_launch_integration_test
+        ports: ["55432:5432"]
         options: >-
-          --health-cmd "pg_isready -U ci -d jasmethod_ci"
+          --health-cmd "pg_isready -U ci -d jmm_launch_integration_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/jasmethod_ci
-      DIRECT_URL: postgresql://ci:ci@localhost:5432/jasmethod_ci
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:55432/jmm_launch_integration_test
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:55432/jmm_launch_integration_test
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3220
+      TEST_BASE_URL: http://127.0.0.1:3220
+      JMM_INTEGRATION_BASE: http://127.0.0.1:3220
+      JMM_EGRESS_LOG: /tmp/jmm-egress.log
+      PORT: 3220
+      NEXT_TELEMETRY_DISABLED: "1"
+      ENABLE_INTERVALS_CONNECTOR: "false"
+      ENABLE_AUTOMATED_DELIVERY: "false"
       TOKEN_ENCRYPTION_KEY: isolated-ci-token-key
+      CRON_SECRET: isolated-ci-cron-secret
     steps:
       - uses: actions/checkout@v4
 
@@ -41,6 +49,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Lint
+        run: npm run lint
+
       - name: Crypto roundtrip (token encryption)
         run: TOKEN_ENCRYPTION_KEY=ci-test-key npx tsx scripts/crypto-check.ts
 
@@ -55,6 +66,20 @@ jobs:
 
       - name: Authenticated integration tests
         run: |
-          npm start > /tmp/jasmethod-server.log 2>&1 &
-          for i in $(seq 1 30); do curl -fsS http://localhost:3000/api/auth/me && break; sleep 1; done
+          NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs" npm start > /tmp/jasmethod-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3220/api/auth/me && break; sleep 1; done
           npm run test:integration
+
+      - name: Device-free launch acceptance and decoded FIT semantics
+        run: npm run test:launch
+
+      - name: Save synthetic acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmm-launch-acceptance
+          path: |
+            .local/jmm-launch-integration/report.json
+            .local/jmm-launch-integration/*.fit
+            .local/jmm-launch-integration/*-decoded.json
+          if-no-files-found: ignore

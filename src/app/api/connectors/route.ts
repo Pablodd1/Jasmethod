@@ -1,3 +1,4 @@
+import { intervalsConnectorEnabled, trainingCapabilities } from "@/lib/capabilities";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { athlinksConfigured } from "@/lib/athlinks";
@@ -91,10 +92,10 @@ export async function GET() {
         id: "intervals",
         name: "Intervals.icu",
         description:
-          "Publish your structured workouts to your Intervals.icu calendar — they sync automatically to your linked Garmin, COROS, Wahoo or Suunto watch. Connect with the API key from Intervals.icu → Settings → Developer Settings.",
+          "Optional Intervals.icu calendar publication. All sports use calendar notes; native structured provider export is unvalidated. Device receipt is unverified.",
         method: "api_key" as const,
         configured: true,
-        capabilities: { imports: false, publishesStructuredWorkouts: true, automaticDeviceDelivery: true },
+        capabilities: { imports: false, publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
       },
     ].map((p) => ({
       ...p,
@@ -105,11 +106,12 @@ export async function GET() {
     })),
   );
   return Response.json({
-    providers: providers.map((p) => ({
+    capabilities: trainingCapabilities(),
+    providers: providers.filter(p => p.id !== "intervals" || intervalsConnectorEnabled()).map((p) => ({
       ...p,
       ...connectors.find((c) => c.provider === p.id),
     })),
-    connectors,
+    connectors: connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled()),
   });
 }
 export async function DELETE(req: Request) {

@@ -250,8 +250,10 @@ model Workout {
   recovery     String? // post-workout ANS recovery cooldown note (rotates daily)
   originalPlan String? // immutable base used when recalculating daily adaptations
   prescription String? // effective structured prescription shared by UI/export
-  feedbackStatus String? // completed | partial | skipped
+  feedbackStatus String? // completed | partial | substituted | skipped | unknown
   actualDurationMin Int?
+  actualSport       String? // Explicit athlete report; never overwrites planned sport
+  actualDetails     String? // Versioned JSON: reported quantities and observation provenance
   feedbackNote String?
   feedbackAt DateTime?
   matchedPlanId String? // planned session fulfilled by an imported activity
@@ -613,7 +615,7 @@ model SupplementProfile {
 model ReminderPref {
   id              String  @id @default(cuid())
   userId          String  @unique
-  emailEnabled    Boolean @default(true)
+  emailEnabled    Boolean @default(false)
   telegramEnabled Boolean @default(false)
   telegramChatId  String?
   reminderHour    Int     @default(17) // 0-23 local; <12 = morning reminder, >=12 = evening detailed plan for tomorrow

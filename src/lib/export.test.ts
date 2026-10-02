@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Decoder, Stream } from "@garmin/fitsdk";
 import { createOAuthState, validOAuthState } from "./oauth-state";
+import { canonicalSession } from "./canonical-session";
 import { buildTrainingBundle, buildTrainingCalendar, toCsv } from "./training-export";
 
 function zipFiles(zip: Uint8Array) {
@@ -87,7 +88,9 @@ test("CSV quotes unsafe cells and calendar emits a timed workout", () => {
 });
 
 test("complete training bundle contains analytics, calendar and valid FIT", () => {
-  const zip = buildTrainingBundle(sample, new Date("2026-09-07T12:00:00Z"));
+  const session = sample.plan.days[0].sessions[0];
+  const canonical = canonicalSession({ athleteId: "test", workout: session, prescription: { durationMin: 60, steps: [{ name: "Threshold", seconds: 3600, zone: "z4", phase: "active" }] }, profile: sample.profile, dateLocal: "2026-09-08", timezone: sample.athlete.timezone });
+  const zip = buildTrainingBundle({ ...sample, resolvedSessions: { [session.id]: canonical } }, new Date("2026-09-07T12:00:00Z"));
   const files = zipFiles(zip);
   for (const name of [
     "README.txt",
@@ -108,5 +111,24 @@ test("complete training bundle contains analytics, calendar and valid FIT", () =
   assert.equal(decoder.checkIntegrity(), true);
   const { messages, errors } = decoder.read();
   assert.deepEqual(errors, []);
-  assert.equal((messages as any).workoutMesgs[0].wktName, "Threshold bike");
+  assert.match((messages as any).workoutMesgs[0].wktName, /^JMM-[a-f0-9]{10} Threshold bike$/);
+});
+
+
+test("bundle omits unresolved/raw, rest, malformed and unsupported sessions with honest reasons", () => {
+  const unresolved = zipFiles(buildTrainingBundle(sample));
+  assert.equal([...unresolved.keys()].some(name => name.endsWith(".fit")), false);
+  assert.match(unresolved.get("fit-export-status.csv")!.toString(), /No authenticated current safety/);
+  const session = sample.plan.days[0].sessions[0];
+  for (const extra of [{ profile: { injured: true }, prescription: null }, { profile: {}, prescription: "{" }, { profile: {}, prescription: JSON.stringify({ verdict: "rest" }) }]) {
+    const c = canonicalSession({ athleteId: "test", workout: session, ...extra, dateLocal: "2026-09-08", timezone: sample.athlete.timezone });
+    const files = zipFiles(buildTrainingBundle({ ...sample, resolvedSessions: { [session.id]: c } }));
+    assert.equal([...files.keys()].some(name => name.endsWith(".fit")), false);
+    assert.match(files.get("fit-export-status.csv")!.toString(), /omitted/);
+  }
+});
+
+
+test("CSV treats untrusted formula-like strings as text while preserving numeric values", () => {
+  assert.equal(toCsv([{ note: "=HYPERLINK(1)", delta: -5 }], ["note", "delta"]), "note,delta\r\n'=HYPERLINK(1),-5\r\n");
 });

@@ -11,11 +11,11 @@ export function validateWorkoutType(value: unknown): string {
 }
 export function workoutHasHistory(w: Record<string, any>): boolean {
   return Boolean(w.completed || !w.planned || w.feedbackStatus || w.feedbackAt || w.feedbackNote ||
-    w.actualDurationMin != null || w.rpe != null || w.avgHr != null || w.avgPower != null ||
+    w.actualDurationMin != null || w.actualSport || w.actualDetails || w.rpe != null || w.avgHr != null || w.avgPower != null ||
     w.externalId || w.matchedPlanId);
 }
 export function workoutRevision(w: Record<string, any>): string {
-  const keys = ["id", "date", "title", "sport", "type", "durationMin", "intensity", "startTime", "notes", "planned", "completed", "approved", "originalPlan", "prescription", "feedbackStatus", "actualDurationMin", "feedbackNote", "feedbackAt", "rpe", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg", "indoor", "planDayId"];
+  const keys = ["id", "date", "title", "sport", "type", "durationMin", "intensity", "startTime", "notes", "planned", "completed", "approved", "originalPlan", "prescription", "feedbackStatus", "actualDurationMin", "actualSport", "actualDetails", "feedbackNote", "feedbackAt", "rpe", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg", "indoor", "planDayId"];
   return createHash("sha256").update(JSON.stringify(keys.map(key => w[key] ?? null))).digest("hex");
 }
 export function requireWorkoutRevision(w: Record<string, any>, revision: unknown) {
@@ -62,7 +62,7 @@ export async function updateWorkout(
       const n = Number(body[key]);
       if (
         !Number.isFinite(n) ||
-        n < 0 ||
+        n < (key === "rpe" ? 1 : 0) ||
         n > max ||
         (["durationMin", "actualDurationMin", "rpe", "avgHr", "maxHr"].includes(
           key,
@@ -115,17 +115,40 @@ export async function updateWorkout(
         throw new ApiError("Invalid time");
       data.startTime = body.startTime || null;
     }
+    if (body.actualSport !== undefined) {
+      if (body.actualSport === null || body.actualSport === "") data.actualSport = null;
+      else if (["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing", "other"].includes(body.actualSport)) data.actualSport = body.actualSport;
+      else throw new ApiError("Invalid actual sport");
+    }
+    if (body.actualDetails !== undefined) {
+      if (body.actualDetails === null) data.actualDetails = null;
+      else {
+        if (!body.actualDetails || typeof body.actualDetails !== "object" || Array.isArray(body.actualDetails)) throw new ApiError("Invalid reported quantities");
+        const limits: Record<string, number> = { distanceKm: 1500, reps: 100000, loadKg: 2000 };
+        if (Object.keys(body.actualDetails).some(key => !(key in limits))) throw new ApiError("Unknown reported quantity");
+        const values: Record<string, number | null> = {};
+        for (const [key, value] of Object.entries(body.actualDetails)) {
+          if (value === null) { values[key] = null; continue; }
+          if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > limits[key] || (key === "reps" && !Number.isInteger(value))) throw new ApiError(`Invalid actual ${key}`);
+          values[key] = value;
+        }
+        data.actualDetails = JSON.stringify({ schemaVersion: 1, source: "athlete_report", observedDate: dateKey(existing.date, athlete.timezone), enteredAt: new Date().toISOString(), values });
+      }
+    }
     if (body.feedbackStatus !== undefined) {
-      if (!["completed", "partial", "skipped"].includes(body.feedbackStatus))
+      if (!["completed", "partial", "substituted", "skipped", "unknown"].includes(body.feedbackStatus))
         throw new ApiError("Invalid workout outcome");
       data.feedbackStatus = body.feedbackStatus;
       data.feedbackAt = new Date();
-      data.completed = body.feedbackStatus !== "skipped";
-      if (body.feedbackStatus === "skipped") data.actualDurationMin = 0;
-      else if (data.actualDurationMin == null)
-        data.actualDurationMin =
-          existing.actualDurationMin ?? existing.durationMin;
+      data.completed = body.feedbackStatus === "completed";
+      // Status is not a duration report. A partial or skipped prescription
+      // says nothing about other activity; never substitute planned minutes.
+      // Explicit null clears an old value; omitted fields retain prior reports.
     }
+    // Corrections are new observations for the next safety/load assessment,
+    // even when the athlete keeps the same outcome or clears a prior value.
+    if (["actualDurationMin", "actualSport", "actualDetails", "rpe", "feedbackNote"].some(key => body[key] !== undefined))
+      data.feedbackAt = new Date();
     if (body.date !== undefined) {
       try { data.date = parseDate(body.date, athlete.timezone); } catch { throw new ApiError("Invalid session date"); }
       if (data.date.getTime() !== existing.date.getTime()) data.approved = false;

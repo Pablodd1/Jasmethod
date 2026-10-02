@@ -1,16 +1,11 @@
+import { readPlanningSetup } from "@/lib/planning-setup-store";
+import { assessPlanningSetup } from "@/lib/planning-setup";
 export const dynamic = "force-dynamic";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { saveProfile, profileRevision } from "@/lib/profile-service";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
-import {
-  estimateVo2max,
-  estimateVo2maxFromHr,
-  maxHrFromAge,
-  estimateLthr,
-  buildZoneTable,
-} from "@/lib/science";
+import { buildZoneTable } from "@/lib/science";
 
 // GET /api/profile — user profile + zones
 export async function GET(req: Request) {
@@ -25,15 +20,16 @@ export async function GET(req: Request) {
   const profile = await prisma.athleteProfile.findUnique({
     where: { userId: user.id },
   });
-  if (!profile) return NextResponse.json({ profile: null, zones: null, revision: profileRevision(null) });
+  const {setup, revision: setupRevision} = await readPlanningSetup(user.id);
+  const planningReadiness = assessPlanningSetup(profile, setup);
+  if (!profile) return NextResponse.json({ profile: null, zones: null, revision: profileRevision(null), setup, setupRevision, planningReadiness });
 
   const age = profile.birthYear
     ? new Date().getFullYear() - profile.birthYear
     : undefined;
-  const hrMax = profile.maxHr ?? (age ? maxHrFromAge(age) : undefined);
-  const lthr =
-    profile.lthr ??
-    (hrMax ? estimateLthr(hrMax, profile.experience) : undefined);
+  // Saved anchors remain reported references; age/sex/weight do not establish capacity.
+  const hrMax = profile.maxHr ?? undefined;
+  const lthr = profile.lthr ?? undefined;
   const zones = buildZoneTable({
     maxHr: hrMax,
     lthr: lthr || undefined,
@@ -43,40 +39,19 @@ export async function GET(req: Request) {
     restingHr: profile.restingHr || undefined,
   });
 
-  // RHR-based VO2max estimate (Uth–Sørensen 2004: 15.3 × HRmax/HRrest) —
-  // used ONLY when no test exists; a measured value is never replaced.
-  // Needs a measured morning RHR; HRmax may be the Tanaka age estimate.
-  const vo2maxEstimate = !profile.vo2max &&
-    profile.restingHr &&
-    hrMax
-    ? estimateVo2maxFromHr(hrMax, profile.restingHr)
-    : null;
-
   return NextResponse.json({
-    profile,
+    profile, setup, setupRevision, planningReadiness,
     revision: profileRevision(profile),
     zones,
     age,
     hrMax,
     lthr,
-    vo2max: profile.vo2max ?? vo2maxEstimate ?? null,
-    vo2maxSource: profile.vo2max
-      ? "lab/measured"
-      : vo2maxEstimate
-        ? "rhr-formula (Uth–Sørensen 2004)"
-        : null,
+    vo2max: profile.vo2max ?? null,
+    vo2maxSource: profile.vo2max ? "saved reference; provenance unverified" : null,
     provenance: {
-      lthr: profile.lthr ? "saved baseline" : lthr ? "estimated (HRmax-based)" : "unknown",
-      maxHr: profile.maxHr
-        ? "saved baseline"
-        : hrMax
-          ? "age estimate (Tanaka 2001)"
-          : "unknown",
-      vo2max: profile.vo2max
-        ? "measured"
-        : vo2maxEstimate
-          ? "estimated from resting HR"
-          : "unknown",
+      lthr: profile.lthr ? "saved reference; date/source unverified" : "unknown",
+      maxHr: profile.maxHr ? "saved reference; date/source unverified" : "unknown",
+      vo2max: profile.vo2max ? "saved reference; date/source unverified" : "unknown",
     },
     needsTesting: {
       vo2max: !profile.vo2max,
@@ -91,7 +66,8 @@ export async function PUT(req: Request) {
     const { actor, athlete } = await trainingAccess(req);
     const body = await req.json();
     const profile = await saveProfile(actor.id, athlete, body);
-    return NextResponse.json({ ok: true, profile, revision: profileRevision(profile) });
+    const setupState = await readPlanningSetup(athlete.id);
+    return NextResponse.json({ ok: true, profile, revision: profileRevision(profile), setup: setupState.setup, setupRevision: setupState.revision, planningReadiness: assessPlanningSetup(profile, setupState.setup) });
   } catch (e) {
     return errorResponse(e);
   }

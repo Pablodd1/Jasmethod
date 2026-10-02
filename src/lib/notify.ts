@@ -98,7 +98,7 @@ export function buildReminder(
     ? `\nAfter the session: ${session.recovery}`
     : "";
   const subject = `🏊🚴🏃 ${name} — ${session ? "Training reminder" : "Recovery day"}`;
-  const text = `Good morning, ${name}.\n${sessionLine}\n${tempLine}Fuel 60-90g carbs/h on long sessions, hydrate early.\n${recoveryLine}`;
+  const text = `Good morning, ${name}.\n${sessionLine}\n${tempLine}Review session-specific fueling in the app. Drink according to need; avoid overdrinking.\n${recoveryLine}`;
   const html = `<div style="font-family:system-ui;max-width:600px;margin:auto;background:#f0f9ff;border-radius:16px;padding:32px;border:1px solid #bae8ff">
     <h1 style="color:#175793;margin:0 0 8px">Good morning, ${name} ☀️</h1>
     <p style="color:#334155">${sessionLine}</p>
@@ -136,16 +136,7 @@ export function buildDailyPlanMessage(inp: DailyPlanInput): ReminderMessage {
   const lines: string[] = [`KCoach · ${dateLabel}'s training plan`];
   if (!sessions.length) {
     lines.push("");
-    lines.push(
-      "☁️ DAY OFF — active recovery protocol (a day off is NOT zero):",
-    );
-    lines.push(
-      "• 20 min Zone 1 in any modality — walk, spin, swim, stretch, yoga",
-    );
-    lines.push(
-      "• Breathing: pick one, 2-5 min — box (4-4-4-4), physiological sigh, or 4-7-8",
-    );
-    lines.push("• Sleep 8h. This IS the workout — recovery compounds.");
+    lines.push("☁️ No exercise is prescribed. Rest stays rest; review your current plan and check-in in the app.");
   } else {
     for (const s of sessions) {
       const detail = buildSessionDetail(

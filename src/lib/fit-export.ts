@@ -1,92 +1,47 @@
 import { Encoder, Profile } from "@garmin/fitsdk";
-import { structuredSteps, type WorkoutStep } from "./prescription";
-import { buildProtocol, protocolFromWorkout } from "./protocols";
+import { createHash } from "node:crypto";
+import { canonicalSession, requireExportable, type CanonicalSession, type TargetProfile } from "./canonical-session";
 
-export function workoutToFitSpec(
-  w: {
-    title: string;
-    sport: string;
-    durationMin: number;
-    lthr?: number | null;
-    ftp?: number | null;
-    type?: string;
-    prescription?: string | null;
-    originalPlan?: string | null;
-  },
-  detail?: { zone?: string | null },
-) {
-  let steps: WorkoutStep[] = structuredSteps(
-    w.durationMin,
-    detail?.zone || "z2",
-    w.type || "endurance",
-    0,
-    w.sport,
-  );
-  if (w.prescription) {
-    try {
-      const saved = JSON.parse(w.prescription);
-      if (Array.isArray(saved.steps)) steps = saved.steps;
-    } catch {}
-  }
-  else {
-    const protocol = protocolFromWorkout(w);
-    if (protocol) steps = buildProtocol(protocol, w.durationMin).steps;
-  }
-  return { ...w, steps };
+// Compatibility adapter for already-resolved saved prescriptions. No generation,
+// protocol reconstruction or generic fallback is allowed in an exporter.
+export function workoutToFitSpec(w: { title: string; sport: string; durationMin: number; prescription?: string | null; originalPlan?: string | null; type?: string; id?: string; userId?: string } & TargetProfile, _detail?: { zone?: string | null }): CanonicalSession {
+  return canonicalSession({ athleteId: w.userId || "fixture", workout: w, prescription: w.prescription, profile: w, dateLocal: "1970-01-01", timezone: "UTC" });
 }
-export function buildFitWorkout(
-  spec: ReturnType<typeof workoutToFitSpec>,
-  created = new Date(),
-): Uint8Array {
-  if (!spec.steps.length) throw new Error("Rest day has no workout to export");
+function utf8(value: string, maxBytes: number) {
+  let out = "";
+  for (const char of value) { if (Buffer.byteLength(out + char, "utf8") > maxBytes) break; out += char; }
+  return out;
+}
+export function fitWorkoutName(spec: CanonicalSession): string {
+  const identity = createHash("sha256").update(`${spec.athleteId}:${spec.id}:${spec.revision}`).digest("hex").slice(0, 10);
+  return utf8(`JMM-${identity} ${spec.title}`, 80);
+}
+export function buildFitWorkout(spec: CanonicalSession, created = new Date()): Uint8Array {
+  requireExportable(spec);
   const encoder = new Encoder();
-  encoder.onMesg(Profile.MesgNum.FILE_ID, {
-    type: "workout",
-    manufacturer: "development",
-    product: 1,
-    timeCreated: created,
-  } as any);
-  encoder.onMesg(Profile.MesgNum.WORKOUT, {
-    wktName: Array.from(spec.title).slice(0, 40).join(""),
-    sport:
-      spec.sport === "run"
-        ? "running"
-        : spec.sport === "bike"
-          ? "cycling"
-          : spec.sport === "swim"
-            ? "swimming"
-            : "generic",
-    numValidSteps: spec.steps.length,
-  } as any);
+  const serialNumber = parseInt(createHash("sha256").update(`${spec.athleteId}:${spec.id}:${spec.revision}`).digest("hex").slice(0, 8), 16) % 0xfffffffe + 1;
+  encoder.onMesg(Profile.MesgNum.FILE_ID, { type: "workout", manufacturer: "development", product: 1, serialNumber, timeCreated: created } as any);
+  encoder.onMesg(Profile.MesgNum.WORKOUT, { wktName: fitWorkoutName(spec), sport: spec.capability.fitSport!, subSport: "generic", numValidSteps: spec.steps.length } as any);
   spec.steps.forEach((step, i) => {
-    const zone = Math.max(1, Math.min(7, Number(step.zone.slice(1)) || 2));
-    const power = step.target ? step.target.type === "power" : spec.sport === "bike" && spec.ftp;
-    const heartRate = step.target ? step.target.type === "heartRate" : spec.lthr;
-    const high = step.target
-      ? step.target.high == null ? undefined : step.target.high + (power ? 1000 : 100)
-      : power
-      ? Math.round(
-          spec.ftp! * [0, 0.55, 0.75, 0.9, 1.05, 1.2, 1.5, 1.5][zone],
-        ) + 1000
-      : spec.lthr
-        ? Math.round(
-            spec.lthr * [0, 0.8, 0.89, 0.94, 1, 1.05, 1.1, 1.1][zone],
-          ) + 100
-        : undefined;
+    const endpoint = step.endpoint;
+    const durationType = endpoint.type === "lap" ? "open" : endpoint.type;
+    // SDK 21.214 main fields take raw ms / cm. Subfield keys are ignored by Encoder.
+    const durationValue = endpoint.type === "time" ? Math.round(endpoint.seconds * 1000)
+      : endpoint.type === "distance" ? Math.round(endpoint.meters * 100)
+      : endpoint.type === "reps" ? endpoint.reps : 0;
+    const target = step.target;
+    const targetType = target.type === "pace" ? "speed" : target.type;
+    let low: number | undefined, high: number | undefined;
+    if (target.type === "pace") { low = Math.round(1000000 / target.high!); high = Math.round(1000000 / target.low!); }
+    else if (target.type === "speed") { low = Math.round(target.low! * 1000); high = Math.round(target.high! * 1000); }
+    else if (target.type === "power") { low = target.low! + 1000; high = target.high! + 1000; }
+    else if (target.type === "heartRate") { low = target.low! + 100; high = target.high! + 100; }
+    const fullNotes = [step.group, step.note, target.label, "Full guidance in JMM. Device support unverified."].filter(Boolean).join(" | ");
     encoder.onMesg(Profile.MesgNum.WORKOUT_STEP, {
-      messageIndex: i,
-      wktStepName: step.name,
-      durationType: step.reps ? "reps" : "time",
-      durationValue: step.reps ?? step.seconds * 1000,
-      intensity: step.phase,
-      targetType: power ? "power" : heartRate ? "heartRate" : "open",
-      targetValue: 0,
-      ...(high
-        ? {
-            customTargetValueLow: (step.target?.low || 0) + (power ? 1000 : 100),
-            customTargetValueHigh: high,
-          }
-        : {}),
+      messageIndex: i, wktStepName: utf8(step.name, 80), durationType, durationValue,
+      intensity: step.phase, targetType, targetValue: 0,
+      ...(low !== undefined ? { customTargetValueLow: low, customTargetValueHigh: high } : {}),
+      notes: Buffer.byteLength(fullNotes, "utf8") > 240 ? `${utf8(fullNotes, 187)} [Truncated; full guidance in JMM.]` : fullNotes,
     } as any);
   });
   return encoder.close();

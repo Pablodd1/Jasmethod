@@ -12,7 +12,9 @@ export async function saveReviewedProfile(fields: Record<string, unknown>, revis
 
 export function onboardingProfileFields(fields: Record<string, unknown>) {
   const normalized = {...fields};
-  for (const key of ["birthYear", "sex", "heightCm", "weightKg"])
+  for (const key of ["birthYear", "sex", "heightCm", "weightKg", "goal"])
     if (normalized[key] === "") normalized[key] = null;
+  // Schema defaults are not explicit answers. Omit untouched nonnullable fields.
+  for (const key of ["experience", "weeklyHours"]) if (normalized[key] === "") delete normalized[key];
   return normalized;
 }

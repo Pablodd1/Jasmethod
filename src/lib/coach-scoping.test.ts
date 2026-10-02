@@ -3,7 +3,7 @@ import assert from "node:assert";
 import { adaptSession } from "./adaptive";
 import { assignmentAllows } from "./access";
 
-const good = { sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick: false } as any;
+const good = { sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick: false, newPain: false, urgentSymptoms: false, availableMin: 60 } as any;
 
 // ---- Coach assignment gate (pure logic) ----
 
@@ -32,16 +32,19 @@ test("new pain that affects movement caps the session regardless of high readine
     painLocation: "left knee",
   } as any);
   // Athlete feels great (score would be 'full') — but the gait-changing pain wins.
-  assert.strictEqual(p.intensityCap, "z2");
+  assert.strictEqual(p.intensityCap, "z1");
+  assert.strictEqual(p.verdict, "rest");
+  assert.strictEqual(p.durationFactor, 0);
   assert.ok(p.durationFactor <= 0.6);
   assert.match(p.message, /left knee/);
   assert.notStrictEqual(p.verdict, "full");
 });
 
-test("new local pain without movement impact caps at z3 with a moderate message", () => {
+test("new local pain without movement impact holds training for assessment", () => {
   const p = adaptSession({ ...good, newPain: true } as any);
-  assert.strictEqual(p.intensityCap, "z3");
-  assert.match(p.message, /New pain/i);
+  assert.strictEqual(p.intensityCap, "z1");
+  assert.strictEqual(p.verdict, "rest");
+  assert.match(p.message, /new or worsening focal pain/i);
 });
 
 test("sessionFelt harder dips the score; easier never raises it (single-signal rule)", () => {

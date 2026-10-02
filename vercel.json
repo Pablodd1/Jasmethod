@@ -16,5 +16,10 @@
       "path": "/api/cron/worker",
       "schedule": "*/5 * * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "dot/device-free-launch-20261002": false
+    }
+  }
 }

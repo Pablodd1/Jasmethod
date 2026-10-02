@@ -1,13 +1,11 @@
+import { assessPlanningSetup } from "@/lib/planning-setup";
+import { readPlanningSetup } from "@/lib/planning-setup-store";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { autoGenerateStarterPlan } from "@/lib/plan-auto";
 
-// POST /api/onboard — mark the athlete's first-time setup as complete.
-// Called by the onboarding wizard after profile + devices + races are set.
-// A training plan for the selected sport is generated IMMEDIATELY — with
-// defaults wherever data is missing — so Today is never empty. Filled-in
-// details later? Regenerate from /training for a tuned plan.
+// Completing the wizard records progress; a plan needs complete setup and a confirmed preview.
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -29,7 +27,8 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({
       ok: true,
-      plan: plan ? { distance: plan.distance, created: plan.created } : null,
+      plan,
+      next: "/training",
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
@@ -43,15 +42,11 @@ export async function POST(req: Request) {
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const profile = await prisma.athleteProfile.findUnique({
-    where: { userId: user.id },
-    select: { goal: true, birthYear: true, weightKg: true },
-  });
-  // "Profile info given": at least one identity/baseline field beyond the
-  // schema defaults (everything else has defaults, so only these prove the
-  // athlete actually filled the wizard).
-  const profileComplete = Boolean(
-    profile && (profile.goal || profile.birthYear || profile.weightKg),
-  );
-  return NextResponse.json({ onboarded: user.onboarded, profileComplete });
+  const [profile, setupState] = await Promise.all([
+    prisma.athleteProfile.findUnique({ where: { userId: user.id } }),
+    readPlanningSetup(user.id),
+  ]);
+  const readiness = assessPlanningSetup(profile, setupState.setup);
+  return NextResponse.json({ onboarded: user.onboarded, profileComplete: readiness.ready, planningReadiness: readiness });
 }
+export const dynamic = "force-dynamic";

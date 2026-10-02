@@ -25,5 +25,7 @@ test("profile client surfaces server validation failure rather than success",asy
 test("onboarding blank optional values become null without altering required values",()=>{
  assert.deepEqual(onboardingProfileFields({sex:"",birthYear:"",heightCm:"",weightKg:"",weeklyHours:"6",experience:"beginner",goal:"run-only"}),
  {sex:null,birthYear:null,heightCm:null,weightKg:null,weeklyHours:"6",experience:"beginner",goal:"run-only"});
- assert.equal(onboardingProfileFields({sex:"female",weightKg:"65",weeklyHours:""}).weeklyHours, "");
+ assert.equal(onboardingProfileFields({sex:"female",weightKg:"65",weeklyHours:""}).weeklyHours, undefined);
 });
+
+test("blank onboarding goal stays absent and untouched capacity defaults are omitted",()=>{ assert.deepEqual(onboardingProfileFields({goal:"",experience:"",weeklyHours:""}),{goal:null}); });

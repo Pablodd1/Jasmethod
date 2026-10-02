@@ -113,18 +113,18 @@ export function buildBikePacing(opts: {
       if (subKm <= 0) continue; // true duplicates skip, never inflate
       const elevDelta = b.elevM - a.elevM; // SIGNED — descents count
       const r = bikePhysicsSpeedKmh({
-        ftp: opts.ftp, weightKg: opts.weightKg ?? 70, bikeKg: setup.bikeKg,
+        ftp: opts.ftp, weightKg: opts.weightKg, bikeKg: setup.bikeKg,
         elevGainM: elevDelta, distanceKm: subKm,
         venueElevM: opts.venueElevM ?? null, tempC: opts.tempC ?? null,
         windKph: windMean, cdA: setup.cdA,
       });
       const slow = bikePhysicsSpeedKmh({
-        ftp: opts.ftp, weightKg: opts.weightKg ?? 70, bikeKg: setup.bikeKg,
+        ftp: opts.ftp, weightKg: opts.weightKg, bikeKg: setup.bikeKg,
         elevGainM: elevDelta, distanceKm: subKm, venueElevM: opts.venueElevM ?? null,
         tempC: opts.tempC ?? null, windKph: windMean + gustDelta, cdA: setup.cdA,
       });
       const fast = bikePhysicsSpeedKmh({
-        ftp: opts.ftp, weightKg: opts.weightKg ?? 70, bikeKg: setup.bikeKg,
+        ftp: opts.ftp, weightKg: opts.weightKg, bikeKg: setup.bikeKg,
         elevGainM: elevDelta, distanceKm: subKm, venueElevM: opts.venueElevM ?? null,
         tempC: opts.tempC ?? null, windKph: Math.max(0, windMean - gustDelta / 2), cdA: setup.cdA,
       });

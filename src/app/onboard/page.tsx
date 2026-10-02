@@ -11,9 +11,6 @@ import { useAuth } from "@/components/auth";
 const LANGS = [
   { code: "en", label: "English" },
   { code: "es", label: "Español" },
-  { code: "ht", label: "Kreyòl Ayisyen" },
-  { code: "fr", label: "Français" },
-  { code: "ru", label: "Русский" },
 ];
 
 export default function OnboardPage() {
@@ -50,8 +47,11 @@ export default function OnboardPage() {
   // Profile form
   const [profile, setProfile] = useState({
     birthYear: "", sex: "", heightCm: "", weightKg: "",
-    experience: "beginner", goal: "olympic", weeklyHours: "8",
+    experience: "", goal: "", weeklyHours: "",
   });
+
+  const [setupRevision, setSetupRevision] = useState<string | null>(null);
+  const [setup, setSetup] = useState({ adultConfirmed: false, profileConfirmed: false, goalDescription: "", baselineWeeklyMinutes: "", baselineObservedAt: "", interruptions: "unknown", restrictions: "unknown", qualifiedReview: "unknown", trainingDays: [] as number[], maxSessionMinutes: "", equipmentAccess: "", planWeeks: "", trackEvent: "", targetGoal: null as {metric:string; sport:string; value?:string|number;unit?:string;targetDate?:string}|null });
 
   useEffect(() => {
     if (!user?.id) return;
@@ -64,16 +64,18 @@ export default function OnboardPage() {
       if (d.profile) setProfile({
         birthYear: String(d.profile.birthYear ?? ""), sex: d.profile.sex ?? "",
         heightCm: String(d.profile.heightCm ?? ""), weightKg: String(d.profile.weightKg ?? ""),
-        experience: d.profile.experience ?? "beginner", goal: d.profile.goal ?? "olympic",
-        weeklyHours: String(d.profile.weeklyHours ?? 8),
+        experience: d.setup?.profileConfirmed ? d.profile.experience : "", goal: d.profile.goal ?? "",
+        weeklyHours: d.setup?.profileConfirmed ? String(d.profile.weeklyHours ?? "") : "",
       });
+      if (d.setup) setSetup(d.setup);
+      setSetupRevision(d.setupRevision ?? null);
       setRevision(d.revision);
     }).catch(e => { if (active) setError(String(e.message)); });
     return () => { active = false; };
   }, [user?.id]);
 
   // Race
-  const [race, setRace] = useState({ name: "", distance: "olympic", date: "", location: "" });
+  const [race, setRace] = useState({ name: "", distance: "", date: "", location: "" });
 
   // Set language
   async function changeLang(l: string) {
@@ -84,13 +86,14 @@ export default function OnboardPage() {
 
   async function saveProfile() {
     setSaving(true); setError("");
-    try { const result = await saveReviewedProfile(onboardingProfileFields(profile), revision); setRevision(result.revision); return true; }
+    try { const result = await saveReviewedProfile({...onboardingProfileFields(profile), setup, expectedSetupRevision: setupRevision}, revision); setRevision(result.revision); setSetupRevision(result.setupRevision); return true; }
     catch(e) { setError((e as Error).message); return false; }
     finally { setSaving(false); }
   }
 
   async function saveRace() {
-    if (!race.name || !race.date) return true;
+    if (!race.name && !race.date && !race.distance && !race.location) return true;
+    if (!race.name || !race.date || !race.distance) { setError("Confirm race name, actual date and distance, or leave every event field empty."); return false; }
     setSaving(true); setError("");
     try {
       const r = await fetch("/api/races", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({...race, priority:1})});
@@ -106,7 +109,7 @@ export default function OnboardPage() {
     try {
       const r = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       if (!r.ok) throw Error("Could not finish onboarding. Please retry.");
-      router.push("/today");
+      router.push("/training");
     } catch(e) { setError((e as Error).message); } finally { setSaving(false); }
   }
 
@@ -185,6 +188,7 @@ export default function OnboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="label">{lang === "es" ? "Experiencia" : "Experience"}</label>
                   <select className="input" value={profile.experience} onChange={(e) => setProfile({ ...profile, experience: e.target.value })}>
+                    <option value="">{t("Choose experience", "Elige experiencia")}</option>
                     <option value="beginner">{lang === "es" ? "Principiante" : "Beginner"}</option>
                     <option value="amateur">{lang === "es" ? "Amateur" : "Amateur"}</option>
                     <option value="advanced">{lang === "es" ? "Avanzado" : "Advanced"}</option>
@@ -195,6 +199,7 @@ export default function OnboardPage() {
               </div>
               <div><label className="label">{lang === "es" ? "Objetivo" : "Goal"}</label>
                 <select className="input" value={profile.goal} onChange={(e) => setProfile({ ...profile, goal: e.target.value })}>
+                  <option value="">{t("Choose a goal", "Elige un objetivo")}</option>
                   <option value="sprint">Sprint</option>
                   <option value="olympic">Olympic</option>
                   <option value="half">Half Ironman</option>
@@ -203,9 +208,40 @@ export default function OnboardPage() {
                   <option value="cycle">{lang === "es" ? "Ciclismo" : "Cycling"}</option>
                   <option value="run-only">{lang === "es" ? "Correr" : "Running"}</option>
                   <option value="track-sprint">Track Sprint (100-400m)</option>
+                  <option value="swim-only">{t("Swimming", "Natación")}</option>
+                  <option value="lifting">{t("Strength", "Fuerza")}</option>
+                  <option value="boxing">{t("Boxing", "Boxeo")}</option>
                 </select>
               </div>
             </div>
+            <fieldset className="mt-6 space-y-3 border rounded-xl p-4">
+              <legend className="font-semibold">{t("Training context and pilot eligibility", "Contexto y elegibilidad del piloto")}</legend>
+              <p className="text-sm text-slate-600">{t("Unknown answers stay unknown. A device and performance tests are optional. Individual planning waits for relevant setup and a confirmed preview.", "Las respuestas desconocidas siguen sin conocerse. Dispositivos y pruebas son opcionales. El plan espera los datos relevantes y una vista previa confirmada.")}</p>
+              <label className="flex gap-2"><input type="checkbox" checked={setup.adultConfirmed} onChange={e => setSetup({...setup, adultConfirmed:e.target.checked})}/>{t("I confirm I am 18 or older", "Confirmo que tengo 18 años o más")}</label>
+              <label className="flex gap-2"><input type="checkbox" checked={setup.profileConfirmed} onChange={e => setSetup({...setup, profileConfirmed:e.target.checked})}/>{t("I confirm my experience and available weekly time above", "Confirmo mi experiencia y el tiempo semanal disponible indicado")}</label>
+              <label className="block">{t("Goal in your words: fitness, completion or performance", "Objetivo: bienestar, terminar o rendimiento")}<textarea className="input" value={setup.goalDescription} onChange={e => setSetup({...setup,goalDescription:e.target.value})}/></label>
+              <label className="block">{t("Optional structured target (a goal, not current ability)", "Objetivo estructurado opcional (meta, no capacidad actual)")}<select className="input" value={setup.targetGoal?.metric ?? ""} onChange={e=>setSetup({...setup,targetGoal:e.target.value?{metric:e.target.value,sport:""}:null})}><option value="">{t("No structured target yet", "Sin objetivo estructurado todavía")}</option><option value="fitness">{t("General fitness", "Bienestar físico general")}</option><option value="completion">{t("Completion", "Terminar")}</option><option value="pace">{t("Target pace", "Ritmo objetivo")}</option><option value="power">{t("Target power / FTP", "Potencia / FTP objetivo")}</option><option value="speed">{t("Target speed", "Velocidad objetivo")}</option></select></label>
+              {setup.targetGoal && <div className="space-y-2 border p-3 rounded-lg">
+                <label className="block">{t("Target sport", "Deporte del objetivo")}<select className="input" value={setup.targetGoal.sport} onChange={e=>setSetup({...setup,targetGoal:{...setup.targetGoal!,sport:e.target.value}})}><option value="">{t("Choose sport", "Elige deporte")}</option>{["run","bike","swim","strength","mobility","recovery","brick","hyrox","boxing"].map(sport=><option key={sport} value={sport}>{sport}</option>)}</select></label>
+                {["pace","power","speed"].includes(setup.targetGoal.metric) && <>
+                  <label className="block">{t("Target value", "Valor objetivo")}<input className="input" type="number" step="any" value={setup.targetGoal.value ?? ""} onChange={e=>setSetup({...setup,targetGoal:{...setup.targetGoal!,value:e.target.value}})}/></label>
+                  <label className="block">{t("Units (pace in seconds)", "Unidades (ritmo en segundos)")}<select className="input" value={setup.targetGoal.unit ?? ""} onChange={e=>setSetup({...setup,targetGoal:{...setup.targetGoal!,unit:e.target.value}})}><option value="">{t("Choose units", "Elige unidades")}</option>{(setup.targetGoal.metric==="pace"?["sec/km","sec/100m"]:setup.targetGoal.metric==="power"?["W"]:["km/h"]).map(unit=><option key={unit} value={unit}>{unit}</option>)}</select></label>
+                </>}
+                <label className="block">{t("Optional target date", "Fecha objetivo opcional")}<input className="input" type="date" value={setup.targetGoal.targetDate ?? ""} onChange={e=>setSetup({...setup,targetGoal:{...setup.targetGoal!,targetDate:e.target.value}})}/></label>
+                <p className="text-sm">{t("This target never replaces a measured baseline. Exact pace/power/speed progression is unavailable in this pilot and requires coaching review; fitness/completion goals can use conservative automatic planning.", "Esta meta nunca sustituye una referencia medida. La progresión exacta de ritmo/potencia/velocidad no está disponible en este piloto y requiere revisión de un entrenador; las metas de bienestar/terminar permiten planes automáticos conservadores.")}</p>
+              </div>}
+              <label className="block">{t("Recently tolerated training, total minutes per week", "Entrenamiento reciente tolerado, minutos totales por semana")}<input className="input" type="number" min="0" max="2400" value={setup.baselineWeeklyMinutes ?? ""} onChange={e=>setSetup({...setup,baselineWeeklyMinutes:e.target.value})}/></label>
+              <label className="block">{t("Date this training history was observed", "Fecha de ese historial de entrenamiento")}<input className="input" type="date" value={setup.baselineObservedAt ?? ""} onChange={e=>setSetup({...setup,baselineObservedAt:e.target.value})}/></label>
+              <label className="block">{t("Recent interruption or return after time off?", "¿Interrupción reciente o vuelta tras una pausa?")}<select className="input" value={setup.interruptions} onChange={e=>setSetup({...setup,interruptions:e.target.value})}><option value="unknown">{t("Unknown / not answered", "Desconocido / sin responder")}</option><option value="none">{t("No interruption", "Sin interrupción")}</option><option value="yes">{t("Yes, review starting load", "Sí, revisar la carga inicial")}</option></select></label>
+              <label className="block">{t("Current symptoms, injury or restrictions?", "¿Síntomas, lesión o restricciones actuales?")}<select className="input" value={setup.restrictions} onChange={e=>setSetup({...setup,restrictions:e.target.value})}><option value="unknown">{t("Unknown / not answered", "Desconocido / sin responder")}</option><option value="none">{t("None reported", "No tengo")}</option><option value="present">{t("Present, qualified review needed", "Sí, requiere revisión profesional")}</option></select></label>
+              <label className="block">{t("Pregnancy/postpartum, significant medical restrictions or another circumstance needing professional guidance?", "¿Embarazo/posparto, restricciones médicas importantes u otra circunstancia que requiere orientación profesional?")}<select className="input" value={setup.qualifiedReview} onChange={e=>setSetup({...setup,qualifiedReview:e.target.value})}><option value="unknown">{t("Unknown / prefer not to answer", "Desconocido / prefiero no responder")}</option><option value="none_needed">{t("None reported", "No tengo")}</option><option value="required">{t("Yes, qualified review needed", "Sí, requiere revisión profesional")}</option></select></label>
+              <fieldset><legend>{t("Usual available days", "Días habituales disponibles")}</legend><div className="flex flex-wrap gap-3">{[t("Sun","Dom"),t("Mon","Lun"),t("Tue","Mar"),t("Wed","Mié"),t("Thu","Jue"),t("Fri","Vie"),t("Sat","Sáb")].map((day,index)=><label key={day}><input type="checkbox" checked={setup.trainingDays.includes(index)} onChange={e=>setSetup({...setup,trainingDays:e.target.checked?[...setup.trainingDays,index].sort():setup.trainingDays.filter(d=>d!==index)})}/> {day}</label>)}</div></fieldset>
+              <label className="block">{t("Maximum total training minutes per day", "Máximo de minutos totales de entrenamiento por día")}<input className="input" type="number" min="10" max="300" value={setup.maxSessionMinutes ?? ""} onChange={e=>setSetup({...setup,maxSessionMinutes:e.target.value})}/></label>
+              <label className="block">{t("Equipment and venue access (including none)", "Equipo y lugares disponibles (incluye ninguno)")}<textarea className="input" value={setup.equipmentAccess} onChange={e=>setSetup({...setup,equipmentAccess:e.target.value})}/></label>
+              {profile.goal === "track-sprint" && <label className="block">{t("Actual track event", "Prueba de pista real")}<select className="input" value={setup.trackEvent ?? ""} onChange={e=>setSetup({...setup,trackEvent:e.target.value})}><option value="">{t("Choose event", "Elige prueba")}</option><option value="100m">100 m</option><option value="200m">200 m</option><option value="400m">400 m</option></select></label>}
+              <label className="block">{t("Planning horizon, weeks (no event date is invented)", "Horizonte del plan, semanas (no se inventa una fecha de carrera)")}<input className="input" type="number" min="4" max="30" value={setup.planWeeks ?? ""} onChange={e=>setSetup({...setup,planWeeks:e.target.value})}/></label>
+              <p className="text-sm">{t("Unsupported circumstances pause automated planning for qualified review; this form does not provide medical clearance. If you report no recent tolerated training, ask a qualified coach for an appropriate starting load.", "Las circunstancias no admitidas pausan el plan para revisión profesional; este formulario no da autorización médica. Sin entrenamiento reciente tolerado, pide a un entrenador cualificado una carga inicial adecuada.")}</p>
+            </fieldset>
             <div className="flex justify-between mt-6">
               <button onClick={() => setStep(ONBOARDING_STEP.welcome)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
               <button onClick={async () => { setStep(onboardingNext(ONBOARDING_STEP.profile, await saveProfile())); }} disabled={saving || !revision} className="btn-primary">
@@ -269,8 +305,8 @@ export default function OnboardPage() {
               <div><label className="label">{lang === "es" ? "Nombre de la carrera" : "Race name"}</label><input className="input" placeholder="Miami 70.3" onChange={(e) => setRace({ ...race, name: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="label">{lang === "es" ? "Distancia" : "Distance"}</label>
-                  <select className="input" onChange={(e) => setRace({ ...race, distance: e.target.value })} defaultValue="olympic">
-                    <option value="sprint">Sprint</option><option value="olympic">Olympic</option><option value="half">Half Ironman</option><option value="full">Full Ironman</option><option value="hyrox">HYROX</option><option value="10k">10K</option>
+                  <select className="input" onChange={(e) => setRace({ ...race, distance: e.target.value })} value={race.distance}>
+                    <option value="">{t("Choose actual distance", "Elige la distancia real")}</option><option value="sprint">Sprint</option><option value="olympic">Olympic</option><option value="half">Half Ironman</option><option value="full">Full Ironman</option><option value="hyrox">HYROX</option><option value="10k">10K</option>
                   </select>
                 </div>
                 <div><label className="label">{lang === "es" ? "Fecha" : "Date"}</label><input className="input" type="date" onChange={(e) => setRace({ ...race, date: e.target.value })} /></div>
@@ -290,14 +326,14 @@ export default function OnboardPage() {
         {step === ONBOARDING_STEP.done && (
           <div className="text-center py-12">
             <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-            <h2 className="font-display text-3xl font-bold mb-2">{lang === "es" ? "¡Todo listo!" : "All set!"}</h2>
+            <h2 className="font-display text-3xl font-bold mb-2">{lang === "es" ? "Revisa tu plan" : "Review your plan"}</h2>
             <p className="text-lg text-slate-600 mb-6">
               {lang === "es"
-                ? "Tu perfil está configurado. Mañana verás tu entrenamiento personalizado aquí."
-                : "Your profile is configured. You'll see your personalized training on the Today page."}
+                ? "Puedes guardar datos incompletos. Antes de asignar entrenamiento, completa lo necesario y confirma la vista previa del plan."
+                : "You can save incomplete setup. Before training is assigned, complete the needed inputs and confirm a plan preview."}
             </p>
             <button onClick={finishOnboarding} disabled={saving} className="btn-primary w-full justify-center text-lg">
-              {lang === "es" ? "Ir a Hoy" : "Go to Today"} <ArrowRight className="w-4 h-4 ml-2" />
+              {lang === "es" ? "Revisar plan" : "Review plan"} <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>
         )}

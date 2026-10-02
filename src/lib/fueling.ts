@@ -28,7 +28,7 @@ export interface FuelSegment {
 }
 
 export interface PreSessionFuel {
-  carbsG: number;
+  carbsG: number | null;
   timingLabel: string; // "2-3 h before" | "1 h before" | "—"
   note: string;
 }
@@ -44,7 +44,9 @@ export interface FuelingPlan {
   gutNote?: string; // gut-training progression when applicable
   preSession: PreSessionFuel;
   segments: FuelSegment[]; // the scrollable timeline
-  fluidSource: "measured" | "estimated";
+  fluidSource: "measured" | "reported" | "estimated";
+  measurementGaps: string[];
+  guidanceKind: "general_education";
 }
 
 export interface FuelingInput {
@@ -56,6 +58,8 @@ export interface FuelingInput {
   gutTrained?: boolean; // tolerates 90-120 g/h mixtures
   heatFactor?: number; // 1 = neutral; >1 hot
   ergosIncludeCaffeine?: boolean;
+  caffeineOptIn?: boolean; // explicit request, never inferred from absence of an opt-out
+  sweatMeasurement?: { observedAt: string; context: string; source: "measured" };
   verdict?: string; // daily adaptation — light carb periodization
 }
 
@@ -74,16 +78,17 @@ export function caffeineAllowedFromPrefs(p: {
   dislikes?: string | null;
   optsOut?: string | null;
 }): boolean {
-  if (!p || p.enabled === false) return false;
+  if (!p || p.enabled !== true) return false;
   const parse = (s?: string | null): string[] => {
     try {
-      return s ? (JSON.parse(s) as string[]) : [];
+      const value: unknown = s ? JSON.parse(s) : [];
+      return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
     } catch {
       return [];
     }
   };
   const blocked = new Set([...parse(p.dislikes), ...parse(p.optsOut)]);
-  return !blocked.has("caffeine");
+  return parse(p.likes).includes("caffeine") && !blocked.has("caffeine");
 }
 
 /** The carb g/h target for a session — the "fuel vs hours" curve. */
@@ -131,26 +136,33 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
     verdict,
   } = opts;
 
+  if (!Number.isFinite(durationMin) || durationMin < 0 || durationMin > 1440) throw new Error("Invalid session duration");
+  for (const [name, value] of Object.entries({ weightKg, sweatRateMlH, sodiumMgPerL })) {
+    if (value != null && (!Number.isFinite(value) || value <= 0)) throw new Error(`Invalid ${name}`);
+  }
   const hard = isHard(intensity);
   const carbsPerHourG = carbsPerHourFor(durationMin, intensity, gutTrained);
 
-  // Fluids: measured sweat rate when the athlete has done the pre/post
-  // weight test; otherwise an intensity/heat-scaled estimate (500-1000).
-  // Absorption caps the plan near 1.0 L/h — above that, fluids pool.
-  const estimatedSweat = (hard ? 900 : 650) * heat;
-  const rawFluid = sweatRateMlH ?? estimatedSweat;
-  const fluidMlPerHour = Math.min(1000, Math.round(rawFluid * (heat !== 1 && sweatRateMlH ? heat : 1)));
-
-  // Sodium: replace what sweat takes — rate × concentration. Default
-  // 700 mg/L (mid-range; athletes span 200-2000).
-  const sweatLPerHour = fluidMlPerHour / 1000;
-  const sodiumMgPerHour = Math.round(sweatLPerHour * (sodiumMgPerL ?? 700));
-
+  // These are planning examples, not a requirement to replace every ml lost.
+  // A saved number alone does not establish measurement date or conditions.
+  const measurement = opts.sweatMeasurement;
+  const measured = Boolean(sweatRateMlH && measurement?.source === "measured"
+    && measurement.context.trim() && Number.isFinite(Date.parse(measurement.observedAt))
+    && Date.parse(measurement.observedAt) <= Date.now());
+  const rawFluid = sweatRateMlH ?? (hard ? 700 : 500) * Math.min(1.3, Math.max(0.8, heat));
+  const fluidMlPerHour = Math.min(1000, Math.round(rawFluid));
+  const sodiumMgPerHour = Math.round(fluidMlPerHour / 1000 * (sodiumMgPerL ?? 700));
+  const measurementGaps: string[] = [];
+  if (weightKg == null) measurementGaps.push("Current weight not supplied; weight-based pre/post totals unavailable.");
+  if (!measured) measurementGaps.push(sweatRateMlH
+    ? "Sweat rate is athlete-reported; measurement date/conditions are unverified."
+    : "Sweat rate unknown; fluid quantity is a general example, not your measured need.");
+  if (!sodiumMgPerL) measurementGaps.push("Sweat sodium unknown; sodium quantity is a general example, not measured loss.");
   const personalization: string[] = [];
-  if (weightKg) personalization.push(`${weightKg} kg body weight`);
-  if (sweatRateMlH) personalization.push(`measured sweat ${sweatRateMlH} ml/h`);
-  if (sodiumMgPerL) personalization.push(`measured sweat sodium ${sodiumMgPerL} mg/L`);
-  if (gutTrained) personalization.push("gut trained for mixed carbs");
+  if (weightKg) personalization.push(`${weightKg} kg supplied body weight (confirm it is current)`);
+  if (sweatRateMlH) personalization.push(`${measured ? "measured in supplied conditions" : "reported, unverified"} sweat ${sweatRateMlH} ml/h`);
+  if (sodiumMgPerL) personalization.push(`reported sweat sodium ${sodiumMgPerL} mg/L; context unverified`);
+  if (gutTrained) personalization.push("athlete reports practiced carbohydrate tolerance");
 
   // ---- Pre-session ----
   const preSession: PreSessionFuel =
@@ -162,9 +174,9 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
             note: `${Math.round(weightKg * 2)} g carbs (2 g/kg) 2-3 h out, or ${Math.round(weightKg)} g (1 g/kg) in the last hour if time is short. Low fiber, low fat, familiar.`,
           }
         : {
-            carbsG: 100,
+            carbsG: null,
             timingLabel: "2-3 h before",
-            note: "~100 g carbs 2-3 h out (add your body weight in Settings for a g/kg dose).",
+            note: "Current weight is unknown, so no weight-based total is available. Choose a familiar carbohydrate-containing meal that fits your usual timing and tolerance.",
           }
       : { carbsG: 0, timingLabel: "—", note: "Short/easy session — normal meal timing is enough; no extra pre-fuel." };
 
@@ -185,46 +197,45 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
         sodiumMg: sodiumPerSeg,
         label:
           carbPerSeg === 0
-            ? `Drink ${fluidPerSeg} ml`
+            ? `Fluid example: up to ${fluidPerSeg} ml if needed; do not force drinking`
             : gels
-              ? `1 gel (~25 g) + ${fluidPerSeg} ml`
-              : `${carbPerSeg} g carbs (drink/chew) + ${fluidPerSeg} ml`,
+              ? `${carbPerSeg} g carbs TOTAL from gel and/or drink, with fluid as needed (example ${fluidPerSeg} ml)`
+              : `${carbPerSeg} g carbs TOTAL from drink/food; fluid as needed (example ${fluidPerSeg} ml)`,
       });
     }
   }
 
   const notes: string[] = [];
-  if (durationMin < 45) notes.push("Under 45 min — water only; fuel does nothing here.");
+  if (durationMin < 45) notes.push("Under 45 min — extra carbohydrate during the session is usually unnecessary; ordinary meals still matter.");
   else if (durationMin < 75)
     notes.push("45-75 min — carbohydrates are for the mouth and brain: rinse or small sips.");
   else if (durationMin < 150)
-    notes.push(`${carbsPerHourG} g/h carbs (single source: glucose/maltodextrin).`);
+    notes.push(`${carbsPerHourG} g/h is a general example within the 30–60 g/h range; choose familiar food or drink and adjust for tolerance.`);
   else
     notes.push(
       `${carbsPerHourG} g/h${carbsPerHourG > 60 ? " as 2:1 glucose:fructose (mixed transport — that is what unlocks >60)" : " — add fructose only after gut training"}.`,
     );
-  notes.push(`Fluids ${fluidMlPerHour} ml/h${sweatRateMlH ? " (your measured sweat rate)" : " (estimate — do the pre/post-weight test in Labs for your number)"}.`);
+  notes.push(`Fluid example ${fluidMlPerHour} ml/h (${measured ? "derived from supplied measurement; applies only to similar conditions" : "unverified estimate, not measured need"}). Drink according to thirst and conditions; do not force this volume. Avoid overdrinking or gaining body weight during exercise. Extra sodium does not make overdrinking safe. Count carbohydrate from drinks and gels together, once.`);
   if (durationMin >= 60)
-    notes.push(`Sodium ~${sodiumMgPerHour} mg/h${sodiumMgPerL ? " (your sweat sodium)" : ""}.`);
+    notes.push(`Sodium ~${sodiumMgPerHour} mg/h${sodiumMgPerL ? " (reported concentration, not validated replacement need)" : " (general example)"}.`);
 
   // Carb periodization ("fuel for the work required", Impey 2018): the daily
   // verdict bends the day's carb emphasis, not the session safety floor.
   if (verdict === "easy" || verdict === "rest")
-    notes.push("Recovery day: keep the session fuel as planned but the rest of the day leans protein + vegetables, not carb loading.");
+    notes.push("Recovery day: eat regular balanced meals and enough energy for recovery; this is not a weight-loss plan.");
   else if (verdict === "trim")
     notes.push("Trimmed session — fuel stays proportional; no extra loading needed.");
 
   const gutNote = !gutTrained && durationMin >= 150
-    ? `Gut training: practice ${Math.round(carbsPerHourG * 0.6)} g/h now and add ~10 g/h each long session — in 3-4 weeks 90 g/h mixtures become realistic (Pfeiffer 2010).`
+    ? "Practice familiar carbohydrate choices in training and adjust to gastrointestinal tolerance. Do not increase automatically or assume a fixed timeline to tolerate more."
     : undefined;
 
   let caffeineMg: number | undefined;
-  if (hard && durationMin >= 45 && !ergosIncludeCaffeine) {
-    caffeineMg = weightKg ? Math.min(250, Math.round(weightKg * 3)) : 150;
-    notes.push(`Caffeine ${caffeineMg} mg 45-60 min pre-session${weightKg ? " (3 mg/kg)" : ""}.`);
-  } else if (hard && durationMin >= 45) {
-    notes.push("Caffeine covered in your ergogenic picks — same pre-session timing.");
+  if (opts.caffeineOptIn === true && !ergosIncludeCaffeine && weightKg && hard && durationMin >= 45) {
+    caffeineMg = Math.min(250, Math.round(weightKg * 3));
+    notes.push(`Optional caffeine example ${caffeineMg} mg, requested explicitly. Consider all sources and usual tolerance; seek qualified advice for medication/condition-dependent use.`);
   }
+  notes.push("General sports-nutrition education; dietary restrictions, allergies, medication effects and clinical needs require individual review.");
 
   return {
     carbsPerHourG,
@@ -236,7 +247,9 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
     gutNote,
     preSession,
     segments,
-    fluidSource: sweatRateMlH ? "measured" : "estimated",
+    fluidSource: measured ? "measured" : sweatRateMlH ? "reported" : "estimated",
+    measurementGaps,
+    guidanceKind: "general_education",
   };
 }
 
@@ -247,8 +260,8 @@ export function postFuelPersonalized(opts: {
   sport?: string;
   weightKg?: number | null;
 }): {
-  carbsG: number;
-  proteinG: number;
+  carbsG: number | null;
+  proteinG: number | null;
   ratio: string;
   note: string;
 } {
@@ -256,7 +269,12 @@ export function postFuelPersonalized(opts: {
   const hard = isHard(intensity);
   const long = durationMin >= 90;
   const strength = sport === "strength";
-  const w = weightKg ?? 70;
+  if (weightKg == null) return {
+    carbsG: null, proteinG: null, ratio: "—",
+    note: "Current weight is unknown, so weight-based totals are unavailable. Have a familiar meal or snack containing carbohydrate and protein, and drink according to thirst. Next-session timing, dietary needs and measured losses can change recovery needs; do not force fluids.",
+  };
+  if (!Number.isFinite(weightKg) || weightKg <= 0) throw new Error("Invalid weightKg");
+  const w = weightKg;
 
   // 1.0-1.2 g/kg carbs + 0.3 g/kg protein in the first hour; 4:1 when
   // another session is coming within 24 h, protein-forward after strength.
@@ -266,7 +284,7 @@ export function postFuelPersonalized(opts: {
   const proteinG = Math.round(strength ? Math.max(25, w * 0.4) : w * 0.3);
   const ratio = strength ? "1:1" : long || hard ? "4:1" : "2:1";
   const note = long || hard
-    ? `Recovery window (next 4 h): ${carbsG}-${Math.round(w * 1.2)} g carbs TOTAL across the window, ${proteinG} g protein now. Drink ~1.5× the body weight you lost during the session (with sodium if you sweat salty).`
+    ? `Recovery window (next 4 h): ${carbsG}-${Math.round(w * 1.2)} g carbs TOTAL across the window, ${proteinG} g protein now. This is a general recovery example; next-session timing and dietary context matter. Drink according to thirst; replace losses gradually only when measured in context. Extra sodium does not protect against overdrinking.`
     : `Recovery snack now; normal meal within 2 h. Prioritize protein (${proteinG} g) — the carb demand was modest.`;
   return { carbsG, proteinG, ratio, note };
 }

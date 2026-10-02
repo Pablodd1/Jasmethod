@@ -1,3 +1,4 @@
+import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "@/lib/capabilities";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logEvent } from "@/lib/telemetry";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 // and reconciled by the worker/cron — the route itself only records, so
 // retries are always safe.
 export async function POST(req: Request) {
+  if (!intervalsConnectorEnabled()) return NextResponse.json({ error: INTERVALS_DISABLED_MESSAGE }, { status: 503 });
   const secret = process.env.INTERVALS_WEBHOOK_SECRET;
   if (!secret) return NextResponse.json({ error: "Not configured" }, { status: 503 });
   const auth = req.headers.get("authorization") || "";

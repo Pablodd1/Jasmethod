@@ -44,3 +44,11 @@ const ids = EVIDENCE_REGISTRY.map((e) => e.claimId);
 assert.equal(new Set(ids).size, ids.length, "no duplicate claim IDs");
 
 console.log("✓ evidence.test.ts — all assertions passed");
+
+// Claim-to-study regression checks, editorially verified against PubMed abstracts.
+assert.match(hrv.claim, /not statistically significant/);
+assert.match(hrv.effectSize || "", /p=0.597/);
+const strength = getEvidence("currier-strength-2023")!;
+assert.equal(strength.PMID,"37414459");
+assert.match(strength.claim,/strength and hypertrophy/);
+assert.doesNotMatch(strength.effect || "",/mortality|functional capacity/);

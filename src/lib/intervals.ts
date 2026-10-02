@@ -1,18 +1,8 @@
-// Intervals.icu connector — the verified open bridge for structured-workout
-// delivery (owner request 2026-09-28, docs verified against the official
-// forum API guide + api-docs.html):
-//   POST https://intervals.icu/api/v1/athlete/0/events
-//   Basic auth: "API_KEY" : <key>   (athlete generates the key in
-//   Intervals.icu → Settings → Developer Settings)
-//   Payload: { category: "WORKOUT", start_date_local (MUST end T00:00:00),
-//              type, name, description, icu_training_load, filename,
-//              file_contents (ZWO for structured bike sessions) }
-// Intervals then syncs the workout to the athlete's linked Garmin/COROS/
-// Wahoo/Suunto account automatically. Honest scope: bike sessions get FULL
-// structure (ZWO); run/swim/other get a named calendar event with the step
-// list in the description + planned load — their API's structured-run
-// format is not documented, and we don't guess.
+// Optional Intervals.icu calendar integration. The launch bridge publishes
+// canonical human-readable instructions only; structured ZWO and device receipt
+// are unvalidated. Keep the isolated ZWO helper for future validated work.
 import { providerFetch } from "./provider-fetch";
+import { requireIntervalsConnector } from "./capabilities";
 
 const INTERVALS_API = "https://intervals.icu/api/v1";
 
@@ -24,8 +14,8 @@ export interface IntervalStep {
   note?: string;
 }
 
-// Zone → % of FTP for the bike ZWO power targets (matches our zoneTargets
-// multipliers — coaching conventions, labeled as plan targets).
+// Legacy-only ZWO conventions. Not canonical and never sent by launch network
+// paths. A future structured provider implementation must use canonical targets.
 const ZONE_FTP_PCT: Record<string, number> = {
   z1: 55, z2: 75, z3: 90, z4: 100, z5: 118, z6: 145, z7: 165,
 };
@@ -36,6 +26,7 @@ function xmlEscape(s: string): string {
 
 // Build a TrainerRoad/Zwift-style ZWO from our prescription steps. Warmup /
 // steady / interval / cooldown blocks with FTP% targets; recoveries at z1.
+/** @deprecated Unvalidated legacy utility; do not publish its output. */
 export function buildZwo(title: string, steps: IntervalStep[]): string {
   const blocks = steps
     .map((s) => {
@@ -80,7 +71,8 @@ export async function intervalsCreateEvent(
   apiKey: string,
   ev: IntervalsEvent,
 ): Promise<{ id: string }> {
-  const structured = ev.sport === "bike" && ev.steps?.length;
+  requireIntervalsConnector();
+
   const body: Record<string, unknown> = {
     category: "WORKOUT",
     // Their API requires local dates WITHOUT time — must end T00:00:00.
@@ -90,12 +82,6 @@ export async function intervalsCreateEvent(
     name: ev.title.slice(0, 80),
     description: ev.description.slice(0, 1000),
     ...(ev.trainingLoad ? { icu_training_load: Math.round(ev.trainingLoad) } : {}),
-    ...(structured
-      ? {
-          filename: "jmm-workout.zwo",
-          file_contents: buildZwo(ev.title, ev.steps!),
-        }
-      : {}),
   };
   const resp = await providerFetch(`${INTERVALS_API}/athlete/0/events`, {
     method: "POST",
@@ -129,7 +115,8 @@ export async function intervalsUpdateEvent(
   eventId: string,
   ev: IntervalsEvent,
 ): Promise<void> {
-  const structured = ev.sport === "bike" && ev.steps?.length;
+  requireIntervalsConnector();
+
   const body: Record<string, unknown> = {
     category: "WORKOUT",
     start_date_local: `${ev.dateLocal}T00:00:00`,
@@ -138,7 +125,6 @@ export async function intervalsUpdateEvent(
     name: ev.title.slice(0, 80),
     description: ev.description.slice(0, 1000),
     ...(ev.trainingLoad ? { icu_training_load: Math.round(ev.trainingLoad) } : {}),
-    ...(structured ? { filename: "jmm-workout.zwo", file_contents: buildZwo(ev.title, ev.steps!) } : {}),
   };
   const resp = await providerFetch(`${INTERVALS_API}/athlete/0/events/${encodeURIComponent(eventId)}`, {
     method: "PUT",
@@ -157,6 +143,7 @@ export async function intervalsUpdateEvent(
 export async function intervalsVerifyKey(
   apiKey: string,
 ): Promise<{ ok: boolean; athlete?: string; athleteId?: string | null; error?: string }> {
+  requireIntervalsConnector();
   try {
     const resp = await providerFetch(`${INTERVALS_API}/athlete/0`, {
       headers: {

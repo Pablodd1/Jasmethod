@@ -1,3 +1,4 @@
+import { automatedDeliveryEnabled } from "@/lib/capabilities";
 import { claimDelivery, deliveryFailureStatus, reconcileStaleDeliveries, reminderSchedule } from "@/lib/delivery-claim";
 import { trainingReminder } from "@/lib/training-reminder";
 import { prisma } from "@/lib/db";
@@ -6,8 +7,6 @@ import { sendEmail } from "@/lib/email";
 import { sendTelegram, sendTelegramPhoto } from "@/lib/notify";
 import { meterUsage, logEvent } from "@/lib/telemetry";
 import { buildWeeklyReview, isWeeklyReviewTime, weeklyReviewDay } from "@/lib/weekly-review";
-import { prescribeToday } from "@/lib/adaptive";
-import { baseWorkout } from "@/lib/prescription";
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -15,6 +14,7 @@ export async function GET(req: Request) {
     return Response.json({ error: "Cron is not configured" }, { status: 503 });
   if (req.headers.get("authorization") !== `Bearer ${secret}`)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!automatedDeliveryEnabled()) return Response.json({ enabled: false, sent: 0, reason: "Automated delivery is disabled pending delivery, consent and safety review." });
   const stale = await reconcileStaleDeliveries();
   if (stale.count) await logEvent({kind:"warn", source:"cron", route:"/api/cron/reminders", message:`${stale.count} interrupted deliveries need receipt review; not resent.`});
   const users = await prisma.user.findMany({
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
         const lang = (user.language === "es" ? "es" : "en") as "en" | "es";
         const review = await buildWeeklyReview(user.id, user.timezone, lang);
         const weekKey = weeklyReviewDay(user.timezone);
-        for (const channel of ["email", "telegram"]) {
+        for (const channel of [pref.telegramEnabled ? "telegram" : "email"]) {
           if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)
             continue;
           if (!await claimDelivery(user.id, weekKey, `${channel}:weekly`)) continue;
@@ -79,7 +79,7 @@ export async function GET(req: Request) {
     }
 
     const { text, subject, html, png } = await trainingReminder(user, key);
-    for (const channel of ["email", "telegram"]) {
+    for (const channel of [pref.telegramEnabled ? "telegram" : "email"]) {
       if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)
         continue;
       if (!await claimDelivery(user.id, schedule.claimDay, channel)) {
@@ -144,41 +144,8 @@ export async function GET(req: Request) {
       }
     }
 
-    // EVENING FEEDBACK PROMPT (~20:00 local, once/day, Telegram-only): the
-    // one-tap "how did it feel?" nudge — 1 easier / 2 as expected / 3 harder.
-    // The reply feeds sessionFelt so tomorrow adapts even if the athlete
-    // never reopens the app.
-    if (
-      hour >= 20 &&
-      hour < 21 &&
-      pref.telegramEnabled &&
-      pref.telegramChatId
-    ) {
-      const fbKey = `feedback:${day.key}`;
-      if (await claimDelivery(user.id, fbKey, "telegram")) {
-        const { start: dStart, end: dEnd } = dayBounds(user.timezone);
-        const todaySession = await prisma.workout.findFirst({
-          where: {
-            userId: user.id,
-            date: { gte: dStart, lt: dEnd },
-            planned: true,
-            completed: false,
-            durationMin: { gt: 0 },
-          },
-          orderBy: { date: "asc" },
-          select: { title: true, durationMin: true },
-        });
-        const prompt = todaySession
-          ? `🏋️ ${todaySession.title} (${todaySession.durationMin} min) — how did it feel?\n1️⃣ Easier than expected\n2️⃣ As expected\n3️⃣ Harder than expected\n\n(Reply with a number — KCoach adapts tomorrow.)`
-          : `☁️ Rest day — how does the body feel? Reply 1 (fresh) · 2 (ok) · 3 (beat up).`;
-        const fb = await sendTelegram(pref.telegramChatId, prompt);
-        await prisma.reminderDelivery.update({
-          where: { userId_day_channel: { userId: user.id, day: fbKey, channel: "telegram" } },
-          data: { status: fb.ok ? "sent" : deliveryFailureStatus(fb.error), error: fb.error || null },
-        }).catch(() => {});
-        if (fb.ok) await meterUsage(user.id, "telegram_msgs", 1);
-      }
-    }
+    // Feedback is collected for the selected session inside the authenticated app.
+
   }
   await logEvent({
     kind: "info",
