@@ -1,4 +1,5 @@
 "use client";
+import { StructuredSportEditor } from "@/components/StructuredSportEditor";
 import { CoachingConversation } from "@/components/coaching-conversation";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -319,6 +320,7 @@ export default function TodayPage() {
                 <p role="status">{session.resolutionReason}</p>
                 {session.verdict === "blocked" && <Link className="btn-secondary" href="/checkin">{es ? "Revisar check-in" : "Review check-in"}</Link>}
                 {session.capability && <FitDownloadActions key={`${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} title={session.title} capability={session.capability} disabled={offline || busy} es={es} />}
+                <StructuredSportEditor key={`structure-${session.id}-${session.revision}`} sessionId={session.id} sport={session.sport} disabled={offline || busy} es={es} onSaved={load} />
                 {/* TrainingPeaks-style summary: load · intensity · distance */}
                 <div className="grid grid-cols-3 gap-2">
                   {[

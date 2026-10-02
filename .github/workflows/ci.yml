@@ -30,6 +30,8 @@ jobs:
       NEXT_TELEMETRY_DISABLED: "1"
       ENABLE_INTERVALS_CONNECTOR: "false"
       ENABLE_AUTOMATED_DELIVERY: "false"
+      ENABLE_MOCK_COACHING: "false"
+      COACHING_TRANSPORT: mock
       TOKEN_ENCRYPTION_KEY: isolated-ci-token-key
       CRON_SECRET: isolated-ci-cron-secret
     steps:
@@ -58,6 +60,9 @@ jobs:
       - name: Unit and provider contract tests
         run: npm test
 
+      - name: Follow-up boundaries and injected Telegram transport
+        run: npm run test:followup:boundaries
+
       - name: Database sync and reminder tests
         run: npm run test:sync
 
@@ -65,13 +70,37 @@ jobs:
         run: npm run build
 
       - name: Authenticated integration tests
+        env:
+          ENABLE_MOCK_COACHING: "true"
         run: |
-          NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs" npm start > /tmp/jasmethod-server.log 2>&1 &
+          NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs" ./node_modules/.bin/next start --hostname 127.0.0.1 --port 3220 > /tmp/jasmethod-server.log 2>&1 &
+          echo $! > /tmp/jmm-ci-server.pid
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3220/api/auth/me && break; sleep 1; done
           npm run test:integration
 
       - name: Device-free launch acceptance and decoded FIT semantics
         run: npm run test:launch
+
+      - name: Explicit sport files, target tracking and opt-in coaching acceptance
+        env:
+          ENABLE_MOCK_COACHING: "true"
+        run: npm run test:followup
+
+      - name: Native Telegram webhook acceptance with dummy config and no provider traffic
+        run: |
+          kill "$(cat /tmp/jmm-ci-server.pid)"
+          for i in $(seq 1 30); do
+            code=$(curl --silent --max-time 2 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3220/api/today || true)
+            [ "$code" = "000" ] && break
+            sleep 1
+          done
+          export ENABLE_MOCK_COACHING=false ENABLE_TELEGRAM_COACHING=true ENABLE_AUTOMATED_DELIVERY=true COACHING_TRANSPORT=telegram
+          export TELEGRAM_BOT_TOKEN=SYNTHETIC_NOT_A_VALID_BOT_TOKEN TELEGRAM_COACHING_WEBHOOK_SECRET=SYNTHETIC_LOCAL_WEBHOOK_SECRET
+          export NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs"
+          ./node_modules/.bin/next start --hostname 127.0.0.1 --port 3220 > /tmp/jmm-telegram-server.log 2>&1 &
+          echo $! > /tmp/jmm-ci-server.pid
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3220/api/auth/me && break; sleep 1; done
+          npm run test:telegram
 
       - name: Save synthetic acceptance evidence
         if: always()
@@ -82,4 +111,9 @@ jobs:
             .local/jmm-launch-integration/report.json
             .local/jmm-launch-integration/*.fit
             .local/jmm-launch-integration/*-decoded.json
+            .local/jmm-followup-integration/report.json
+            .local/jmm-followup-integration/*.fit
+            .local/jmm-followup-integration/*.zip
+            .local/jmm-followup-integration/*-decoded.json
+            .local/jmm-telegram-webhook-integration/report.json
           if-no-files-found: ignore

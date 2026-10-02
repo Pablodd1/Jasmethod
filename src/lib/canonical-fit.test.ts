@@ -234,3 +234,34 @@ test("unknown actuals and unverified check-in timestamps do not bypass the activ
   assert.equal(isolated.canonical.verdict, "ready");
   assert.equal(isolated.canonical.revision, effectiveSessionFromRecords(record()).canonical.revision);
 });
+test("reduced-day target caps require sport-applicable anchors and ignore spoofed leaf sport context", () => {
+  const base = record();
+  const checkin = { ...base.checkin, adaptation: JSON.stringify({ verdict: "easy", intensityCap: "z2", durationFactor: 1 }) };
+  const resolve = (sport: string, target: any, context: Record<string, unknown> = {}) => effectiveSessionFromRecords(record({ checkin, profile: { ftp: 200, runPaceBase: 300, lthr: 170 }, workout: { ...base.workout, sport, prescription: JSON.stringify({ sport, durationMin: 1, verdict: "full", steps: [step({ zone: "z1", target, ...context })] }) } }));
+  // These values are below their numeric ceilings but the anchor is for a
+  // different sport. Low numbers alone do not establish safe applicability.
+  for (const sport of ["run", "strength", "mobility"]) {
+    const held = resolve(sport, { type: "power", low: 50, high: 100 }, { componentSport: "bike" });
+    assert.equal(held.canonical.verdict, "blocked", sport); assert.deepEqual(held.canonical.steps, []);
+  }
+  for (const target of [{ type: "pace", low: 400, high: 450 }, { type: "speed", low: 1.5, high: 2 }]) assert.equal(resolve("bike", target).canonical.verdict, "blocked");
+  assert.equal(resolve("strength", { type: "heartRate", low: 100, high: 120 }).canonical.verdict, "blocked");
+  assert.equal(resolve("bike", { type: "power", low: 50, high: 100 }).canonical.verdict, "ready");
+  assert.equal(resolve("run", { type: "pace", low: 400, high: 450 }).canonical.verdict, "ready");
+  assert.equal(resolve("run", { type: "open" }).canonical.verdict, "ready");
+});
+test("brick reduced-day caps resolve each real component sport rather than the parent brick", () => {
+  const base = record();
+  const structure: any = { schemaVersion: 1, kind: "brick", components: [
+    { id: "bike", title: "Bike", sport: "bike", durationMin: 1, steps: [step({ zone: "z1", target: { type: "power", low: 50, high: 100 } })] },
+    { id: "run", title: "Run", sport: "run", durationMin: 1, steps: [step({ zone: "z1", target: { type: "pace", low: 400, high: 450 } })] },
+  ], transitions: [{ afterComponentId: "bike", instruction: "Change shoes", endpoint: { type: "lap" } }] };
+  const resolve = () => effectiveSessionFromRecords(record({ profile: { ftp: 200, runPaceBase: 300 }, checkin: { ...base.checkin, adaptation: JSON.stringify({ verdict: "easy", intensityCap: "z2", durationFactor: 1 }) }, workout: { ...base.workout, sport: "brick", durationMin: 2, prescription: JSON.stringify({ sport: "brick", durationMin: 2, verdict: "full", sportStructure: structure }) } }));
+  const valid = resolve(); assert.equal(valid.canonical.verdict, "ready", valid.canonical.reason); assert.equal(valid.canonical.capability.mode, "split");
+  assert.deepEqual(valid.canonical.steps.map(step => step.componentSport), ["bike", undefined, "run"]);
+  structure.components[1].steps[0].target = { type: "power", low: 50, high: 100 };
+  assert.equal(resolve().canonical.verdict, "blocked");
+  structure.components[1].steps[0].target = { type: "open" };
+  structure.components[0].steps[0].target = { type: "speed", low: 1.5, high: 2 };
+  assert.equal(resolve().canonical.verdict, "blocked");
+});

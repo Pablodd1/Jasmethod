@@ -27,9 +27,6 @@ export function AuthCard({
   const [detail, setDetail] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleNotice, setGoogleNotice] = useState<string | null>(null);
-  // Shared demo login is env-gated server-side (DEMO_LOGIN_ENABLED); the
-  // buttons only render when the server reports it on.
-  const [demoEnabled, setDemoEnabled] = useState(false);
 
   // Google Sign-In returns here on failure: /login?google=not-configured or
   // /login?google=error&reason=...
@@ -47,13 +44,6 @@ export function AuthCard({
           : `Google sign-in failed (${reason}). Use email & password below.`,
       );
     }
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/auth/demo")
-      .then((r) => (r.ok ? r.json() : { enabled: false }))
-      .then((d: { enabled?: boolean }) => setDemoEnabled(!!d.enabled))
-      .catch(() => setDemoEnabled(false));
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -230,62 +220,6 @@ export function AuthCard({
           <a href="/help" className="underline">Need help? Visit Help &amp; Support</a>
         )}
       </p>
-
-      {mode === "login" && demoEnabled && (
-        <div className="mt-4 border-t border-ink-200 pt-4">
-          <div className="micro mb-2 text-[10px] text-ink-400">
-            Free athlete access — one tap to sign in:
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { icon: "🏃‍♂️", label: "Jeand", sport: "Run", email: "jeand.duno@gmail.com" },
-              { icon: "🏃‍♀️", label: "Kathy", sport: "Run", email: "kathy@jasmiamimethod.com" },
-              { icon: "🥉", label: "Jas", sport: "Triathlon", email: "jas@jasmiamimethod.com" },
-              { icon: "🏋️", label: "Andres", sport: "Hyrox", email: "andres@jasmiamimethod.com" },
-              { icon: "🎽", label: "Julia", sport: "Run", email: "juliaburtseva@gmail.com" },
-              { icon: "🦩", label: "Fedra", sport: "Run", email: "fedra@jasmiamimethod.com" },
-              { icon: "⚡", label: "John", sport: "400m", email: "john@jasmiamimethod.com" },
-              { icon: "👟", label: "Arl", sport: "Run", email: "arlenramirez0425@gmail.com" },
-              { icon: "⚡", label: "M", sport: "Run", email: "m@jasmiamimethod.com" },
-            ].map((acct) => (
-              <button
-                key={acct.email}
-                type="button"
-                disabled={busy}
-                onClick={async () => {
-                  setError("");
-                  setDetail("");
-                  setBusy(true);
-                  try {
-                    const res = await fetch("/api/auth/demo", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ email: acct.email }),
-                    });
-                    if (!res.ok) {
-                      const data = await res.json().catch(() => ({}));
-                      setError(data.error || "Free access login failed");
-                      setBusy(false);
-                      return;
-                    }
-                    window.location.href = redirectTo;
-                  } catch {
-                    setError("Network error — please try again.");
-                    setBusy(false);
-                  }
-                }}
-                className="flex w-full items-center gap-2 rounded-xl border border-ink-200 bg-paper-100 px-3 py-2.5 text-sm font-semibold text-ink-800 transition-colors hover:bg-paper-200"
-              >
-                <span className="text-lg leading-none">{acct.icon}</span>
-                <span className="flex-1 truncate text-left">{acct.label}</span>
-                <span className="text-[10px] font-medium uppercase tracking-wide text-ink-400">
-                  {acct.sport}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

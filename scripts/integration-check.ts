@@ -97,7 +97,54 @@ async function reviewedPlan(path: string, cookie: string, body: Record<string, u
   assert.ok(preview.previewToken);
   return request(path, cookie, "POST", { ...body, previewToken: preview.previewToken });
 }
+// Synthetic local-only regression for the permanently retired shared login.
+// The file-level localhost/test-database guard must remain above this function.
+async function sharedAuthSafetyChecks() {
+  const counts = async () => ({ users: await db.user.count(), sessions: await db.authSession.count() });
+  const beforeDemo = await counts();
+  const demo = await request("/api/auth/demo");
+  assert.deepEqual(demo.data, { enabled: false });
+  assert.equal(demo.response.headers.get("cache-control"), "no-store");
+  const demoPost = await request("/api/auth/demo", "", "POST", { email: `synthetic-${id}@example.invalid` }, 410);
+  assert.equal(demoPost.response.headers.get("set-cookie"), null);
+  assert.deepEqual(await counts(), beforeDemo);
+
+  // Old cookies are invalidated for every account by the new hashing namespace,
+  // regardless of its password. Use only unique, synthetic account credentials.
+  for (const [label, passwordHash] of [
+    ["bcrypt", await bcrypt.hash(password, 4)],
+    ["legacy", `synthetic-salt:${createHash("sha256").update(`synthetic-salt::${password}`).digest("hex")}`],
+  ]) {
+    const user = await db.user.create({ data: {
+      email: `synthetic-${id}-session-${label}@example.invalid`, name: "Synthetic Account", passwordHash,
+    } });
+    created.push(user.id);
+    const token = randomUUID();
+    const oldTokenHash = createHash("sha256").update(token).digest("hex");
+    await db.authSession.create({ data: {
+      userId: user.id, tokenHash: oldTokenHash,
+      expiresAt: new Date(Date.now() + 60_000),
+    } });
+    const beforeDenied = await counts();
+    const cookie = `jmm_session=${token}`;
+    assert.deepEqual((await request("/api/auth/me", cookie)).data, { user: null });
+    await request("/api/profile", cookie, "GET", undefined, 401);
+    assert.deepEqual(await counts(), beforeDenied);
+    assert.equal((await db.user.findUniqueOrThrow({ where: { id: user.id } })).passwordHash, passwordHash);
+
+    const login = await request("/api/auth/login", "", "POST", { email: user.email, password });
+    const freshCookie = login.response.headers.get("set-cookie")!.split(";")[0];
+    assert.equal((await request("/api/auth/me", freshCookie)).data.user.id, user.id);
+    const storedSessions = await db.authSession.findMany({ where: { userId: user.id } });
+    assert.equal(storedSessions.length, 2);
+    assert.ok(storedSessions.some((session) => session.tokenHash === oldTokenHash));
+    assert.ok(storedSessions.some((session) => /^v2:[a-f0-9]{64}$/.test(session.tokenHash)));
+    assert.deepEqual((await request("/api/auth/me", cookie)).data, { user: null });
+  }
+}
+
 async function main() {
+  await sharedAuthSafetyChecks();
   const admin = await account("admin", "admin"),
     a = await account("athlete", "one"),
     b = await account("athlete", "two");

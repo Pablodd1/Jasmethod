@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { automatedDeliveryEnabled } from "@/lib/capabilities";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -9,7 +8,7 @@ export async function GET() {
   const prefs = await prisma.reminderPref.findUnique({ where: { userId: user.id } });
   return NextResponse.json({ prefs: prefs ?? { emailEnabled: false, telegramEnabled: false,
     telegramChatId: null, reminderHour: 17, remindBeforeMin: 0 },
-    automatedDeliveryEnabled: automatedDeliveryEnabled(), telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN) });
+    automatedDeliveryEnabled: false, telegramConfigured: false, legacyDisabled: true, preferencesPath: "/api/coaching/preferences" });
 }
 
 export async function PUT(req: Request) {
@@ -38,6 +37,7 @@ export async function PUT(req: Request) {
   const telegram = data.telegramEnabled ?? previous?.telegramEnabled ?? false;
   if (email && telegram) return NextResponse.json({ error: "Choose one primary reminder channel to avoid duplicate reminders." }, { status: 400 });
   if (telegram && !(data.telegramChatId ?? previous?.telegramChatId)) return NextResponse.json({ error: "Pair your private Telegram chat first." }, { status: 400 });
+  if (email || telegram) return NextResponse.json({ error: "Legacy external delivery is disabled. Review per-purpose opt-in in the new communication settings." }, { status: 503 });
   const prefs = await prisma.reminderPref.upsert({ where: { userId: user.id },
     create: { userId: user.id, emailEnabled: false, telegramEnabled: false, ...data }, update: data });
   return NextResponse.json({ ok: true, prefs });

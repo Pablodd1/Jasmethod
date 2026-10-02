@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
-import { buildFitWorkout } from "@/lib/fit-export";
+import { buildSessionDownload } from "@/lib/fit-export";
 import { effectivePrescription } from "@/lib/effective-prescription";
-import { fitFilename, requireSessionRevision, SessionResolutionError } from "@/lib/canonical-session";
+import { requireSessionRevision, SessionResolutionError } from "@/lib/canonical-session";
 import { meterUsage } from "@/lib/telemetry";
 export const dynamic = "force-dynamic";
 
@@ -20,8 +20,7 @@ async function run(req: Request, markApproved: boolean) {
     if (!resolved) throw new ApiError("Session not found", 404);
     const { workout, canonical } = resolved;
     requireSessionRevision(canonical, url.searchParams.get("expectedRevision"));
-    const fit = buildFitWorkout(canonical);
-    const filename = fitFilename(canonical);
+    const { bytes: fit, filename, contentType } = buildSessionDownload(canonical);
     const approval = markApproved ? await prisma.workout.updateMany({ where: { id: workout.id, userId: user.id, approved: false, prescription: workout.prescription }, data: { approved: true } }) : null;
     const newlyApproved = approval?.count === 1;
     await meterUsage(user.id, "fit_exports", 1);
@@ -46,7 +45,7 @@ async function run(req: Request, markApproved: boolean) {
       }
     } catch (error) { console.error("approve email delivery failed:", error); }
     return new NextResponse(Buffer.from(fit), { headers: {
-      "Content-Type": "application/octet-stream", "X-Delivered-Email": emailed ? "1" : "0",
+      "Content-Type": contentType, "X-Delivered-Email": emailed ? "1" : "0",
       "X-Workout-Revision": canonical.revision, "X-Workout-Compatibility": "device-unverified",
       "Content-Disposition": `attachment; filename="${filename}"`, "Cache-Control": "private, no-store",
     } });

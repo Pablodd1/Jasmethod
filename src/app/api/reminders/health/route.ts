@@ -1,42 +1,15 @@
-import { automatedDeliveryEnabled } from "@/lib/capabilities";
-import { NextResponse } from "next/server";
+import { telegramCoachingConfigured } from "@/lib/telegram-coaching-transport";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
-
-// GET /api/reminders/health — is scheduled delivery actually alive, and what
-// did the last deliveries look like? Surfaces the state that used to fail
-// silently (cron secret missing → the schedule never sends for ANYONE).
-export async function GET() {
-  const user = await getCurrentUser();
-  if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const prefs = await prisma.reminderPref.findUnique({
-    where: { userId: user.id },
-  });
-  const deliveries = await prisma.reminderDelivery.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-  });
-
-  return NextResponse.json({
-    // Server-side delivery prerequisites:
-    cronConfigured: Boolean(process.env.CRON_SECRET) && automatedDeliveryEnabled(),
-    automatedDeliveryEnabled: automatedDeliveryEnabled(),
-    receiptAvailable: false,
-    telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
-    smtpConfigured: Boolean(process.env.SMTP_HOST),
-    // The user's own binding state:
-    telegramBound: Boolean(prefs?.telegramChatId),
-    reminderHour: prefs?.reminderHour ?? 17,
-    // Recent delivery attempts (last 10, newest first):
-    deliveries: deliveries.map((d) => ({
-      channel: d.channel,
-      day: d.day,
-      status: d.status,
-      error: d.error,
-      at: d.createdAt,
-    })),
-  });
+import { coachingActor, coachingError } from "@/lib/coaching-route";
+import { mockCoachingEnabled } from "@/lib/coaching-communication";
+export async function GET(req: Request) {
+  try { const user = await coachingActor(req);
+    const [deliveries, prompts] = await Promise.all([
+      prisma.reminderDelivery.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 10 }),
+      prisma.coachingPrompt.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 10, select: { id: true, transport: true, channel: true, observationDate: true, status: true, replyStatus: true, attempts: true, nextAttemptAt: true, error: true, receiptId: true, createdAt: true } }),
+    ]);
+    return Response.json({ cronConfigured: Boolean(process.env.CRON_SECRET) && (mockCoachingEnabled() || telegramCoachingConfigured()), automatedDeliveryEnabled: telegramCoachingConfigured(),
+      mockEnabled: mockCoachingEnabled(), receiptAvailable: false, telegramConfigured: telegramCoachingConfigured(), smtpConfigured: false,
+      recentProviderAcceptances: prompts.filter(p => p.transport === "telegram" && p.status === "sent").length, prompts, legacyDeliveries: deliveries, reason: "Mock acceptance is not a send, read receipt or athlete answer. Unknown attempts are never automatically resent." });
+  } catch (e) { return coachingError(e); }
 }

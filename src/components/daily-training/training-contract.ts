@@ -3,13 +3,13 @@ import type { CanonicalStep } from "@/lib/canonical-session";
 export type Endpoint = { type: "time"; seconds: number } | { type: "distance"; meters: number } | { type: "reps"; reps: number } | { type: "lap" };
 export type PaceRef = { secondsPerMile: number | null; measuredAt: string | null; status: 'measured' | 'coach_set' | 'missing'; missingReason?: string | null };
 export type PaceKey = 'mile' | '5k' | '10k' | 'half' | 'marathon' | 'easy';
-export type Target = { label: string; paceLowSecondsPerMile: number | null; paceHighSecondsPerMile: number | null; rpeLow: number | null; rpeHigh: number | null; heartRateBpm: number | null; note?: string; type?: string; low?: number; high?: number; source?: string };
+export type Target = { label: string; paceLowSecondsPerMile: number | null; paceHighSecondsPerMile: number | null; rpeLow: number | null; rpeHigh: number | null; heartRateBpm: number | null; note?: string; type?: string; low?: number; high?: number; source?: string; stroke?: string };
 export type Segment = { id: string; seconds: number | null; endpoint?: Endpoint; estimatedSeconds?: number | null; kind: 'easy' | 'prep' | 'work' | 'recover' | 'cool' | 'other'; title: string; instruction: string; target: Target };
 export type Block = { id: string; title: string; repeat: number; segments: Segment[] };
 export type Guidance = { title: string; items: string[]; note?: string; sourceIds?: string[] };
 export type DailyTraining = {
   schemaVersion: 1 | 2;
-  session: { id: string; revision: number; sourceRevision?: string; verdict?: "ready" | "rest" | "blocked"; capability?: { available: boolean; mode: string; reason: string; deviceTested: false }; durationIsEstimate?: boolean; dateLocal: string; timezone: string; sport: string; title: string; subtitle: string; planStatus: 'planned' | 'in_progress' | 'completed'; totalMinutes: number; density: { score: number; label: string; method: 'coach_planning' }; calories: { kcal: number | null; method: 'wearable' | 'estimate' | 'none'; asOf: string | null; missingReason: string | null } };
+  session: { id: string; revision: number; sourceRevision?: string; verdict?: "ready" | "rest" | "blocked"; capability?: { available: boolean; mode: string; reason: string; deviceTested: false }; durationIsEstimate?: boolean; dateLocal: string; timezone: string; sport: string; title: string; subtitle: string; planStatus: 'planned' | 'in_progress' | 'completed'; totalMinutes: number; density: { score: number | null; label: string; method: 'coach_planning'; missingReason?: string }; calories: { kcal: number | null; method: 'wearable' | 'estimate' | 'none'; asOf: string | null; missingReason: string | null } };
   sessions?: { id: string; title: string; sport: string; startTime: string | null }[];
   profile: { paces: Record<PaceKey, PaceRef>; thresholdHeartRate: { bpm: number | null; status: 'measured' | 'coach_set' | 'missing'; measuredAt: string | null }; unitSystem: 'imperial' | 'metric'; updatedAt: string };
   blocks: Block[];
@@ -32,7 +32,7 @@ export function isDailyTraining(v: unknown): v is DailyTraining {
   if (![s, p, g, c, l].every(record) || !Array.isArray(blocks)) return false;
   if (!["id", "title", "subtitle", "sport", "dateLocal", "timezone"].every(k => typeof s[k] === "string") ||
       !Number.isSafeInteger(s.revision) || s.revision < 1 || !finite(s.totalMinutes) || s.totalMinutes < 0 || s.totalMinutes > 1440) return false;
-  if (!["planned", "in_progress", "completed"].includes(s.planStatus) || !record(s.density) || !Number.isInteger(s.density.score) || s.density.score < 1 || s.density.score > 10 || typeof s.density.label !== "string") return false;
+  if (!["planned", "in_progress", "completed"].includes(s.planStatus) || !record(s.density) || (s.density.score == null ? v.schemaVersion !== 2 || typeof s.density.missingReason !== "string" || !s.density.missingReason : !Number.isInteger(s.density.score) || s.density.score < 1 || s.density.score > 10) || typeof s.density.label !== "string") return false;
   if (!record(s.calories) || !optionalNumber(s.calories.kcal) || !record(p.paces) || !record(p.thresholdHeartRate) || !optionalNumber(p.thresholdHeartRate.bpm)) return false;
   if (!["mile", "5k", "10k", "half", "marathon", "easy"].every(k => record(p.paces[k]) && optionalNumber(p.paces[k].secondsPerMile) && ["measured", "coach_set", "missing"].includes(p.paces[k].status))) return false;
   if (!["imperial", "metric"].includes(p.unitSystem) || typeof p.updatedAt !== "string") return false;
@@ -40,7 +40,7 @@ export function isDailyTraining(v: unknown): v is DailyTraining {
   if (typeof c.focusReady !== "boolean" || typeof l.editProfile !== "string") return false;
   if (v.schemaVersion === 2) {
     if (typeof s.sourceRevision !== "string" || !/^[a-f0-9]{64}$/.test(s.sourceRevision) || !["ready", "rest", "blocked"].includes(s.verdict)) return false;
-    if (!record(s.capability) || typeof s.capability.available !== "boolean" || s.capability.deviceTested !== false || !["native", "generic", "unavailable"].includes(s.capability.mode) || typeof s.capability.reason !== "string") return false;
+    if (!record(s.capability) || typeof s.capability.available !== "boolean" || s.capability.deviceTested !== false || !["native", "generic", "split", "unavailable"].includes(s.capability.mode) || typeof s.capability.reason !== "string") return false;
     if (!Array.isArray(v.sessions) || !v.sessions.every((item: unknown) => record(item) && typeof item.id === "string" && typeof item.title === "string" && typeof item.sport === "string" && (item.startTime === null || typeof item.startTime === "string")) || !v.sessions.some((item: { id: string }) => item.id === s.id)) return false;
     if (s.verdict === "ready" ? !blocks.length : blocks.length > 0 || s.capability.available) return false;
   }
@@ -54,8 +54,9 @@ export function isDailyTraining(v: unknown): v is DailyTraining {
       if (!validEndpoint(segment.endpoint) || (segment.endpoint.type === "time" ? segment.seconds !== segment.endpoint.seconds : segment.seconds !== null)) return false;
       if (!optionalNumber(segment.estimatedSeconds) || (segment.estimatedSeconds != null && segment.estimatedSeconds < 0)) return false;
       const t = segment.target;
-      if (!["open", "power", "heartRate", "pace", "speed"].includes(t.type) || !["explicit", "profile_reference", "effort"].includes(t.source)) return false;
-      return t.type === "open" ? t.low == null && t.high == null : finite(t.low) && finite(t.high) && t.low >= 0 && t.high > 0 && t.low <= t.high;
+      if (!["open", "power", "heartRate", "pace", "speed", "swimStroke"].includes(t.type) || !["explicit", "profile_reference", "effort"].includes(t.source)) return false;
+      if (t.type === "swimStroke" && !["freestyle", "backstroke", "breaststroke", "butterfly", "drill", "mixed", "im"].includes(t.stroke)) return false;
+      return ["open", "swimStroke"].includes(t.type) ? t.low == null && t.high == null : finite(t.low) && finite(t.high) && t.low >= 0 && t.high > 0 && t.low <= t.high;
     });
   });
 }
@@ -87,4 +88,12 @@ export function canonicalBlocks(steps: CanonicalStep[]): Block[] {
       target: { ...step.target, paceLowSecondsPerMile: null, paceHighSecondsPerMile: null, rpeLow: null, rpeHigh: null, heartRateBpm: step.target.type === "heartRate" && step.target.low === step.target.high ? step.target.low ?? null : null, note: step.target.missingReason },
     }],
   }));
+}
+
+/** A duration-weighted planning reference requires timing for every source step. */
+export function planningDensity(steps: Pick<CanonicalStep, "seconds" | "zone" | "endpoint">[]): DailyTraining["session"]["density"] {
+  if (!steps.length || steps.some(step => !Number.isFinite(step.seconds) || step.seconds <= 0)) return { score: null, label: "Timing unavailable", method: "coach_planning", missingReason: "A duration-weighted planning score is unavailable because one or more steps have no prescribed or estimated time." };
+  const total = steps.reduce((sum, step) => sum + step.seconds, 0);
+  const averageZone = steps.reduce((sum, step) => sum + step.seconds * Number(step.zone.slice(1)), 0) / total;
+  return { score: Math.max(1, Math.min(10, Math.round(averageZone * 1.4))), label: steps.some(step => step.endpoint.type !== "time") ? "coach planning estimate (estimated step times)" : "coach planning score", method: "coach_planning" };
 }

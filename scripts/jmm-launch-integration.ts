@@ -1,3 +1,4 @@
+import { hashToken as hashSessionToken } from "../src/lib/auth";
 /**
  * Device-free launch acceptance against an isolated, real local PostgreSQL app.
  * Never point this at a deployed app or an athlete database.
@@ -58,7 +59,7 @@ async function actor(name: string, role = "athlete", anchors = true, setupComple
   } });
   createdIds.push(user.id);
   const token = randomBytes(32).toString("hex");
-  await db.authSession.create({ data: { userId: user.id, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + 2 * 3600000) } });
+  await db.authSession.create({ data: { userId: user.id, tokenHash: hashSessionToken(token), expiresAt: new Date(Date.now() + 2 * 3600000) } });
   const result = { ...user, cookie: `jmm_session=${token}`, password };
   if (setupComplete) await configureSetup(result);
   if (anchors) {
@@ -314,10 +315,10 @@ async function main() {
       for (const [filename, bytes] of bundle) if (filename.endsWith(".fit")) { const decoded = decode(bytes); assert.notEqual(decoded.workoutMesgs[0].sport, "running", "Rejected running session leaked into bundle"); }
     });
   }
-  await scenario("Native swim/strength/brick/HYROX exports are honestly gated", async () => {
+  await scenario("Swim/strength/brick/HYROX without explicit sport structure stay honestly gated", async () => {
     for (const sport of ["swim", "strength", "brick", "hyrox"]) {
       const p = prescription(sport); await db.workout.update({ where: { id: other.run.id }, data: { sport, prescription: JSON.stringify(p) } });
-      const response = await download(b, other.run.id, undefined, 422); assert.match((await response.json()).error, /not yet|unvalidated|not.*validated/i);
+      const response = await download(b, other.run.id, undefined, 422); assert.match((await response.json()).error, /not yet|unvalidated|not.*validated|missing|explicit/i);
     }
   });
   await scenario("Every pilot sport has valid full daily guidance, honest capability, and matching endpoints", async () => {
