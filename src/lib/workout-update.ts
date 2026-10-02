@@ -1,3 +1,5 @@
+import { holdStructuredPlanEdit } from "./preserve-sport-structure";
+import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { prisma } from "./db";
 import { ApiError } from "./access";
@@ -27,10 +29,11 @@ export async function updateWorkout(
   actorId: string,
   athlete: { id: string; timezone: string },
   body: any,
+  transaction?: Prisma.TransactionClient,
 ) {
   const id = String(body.sessionId || "");
   if (!id) throw new ApiError("Session is required");
-  try { return await prisma.$transaction(async (tx) => {
+  try { const apply = async (tx: Prisma.TransactionClient) => {
     const existing = await tx.workout.findFirst({
       where: { id, userId: athlete.id },
       include: { planDay: true },
@@ -240,7 +243,7 @@ export async function updateWorkout(
       data.title = base.title;
       data.notes = base.description;
       data.originalPlan = JSON.stringify(base);
-      data.prescription = null;
+      data.prescription = holdStructuredPlanEdit(existing.prescription, base.sport, base.title);
       data.approved = false;
     }
     const updated = await tx.workout.update({ where: { id }, data });
@@ -256,7 +259,7 @@ export async function updateWorkout(
       },
     });
     return updated;
-  }, { isolationLevel: "Serializable" }); } catch (error: any) {
+  }; return await (transaction ? apply(transaction) : prisma.$transaction(apply, { isolationLevel: "Serializable" })); } catch (error: any) {
     if (error.code === "P2034") throw new ApiError("Another session change was saved. Reload and retry.", 409);
     throw error;
   }

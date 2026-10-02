@@ -22,6 +22,7 @@ export interface PlanningSetup {
   planWeeks: number | null;
   trackEvent: "100m" | "200m" | "400m" | null;
   targetGoal: PlanningTarget | null;
+  baselinePlanOptIn?: boolean;
 }
 export function parsePlanningSetup(value: unknown, now = new Date(), timezone = "UTC", options: {allowPastTarget?:boolean} = {}): PlanningSetup {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid planning setup");
@@ -50,6 +51,7 @@ export function parsePlanningSetup(value: unknown, now = new Date(), timezone = 
     trainingDays: [...new Set(days as number[])].sort(), maxSessionMinutes: number("maxSessionMinutes", 10, 300),
     equipmentAccess: typeof v.equipmentAccess === "string" ? v.equipmentAccess.trim().slice(0,1000) : "",
     planWeeks: number("planWeeks", 4, 30),
+    baselinePlanOptIn: v.baselinePlanOptIn === true,
     targetGoal: parsePlanningTarget(v.targetGoal,now,timezone,options.allowPastTarget),
     trackEvent: v.trackEvent == null || v.trackEvent === "" ? null : option<"100m" | "200m" | "400m">("trackEvent", ["100m","200m","400m"], "100m"),
   };
@@ -84,8 +86,10 @@ export function assessPlanningSetup(profile: {goal?: string|null; experience?: s
   if (!setup?.maxSessionMinutes) missing.push("Confirm the maximum time per training day");
   if (!setup?.equipmentAccess) missing.push("Describe equipment and venue access");
   if (profile?.goal === "track-sprint" && !setup?.trackEvent) missing.push("Choose the actual track event; no event distance is assumed");
-  if (setup?.targetGoal && ["pace","power","speed"].includes(setup.targetGoal.metric)) review.push("Your numeric performance target is saved as a goal, not a benchmark. Exact target-driven progression needs coaching review and is unavailable in this pilot; use a fitness/completion goal for conservative automatic planning.");
+  const numericGoal = setup?.targetGoal && ["pace","power","speed"].includes(setup.targetGoal.metric);
+  const targetReview = numericGoal ? ["Your numeric performance target is a goal, not a benchmark. Target-driven progression requires coaching review and is unavailable in this pilot. A baseline-only plan is bounded by recent tolerated training; it is not optimized or promised to achieve your target."] : [];
+  if (numericGoal && !setup?.baselinePlanOptIn) review.push(...targetReview, "Explicitly choose baseline-only conservative planning in setup to keep this aspiration alongside a plan based on current tolerated training.");
   if (context === "planning" && setup?.targetGoal?.targetDate && setup.targetGoal.targetDate < dateKey(now,"UTC")) missing.push("Review your past target date before replacing a plan");
   if (!setup?.planWeeks) missing.push("Choose a planning horizon");
-  return { ready: !missing.length && !review.length, missing, review, ruleId: PLANNING_SETUP_VERSION };
+  return { ready: !missing.length && !review.length, missing, review, ruleId: PLANNING_SETUP_VERSION, ...(numericGoal ? {targetReview, planningBasis: setup?.baselinePlanOptIn ? "baseline_only" as const : "review_required" as const} : {}) };
 }

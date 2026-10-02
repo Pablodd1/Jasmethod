@@ -11,7 +11,7 @@ import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
 import { effectivePrescription } from "@/lib/effective-prescription";
 import { buildFuelingPlan, postFuelPersonalized } from "@/lib/fueling";
-import { canonicalBlocks } from "@/components/daily-training/training-contract";
+import { canonicalBlocks, planningDensity } from "@/components/daily-training/training-contract";
 import type {
   DailyTraining,
   PaceKey,
@@ -24,15 +24,6 @@ const KM_PER_MI = 1.609344;
 
 function secPerKmToPerMi(s: number | null): number | null {
   return s == null ? null : Math.round(s * KM_PER_MI);
-}
-
-// Planning density 1-10 from average zone intensity (label says coach score).
-function densityOf(steps: { seconds: number; zone: string }[]): number {
-  const total = steps.reduce((a, s) => a + s.seconds, 0);
-  if (!total) return 1;
-  const avg =
-    steps.reduce((a, s) => a + s.seconds * (Number((s.zone || "z2").replace(/[^1-7]/g, "")) || 2), 0) / total;
-  return Math.max(1, Math.min(10, Math.round(avg * 1.4)));
 }
 
 // Pace references derived from the athlete's threshold pace. Derived values
@@ -121,11 +112,7 @@ export async function GET(req: Request) {
         subtitle: canonical.verdict === "ready" ? (p.why || canonical.reason) : canonical.reason,
         planStatus: completed ? "completed" : "planned",
         totalMinutes: p.durationMin ?? workout.durationMin,
-        density: {
-          score: densityOf(rawSteps),
-          label: "coach planning score",
-          method: "coach_planning",
-        },
+        density: planningDensity(rawSteps),
         calories: {
           kcal: null, method: "none", asOf: null,
           missingReason: "No energy expenditure measurement is available; no device is required to train or report effort",

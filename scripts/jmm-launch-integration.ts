@@ -314,10 +314,10 @@ async function main() {
       for (const [filename, bytes] of bundle) if (filename.endsWith(".fit")) { const decoded = decode(bytes); assert.notEqual(decoded.workoutMesgs[0].sport, "running", "Rejected running session leaked into bundle"); }
     });
   }
-  await scenario("Native swim/strength/brick/HYROX exports are honestly gated", async () => {
+  await scenario("Swim/strength/brick/HYROX without explicit sport structure stay honestly gated", async () => {
     for (const sport of ["swim", "strength", "brick", "hyrox"]) {
       const p = prescription(sport); await db.workout.update({ where: { id: other.run.id }, data: { sport, prescription: JSON.stringify(p) } });
-      const response = await download(b, other.run.id, undefined, 422); assert.match((await response.json()).error, /not yet|unvalidated|not.*validated/i);
+      const response = await download(b, other.run.id, undefined, 422); assert.match((await response.json()).error, /not yet|unvalidated|not.*validated|missing|explicit/i);
     }
   });
   await scenario("Every pilot sport has valid full daily guidance, honest capability, and matching endpoints", async () => {

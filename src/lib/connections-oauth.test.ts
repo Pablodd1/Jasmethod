@@ -187,7 +187,7 @@ function exportFixture() {
     '@/lib/telemetry':{meterUsage:async()=>{}},
     '@/lib/canonical-session':helpers,
     '@/lib/effective-prescription':{effectivePrescription:async()=>({workout,canonical,prescription:JSON.parse(workout.prescription)})},
-    '@/lib/fit-export':{buildFitWorkout:()=>Buffer.from('fixture-file')},
+    '@/lib/fit-export':{buildSessionDownload:()=>({bytes:Buffer.from('fixture-file'),filename:'fixture-workout.fit',contentType:'application/octet-stream'})},
     '@/lib/email':{sendEmail:async()=>{log.emails++;return{ok:true}}},
   };
   return {log,workout,dependencies};

@@ -1,3 +1,4 @@
+import { preserveSportStructure } from "@/lib/preserve-sport-structure";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -265,7 +266,7 @@ export async function POST(req: Request) {
                 ),
               }
             : base;
-        const p = prescribeToday({
+        const p = preserveSportStructure(w, prescribeToday({
           session: limitedBase,
           adaptation:
             remaining <= 0
@@ -277,7 +278,7 @@ export async function POST(req: Request) {
           // Availability is enforced at the END of prescription — the coach
           // intensity multiplier can reshape the session but never exceed it.
           timeBudgetMin: Number.isFinite(remaining) ? remaining : undefined,
-        });
+        }));
         p.scaled.originalMin = base.durationMin;
         p.scaled.factor = base.durationMin
           ? p.durationMin / base.durationMin

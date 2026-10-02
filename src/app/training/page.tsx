@@ -1,5 +1,6 @@
 "use client";
 
+import { TargetProgressPanel } from "@/components/target-progress-panel";
 import { planningGoal } from "@/lib/planning-setup";
 import { useEffect, useState } from "react";
 import {
@@ -235,6 +236,8 @@ export default function TrainingPage() {
           files for compatible Garmin/COROS workflows.
         </p>
 
+        <TargetProgressPanel key={user?.id} language={user?.language} />
+
         {/* Generator */}
         <div className="card">
           <h2 className="font-display font-bold text-lg mb-1">
@@ -249,6 +252,7 @@ export default function TrainingPage() {
             <p>Individual planning is waiting for:</p><ul className="list-disc ml-5">{[...planningReadiness.missing, ...planningReadiness.review].map((reason:string)=><li key={reason}>{reason}</li>)}</ul>
             <a className="underline" href="/onboard?redo=1">Review your setup and editable goals</a>
           </div>}
+          {planningReadiness?.ready && planningReadiness?.planningBasis === "baseline_only" && <p className="mb-4 text-sm">You explicitly chose baseline-only conservative planning. Your numeric target stays an aspiration; this plan is not optimized or promised to achieve it. Target-driven progression still requires coaching review.</p>}
           <form
             onSubmit={generate}
             className="grid md:grid-cols-6 gap-4 items-end"

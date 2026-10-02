@@ -8,7 +8,7 @@ import { deliveryGuideFor } from "@/lib/device-delivery";
 export type FitCapability = { available: boolean; mode: string; reason: string; deviceTested: false };
 function filenameFrom(response: Response): string {
   const match = response.headers.get("Content-Disposition")?.match(/filename="([^"\\/]+)"/i);
-  return match?.[1]?.endsWith(".fit") ? match[1] : "jmm-workout.fit";
+  return match?.[1] && /\.(fit|zip)$/i.test(match[1]) ? match[1] : response.headers.get("Content-Type")?.includes("application/zip") ? "jmm-workout-components.zip" : "jmm-workout.fit";
 }
 
 export function FitDownloadActions({ sessionId, revision, title, capability, disabled = false, es = false }: {
@@ -38,7 +38,7 @@ export function FitDownloadActions({ sessionId, revision, title, capability, dis
       const filename = filenameFrom(response);
       const blob = await response.blob();
       if (controller.signal.aborted) return;
-      const file = new File([blob], filename, { type: "application/octet-stream" });
+      const file = new File([blob], filename, { type: capability.mode === "split" ? "application/zip" : "application/octet-stream" });
       const outcome = await shareOrDownloadFit(file, title, {
         ...(share ? {
           canShare: typeof navigator.canShare === "function" ? data => navigator.canShare(data) : undefined,
@@ -71,9 +71,9 @@ export function FitDownloadActions({ sessionId, revision, title, capability, dis
   return <section aria-label={es ? "Descarga y transferencia FIT" : "FIT download and transfer"} className="space-y-2">
     <div className="flex flex-wrap gap-2">
       <button type="button" className="btn-primary jmm-button" disabled={busy || disabled || !capability.available || !revision} onClick={() => void transfer(false)}>
-        {busy ? (es ? "Preparando FIT…" : "Preparing FIT…") : (es ? "Descargar entrenamiento (.FIT)" : "Download workout (.FIT)")}
+        {busy ? (es ? "Preparando FIT…" : "Preparing FIT…") : (capability.mode === "split" ? (es ? "Descargar componentes (.ZIP)" : "Download components (.ZIP)") : (es ? "Descargar entrenamiento (.FIT)" : "Download workout (.FIT)"))}
       </button>
-      <button type="button" className="btn-secondary jmm-button" disabled={busy || disabled || !capability.available || !revision} onClick={() => void transfer(true)}>{es ? "Compartir archivo FIT" : "Share FIT file"}</button>
+      <button type="button" className="btn-secondary jmm-button" disabled={busy || disabled || !capability.available || !revision} onClick={() => void transfer(true)}>{capability.mode === "split" ? (es ? "Compartir componentes ZIP" : "Share component ZIP") : (es ? "Compartir archivo FIT" : "Share FIT file")}</button>
     </div>
     <p className="text-sm">{capability.reason} {capability.available && (es ? "Compatibilidad del dispositivo sin verificar." : "Device compatibility unverified.")}</p>
     {error && <p role="alert" className="jmm-alert text-red-700">{error} {es ? "Actualiza el plan si ha cambiado y vuelve a intentarlo." : "Refresh the plan if it changed, then try again."}</p>}
