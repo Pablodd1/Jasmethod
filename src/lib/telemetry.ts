@@ -42,6 +42,9 @@ export async function logEvent(input: LogEventInput): Promise<void> {
 }
 
 // ---- Owner Telegram alerts (rate-limited per kind) ----
+// Channel: the owner's PRIVATE bot (@JMMCOACHINGBOT, ADMIN_BOT_TOKEN +
+// ADMIN_TELEGRAM_CHAT_ID). This bot is the owner's alert line ONLY — user
+// reminders keep flowing through the app bot (@JasMiamiMethodbot) untouched.
 const lastAlertAt = new Map<string, number>();
 const ALERT_COOLDOWN_MS = 30 * 60000; // max one alert per kind per 30 min
 
@@ -65,31 +68,23 @@ export async function alertOwner(
     });
     if (recent > 0) return;
 
-    const admins = await prisma.user.findMany({
-      where: { role: "admin" },
-      select: { reminder: { select: { telegramChatId: true } } },
-    });
-    const chatIds = admins
-      .map((a) => a.reminder?.telegramChatId)
-      .filter((x): x is string => !!x);
-    if (!chatIds.length) return;
+    const adminToken = process.env.ADMIN_BOT_TOKEN;
+    const adminChat = process.env.ADMIN_TELEGRAM_CHAT_ID;
+    if (!adminToken || !adminChat) return; // alert line not configured — stay quiet
 
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) return;
-    await Promise.all(
-      chatIds.map((chatId) =>
-        fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `🚨 [${kind}]\n${message.slice(0, 500)}`,
-            disable_web_page_preview: true,
-          }),
-          signal: AbortSignal.timeout(10000),
-        }).catch(() => {}),
-      ),
-    );
+    await fetch(
+      `https://api.telegram.org/bot${adminToken}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: adminChat,
+          text: `🚨 [${kind}]\n${message.slice(0, 500)}`,
+          disable_web_page_preview: true,
+        }),
+        signal: AbortSignal.timeout(10000),
+      },
+    ).catch(() => {});
     lastAlertAt.set(kind, Date.now());
     await logEvent({
       kind: "error",

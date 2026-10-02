@@ -1,5 +1,6 @@
 "use client";
 
+import { saveReviewedProfile } from "@/lib/profile-client";
 import { useEffect, useState } from "react";
 import { Gauge, Waves, Bike, Zap, Fuel, Target, Flag, AlertTriangle, Info, RefreshCw, Clock, Mountain, Thermometer, Droplets, FileText, Sparkles } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
@@ -20,7 +21,7 @@ export default function RaceForecastPage() {
   const { user } = useAuth();
   const lang = (user?.language || "es") as Lang;
   const [races, setRaces] = useState<any[]>([]);
-  const [distance, setDistance] = useState<string>("olympic");
+  const [distance, setDistance] = useState<string>("");
   const [raceId, setRaceId] = useState<string>("");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -33,11 +34,15 @@ export default function RaceForecastPage() {
   });
   const [pnSaving, setPnSaving] = useState(false);
   const [pnSaved, setPnSaved] = useState(false);
+  const [pnError, setPnError] = useState("");
+  const [revision, setRevision] = useState<string | null>(null);
 
   async function loadProfile() {
     try {
       const res = await fetch("/api/profile");
       const d = await res.json();
+      if (!res.ok) throw Error(d.error || "Could not load profile");
+      setRevision(d.revision);
       if (d?.profile) setPn((prev: any) => ({
         ...prev,
         sweatRateMlH: d.profile.sweatRateMlH ?? "",
@@ -47,12 +52,13 @@ export default function RaceForecastPage() {
         federation: d.profile.federation ?? "",
         category: d.profile.category ?? "",
       }));
-    } catch { /* best-effort prefill */ }
+    } catch(e) { setPnError((e as Error).message); }
   }
 
   async function savePersonalNumbers() {
     setPnSaving(true);
     setPnSaved(false);
+    setPnError("");
     try {
       const body: Record<string, unknown> = {
         sweatRateMlH: pn.sweatRateMlH === "" ? null : Number(pn.sweatRateMlH),
@@ -62,15 +68,12 @@ export default function RaceForecastPage() {
         federation: pn.federation || null,
         category: pn.category || null,
       };
-      const res = await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        setPnSaved(true);
-        loadForecast();
-      }
+      await saveReviewedProfile(body, revision);
+      setPnSaved(true);
+      setRevision(null);
+      setPnError("Saved. Reload to review current values before another change.");
+      loadForecast();
+    } catch(e) { setPnError((e as Error).message);
     } finally {
       setPnSaving(false);
     }
@@ -125,6 +128,9 @@ export default function RaceForecastPage() {
           </div>
         </div>
 
+        {data?.reason === "personalized_forecasts_disabled" && <div role="status" className="card border-amber-300">
+          {lang === "es" ? "Los pronósticos numéricos personalizados no están disponibles en este piloto. Faltan validación de referencias fechadas, historial, recorrido y error del modelo. El tiempo objetivo es una meta, no una predicción." : data.message}
+        </div>}
         {/* Controls */}
         <div className="card">
           <div className="grid md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
@@ -140,6 +146,7 @@ export default function RaceForecastPage() {
             <div>
               <label className="label">{t(lang, "fc.orDistance")}</label>
               <select className="input" value={distance} onChange={(e) => { setRaceId(""); setDistance(e.target.value); }}>
+                <option value="">{lang === "es" ? "Elige una distancia real" : "Choose an actual distance"}</option>
                 {FORECASTABLE_DISTANCES.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
@@ -196,15 +203,16 @@ export default function RaceForecastPage() {
                 {lang === "es" ? "Intestino entrenado (90–120 g/h)" : "Gut-trained (90–120 g/h)"}
               </label>
             </div>
+            {pnError && <div role="status" className="text-sm">{pnError} <button className="underline" onClick={() => window.location.reload()}>Reload and review</button></div>}
             <button onClick={savePersonalNumbers} disabled={pnSaving} className="btn-secondary text-xs mt-3">
               {pnSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-              {lang === "es" ? "Guardar y recalcular" : "Save & re-forecast"}
+              {lang === "es" ? "Guardar referencias declaradas" : "Save reported references"}
               {pnSaved && <span className="text-emerald-600 ml-1">✓</span>}
             </button>
             <p className="text-[11px] text-slate-400 mt-2">
               {lang === "es"
-                ? "Sin estos datos el motor usa valores poblacionales (500–1000 ml/h, 500–1000 mg/L) y lo dice en el plan."
-                : "Without these the engine uses labeled population defaults (500–1000 ml/h, 500–1000 mg/L) and says so in the plan."}
+                ? "Estos valores guardados son referencias declaradas sin fecha/contexto verificados. No activan los pronósticos numéricos durante este piloto."
+                : "Saved values are reported references without verified dates/conditions. They do not unlock personalized numeric forecasts during this pilot."}
             </p>
           </details>
         </div>
@@ -398,6 +406,57 @@ function ForecastView({ data, forecast, lang, brief, briefLoading, onBrief }: {
             <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200">
               🔥 {es ? "Peor clima" : "Worst weather"}: {fmtTime(forecast.scenarios.find((x) => x.label === "worst")?.totalMin ?? forecast.totalMin)}
             </span>
+          </div>
+        )}
+
+        {/* Per-segment pacing table — from the uploaded GPX profile + physics */}
+        {data?.pacing && data.pacing.segments?.length > 0 && (
+          <div className="mt-6 rounded-2xl border border-sand-200 bg-white p-4">
+            <h3 className="font-display font-bold text-sm flex items-center gap-2">
+              📍 {es ? "Plan de ritmo por segmento" : "Per-segment pacing plan"}
+              <span className="text-xs font-normal text-slate-400">
+                {data.pacing.sport === "bike"
+                  ? `${es ? "vatios mantenibles" : "holdable watts"}${data.pacing.cdaUsed ? ` · CdA ${data.pacing.cdaUsed}` : ""}`
+                  : es ? "ritmo objetivo" : "target pace"}
+              </span>
+            </h3>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b border-sand-200">
+                    <th className="py-1 pr-3">{es ? "Segmento" : "Segment"}</th>
+                    <th className="py-1 pr-3">{es ? "Pendiente" : "Grade"}</th>
+                    <th className="py-1 pr-3">{data.pacing.sport === "bike" ? (es ? "Potencia" : "Power") : (es ? "Ritmo" : "Pace")}</th>
+                    <th className="py-1 pr-3">{es ? "Acumulado" : "Cumulative"}</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {data.pacing.segments.map((r: any, i: number) => (
+                    <tr key={i} className="border-b border-sand-100">
+                      <td className="py-1 pr-3">{r.fromKm}–{r.toKm} km</td>
+                      <td className={`py-1 pr-3 ${r.gradePct > 2 ? "text-red-600" : r.gradePct < -2 ? "text-emerald-600" : ""}`}>
+                        {r.gradePct > 0 ? "+" : ""}{r.gradePct}%
+                      </td>
+                      <td className="py-1 pr-3 font-semibold text-ocean-700">
+                        {r.targetW != null ? `${r.targetW} W · ${r.speedKmh} km/h`
+                          : r.paceSecPerKm != null
+                            ? `${Math.floor(r.paceSecPerKm / 60)}:${String(Math.round(r.paceSecPerKm % 60)).padStart(2, "0")}/km`
+                            : "—"}
+                      </td>
+                      <td className="py-1 pr-3">{Math.floor(r.cumMin / 60)}:{String(Math.round(r.cumMin % 60)).padStart(2, "0")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-500 space-y-0.5">
+              <div>{data.pacing.note}</div>
+              {data.pacing.gustRangeMin && data.pacing.gustRangeMin[1] > data.pacing.gustRangeMin[0] && (
+                <div>
+                  💨 {es ? "Banda por viento/ráfagas" : "Wind/gust band"}: {fmtTime(data.pacing.gustRangeMin[0])} – {fmtTime(data.pacing.gustRangeMin[1])}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

@@ -1,70 +1,64 @@
-import { NextResponse } from "next/server";
+import {profileRevision} from "@/lib/profile-service";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { scheduleTests } from "@/lib/adaptive";
-
-// GET /api/benchmarks — scheduled + completed tests
-export async function GET() {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tests = await prisma.benchmarkTest.findMany({ where: { userId: user.id }, orderBy: { date: "asc" } });
-  return NextResponse.json({ tests });
+import { benchmarkResult } from "@/lib/benchmark-result";
+import { parseDate } from "@/lib/dates";
+export const dynamic="force-dynamic";
+export async function GET(req:Request) {
+ try {const {athlete}=await trainingAccess(req);const profile=await prisma.athleteProfile.findUnique({where:{userId:athlete.id}});return Response.json({profileRevision:profileRevision(profile),tests:await prisma.benchmarkTest.findMany({where:{userId:athlete.id},orderBy:{date:"asc"}})});}catch(e){return errorResponse(e);}
 }
-
-// POST /api/benchmarks/schedule — (re)generate the test calendar from the active plan + races
-export async function POST(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  try {
-    const plan = await prisma.trainingPlan.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "desc" } });
-    if (!plan) return NextResponse.json({ error: "No active plan — generate one first." }, { status: 400 });
-    const races = await prisma.race.findMany({ where: { userId: user.id, date: { gte: plan.startDate } } });
-    const scheduled = scheduleTests(plan.startDate, plan.weeks, races.map((r) => ({ date: r.date })));
-
-    // replace existing scheduled (not completed) tests for this plan
-    await prisma.benchmarkTest.deleteMany({ where: { userId: user.id, completed: false } });
-    const created = await prisma.benchmarkTest.createMany({
-      data: scheduled.map((t) => ({
-        userId: user.id,
-        date: t.date,
-        type: t.type,
-        name: t.name,
-        skipped: t.skipped,
-        reason: t.reason || null,
-        completed: false,
-      })),
-    });
-    return NextResponse.json({ ok: true, count: created.count, tests: scheduled });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
-  }
+export async function POST(req:Request) {
+ try {
+  const {actor,athlete}=await trainingAccess(req);
+  let body;try{body=await req.json();}catch{throw new ApiError("Invalid JSON");}
+  if(!body||!["record","schedule"].includes(body.action))throw new ApiError("Choose record or schedule");
+  if(body.action==="record") return await record(actor.id,athlete,body);
+  const plan=await prisma.trainingPlan.findFirst({where:{userId:athlete.id,status:"active"},orderBy:{createdAt:"desc"}});
+  if(!plan)throw new ApiError("No active plan — generate one first");
+  const races=await prisma.race.findMany({where:{userId:athlete.id,date:{gte:plan.startDate}}});
+  const scheduled=scheduleTests(plan.startDate,plan.weeks,races.map(r=>({date:r.date})));
+  const created=await prisma.$transaction(async tx=>{
+   await tx.benchmarkTest.deleteMany({where:{userId:athlete.id,completed:false}});
+   const result=await tx.benchmarkTest.createMany({data:scheduled.map(t=>({userId:athlete.id,date:t.date,type:t.type,name:t.name,skipped:t.skipped,reason:t.reason||null}))});
+   await tx.auditLog.create({data:{actorId:actor.id,subjectId:athlete.id,action:"benchmarks.schedule",after:JSON.stringify({planId:plan.id,count:result.count})}});
+   return result;
+  });
+  return Response.json({ok:true,count:created.count,tests:scheduled});
+ }catch(e){return errorResponse(e);}
 }
-
-// PUT /api/benchmarks — mark a test complete with a result (updates physiology anchors)
-export async function PUT(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  try {
-    const b = await req.json();
-    if (!b.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-    const t = await prisma.benchmarkTest.findFirst({ where: { id: b.id, userId: user.id } });
-    if (!t) return NextResponse.json({ error: "Test not found" }, { status: 404 });
-    const result = b.result !== undefined ? parseFloat(b.result) : undefined;
-    const updated = await prisma.benchmarkTest.update({
-      where: { id: t.id },
-      data: { completed: true, result, skipped: false },
-    });
-
-    // Update the relevant physiology anchor so training re-anchors immediately
-    if (result !== undefined && result > 0) {
-      const p = await prisma.athleteProfile.findUnique({ where: { userId: user.id } });
-      const patch: Record<string, number> = {};
-      if (t.type === "ftp" || t.type === "cp") patch.ftp = Math.round(result);
-      if (t.type === "lthr") patch.lthr = Math.round(result);
-      if (p) await prisma.athleteProfile.update({ where: { userId: user.id }, data: patch });
-    }
-    return NextResponse.json({ ok: true, test: updated });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
-  }
+async function record(actorId:string,athlete:{id:string;timezone:string},body:any) {
+ try {
+  const result=await prisma.$transaction(async tx=>{
+   const existing=body.id?await tx.benchmarkTest.findFirst({where:{id:String(body.id),userId:athlete.id}}):null;
+   if(body.id&&!existing)throw new ApiError("Test not found",404);
+   if(existing?.completed)throw new ApiError("Completed tests are preserved. Record a new corrected test with a reason.",409);
+   const type=existing?.type||String(body.type);
+   let measured;try{measured=benchmarkResult(type,body.result);}catch(e){throw new ApiError((e as Error).message);}
+   let date:Date;try{date=existing?.date||parseDate(String(body.date),athlete.timezone);}catch{throw new ApiError("Enter a valid test date");}
+   if(date.getTime()>Date.now())throw new ApiError("A completed test cannot be dated in the future");
+   const data={completed:true,result:measured.result,skipped:false};
+   const test=existing?await tx.benchmarkTest.update({where:{id:existing.id},data}):await tx.benchmarkTest.create({data:{userId:athlete.id,date,type,name:String(body.name||`${type} manual test`).slice(0,200),...data}});
+   const apply=body.applyBaseline===true;
+   // Explicit opt-in only: a 5K time is NOT a measured threshold, but an
+   // athlete may knowingly derive one from it (threshold pace ≈ 5K pace × 1.06,
+   // Daniels-style). The UI labels this derivation; it never happens silently.
+   const baselinePatch=apply&&type==="run5k"
+    ?{runPaceBase:Math.round((measured.result/5)*1.06)}
+    :measured.patch;
+   if(apply&&Object.keys(baselinePatch).length){
+    const before=await tx.athleteProfile.findUnique({where:{userId:athlete.id}});
+    if(typeof body.expectedRevision!=="string"||body.expectedRevision!==profileRevision(before))throw new ApiError("Profile changed. Reload and review before applying this baseline.",409);
+    if(type==="lthr"&&before?.maxHr&&measured.result>before.maxHr)throw new ApiError("Threshold heart rate cannot exceed saved maximum heart rate");
+    const later=await tx.benchmarkTest.findFirst({where:{userId:athlete.id,type,completed:true,date:{gt:date}}});
+    if(later)throw new ApiError("A newer completed test exists. Record this result without applying it as today's baseline.",409);
+    const after=await tx.athleteProfile.upsert({where:{userId:athlete.id},create:{userId:athlete.id,...baselinePatch},update:baselinePatch});
+    await tx.auditLog.create({data:{actorId,subjectId:athlete.id,action:"baseline.fromTest",entityId:test.id,before:JSON.stringify(before),after:JSON.stringify(after)}});
+   }
+   await tx.auditLog.create({data:{actorId,subjectId:athlete.id,action:"benchmark.record",entityId:test.id,before:JSON.stringify(existing),after:JSON.stringify(test),note:typeof body.reason==="string"?body.reason.slice(0,1000):null}});
+   return {test,baselineApplied:apply&&Object.keys(baselinePatch).length>0};
+  },{isolationLevel:"Serializable"});
+  return Response.json({ok:true,...result});
+ }catch(e:any){if(e.code==="P2034")throw new ApiError("Another change was saved. Reload and retry.",409);throw e;}
 }
+export async function PUT(req:Request){try{const {actor,athlete}=await trainingAccess(req);const b=await req.json();if(!b.id)throw new ApiError("Test ID required");return await record(actor.id,athlete,b);}catch(e){return errorResponse(e);}}

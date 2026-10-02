@@ -1,5 +1,6 @@
 "use client";
 
+import { planningGoal } from "@/lib/planning-setup";
 import { useEffect, useState } from "react";
 import {
   Dumbbell,
@@ -52,13 +53,15 @@ export default function TrainingPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [form, setForm] = useState({
-    distance: "olympic",
-    weeks: "12",
+    distance: "",
+    weeks: "",
     startDate: dateKey(new Date(), user?.timezone),
     easyPct: "70",
     trainingWindow: "",
   });
   const [error, setError] = useState("");
+  const [planningReadiness, setPlanningReadiness] = useState<any>(null);
+  const [preview, setPreview] = useState<any>(null);
   const [zones, setZones] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -66,6 +69,7 @@ export default function TrainingPage() {
     Record<
       string,
       {
+        revision: string;
         title: string;
         durationMin: string;
         intensity: string;
@@ -83,6 +87,8 @@ export default function TrainingPage() {
     setPlans(p.plans || []);
     setZones(z.zones);
     setProfile(z.profile);
+    setPlanningReadiness(z.planningReadiness);
+    setForm(previous => ({...previous, distance: previous.distance || planningGoal(z.profile?.goal) || "", weeks: previous.weeks || String(z.setup?.planWeeks ?? "")}));
     setLoading(false);
   }
 
@@ -90,18 +96,20 @@ export default function TrainingPage() {
     if (user) load();
   }, [user]);
 
-  async function generate(e: React.FormEvent) {
-    e.preventDefault();
+  async function generate(e?: React.FormEvent, confirmed = false) {
+    e?.preventDefault();
     setGenerating(true);
     setError("");
     try {
       const res = await fetch("/api/plan/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({...form, preview: !confirmed, previewToken: confirmed ? preview?.previewToken : undefined}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
+      if (!confirmed) { setPreview(data); return; }
+      setPreview(null);
       await load();
     } catch (err: any) {
       setError(err.message);
@@ -145,8 +153,9 @@ export default function TrainingPage() {
     try {
       await api({
         sessionId,
+        expectedRevision: f.revision,
         title: f.title,
-        durationMin: parseInt(f.durationMin, 10) || 30,
+        durationMin: Number(f.durationMin),
         intensity: f.intensity,
         ...(f.preWeightKg ? { preWeightKg: f.preWeightKg } : {}),
         ...(f.postWeightKg ? { postWeightKg: f.postWeightKg } : {}),
@@ -175,6 +184,7 @@ export default function TrainingPage() {
     setEditing((prev) => ({
       ...prev,
       [s.id]: {
+        revision: s.revision,
         title: s.title,
         durationMin: String(s.durationMin),
         intensity: s.intensity || "z2",
@@ -232,20 +242,25 @@ export default function TrainingPage() {
           </h2>
           <p className="text-sm text-slate-500 mb-4">
             {profile?.lthr
-              ? `Your LTHR: ${profile.lthr} bpm — the heart rate you could hold for a hard one-hour effort. Sessions anchor to it.`
-              : "Complete your profile to auto-estimate VO2max (your aerobic engine size) and LTHR (your one-hour heart rate); otherwise we'll use standard estimates."}
+              ? "Saved physiological references remain reported values; dated, verified anchors are needed for exact targets."
+              : "No threshold benchmark is required. Use effort and talk-test guidance; missing physiology is not estimated from age, sex or weight."}
           </p>
+          {planningReadiness && !planningReadiness.ready && <div role="status" className="mb-4 border border-amber-300 rounded-lg p-3">
+            <p>Individual planning is waiting for:</p><ul className="list-disc ml-5">{[...planningReadiness.missing, ...planningReadiness.review].map((reason:string)=><li key={reason}>{reason}</li>)}</ul>
+            <a className="underline" href="/onboard?redo=1">Review your setup and editable goals</a>
+          </div>}
           <form
             onSubmit={generate}
             className="grid md:grid-cols-6 gap-4 items-end"
           >
             <div>
-              <label className="label">Race distance</label>
+              <label className="label">Training goal / sport</label>
               <select
                 className="input"
                 value={form.distance}
                 onChange={(e) => setForm({ ...form, distance: e.target.value })}
               >
+                <option value="">Choose your actual goal</option>
                 <option value="sprint">Sprint (750m / 20km / 5km)</option>
                 <option value="track-sprint">Track Sprint (100m / 200m / 400m)</option>
                 <option value="olympic">Olympic (1.5k / 40k / 10k)</option>
@@ -266,7 +281,8 @@ export default function TrainingPage() {
                 value={form.weeks}
                 onChange={(e) => setForm({ ...form, weeks: e.target.value })}
               >
-                {[8, 12, 16, 20, 24].map((w) => (
+                <option value="">Choose horizon</option>
+                {[4, 6, 8, 12, 16, 20, 24, 30].map((w) => (
                   <option key={w} value={w}>
                     {w} weeks
                   </option>
@@ -322,20 +338,28 @@ export default function TrainingPage() {
             </div>
             <button
               type="submit"
-              disabled={generating}
+              disabled={generating || !planningReadiness?.ready}
               className="btn-primary justify-center"
             >
               {generating ? (
-                "Building plan…"
+                "Preparing preview…"
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" /> Generate Plan
+                  <Sparkles className="w-4 h-4" /> Preview Plan
                 </>
               )}
             </button>
           </form>
+          {preview && <section className="mt-4 border rounded-xl p-4" aria-label="Plan preview">
+            <h3 className="font-semibold">Review before assigning</h3>
+            <p>{preview.preview.distance}, {preview.preview.weeks} weeks. Weekly time ceiling: {preview.preview.weeklyBudgetMin} minutes. Event date: {preview.preview.raceDate ? String(preview.preview.raceDate).slice(0,10) : "No event date supplied"}.</p>
+            <p>{preview.warning}</p>
+            <p>{preview.preview.existingPlans ? "Confirming will archive the current plan and supersede its uncompleted future sessions. History is retained." : "Confirming will assign this provisional plan."}</p>
+            <details className="my-3"><summary className="cursor-pointer underline">Review every week and session</summary>{preview.preview.weeksPreview.map((week:any)=><div className="my-3" key={week.week}><h4 className="font-semibold">Week {week.week}: {week.totalMinutes} min</h4><ul>{week.sessions.map((session:any,index:number)=><li key={index}>{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.description}</li>)}</ul></div>)}</details>
+            <div className="flex gap-3"><button type="button" className="btn-primary" disabled={generating} onClick={()=>generate(undefined,true)}>Confirm this plan</button><button type="button" className="btn-secondary" onClick={()=>setPreview(null)}>Cancel preview</button></div>
+          </section>}
           {error && (
-            <div className="text-sm text-coral-600 mt-3 bg-coral-50 rounded-lg px-3 py-2">
+            <div role="alert" className="text-sm text-coral-600 mt-3 bg-coral-50 rounded-lg px-3 py-2">
               {error}
             </div>
           )}

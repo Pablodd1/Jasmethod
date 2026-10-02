@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { buildForecastBundle } from "@/lib/race-forecast-service";
-import { buildRaceBrief, briefWriterSystemPrompt, briefWriterUserPrompt } from "@/lib/race-brief";
-import { geminiAnswer, geminiGenerationConfig } from "@/lib/gemini-response";
+import { buildRaceBrief } from "@/lib/race-brief";
 
 // GET /api/race-forecast/brief — the full race-plan narrative.
 //
 // The deterministic engine produces every number; this endpoint turns the
-// forecast JSON into the coach-voice brief. With GEMINI_API_KEY set, Gemini
-// rewrites the template under a strict contract (no new numbers — see
-// race-brief.ts); without a key the deterministic template is returned, so
-// the feature never depends on an external service.
+// forecast JSON into a local template. External rewriting is disabled until
+// source-level data eligibility is implemented.
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user)
@@ -35,7 +32,7 @@ export async function GET(req: Request) {
   });
 
   if (!bundle.forecast)
-    return NextResponse.json({ ok: false, reason: "not_forecastable", distance: bundle.distance }, { status: 200 });
+    return NextResponse.json({ ok: false, reason: bundle.reason ?? "not_forecastable", message: bundle.message, distance: bundle.distance }, { status: 200 });
 
   const ctx = {
     raceName: bundle.race?.name ?? null,
@@ -45,41 +42,16 @@ export async function GET(req: Request) {
   };
 
   const template = buildRaceBrief(bundle.forecast, ctx);
-  const key = process.env.GEMINI_API_KEY;
-  let narrative = template;
-  let source: "gemini" | "template" = "template";
-
-  if (key) {
-    try {
-      const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: briefWriterSystemPrompt() }] },
-            contents: [{ role: "user", parts: [{ text: briefWriterUserPrompt(bundle.forecast, ctx) }] }],
-            generationConfig: geminiGenerationConfig(model),
-          }),
-        },
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const answer = geminiAnswer(data);
-        if (answer) {
-          narrative = answer;
-          source = "gemini";
-        }
-      }
-    } catch {
-      // fall through to the deterministic template
-    }
-  }
+  // Forecasts can contain restricted provider-derived data. Keep this local
+  // until a source-level eligibility boundary exists; operator AI flags alone
+  // do not authorize sending these values to an external model.
+  const narrative = template;
+  const source = "template";
 
   return NextResponse.json({
     ok: true,
     source,
+    externalAI: false,
     brief: narrative,
     template, // always include the deterministic version for auditability
     forecast: bundle.forecast,

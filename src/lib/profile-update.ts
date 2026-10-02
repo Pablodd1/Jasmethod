@@ -6,6 +6,7 @@ const numeric: Record<string, [number, number]> = {
   heightCm: [80, 250],
   weightKg: [20, 350],
   weeklyHours: [0.5, 40],
+  intensityPct: [50, 130],
   vo2max: [10, 100],
   lthr: [60, 230],
   restingHr: [25, 150],
@@ -31,6 +32,7 @@ const options: Record<string, string[]> = {
     "hyrox",
     "boxing",
     "run-only",
+    "track-sprint",
     "cycle",
     "swim-only",
     "lifting",
@@ -79,6 +81,7 @@ export function profilePatch(body: Record<string, unknown>, timezone: string) {
       )
         throw new ApiError(`Invalid ${key}: expected ${min}–${max}`);
       data[key] = n;
+      if (key === "weightKg") data.weightSource = "manual";
     } else if (options[key]) {
       if (value === null && !["experience", "trainingWindow"].includes(key))
         data[key] = null;

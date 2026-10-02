@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/migrate-production.mjs",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
@@ -13,22 +12,24 @@
     "db:studio": "prisma studio",
     "db:deploy": "prisma migrate deploy",
     "admin:grant": "tsx scripts/grant-admin.ts",
-    "test": "tsx --test src/lib/*.test.ts",
-    "test:integration": "tsx scripts/integration-check.ts",
-    "test:sync": "tsx scripts/sync-check.ts"
+    "test": "node --import tsx --test src/lib/*.test.ts src/components/daily-training/*.test.ts",
+    "test:integration": "node --import tsx scripts/integration-check.ts",
+    "test:sync": "node --import tsx scripts/sync-check.ts",
+    "db:migrate-production": "node scripts/migrate-production.mjs",
+    "test:launch": "node --import tsx scripts/jmm-launch-integration.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@garmin/fitsdk": "^21.214.0",
+    "@garmin/fitsdk": "21.214.0",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.2.0",
     "fast-xml-parser": "^5.11.1",
     "lucide-react": "^0.454.0",
-    "next": "^14.2.15",
+    "next": "15.5.26",
     "nodemailer": "^10.0.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -41,7 +42,10 @@
     "@types/nodemailer": "^6.4.16",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
+    "@typesafe-ai/sdk": "^0.6.0",
     "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.26",
     "postcss": "^8.5.23",
     "prisma": "^5.22.0",
     "tailwindcss": "^3.4.13",

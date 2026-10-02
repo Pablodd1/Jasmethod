@@ -88,8 +88,11 @@ export default function DashboardPage() {
   const [benchmarks, setBenchmarks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Day index fixed at mount — dailyMotivation is deterministic per day, but
+  // Date.now() is impure and may not run during render (react-hooks/purity).
+  const [dayIndex] = useState(() => Math.floor(Date.now() / 86400000));
   const mot = dailyMotivation(
-    Math.floor(Date.now() / 86400000),
+    dayIndex,
     user?.motivation?.style || "coach",
     user?.language || "en",
   );
@@ -204,10 +207,10 @@ export default function DashboardPage() {
 
   return (
     <ProtectedPage>
-      <div className="space-y-6">
+      <div className="space-y-6 max-w-5xl mx-auto w-full min-w-0">
         {/* Greeting + motivation */}
         <div className="bg-gradient-to-r from-ocean-950 to-ocean-800 rounded-3xl p-6 md:p-8 text-white">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-ocean-300 text-sm font-medium">
                 {t(lang, "dash.greeting").replace(
@@ -321,7 +324,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* AI Coach (JASAI) briefing */}
+        {/* KCoach briefing */}
         {coach && (
           <div className="bg-gradient-to-r from-coral-500 to-ocean-600 rounded-3xl p-6 md:p-7 text-white flex items-start gap-4">
             <Sparkles className="w-7 h-7 text-white/80 shrink-0 mt-1" />
@@ -519,7 +522,7 @@ export default function DashboardPage() {
               <HeartPulse className="w-4 h-4" /> {t(lang, "dash.hrvToday")}
             </div>
             <div className="font-display text-2xl font-bold">
-              {latestMetric?.hrv ? `${latestMetric.hrv} ms` : "—"}
+              {latestMetric?.hrv != null ? `${Math.round(latestMetric.hrv)} ms` : "—"}
             </div>
             <div className="text-xs text-slate-400 mt-1">
               {latestMetric
@@ -532,7 +535,7 @@ export default function DashboardPage() {
               <Moon className="w-4 h-4" /> {t(lang, "dash.sleep7d")}
             </div>
             <div className="font-display text-2xl font-bold">
-              {latestMetric?.sleepHours ? `${latestMetric.sleepHours}h` : "—"}
+              {latestMetric?.sleepHours != null ? `${latestMetric.sleepHours.toFixed(1)}h` : "—"}
             </div>
             <div className="text-xs text-slate-400 mt-1">
               {t(lang, "dash.targetSleep")}

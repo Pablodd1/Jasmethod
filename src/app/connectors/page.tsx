@@ -26,6 +26,7 @@ export default function ConnectorsPage() {
   const [err, setErr] = useState("");
   const [syncing, setSyncing] = useState(false);
   const handledCallback = useRef(false);
+  const apiKeyRef = useRef("");
   // Real-time sync progress: devices sync ONE per request so the bar moves
   // truthfully (no fake animation). Athlete sees per-device status + elapsed.
   const [sync, setSync] = useState<{
@@ -347,6 +348,22 @@ export default function ConnectorsPage() {
               "Otherwise upload a .fit/.tcx file here.",
             ];
       case "oura":
+        // Honest state: without server keys the auto flow cannot start — the
+        // old wording promised a connection that doesn't exist yet and left
+        // athletes stranded on Oura's own site.
+        if (!p.configured) {
+          return es
+            ? [
+                "La conexión automática con Oura aún no está activada en el servidor.",
+                "Mientras tanto: registra tu sueño manualmente en la página Sleep (o en el chequeo diario).",
+                "El administrador puede activarla añadiendo las claves de API de Oura.",
+              ]
+            : [
+                "Oura auto-connect isn't enabled on the server yet.",
+                "Meanwhile: log your sleep manually on the Sleep page (or in the daily check-in).",
+                "The administrator can enable it by adding the Oura API keys.",
+              ];
+        }
         return es
           ? [
               "Pulsa «Conectar Oura» e inicia sesión en tu cuenta Oura.",
@@ -408,12 +425,12 @@ export default function ConnectorsPage() {
         </div>
 
         {msg && (
-          <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+          <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
             ✓ {msg}
           </div>
         )}
         {err && (
-          <div className="text-sm text-coral-600 bg-coral-50 border border-coral-200 rounded-lg px-3 py-2">
+          <div role="alert" className="text-sm text-coral-600 bg-coral-50 border border-coral-200 rounded-lg px-3 py-2">
             ✗ {err}
           </div>
         )}
@@ -548,7 +565,9 @@ export default function ConnectorsPage() {
                               ? lang === "es"
                                 ? "Archivo"
                                 : "Upload"
-                              : "Unavailable"}
+                              : p.method === "api_key"
+                                ? "API key"
+                                : "Unavailable"}
                         </span>
                       </div>
                       <div className="text-xs text-slate-500 max-w-[240px]">
@@ -589,6 +608,49 @@ export default function ConnectorsPage() {
                 </div>
 
                 <div className="mt-4">
+                  {p.method === "api_key" && (
+                    <div className="space-y-2">
+                      {p.status !== "connected" ? (
+                        <>
+                          <input
+                            aria-label={lang === "es" ? "API key de Intervals.icu" : "Intervals.icu API key"}
+                            type="password"
+                            placeholder={lang === "es" ? "Pega tu API key de Intervals.icu" : "Paste your Intervals.icu API key"}
+                            className="input w-full"
+                            onChange={(e) => (apiKeyRef.current = e.target.value)}
+                          />
+                          <button
+                            className="btn-primary w-full justify-center"
+                            onClick={async () => {
+                              setErr(""); setMsg("");
+                              const r = await fetch("/api/connectors/intervals/connect", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ apiKey: apiKeyRef.current }),
+                              });
+                              const d = await r.json();
+                              if (!r.ok) { setErr(d.error || "Connection failed"); return; }
+                              setMsg(lang === "es" ? `Intervals.icu conectado (${d.athlete}).` : `Intervals.icu connected (${d.athlete}).`);
+                              await load();
+                            }}
+                          >
+                            {lang === "es" ? "Conectar Intervals.icu" : "Connect Intervals.icu"}
+                          </button>
+                          <div className="text-[11px] text-slate-500">
+                            {lang === "es"
+                              ? "1) Crea una cuenta gratis en intervals.icu y enlaza tu Garmin/COROS en Settings → Account Connections. 2) Copia tu API key en Settings → Developer Settings. 3) Pégala aquí."
+                              : "1) Create a free intervals.icu account and link your Garmin/COROS in Settings → Account Connections. 2) Copy your API key from Settings → Developer Settings. 3) Paste it here."}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-xs text-emerald-700">
+                          {lang === "es"
+                            ? "Conectado. La publicación en Intervals.icu no confirma recepción en el reloj."
+                            : "Connected. Publication to Intervals.icu does not confirm watch receipt."}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {p.method === "oauth" &&
                     (p.configured ? (
                       <a
@@ -628,6 +690,7 @@ export default function ConnectorsPage() {
                         {lang === "es" ? "Ajuste necesario: " : "Required setting: "}
                         {(p.setupEnv || []).join(" / ")}
                       </p>
+                      <RequestButton provider={p.id} label={p.name} lang={lang} />
                     </div>
                   )}
                   {p.method === "upload" && (
@@ -690,7 +753,10 @@ export default function ConnectorsPage() {
                       {t(lang, "conn.oura")}
                     </div>
                   )}
-                  {stepsFor(p, lang).length > 0 && (
+                  {/* Info links are separate from authorization: only show the
+                      vendor portal link for CONFIGURED providers — an
+                      unconfigured provider's CTA is the request button above. */}
+                  {stepsFor(p, lang).length > 0 && p.configured !== false && (
                     <div className="mt-3 text-xs text-slate-600">
                       <div className="font-medium text-ocean-700 mb-1">
                         {lang === "es"
@@ -950,5 +1016,54 @@ function AthlinksCard({
         )}
       </div>
     </div>
+  );
+}
+
+// ---- Request-a-connector button: one tap pings the owner's Telegram ----
+function RequestButton({
+  provider,
+  label,
+  lang,
+}: {
+  provider: string;
+  label: string;
+  lang: Lang;
+}) {
+  const [state, setState] = useState<"idle" | "busy" | "sent">("idle");
+  const [localErr, setLocalErr] = useState("");
+  const es = lang === "es";
+  if (state === "sent")
+    return (
+      <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1 mt-2">
+        ✓ {es ? "Solicitud enviada — el administrador fue notificado." : "Request sent — the administrator has been notified."}
+      </div>
+    );
+  return (
+    <button
+      className="mt-2 text-[11px] font-semibold rounded-lg px-2.5 py-1.5 border border-ocean-300 text-ocean-700 hover:bg-ocean-50 disabled:opacity-50"
+      disabled={state === "busy"}
+      onClick={async () => {
+        setState("busy");
+        try {
+          const r = await fetch("/api/connectors/request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (r.status === 429)
+            setState("sent"); // already requested — treat as done
+          else if (r.ok) setState("sent");
+          else setLocalErr(d.error || "Failed");
+        } catch {
+          setState("idle");
+        }
+      }}
+    >
+      {localErr && <div className="text-[11px] text-red-600 mt-1">{localErr}</div>}
+      🔔 {state === "busy"
+        ? es ? "Enviando…" : "Sending…"
+        : es ? "Pedir esta conexión" : "Request this connection"}
+    </button>
   );
 }

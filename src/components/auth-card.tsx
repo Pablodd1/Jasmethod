@@ -27,6 +27,9 @@ export function AuthCard({
   const [detail, setDetail] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleNotice, setGoogleNotice] = useState<string | null>(null);
+  // Shared demo login is env-gated server-side (DEMO_LOGIN_ENABLED); the
+  // buttons only render when the server reports it on.
+  const [demoEnabled, setDemoEnabled] = useState(false);
 
   // Google Sign-In returns here on failure: /login?google=not-configured or
   // /login?google=error&reason=...
@@ -44,6 +47,13 @@ export function AuthCard({
           : `Google sign-in failed (${reason}). Use email & password below.`,
       );
     }
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/auth/demo")
+      .then((r) => (r.ok ? r.json() : { enabled: false }))
+      .then((d: { enabled?: boolean }) => setDemoEnabled(!!d.enabled))
+      .catch(() => setDemoEnabled(false));
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -209,8 +219,19 @@ export function AuthCard({
       <p className="micro mt-5 text-center !normal-case !tracking-normal !text-[11px] !text-ink-400">
         Free for athletes. Your blood, DNA and training data stay private.
       </p>
+      <p className="text-[10px] text-ink-400 text-center mt-3 leading-snug">
+        {mode === "signup" ? (
+          <>
+            By creating an account you agree to our{" "}
+            <a href="/terms" className="underline" target="_blank">Terms of Service</a>{" "}
+            and acknowledge JasMiamiMethod is a coaching tool, not medical advice.
+          </>
+        ) : (
+          <a href="/help" className="underline">Need help? Visit Help &amp; Support</a>
+        )}
+      </p>
 
-      {mode === "login" && (
+      {mode === "login" && demoEnabled && (
         <div className="mt-4 border-t border-ink-200 pt-4">
           <div className="micro mb-2 text-[10px] text-ink-400">
             Free athlete access — one tap to sign in:

@@ -33,6 +33,7 @@ export interface CoachContext {
   bloodFlags: string[];
   dnaHighlights: string[];
   language?: string; // en | es | ht | fr | ru
+  externalAiEligible?: boolean; // explicit policy boundary; omitted contexts stay local
   historyDigest?: string; // long-term memory: check-in trend, weekly load, adherence, benchmarks
 }
 
@@ -116,8 +117,8 @@ function buildPrompt(c: CoachContext): string {
   const p = c.profile || {};
   const m = c.latestMetric || {};
   const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", ht: "Haitian Creole", fr: "French", ru: "Russian" };
-  const langName = LANG_NAMES[c.language || "es"] || "English";
-  return `You are JASAI, a research-informed training coach for ${c.name || "this athlete"}.
+  const langName = LANG_NAMES[c.language || "en"] || "English";
+  return `You are KCoach, a research-informed training coach for ${c.name || "this athlete"}.
 Athlete profile: sex=${p.sex || "n/a"}, age=${p.birthYear ? new Date().getFullYear() - p.birthYear : "n/a"}, experience=${p.experience || "n/a"}, goal=${p.goal || "n/a"}.
 Injury flag: ${p.injured ? "active: training paused" : "not recorded"}.
 Physiology: VO2max=${p.vo2max ?? "n/a"}, LTHR=${p.lthr ?? "n/a"}, FTP=${p.ftp ?? "n/a"}.
@@ -176,6 +177,7 @@ function geminiBriefing(c: CoachContext): Promise<Briefing> {
 // Otherwise returns fallback immediately and kicks off background JASAI generation
 // that backfills the cache (so the next load shows the real model output).
 export function getCoachBriefing(userId: string, c: CoachContext): Briefing {
+  if (process.env.EXTERNAL_AI_ENABLED !== "true" || !c.externalAiEligible) return fallbackBriefing(c);
   const tk = todayKey() + createHash("sha256").update(JSON.stringify(c)).digest("hex");
   const hit = cache.get(userId);
   if (hit && hit.date === tk) return hit.briefing;

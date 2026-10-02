@@ -39,6 +39,26 @@ export interface AthleteSnapshot {
   sodiumMgPerL?: number | null; // measured — sodium plan
   gutTrained?: boolean;         // tolerates 90-120 g/h carbs
   draftSkill?: "none" | "mixed" | "good"; // open-water swim drafting
+  bikeType?: string | null;     // road | tt | tri | gravel | mountain
+  hasAeroBars?: boolean | null; // clip-on aero — CdA between road and TT
+}
+
+// Equipment-driven aero + mass: CdA by setup (typical trained-rider values;
+// base 0.28 stays the TUNED_DEFAULT), bike mass by type. TT/tri bikes with
+// bars sit near 0.235; road with clip-ons ~0.258; road drop ~0.285; gravel
+// more upright ~0.32.
+export function bikeSetupPhysics(a?: {
+  bikeType?: string | null;
+  hasAeroBars?: boolean | null;
+}): { cdA: number; bikeKg: number; note: string } {
+  const t = (a?.bikeType || "road").toLowerCase();
+  if (t === "tt" || t === "tri")
+    return { cdA: 0.235, bikeKg: 8.5, note: "TT/tri position — lowest drag (CdA 0.235)" };
+  if (a?.hasAeroBars)
+    return { cdA: 0.258, bikeKg: 8.5, note: "Road bike + aero bars — mid-drag position (CdA 0.258)" };
+  if (t === "gravel" || t === "mountain")
+    return { cdA: 0.32, bikeKg: 10.5, note: "Gravel/MTB position — higher drag (CdA 0.32)" };
+  return { cdA: 0.285, bikeKg: 8.5, note: "Road drop-bar position (CdA 0.285)" };
 }
 
 export interface ForecastVenue {
@@ -47,6 +67,7 @@ export interface ForecastVenue {
   solarWm2?: number | null;     // shortwave radiation (WBGT globe estimate)
   cloudCover?: number | null;   // %
   windKph?: number | null;
+  gustsKph?: number | null; // MEASURED gust forecast — drives the honest uncertainty band
   baseElevM?: number | null;    // venue base elevation
   bikeElevM?: number | null;    // m climb
   bikeTerrain?: string | null;  // flat | rolling | hilly | mountain | trail
@@ -95,7 +116,8 @@ export interface ForecastResult {
   sport: ForecastSport;
   distance: string;
   distanceLabel: string;
-  confidence: "high" | "medium" | "low";
+  confidence: "high" | "medium" | "low" | "unvalidated";
+  kind?: "illustrative";
   measurementGaps: string[];
   factors: string[];
   segments: ForecastSegment[];
@@ -166,11 +188,13 @@ export function bikePhysicsSpeedKmh(opts: {
   elevGainM?: number | null; distanceKm: number; terrain?: string | null;
   sustainableIF?: number; sustainableW?: number; // holdable watts override
   venueElevM?: number | null; tempC?: number | null; windKph?: number | null;
+  cdA?: number; // equipment-driven (bikeSetupPhysics); default 0.28 TUNED_DEFAULT
 }): { speedKmh: number; powerW: number; wheelKj: number; rho: number } {
-  const m = (opts.weightKg ?? 70) + (opts.bikeKg ?? 9);
+  if (opts.weightKg == null || !Number.isFinite(opts.weightKg) || opts.weightKg <= 0) throw new Error("Current weight is required for a bike physics scenario");
+  const m = opts.weightKg + (opts.bikeKg ?? 9);
   const powerW = opts.sustainableW ?? Math.round(opts.ftp * (opts.sustainableIF ?? 0.78));
   const crr = (opts.terrain || "flat") === "trail" ? 0.008 : (opts.terrain || "flat") === "hilly" || (opts.terrain || "flat") === "mountain" ? 0.006 : 0.0045;
-  const cdA = 0.28; // TUNED_DEFAULT (range 0.22–0.35) — forecast-constants
+  const cdA = opts.cdA ?? 0.28; // default TUNED_DEFAULT (range 0.22–0.35); equipment overrides
   const rho = airDensity(opts.venueElevM ?? 0, opts.tempC ?? 20);
   const drivetrain = 0.976; // VERIFIED 0.97–0.98 — forecast-constants
   const pAvail = powerW * drivetrain;
@@ -318,6 +342,13 @@ function fitnessPaceFactor(
   if (tsb >= 10) {
     pace = 0.99;
     notes.push(`Form is high (TSB ${Math.round(tsb)}) — fresh legs, no fatigue buffer needed.`);
+    // TAPER BONUS: TSB in the sweet band with meaningful fitness = the
+    // classic tapered state; a proper ~2-week taper yields ~2% performance
+    // improvement (taper meta-analysis: volume −41–60%, intensity held).
+    if (ctl >= 40 && tsb <= 20) {
+      pace = 0.98;
+      notes.push("Taper-adjusted: projected race-day form sits in the tapered sweet spot (+2% from proper taper, meta-analytic mean).");
+    }
   } else if (tsb >= -10) {
     notes.push(`Form neutral (TSB ${Math.round(tsb)}) — inside the ideal −10..+10 race window.`);
   } else if (tsb >= -30) {
@@ -394,15 +425,29 @@ function toFuelPlan(fuel: RaceFuelPlan): FuelPlan {
 // Main forecast
 // ---------------------------------------------------------------------------
 
-export function forecastRace(input: ForecastInput): ForecastResult | null {
+/** Personalized prediction is intentionally unavailable for the pilot. */
+export function forecastRace(_input: ForecastInput): ForecastResult | null {
+  return null;
+}
+
+/** Isolated, unvalidated arithmetic scenario. Never used by athlete API routes.
+ * This is not a forecast, a prescription, or a confidence-calibrated model. */
+export function illustrativeRaceScenario(input: ForecastInput): ForecastResult | null {
   const { athlete, fitness, distance } = input;
   // Reassignable: measured-course (GPX) ascent distribution may replace venue legs.
   let venue = input.venue;
   const sport = classifyDistance(distance);
   if (!sport) return null;
+  const valid = (v?: number | null) => v != null && Number.isFinite(v) && v > 0;
+  if ((sport === "run" || sport === "hyrox" || sport === "triathlon") && !valid(athlete.runPaceBase)) return null;
+  if ((sport === "swim" || sport === "triathlon") && !valid(athlete.swimPaceBase)) return null;
+  if ((sport === "bike" || sport === "triathlon") && (!valid(athlete.ftp) || !valid(athlete.weightKg))) return null;
 
   const measurementGaps: string[] = [];
   const factors: string[] = [];
+  // Equipment-driven aero/mass (CdA + bike weight by setup)
+  const bikeSetup = bikeSetupPhysics(athlete);
+  if (athlete.bikeType || athlete.hasAeroBars) factors.push(bikeSetup.note);
   const v: VenueProfile & { federation?: string; category?: string } = {
     targetTempC: venue.targetTempC ?? undefined,
     humidity: venue.humidity ?? undefined,
@@ -503,12 +548,9 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       measurementGaps.push(`Measured ascent applied: ${venue.courseElevM} m (split 75% bike / 25% run).`);
     }
     const distanceLabel = TRI_DISTANCE_LABELS[distance] || distance;
-    const runPaceBase = athlete.runPaceBase ?? 300;
-    if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
-    const swimPaceBase = athlete.swimPaceBase ?? 100;
-    if (!athlete.swimPaceBase) measurementGaps.push("No swim threshold — using 1:40/100m default.");
-    const ftp = athlete.ftp ?? 220;
-    if (!athlete.ftp) measurementGaps.push("No FTP — using 220W default.");
+    const runPaceBase = athlete.runPaceBase!;
+    const swimPaceBase = athlete.swimPaceBase!;
+    const ftp = athlete.ftp!;
 
     const openWater = (venue.swimVenue || "pool").toLowerCase() !== "pool";
     const currentFactor = venue.swimCurrent === "strong" ? 1.04 : venue.swimCurrent === "mild" ? 1.02 : 1;
@@ -520,7 +562,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     const bikeIF = triIF(distance) * triBikeSpeedFactor(distance);
     const sustainableW = Math.round(ftp * bikeIF * env.bikePowerFactor);
     const physics = bikePhysicsSpeedKmh({
-      ftp, weightKg: athlete.weightKg, bikeKg: 9,
+      ftp, weightKg: athlete.weightKg, bikeKg: bikeSetup.bikeKg, cdA: bikeSetup.cdA,
       elevGainM: venue.bikeElevM, distanceKm: bikeKm, terrain: venue.bikeTerrain,
       sustainableW,
       venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: env.windKph,
@@ -539,7 +581,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     // altitude/terrain stay in so the delta isolates weather + fitness.
     const neutralEnv = buildEnv({}, { wbgt: 15, windKph: 0 });
     const neutralPhysics = bikePhysicsSpeedKmh({
-      ftp, weightKg: athlete.weightKg, bikeKg: 9,
+      ftp, weightKg: athlete.weightKg, bikeKg: bikeSetup.bikeKg, cdA: bikeSetup.cdA,
       elevGainM: venue.bikeElevM, distanceKm: bikeKm, terrain: venue.bikeTerrain,
       sustainableW: Math.round(ftp * bikeIF * neutralEnv.bikePowerFactor),
       venueElevM: venue.baseElevM, tempC: 20, windKph: 0,
@@ -555,7 +597,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     const scenarioTotals = (o: { wbgt?: number; windKph?: number }) => {
       const e = buildEnv(venue, o);
       const ph = bikePhysicsSpeedKmh({
-        ftp, weightKg: athlete.weightKg, bikeKg: 9,
+        ftp, weightKg: athlete.weightKg, bikeKg: bikeSetup.bikeKg, cdA: bikeSetup.cdA,
         elevGainM: venue.bikeElevM, distanceKm: bikeKm, terrain: venue.bikeTerrain,
         sustainableW: Math.round(ftp * bikeIF * e.bikePowerFactor),
         venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: e.windKph,
@@ -567,9 +609,13 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
         leg.transitionMin
       );
     };
+    // Gust-aware band: when the venue carries a real gust forecast, the worst
+    // case rides the GUST speed (not a generic ×1.3), and the best case assumes
+    // partial lulls. Falls back to the legacy multipliers without gust data.
+    const gustDelta = Math.max(0, (venue.gustsKph ?? 0) - (venue.windKph ?? 0));
     const scenarios: ForecastScenario[] = [
-      { label: "best", totalMin: Math.round(scenarioTotals({ wbgt: Math.max(0, env.wbgt - 3), windKph: Math.round(env.windKph * 0.7) })), note: "cooler + lighter wind" },
-      { label: "worst", totalMin: Math.round(scenarioTotals({ wbgt: env.wbgt + 3, windKph: Math.min(45, Math.round(env.windKph * 1.3)) })), note: "hotter + windier" },
+      { label: "best", totalMin: Math.round(scenarioTotals({ wbgt: Math.max(0, env.wbgt - 3), windKph: Math.round(Math.max(0, env.windKph - (gustDelta > 0 ? gustDelta / 2 : env.windKph * 0.3))) })), note: gustDelta > 0 ? "cooler + wind lulls" : "cooler + lighter wind" },
+      { label: "worst", totalMin: Math.round(scenarioTotals({ wbgt: env.wbgt + 3, windKph: gustDelta > 0 ? Math.min(60, Math.round(env.windKph + gustDelta)) : Math.min(45, Math.round(env.windKph * 1.3)) })), note: gustDelta > 0 ? `hotter + gusting to ${Math.round(venue.gustsKph!)} km/h` : "hotter + windier" },
     ];
 
     // --- fuel: whole-race plan + timeline; kcal burn from bike work ---
@@ -582,7 +628,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       weightKg: athlete.weightKg,
     });
     const slots = fuelTimeline(fuel, { discipline: "triathlon", totalMin: Math.round(totalMin), transitionMin: Math.round(swimMin + bikeMin) });
-    const estimatedKcalBurned = kcalFromBikeKj(physics.wheelKj) + Math.round((runKm * (athlete.weightKg ?? 70) * 1.036));
+    const estimatedKcalBurned = athlete.weightKg ? kcalFromBikeKj(physics.wheelKj) + Math.round(runKm * athlete.weightKg * 1.036) : null;
     fuel.gaps.push(`Calories: ${Math.round(fuel.totalKcalIntake)} kcal from carbs is your INTAKE plan; full expenditure ≈ ${estimatedKcalBurned} kcal (bike work / gross efficiency + run km × weight). You cannot absorb it all — that's normal for long-course; fueling limits the hole, it doesn't close it.`);
 
     segments.push({
@@ -651,8 +697,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       : rBase;
     if (venue.courseKm != null && venue.courseElevM != null && venue.runElevM == null)
       venue = { ...venue, runElevM: venue.courseElevM };
-    const runPaceBase = athlete.runPaceBase ?? 300;
-    if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
+    const runPaceBase = athlete.runPaceBase!;
     const runBasePace = riegelPace(runPaceBase, r.km, 1.06);
     const runPace = runBasePace * env.runPaceFactor * terrainPaceFactor(venue.runTerrain, venue.runElevM) * fit.paceFactor;
     const runMin = (r.km * runPace) / 60;
@@ -686,7 +731,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
       } : null,
       wetsuit: null,
       scenarios: [{ label: "best", totalMin: best, note: "cooler" }, { label: "worst", totalMin: worst, note: "hotter" }],
-      fuelTotal: { ...fuel, slots, estimatedKcalBurned: Math.round(r.km * (athlete.weightKg ?? 70) * 1.036) },
+      fuelTotal: { ...fuel, slots, estimatedKcalBurned: athlete.weightKg ? Math.round(r.km * athlete.weightKg * 1.036) : null },
       note: null,
     });
   }
@@ -696,12 +741,11 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
   // =======================================================================
   if (sport === "bike") {
     const b = BIKE_DISTANCES[distance];
-    const ftp = athlete.ftp ?? 220;
-    if (!athlete.ftp) measurementGaps.push("No FTP — using 220W default.");
+    const ftp = athlete.ftp!;
     const bikeIF = (b.km >= 150 ? 0.72 : b.km >= 70 ? 0.78 : b.km >= 30 ? 0.83 : 0.88) * b.speedFactor;
     const sustainableW = Math.round(ftp * bikeIF * env.bikePowerFactor);
     const physics = bikePhysicsSpeedKmh({
-      ftp, weightKg: athlete.weightKg, bikeKg: 9,
+      ftp, weightKg: athlete.weightKg, bikeKg: bikeSetup.bikeKg, cdA: bikeSetup.cdA,
       elevGainM: venue.bikeElevM, distanceKm: b.km, terrain: venue.bikeTerrain,
       sustainableW,
       venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: env.windKph,
@@ -709,7 +753,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     const bikeMin = b.km / physics.speedKmh * 60;
     const neutralEnv = buildEnv({}, { wbgt: 15, windKph: 0 });
     const neutralPhysics = bikePhysicsSpeedKmh({
-      ftp, weightKg: athlete.weightKg, bikeKg: 9,
+      ftp, weightKg: athlete.weightKg, bikeKg: bikeSetup.bikeKg, cdA: bikeSetup.cdA,
       elevGainM: venue.bikeElevM, distanceKm: b.km, terrain: venue.bikeTerrain,
       sustainableW: Math.round(ftp * bikeIF * neutralEnv.bikePowerFactor),
       venueElevM: venue.baseElevM, tempC: 20, windKph: 0,
@@ -725,7 +769,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
     const scenarioTotal = (o: { wbgt?: number; windKph?: number }) => {
       const e = buildEnv(venue, o);
       const ph = bikePhysicsSpeedKmh({
-        ftp, weightKg: athlete.weightKg, bikeKg: 9,
+        ftp, weightKg: athlete.weightKg, bikeKg: bikeSetup.bikeKg, cdA: bikeSetup.cdA,
         elevGainM: venue.bikeElevM, distanceKm: b.km, terrain: venue.bikeTerrain,
         sustainableW: Math.round(ftp * bikeIF * e.bikePowerFactor),
         venueElevM: venue.baseElevM, tempC: venue.targetTempC, windKph: e.windKph,
@@ -770,8 +814,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
   // HYROX (state-space compromised-run model)
   // =======================================================================
   if (sport === "hyrox") {
-    const runPaceBase = athlete.runPaceBase ?? 300;
-    if (!athlete.runPaceBase) measurementGaps.push("No run threshold — using 5:00/km default.");
+    const runPaceBase = athlete.runPaceBase!;
     const hyrox = hyroxCompromisedRunPace(runPaceBase, fitness);
     const runMinTotal = (8 * hyrox.avgPaceSecPerKm) / 60;
     const ctl = fitness?.current?.ctl ?? 30;
@@ -815,8 +858,7 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
   // Swim only
   // =======================================================================
   const s = SWIM_DISTANCES[distance];
-  const swimPaceBase = athlete.swimPaceBase ?? 100;
-  if (!athlete.swimPaceBase) measurementGaps.push("No swim threshold — using 1:40/100m default.");
+  const swimPaceBase = athlete.swimPaceBase!;
   const openWater = (venue.swimVenue || "pool").toLowerCase() !== "pool";
   const currentFactor = venue.swimCurrent === "strong" ? 1.04 : venue.swimCurrent === "mild" ? 1.02 : 1;
   const coldFactor = venue.waterTempC != null && venue.waterTempC < 18 ? 1.03 : 1;
@@ -846,19 +888,8 @@ export function forecastRace(input: ForecastInput): ForecastResult | null {
 // Shared result assembly
 // ---------------------------------------------------------------------------
 
-function confidenceOf(sport: ForecastSport, athlete: AthleteSnapshot, fitness: ForecastInput["fitness"]): ForecastResult["confidence"] {
-  const hasFtp = athlete.ftp != null;
-  const hasRunPace = athlete.runPaceBase != null;
-  const hasSwimPace = athlete.swimPaceBase != null;
-  const relevantMeasured =
-    sport === "triathlon" ? [hasFtp, hasRunPace, hasSwimPace].filter(Boolean).length
-    : sport === "bike" ? (hasFtp ? 1 : 0)
-    : sport === "run" || sport === "hyrox" ? (hasRunPace ? 1 : 0)
-    : (hasSwimPace ? 1 : 0);
-  const relevantTotal = sport === "triathlon" ? 3 : 1;
-  if (fitness && relevantMeasured >= relevantTotal) return "high";
-  if (fitness || relevantMeasured >= 1) return "medium";
-  return "low";
+function confidenceOf(_sport: ForecastSport, _athlete: AthleteSnapshot, _fitness: ForecastInput["fitness"]): ForecastResult["confidence"] {
+  return "unvalidated";
 }
 
 function buildResult(o: {
@@ -876,13 +907,14 @@ function buildResult(o: {
   const best = Math.min(...o.scenarios.map((s) => s.totalMin), o.totalMin);
   const note =
     goalDeltaMin != null && goalDeltaMin > 0
-      ? `Forecast is ~${fmtTime(goalDeltaMin)} slower than your goal — the gap to close is ${fmtTime(Math.max(1, goalDeltaMin))} (worst-case band: ${fmtTime(worst - (o.goalTimeMin ?? 0))} over goal).`
+      ? `Illustrative scenario is ~${fmtTime(goalDeltaMin)} slower than your goal — the gap to close is ${fmtTime(Math.max(1, goalDeltaMin))} (worst-case band: ${fmtTime(worst - (o.goalTimeMin ?? 0))} over goal).`
       : goalDeltaMin != null
-        ? `Forecast is on/under goal by ~${fmtTime(Math.abs(goalDeltaMin))} (band ${fmtTime(best)}–${fmtTime(worst)}).`
+        ? `Illustrative scenario is on/under goal by ~${fmtTime(Math.abs(goalDeltaMin))} (band ${fmtTime(best)}–${fmtTime(worst)}).`
         : o.confidence === "low"
           ? "Confidence is low — complete your setup (FTP, run/swim thresholds) and log a few weeks of training to tighten this."
-          : "Re-run after each benchmark test (FTP / 5k / CSS) and again 48h out with the live weather forecast to keep this tight.";
+          : "No personal prediction accuracy or readiness is established by this calculation.";
   return {
+    kind: "illustrative",
     sport: o.sport,
     distance: o.distance,
     distanceLabel: o.distanceLabel,
@@ -895,7 +927,7 @@ function buildResult(o: {
     baselineTotalMin: o.baselineTotalMin,
     goalTimeMin: o.goalTimeMin,
     goalDeltaMin,
-    note,
+    note: "Illustrative arithmetic only; prediction error and likelihood are unvalidated. These scenarios are not confidence intervals. " + note,
     wbgt: o.wbgt,
     wetsuit: o.wetsuit,
     scenarios: o.scenarios,

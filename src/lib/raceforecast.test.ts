@@ -3,7 +3,7 @@
 // conflict or a safe-constant from the adjudication.
 import assert from "node:assert";
 import {
-  forecastRace, classifyDistance, bikePhysicsSpeedKmh, riegelPace, fmtTime,
+  illustrativeRaceScenario as forecastRace, classifyDistance, bikePhysicsSpeedKmh, riegelPace, fmtTime,
 } from "./raceforecast";
 import { buildRaceBrief, briefWriterSystemPrompt } from "./race-brief";
 import { raceFuelPlan, kcalFromBikeKj, fuelTimeline } from "./race-fuel";
@@ -73,14 +73,14 @@ import { REJECTED_CLAIMS, allConstants } from "./forecast-constants";
 {
   const good = forecastRace(
     {
-      athlete: { ftp: 250, runPaceBase: 300, swimPaceBase: 100, draftSkill: "good" },
+      athlete: { ftp: 250, runPaceBase: 300, swimPaceBase: 100, weightKg:70, draftSkill: "good" },
       fitness: null, distance: "olympic",
       venue: { targetTempC: 20, humidity: 60, swimVenue: "ocean", waterTempC: 22 },
     },
   )!;
   const none = forecastRace(
     {
-      athlete: { ftp: 250, runPaceBase: 300, swimPaceBase: 100, draftSkill: "none" },
+      athlete: { ftp: 250, runPaceBase: 300, swimPaceBase: 100, weightKg:70, draftSkill: "none" },
       fitness: null, distance: "olympic",
       venue: { targetTempC: 20, humidity: 60, swimVenue: "ocean", waterTempC: 22 },
     },
@@ -92,10 +92,10 @@ import { REJECTED_CLAIMS, allConstants } from "./forecast-constants";
 
 // --- bike physics: wind + air density inside the solve ---
 {
-  const calm = bikePhysicsSpeedKmh({ ftp: 250, distanceKm: 40, sustainableW: 200, windKph: 0, tempC: 20 });
-  const windy = bikePhysicsSpeedKmh({ ftp: 250, distanceKm: 40, sustainableW: 200, windKph: 30, tempC: 20 });
+  const calm = bikePhysicsSpeedKmh({ ftp: 250, weightKg:70, distanceKm: 40, sustainableW: 200, windKph: 0, tempC: 20 });
+  const windy = bikePhysicsSpeedKmh({ ftp: 250, weightKg:70, distanceKm: 40, sustainableW: 200, windKph: 30, tempC: 20 });
   assert.ok(windy.speedKmh < calm.speedKmh, `headwind slows (${windy.speedKmh} < ${calm.speedKmh})`);
-  const cold = bikePhysicsSpeedKmh({ ftp: 250, distanceKm: 40, sustainableW: 200, windKph: 0, tempC: 5 });
+  const cold = bikePhysicsSpeedKmh({ ftp: 250, weightKg:70, distanceKm: 40, sustainableW: 200, windKph: 0, tempC: 5 });
   assert.ok(cold.rho > calm.rho, "cold air is denser");
   assert.ok(calm.rho < 1.225 + 0.02 && calm.rho > 1.15, `sea-level 20°C ρ sane (got ${calm.rho})`);
   assert.ok(airDensity(1500, 20) < airDensity(0, 20), "altitude thins air");
@@ -147,14 +147,14 @@ import { REJECTED_CLAIMS, allConstants } from "./forecast-constants";
 
 // --- fuel + calories (Conflict 10: labeled defaults) ---
 {
-  const long = raceFuelPlan({ durationMin: 340, gutTrained: false, weightKg: 70 });
+  const long = raceFuelPlan({ durationMin: 340, gutTrained: false, weightKg: 70, caffeineOptIn:true });
   assert.ok(long.carbsGPerHour >= 60 && long.carbsGPerHour <= 90, "long-course default in the 60–90 band");
   assert.equal(long.kcalPerHour, long.carbsGPerHour * 4, "kcal = g × 4");
   assert.ok(long.fluidMlPerHour >= 500 && long.fluidMlPerHour <= 1000, "fluid default band");
   assert.ok(long.sodiumMgPerHour > 300, "sodium computed from mg/L × L/h");
   assert.ok(long.caffeineMg != null && long.caffeineMg === 210, "caffeine 3 mg/kg for 70kg");
   const measured = raceFuelPlan({ durationMin: 340, sweatRateMlH: 1400, sodiumMgPerL: 900, heatFactor: 1.1 });
-  assert.equal(measured.fluidMlPerHour, 1540, "measured sweat rate scales, heat applied");
+  assert.equal(measured.fluidMlPerHour, 1400, "reported sweat is not silently heat-multiplied");
   assert.ok(measured.gaps.length < long.gaps.length, "measured inputs remove gaps");
   const short = raceFuelPlan({ durationMin: 45 });
   assert.equal(short.carbsGPerHour, 0, "under 60 min: water only");
@@ -190,7 +190,7 @@ import { REJECTED_CLAIMS, allConstants } from "./forecast-constants";
   assert.equal(classifyDistance("half"), "triathlon");
   assert.equal(classifyDistance("boxing"), null);
   const r = forecastRace({ athlete: {}, fitness: null, distance: "750m", venue: {} })!;
-  assert.ok(r.totalMin > 10 && r.totalMin < 25, `750m swim default sane (got ${r.totalMin})`);
+  assert.equal(r,null,"missing swim anchor does not produce a number");
   assert.ok(fmtTime(75.2).includes("h"), "fmtTime hours");
 }
 console.log("✓ raceforecast.test.ts — all assertions passed");

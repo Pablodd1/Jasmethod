@@ -1,11 +1,12 @@
+import { automatedDeliveryEnabled } from "@/lib/capabilities";
+import { claimDelivery, deliveryFailureStatus, reconcileStaleDeliveries, reminderSchedule } from "@/lib/delivery-claim";
 import { trainingReminder } from "@/lib/training-reminder";
 import { prisma } from "@/lib/db";
 import { dayBounds, addDaysKey, localDate } from "@/lib/dates";
 import { sendEmail } from "@/lib/email";
 import { sendTelegram, sendTelegramPhoto } from "@/lib/notify";
 import { meterUsage, logEvent } from "@/lib/telemetry";
-import { prescribeToday } from "@/lib/adaptive";
-import { baseWorkout } from "@/lib/prescription";
+import { buildWeeklyReview, isWeeklyReviewTime, weeklyReviewDay } from "@/lib/weekly-review";
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -13,6 +14,9 @@ export async function GET(req: Request) {
     return Response.json({ error: "Cron is not configured" }, { status: 503 });
   if (req.headers.get("authorization") !== `Bearer ${secret}`)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!automatedDeliveryEnabled()) return Response.json({ enabled: false, sent: 0, reason: "Automated delivery is disabled pending delivery, consent and safety review." });
+  const stale = await reconcileStaleDeliveries();
+  if (stale.count) await logEvent({kind:"warn", source:"cron", route:"/api/cron/reminders", message:`${stale.count} interrupted deliveries need receipt review; not resent.`});
   const users = await prisma.user.findMany({
     where: {
       reminder: { OR: [{ emailEnabled: true }, { telegramEnabled: true }] },
@@ -31,25 +35,54 @@ export async function GET(req: Request) {
         timeZone: user.timezone,
       }).format(new Date()),
     );
-    // CATCH-UP semantics: deliver at the first cron hour at-or-after the
-    // user's chosen hour (the per-day+channel claim below dedupes). Exact-hour
-    // matching made delivery silently skip whenever Vercel missed an hour or
-    // the plan capped the schedule below hourly.
-    if (hour < pref.reminderHour) {
-      skipped++;
-      continue;
+    const schedule = reminderSchedule(user.timezone, pref.reminderHour, pref.remindBeforeMin || 0);
+    if (!schedule) { skipped++; continue; }
+    const day = dayBounds(user.timezone), key = schedule.workoutDay;
+
+    // WEEKLY REVIEW (Sunday evening, once/week): adherence, best effort,
+    // next week's focus — the retention feature, from the athlete's own data.
+    if (isWeeklyReviewTime(user.timezone, pref.reminderHour)) {
+      try {
+        const lang = (user.language === "es" ? "es" : "en") as "en" | "es";
+        const review = await buildWeeklyReview(user.id, user.timezone, lang);
+        const weekKey = weeklyReviewDay(user.timezone);
+        for (const channel of [pref.telegramEnabled ? "telegram" : "email"]) {
+          if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)
+            continue;
+          if (!await claimDelivery(user.id, weekKey, `${channel}:weekly`)) continue;
+          const result =
+            channel === "email"
+              ? await sendEmail({
+                  to: user.email,
+                  subject: review.subject,
+                  text: review.text,
+                  html: `<pre style="white-space:pre-wrap;font-family:system-ui">${review.text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>`,
+                  userId: user.id,
+                })
+              : pref.telegramChatId
+                ? await sendTelegram(pref.telegramChatId, review.text)
+                : { ok: false, error: "Telegram chat is not configured" };
+          await prisma.reminderDelivery.update({
+            where: {
+              userId_day_channel: { userId: user.id, day: weekKey, channel: `${channel}:weekly` },
+            },
+            data: { status: result.ok ? "sent" : deliveryFailureStatus(result.error), error: result.error || null },
+          }).catch(() => {});
+          if (result.ok) {
+            sent++;
+            await meterUsage(user.id, channel === "email" ? "email_sends" : "telegram_msgs", 1);
+          } else failed++;
+        }
+      } catch (reviewErr) {
+        console.error("[weekly review] failed:", String(reviewErr).slice(0, 140));
+      }
     }
-    const day = dayBounds(user.timezone),
-      key = pref.reminderHour >= 12 ? addDaysKey(day.key, 1) : day.key;
+
     const { text, subject, html, png } = await trainingReminder(user, key);
-    for (const channel of ["email", "telegram"]) {
+    for (const channel of [pref.telegramEnabled ? "telegram" : "email"]) {
       if (channel === "email" ? !pref.emailEnabled : !pref.telegramEnabled)
         continue;
-      const claimed = await prisma.reminderDelivery.createMany({
-        data: [{ userId: user.id, day: day.key, channel, status: "pending" }],
-        skipDuplicates: true,
-      });
-      if (!claimed.count) {
+      if (!await claimDelivery(user.id, schedule.claimDay, channel)) {
         skipped++;
         continue;
       }
@@ -89,10 +122,10 @@ export async function GET(req: Request) {
             : { ok: false, error: "Telegram chat is not configured" };
       await prisma.reminderDelivery.update({
         where: {
-          userId_day_channel: { userId: user.id, day: day.key, channel },
+          userId_day_channel: { userId: user.id, day: schedule.claimDay, channel },
         },
         data: {
-          status: result.ok ? "sent" : "failed",
+          status: result.ok ? "sent" : deliveryFailureStatus(result.error),
           error: result.error || null,
         },
       });
@@ -110,6 +143,9 @@ export async function GET(req: Request) {
         });
       }
     }
+
+    // Feedback is collected for the selected session inside the authenticated app.
+
   }
   await logEvent({
     kind: "info",

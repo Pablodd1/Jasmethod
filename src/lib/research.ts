@@ -6,7 +6,7 @@ export interface ResearchSource {
   id: string;
   claim: string;         // what the app uses it for
   ref: string;           // author year, journal/body
-  level: "A" | "B";      // A = randomized/cohort human data, B = review/consensus
+  level: "A" | "B" | "C";      // A = human outcomes, B = review/consensus, C = protocol/unverified (not efficacy evidence)
   population: "recreational" | "professional" | "both";
 }
 
@@ -65,9 +65,9 @@ export const RESEARCH_SOURCES: ResearchSource[] = [
   // ---- boxing / combat sports: brain health + explosive power (2025) ----
   { id: "issncombat2025", claim: "combat sport nutrition position stand: macronutrients, making-weight, supplementation framework", ref: "Ricci et al. 2025, ISSN Position Stand, J Int Soc Sports Nutr", level: "B", population: "both" },
   { id: "brainfitness2025", claim: "brain fitness in combat sports: training load, rest, and pre/post-fight protocols for neuroprotection", ref: "Brain Fitness in Combat Sports review, 2025 (PubMed 42379663)", level: "B", population: "both" },
-  { id: "beauregard2025", claim: "DHA/EPA omega-3 exert neuroprotective effects against experimental TBI; EPA-only may interfere with repair after repeated mTBI", ref: "Beauregard et al. 2025, PLOS ONE (PMC12021223)", level: "A", population: "both" },
+  { id: "beauregard2025", claim: "Omega-3 neuroprotection trial protocol; no efficacy results and no basis for concussion-treatment recommendations", ref: "Beauregard et al. 2025, PLOS ONE study protocol (PMID 40273177)", level: "C", population: "both" },
   { id: "heileson2024", claim: "omega-3 supplementation and head-impact biomarkers in contact-sport athletes (multi-site NCAA)", ref: "Heileson et al. 2024 (PMC11489149)", level: "A", population: "both" },
-  { id: "giraldo2025", claim: "creatine monohydrate neuroprotective in mild TBI; integrated into contact-sport nutritional protocols; active trial NCT06644131", ref: "Giraldo et al. 2025, J Int Soc Sports Nutr", level: "A", population: "both" },
+  { id: "giraldo2025", claim: "Creatine for concussion prevention or treatment is unestablished; experimental rationale does not demonstrate athlete benefit", ref: "Giraldo et al. 2025, J Int Soc Sports Nutr; citation requires verification", level: "C", population: "both" },
   { id: "betaalanineboxing", claim: "beta-alanine 3.2-6.4g/d improves high-intensity performance and punching power in the final seconds of rounds (4-10 wk trials)", ref: "Beta-alanine in combat sports review (PMC10490143); Korean national boxers study 2018", level: "A", population: "both" },
   { id: "bellar2015", claim: "alpha-GPC acutely enhances power output and reaction speed (cholinergic mechanism)", ref: "Bellar et al. 2015, J Int Soc Sports Nutr", level: "A", population: "both" },
 

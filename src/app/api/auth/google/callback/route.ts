@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     if (!code || !state) return fail("missing_code_or_state");
 
     // CSRF: state must match the cookie we set in step 1.
-    const store = cookies();
+    const store = await cookies();
     const expected = store.get("jmm_google_signin")?.value;
     const stateOk =
       !!expected &&

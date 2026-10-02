@@ -102,10 +102,17 @@ export async function PATCH(req: Request) {
       throw new ApiError("coachId and a valid action are required");
     const coach = await prisma.user.findUnique({ where: { id: coachId } });
     if (!coach) throw new ApiError("Coach not found", 404);
-    if (coach.role === "admin" && action === "deactivate")
-      throw new ApiError("Administrators cannot be deactivated here", 400);
+    // NOTE: admin-target deactivation is allowed while another admin remains
+    // (last-admin guard lives in the deactivate branch below).
 
     if (action === "deactivate") {
+      // Safety: never demote the LAST active admin — an admin may deactivate
+      // themselves only while another admin remains.
+      if (coach.role === "admin") {
+        const adminCount = await prisma.user.count({ where: { role: "admin" } });
+        if (adminCount <= 1)
+          throw new ApiError("Cannot demote the last administrator", 400);
+      }
       await prisma.$transaction([
         prisma.coachAssignment.updateMany({
           where: { coachId, status: "active" },

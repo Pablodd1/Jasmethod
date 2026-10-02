@@ -1,31 +1,15 @@
 import { dateKey, localDate } from "./dates";
-import { buildFitWorkout, workoutToFitSpec } from "./fit-export";
+import { buildFitWorkout } from "./fit-export";
+import { fitFilename, type CanonicalSession } from "./canonical-session";
 import { buildZip, type ZipEntry } from "./zip";
-import { calendarDescription, shapeLink, type PlanFormatSession } from "./plan-formats";
+import { calendarDescription, shapeLink } from "./plan-formats";
 import { buildFuelingPlan } from "./fueling";
 
 type Row = Record<string, unknown>;
 
-// Prescription JSON → exportable steps (defensive against old/odd data).
-function safeSteps(prescription: unknown): PlanFormatSession["steps"] {
-  if (typeof prescription !== "string") return [];
-  try {
-    const p = JSON.parse(prescription);
-    return Array.isArray(p.steps)
-      ? p.steps.map((s: any) => ({
-          name: String(s.name || "Step"),
-          seconds: Number(s.seconds) || 0,
-          reps: s.reps,
-          zone: String(s.zone || "z2"),
-          note: s.note,
-        }))
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 export interface TrainingExportData {
+  resolvedSessions?: Record<string, CanonicalSession>;
+  resolutionErrors?: Record<string, string>;
   athlete: { name: string; email: string; timezone: string };
   workouts: Array<
     Row & {
@@ -61,7 +45,9 @@ export interface TrainingExportData {
 
 const csvCell = (value: unknown) => {
   if (value == null) return "";
-  const text = value instanceof Date ? value.toISOString() : String(value);
+  let text = value instanceof Date ? value.toISOString() : String(value);
+  // Untrusted notes/provider titles must not execute spreadsheet formulas.
+  if (typeof value === "string" && /^[\s]*[=+@-]/.test(text)) text = "\'" + text;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
@@ -95,6 +81,8 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
     if (day.dayOff) continue;
     for (const session of day.sessions) {
       if (session.durationMin <= 0) continue;
+      const resolved = data.resolvedSessions?.[session.id];
+      if (resolved && resolved.verdict === "rest") continue;
       const key = dateKey(session.date, data.athlete.timezone);
       const start = localDate(
         key,
@@ -103,29 +91,31 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
           ? session.startTime
           : "06:00",
       );
-      const end = new Date(start.getTime() + session.durationMin * 60000);
+      const durationMin = resolved?.verdict === "ready" ? resolved.durationMin : session.durationMin;
+      const end = new Date(start.getTime() + durationMin * 60000);
       lines.push(
         "BEGIN:VEVENT",
         `UID:${icsText(session.id)}@jasmiamimethod`,
         `DTSTAMP:${utcStamp(new Date())}`,
         `DTSTART:${utcStamp(start)}`,
         `DTEND:${utcStamp(end)}`,
-        `SUMMARY:${icsText(session.title)}`,
+        `SUMMARY:${icsText(resolved?.title ?? session.title)}`,
         `DESCRIPTION:${icsText(
-          `${calendarDescription({
-            title: String(session.title),
-            sport: String(session.sport),
-            durationMin: Number(session.durationMin),
+          `${resolved?.verdict !== "ready" ? `PROVISIONAL / ON HOLD: ${resolved?.reason || data.resolutionErrors?.[session.id] || "Complete current check-in before training."}\n` : ""}${calendarDescription({
+            title: resolved?.title ?? String(session.title),
+            sport: resolved?.sport ?? String(session.sport),
+            revision: resolved?.revision,
+            durationMin,
             intensity: (session.intensity as string) ?? null,
-            steps: safeSteps(session.prescription),
-            fuel: buildFuelingPlan({
-              durationMin: Number(session.durationMin),
+            steps: resolved?.verdict === "ready" ? resolved.steps.map(s => ({ ...s, targetLabel: s.target.label })) : [],
+            fuel: resolved?.verdict === "ready" ? buildFuelingPlan({
+              durationMin,
               intensity: String(session.intensity || "z2"),
               weightKg: data.profile?.weightKg,
               sweatRateMlH: data.profile?.sweatRateMlH,
               sodiumMgPerL: data.profile?.sodiumMgPerL,
               gutTrained: !!data.profile?.gutTrained,
-            }),
+            }) : null,
           })}\n📈 Effort shape: ${shapeLink(String(session.id))}`,
         )}`,
         "END:VEVENT",
@@ -135,14 +125,6 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
   lines.push("END:VCALENDAR");
   return lines.join("\r\n") + "\r\n";
 }
-
-const safePart = (value: unknown) =>
-  String(value || "workout")
-    .normalize("NFKD")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 45)
-    .toLowerCase() || "workout";
 
 export function buildTrainingBundle(data: TrainingExportData, created = new Date()) {
   const planned = (data.plan?.days || []).flatMap((day) =>
@@ -173,9 +155,10 @@ export function buildTrainingBundle(data: TrainingExportData, created = new Date
         "training-history.csv: all planned, manual, and imported training records.",
         "daily-metrics.csv, sleep.csv, checkins.csv: source data used by analytics.",
         "training-calendar.ics: import the active plan into Google Calendar, Apple Calendar, or Outlook.",
-        "fit/: one structured workout per active-plan session for compatible Garmin/COROS workflows.",
+        "fit/: only current, safety-resolved, supported workout files. fit-export-status.csv explains every export or omission.",
+        "Future, held, malformed, rest and unsupported workouts have no FIT. Reassess on the session day.",
         "",
-        "FIT import support varies by platform and device. WHOOP and Strava supply recorded data to JasMiamiMethod; they do not accept this training-plan bundle from the app.",
+        "FIT encoding does not prove device receipt or hardware compatibility. For a supported Garmin device, use a data-capable USB cable and Garmin/NewFiles; verify every step before training. Garmin Connect activity upload is not a workout import route. Mac MTP limitations may require Windows.",
       ].join("\r\n"),
     },
     {
@@ -282,32 +265,25 @@ export function buildTrainingBundle(data: TrainingExportData, created = new Date
     { name: "training-calendar.ics", data: buildTrainingCalendar(data) },
   ];
 
+  const statuses: Row[] = [];
   for (const day of data.plan?.days || []) {
-    if (day.dayOff) continue;
     for (const session of day.sessions) {
-      if (session.durationMin <= 0) continue;
-      const fit = buildFitWorkout(
-        workoutToFitSpec(
-          {
-            title: session.title,
-            sport: session.sport,
-            durationMin: session.durationMin,
-            type: String(session.type || "endurance"),
-            prescription:
-              typeof session.prescription === "string" ? session.prescription : null,
-            originalPlan: typeof session.originalPlan === "string" ? session.originalPlan : null,
-            lthr: data.profile?.lthr,
-            ftp: data.profile?.ftp,
-          },
-          { zone: typeof session.intensity === "string" ? session.intensity : "z2" },
-        ),
-        created,
-      );
-      entries.push({
-        name: `fit/${dateKey(session.date, data.athlete.timezone)}-${safePart(session.sport)}-${safePart(session.title)}-${safePart(session.id).slice(0, 8)}.fit`,
-        data: fit,
-      });
+      // Only the authenticated service may supply effective sessions. Missing
+      // resolution is held, never rebuilt from a raw original plan or protocol.
+      const resolved = data.resolvedSessions?.[session.id];
+      if (!resolved) {
+        statuses.push({ sessionId: session.id, date: dateKey(session.date, data.athlete.timezone), title: session.title, verdict: "blocked", mode: "unavailable", status: "omitted", reason: data.resolutionErrors?.[session.id] || "No authenticated current safety resolution was supplied." });
+        continue;
+      }
+      const row = { sessionId: session.id, date: resolved.dateLocal, title: resolved.title, revision: resolved.revision, verdict: resolved.verdict, mode: resolved.capability.mode, status: "omitted", reason: resolved.verdict === "ready" ? resolved.capability.reason : resolved.reason };
+      if (resolved.verdict === "ready" && resolved.capability.available) {
+        const fit = buildFitWorkout(resolved, created);
+        entries.push({ name: `fit/${fitFilename(resolved)}`, data: fit });
+        row.status = "encoded-device-unverified";
+      }
+      statuses.push(row);
     }
   }
+  entries.push({ name: "fit-export-status.csv", data: toCsv(statuses, ["sessionId", "date", "title", "revision", "verdict", "mode", "status", "reason"]) });
   return buildZip(entries, created);
 }

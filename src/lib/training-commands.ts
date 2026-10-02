@@ -117,11 +117,15 @@ export function applyTrainingCommand(
 
   switch (cmd.command) {
     case "REST_DAY": {
-      p.session.title = "Rest Day — 20 min Z1 + Breathing";
-      p.session.mainSet = ["20 minutes Zone 1 in any modality (walk, easy spin, swim)", "5 min breathing: extended exhale 2:1"];
+      p.session.title = "Rest day";
+      p.session.mainSet = [];
+      p.steps = [];
+      p.verdict = "rest";
+      p.durationMin = 0;
       p.session.type = "recovery";
-      p.session.durationMin = 20; // keep the record consistent with the description
-      return { adjusted: p, explanation: "Session converted to active recovery. Training now would dig a deeper hole — protect the block.", allowed: true };
+      p.session.durationMin = 0;
+      p.session.totalQualityMeters = 0;
+      return { adjusted: p, explanation: "Rest requested. No exercise is prescribed; review any symptoms or restrictions before resuming.", allowed: true };
     }
 
     case "RECOVERY_MODE": {
@@ -150,25 +154,7 @@ export function applyTrainingCommand(
     }
 
     case "ADD_REPS": {
-      const readiness = context.readinessScore ?? 60;
-      const hrvOk = context.hrvStatus === "high" || context.hrvStatus === "normal";
-      const notSore = (context.soreness ?? 3) <= 3;
-
-      // SAFETY RULE: multiple positive signals required to add volume
-      if (readiness >= 70 && hrvOk && notSore) {
-        p.session.mainSet = p.session.mainSet.map((s: string) => {
-          const m = s.match(/(\d+)×/);
-          if (m) return s.replace(`${m[1]}×`, `${parseInt(m[1]) + (cmd.value || 1)}×`);
-          return s;
-        });
-        p.session.totalQualityMeters += 40 * (cmd.value || 1);
-        return { adjusted: p, explanation: `Added ${cmd.value || 1} rep(s). Your readiness (${readiness}/100) supports the extra volume — recover well tonight.`, allowed: true };
-      }
-      return {
-        adjusted: p,
-        explanation: `I hear you want more, but your readiness (${readiness}/100) doesn't support adding volume right now. Execute the session as written — consistency beats heroics.`,
-        allowed: false,
-      };
+      return { adjusted: p, explanation: "Adding volume needs a reviewed recent training baseline, current safety check and recovery context. Keep the current plan until that review.", allowed: false };
     }
 
     case "REMOVE_REPS": {
@@ -186,20 +172,7 @@ export function applyTrainingCommand(
     }
 
     case "INCREASE_INTENSITY": {
-      // SAFETY RULE: no single signal justifies intensity increase
-      const readiness = context.readinessScore ?? 50;
-      const hrvHigh = context.hrvStatus === "high";
-      const notSore = (context.soreness ?? 3) <= 2;
-
-      if (readiness >= 75 && hrvHigh && notSore) {
-        p.session.velocityTarget = "95% max velocity";
-        return { adjusted: p, explanation: `Intensity increased — your readiness (${readiness}) and HRV (${context.hrvStatus}) both support it. Make it count.`, allowed: true };
-      }
-      return {
-        adjusted: p,
-        explanation: `Not today. Increasing intensity requires multiple positive signals — you have readiness ${readiness}/100 and HRV ${context.hrvStatus || "unknown"}. The session as written is already the right dose.`,
-        allowed: false,
-      };
+      return { adjusted: p, explanation: "Readiness or HRV alone cannot clear harder training. Request a reviewed plan change with current symptoms, recent tolerated load and goals.", allowed: false };
     }
 
     case "REDUCE_INTENSITY": {
@@ -214,16 +187,8 @@ export function applyTrainingCommand(
       if (!cmd.value || cmd.value < 20 || cmd.value > 180) {
         return { adjusted: p, explanation: "Duration must be between 20 and 180 minutes.", allowed: false };
       }
-      // Readiness caps the ask: a low-readiness day cannot be extended into a
-      // big session, no matter how it is phrased.
-      const readiness = context.readinessScore ?? 60;
-      const maxAllowed = readiness >= 70 ? 180 : readiness >= 55 ? 120 : 75;
-      if (cmd.value > maxAllowed) {
-        return {
-          adjusted: p,
-          explanation: `Your readiness (${readiness}/100) caps today at ${maxAllowed} minutes — the session stays as prescribed.`,
-          allowed: false,
-        };
+      if (!Number.isFinite(p.session.durationMin) || cmd.value > p.session.durationMin) {
+        return { adjusted: p, explanation: "A longer session needs a reviewed recent training baseline and current safety context. This command cannot increase your prescribed duration.", allowed: false };
       }
       p.session.durationMin = cmd.value;
       return { adjusted: p, explanation: `Duration set to ${cmd.value} minutes.`, allowed: true };

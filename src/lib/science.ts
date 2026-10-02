@@ -360,7 +360,31 @@ export function mesoBlock(level: string): number {
   return level === "beginner" ? 1.10 : level === "amateur" ? 1.07 : level === "advanced" ? 1.06 : 1.05;
 }
 
-export function mesoVolume(weekIndex: number, level: string, raceDates: Date[] = [], startDate: Date = new Date(0)): { vol: number; phase: "build" | "taper"; block: number } {
+// Race input for planning: A races get the full taper; B races are trained
+// through with light sharpening; C races are ignored by volume math.
+export interface PlanRace {
+  date: Date;
+  priority?: number | null; // 1 = A, 2 = B, 3 = C
+}
+
+export function mesoVolume(
+  weekIndex: number,
+  level: string,
+  raceDates: Date[] = [],
+  startDate: Date = new Date(0),
+): { vol: number; phase: "build" | "taper"; block: number } {
+  return mesoVolumeRaces(weekIndex, level, raceDates, startDate);
+}
+
+// Race-aware volume: A-race taper anchors to the RACE DATE (final 2 weeks
+// −41%→−60%, meta-analytic), B-race weeks get −20% sharpening (train
+// through), post-race regeneration dips for A (−40%) and B (−15%).
+export function mesoVolumeRaces(
+  weekIndex: number,
+  level: string,
+  raceDates: (Date | PlanRace)[],
+  startDate: Date = new Date(0),
+): { vol: number; phase: "build" | "taper"; block: number } {
   // weekIndex 0-based
   const block = Math.floor(weekIndex / 6);
   const inBlock = weekIndex % 6;
@@ -368,14 +392,70 @@ export function mesoVolume(weekIndex: number, level: string, raceDates: Date[] =
   const within = 0.85 + (inBlock / 4) * 0.15;
   // block-to-block: each cycle 5-10% higher
   const step = Math.pow(mesoBlock(level), block);
-  // post-race dip: the week right after a race drops to rebuild
   const wkStart = startDate.getTime() + weekIndex * 7 * 86400000;
+  const wkEnd = wkStart + 7 * 86400000;
   const prevWeekStart = wkStart - 7 * 86400000;
-  const afterRace = raceDates.some((r) => { const rt = new Date(r).getTime(); return rt >= prevWeekStart && rt < wkStart; });
-  const isTaper = inBlock === 5;
-  if (afterRace) return { vol: 0.6 * step, phase: "build", block }; // post-race regeneration week
+
+  const norm = (r: Date | PlanRace): { t: number; pr: number } => ({
+    t: new Date("date" in r && r.date instanceof Date ? r.date : (r as Date)).getTime(),
+    pr: "priority" in r && typeof r.priority === "number" ? r.priority : 1,
+  });
+  const races = raceDates.map(norm).filter((r) => Number.isFinite(r.t));
+
+  // Post-race regeneration: A −40%, B −15% (train-through recovers fast).
+  for (const r of races) {
+    if (r.t >= prevWeekStart && r.t < wkStart) {
+      const dip = r.pr === 1 ? 0.6 : r.pr === 2 ? 0.85 : 1;
+      if (dip < 1) return { vol: dip * step, phase: "build", block };
+    }
+  }
+
+  // A-RACE TAPER anchored to the race date: race falls inside this week or
+  // the next → progressive cut. Week-of ≈ −55%, week-before ≈ −41% (volume
+  // ramps down 2 weeks out; intensity is preserved by the session builders).
+  const aRaces = races.filter((r) => r.pr === 1);
+  for (const r of aRaces) {
+    if (r.t >= wkStart && r.t < wkEnd) return { vol: 0.45 * step, phase: "taper", block };
+    if (r.t >= wkEnd && r.t < wkEnd + 7 * 86400000) return { vol: 0.59 * step, phase: "taper", block };
+    if (r.t >= wkEnd + 7 * 86400000 && r.t < wkEnd + 14 * 86400000) return { vol: 0.75 * step, phase: "build", block };
+  }
+
+  // B-RACE sharpening: −20% in race week only (train through the block).
+  const bRaces = races.filter((r) => r.pr === 2);
+  for (const r of bRaces) {
+    if (r.t >= wkStart && r.t < wkEnd) return { vol: 0.8 * step, phase: "build", block };
+  }
+
+  // No nearby priority race: the classic 6-week mesocycle stands (week 6
+  // taper/test week) — but ONLY when no A race exists later in the plan;
+  // with a real A date ahead, block-position taper is suppressed so the
+  // race-anchored cut above is the only taper.
+  const hasFutureARace = aRaces.some((r) => r.t >= wkStart);
+  const isTaper = inBlock === 5 && !hasFutureARace;
   if (isTaper) return { vol: 0.55 * step, phase: "taper", block };
   return { vol: within * step, phase: "build", block };
+}
+
+// ---- Research-based single-session caps (owner feedback: 3h scheduled run) ----
+// Hard sessions: >90 min of threshold/VO2 work exceeds the stimulus window and
+// degrades recovery (Seiler polarized model). Long endurance: capped at 30% of
+// weekly volume and 150 min (non-marathon) — the classic long-run ceiling;
+// full-distance goal allows up to 180 min. Strength capped at 90.
+export function capSessionMinutes<T extends { title: string; minutes: number; type?: string }>(
+  s: T,
+  weeklyTotalMin: number,
+  goal?: string | null,
+): T {
+  const isHard = /tempo|threshold|interval|vo2|repeat|race pace|sharpen/i.test(s.title) || s.type === "interval" || s.type === "threshold";
+  const isLong = /long/i.test(s.title) || s.type === "endurance";
+  const fullGoal = goal === "full";
+  if (isHard) return { ...s, minutes: Math.min(s.minutes, 90) };
+  if (isLong) {
+    const cap = Math.min(fullGoal ? 180 : 150, Math.round(weeklyTotalMin * 0.3));
+    return { ...s, minutes: Math.min(s.minutes, Math.max(45, cap)) };
+  }
+  if (s.type === "strength") return { ...s, minutes: Math.min(s.minutes, 90) };
+  return s;
 }
 
 export function generatePlan(opts: {
@@ -390,19 +470,23 @@ export function generatePlan(opts: {
   weeklyHours?: number;
   easyPct?: number; // target % of weekly minutes in Z1-Z2; rest = quality. Default 70 (70/30).
   raceDate?: Date; // race day — volume dips after it, then rebuilds
+  extraRaces?: PlanRace[]; // B/C races — B = train-through sharpening
 }): GeneratedWeek[] {
-  const { level, distance, weeks, startDate, weeklyHours, easyPct, raceDate } = opts;
+  const { level, distance, weeks, startDate, weeklyHours, easyPct, raceDate, extraRaces } = opts;
   const splitTarget = easyPct ?? 70; // 70/30 default, manual-adjustable
   const baseWeekly = weeklyHours ?? (level === "pro" ? 20 : level === "advanced" ? 14 : level === "amateur" ? 10 : 6);
   // Distance multipliers for weekly hours
   const distFactor: Record<string, number> = { sprint: 0.6, olympic: 0.8, half: 1.0, full: 1.3 };
   const targetHours = baseWeekly * (distFactor[distance] ?? 1);
   // 6-week mesocycles: week 6 = taper + baseline test, each block +5-10%
-  const races = raceDate ? [raceDate] : [];
+  const races: PlanRace[] = [
+    ...(raceDate ? [{ date: raceDate, priority: 1 }] : []),
+    ...(extraRaces || []),
+  ];
 
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
-    const { vol: volumeFactor, phase: ph, block } = mesoVolume(w - 1, level, races, startDate);
+    const { vol: volumeFactor, phase: ph, block } = mesoVolumeRaces(w - 1, level, races, startDate);
     // legacy 4-phase mapping for session content variety: early block = base,
     // mid = build, late = peak-style race work, week 6 = taper
     const inBlock = (w - 1) % 6;
@@ -552,12 +636,13 @@ export function generatePlan(opts: {
       minutes: Math.max(1, Math.round(s.minutes)),
     }));
 
+    const cappedSessions = finalSessions.map((x) => capSessionMinutes(x, totalMin, distance));
     weeksOut.push({
       week: w,
       theme: phaseTheme[ph],
-      sessions: finalSessions,
+      sessions: cappedSessions,
       // Report what the week ACTUALLY contains, after all adjustments.
-      totalMinutes: sumMin(finalSessions),
+      totalMinutes: sumMin(cappedSessions),
     });
   }
   return weeksOut;
@@ -843,7 +928,7 @@ export function generateHyroxPlan(opts: {
     // RECOVERY + MOBILITY
     sessions.push({ sport: "recovery", title: "Recovery: Mobility + Grip/Ankle Care", minutes: Math.round(otherMin > 0 ? otherMin : 25), zone: "z1", type: "recovery", description: "Hip-flexor, ankle and wrist mobility (lunges + wall balls + farmers carry punish them). Easy Z1 flush. Sleep 8h." });
 
-    weeksOut.push({ week: w, theme: theme[ph], sessions, totalMinutes: totalMin });
+    weeksOut.push({ week: w, theme: theme[ph], sessions: sessions.map((x) => capSessionMinutes(x, totalMin, undefined)), totalMinutes: sessions.map((x) => capSessionMinutes(x, totalMin, undefined)).reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }
@@ -933,7 +1018,8 @@ export function generateBoxingCamp(opts: {
     // RECOVERY
     sessions.push({ sport: "recovery", title: "Recovery: Mobility + Wrists/Shoulders", minutes: 25, zone: "z1", type: "recovery", description: "Wrist curls + extensor stretches, thoracic openers, hip mobility (roadwork and pivots tax them). 8h sleep is a training session — motor patterns consolidate overnight (Walker)." });
 
-    weeksOut.push({ week: w, theme: theme[ph], sessions, totalMinutes: totalMin });
+    const csBox = sessions.map((x) => capSessionMinutes(x, totalMin, undefined));
+    weeksOut.push({ week: w, theme: theme[ph], sessions: csBox, totalMinutes: csBox.reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }
@@ -947,7 +1033,19 @@ export function generateTrackSprint(opts: {
   startDate: Date;
 }): GeneratedWeek[] {
   const { level, event, weeks, startDate } = opts;
-  const sessionsPerWeek = level === "pro" ? 6 : level === "advanced" ? 5 : 4;
+  // This template has maximal sprints and loaded plyometrics. An experience
+  // label alone cannot establish readiness; do not expose it to novices.
+  if (!["amateur", "advanced", "pro"].includes(level)) {
+    return Array.from({ length: weeks }, (_, index) => ({
+      week: index + 1,
+      theme: `${event} — coach assessment required`,
+      sessions: [{ sport: "recovery" as const, title: "Sprint baseline and technique review",
+        minutes: 0, zone: "z1" as const, type: "recovery",
+        description: "No automatic sprint dose prescribed. Review training history, injury status, technique and baseline testing with your coach before starting maximal sprints or loaded plyometrics. This is a review placeholder, not a validated beginner protocol." }],
+      totalMinutes: 0,
+    }));
+  }
+
   const isShort = event === "100m" || event === "200m";
 
   // PROTOCOL KNOWLEDGE BASE (97 cited entries: Hart/Smith/Seagrave coach
@@ -981,7 +1079,7 @@ export function generateTrackSprint(opts: {
     const phase = w <= weeks * 0.3 ? "general_prep" : w <= weeks * 0.6 ? "specific_prep" : w <= weeks - 1 ? "pre_comp" : "comp";
     const sessions: PlanSession[] = [];
     const vol = w <= weeks * 0.7 ? 1.0 : 0.6; // reduce volume in competition phase
-    const protoSession = sprintSessionFor(PHASE_MAP[phase as keyof typeof PHASE_MAP] as any, w % 4);
+    const protoSession = sprintSessionFor(phase, w % 4);
 
     // Speed Day 1
     if (phase === "general_prep") {
@@ -1088,7 +1186,7 @@ export function generateSingleSport(opts: {
       sessions.push({ sport: "mobility", title: "Mobility + Core", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "recovery", description: "Hips, shoulders, spine + anti-rotation core. Mobility is what lets you keep loading heavy." });
     }
 
-    weeksOut.push({ week: w, theme: ph === "taper" ? "Freshness & Sharpening" : ph === "peak" ? "Peak Intensity" : ph === "build" ? "Build: Raise the Ceiling" : "Base: Aerobic Foundation", sessions, totalMinutes: totalMin });
+    weeksOut.push({ week: w, theme: ph === "taper" ? "Freshness & Sharpening" : ph === "peak" ? "Peak Intensity" : ph === "build" ? "Build: Raise the Ceiling" : "Base: Aerobic Foundation", sessions: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)), totalMinutes: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)).reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }

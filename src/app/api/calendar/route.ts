@@ -1,3 +1,4 @@
+import { workoutRevision } from "@/lib/workout-update";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { dayBounds, dateKey, localDate, parseDate } from "@/lib/dates";
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
     `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-01`,
     user.timezone,
   );
-  const [events, workouts, plans] = await Promise.all([
+  const [events, workouts, plans, races] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: { userId: user.id, date: { gte: start, lt: end } },
       orderBy: { date: "asc" },
@@ -58,8 +59,28 @@ export async function GET(req: Request) {
       orderBy: { startDate: "desc" },
       take: 1,
     }),
+    // Races (A/B/C) belong on the training calendar — they drive taper,
+    // testing and prediction. Priority: 1 = A, 2 = B, 3 = C.
+    prisma.race.findMany({
+      where: { userId: user.id, date: { gte: start, lt: end } },
+      orderBy: [{ date: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        date: true,
+        startTime: true,
+        priority: true,
+        distance: true,
+        location: true,
+      },
+    }),
   ]);
-  return NextResponse.json({ events, workouts, plan: plans[0] || null });
+  return NextResponse.json({
+    events,
+    workouts: workouts.map(w => ({...w, revision: workoutRevision(w)})),
+    races,
+    plan: plans[0] ? {...plans[0], days: plans[0].days.map(day => ({...day, sessions: day.sessions.map(w => ({...w,revision:workoutRevision(w)}))}))} : null,
+  });
 }
 
 // POST /api/calendar — add event

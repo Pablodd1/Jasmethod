@@ -19,7 +19,12 @@ export function WorkoutSparkline({ steps }: { steps: Step[] }) {
   const total = steps.reduce((a, s) => a + s.seconds, 0);
   if (!total || steps.length < 3) return null;
   const W = 640, H = 40, GAP = 1.5;
-  let cursor = 0;
+  // Precomputed sequential x-offsets — avoids mutating a render-scope cursor.
+  const offsets: number[] = [];
+  steps.reduce((acc, s) => {
+    offsets.push(acc);
+    return acc + s.seconds;
+  }, 0);
   return (
     <div className="mb-2">
       <svg
@@ -30,8 +35,7 @@ export function WorkoutSparkline({ steps }: { steps: Step[] }) {
       >
         {steps.map((s, i) => {
           if (s.seconds <= 0) return null;
-          const x = (cursor / total) * W;
-          cursor += s.seconds;
+          const x = (offsets[i] / total) * W;
           const w = Math.max(2, (s.seconds / total) * W - GAP);
           const fill =
             s.phase === "warmup" || s.phase === "cooldown"

@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     const assignedIds = me.role === "coach"
       ? (
           await prisma.coachAssignment.findMany({
-            where: { coachId: me.id, status: "active", consent: { not: "revoked" } },
+            where: { coachId: me.id, status: "active", consent: "granted" },
             select: { athleteId: true },
           })
         ).map((a) => a.athleteId)

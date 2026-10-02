@@ -1,3 +1,4 @@
+import { FORECAST_AVAILABILITY } from "./forecast-availability";
 // JasMiamiMethod — Race Forecast Service
 // Shared assembly (profile + PMC + race + live weather → engine input) used
 // by both /api/race-forecast and /api/race-forecast/brief.
@@ -6,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { computePmc } from "@/lib/fitness";
 import { forecastRace, classifyDistance, type ForecastResult } from "@/lib/raceforecast";
 import { getRaceWeather, type RaceWeather } from "@/lib/weather";
+import { buildBikePacing, buildRunPacing, type PacingTable } from "@/lib/segment-pacing";
 
 export interface ForecastRequestOpts {
   distance?: string | null;
@@ -23,6 +25,8 @@ export interface ForecastRequestOpts {
 
 export interface ForecastBundle {
   ok: true;
+  reason?: string;
+  message?: string;
   forecast: ForecastResult | null;
   weather: RaceWeather | null;
   distance: string | null;
@@ -40,9 +44,21 @@ export interface ForecastBundle {
   } | null;
   pmc: { ctl: number; atl: number; tsb: number; formZone: string; rampRate7d: number } | null;
   physiology: { ftp: number | null; lthr: number | null; runPaceBase: number | null; swimPaceBase: number | null };
+  raceDayProjection: string | null;
+  /** Per-segment pacing table when the race has an uploaded GPX profile. */
+  pacing?: PacingTable | null;
 }
 
 export async function buildForecastBundle(userId: string, opts: ForecastRequestOpts): Promise<ForecastBundle> {
+  // Fail closed before reading health data, fetching weather, writing prediction
+  // snapshots or generating GPX pacing. Optional pilot capability is excluded.
+  if (!FORECAST_AVAILABILITY.enabled) return {
+    ok: true, reason: FORECAST_AVAILABILITY.reason, message: FORECAST_AVAILABILITY.message,
+    forecast: null, weather: null, distance: opts.distance ?? null, race: null,
+    predictionSnapshot: null, pmc: null, pacing: null,
+    physiology: { ftp: null, lthr: null, runPaceBase: null, swimPaceBase: null },
+    raceDayProjection: null,
+  };
   const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
 
   // PMC from 90 days of completed training
@@ -80,12 +96,66 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
   if (opts.raceId) {
     race = await prisma.race.findFirst({ where: { id: opts.raceId, userId } });
   } else if (opts.distance) {
-    const races = await prisma.race.findMany({
-      where: { userId, distance: opts.distance },
+    race = await prisma.race.findFirst({
+      where: { userId, distance: opts.distance, date: { gte: new Date() } },
       orderBy: [{ priority: "asc" }, { date: "asc" }],
     });
-    const future = races.filter((r) => r.date.getTime() >= Date.now());
-    race = future[0] || races[0] || null;
+  }
+  // The persisted race record (when forecasting by raceId) may differ from the
+  // picked one only by construction — prefer the fetched record.
+
+  // ---- RACE-DAY PMC PROJECTION (taper-aware forecast) ----
+  // Today's CTL/ATL/TSB is "now". The athlete will follow the plan until the
+  // race — project PMC to RACE DAY by including planned workouts' estimated
+  // TSS (zone + duration), so the forecast sees tapered form, not today's.
+  let raceDayPmc = pmc;
+  let projectedNote: string | null = null;
+  if (race && pmc && new Date(race.date) > new Date()) {
+    const plannedUntil = await prisma.workout.findMany({
+      where: {
+        userId,
+        planned: true,
+        completed: false,
+        date: { gte: new Date(), lt: new Date(race.date) },
+      },
+      orderBy: { date: "asc" },
+      select: { date: true, durationMin: true, intensity: true, rpe: true, sport: true },
+    });
+    if (plannedUntil.length) {
+      const projected = computePmc(
+        [
+          ...completed.map((w) => ({
+            date: w.date,
+            tssInput: {
+              durationMin: w.actualDurationMin ?? w.durationMin,
+              avgPower: w.np ?? w.avgPower,
+              avgHr: w.avgHr,
+              rpe: w.rpe,
+              intensity: w.intensity,
+              tss: w.tss,
+              ftp,
+              lthr,
+            },
+          })),
+          ...plannedUntil.map((w) => ({
+            date: w.date,
+            tssInput: {
+              durationMin: w.durationMin,
+              intensity: w.intensity,
+              rpe: w.rpe,
+              ftp,
+              lthr,
+            },
+          })),
+        ],
+        new Date(race.date),
+        opts.timezone ?? undefined,
+      );
+      if (projected) {
+        raceDayPmc = projected;
+        projectedNote = `Projected to race day from ${plannedUntil.length} planned sessions (taper included): CTL ${Math.round(projected.current.ctl)} / TSB ${Math.round(projected.current.tsb)}.`;
+      }
+    }
   }
 
   const distance = race?.distance ?? opts.distance ?? profile?.goal ?? null;
@@ -118,8 +188,13 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
             sodiumMgPerL: opts.sodiumMgPerL ?? profile?.sodiumMgPerL ?? null,
             gutTrained: opts.gutTrained ?? profile?.gutTrained ?? undefined,
             draftSkill: (opts.draftSkill ?? profile?.draftSkill ?? undefined) as ("none" | "mixed" | "good") | undefined,
+            // Equipment: bike setup changes drag + mass in the bike physics
+            bikeType: profile?.bikeType ?? null,
+            hasAeroBars: profile?.hasAeroBars ?? null,
           },
-          fitness: pmc,
+          // Race-day projected PMC (taper-aware) — falls back to today's when
+          // no race/planned sessions exist.
+          fitness: raceDayPmc,
           distance: distance as string,
           venue: {
             targetTempC: weather?.tempC ?? race?.targetTempC ?? undefined,
@@ -127,6 +202,7 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
             solarWm2: weather?.solarWm2 ?? undefined,
             cloudCover: weather?.cloudCover ?? undefined,
             windKph: weather?.windKph ?? undefined,
+            gustsKph: weather?.gustsKph ?? undefined,
             baseElevM: race?.baseElevM ?? undefined,
             bikeElevM: race?.bikeElevM ?? undefined,
             bikeTerrain: race?.bikeTerrain ?? undefined,
@@ -201,9 +277,39 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
     }
   }
 
+  // Per-segment pacing table (Best-Bike-Split-style, honest edition): built
+  // when the race has an uploaded GPX elevation profile + the needed anchor
+  // (FTP for bike legs, threshold run pace for run legs).
+  let pacing: PacingTable | null = null;
+  try {
+    const sportKind = distance ? (["sprint", "olympic", "half", "full"].includes(distance) ? "triathlon" : distance === "hyrox" ? null : classifyDistance(distance)) : null;
+    const prof: { km: number; elevM: number }[] | null = race?.elevProfile ? JSON.parse(race.elevProfile) : null;
+    if (prof && prof.length >= 4 && race?.courseKm) {
+      if ((sportKind === "triathlon" || sportKind === "bike") && ftp)
+        pacing = buildBikePacing({
+          profile: prof, courseKm: race.courseKm, ftp,
+          weightKg: profile?.weightKg ?? null,
+          bikeType: profile?.bikeType ?? null, hasAeroBars: profile?.hasAeroBars ?? null,
+          tempC: weather?.tempC ?? null, windKph: weather?.windKph ?? null,
+          gustsKph: weather?.gustsKph ?? null, venueElevM: race.baseElevM ?? null,
+          units: profile?.units === "imperial" ? "imperial" : "metric",
+        });
+      else if ((sportKind === "run") && profile?.runPaceBase)
+        pacing = buildRunPacing({
+          profile: prof, courseKm: race.courseKm,
+          runPaceBaseSecPerKm: profile.runPaceBase,
+          windKph: weather?.windKph ?? null, gustsKph: weather?.gustsKph ?? null,
+          tempC: weather?.tempC ?? null,
+        });
+    }
+  } catch {
+    pacing = null; // pacing is additive — never break the forecast for it
+  }
+
   return {
     ok: true,
     forecast,
+    pacing,
     weather,
     distance,
     race: race
@@ -234,5 +340,6 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
         }
       : null,
     physiology: { ftp, lthr, runPaceBase: profile?.runPaceBase ?? null, swimPaceBase: profile?.swimPaceBase ?? null },
+    raceDayProjection: projectedNote,
   };
 }

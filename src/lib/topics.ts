@@ -73,7 +73,7 @@ const SUPPLEMENTS: Topic = {
       heading: "Sport-specific stacks (what actually differs)",
       paragraphs: [
         "Sprint/400m: creatine (ATP regeneration), caffeine (RFD + reaction), beta-alanine (the 400m is a 40–75s acidosis battle — carnosine buffering helps), and sodium bicarbonate on race day only if trialed in training.",
-        "Boxing/combat: the brain-protection stack is the differentiator — creatine (brain ATP after sub-concussive impacts), DHA-dominant omega-3 (higher omega-3 index = lower neuroaxonal injury markers; note EPA-only may interfere with repair — take DHA+EPA, not EPA solo), and alpha-GPC for reaction time. Add beta-alanine for 1–4 min round buffering.",
+        "Boxing/combat: assess sport-performance nutrition separately from head-injury care. No brain-protection supplement stack is established here. The Beauregard 2025 paper is a trial protocol, not evidence of reduced concussion injury. Review individual supplement suitability with a sports nutrition professional.",
         "Endurance/tri: caffeine has the strongest evidence of any supplement; nitrate (beetroot) improves economy; carb mixtures (glucose+fructose) raise absorption above 60 g/h; tart cherry for multi-day competition recovery.",
         "Strength: creatine + 1.6–2.2 g/kg protein daily is the core; citrulline malate adds reps per set; vitamin D if blood level is low.",
       ],

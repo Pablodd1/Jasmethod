@@ -1,3 +1,6 @@
+import { postFuelPersonalized } from "./fueling";
+import { supplementAllowed } from "./supplement-db";
+import { resolveCheckinSafety } from "./checkin-safety";
 // JasMiamiMethod — Adaptive Engine
 // The "changes daily/weekly/monthly, individualized, easy to change" layer.
 // Pure functions (no DB, no I/O) so everything here is unit-testable.
@@ -310,6 +313,8 @@ export interface ScheduledTest {
     | "run5k"
     | "swim"
     | "run1k"
+    | "run200m"
+    | "run400m"
     | "erg"
     | "strengthBench"
     | "boxing";
@@ -362,17 +367,31 @@ const BOXING_TEST_TYPES: {
   },
 ];
 
+// SPRINT_TEST_TYPES — 200/400 m benchmark battery (the DB's app_gaps ask:
+// "personal_best_and_split_history" — the athlete's own 200/400 m times).
+const SPRINT_TEST_TYPES: {
+  type: ScheduledTest["type"];
+  name: string;
+  cadenceDays: number;
+}[] = [
+  { type: "run200m", name: "200 m TT (electronic or gated — log wind if known)", cadenceDays: 56 },
+  { type: "run400m", name: "400 m TT (log 200 m split at the mark)", cadenceDays: 56 },
+  { type: "run5k", name: "Aerobic support benchmark (5k TT)", cadenceDays: 56 },
+];
+
 export function scheduleTests(
   startDate: Date,
   weeks: number,
   races: { date: Date }[],
-  opts: { hyrox?: boolean; boxing?: boolean } = {},
+  opts: { hyrox?: boolean; boxing?: boolean; trackSprint?: boolean } = {},
 ): ScheduledTest[] {
-  const testTypes = opts.boxing
-    ? BOXING_TEST_TYPES
-    : opts.hyrox
-      ? HYROX_TEST_TYPES
-      : TRIATHLON_TEST_TYPES;
+  const testTypes = opts.trackSprint
+    ? SPRINT_TEST_TYPES
+    : opts.boxing
+      ? BOXING_TEST_TYPES
+      : opts.hyrox
+        ? HYROX_TEST_TYPES
+        : TRIATHLON_TEST_TYPES;
   const out: ScheduledTest[] = [];
   const RACE_GUARD_DAYS = 14; // skip any test within 2 weeks of a race
   const raceDates = races.map((r) => new Date(r.date).getTime());
@@ -413,12 +432,13 @@ export function scheduleTests(
 
 // ---------- 4. DAILY QUESTIONNAIRE → TRAINING ADAPTATION ----------
 export interface Checkin {
-  sleep: number; // 1-5 (5 = great)
-  soreness: number; // 1-5 (5 = very sore)
-  motivation: number; // 1-5
-  energy: number; // 1-5
-  stress: number; // 1-5 (5 = very stressed)
-  sick: boolean; // ill/injured today
+  sleep?: number; // 1-5 (5 = great)
+  soreness?: number; // 1-5 (5 = very sore)
+  motivation?: number; // 1-5
+  energy?: number; // 1-5
+  stress?: number; // 1-5 (5 = very stressed)
+  sick?: boolean; // unknown is not a negative symptom report
+  urgentSymptoms?: boolean; // current chest discomfort/fainting/severe breathlessness/confusion/collapse
   menstrual?: boolean; // female-specific flag
   mood?: number; // 1-5 (5 = great) — distinct from motivation: how you FEEL
   cycleDay?: number; // day of menstrual cycle (1-35) — enables phase-aware training
@@ -434,7 +454,11 @@ export interface Checkin {
 }
 
 export interface Adaptation {
-  score: number; // 0-100 readiness (lower = back off)
+  score: number; // legacy heuristic, not a measured biomarker; unavailable when scoreAvailable=false
+  scoreAvailable?: boolean;
+  safetyStatus?: "clear" | "unknown" | "hold" | "urgent";
+  ruleId?: string;
+  missingFields?: string[];
   verdict: "full" | "trim" | "easy" | "rest";
   durationFactor: number; // multiply session duration
   intensityCap: string; // e.g. "z4" — don't exceed
@@ -442,7 +466,15 @@ export interface Adaptation {
 }
 
 export function adaptSession(checkin: Checkin): Adaptation {
-  const { sleep, soreness, motivation, energy, stress, sick } = checkin;
+  const safety = resolveCheckinSafety(checkin);
+  if (safety.status !== "clear") return {
+    score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1",
+    safetyStatus: safety.status, ruleId: safety.ruleId, missingFields: safety.missingFields, message: safety.message,
+  };
+  if (checkin.availableMin === 0) return { score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "clear", ruleId: "checkin-safety-v1:no-time", message: "No training time is available today. No workout is prescribed and no missed work is added later." };
+  // The safety resolver verified all subjective values before numeric scoring.
+  const sleep = checkin.sleep!, soreness = checkin.soreness!, motivation = checkin.motivation!, energy = checkin.energy!, stress = checkin.stress!;
+  const sick = checkin.sick;
   let score = 50;
   score += (sleep - 3) * 8; // ±16
   score -= (soreness - 3) * 6; // ±12
@@ -467,18 +499,6 @@ export function adaptSession(checkin: Checkin): Adaptation {
   // current dose may be too big (small dip; "easier" never escalates — no
   // single positive signal raises intensity, engine rule).
   if (checkin.sessionFelt === "harder") score -= 5;
-  // New LOCAL pain is musculoskeletal caution — distinct from general
-  // soreness. Movement-affected pain is a hard caution; local pain alone is
-  // a moderate one. Never a full-rest verdict by itself (that's for illness
-  // or rock-bottom readiness) — the athlete is routed to professional review
-  // in the message.
-  const painCaution: "none" | "moderate" | "hard" = !checkin.newPain
-    ? "none"
-    : checkin.painAffectsMovement
-      ? "hard"
-      : "moderate";
-  if (painCaution === "hard") score -= 15;
-  else if (painCaution === "moderate") score -= 6;
   score = Math.max(0, Math.min(100, score));
 
   let verdict: Adaptation["verdict"],
@@ -490,7 +510,7 @@ export function adaptSession(checkin: Checkin): Adaptation {
     durationFactor = 0;
     intensityCap = "z1";
     message =
-      "Full rest or a 20-min Z1 flush. Training now would dig a deeper hole — protect the block.";
+      "Rest today. No structured workout is prescribed; reassess how you feel before resuming training.";
   } else if (score < 45) {
     verdict = "easy";
     durationFactor = 0.6;
@@ -508,22 +528,9 @@ export function adaptSession(checkin: Checkin): Adaptation {
     durationFactor = 1;
     intensityCap = "z7";
     message =
-      "Green to go. Take the key session by the horns — chase the quality.";
+      "Your reported recovery does not call for an additional reduction. Follow the existing plan and stop if symptoms appear; this score does not authorize extra intensity.";
   }
-  // MSK override AFTER the verdict: pain caps intensity regardless of how
-  // good the subjective score looks (a motivated athlete with a changing
-  // gait is exactly the one who trains through something).
-  if (painCaution === "hard") {
-    verdict = verdict === "rest" ? verdict : "easy";
-    durationFactor = Math.min(durationFactor, 0.6);
-    intensityCap = "z2";
-    message = `New pain${checkin.painLocation ? ` (${checkin.painLocation})` : ""} that affects how you move: easy Z1-Z2 only, ~60% duration, pain-free range. If it persists beyond 2-3 days, get it assessed by a professional.`;
-  } else if (painCaution === "moderate") {
-    const capNum = Number(intensityCap.slice(1));
-    if (capNum > 3) intensityCap = "z3";
-    message = `New pain noted${checkin.painLocation ? ` (${checkin.painLocation})` : ""}: intensity capped at Z3 today. Stay pain-free; soreness is fine, sharp local pain is a stop sign.`;
-  }
-  return { score, verdict, durationFactor, intensityCap, message };
+  return { score, scoreAvailable: true, verdict, durationFactor, intensityCap, message, safetyStatus: "clear", ruleId: `${safety.ruleId}:${verdict}` };
 }
 
 // ---------- 4b. HYDRATION & WEIGHT ANALYSIS (uses the data, doesn't just store it) ----------
@@ -704,7 +711,7 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     dose: "3-5 g/day",
     when: "Any time, daily",
     benefit:
-      "Power, strength, repeat-sprint + recovery; small endurance benefit. 2025 umbrella review of 61 RCT meta-analyses: best-evidenced supplement in sport (Ashtary-Larky 2025). For combat/contact athletes: also neuroprotective — brain-cell energy (ATP) support after sub-concussive impacts (Giraldo 2025, active mTBI trial NCT06644131). Also counters age-related anabolic resistance in masters athletes.",
+      "Power, strength, repeat-sprint + recovery; small endurance benefit. 2025 umbrella review of 61 RCT meta-analyses: best-evidenced supplement in sport (Ashtary-Larky 2025). Also counters age-related anabolic resistance in masters athletes.",
     caution:
       "Expect ~1kg water-weight gain during loading. 2025 safety review: no adverse effects on kidney/liver function in healthy people across the lifespan (Kreider 2025). Monohydrate only — other forms are pricier without better evidence.",
   },
@@ -725,18 +732,6 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     when: "90-150 min pre-race (not daily)",
     benefit: "Buffers high-intensity efforts (800m swim, sprint finish).",
     caution: "GI distress risk — test in training first, never on race day.",
-  },
-  // ---- BOXING / COMBAT BRAIN-HEALTH STACK (2025 ISSN combat position stand) ----
-  {
-    key: "dha",
-    name: "Omega-3 DHA (brain protection)",
-    evidence: "B",
-    dose: "1-2 g DHA + 0.5-1 g EPA daily",
-    when: "Daily with a fat-containing meal (not acute — builds over weeks)",
-    benefit:
-      "DHA is the dominant structural fat in neuronal membranes; higher blood omega-3 = lower neuroaxonal injury markers after a season of repetitive head impacts. Emerging caution: EPA alone may interfere with repair after repeated mTBI — take combined DHA>EPA, not EPA solo (Beauregard 2025; Heileson 2024; ISSN combat 2025).",
-    caution:
-      "Blood-thinning at >3g/d — tell your doctor if on anticoagulants. This is neuroprotection support, NOT a helmet substitute.",
   },
   {
     key: "choline",
@@ -831,22 +826,18 @@ export function recommendErgogenics(
   if (session.type === "test" || session.type === "race")
     picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "bicarb")!);
 
-  // BOXING / COMBAT: brain protection + explosive-power stack — boxing is an
-  // explosive, brain-inflammation-dependent sport (repetitive sub-concussive
-  // impacts), and most boxers don't know what to take. We guide them.
+  // Combat recommendations concern performance, never protection from head impacts.
   if (session.sport === "boxing") {
-    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!); // neuroprotective + power (Giraldo 2025)
-    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "dha")!); // DHA brain protection
+    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!); // repeated-effort power
     picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "choline")!); // reaction speed
     if (!shortIntense)
       picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "betaAlanine")!); // 1-4 min round buffering
   }
 
-  // respect likes (boost), dislikes + opt-outs (remove), then re-rank by evidence
+  // Explicit per-item opt-in; an enabled master switch is not supplement consent.
   const liked = picks.filter((e) => prefs.likes.includes(e.key));
-  const neutral = picks.filter((e) => !prefs.likes.includes(e.key));
-  const filtered = [...liked, ...neutral].filter(
-    (e) => !prefs.dislikes.includes(e.key) && !prefs.optsOut.includes(e.key),
+  const filtered = liked.filter(
+    (e, index, list) => supplementAllowed(e.key, prefs) && list.findIndex(x => x.key === e.key) === index,
   );
 
   const reason = filtered.length
@@ -1069,11 +1060,11 @@ export function venueAdjustment(v: VenueProfile): VenueAdjustment {
 // The 30-60 min window after training: carbs to refill glycogen, protein for
 // repair, electrolytes + fluid to rehydrate (Thomas 2016; Kerksick 2017).
 export interface PostWorkoutFuel {
-  carbsG: number;
-  proteinG: number;
+  carbsG: number | null;
+  proteinG: number | null;
   ratio: string; // carb:protein
-  sodiumMg: number;
-  fluidMl: number;
+  sodiumMg: number | null;
+  fluidMl: number | null;
   window: string;
   examples: string;
   notes: string;
@@ -1084,63 +1075,15 @@ export function postWorkoutFuel(opts: {
   intensity: string;
   heatFactor?: number;
   sport?: string;
+  weightKg?: number | null;
 }): PostWorkoutFuel {
-  const heat = opts.heatFactor ?? 1;
-  const hard = [
-    "z4",
-    "z5",
-    "z6",
-    "z7",
-    "interval",
-    "threshold",
-    "test",
-    "race",
-  ].includes(opts.intensity);
-  const long = opts.durationMin >= 90;
-  const strength = opts.sport === "strength";
-
-  // Base: 0.8-1.2 g/kg/h carb + 0.3-0.4 g/kg protein in the recovery window.
-  // Scale by session demand: long/hard → more carbs; strength → more protein.
-  let carbsG = 30,
-    proteinG = 15,
-    ratio = "2:1";
-  let examples =
-    "Banana + 250ml chocolate milk, or a shake (30g carb / 15g protein).";
-  if (long) {
-    carbsG = 60;
-    proteinG = 20;
-    ratio = "3:1";
-    examples =
-      "Rice bowl with chicken (60g carb / 20g protein), or 2× recovery shakes within 2h.";
-  } else if (strength) {
-    carbsG = 25;
-    proteinG = 25;
-    ratio = "1:1";
-    examples =
-      "Whey or plant shake (25g protein) + fruit; protein matters most after strength.";
-  }
-  if (hard && !long) {
-    carbsG = 40;
-    proteinG = 20;
-    ratio = "2:1";
-    examples = "Bagel + Greek yogurt + honey, or a 40/20 recovery drink.";
-  }
-
-  const sodiumMg = Math.round(300 * heat);
-  const fluidMl = Math.round(600 * heat);
-  const window =
-    "Within 30-60 min post-session (the sooner after hard sessions, the better)";
-  const notes = `Electrolytes: ${sodiumMg}mg sodium + ${fluidMl}ml fluid (${heat > 1 ? `+${Math.round((heat - 1) * 100)}% for heat` : "normal conditions"}). ${hard ? "Hard session — prioritize the window." : long ? "Long session — glycogen refill matters for tomorrow." : "Keep it light — this was an easy day."}`;
-
+  const fuel = postFuelPersonalized(opts);
   return {
-    carbsG,
-    proteinG,
-    ratio,
-    sodiumMg,
-    fluidMl,
-    window,
-    examples,
-    notes,
+    carbsG: fuel.carbsG, proteinG: fuel.proteinG, ratio: fuel.ratio,
+    sodiumMg: null, fluidMl: null,
+    window: "After training, with normal meal timing adapted to the next session",
+    examples: "Choose familiar carbohydrate and protein foods compatible with your dietary needs.",
+    notes: fuel.note + " Fluid and sodium totals are unavailable without measured losses and relevant conditions. Drink according to thirst; extra sodium does not protect against overdrinking.",
   };
 }
 
@@ -1239,7 +1182,7 @@ export function prescribeToday(opts: {
   }
   const rest = adaptation.verdict === "rest" || session.durationMin <= 0;
   if (session.protocol && !rest) {
-    const budget = Math.min(session.durationMin * Math.min(1, adaptation.durationFactor), (opts.busyHrs || 0) >= 6 ? 25 : Infinity);
+    const budget = Math.min(session.durationMin * Math.min(1, adaptation.durationFactor), (opts.busyHrs || 0) >= 6 ? 25 : Infinity, opts.timeBudgetMin == null ? Infinity : Math.max(0, Math.floor(opts.timeBudgetMin)));
     const capped = Number(adaptation.intensityCap.slice(1)) < Number((session.intensity || "z2").slice(1));
     const pausePower = ["speed", "power", "anaerobic-capacity"].includes(session.protocol.id) && adaptation.verdict !== "full";
     if (!capped && !pausePower && adaptation.verdict !== "easy") {
@@ -1337,10 +1280,7 @@ export function prescribeToday(opts: {
 }
 
 // ---------- PROGRESSION OVERSIGHT ----------
-// Watches completed vs planned load week-by-week. If the athlete is nailing
-// their weeks (≥85% sessions completed), the next cycle can push harder.
-// If they're missing sessions (<60%), prescribe a deload before injury does.
-// ponytail: simple completion-% heuristic; per-zone TRAC-style load model if precision matters
+// Summarizes adherence. Completion alone cannot justify dose changes or infer adaptation.
 export function progressionAdvice(
   recentWeeks: { weekStart: Date; planned: number; completed: number }[],
 ): {
@@ -1367,21 +1307,11 @@ export function progressionAdvice(
           100,
       )
     : pct;
-  if (last3Pct >= 85)
-    return {
-      status: "push",
-      pct,
-      message: `${last3Pct}% completion over the last 3 weeks — you're absorbing the load. The next cycle pushes +5-8%. Keep sleeping.`,
-    };
-  if (last3Pct < 60)
-    return {
-      status: "deload",
-      pct,
-      message: `${last3Pct}% completion — life is winning. Next week auto-scales down ~20% (volume, not intensity). Missing sessions is data, not failure.`,
-    };
+  // Completion is adherence, not evidence of recovery or physiological adaptation.
+  // No dose increase/decrease is authorized by this summary alone.
   return {
     status: "on_track",
     pct,
-    message: `${pct} completion — steady. The plan ramps as designed.`,
+    message: `${last3Pct}% completion across ${last3.length} recorded week${last3.length === 1 ? "" : "s"}. ${last3Pct < 60 ? "Review missed sessions and availability with your coach." : "Review effort, recovery and performance trends before changing training load."}`,
   };
 }

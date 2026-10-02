@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { dayBounds } from "./dates";
+import { generateAndDeliverActivityReport } from "./activity-report";
 
 // Provider records remain the source of measured results. A fulfilled plan is
 // linked to the import so it is never counted a second time in training load.
@@ -15,7 +16,8 @@ export async function storeActivity(
     activity.durationMin <= 0
   )
     throw new Error("Activity has invalid date or duration");
-  return prisma.$transaction(async (tx) => {
+  let savedId: string | null = null;
+  const created = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
     const existing = await tx.workout.findFirst({
       where: {
@@ -25,7 +27,9 @@ export async function storeActivity(
       },
     });
     if (existing) {
+      await clearActivityLinks(tx, userId, [existing.id]);
       const fields = [
+        "sport",
         "title",
         "date",
         "durationMin",
@@ -46,8 +50,12 @@ export async function storeActivity(
               .map((k) => [k, activity[k]]),
           ),
           actualDurationMin: activity.durationMin,
+          // Corrected measurements invalidate the old report (Codex review #3
+          // P2) — it regenerates on the next report pass from the new values.
+          insights: null,
         },
       });
+      await matchActivity(tx, userId, timezone, { ...existing, ...activity, id: existing.id });
       return false;
     }
     const same = await tx.workout.findFirst({
@@ -97,28 +105,69 @@ export async function storeActivity(
         ...data,
       } as any,
     });
-    const { start, end } = dayBounds(timezone, new Date(activity.date));
-    const candidates = await tx.workout.findMany({
-      where: {
-        userId,
-        planned: true,
-        completed: false,
-        matchedPlanId: null,
-        sport: activity.sport,
-        date: { gte: start, lt: end },
-      },
-    });
-    const match = candidates.filter(
-      (w) =>
-        Math.abs(w.durationMin - activity.durationMin) <=
-        Math.max(10, w.durationMin * 0.3),
-    );
-    // Ambiguous double-session days require manual reconciliation.
-    if (match.length === 1)
-      await tx.workout.update({
-        where: { id: match[0].id },
-        data: { completed: true, matchedPlanId: saved.id },
-      });
+    savedId = saved.id;
+    await matchActivity(tx, userId, timezone, saved);
     return true;
+  });
+  // New activity → KCoach Activity Report (post-activity narrative, owner
+  // request 2026-09-26): computed from stored history, persisted on the
+  // workout, pushed to the athlete's Telegram if opted in. Report generation
+  // must never fail the ingest that produced it.
+  // FLOOD GUARD (Codex review P1-8): reports/notifications are for LIVE
+  // training only. Historical backfill (first-connect imports of months of
+  // activities) generates silently — otherwise one connect = hundreds of
+  // Telegram messages.
+  if (
+    created &&
+    savedId &&
+    Date.now() - new Date(activity.date).getTime() < 48 * 3600000
+  )
+    await generateAndDeliverActivityReport(userId, timezone, savedId).catch(
+      () => {},
+    );
+  return created;
+}
+
+// A duration alone cannot distinguish a morning interval session from an
+// evening easy run. Abstain whenever more than one prescription could fit.
+export function selectUnambiguousPlan<T extends { durationMin: number }>(
+  candidates: T[], actualDurationMin: number,
+): T | null {
+  const eligible = candidates.filter(w =>
+    Math.abs(w.durationMin - actualDurationMin) <= Math.max(10, w.durationMin * 0.3));
+  return eligible.length === 1 ? eligible[0] : null;
+}
+
+async function matchActivity(tx: any, userId: string, timezone: string, activity: any) {
+  const { start, end } = dayBounds(timezone, new Date(activity.date));
+  const candidates = await tx.workout.findMany({ where: {
+    userId, planned: true, completed: false, matchedPlanId: null,
+    feedbackStatus: null,
+    sport: activity.sport, date: { gte: start, lt: end },
+  }});
+  const best = selectUnambiguousPlan<any>(candidates, activity.durationMin);
+  if (best) await tx.workout.update({ where: { id: best.id },
+    data: { completed: true, matchedPlanId: activity.id } });
+}
+
+async function clearActivityLinks(tx: any, userId: string, activityIds: string[]) {
+  // Preserve explicit athlete/coach feedback; only retract automatic completion.
+  await tx.workout.updateMany({ where: { userId, planned: true,
+    matchedPlanId: { in: activityIds }, feedbackStatus: null },
+    data: { completed: false, matchedPlanId: null } });
+  await tx.workout.updateMany({ where: { userId, planned: true,
+    matchedPlanId: { in: activityIds } }, data: { matchedPlanId: null } });
+}
+
+export async function deleteImportedActivities(userId: string, source: string, externalIds: string[]) {
+  if (!externalIds.length) return { count: 0 };
+  return prisma.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+    const rows = await tx.workout.findMany({ where: { userId, source,
+      planned: false, externalId: { in: externalIds } }, select: { id: true } });
+    await clearActivityLinks(tx, userId, rows.map(row => row.id));
+    const deleted = await tx.workout.deleteMany({ where: { userId, source,
+      planned: false, id: { in: rows.map(row => row.id) } } });
+    return deleted;
   });
 }

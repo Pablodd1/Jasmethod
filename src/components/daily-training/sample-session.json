@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "session": {
+    "id": "demo-run-2026-09-28",
+    "revision": 3,
+    "dateLocal": "2026-09-28",
+    "timezone": "America/New_York",
+    "sport": "Running",
+    "title": "Threshold in control.",
+    "subtitle": "Build a sustainable rhythm around threshold. Fast work, deliberate recoveries, steady form.",
+    "planStatus": "planned",
+    "totalMinutes": 60,
+    "density": {
+      "score": 7,
+      "label": "coach planning score",
+      "method": "coach_planning"
+    },
+    "calories": {
+      "kcal": 1000,
+      "method": "estimate",
+      "asOf": "2026-09-28T07:00:00-04:00",
+      "missingReason": null
+    }
+  },
+  "profile": {
+    "paces": {
+      "mile": {
+        "secondsPerMile": 360,
+        "measuredAt": null,
+        "status": "coach_set",
+        "missingReason": null
+      },
+      "5k": {
+        "secondsPerMile": 385,
+        "measuredAt": null,
+        "status": "coach_set",
+        "missingReason": null
+      },
+      "10k": {
+        "secondsPerMile": 398,
+        "measuredAt": null,
+        "status": "coach_set",
+        "missingReason": null
+      },
+      "half": {
+        "secondsPerMile": 415,
+        "measuredAt": null,
+        "status": "coach_set",
+        "missingReason": null
+      },
+      "marathon": {
+        "secondsPerMile": 432,
+        "measuredAt": null,
+        "status": "coach_set",
+        "missingReason": null
+      },
+      "easy": {
+        "secondsPerMile": 490,
+        "measuredAt": null,
+        "status": "coach_set",
+        "missingReason": null
+      }
+    },
+    "thresholdHeartRate": {
+      "bpm": 165,
+      "status": "coach_set",
+      "measuredAt": null
+    },
+    "unitSystem": "imperial",
+    "updatedAt": "2026-09-15T12:00:00-04:00"
+  },
+  "blocks": [
+    {
+      "id": "warm",
+      "title": "Warm up",
+      "repeat": 1,
+      "segments": [
+        {
+          "id": "warm-run",
+          "seconds": 900,
+          "kind": "easy",
+          "title": "Easy run",
+          "instruction": "Conversational pace; finish feeling ready to move faster.",
+          "target": {
+            "label": "Easy",
+            "paceLowSecondsPerMile": 490,
+            "paceHighSecondsPerMile": 490,
+            "rpeLow": 2,
+            "rpeHigh": 3,
+            "heartRateBpm": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "strides",
+      "title": "Strides",
+      "repeat": 1,
+      "segments": [
+        {
+          "id": "strides-flow",
+          "seconds": 300,
+          "kind": "prep",
+          "title": "4 \u00d7 20 second strides",
+          "instruction": "Run four controlled 20 second accelerations with easy jogging between. This five minute block includes the jog recovery.",
+          "target": {
+            "label": "Fast but relaxed",
+            "paceLowSecondsPerMile": null,
+            "paceHighSecondsPerMile": null,
+            "rpeLow": 6,
+            "rpeHigh": 7,
+            "heartRateBpm": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "main",
+      "title": "Main set",
+      "repeat": 5,
+      "segments": [
+        {
+          "id": "rep",
+          "seconds": 240,
+          "kind": "work",
+          "title": "Threshold effort",
+          "instruction": "Controlled effort; keep form smooth. Do not chase HR in the first minute.",
+          "target": {
+            "label": "Between current 10K and 5K pace",
+            "paceLowSecondsPerMile": 385,
+            "paceHighSecondsPerMile": 398,
+            "rpeLow": 7,
+            "rpeHigh": 8,
+            "heartRateBpm": null,
+            "note": "Adjust for heat, hills and response."
+          }
+        },
+        {
+          "id": "jog",
+          "seconds": 120,
+          "kind": "recover",
+          "title": "Easy jog",
+          "instruction": "Recover while moving.",
+          "target": {
+            "label": "Easy",
+            "paceLowSecondsPerMile": 490,
+            "paceHighSecondsPerMile": 490,
+            "rpeLow": 2,
+            "rpeHigh": 3,
+            "heartRateBpm": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "cool",
+      "title": "Cool down",
+      "repeat": 1,
+      "segments": [
+        {
+          "id": "cool-run",
+          "seconds": 600,
+          "kind": "cool",
+          "title": "Easy jog",
+          "instruction": "Slow down, then walk as needed.",
+          "target": {
+            "label": "Easy",
+            "paceLowSecondsPerMile": 490,
+            "paceHighSecondsPerMile": 490,
+            "rpeLow": 1,
+            "rpeHigh": 3,
+            "heartRateBpm": null
+          }
+        }
+      ]
+    }
+  ],
+  "guidance": {
+    "focus": {
+      "title": "Two minute focus",
+      "items": [
+        "Read the session and select a safe route.",
+        "Check fatigue, soreness, symptoms and conditions.",
+        "Pick one cue: smooth shoulders and relaxed steps.",
+        "Mute notifications if safe; keep navigation and emergency access available."
+      ],
+      "note": "A routine can support attention, but silence or visualization does not guarantee better performance.",
+      "sourceIds": [
+        "self-talk-meta-2011"
+      ]
+    },
+    "preFuel": {
+      "title": "Fuel this 60 minute session",
+      "items": [
+        "A familiar meal roughly 2\u20133 hours before may cover this session.",
+        "If you have not eaten for several hours, consider a familiar easy to digest carbohydrate snack.",
+        "Bring water according to conditions, route access, thirst and your own sweat history. Carbohydrate during this hour is optional."
+      ],
+      "note": "No sodium or caffeine dose is inferred from pace alone.",
+      "sourceIds": [
+        "acsm-nutrition-2016",
+        "burke-carbs-2011"
+      ]
+    },
+    "postFuel": {
+      "title": "Recovery meal",
+      "items": [
+        "Eat a normal meal containing carbohydrate and protein within the next few hours. The illustrative 75 kg profile suggests about 23 g protein using 0.3 g/kg.",
+        "If another demanding session is less than roughly 8 hours away, plan faster carbohydrate restoration with professional or coach context. An illustrative rapid target is 75\u201390 g carbohydrate per hour (1.0\u20131.2 g/kg/h) for the first few hours."
+      ],
+      "note": "With more time before the next hard session, daily intake matters more than exact immediate timing.",
+      "sourceIds": [
+        "issn-nutrient-timing-2017"
+      ]
+    },
+    "downshift": {
+      "title": "Optional breathing practice",
+      "items": [
+        "Walk until breathing feels comfortable.",
+        "If comfortable, try gentle breathing for two minutes; stop if dizzy."
+      ],
+      "note": "This may feel calming; no autonomic reset or faster recovery is promised.",
+      "sourceIds": [
+        "slow-breathing-trial-2026"
+      ],
+      "timerSeconds": 120,
+      "inhaleSeconds": 4,
+      "exhaleSeconds": 6
+    },
+    "checkIn": {
+      "title": "How did it go?",
+      "items": [
+        "Record duration, session effort, symptoms and how the workout felt.",
+        "Use your response to inform the next plan."
+      ]
+    }
+  },
+  "completion": {
+    "focusReady": false,
+    "submittedAt": null,
+    "actual": null
+  },
+  "links": {
+    "editProfile": "/athlete/profile/training"
+  }
+}

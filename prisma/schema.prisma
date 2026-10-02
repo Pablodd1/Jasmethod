@@ -14,13 +14,14 @@ datasource db {
 // ---------- IDENTITY ----------
 
 model User {
+  syncJobs SyncJob[]
   id           String    @id @default(cuid())
   email        String    @unique
   passwordHash String
   name         String
   role         String    @default("athlete") // athlete | coach | admin
   timezone     String    @default("America/New_York")
-  language     String    @default("es") // en | es | ht | fr | ru
+  language     String    @default("en") // en | es | ht | fr | ru — new accounts start English; onboarding can change it
   avatar       String    @default("🧑") // emoji icon face
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -52,6 +53,22 @@ model User {
   coaching      CoachAssignment[] @relation("CoachSide") // athletes this user coaches
   coachedBy     CoachAssignment[] @relation("AthleteSide") // coaches assigned to this user
   forecastSnapshots RaceForecastSnapshot[]
+  coachingMessages CoachingMessage[] @relation("MessageAthlete")
+  authoredMessages CoachingMessage[] @relation("MessageAuthor")
+}
+
+// Shared athlete/authorized-coach conversation. Messages do not execute plan edits.
+model CoachingMessage {
+  id String @id @default(cuid())
+  athleteId String
+  authorId String
+  body String
+  clientId String
+  createdAt DateTime @default(now())
+  athlete User @relation("MessageAthlete", fields: [athleteId], references: [id], onDelete: Cascade)
+  author User @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  @@unique([authorId, clientId])
+  @@index([athleteId, createdAt, id])
 }
 
 // ---------- TELEMETRY & USAGE METERING ----------
@@ -122,6 +139,7 @@ model AthleteProfile {
   sex           String? // male | female
   heightCm      Float?
   weightKg      Float?
+  weightSource  String? // manual | device — device sync may overwrite device-sourced weights only
   experience    String  @default("beginner") // beginner | amateur | advanced | pro
   goal          String? // sprint | olympic | half | full
   raceDate      DateTime?
@@ -129,6 +147,7 @@ model AthleteProfile {
   intensityPct  Float?  // coach-set intensity multiplier % (null/100 = as planned; <100 eases, >100 sharpens)
   trainingWindow String @default("any") // any | morning | midday | evening — default session time-of-day
   units        String   @default("metric") // metric | imperial — display-only; storage stays kg/km/ml/°C
+  manualPrs    String?  // JSON: user-entered personal records [{label, value, unit, date}] — track PBs etc. not capturable from devices
   vo2max        Float? // ml/kg/min (measured or estimated)
   lthr          Int?   // lactate threshold HR bpm
   restingHr     Int?
@@ -231,11 +250,16 @@ model Workout {
   recovery     String? // post-workout ANS recovery cooldown note (rotates daily)
   originalPlan String? // immutable base used when recalculating daily adaptations
   prescription String? // effective structured prescription shared by UI/export
-  feedbackStatus String? // completed | partial | skipped
+  feedbackStatus String? // completed | partial | substituted | skipped | unknown
   actualDurationMin Int?
+  actualSport       String? // Explicit athlete report; never overwrites planned sport
+  actualDetails     String? // Versioned JSON: reported quantities and observation provenance
   feedbackNote String?
   feedbackAt DateTime?
   matchedPlanId String? // planned session fulfilled by an imported activity
+  deliveryProvider String? // intervals | garmin-json — where this prescription was published
+  deliveryId String? // provider-side id of the published workout (updates/deletes)
+  insights String? // KCoach activity report (JSON {headline, body}) generated at sync
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   planDay    PlanDay? @relation(fields: [planDayId], references: [id], onDelete: SetNull)
@@ -419,6 +443,8 @@ model AuditLog {
 }
 
 model ReminderDelivery {
+  attempts Int @default(0)
+  lastAttemptAt DateTime?
   id String @id @default(cuid())
   userId String
   day String
@@ -479,6 +505,7 @@ model Race {
   category    String?  // age_group | elite
   courseKm    Float?   // measured course distance from uploaded GPX (overrides the distance label in forecasts)
   courseElevM Float?   // measured total elevation gain from uploaded GPX
+  elevProfile String?  // JSON [{km,elevM}] sampled from GPX — per-segment pacing
   source      String?  // provenance: "manual" | "athlinks" | ... — who created the record
   sourceRecordId String? // provider-side result id (dedupe across re-imports)
   sourceRetrievedAt DateTime? // when the provider record was last pulled
@@ -588,7 +615,7 @@ model SupplementProfile {
 model ReminderPref {
   id              String  @id @default(cuid())
   userId          String  @unique
-  emailEnabled    Boolean @default(true)
+  emailEnabled    Boolean @default(false)
   telegramEnabled Boolean @default(false)
   telegramChatId  String?
   reminderHour    Int     @default(17) // 0-23 local; <12 = morning reminder, >=12 = evening detailed plan for tomorrow
@@ -626,4 +653,23 @@ model MetricObservation {
 
   @@index([userId, observedAt])
   @@index([userId, metricType, observedAt])
+}
+
+model SyncJob {
+  id String @id @default(cuid())
+  userId String
+  kind String
+  dedupeKey String @unique
+  payload String
+  status String @default("pending")
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  leasedUntil DateTime?
+  leaseToken String?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([status, availableAt])
+  @@index([userId, createdAt])
 }

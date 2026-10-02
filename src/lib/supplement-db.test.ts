@@ -41,17 +41,11 @@ test("supplement DB: every platform discipline maps to a protocol", () => {
   }
 });
 
-test("supplement DB: boxing stack is brain-first (creatine-brain or DHA at priority 1)", () => {
+test("supplement DB: contact-sport options do not prescribe unproven neuroprotection", () => {
   const stack = supplementsForSport("boxing_combat");
-  assert.ok(stack.length >= 4, "boxing stack too thin");
-  const top = stack.find((s) => s.priority === 1)!;
-  assert.ok(
-    top.supplement.category === "neuroprotection",
-    `boxing priority 1 should be neuroprotection, got ${top.supplement.category}`,
-  );
-  // DHA entry must warn about EPA-only interference
-  const dha = SUPPLEMENT_DB.find((s) => s.id === "dha_neuroprotection")!;
-  assert.match(dha.caution!, /EPA/);
+  assert.ok(stack.some(s => s.supplement.id === "creatine_mono"));
+  assert.ok(stack.every(s => s.supplement.category !== "neuroprotection"));
+  assert.ok(!SUPPLEMENT_DB.some(s => s.id === "dha_neuroprotection" || s.id === "creatine_brain"));
 });
 
 test("supplement DB: sprint 400m stack covers buffering for the lactate battle", () => {

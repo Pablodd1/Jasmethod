@@ -1,4 +1,5 @@
 "use client";
+// Random stimuli and timers are produced in user-event callbacks, not render output.
 
 // Cognitive check — compact Stroop test (inhibitory control, the pacing-
 // discipline system). Consolidated INTO the Daily Check-in per the product

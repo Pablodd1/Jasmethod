@@ -43,7 +43,7 @@ export async function destroySession(token: string): Promise<void> {
 }
 
 export async function getCurrentUser() {
-  const store = cookies();
+  const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const session = await prisma.authSession.findUnique({
@@ -64,7 +64,7 @@ export async function setSessionCookie(token: string, req?: Request) {
   const proto = req?.headers.get("x-forwarded-proto")
     || (req?.url?.startsWith("https") ? "https" : "http");
   const secure = proto === "https";
-  const store = cookies();
+  const store = await cookies();
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -90,6 +90,6 @@ export function sessionCookieOnResponse(token: string, req: Request, res: NextRe
 }
 
 export async function clearSessionCookie() {
-  const store = cookies();
+  const store = await cookies();
   store.delete(SESSION_COOKIE);
 }

@@ -1,9 +1,11 @@
+import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import {
   SPORT_PROTOCOLS,
   SPORT_KEY_FOR_DISCIPLINE,
   SUPPLEMENT_DB,
+  supplementAllowed,
 } from "@/lib/supplement-db";
 
 // GET /api/supplements            → full graded database (id/name/dose/summary)
@@ -31,6 +33,9 @@ export async function GET(req: Request) {
     });
   }
 
+  const preferences = await prisma.supplementProfile.findUnique({ where: { userId: user.id } });
+  if (preferences?.enabled === false) return NextResponse.json({ ok: true, protocol: [], note: "Supplement recommendations are disabled." });
+
   const discipline = user.profile?.goal || "";
   const protocolKey = SPORT_KEY_FOR_DISCIPLINE[discipline];
   const protocol = protocolKey ? SPORT_PROTOCOLS[protocolKey] : undefined;
@@ -45,6 +50,7 @@ export async function GET(req: Request) {
   }
 
   const detailed = protocol
+    .filter(p => supplementAllowed(p.id, preferences))
     .map((p) => {
       const s = SUPPLEMENT_DB.find((x) => x.id === p.id);
       return s
@@ -67,5 +73,5 @@ export async function GET(req: Request) {
     .filter(Boolean)
     .sort((a, b) => a!.priority - b!.priority);
 
-  return NextResponse.json({ ok: true, discipline, protocol: detailed });
+  return NextResponse.json({ ok: true, discipline, protocol: detailed, requiresProfessionalReview: true, note: "Educational options matched to your sport and preferences; not screened for medications, contraindications or individual suitability." });
 }

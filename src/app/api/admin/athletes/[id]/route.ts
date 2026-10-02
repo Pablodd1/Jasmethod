@@ -1,3 +1,5 @@
+import {workoutRevision} from "@/lib/workout-update";
+import {profileRevision} from "@/lib/profile-service";
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -7,17 +9,17 @@ import { dayBounds } from "@/lib/dates";
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const actor = await getCurrentUser();
     if (!actor) throw new ApiError("Sign in", 401);
     if (!canCoach(actor))
       throw new ApiError("Administrator access required", 403);
-    if (actor.role !== "admin" && !(await canAccessAthlete(actor, params.id)))
+    if (actor.role !== "admin" && !(await canAccessAthlete(actor, (await params).id)))
       throw new ApiError("This athlete is not assigned to you", 403);
     const athlete = await prisma.user.findUnique({
-      where: { id: params.id },
+      where: { id: (await params).id },
       select: {
         id: true,
         name: true,
@@ -112,7 +114,8 @@ export async function GET(
     ]);
     return Response.json({
       athlete,
-      workouts,
+      profileRevision: profileRevision(athlete.profile),
+      workouts: workouts.map(w=>({...w,revision:workoutRevision(w)})),
       metrics,
       checkins,
       races,

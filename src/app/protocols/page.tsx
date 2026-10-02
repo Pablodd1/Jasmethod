@@ -1,9 +1,9 @@
 import ProtocolWorkspace from "@/components/protocol-workspace";
 
-export default function ProtocolsPage({
+export default async function ProtocolsPage({
   searchParams,
 }: {
-  searchParams: { athleteId?: string };
+  searchParams: Promise<{ athleteId?: string }>;
 }) {
-  return <ProtocolWorkspace athleteId={searchParams.athleteId} />;
+  return <ProtocolWorkspace athleteId={(await searchParams).athleteId} />;
 }

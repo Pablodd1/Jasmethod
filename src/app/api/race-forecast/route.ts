@@ -36,6 +36,8 @@ export async function GET(req: Request) {
     age: num("age"),
   });
 
+  if (bundle.reason) return NextResponse.json(bundle);
+
   if (!bundle.distance || !classifyDistance(bundle.distance)) {
     return NextResponse.json({
       ok: true,

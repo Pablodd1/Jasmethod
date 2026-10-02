@@ -8,6 +8,7 @@ import {
   Dumbbell,
   Apple,
   Play,
+  Zap,
   FlaskConical,
   Settings,
   Waves,
@@ -25,17 +26,21 @@ import {
   Dna,
   BookOpen,
   Layers,
+  LifeBuoy,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
 
 const NAV = [
   { href: "/today", key: "nav.today", icon: Play },
+  { href: "/daily", key: "nav.daily", icon: Zap },
   { href: "/dashboard", key: "nav.dashboard", icon: Home },
   { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
   { href: "/calendar", key: "nav.calendar", icon: CalendarDays },
   { href: "/training", key: "nav.training", icon: Dumbbell },
   { href: "/settings", key: "nav.settings", icon: Settings },
+  { href: "/help", key: "nav.help", icon: LifeBuoy },
   { href: "/admin", key: "nav.admin", icon: Shield, adminOnly: true },
 ];
 
@@ -46,7 +51,6 @@ const NAV_MORE = [
   { href: "/hyrox", key: "nav.hyrox", icon: Layers },
   { href: "/races", key: "nav.races", icon: Flag },
   { href: "/races/forecast", key: "nav.forecast", icon: Gauge },
-  { href: "/prs", key: "nav.prs", icon: Trophy },
   { href: "/nutrition", key: "nav.nutrition", icon: Apple },
   { href: "/blood", key: "nav.blood", icon: FlaskConical },
   { href: "/reminders", key: "nav.reminders", icon: Bell },
@@ -277,6 +281,14 @@ export function MobileNav() {
           </Link>
         );
       })}
+      {/* KCoach — one tap from ANY page (the coach is never buried) */}
+      <Link
+        href="/today#jasai"
+        className="flex flex-col items-center gap-0.5 text-[10px] text-vermillion-500"
+      >
+        <Sparkles className="w-5 h-5" />
+        KCoach
+      </Link>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { intervalsConnectorEnabled, trainingCapabilities } from "@/lib/capabilities";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { athlinksConfigured } from "@/lib/athlinks";
@@ -61,6 +62,7 @@ export async function GET() {
       connectUrl: configured
         ? `/api/connectors/${p.path || p.id}/authorize`
         : null,
+      capabilities: { imports: true, publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
       status:
         connectors.find((c) => c.provider === p.id)?.status || "disconnected",
     };
@@ -71,7 +73,8 @@ export async function GET() {
         id: "garmin",
         name: "Garmin / COROS",
         description:
-          "Upload TCX or Garmin activities CSV. Direct watch sync is not enabled.",
+          "Upload completed TCX or Garmin activities CSV. Automatic Garmin/COROS imports and structured workout delivery are not implemented.",
+        capabilities: { imports: "file", publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
       },
       {
         id: "apple",
@@ -85,20 +88,30 @@ export async function GET() {
         description:
           "Your official race-history record: results, places and PRs — matched to your races automatically.",
       },
+      {
+        id: "intervals",
+        name: "Intervals.icu",
+        description:
+          "Optional Intervals.icu calendar publication. All sports use calendar notes; native structured provider export is unvalidated. Device receipt is unverified.",
+        method: "api_key" as const,
+        configured: true,
+        capabilities: { imports: false, publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
+      },
     ].map((p) => ({
       ...p,
-      method: p.id === "athlinks" ? "athlinks" : "upload",
+      method: p.id === "athlinks" ? "athlinks" : p.id === "intervals" ? "api_key" : "upload",
       configured: p.id === "athlinks" ? athlinksConfigured() : true,
       status:
         connectors.find((c) => c.provider === p.id)?.status || "disconnected",
     })),
   );
   return Response.json({
-    providers: providers.map((p) => ({
+    capabilities: trainingCapabilities(),
+    providers: providers.filter(p => p.id !== "intervals" || intervalsConnectorEnabled()).map((p) => ({
       ...p,
       ...connectors.find((c) => c.provider === p.id),
     })),
-    connectors,
+    connectors: connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled()),
   });
 }
 export async function DELETE(req: Request) {

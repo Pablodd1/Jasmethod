@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
-import { updateWorkout } from "@/lib/workout-update";
+import { updateWorkout, workoutRevision } from "@/lib/workout-update";
 import { dayBounds, addDaysKey, localDate } from "@/lib/dates";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -70,7 +70,7 @@ export async function GET(req: Request) {
     progression = progressionAdvice(weeks);
   }
 
-  return NextResponse.json({ plans, progression });
+  return NextResponse.json({ plans: plans.map(plan => ({...plan, days: plan.days.map(day => ({...day, sessions: day.sessions.map(w => ({...w, revision: workoutRevision(w)}))}))})), progression });
 }
 
 // PUT /api/plan — update a session within a plan (edit workout) or toggle a day off
@@ -90,6 +90,7 @@ export async function PUT(req: Request) {
           where: { id: day.id },
           data: { dayOff: body.dayOff },
         });
+        if (body.dayOff) await tx.workout.updateMany({where:{planDayId:day.id,planned:true,completed:false},data:{approved:false}});
         await tx.auditLog.create({
           data: {
             actorId: actor.id,

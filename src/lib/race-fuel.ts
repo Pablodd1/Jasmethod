@@ -23,6 +23,7 @@ export interface RaceFuelInput {
   sodiumMgPerL?: number | null;  // measured sweat sodium concentration
   heatFactor?: number;           // 1.0 = neutral; >1 scales fluid
   weightKg?: number | null;      // for caffeine dosing
+  caffeineOptIn?: boolean;
   caffeineNowMg?: number | null; // already taken pre-race
 }
 
@@ -46,7 +47,7 @@ export function raceFuelPlan(input: RaceFuelInput): RaceFuelPlan {
   const hours = Math.max(0, input.durationMin / 60);
   const heat = Math.min(1.3, Math.max(0.8, input.heatFactor ?? 1));
   const gaps: string[] = [];
-  const notes: string[] = [];
+  const notes: string[] = ["General planning examples, not mandatory intake. Drink according to thirst and conditions; avoid overdrinking or body-weight gain during exercise. Extra sodium does not make overdrinking safe. Count carbohydrate from drinks and gels together once."];
 
   // --- Carbs: duration bands (Thomas 2016), gut-training extends the top ---
   let carbsGPerHour: number;
@@ -60,17 +61,17 @@ export function raceFuelPlan(input: RaceFuelInput): RaceFuelPlan {
     carbsGPerHour = 60;
     carbsBand = "1–2.5h: 30–60 g/h band — engine picked 60 g/h for race intensity";
   } else {
-    carbsGPerHour = input.gutTrained ? 90 : 75;
+    carbsGPerHour = input.gutTrained ? 90 : 60;
     carbsBand = input.gutTrained
       ? ">2.5h: 60–90 g/h standard, 90–120 g/h for gut-trained — picked 90 g/h (glucose:fructose mix required)"
-      : ">2.5h: 60–90 g/h standard — picked 75 g/h; work toward 90 g/h with gut training (glucose:fructose mix required)";
+      : ">2.5h: 60–90 g/h standard — picked 60 g/h; higher amounts need practiced tolerance (glucose:fructose mix required)";
   }
 
   // --- Fluid: measured sweat rate, else labeled default, scaled by heat ---
   let fluidMlPerHour: number;
   if (input.sweatRateMlH != null && input.sweatRateMlH > 0) {
-    fluidMlPerHour = Math.round(Math.min(1500, Math.max(300, input.sweatRateMlH)) * heat);
-    notes.push(`Fluid scaled from your measured sweat rate (${input.sweatRateMlH} ml/h) × heat factor ${heat.toFixed(2)}.`);
+    fluidMlPerHour = Math.round(Math.min(1500, Math.max(300, input.sweatRateMlH)) );
+    notes.push(`Fluid example derived from your supplied sweat rate (measurement date/conditions unverified) (${input.sweatRateMlH} ml/h); no assumed heat adjustment to a measurement.`);
   } else {
     fluidMlPerHour = Math.round(FLUID_ML_PER_HOUR_DEFAULT.value * heat);
     gaps.push("No measured sweat rate — using the 500–1000 ml/h population default (750 ml/h × heat). Measure yours: weigh in/out before and after a hard hour.");
@@ -81,7 +82,7 @@ export function raceFuelPlan(input: RaceFuelInput): RaceFuelPlan {
     ? input.sodiumMgPerL
     : SODIUM_MG_PER_L_DEFAULT.value;
   if (input.sodiumMgPerL == null)
-    gaps.push("No measured sweat sodium — using the 500–1000 mg/L default (800 mg/L). Sweat patch tests nail this.");
+    gaps.push("No measured sweat sodium — using the 500–1000 mg/L default (800 mg/L). Measurement context is required before treating a result as your loss.");
   const sodiumMgPerHour = Math.round((sodiumPerL / 1000) * fluidMlPerHour);
 
   // --- Calories: intake from carbs ---
@@ -90,13 +91,12 @@ export function raceFuelPlan(input: RaceFuelInput): RaceFuelPlan {
   // --- Caffeine: 3 mg/kg (3–6 range), 45–60 min pre-race ---
   let caffeineMg: number | null = null;
   let caffeineTiming: string | null = null;
-  if (hours >= 1.25 && input.weightKg) {
+  if (input.caffeineOptIn === true && hours >= 1.25 && input.weightKg && Number.isFinite(input.weightKg) && input.weightKg > 0) {
     caffeineMg = Math.round((CAFFEINE_MG_PER_KG.value * input.weightKg) / 5) * 5;
     caffeineTiming = input.caffeineNowMg
-      ? `Pre-race caffeine already planned (${input.caffeineNowMg} mg). Optional top-up: half the dose (~${Math.round(caffeineMg / 2)} mg) at ~half distance — only if you trained it.`
+      ? `Pre-race caffeine already planned (${input.caffeineNowMg} mg). Do not add an automatic top-up; consider all sources and individual tolerance.`
       : `${caffeineMg} mg (~${CAFFEINE_MG_PER_KG.value} mg/kg) 45–60 min before the start; effective range 3–6 mg/kg. Train with it first.`;
-    if (hours >= 2.5)
-      notes.push("Mid-race caffeine top-up of ~half dose near the end of the bike is common for long-course — rehearse it in training.");
+
   }
 
   return {
@@ -145,7 +145,7 @@ export function fuelTimeline(
   }
 
   if (opts.discipline === "triathlon") {
-    slots.push({ fromMin: -60, toMin: -30, what: `Pre-load: ${Math.round(plan.fluidMlPerHour * 0.5)} ml fluid with electrolytes${plan.caffeineMg ? ` + ${plan.caffeineMg} mg caffeine` : ""}.` });
+    slots.push({ fromMin: -60, toMin: -30, what: `Pre-race fluid example, only if needed: ${Math.round(plan.fluidMlPerHour * 0.5)} ml fluid with electrolytes${plan.caffeineMg ? ` + ${plan.caffeineMg} mg caffeine` : ""}.` });
     slots.push({ fromMin: -20, toMin: 0, what: "Swim: nothing during — top up beforehand; last sips at the start corral." });
     slots.push({ fromMin: 0, toMin: 15, what: "Bike start: settle the first 15 min, then begin fueling." });
     const bikeEnd = Math.max(15, (opts.transitionMin ?? opts.totalMin) - 5);
@@ -157,7 +157,7 @@ export function fuelTimeline(
       });
     }
     if (opts.transitionMin != null)
-      slots.push({ fromMin: opts.transitionMin, toMin: opts.transitionMin + 2, what: "T2: last gel in transition if the run is 60+ min; grab salt if it's hot." });
+      slots.push({ fromMin: opts.transitionMin, toMin: opts.transitionMin + 2, what: "T2: last gel in transition if the run is 60+ min; drink according to thirst." });
     slots.push({
       fromMin: opts.transitionMin ?? 0,
       toMin: opts.totalMin,
@@ -167,7 +167,7 @@ export function fuelTimeline(
     const hourly: string =
       opts.discipline === "bike"
         ? `${plan.carbsGPerHour} g carbs + ${plan.fluidMlPerHour} ml fluid + ${plan.sodiumMgPerHour} mg sodium per hour.`
-        : `Gel every ~25 min (~${Math.min(60, plan.carbsGPerHour)} g/h) + water at every station.`;
+        : `Gel every ~25 min (~${Math.min(60, plan.carbsGPerHour)} g/h) + water according to thirst, without forced drinking.`;
     for (let h = 0; h * 60 < opts.totalMin; h++)
       slots.push({ fromMin: h * 60, toMin: Math.min((h + 1) * 60, opts.totalMin), what: `Hour ${h + 1}: ${hourly}` });
   }

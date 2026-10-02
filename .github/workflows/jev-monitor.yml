@@ -1,0 +1,37 @@
+# Jev web error monitor — JasMiamiMethod
+# Runs the route auditor (TypeSafe AI System-1) on a schedule, on pushes to
+# main/master, and on demand. Alerts via Resend email and/or generic webhook.
+name: Jev Error Monitor
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  BASE_URL: ${{ vars.BASE_URL || 'https://jasmiamimethod.fit' }}
+
+jobs:
+  jev-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Run Jev audit (jev-latest, heuristic fallback without key)
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          TYPESAFE_DEFAULT_MODEL: ${{ vars.TYPESAFE_DEFAULT_MODEL || 'jev-latest' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+          NOTIFICATION_WEBHOOK: ${{ secrets.NOTIFICATION_WEBHOOK }}
+          BASE_URL: ${{ env.BASE_URL }}
+        run: node scripts/jev-audit.mjs
+      - name: Alert summary
+        if: failure()
+        run: echo "Jev found unhealthy routes — see the audit log above. Notifications were dispatched if Resend/webhook secrets are configured."

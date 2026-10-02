@@ -56,9 +56,13 @@ export default function CalendarPage() {
   const [view, setView] = useState<"days" | "month">("days"); // 3-day default
   const [month, setMonth] = useState(new Date());
   const [events, setEvents] = useState<any[]>([]);
+  const [races, setRaces] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [plan, setPlan] = useState<any>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showActivityForm, setShowActivityForm] = useState(false);
+  const [activityBusy, setActivityBusy] = useState(false);
+  const [activityMessage, setActivityMessage] = useState("");
   const [evForm, setEvForm] = useState({
     title: "",
     date: format(new Date(), "yyyy-MM-dd"),
@@ -67,6 +71,7 @@ export default function CalendarPage() {
   });
   const [selected, setSelected] = useState<string | null>(null); // yyyy-MM-dd
   const [stripWorkouts, setStripWorkouts] = useState<any[]>([]); // prev month → next month for the week strip
+  const [mutationError, setMutationError] = useState("");
   const [moveFor, setMoveFor] = useState<any>(null); // session being moved
   const [moveForm, setMoveForm] = useState({
     date: "",
@@ -81,6 +86,7 @@ export default function CalendarPage() {
     const d = await res.json();
     setEvents(d.events || []);
     setWorkouts(d.workouts || []);
+    setRaces(d.races || []);
     setPlan(d.plan);
     // Week strip spans prev/next month — one extra request, cached server-side.
     const sres = await fetch("/api/calendar?month=auto");
@@ -93,6 +99,20 @@ export default function CalendarPage() {
   useEffect(() => {
     if (user) load(month);
   }, [user, month]);
+
+  async function addUnplannedActivity(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setActivityBusy(true); setMutationError(""); setActivityMessage("");
+    const fields = Object.fromEntries(new FormData(event.currentTarget));
+    try {
+      const res = await fetch("/api/workouts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save activity");
+      setShowActivityForm(false);
+      setActivityMessage(es ? "Actividad registrada con tus datos reales. Las sesiones planificadas no se modificaron." : "Activity saved with your reported actuals. Planned sessions were retained.");
+      const observed = new Date(`${String(fields.date)}T12:00:00`);
+      setMonth(observed); await load(observed);
+    } catch (error) { setMutationError((error as Error).message); } finally { setActivityBusy(false); }
+  }
 
   async function addEvent(e: React.FormEvent) {
     e.preventDefault();
@@ -114,12 +134,12 @@ export default function CalendarPage() {
   }
 
   async function api(body: any) {
-    const res = await fetch("/api/plan", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return res.ok;
+    setMutationError("");
+    try {
+      const res = await fetch("/api/plan", {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+      if(!res.ok) {const data=await res.json();throw Error(data.error||"Could not save session");}
+      return true;
+    } catch(error) {setMutationError((error as Error).message);return false;}
   }
 
   async function toggleDone(session: any) {
@@ -131,6 +151,7 @@ export default function CalendarPage() {
     if (!moveFor || !moveForm.date) return;
     const ok = await api({
       sessionId: moveFor.id,
+      expectedRevision: moveFor.revision,
       date: moveForm.date,
       startTime: moveForm.time || null,
       indoor: moveForm.indoor,
@@ -161,7 +182,7 @@ export default function CalendarPage() {
   const allEvents = (() => {
     const seen = new Set<string>();
     const out: any[] = [];
-    for (const e of [...events, ...stripWorkouts]) {
+    for (const e of [...events, ...stripWorkouts, ...(races || [])]) {
       if (seen.has(e.id)) continue;
       seen.add(e.id);
       out.push(e);
@@ -205,6 +226,7 @@ export default function CalendarPage() {
   return (
     <ProtectedPage>
       <div className="space-y-6">
+        {mutationError && <p role="alert" className="text-red-700">{mutationError}</p>}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold">
@@ -240,6 +262,7 @@ export default function CalendarPage() {
             >
               Today
             </button>
+            <button onClick={() => setShowActivityForm(!showActivityForm)} className="btn-secondary"><Plus className="w-4 h-4" />{es ? "Registrar actividad" : "Log actual activity"}</button>
             <button
               onClick={() => setShowForm(!showForm)}
               className="btn-primary"
@@ -248,6 +271,26 @@ export default function CalendarPage() {
             </button>
           </div>
         </div>
+
+        {activityMessage && <p role="status" className="text-sm text-ocean-700">{activityMessage}</p>}
+        {showActivityForm && (
+          <form className="card space-y-3" onSubmit={addUnplannedActivity}>
+            <h2 className="font-display font-bold text-lg">{es ? "Actividad realizada no planificada" : "Unplanned activity you actually did"}</h2>
+            <p className="text-xs text-slate-600">{es ? "Introduce deporte, fecha local y minutos reales. Si no sabes la duración, no la sustituyas por cero o por la duración planificada; puedes registrar respuestas desconocidas en el informe de una sesión existente." : "Enter sport, local observation date and actual minutes. If duration is unknown, don't replace it with zero or planned minutes; an existing session report can retain unknown answers."}</p>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <label className="text-sm">{es ? "Deporte realizado" : "Actual sport"}<select name="sport" required defaultValue="" className="input"><option value="" disabled>{es ? "Seleccionar" : "Choose"}</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing", "other"].map((sport) => <option key={sport} value={sport}>{sport}</option>)}</select></label>
+              <label className="text-sm">{es ? "Fecha local observada" : "Local observation date"}<input name="date" type="date" required max={dateKey(new Date(), user?.timezone)} defaultValue={selected || ""} className="input" /></label>
+              <label className="text-sm">{es ? "Minutos reales" : "Actual minutes"}<input name="actualDurationMin" type="number" required min={1} max={1440} step={1} className="input" placeholder="—" /></label>
+              <label className="text-sm">{es ? "Esfuerzo 1–10 (opcional)" : "Exertion 1–10 (optional)"}<input name="rpe" type="number" min={1} max={10} step={1} className="input" placeholder="—" /><span className="text-xs text-slate-500">{es ? "1 muy fácil · 5 moderado · 10 máximo" : "1 very easy · 5 moderate · 10 maximal"}</span></label>
+              <label className="text-sm">{es ? "Distancia (km, opcional)" : "Distance (km, optional)"}<input name="distanceKm" type="number" min={0} max={1500} step="any" className="input" placeholder="—" /></label>
+              <label className="text-sm">{es ? "Repeticiones (opcional)" : "Repetitions (optional)"}<input name="reps" type="number" min={0} max={100000} step={1} className="input" placeholder="—" /></label>
+              <label className="text-sm">{es ? "Carga (kg, opcional)" : "Load (kg, optional)"}<input name="loadKg" type="number" min={0} max={1500} step="any" className="input" placeholder="—" /></label>
+            </div>
+            <label className="block text-sm">{es ? "Título (opcional)" : "Title (optional)"}<input name="title" className="input" maxLength={200} /></label>
+            <label className="block text-sm">{es ? "Notas: tolerancia, cambios, dolor y cuándo ocurrió (opcional)" : "Notes: tolerance, changes, pain and when it occurred (optional)"}<textarea name="notes" className="input" maxLength={4000} /></label>
+            <button type="submit" disabled={activityBusy} className="btn-primary">{activityBusy ? "Saving…" : es ? "Guardar actividad realizada" : "Save actual activity"}</button>
+          </form>
+        )}
 
         {showForm && (
           <div className="card">
@@ -383,23 +426,53 @@ export default function CalendarPage() {
                         </div>
                       )}
                       {dayEvents.map((e) => {
-                        const isWorkout = e.type !== "appointment" && e.type !== "note";
+                        const isRace = e.priority != null || e.type === "race";
+                        const raceBadge =
+                          e.priority === 1 ? "A" : e.priority === 2 ? "B" : e.priority === 3 ? "C" : null;
                         return (
                           <div
                             key={e.id}
                             className={`rounded-xl border px-3 py-2 ${
-                              e.type === "race"
-                                ? "border-vermillion-300 bg-vermillion-400/10"
+                              isRace
+                                ? e.priority === 1
+                                  ? "border-vermillion-400 bg-vermillion-400/15 shadow-sm"
+                                  : e.priority === 2
+                                    ? "border-amber-300 bg-amber-50"
+                                    : "border-slate-300 bg-slate-100"
                                 : e.type === "appointment"
                                   ? "border-amber-200 bg-amber-50"
                                   : "border-slate-200 bg-slate-50"
                             }`}
                           >
-                            <div className="text-sm font-semibold leading-tight">{e.title}</div>
+                            <div className="text-sm font-semibold leading-tight flex items-center gap-1.5">
+                              {raceBadge && (
+                                <span
+                                  className={`text-[9px] font-black rounded-full w-5 h-5 flex items-center justify-center shrink-0 ${
+                                    raceBadge === "A"
+                                      ? "bg-vermillion-500 text-white"
+                                      : raceBadge === "B"
+                                        ? "bg-amber-500 text-white"
+                                        : "bg-slate-500 text-white"
+                                  }`}
+                                >
+                                  {raceBadge}
+                                </span>
+                              )}
+                              <span className="truncate">{"priority" in e ? `🏁 ${e.name}` : e.title}</span>
+                            </div>
                             <div className="text-[11px] text-slate-500 mt-0.5">
-                              {e.startTime ? String(e.startTime).slice(0, 5) : ""} ·{" "}
-                              {e.durationMin ? `${e.durationMin} min` : e.type}{" "}
-                              {e.intensity ? `· ${String(e.intensity).toUpperCase()}` : ""}
+                              {"priority" in e ? (
+                                <>
+                                  {e.startTime ? String(e.startTime).slice(0, 5) : ""} · {e.distance}
+                                  {e.location ? ` · ${e.location}` : ""}
+                                </>
+                              ) : (
+                                <>
+                                  {e.startTime ? String(e.startTime).slice(0, 5) : ""} ·{" "}
+                                  {e.durationMin ? `${e.durationMin} min` : e.type}{" "}
+                                  {e.intensity ? `· ${String(e.intensity).toUpperCase()}` : ""}
+                                </>
+                              )}
                             </div>
                           </div>
                         );
@@ -467,7 +540,7 @@ export default function CalendarPage() {
                     {isDayOff && (
                       <div
                         className="text-[10px] md:text-[11px] rounded-md px-1.5 py-0.5 bg-slate-200 text-slate-600 font-semibold truncate"
-                        title="Day off — 20 min Z1 + breathing"
+                        title="Day off — rest, with optional comfortable movement"
                       >
                         ☁️ OFF
                       </div>
@@ -676,6 +749,7 @@ export default function CalendarPage() {
                 workout
               </h3>
               <p className="text-xs text-slate-400 mb-4">{moveFor.title}</p>
+              {mutationError && <p role="alert" className="text-red-700">{mutationError}</p>}
               <div className="space-y-3">
                 <div>
                   <label className="label">New date</label>

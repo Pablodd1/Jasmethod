@@ -1,13 +1,15 @@
 "use client";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { CoachingConversation } from "@/components/coaching-conversation";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Watch } from "lucide-react";
 import { FuelTimeline } from "@/components/fuel-timeline";
-import { EstimateBanner } from "@/components/estimate-banner";
 import { WorkoutSparkline } from "@/components/workout-sparkline";
 import { fmtVolumeDual } from "@/lib/units";
 import { fmtDistance } from "@/lib/units";
 import { dayOffProtocol } from "@/lib/day-off";
+import { FitDownloadActions, fitDownloadUrl } from "@/components/daily-training/FitDownloadActions";
+import { endpointLabel } from "@/components/daily-training/training-contract";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
@@ -23,12 +25,20 @@ export default function TodayPage() {
   const [data, setData] = useState<any>(null),
     [error, setError] = useState(""),
     [offline, setOffline] = useState(false),
-    [selected, setSelected] = useState<string | null>(null),
+    [selected, setSelected] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sessionId")),
     [busy, setBusy] = useState(false),
     [feedback, setFeedback] = useState(false),
     [message, setMessage] = useState(""),
     [question, setQuestion] = useState(""),
     [answer, setAnswer] = useState("");
+  useEffect(() => {
+    const onHistory = () => { setSelected(new URLSearchParams(window.location.search).get("sessionId")); setFeedback(false); setMessage(""); setError(""); };
+    window.addEventListener("popstate", onHistory);
+    return () => window.removeEventListener("popstate", onHistory);
+  }, []);
+  const [externalConsent, setExternalConsent] = useState(false);
+  const [assistantMode, setAssistantMode] = useState("");
+  const [assistantProposal, setAssistantProposal] = useState<{command:string;value:number|null;sport:string|null;editorUrl:string}|null>(null);
   const load = useCallback(async () => {
     if (!user) return;
     try {
@@ -75,9 +85,9 @@ export default function TodayPage() {
       .then(() => load())
       .catch(() => {});
   }, [user, data, autoSynced, load]);
-  const session =
-    data?.sessions.find((s: any) => s.id === selected) ||
-    data?.sessions.find(
+  const session = selected
+    ? data?.sessions.find((s: any) => s.id === selected)
+    : data?.sessions.find(
       (s: any) => !s.completed && s.feedbackStatus !== "skipped",
     ) ||
     data?.sessions[0];
@@ -102,103 +112,19 @@ export default function TodayPage() {
       setBusy(false);
     }
   }
-  async function download(approve = false) {
-    if (!session) return;
-    setBusy(true);
-    setError("");
+  const approving = useRef(false);
+  async function approveSession() {
+    if (!session || approving.current || !session.revision) return;
+    approving.current = true; setBusy(true); setError(""); setMessage("");
     try {
-      const r = await fetch(`/api/workout/approve?sessionId=${session.id}`, {
-        method: approve ? "POST" : "GET",
-      });
-      if (!r.ok) throw Error((await r.json().catch(() => ({}))).error);
-      // Approve also emails the .FIT with import steps — tell the athlete.
-      if (approve && r.headers.get("X-Delivered-Email") === "1")
-        setMessage(
-          es
-            ? "Aprobado ✓ — el archivo .FIT también va de camino a tu correo con los pasos para Garmin."
-            : "Approved ✓ — the .FIT is also on its way to your email with the Garmin import steps."
-        );
-      await saveBlob(r, "jasmethod-workout.fit");
+      const response = await fetch(fitDownloadUrl(session.id, session.revision), { method: "POST" });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || "Approval failed");
+      setMessage(response.headers.get("X-Delivered-Email") === "1"
+        ? (es ? "Aprobado. FIT enviado por correo; recepción en el reloj sin confirmar." : "Approved. FIT emailed; watch receipt is unconfirmed.")
+        : (es ? "Aprobado. No se ha confirmado entrega al reloj." : "Approved. No watch delivery is confirmed."));
       await load();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function saveBlob(r: Response, name: string) {
-    const blob = await r.blob(),
-      url = URL.createObjectURL(blob),
-      a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-  // SEND TO WATCH — the phone-only direct path: fetch the approved .FIT and
-  // open the native share sheet with the file attached. The athlete picks
-  // Garmin Connect from the share sheet; the app imports the structured
-  // workout and syncs it to the watch automatically. Desktop browsers
-  // (no file-share support) fall back to the download.
-  async function sendToWatch() {
-    if (!session) return;
-    setBusy(true);
-    setError("");
-    try {
-      const r = await fetch(`/api/workout/approve?sessionId=${session.id}`, {
-        method: "POST",
-      });
-      if (!r.ok) throw Error((await r.json().catch(() => ({}))).error);
-      const file = new File(
-        [await r.blob()],
-        "jasmethod-workout.fit",
-        { type: "application/octet-stream" },
-      );
-      const shareable =
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [file] });
-      let shared = false;
-      if (shareable) {
-        try {
-          // Chrome requires share() inside the user-activation window; the FIT
-          // fetch can outlive it on slow connections, and the OS may deny the
-          // permission (NotAllowedError → "Permission denied"). Any share
-          // failure degrades to a plain download instead of an error banner.
-          await navigator.share({
-            files: [file],
-            title: session.title,
-            text: es
-              ? "Importa en Garmin Connect → Entrenamiento → Workouts"
-              : "Import in Garmin Connect → Training → Workouts",
-          });
-          shared = true;
-          setMessage(
-            es
-              ? "Enviado ✓ — elige Garmin Connect en la hoja para importarlo; se sincroniza solo a tu reloj."
-              : "Sent ✓ — pick Garmin Connect in the sheet to import it; it syncs to your watch automatically."
-          );
-        } catch (shareErr: any) {
-          if (shareErr?.name === "AbortError") {
-            setBusy(false);
-            return; // user closed the sheet — nothing to do
-          }
-          console.warn("Web Share unavailable (" + (shareErr?.name || "?") + ") — falling back to download");
-        }
-      }
-      if (!shared) {
-        await saveBlob(r, "jasmethod-workout.fit");
-        setMessage(
-          es
-            ? "Archivo descargado — ábrelo o compártelo con la app de Garmin Connect para importarlo."
-            : "File downloaded — open or share it with the Garmin Connect app to import it."
-        );
-      }
-      await load();
-    } catch (e: any) {
-      if (e?.name !== "AbortError") setError(e.message);
-    } finally {
-      setBusy(false);
-    }
+    } catch (cause) { setError((cause as Error).message); }
+    finally { approving.current = false; setBusy(false); }
   }
   return (
     <ProtectedPage>
@@ -213,16 +139,9 @@ export default function TodayPage() {
               {data.race.name} · {data.race.daysAway} {es ? "días" : "days"}
             </p>
           )}
-          {data?.needsTesting && (data.needsTesting.vo2max || data.needsTesting.lthr) && (
-            <div className="mt-2">
-              <EstimateBanner
-                compact
-                vo2maxMissing={data.needsTesting.vo2max}
-                lthrMissing={data.needsTesting.lthr}
-                vo2maxSource={data.vo2maxSource}
-              />
-            </div>
-          )}
+          <p className="text-sm mt-2 text-slate-600">{es
+            ? "No necesitas reloj ni pruebas para registrar tu entrenamiento. Si faltan referencias válidas, sigue los objetivos de esfuerzo del plan."
+            : "No watch or benchmark test is required to report training. When usable benchmarks are missing, follow the plan's effort instructions."}</p>
         </div>
         {offline && (
           <div role="status" className="card bg-amber-50 text-amber-900">
@@ -247,14 +166,29 @@ export default function TodayPage() {
             {message}
           </p>
         )}
+        {/* Optional provider setup, hidden unless server capability is enabled. */}
+        {data?.capabilities?.intervalsConnector === true && data?.sessions?.some((s: any) => s.durationMin > 0) &&
+          !data?.connectors?.some((c: any) => c.provider === "intervals" && c.status === "connected") && (
+          <div className="card border-lime-300 bg-lime-50 flex flex-wrap items-center gap-3 p-4">
+            <Watch className="w-5 h-5 text-lime-700 shrink-0" />
+            <p className="text-sm flex-1 text-lime-900 font-medium">
+              {es
+                ? "Integración opcional: publica en el calendario de Intervals.icu. La recepción en el reloj no está verificada."
+                : "Optional integration: publish to the Intervals.icu calendar. Watch receipt is unverified."}
+            </p>
+            <Link href="/connectors" className="btn-primary text-sm shrink-0">
+              {es ? "Conectar" : "Connect"}
+            </Link>
+          </div>
+        )}
         {/* Connect devices banner — only when 0 devices connected */}
         {data?.deviceSummary && data.deviceSummary.connected === 0 && (
           <div className="card border-ocean-300 bg-ocean-50 flex flex-wrap items-center gap-3 p-4">
             <Watch className="w-5 h-5 text-ocean-600 shrink-0" />
             <p className="text-sm flex-1 text-ocean-900 font-medium">
               {es
-                ? "Conecta tu Whoop, Garmin o COROS — los datos sincronizan automáticamente cada día y el coach los usa para adaptar tu entrenamiento."
-                : "Connect your Whoop, Garmin or COROS — data syncs automatically every day and the coach uses it to adapt your training."}
+                ? "Conecta un proveedor disponible o registra los datos manualmente. La conexión directa con Garmin/COROS aún no está implementada."
+                : "Connect an available provider or enter data manually. Direct Garmin/COROS integration is not implemented yet."}
             </p>
             <Link href="/connectors" className="btn-primary text-sm shrink-0">
               {es ? "Conectar ahora" : "Connect now"}
@@ -263,6 +197,43 @@ export default function TodayPage() {
         )}
 
 
+
+        {/* KCoach Activity Reports — post-activity narrative from device sync */}
+        {!!data?.activityReports?.length && (
+          <div className="card p-4 space-y-3">
+            <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              📊 {es ? "Reporte de actividad" : "Activity report"}
+            </h2>
+            {data.activityReports.map(
+              (rep: {
+                id: string;
+                date: string;
+                title: string;
+                sport: string;
+                headline: string;
+                body: string;
+              }) => (
+                <div key={rep.id}>
+                  <p className="text-base font-semibold text-slate-900">
+                    {rep.headline}
+                  </p>
+                  {rep.body && (
+                    <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+                      {rep.body}
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1">
+                    {rep.title} ·{" "}
+                    {new Date(rep.date).toLocaleDateString(es ? "es" : "en", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </p>
+                </div>
+              ),
+            )}
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <Link href="/checkin" className="btn-primary">
@@ -292,7 +263,8 @@ export default function TodayPage() {
             </Link>
           </div>
         )}
-        {data?.sessions.length > 1 && (
+        {selected && data && !session && <p role="alert" className="card">{es ? "La sesión seleccionada no está disponible hoy. Elige una sesión de la lista o abre el plan." : "The selected session is not available today. Choose a session below or open your plan."} <Link href="/training">{es ? "Abrir plan" : "Open plan"}</Link></p>}
+        {data?.sessions.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {data.sessions.map((s: any) => (
               <button
@@ -300,7 +272,11 @@ export default function TodayPage() {
                 className={
                   s.id === session?.id ? "btn-primary" : "btn-secondary"
                 }
+                aria-pressed={s.id === session?.id}
                 onClick={() => {
+                  setError(""); setMessage("");
+                  const url = new URL(window.location.href); url.searchParams.set("sessionId", s.id);
+                  window.history.pushState({}, "", url);
                   setSelected(s.id);
                   setFeedback(false);
                 }}
@@ -320,14 +296,14 @@ export default function TodayPage() {
                     ? es
                       ? "Completado"
                       : "Completed"
-                    : session.prescription.verdict}{" "}
+                    : session.verdict === "blocked" ? (es ? "Necesita revisión" : "Needs review") : session.prescription.verdict}{" "}
                   · {session.startTime || ""}
                 </p>
                 <h2 className="font-display text-2xl font-bold">
                   {session.title}
                 </h2>
                 <p className="mt-2">
-                  {session.durationMin} min · {session.intensity.toUpperCase()}
+                  {session.durationIsEstimate ? "~" : ""}{session.durationMin} min · {session.intensity?.toUpperCase()}
                   {session.prescription.targets.rpe
                     ? ` · RPE ${session.prescription.targets.rpe}/10`
                     : ""}
@@ -340,13 +316,16 @@ export default function TodayPage() {
                 </p>
               </div>
               <div className="p-5 space-y-4">
+                <p role="status">{session.resolutionReason}</p>
+                {session.verdict === "blocked" && <Link className="btn-secondary" href="/checkin">{es ? "Revisar check-in" : "Review check-in"}</Link>}
+                {session.capability && <FitDownloadActions key={`${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} title={session.title} capability={session.capability} disabled={offline || busy} es={es} />}
                 {/* TrainingPeaks-style summary: load · intensity · distance */}
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { label: es ? "Carga est." : "TSS est.", value: session.tss ?? "—" },
                     { label: es ? "IF est." : "IF est.", value: session.if ?? "—" },
                     {
-                      label: es ? "Distancia" : "Distance",
+                      label: session.distanceKind === "prescribed_steps" ? (es ? "Distancia en bloques" : "Distance blocks") : (es ? "Distancia est." : "Distance est."),
                       value:
                         session.distanceKm != null
                           ? fmtDistance(session.distanceKm, data?.units === "imperial" ? "imperial" : "metric")
@@ -365,18 +344,18 @@ export default function TodayPage() {
                       <strong>{session.fuel.preSession.carbsG} g {es ? "carbohidratos" : "carbs"} ({session.fuel.preSession.timingLabel})</strong> — {session.fuel.preSession.note}
                     </>
                   ) : (
-                    es ? "sesión corta — comida normal 1-2 h antes basta." : "short session — a normal meal 1-2 h before is enough."
+                    session.fuel?.preSession?.note || (es ? "No hay una cantidad personalizada disponible. Elige comida habitual según tolerancia." : "No personalized amount is available. Choose familiar food according to tolerance.")
                   )}
                 </div>
                 <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-                  💧 {es ? "AGUA PRE: 400-600 ml en los 60 min previos (+ pizca de sal en calor)." : "WATER PRE: 400-600 ml in the last 60 min (+ pinch of salt in heat)."}
+                  💧 {es ? "HIDRATACIÓN: empieza cómodo y bebe según necesidad y condiciones. No fuerces líquidos; añadir sal no hace seguro beber en exceso." : "HYDRATION: start comfortable and drink according to need and conditions. Do not force fluids; added salt does not make overdrinking safe."}
                 </div>
                 <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs text-fuchsia-900">
                   🧠 {es ? "VISUALIZACIÓN (2 min, sin teléfono)" : "VISUALIZATION (2 min, phone away)"} — {es
-                    ? "cierra los ojos, véete ejecutando la secuencia de abajo: el lugar, el ritmo, la respiración en el esfuerzo. El scrolling roba las catecholaminas que el entreno necesita (Liu 2025)."
-                    : "close your eyes, see yourself executing the sequence below: the place, the rhythm, your breathing at effort. Scrolling steals the catecholamines training needs (Liu 2025)."}
+                    ? "revisa la secuencia, el lugar, el ritmo y la técnica. Es una preparación opcional."
+                    : "review the sequence, setting, effort and technique. This is optional preparation."}
                 </div>
-                {session.prescription.steps.length > 2 && (
+                {session.prescription.steps.length > 2 && session.prescription.steps.every((step: any) => step.endpoint?.type === "time") && (
                   <WorkoutSparkline steps={session.prescription.steps} />
                 )}
                 {session.prescription.steps.length ? (
@@ -432,31 +411,9 @@ export default function TodayPage() {
                                 {s.zone.toUpperCase()}
                               </span>
                             </div>
-                            {/* The considered metric for THIS step — HR, pace or power */}
-                            {(() => {
-                              const t = s.targets;
-                              const metric = t?.hr || t?.pace || t?.power;
-                              return metric ? (
-                                <div className="pl-9 text-[11px] font-semibold text-ocean-700 mt-1">
-                                  {t?.hr && <span className="mr-2">❤️ {t.hr}</span>}
-                                  {t?.power && <span className="mr-2">⚡ {t.power}</span>}
-                                  {t?.pace && <span className="mr-2">🏃 {t.pace}</span>}
-                                  <span className="text-slate-400 font-normal">RPE {t?.rpe}/10</span>
-                                </div>
-                              ) : null;
-                            })()}
-                            <div className="mt-1.5 pl-9 flex items-baseline gap-2">
-                              <span className="text-lg font-bold tabular-nums">
-                                {s.reps
-                                  ? `${s.reps} ${es ? "reps" : "reps"}`
-                                  : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
-                              </span>
-                              {!s.reps && (
-                                <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                                  {es ? "min" : "min"}
-                                </span>
-                              )}
-                            </div>
+                            <div className="pl-9 text-sm mt-1">{s.target?.label}</div>
+                            {s.target?.missingReason && <p className="pl-9 text-xs">{s.target.missingReason}</p>}
+                            <div className="mt-1.5 pl-9 font-semibold">{endpointLabel(s.endpoint, data?.units !== "imperial", session.sport, es ? "es" : "en")}</div>
                             {s.note && (
                               <div className="pl-9 text-[11px] text-slate-600 mt-1 leading-snug">{s.note}</div>
                             )}
@@ -481,22 +438,12 @@ export default function TodayPage() {
                                 {i + 1}. {s.name}
                               </span>
                               <strong>
-                                {s.reps ? `${s.reps} reps` : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
+                                {endpointLabel(s.endpoint, data?.units !== "imperial", session.sport, es ? "es" : "en")}
                                 {s.target?.type === "open" ? "" : ` · ${s.zone.toUpperCase()}`}
                               </strong>
                             </div>
-                            {(() => {
-                              const t = s.targets;
-                              const metric = t?.hr || t?.pace || t?.power;
-                              return metric ? (
-                                <div className="text-[11px] font-semibold text-ocean-700 mt-1">
-                                  {t?.hr && <span className="mr-2">❤️ {t.hr}</span>}
-                                  {t?.power && <span className="mr-2">⚡ {t.power}</span>}
-                                  {t?.pace && <span className="mr-2">🏃 {t.pace}</span>}
-                                  <span className="text-slate-400 font-normal">RPE {t?.rpe}/10</span>
-                                </div>
-                              ) : null;
-                            })()}
+                            <p className="text-sm mt-1">{s.target?.label}</p>
+                            {s.target?.missingReason && <p className="text-xs">{s.target.missingReason}</p>}
                             {s.note && (
                               <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
                             )}
@@ -508,10 +455,10 @@ export default function TodayPage() {
                   </div>
                 ) : (
                   <div>
-                    <p>{es ? "Descanso hoy." : "Rest today."}</p>
+                    <p>{session.verdict === "blocked" ? session.resolutionReason : (es ? "Descanso hoy." : "Rest today.")}</p>
                     {/* The full day-off protocol: sleep/journal, fuel,
                         supplementation reminder, visualization routine. */}
-                    <div className="mt-3 rounded-xl border border-ocean-200 bg-ocean-50/40 p-4 space-y-2">
+                    {session.verdict === "rest" && <div className="mt-3 rounded-xl border border-ocean-200 bg-ocean-50/40 p-4 space-y-2">
                       {(() => {
                         const p = dayOffProtocol(es ? "es" : "en");
                         return (
@@ -546,7 +493,7 @@ export default function TodayPage() {
                           </>
                         );
                       })()}
-                    </div>
+                    </div>}
                   </div>
                 )}
                 {session.durationMin > 0 && (
@@ -614,8 +561,7 @@ export default function TodayPage() {
                     {session.post && (
                       <>
                         <p className="text-sm mt-2">
-                          <strong>{es ? "Después" : "Post"}:</strong> {session.post.carbsG} g carbs ·{" "}
-                          {session.post.proteinG} g protein ({session.post.ratio})
+                          <strong>{es ? "Después" : "Post"}:</strong> {session.post.carbsG == null || session.post.proteinG == null ? (es ? "— No hay peso actual para calcular cantidades personales." : "— Current weight is unavailable for personalized amounts.") : `${session.post.carbsG} g carbs · ${session.post.proteinG} g protein (${session.post.ratio})`}
                         </p>
                         {session.post.note && (
                           <p className="text-xs text-slate-500 mt-1">{session.post.note}</p>
@@ -626,7 +572,7 @@ export default function TodayPage() {
                       </>
                     )}
                     <p className="text-sm mt-2">
-                      {session.prescription.detail.breathing}
+                      {session.prescription.detail?.breathing}
                     </p>
                   </details>
                 )}
@@ -635,9 +581,9 @@ export default function TodayPage() {
                     {es ? "¿Por qué esta sesión?" : "Why this session?"}
                   </summary>
                   <p className="text-sm mt-2">
-                    {session.prescription.scaled.reason} ·{" "}
+                    {session.prescription.scaled?.reason || session.resolutionReason} ·{" "}
                     {es ? "Plan original" : "Original plan"}:{" "}
-                    {session.prescription.scaled.originalMin} min
+                    {session.prescription.scaled?.originalMin ?? "—"} min
                   </p>
                   {session.coachNotes && (
                     <p className="text-xs text-slate-500 mt-2">
@@ -660,20 +606,43 @@ export default function TodayPage() {
                   )}
                 </details>
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    className="btn-primary"
-                    disabled={busy || offline || session.durationMin === 0}
-                    onClick={() => sendToWatch()}
-                  >
-                    <Watch className="w-4 h-4" /> {es ? "Enviar al reloj" : "Send to watch"}
+                  <button className="btn-secondary" disabled={busy || offline || !session.capability?.available || session.approved} onClick={() => void approveSession()}>
+                    {es ? "Aprobar (correo si está activado)" : "Approve (email if opted in)"}
                   </button>
+                  {data?.capabilities?.intervalsConnector === true &&
                   <button
                     className="btn-secondary"
                     disabled={busy || offline || session.durationMin === 0}
-                    onClick={() => download(false)}
+                    onClick={async () => {
+                      setBusy(true);
+                      setError("");
+                      try {
+                        const r = await fetch("/api/workout/intervals-push", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ sessionId: session.id, expectedRevision: session.revision }),
+                        });
+                        const d = await r.json().catch(() => ({}));
+                        if (!r.ok) throw Error(d.error || "Push failed");
+                        setMessage(
+                          d.structured
+                            ? es
+                              ? "Publicado en Intervals.icu con estructura de bicicleta. La recepción en el reloj no está verificada."
+                              : "Published to Intervals.icu with bike structure. Watch receipt is unverified."
+                            : es
+                              ? "Evento de calendario publicado en Intervals.icu con instrucciones. No se confirma un entrenamiento estructurado ni recepción en el reloj."
+                              : "Calendar event published to Intervals.icu with instructions. Structured device delivery and watch receipt are unconfirmed."
+                        );
+                        await load();
+                      } catch (e: any) {
+                        setError(e.message);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
                   >
-                    {es ? "Descargar .FIT" : "Download .FIT"}
-                  </button>
+                    {es ? "Publicar en Intervals.icu" : "Publish to Intervals.icu"}
+                  </button>}
                   <button
                     className="btn-secondary"
                     disabled={busy || offline}
@@ -702,11 +671,6 @@ export default function TodayPage() {
                     {Math.max(0, 3 - session.regenCount)})
                   </button>
                 </div>
-                <p className="text-xs text-slate-500">
-                  {es
-                    ? "«Enviar al reloj» abre la hoja para compartir — elige Garmin Connect para importar el entreno. En escritorio se descarga el archivo (impórtalo en Garmin Connect → Workouts)."
-                    : "“Send to watch” opens your phone’s share sheet — pick Garmin Connect to import the workout. On desktop it downloads the file (import in Garmin Connect → Workouts)."}
-                </p>
               </div>
             </div>
             {feedback && (
@@ -731,8 +695,12 @@ export default function TodayPage() {
                     <select
                       name="feedbackStatus"
                       className="input"
-                      defaultValue="completed"
+                      defaultValue={session.feedbackStatus || ""}
+                      required
                     >
+                      <option value="">{es ? "Elige resultado" : "Choose outcome"}</option>
+                      <option value="substituted">{es ? "Sustituido" : "Substituted"}</option>
+                      <option value="unknown">{es ? "Desconocido" : "Unknown / not reported"}</option>
                       <option value="completed">
                         {es ? "Completado" : "Completed"}
                       </option>
@@ -747,13 +715,14 @@ export default function TodayPage() {
                   <label>
                     {es ? "Minutos reales" : "Actual minutes"}
                     <input
+                      placeholder={es ? "Desconocido" : "Unknown"}
                       name="actualDurationMin"
                       className="input"
                       type="number"
                       min="0"
                       max="1440"
                       defaultValue={
-                        session.actualDurationMin ?? session.durationMin
+                        session.actualDurationMin ?? ""
                       }
                     />
                   </label>
@@ -769,14 +738,20 @@ export default function TodayPage() {
                     />
                   </label>
                 </div>
+                <label>{es ? "Deporte realizado (opcional)" : "Actual sport (optional)"}
+                  <select name="actualSport" className="input" defaultValue={session.actualSport || ""}>
+                    <option value="">{es ? "Desconocido / sin informar" : "Unknown / not reported"}</option>
+                    {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing", "other"].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
                 <textarea
                   aria-label="Workout feedback"
                   name="feedbackNote"
                   className="input"
                   placeholder={
                     es
-                      ? "Dificultad, molestias, falta de tiempo…"
-                      : "Difficulty, discomfort, time constraints…"
+                      ? "Deporte realizado si fue distinto, dificultad, molestias…"
+                      : "Actual sport if substituted, difficulty, discomfort…"
                   }
                 />
                 <button disabled={busy} className="btn-primary">
@@ -805,17 +780,18 @@ export default function TodayPage() {
           <div className="card border-ocean-300 bg-ocean-50/60 p-4">
             <p className="text-sm font-medium text-ocean-900">
               ⌚ {es
-                ? "Conecta Whoop, Garmin o COROS — tus datos llegan automáticamente y JASAI los usa para entrenar."
-                : "Connect Whoop, Garmin or COROS — your data syncs automatically and JASAI uses it for coaching."}
+                ? "Conecta un proveedor disponible o registra tus datos sin dispositivo."
+                : "Connect an available provider or enter your data without a device."}
             </p>
             <Link href="/connectors" className="btn-primary text-sm mt-2 inline-flex">
               {es ? "Conectar dispositivo →" : "Connect device →"}
             </Link>
           </div>
         )}
+        <span id="jasai" className="block scroll-mt-24" />
         <details className="card">
           <summary className="cursor-pointer font-semibold">
-            {es ? "Preguntar a JASAI" : "Ask JASAI"}
+            {es ? "Preguntar a KCoach" : "Ask KCoach"}
           </summary>
           <form
             className="flex gap-2 mt-3"
@@ -826,12 +802,16 @@ export default function TodayPage() {
                 const r = await fetch("/api/assistant", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ question }),
+                  body: JSON.stringify({ question, externalConsent }),
                 });
                 const d = await r.json();
                 setAnswer(d.answer || d.error);
+                setAssistantMode(d.mode || "");
+                setAssistantProposal(d.proposal || null);
+                setExternalConsent(false);
               } catch {
                 setAnswer("Unable to reach the assistant.");
+                setAssistantMode(""); setAssistantProposal(null);
               } finally {
                 setBusy(false);
               }
@@ -839,6 +819,7 @@ export default function TodayPage() {
           >
             <input
               className="input flex-1"
+              maxLength={1000}
               aria-label="Question for coach"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
@@ -847,10 +828,15 @@ export default function TodayPage() {
               {es ? "Preguntar" : "Ask"}
             </button>
           </form>
+          <label className="flex gap-2 mt-3 text-xs"><input type="checkbox" checked={externalConsent} onChange={e=>setExternalConsent(e.target.checked)}/>{es ? "Permitir IA externa: envía esta pregunta + un resumen de tu perfil, datos recientes y próxima carrera. Sin tokens ni credenciales. Sin consentimiento, KCoach responde igualmente con tus datos reales (modo local)." : "Allow external AI: sends this question + a summary of your profile, recent data and next race. No tokens or credentials. Without consent, KCoach still answers from your real data (local mode)."}</label>
+          {assistantMode && <p className="text-xs text-slate-500 mt-2">{assistantMode === "kcoach_ai" ? (es ? "KCoach con IA externa — basado en tus datos; no es una prescripción revisada." : "KCoach with external AI — grounded in your data; not a reviewed prescription.") : (es ? "KCoach local — calculado de tus datos reales en la app." : "KCoach local — computed from your real in-app data.")}</p>}
           {answer && <p className="text-sm mt-3">{answer}</p>}
+          {assistantProposal && <div className="mt-3 border rounded-lg p-3 text-sm"><p>{es ? "Interpretación para revisar" : "Interpretation to review"}: {assistantProposal.command.replaceAll("_", " ")}{assistantProposal.value != null ? ` (${assistantProposal.value})` : ""}{assistantProposal.sport ? ` → ${assistantProposal.sport}` : ""}</p><p>{es ? "Ninguna sesión ha cambiado." : "No workout has changed."}</p><Link className="btn-secondary mt-2" href={assistantProposal.editorUrl}>{es ? "Abrir editor para revisar y confirmar" : "Open editor to review and confirm"}</Link></div>}
         </details>
       </div>
-    </ProtectedPage>
+    {data?.motivation && <section className="card"><h2 className="font-bold">Your daily coaching cue</h2><p className="text-lg mt-2">{data.motivation.quote}</p><p className="text-sm mt-2">{data.motivation.message}</p><p className="text-xs text-slate-500 mt-2">{data.motivation.source}</p></section>}
+      <CoachingConversation />
+      </ProtectedPage>
   );
 }
 function FuelCalculator({ carbsPerH, sodiumPerH, fluidPerH, es }: { carbsPerH: number; sodiumPerH: number; fluidPerH: number; es: boolean }) {

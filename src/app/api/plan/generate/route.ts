@@ -1,3 +1,9 @@
+import { setupNumber } from "@/lib/planning-target";
+import { boundPlanWeeks } from "@/lib/planning-bounds";
+import { createHash } from "node:crypto";
+import { assessPlanningSetup, planningGoal } from "@/lib/planning-setup";
+import { readPlanningSetup } from "@/lib/planning-setup-store";
+import { profileRevision } from "@/lib/profile-service";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import {
   dayBounds,
@@ -8,15 +14,11 @@ import {
 } from "@/lib/dates";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
 import {
   generatePlan,
   generateHyroxPlan,
   generateBoxingCamp,
   generateSingleSport,
-  estimateVo2max,
-  maxHrFromAge,
-  estimateLthr,
   buildZoneTable,
   type ZoneTable,
   type PlanSession,
@@ -44,6 +46,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError("Invalid plan body");
     const {
       distance,
       weeks,
@@ -53,70 +56,52 @@ export async function POST(req: Request) {
       easyPct,
       trainingWindow,
     } = body || {};
-    const splitTarget =
-      easyPct === undefined || easyPct === null
-        ? 70
-        : Math.max(45, Math.min(90, parseInt(String(easyPct), 10) || 70));
-    const profile =
-      user.profile ??
-      (await prisma.athleteProfile.create({ data: { userId: user.id } }));
-    const level = profile.experience || "amateur";
+    let splitTarget: number;
+    let weeksCount: number;
+    try { splitTarget = easyPct == null ? 70 : setupNumber(easyPct,"easy percentage",45,90); }
+    catch(e) { throw new ApiError((e as Error).message); }
+    const profile = user.profile ?? await prisma.athleteProfile.findUnique({where:{userId:user.id}});
+    const setupState = await readPlanningSetup(user.id);
+    const readiness = assessPlanningSetup(profile, setupState.setup);
+    if (!profile || !readiness.ready || !setupState.setup) return NextResponse.json({error: "Complete and review your setup before generating an individual plan.", ...readiness}, {status: 422});
+    const setup = setupState.setup;
+    const level = profile.experience;
 
     // Preferred training window: an explicit request wins, else the saved
     // profile preference, else "any" (no fixed time).
     const window = String(trainingWindow || profile.trainingWindow || "any");
-    if (trainingWindow && trainingWindow !== profile.trainingWindow) {
-      await prisma.athleteProfile.update({
-        where: { userId: user.id },
-        data: { trainingWindow: window },
-      });
-    }
+    if (!["any","morning","midday","evening"].includes(window)) throw new ApiError("Choose a supported training window");
     const sessionStartTime = defaultStartTime(window);
 
-    // Estimate physiology if missing
-    let vo2max = profile.vo2max;
-    let lthr = profile.lthr;
-    if (!vo2max && profile.birthYear && profile.sex && profile.weightKg) {
-      const age = new Date().getFullYear() - profile.birthYear;
-      const heightM = profile.heightCm ? profile.heightCm / 100 : 1.75;
-      const bmi = profile.weightKg / (heightM * heightM);
-      const activityLevel =
-        level === "pro"
-          ? 5
-          : level === "advanced"
-            ? 4
-            : level === "amateur"
-              ? 3
-              : 2;
-      vo2max = estimateVo2max({
-        sex: profile.sex as "male" | "female",
-        age,
-        bmi,
-        activityLevel: activityLevel as 1 | 2 | 3 | 4 | 5,
-      }).vo2max;
-      // Estimate is returned separately; it must not overwrite a measured baseline.
-    }
-    if (!lthr) {
-      const age = profile.birthYear
-        ? new Date().getFullYear() - profile.birthYear
-        : 35;
-      const hrMax = profile.maxHr ?? maxHrFromAge(age);
-      lthr = profile.lthr ?? estimateLthr(hrMax, level);
-      // Leave the saved threshold unknown until it is measured or explicitly entered.
-    }
-
-    const weeksCount = Math.max(4, Math.min(30, parseInt(weeks || "12", 10)));
+    // No demographic physiology estimates enter an individual training decision.
+    const vo2max = profile.vo2max;
+    const lthr = profile.lthr ?? undefined;
+    try { weeksCount = setupNumber(weeks ?? setup.planWeeks,"planning weeks",4,30); }
+    catch(e) { throw new ApiError((e as Error).message); }
+    if (!Number.isInteger(weeksCount) || weeksCount < 4 || weeksCount > 30) throw new ApiError("Choose a planning horizon of 4–30 weeks");
     // Parse date-only strings as LOCAL midnight (new Date("YYYY-MM-DD") is UTC,
     // which shifts every session a day off in EDT and breaks "today" lookups).
     const toLocalMidnight = (s: string) => parseDate(s, user.timezone);
     const start = startDate
       ? toLocalMidnight(String(startDate))
       : dayBounds(user.timezone).start;
+    const dist = String(planningGoal(distance || profile.goal) || "");
+    if (dist !== planningGoal(profile.goal)) throw new ApiError("Update and confirm your saved goal before previewing a different sport.",422);
+    // All future races feed planning: the A race anchors the taper; B races
+    // get train-through sharpening weeks (extraRaces below).
+    const allRaces = await prisma.race.findMany({
+      where: { userId: user.id, date: { gte: start } },
+      orderBy: [{ priority: "asc" }, { date: "asc" }],
+    });
+    const anchorRaceId = (
+      allRaces.find((r) => r.priority === 1) || allRaces[0]
+    )?.id;
+    // Taper anchor: explicit raceDate wins; else the athlete's A race; else
+    // a supplied profile date. Missing dates remain absent.
     const race = raceDate
       ? toLocalMidnight(String(raceDate))
-      : new Date(start.getTime() + weeksCount * 7 * 86400000);
-
-    const dist = String(distance || profile.goal || "olympic");
+      : allRaces.find((r) => r.id === anchorRaceId)?.date ??
+        profile.raceDate ?? null;
     if (
       ![
         "sprint",
@@ -142,8 +127,8 @@ export async function POST(req: Request) {
       dist === "swim-only" ||
       dist === "run-only" ||
       dist === "lifting";
-    const generated = isTrackSprint
-      ? generateTrackSprint({ level, event: "400m", weeks: weeksCount, startDate: start })
+    const rawGenerated = isTrackSprint
+      ? generateTrackSprint({ level, event: setup.trackEvent!, weeks: weeksCount, startDate: start })
       : isSingleSport
       ? generateSingleSport({
           sport:
@@ -158,7 +143,7 @@ export async function POST(req: Request) {
           weeks: weeksCount,
           startDate: start,
           weeklyHours: profile.weeklyHours || undefined,
-          hasRace: Boolean(raceDate),
+          hasRace: Boolean(race),
         })
       : isBoxing
         ? generateBoxingCamp({
@@ -181,20 +166,47 @@ export async function POST(req: Request) {
               startDate: start,
               weeklyHours: profile.weeklyHours || undefined,
               easyPct: splitTarget,
-              raceDate: raceDate ? race : undefined,
+              // `race` already prefers the explicit date, then the athlete's
+              // A race. Never synthesize a plan-end event date.
+              raceDate: race ?? undefined,
+              // B/C races: B races get train-through sharpening in their week;
+              // the A race (raceDate above) anchors the taper. Excludes the
+              // anchor itself to avoid double-counting the same date.
+              extraRaces: allRaces
+                .filter((r) => r.id !== anchorRaceId && r.date > start)
+                .map((r) => ({ date: r.date, priority: r.priority })),
             });
 
+    if (race && race <= start) throw new ApiError("Race date must follow the plan start; update your actual event details.");
+    if (race && race.getTime() - start.getTime() < 28 * 86400000) throw new ApiError("This short event horizon needs a reviewed preparation plan; automatic progression cannot promise the requested result.");
+    // Preserve actual day placement, reducing rather than making up omitted work.
+    const startWeekday = new Date(dateKey(start,user.timezone)+"T12:00Z").getUTCDay();
+    const {weeks: generated, weeklyBudget} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday);
+    if (!generated.some(week=>week.sessions.length)) throw new ApiError("The current template does not fit your available days/time. A coach should review the schedule; no sessions were assigned.", 422);
+    const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true}});
+    const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated })).digest("hex");
+    if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated}, previewToken,
+      warning: "Future sessions are provisional and bounded by reported recent training. Existing prescriptions and completed activity will be preserved. A goal is not a guaranteed outcome; daily safety checks still apply."});
+    if (body.previewToken !== previewToken) throw new ApiError("Preview the current plan and confirm it before replacing future training.", 409);
+
     // Persist plan + plan days + planned workouts
-    // One active plan per athlete: archive any previous active plan and remove
-    // its future planned-but-uncompleted workouts so calendars don't double-book.
+    // Archive the previous plan and mark its uncompleted future rows superseded.
+    // Original prescriptions and completed history remain retrievable.
     const plan = await prisma.$transaction(
       async (tx) => {
+        const [latestProfile, latestSetup] = await Promise.all([
+          tx.athleteProfile.findUnique({where:{userId:user.id}}),
+          readPlanningSetup(user.id, tx),
+        ]);
+        if (profileRevision(latestProfile) !== profileRevision(profile) || latestSetup.revision !== setupState.revision) throw new ApiError("Your profile or setup changed. Review a new preview.", 409);
         const oldPlans = await tx.trainingPlan.findMany({
           where: { userId: user.id, status: "active" },
+          orderBy: {id: "asc"},
           select: { id: true },
         });
+        if (JSON.stringify(oldPlans) !== JSON.stringify(currentPlans)) throw new ApiError("Your active plan changed. Preview again before replacing it.", 409);
         if (oldPlans.length) {
-          await tx.workout.deleteMany({
+          await tx.workout.updateMany({
             where: {
               userId: user.id,
               planned: true,
@@ -202,6 +214,7 @@ export async function POST(req: Request) {
               date: { gte: dayBounds(user.timezone).start },
               planDay: { planId: { in: oldPlans.map((p) => p.id) } },
             },
+            data: {planned: false, source: "superseded-plan"},
           });
           await tx.trainingPlan.updateMany({
             where: { id: { in: oldPlans.map((p) => p.id) } },
@@ -224,8 +237,8 @@ export async function POST(req: Request) {
                 // (e.g. swim + recovery on Monday) join ONE PlanDay so dates never
                 // duplicate and "Day off" applies to the whole day.
                 const bySlot = new Map<number, PlanSession[]>();
-                week.sessions.forEach((s: PlanSession, si: number) => {
-                  const slot = si % 7;
+                week.sessions.forEach((s) => {
+                  const slot = s.daySlot;
                   if (!bySlot.has(slot)) bySlot.set(slot, []);
                   bySlot.get(slot)!.push(s);
                 });
@@ -279,13 +292,13 @@ export async function POST(req: Request) {
             after: JSON.stringify({
               name: plan.name,
               weeks: weeksCount,
-              startDate: start,
+              startDate: start, setupRule: readiness.ruleId, setupRevision: setupState.revision, previewToken, weeklyBudgetMin: weeklyBudget, previousPlanIds: currentPlans.map(p => p.id),
             }),
           },
         });
         return plan;
       },
-      { timeout: 30000 },
+      { timeout: 30000, isolationLevel: "Serializable" },
     );
 
     // Also build the zone table for the user to see
@@ -298,35 +311,11 @@ export async function POST(req: Request) {
       restingHr: profile.restingHr || undefined,
     });
 
-    // Schedule benchmark tests every ~2 months, race-aware
-    const races = await prisma.race.findMany({
-      where: { userId: user.id, date: { gte: start } },
-    });
-    const scheduledTests = scheduleTests(
-      start,
-      weeksCount,
-      races.map((r) => ({ date: r.date })),
-      { hyrox: isHyrox, boxing: isBoxing },
-    );
-    await prisma.benchmarkTest.deleteMany({
-      where: { userId: user.id, completed: false },
-    });
-    if (scheduledTests.length) {
-      await prisma.benchmarkTest.createMany({
-        data: scheduledTests.map((t) => ({
-          userId: user.id,
-          date: t.date,
-          type: t.type,
-          name: t.name,
-          skipped: t.skipped,
-          reason: t.reason || null,
-        })),
-      });
-    }
+    const scheduledTests: ReturnType<typeof scheduleTests> = [];
 
     // Race venue adjustment (temperature + elevation + terrain + water) from the A-race
     let venuePlan = null;
-    const anchorRace = races.find((r) => r.priority === 1) || races[0];
+    const anchorRace = allRaces.find((r) => r.priority === 1) || allRaces[0];
     const temp =
       targetTempC !== undefined
         ? parseFloat(targetTempC)
@@ -348,6 +337,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      plannerVersion: "manual-setup-bounded-v1",
       plan: {
         id: plan.id,
         name: plan.name,

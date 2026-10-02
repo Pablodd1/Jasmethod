@@ -6,13 +6,14 @@ export interface WorkoutStep {
   reps?: number;
   note?: string;
   group?: string; // repeat-set header this step belongs to ("Repeat 7 × 1 min")
-  target?: { type: "open" | "power" | "heartRate"; low?: number; high?: number };
+  endpoint?: { type: "time"; seconds: number } | { type: "distance"; meters: number } | { type: "reps"; reps: number } | { type: "lap" };
+  target?: { type: "open" | "power" | "heartRate" | "pace" | "speed"; low?: number; high?: number };
   targets?: { rpe: number; hr?: string; power?: string; pace?: string };
 }
 
 // ---- Sport-specific step builders (sets, reps, variations) ----
 // Every training gets a fully structured session the athlete can execute
-// step-by-step AND export to Garmin (.FIT) with per-step targets. `variant`
+// step-by-step. FIT capability is validated separately per sport. `variant`
 // (the regeneration seed) rotates exercise selection deterministically —
 // same seed, same session.
 
@@ -153,6 +154,21 @@ function hyroxSteps(minutes: number, variant: number, capZone = 4): WorkoutStep[
   return steps;
 }
 
+// Fill unused budget with easy cooldown, never additional hard work. All
+// generated time-only sessions must describe the complete prescribed duration.
+function finishStructuredSteps(steps: WorkoutStep[], total: number, capZone: number): WorkoutStep[] {
+  const result = steps.filter(s => s.seconds > 0).map(s => ({ ...s, zone: `z${Math.min(capZone, Number(s.zone.slice(1)))}` }));
+  const used = result.reduce((sum, s) => sum + s.seconds, 0);
+  if (used > total) throw new Error("Generated steps exceed the available session time.");
+  const remaining = total - used;
+  if (remaining > 0) {
+    const cooldown = result[result.length - 1];
+    if (cooldown?.phase === "cooldown" && !cooldown.reps) cooldown.seconds += remaining;
+    else result.push({ name: "Easy finish", seconds: remaining, zone: "z1", phase: "cooldown" });
+  }
+  return result;
+}
+
 export function structuredSteps(
   minutes: number,
   zone: string,
@@ -164,15 +180,15 @@ export function structuredSteps(
   if (!total) return [];
   // Sport-aware detail: strength/plyo gets named lift blocks with sets×reps,
   // boxing gets rounds with rotating technical focus, HYROX gets run+station
-  // emulation — all exportable to Garmin with per-step targets and alerts.
+  // emulation. Device export is separately validated and capability-gated.
   // The session's (possibly readiness-capped) zone governs every builder.
   const capZone = Number(zone.slice(1)) || 2;
   if (sport === "strength" || type === "strength" || type === "plyo")
-    return strengthSteps(minutes, zone, type, variant);
+    return finishStructuredSteps(strengthSteps(minutes, zone, type, variant), total, capZone);
   if (sport === "boxing")
-    return boxingSteps(minutes, variant, capZone);
+    return finishStructuredSteps(boxingSteps(minutes, variant, capZone), total, capZone);
   if (sport === "hyrox")
-    return hyroxSteps(minutes, variant, capZone);
+    return finishStructuredSteps(hyroxSteps(minutes, variant, capZone), total, capZone);
   const warm = Math.round(total * 0.15),
     cool = Math.round(total * 0.1),
     main = total - warm - cool;
@@ -201,24 +217,34 @@ export function structuredSteps(
     };
     const patterns: Pattern[] = [
       { label: "Speed endurance", workSec: 30, restSec: 90, workZone: "z7", restZone: "z1", workName: "All-out surge", restName: "Float recovery", cite: "neural power + stride mechanics" },
+      { label: "Rønnestad 30/15 short intervals", workSec: 30, restSec: 15, workZone: "z5", restZone: "z3", workName: "Hard — 30 s", restName: "Float — 15 s at ~50% work intensity", cite: "VO₂max, effort-matched head-to-head — ~2× the gain of long intervals, more time >90% VO₂max (Rønnestad 2015; Almquist 2020)" },
+      { label: "80/160 VO₂max repeats", workSec: 80, restSec: 160, workZone: "z5", restZone: "z2", workName: "Hard — 80 s", restName: "Easy — 160 s", cite: "VO₂max domain (Zone 3) intervals (Trube, citing Ronnestad lineage)" },
       { label: "VO₂max repeats · 1:1", workSec: 180, restSec: 180, workZone: "z5", restZone: "z2", workName: "Hard — VO₂max", restName: "Easy — float at Z2", cite: "aerobic power (Seiler 2010)" },
       { label: "Sweet spot", workSec: 720, restSec: 180, workZone: "z3", restZone: "z1", workName: "Sweet-spot block", restName: "Easy spin", cite: "sustainable power" },
       { label: "Threshold cruise intervals · 2×", workSec: 1200, restSec: 180, workZone: "z4", restZone: "z2", workName: "Threshold block", restName: "Easy recovery", cite: "lactate threshold (Stepto 1999)" },
     ];
-    // Pick by intended zone (interval z5-7 → VO2/speed; z4 → threshold; z3 → sweet spot)
-    const idx = z <= 2 ? 2 : z === 3 ? 2 : z === 4 ? 3 : z <= 6 ? 1 : 0;
-    const pat = patterns[Math.min(idx, z <= 2 ? 2 : idx)];
+    // Pick by intended zone (interval z5-7 → VO2/speed; z4 → threshold; z3 → sweet spot).
+    // Default z5-6 VO2max work is the Rønnestad 30/15 — the effort-matched
+    // head-to-head winner. The regeneration variant rotates to 80/160 and the
+    // classic 1:1 repeats so athletes get variety across the block.
+    const vo2Variant = [1, 2, 3]; // Rønnestad, 80/160, 1:1
+    const idx = z <= 2 ? 4 : z === 3 ? 4 : z === 4 ? 5 : z <= 6 ? vo2Variant[variant % vo2Variant.length] : 0;
+    const pat = z <= 2
+      ? { ...patterns[4], label: "Easy technique repeats", workZone: zone, workName: "Easy effort", restName: "Easy recovery", cite: "conservative effort; not threshold work" }
+      : patterns[idx];
     const block = pat.workSec + pat.restSec;
     let reps = Math.max(2, Math.floor(main / block));
     // Whole-set guarantee: never exceed the main budget (rounding safety).
     while (reps > 2 && reps * block > main) reps--;
-    const group = `Repeat ${reps} × ${pat.workSec >= 60 ? `${Math.round(pat.workSec / 60)} min` : `${pat.workSec} s`} — ${pat.label} (${pat.cite})`;
-    // Scale work/rest proportionally if a whole number still overruns.
+    // Scale first so displayed repeat labels describe the actual endpoints.
     const scale = Math.min(1, main / (reps * block));
+    const workSeconds = Math.max(20, Math.floor(pat.workSec * scale));
+    const workLabel = workSeconds < 60 ? `${workSeconds} s` : `${Math.floor(workSeconds / 60)} min${workSeconds % 60 ? ` ${workSeconds % 60} s` : ""}`;
+    const group = `Repeat ${reps} × ${workLabel} — ${pat.label} (${pat.cite})`;
     for (let i = 0; i < reps; i++) {
       steps.push({
         name: `${pat.workName} ${i + 1}/${reps}`,
-        seconds: Math.max(20, Math.floor(pat.workSec * scale)),
+        seconds: workSeconds,
         zone: pat.workZone === "z7" && z < 7 ? zone : pat.workZone,
         phase: "active",
         group,
@@ -245,7 +271,7 @@ export function structuredSteps(
     zone: "z1",
     phase: "cooldown",
   });
-  return steps;
+  return finishStructuredSteps(steps, total, capZone);
 }
 export function stepsText(steps: WorkoutStep[]) {
   return steps
