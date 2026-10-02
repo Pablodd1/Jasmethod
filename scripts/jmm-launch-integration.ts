@@ -1,3 +1,4 @@
+import { hashToken as hashSessionToken } from "../src/lib/auth";
 /**
  * Device-free launch acceptance against an isolated, real local PostgreSQL app.
  * Never point this at a deployed app or an athlete database.
@@ -58,7 +59,7 @@ async function actor(name: string, role = "athlete", anchors = true, setupComple
   } });
   createdIds.push(user.id);
   const token = randomBytes(32).toString("hex");
-  await db.authSession.create({ data: { userId: user.id, tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + 2 * 3600000) } });
+  await db.authSession.create({ data: { userId: user.id, tokenHash: hashSessionToken(token), expiresAt: new Date(Date.now() + 2 * 3600000) } });
   const result = { ...user, cookie: `jmm_session=${token}`, password };
   if (setupComplete) await configureSetup(result);
   if (anchors) {

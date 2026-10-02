@@ -25,27 +25,27 @@ Verified 2026-10-02, isolated synthetic data only. This report adds to the initi
 
 | Check | Result |
 | --- | --- |
-| `npm test` | 360/360 pass |
+| `npm test` | 369/369 pass |
 | `npm run test:followup:boundaries` | 27/27 pass |
 | `npx tsc --noEmit` | pass |
 | `npm run lint` | pass, three pre-existing hook warnings |
-| `npm run build` | pass; optimized build `lEQoGNVt8hT0p1186IP3Y` |
+| `npm run build` | pass; optimized build `9jFX6ZGBU1pxNb9DE52uX` |
 | `npm audit` | zero vulnerabilities, including development dependencies |
 | Fresh isolated PostgreSQL migrations | all 30 applied |
 | Optimized-server follow-up acceptance | 28/28 pass |
 | Optimized-server original launch acceptance | 35/35 pass |
-| Optimized-server legacy HTTP assertions | 74/74 pass |
+| Optimized-server legacy HTTP assertions | 86/86 pass, including shared-auth closure |
 | Database sync/legacy delivery boundary | pass |
 | Optimized-server native webhook/outbound injection | 15/15 pass |
 | Provider network attempts in guarded HTTP runs | zero |
 | Synthetic users left after cleanup | zero |
 
 The three optimized HTTP reports share source fingerprint
-`423ce24176004089642bbc71b6975eb0eb32a235643f1e4556f8435994f39df9`.
-They were run before commit, with the working tree changes present. A history-only
-base update during verification changed the reported parent SHA from `0a8f44e`
-to `7c124cb`; both have the identical source tree `e22d837` and required no file
-reconciliation. The optimized build used real build-time fonts. The legacy local
+`344b8fee72d194271cfc0a0bf8f0d91954e245aa069a313176b08b0356d36521`.
+They were run on published parent `b662cc68` with the uncommitted authentication
+closure present. The original follow-up parent was reconciled by history only to
+owner merge `7c124cb`; it had the same foundation tree and no file reconciliation
+was needed. The optimized build used real build-time fonts. The legacy local
 runner also sets a font-mock environment value at server start; it does not alter
 already built assets. SSR checks are not visual browser acceptance.
 
@@ -58,6 +58,23 @@ concurrent replay, rollback after claim failure and unknown delivery without res
 CI provisions its own local database and runs all named suites, including the
 native webhook suite with dummy-only configuration. Evidence artifacts exclude
 credentials, cookies, database dumps and real athlete data.
+
+## Additional authentication closure
+
+Public read-only login inspection found shared one-tap account buttons enabled.
+The source did not mark those identities as synthetic. The route and UI are now
+permanently retired; no environment flag can reopen them. Normal login/signup
+reject a one-way fingerprint of the revoked credential; the plaintext value is
+not retained in code or tests. Versioned session-token hashing, with no legacy
+fallback, invalidates every old cookie on an eventual authorized deployment.
+All users will need to sign in again. Stored accounts/passwords/sessions are not
+changed or deleted. Legitimate password and mocked verified OAuth flows issue
+usable v2 sessions; malformed credential hashes still fail closed.
+Nine focused mocked auth tests plus isolated HTTP checks cover these boundaries.
+This code is a review-branch fix; live remediation has not been performed.
+See `shared-demo-retirement.md`: preserve the v2 namespace and retired endpoint
+on rollback, and handle affected account recovery through an authorized process.
+No actual exposure of athlete data was established and no real account accessed.
 
 ## Remaining acceptance and intentionally excluded claims
 

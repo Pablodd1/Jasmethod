@@ -1,3 +1,5 @@
+import { hashToken as hashSessionToken } from "../src/lib/auth";
+import bcrypt from "bcryptjs";
 /**
  * Dedicated followup acceptance: synthetic accounts, private loopback database,
  * mock communication only, independently decoded FIT. Never use production data.
@@ -30,8 +32,8 @@ async function request(path:string,who?:Actor,options:{body?:unknown;method?:str
 async function json(path:string,who?:Actor,options:Parameters<typeof request>[2]={}) { return (await request(path,who,{status:200,...options})).json(); }
 async function scenario(name:string,run:()=>Promise<void>) {try{await run();results.push({name,status:"PASS"});console.log(`PASS ${name}`);}catch(e){const detail=e instanceof Error?e.message:String(e);results.push({name,status:"FAIL",detail});console.error(`FAIL ${name}: ${detail}`);}}
 async function actor(label:string):Promise<Actor> {
-  const u=await db.user.create({data:{email:`followup-${label}-${randomUUID()}@example.invalid`,name:`Synthetic followup ${label}`,passwordHash:"synthetic-session-only-invalid-password-hash",timezone:"UTC",language:"en",onboarded:true,profile:{create:{birthYear:1990,goal:"run-only",experience:"amateur",weeklyHours:3}},reminder:{create:{emailEnabled:false,telegramEnabled:false}}}});created.push(u.id);
-  const token=randomBytes(32).toString("hex");await db.authSession.create({data:{userId:u.id,tokenHash:createHash("sha256").update(token).digest("hex"),expiresAt:new Date(Date.now()+7200000)}});
+  const u=await db.user.create({data:{email:`followup-${label}-${randomUUID()}@example.invalid`,name:`Synthetic followup ${label}`,passwordHash:bcrypt.hashSync(randomBytes(32).toString("hex"),4),timezone:"UTC",language:"en",onboarded:true,profile:{create:{birthYear:1990,goal:"run-only",experience:"amateur",weeklyHours:3}},reminder:{create:{emailEnabled:false,telegramEnabled:false}}}});created.push(u.id);
+  const token=randomBytes(32).toString("hex");await db.authSession.create({data:{userId:u.id,tokenHash:hashSessionToken(token),expiresAt:new Date(Date.now()+7200000)}});
   const a={...u,cookie:`jmm_session=${token}`};await setup(a);await clearCheckin(a);return a;
 }
 const baseSetup={adultConfirmed:true,profileConfirmed:true,goalDescription:"Train comfortably for general fitness",baselineWeeklyMinutes:120,baselineObservedAt:date,interruptions:"none",restrictions:"none",qualifiedReview:"none_needed",trainingDays:[day.getUTCDay(),(day.getUTCDay()+2)%7,(day.getUTCDay()+4)%7],maxSessionMinutes:60,equipmentAccess:"Running shoes, stationary bike, pool and exercise space",planWeeks:4};
