@@ -83,12 +83,16 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
       ? Math.min(answers.availableMin, input.maxDailyMinutes ?? Infinity, Math.round(originalMin * adaptation.durationFactor * reduction)) : Math.min(answers.availableMin, input.maxDailyMinutes ?? Infinity);
     const violatesTarget = canonical.steps.some(step => {
       const t = step.target;
-      if (cap === 7 || t.source !== "explicit" || t.type === "open") return false;
+      if (cap === 7 || t.source !== "explicit" || t.type === "open" || t.type === "swimStroke") return false;
       // An explicit numeric target cannot evade a reduced-intensity check-in by
       // labelling itself Z1. Without an applicable anchor, ask for review.
-      if (t.type === "power") return !profile?.ftp || t.high! > Math.round(profile.ftp * [0,.55,.75,.9,1.05,1.2,1.5,1.5][cap]);
-      if (t.type === "heartRate") return !profile?.lthr || t.high! > Math.round(profile.lthr * [0,.8,.89,.94,1,1.05,1.1,1.1][cap]);
-      const pace = profile?.runPaceBase ? profile.runPaceBase * [0,1.4,1.2,1.08,1,.95,.9,.85][cap] : null;
+      // Brick metadata is assigned by the canonical component resolver, never
+      // accepted from a raw leaf step. Cycling FTP and running pace cannot be
+      // transferred to other sports to approve an explicit reduced-day target.
+      const targetSport = step.componentSport ?? canonical.sport;
+      if (t.type === "power") return targetSport !== "bike" || !profile?.ftp || t.high! > Math.round(profile.ftp * [0,.55,.75,.9,1.05,1.2,1.5,1.5][cap]);
+      if (t.type === "heartRate") return !["run", "bike"].includes(targetSport) || !profile?.lthr || t.high! > Math.round(profile.lthr * [0,.8,.89,.94,1,1.05,1.1,1.1][cap]);
+      const pace = targetSport === "run" && profile?.runPaceBase ? profile.runPaceBase * [0,1.4,1.2,1.08,1,.95,.9,.85][cap] : null;
       return !pace || (t.type === "pace" ? t.low! < pace : t.high! > 1000 / pace);
     });
     const stepsOverCap = canonical.steps.some(s => Number(s.zone.slice(1)) > cap);
@@ -102,14 +106,15 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
     : { ...p, title: canonical.verdict === "rest" ? "Rest and recover" : workout.title, sport: workout.sport, type: "recovery", intensity: "z1", verdict: "rest", durationMin: 0, steps: [], targets: { rpe: 0 }, why: canonical.reason, safetyStatus: canonical.verdict, revision: canonical.revision, detail: { wu: "No warm-up prescribed.", main: canonical.reason, cd: "Reassess before training.", breathing: "", study: "" }, scaled: { originalMin: workout.durationMin, factor: 0, reason: canonical.reason }, sources: [] };
   return { workout, prescription, canonical, targetProfile: profile };
 }
-export async function effectivePrescription(userId: string, workoutId: string) {
+type EffectivePrescriptionReader = Pick<typeof prisma, "workout" | "athleteProfile" | "user" | "auditLog" | "supplementProfile" | "dailyCheckin" | "benchmarkTest">;
+export async function effectivePrescription(userId: string, workoutId: string, db: EffectivePrescriptionReader = prisma) {
   const [workout, profile, user, setup, applied, supplement] = await Promise.all([
-    prisma.workout.findFirst({ where: { id: workoutId, userId }, include: { planDay: { select: { dayOff: true } } } }),
-    prisma.athleteProfile.findUnique({ where: { userId } }),
-    prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
-    readPlanningSetup(userId),
-    prisma.auditLog.findMany({ where: { subjectId: userId, action: "baseline.fromTest" }, orderBy: { createdAt: "desc" }, take: 100, select: { entityId: true } }),
-    prisma.supplementProfile.findUnique({ where: { userId } }),
+    db.workout.findFirst({ where: { id: workoutId, userId }, include: { planDay: { select: { dayOff: true } } } }),
+    db.athleteProfile.findUnique({ where: { userId } }),
+    db.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
+    readPlanningSetup(userId, db),
+    db.auditLog.findMany({ where: { subjectId: userId, action: "baseline.fromTest" }, orderBy: { createdAt: "desc" }, take: 100, select: { entityId: true } }),
+    db.supplementProfile.findUnique({ where: { userId } }),
   ]);
   if (!workout || !user) return null;
   const timezone = user.timezone;
@@ -117,10 +122,10 @@ export async function effectivePrescription(userId: string, workoutId: string) {
   const today = dayBounds(timezone);
   const appliedIds = applied.flatMap(a => a.entityId ? [a.entityId] : []);
   const [checkin, currentCheckin, tests, reportedActivity] = await Promise.all([
-    prisma.dailyCheckin.findUnique({ where: { userId_date: { userId, date: sessionDate } } }),
-    sessionDate.getTime() === today.start.getTime() ? Promise.resolve(null) : prisma.dailyCheckin.findUnique({ where: { userId_date: { userId, date: today.start } } }),
-    prisma.benchmarkTest.findMany({ where: { userId, id: { in: appliedIds }, completed: true, skipped: false }, orderBy: { date: "desc" } }),
-    prisma.workout.findMany({
+    db.dailyCheckin.findUnique({ where: { userId_date: { userId, date: sessionDate } } }),
+    sessionDate.getTime() === today.start.getTime() ? Promise.resolve(null) : db.dailyCheckin.findUnique({ where: { userId_date: { userId, date: today.start } } }),
+    db.benchmarkTest.findMany({ where: { userId, id: { in: appliedIds }, completed: true, skipped: false }, orderBy: { date: "desc" } }),
+    db.workout.findMany({
       where: { userId, date: { gte: localDate(addDaysKey(today.key, -3), timezone), lt: today.end }, OR: [{ feedbackAt: { not: null } }, { feedbackStatus: { not: null } }, { completed: true }, { planned: false }, { actualDurationMin: { not: null } }, { actualSport: { not: null } }, { actualDetails: { not: null } }, { rpe: { not: null } }] },
       select: { id: true, userId: true, date: true, createdAt: true, feedbackAt: true, feedbackStatus: true, feedbackNote: true, actualDurationMin: true, actualSport: true, actualDetails: true, rpe: true, completed: true, planned: true, sport: true, durationMin: true },
       orderBy: [{ date: "asc" }, { id: "asc" }],

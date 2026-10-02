@@ -1,5 +1,5 @@
 import { dateKey, localDate } from "./dates";
-import { buildFitWorkout } from "./fit-export";
+import { sessionFitEntries } from "./fit-export";
 import { fitFilename, type CanonicalSession } from "./canonical-session";
 import { buildZip, type ZipEntry } from "./zip";
 import { calendarDescription, shapeLink } from "./plan-formats";
@@ -277,8 +277,8 @@ export function buildTrainingBundle(data: TrainingExportData, created = new Date
       }
       const row = { sessionId: session.id, date: resolved.dateLocal, title: resolved.title, revision: resolved.revision, verdict: resolved.verdict, mode: resolved.capability.mode, status: "omitted", reason: resolved.verdict === "ready" ? resolved.capability.reason : resolved.reason };
       if (resolved.verdict === "ready" && resolved.capability.available) {
-        const fit = buildFitWorkout(resolved, created);
-        entries.push({ name: `fit/${fitFilename(resolved)}`, data: fit });
+        const folder = resolved.capability.mode === "split" ? `${fitFilename(resolved).replace(/\.fit$/, "-components")}/` : "";
+        entries.push(...sessionFitEntries(resolved, created).map(entry => ({ ...entry, name: `fit/${folder}${entry.name}` })));
         row.status = "encoded-device-unverified";
       }
       statuses.push(row);

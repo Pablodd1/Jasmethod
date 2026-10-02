@@ -1,6 +1,7 @@
 // Server-side canonical workout boundary. Consumers must not infer steps from prose.
 import { createHash } from "node:crypto";
 import type { WorkoutStep } from "./prescription";
+import { normalizeSportStructure, sportStructureSteps, sportStepInstruction, SportStructureError, type SportStructure, type SportStepDetail, type SwimStroke } from "./sport-structure";
 
 export const SESSION_SCHEMA_VERSION = 2;
 export const FIT_STEP_LIMIT = 50; // Conservative device policy, not a FIT format limit.
@@ -14,7 +15,8 @@ export interface TargetProfile {
   goal?: string | null; experience?: string | null; weeklyHours?: number | null; birthYear?: number | null;
 }
 export interface ResolvedTarget {
-  type: "open" | "power" | "heartRate" | "pace" | "speed";
+  type: "open" | "power" | "heartRate" | "pace" | "speed" | "swimStroke";
+  stroke?: SwimStroke;
   low?: number; high?: number;
   label: string;
   source: "explicit" | "profile_reference" | "effort";
@@ -23,11 +25,16 @@ export interface ResolvedTarget {
 export interface CanonicalStep extends Omit<WorkoutStep, "target"> {
   endpoint: StepEndpoint;
   target: ResolvedTarget;
+  sportDetail?: SportStepDetail;
+  componentId?: string;
+  componentSport?: SessionSport;
 }
 export interface ExportCapability {
-  mode: "native" | "generic" | "unavailable";
+  mode: "native" | "generic" | "split" | "unavailable";
   available: boolean;
-  fitSport: "running" | "cycling" | "generic" | null;
+  fitSport: "running" | "cycling" | "swimming" | "generic" | null;
+  fitSubSport?: "generic" | "lapSwimming";
+  downloadFormat?: "fit" | "zip";
   reason: string;
   deviceTested: false;
 }
@@ -36,6 +43,8 @@ export interface CanonicalSession {
   dateLocal: string; timezone: string; title: string; sport: SessionSport; durationMin: number;
   verdict: "ready" | "rest" | "blocked"; reason: string; steps: CanonicalStep[];
   exactTimeSeconds: number | null; capability: ExportCapability;
+  sportStructure?: SportStructure;
+  components?: CanonicalSession[];
 }
 export class SessionResolutionError extends Error {
   constructor(message: string, public status = 422) { super(message); }
@@ -136,17 +145,40 @@ export function normalizeSteps(input: unknown, sport: SessionSport, profile?: Ta
   });
 }
 
-export function exportCapability(sport: SessionSport, steps: CanonicalStep[], verdict: CanonicalSession["verdict"]): ExportCapability {
+export function exportCapability(sport: SessionSport, steps: CanonicalStep[], verdict: CanonicalSession["verdict"], structure?: SportStructure, components?: CanonicalSession[]): ExportCapability {
   const no = (reason: string): ExportCapability => ({ mode: "unavailable", available: false, fitSport: null, reason, deviceTested: false });
   if (verdict !== "ready" || !steps.length) return no("No executable workout: resolve the safety/check-in requirement in the app.");
+  if (sport === "brick") {
+    if (structure?.kind !== "brick" || !components?.length) return no("A brick needs explicit ordered sport components and transitions. A single-file multisport workout is unvalidated.");
+    const unavailable = components.find(c => !c.capability.available);
+    if (unavailable) return no(`Component ${unavailable.title}: ${unavailable.capability.reason}`);
+    return { mode: "split", available: true, fitSport: null, downloadFormat: "zip", reason: "Separate ordered sport FIT files plus a transition manifest (.ZIP). Start each component manually; transitions remain in the manifest/app. Single-file multisport and hardware compatibility are unverified.", deviceTested: false };
+  }
   if (steps.length > FIT_STEP_LIMIT) return no(`This session has ${steps.length} steps; the conservative device policy allows ${FIT_STEP_LIMIT}. No steps were truncated.`);
-  if (["swim", "brick", "hyrox", "strength"].includes(sport)) return no(sport === "swim" ? "Pool/open-water workout structure and device transfer are not yet validated. Use the full web instructions." : sport === "brick" ? "Single-file multisport is unvalidated; structured component files are not yet available. Use the ordered web instructions." : sport === "strength" ? "Native exercise/set semantics and faithful generic conversion are not yet validated. Use the full sets/reps/rests in the app." : "Native HYROX and mixed run/station encoding are not yet validated. Use the full web instructions.");
+  if (sport === "swim") {
+    if (structure?.kind === "openWater") return no("Open-water swim is distinct from pool swimming. Its structured-workout device workflow is unverified; use full web instructions.");
+    if (structure?.kind !== "pool") return no("Pool/open-water context, pool length, stroke and explicit lengths/rests are missing. Legacy prose is not converted into a pool workout.");
+    if (steps.some(s => s.sportDetail?.kind === "pool" && s.sportDetail.sendOffSeconds !== undefined)) return no("Send-off intervals are preserved in the app, but their start-to-start timing is not validated in this FIT encoder. They are never converted into fixed rests.");
+    return { mode: "native", available: true, fitSport: "swimming", fitSubSport: "lapSwimming", downloadFormat: "fit", reason: "Pool lengths, strokes and explicit rests are SDK round-trip validated. Hardware transfer/execution remain unverified; inspect pool length and every step before swimming.", deviceTested: false };
+  }
+  if (["strength", "hyrox"].includes(sport)) {
+    if (structure?.kind !== sport) return no(sport === "strength" ? "Individual exercise/set/reps/rest identity is missing. Legacy combined lift prose is not converted into a workout." : "Explicit run/station/load/endpoint structure is missing. No HYROX station data is inferred from prose.");
+    if (steps.some(s => s.target.type !== "open")) return no("Generic strength/HYROX companions require explicit open effort.");
+    if (steps.some(s => Buffer.byteLength(companionInstruction(s), "utf8") > 180)) return no("Essential exercise/station identity exceeds the safe FIT note limit. Shorten explicit IDs/names; the full web guidance is preserved.");
+    return { mode: "generic", available: true, fitSport: "generic", downloadFormat: "fit", reason: "Generic timed/lap companion: complete each prescribed reps/distance step, then press LAP. Exercise/station identity, load and original endpoints remain in notes/app. Native strength/HYROX semantics and device support are unverified.", deviceTested: false };
+  }
   if (["mobility", "recovery", "boxing"].includes(sport)) {
     if (steps.some(s => !["time", "lap"].includes(s.endpoint.type) || s.target.type !== "open")) return no("This generic companion supports only explicit timed/lap steps with open effort. Use the full web instructions.");
-    return { mode: "generic", available: true, fitSport: "generic", reason: "Generic timed/lap companion; full technique guidance stays in the app. Device compatibility is unverified.", deviceTested: false };
+    return { mode: "generic", available: true, fitSport: "generic", downloadFormat: "fit", reason: "Generic timed/lap companion; full technique guidance stays in the app. Device compatibility is unverified.", deviceTested: false };
   }
   if (steps.some(s => s.endpoint.type === "reps")) return no("Exercise-repetition endpoints are not validated for this endurance activity profile.");
-  return { mode: "native", available: true, fitSport: sport === "run" ? "running" : "cycling", reason: "Structured FIT encoding supported. Transfer and execution on your device are unverified; inspect every step before training.", deviceTested: false };
+  return { mode: "native", available: true, fitSport: sport === "run" ? "running" : "cycling", downloadFormat: "fit", reason: "Structured FIT encoding supported. Transfer and execution on your device are unverified; inspect every step before training.", deviceTested: false };
+}
+/** Exact endpoint conversion is disclosed, never passed off as native rep/distance tracking. */
+export function companionInstruction(step: CanonicalStep): string {
+  const e = step.endpoint;
+  const action = e.type === "reps" ? `Complete ${e.reps} reps, then press LAP.` : e.type === "distance" ? `Complete ${e.meters} m, then press LAP.` : e.type === "lap" ? "Press LAP when this step is complete." : `Continue for ${e.seconds} s.`;
+  return [step.name, sportStepInstruction(step.sportDetail), action].filter(Boolean).join(" ");
 }
 
 export interface CanonicalSessionInput {
@@ -165,8 +197,16 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
   let sport = w.sport as SessionSport;
   let verdict: CanonicalSession["verdict"] = "ready", reason = "Resolved saved prescription.";
   let steps: CanonicalStep[] = [];
+  let sportStructure: SportStructure | undefined;
+  let components: CanonicalSession[] | undefined;
+  // A retained explicit source may be held at zero minutes after adaptation.
+  // Reading its explanation never reconstructs executable steps.
+  let structureHoldReason: string | undefined;
+  if (w.durationMin === 0) {
+    try { const held = typeof p === "string" ? JSON.parse(p) : p; if (obj(held) && typeof held.structureReviewRequired === "string") structureHoldReason = held.structureReviewRequired; } catch { /* rest remains rest */ }
+  }
   if (profile?.injured || w.planDay?.dayOff || w.dayOff || w.durationMin === 0) {
-    verdict = "rest"; reason = profile?.injured ? "A current injury restriction blocks training." : "Rest day has no workout to export.";
+    verdict = "rest"; reason = profile?.injured ? "A current injury restriction blocks training." : w.planDay?.dayOff || w.dayOff ? "Rest day has no workout to export." : structureHoldReason || "Rest day has no workout to export.";
   } else if (safety && safety.status !== "clear") {
     verdict = safety.status === "unknown" ? "blocked" : "rest"; reason = safety.reason;
   } else {
@@ -179,16 +219,42 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
         if (w.sport === "strength" && p.sport === "mobility" && p.verdict === "easy") sport = "mobility";
         else fail("Saved prescription sport differs from the session; refresh the plan.");
       }
-      if (p.verdict === "rest" || p.durationMin === 0) { verdict = "rest"; reason = "The saved prescription requires rest."; }
+      if (p.verdict === "rest" || p.durationMin === 0) { verdict = "rest"; reason = typeof p.structureReviewRequired === "string" ? p.structureReviewRequired : "The saved prescription requires rest."; }
       else {
         if (p.verdict !== undefined && !["full", "trim", "easy", "planned"].includes(p.verdict)) fail("Unrecognized prescription safety verdict.");
         if (p.durationMin != null) positive(p.durationMin, 1440, "prescription duration");
-        steps = normalizeSteps(p.steps, sport, profile);
+        if (p.sportStructure !== undefined) {
+          sportStructure = normalizeSportStructure(p.sportStructure, sport);
+          if (sportStructure.kind === "brick") {
+            const structure = sportStructure;
+            components = structure.components.map(component => {
+              const child = canonicalSession({ ...input, workout: { ...w, id: `${w.id}:${component.id}`, sport: component.sport, title: component.title, durationMin: component.durationMin }, prescription: { sport: component.sport, title: component.title, verdict: p.verdict, durationMin: component.durationMin, steps: component.steps, sportStructure: component.sportStructure } });
+              if (child.verdict !== "ready") fail(`Component ${component.title}: ${child.reason}`);
+              return child;
+            });
+            const estimatedMinutes = components.reduce((sum, c) => sum + c.durationMin, 0) + structure.transitions.reduce((sum, t) => sum + (t.endpoint.type === "time" ? t.endpoint.seconds / 60 : 0), 0);
+            if (estimatedMinutes > (p.durationMin ?? w.durationMin) + .000001) fail("Component durations and timed transitions exceed the brick's declared time budget.");
+            steps = components.flatMap((component, i) => {
+              const rows: CanonicalStep[] = component.steps.map(step => ({ ...step, componentId: structure.components[i].id, componentSport: component.sport, group: `${i + 1}. ${component.title}${step.group ? ` · ${step.group}` : ""}` }));
+              const transition = structure.transitions[i];
+              if (transition) rows.push({ name: `Transition ${i + 1}`, zone: "z1", phase: "recovery", endpoint: transition.endpoint, seconds: transition.endpoint.type === "time" ? transition.endpoint.seconds : 0, note: transition.instruction, target: { type: "open", source: "explicit", label: "Manual transition; follow the app/manifest instructions" }, sportDetail: { kind: "transition", afterComponentId: transition.afterComponentId } });
+              return rows;
+            });
+            if (steps.length > 1000) fail("Expanded brick exceeds the 1,000-step safety limit.");
+          } else {
+            const entries = sportStructureSteps(sportStructure);
+            steps = normalizeSteps(entries.map(e => e.step), sport, profile).map((step, i) => {
+              const detail = entries[i].detail;
+              return { ...step, ...(detail ? { sportDetail: detail } : {}), note: [sportStepInstruction(detail), step.note].filter(Boolean).join(" ") || undefined,
+                ...(detail?.kind === "pool" ? { target: { type: "swimStroke" as const, stroke: detail.stroke, source: "explicit" as const, label: `${detail.stroke} · ${step.target.label}` } } : {}) };
+            });
+          }
+        } else steps = normalizeSteps(p.steps, sport, profile);
         if (steps.every(s => s.endpoint.type === "time") && Math.abs(steps.reduce((sum, s) => sum + s.seconds, 0) - (p.durationMin ?? w.durationMin) * 60) > 0.001) fail("Step durations do not match the prescribed total. Review the session before exporting.");
       }
-    } catch (error) { steps = []; verdict = "blocked"; reason = error instanceof SessionResolutionError ? error.message : "The saved prescription is malformed. Review it before training or export."; }
+    } catch (error) { steps = []; sportStructure = undefined; components = undefined; verdict = "blocked"; reason = error instanceof SessionResolutionError || error instanceof SportStructureError ? error.message : "The saved prescription is malformed. Review it before training or export."; }
   }
-  const core = { schemaVersion: SESSION_SCHEMA_VERSION as 2, id: String(w.id || ""), athleteId: input.athleteId, dateLocal: input.dateLocal, timezone: input.timezone, title: typeof p?.title === "string" ? p.title : w.title, sport, durationMin: verdict === "ready" ? (p?.durationMin ?? w.durationMin) : 0, verdict, reason, steps, exactTimeSeconds: steps.length && steps.every(s => s.endpoint.type === "time") ? steps.reduce((sum, s) => sum + (s.endpoint.type === "time" ? s.endpoint.seconds : 0), 0) : null, capability: exportCapability(sport, steps, verdict) };
+  const core = { schemaVersion: SESSION_SCHEMA_VERSION as 2, id: String(w.id || ""), athleteId: input.athleteId, dateLocal: input.dateLocal, timezone: input.timezone, title: typeof p?.title === "string" ? p.title : w.title, sport, durationMin: verdict === "ready" ? (p?.durationMin ?? w.durationMin) : 0, verdict, reason, steps, exactTimeSeconds: steps.length && steps.every(s => s.endpoint.type === "time") ? steps.reduce((sum, s) => sum + (s.endpoint.type === "time" ? s.endpoint.seconds : 0), 0) : null, capability: exportCapability(sport, steps, verdict, sportStructure, components), ...(sportStructure ? { sportStructure } : {}), ...(components ? { components } : {}) };
   const revision = createHash("sha256").update(JSON.stringify({ core, source: [w.prescription, w.originalPlan, w.intensity, w.notes, w.startTime], actuals: [w.feedbackStatus, w.feedbackAt, w.feedbackNote, w.actualDurationMin, w.actualSport, w.actualDetails, w.rpe, w.completed, w.distanceKm, w.avgHr, w.avgPower], profile: [profile?.ftp, profile?.lthr, profile?.runPaceBase, profile?.swimPaceBase, profile?.intensityPct, profile?.injured, profile?.units, profile?.weightKg, profile?.sweatRateMlH, profile?.sodiumMgPerL, profile?.gutTrained], safety, context: input.revisionContext })).digest("hex");
   return { ...core, revision, revisionNumber: parseInt(revision.slice(0, 12), 16) };
 }

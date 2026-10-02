@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { verifyPassword, createSession, setSessionCookie } from "@/lib/auth";
+import { verifyPassword, isRevokedDemoPassword, createSession, setSessionCookie } from "@/lib/auth";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
 import { syncAdminRole } from "@/lib/admin";
 
@@ -16,6 +16,9 @@ export async function POST(req: Request) {
     const rl = rateLimit(`login:${normalized}:${clientIp(req)}`, 10, 15 * 60 * 1000);
     if (!rl.ok) {
       return NextResponse.json({ error: `Too many attempts — try again in ${Math.ceil(rl.retryAfterSec / 60)} min.` }, { status: 429 });
+    }
+    if (isRevokedDemoPassword(String(password))) {
+      return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
     }
     const user = await prisma.user.findUnique({ where: { email: normalized } });
     if (!user || !verifyPassword(String(password), user.passwordHash)) {

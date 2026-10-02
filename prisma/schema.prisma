@@ -45,6 +45,8 @@ model User {
   checkins    DailyCheckin[]
   supplement  SupplementProfile?
   reminder    ReminderPref?
+  communication CommunicationPreference?
+  coachingPrompts CoachingPrompt[]
   cognitive   CognitiveTest[]
   auditActions AuditLog[] @relation("AuditActor")
   auditSubjects AuditLog[] @relation("AuditSubject")
@@ -672,4 +674,74 @@ model SyncJob {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([status, availableAt])
   @@index([userId, createdAt])
+}
+
+
+// Opt-in pilot communications. All delivery receipts are mock-only until review.
+model CommunicationPreference {
+  userId String @id
+  primaryChannel String @default("app")
+  paused Boolean @default(true)
+  dailyPlan Boolean @default(false)
+  sessionFeedback Boolean @default(false)
+  missingData Boolean @default(false)
+  timezone String
+  minuteOfDay Int @default(1020)
+  quietStart Int @default(1260)
+  quietEnd Int @default(420)
+  declinedOptional String @default("[]")
+  verifiedChatId String? @unique
+  verifiedActorId String?
+  verifiedEmail String?
+  verifiedAt DateTime?
+  verificationTransport String?
+  challengeHash String?
+  challengeExpiresAt DateTime?
+  consentVersion String?
+  consentAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CoachingPrompt {
+  id String @id @default(cuid())
+  userId String
+  sessionId String
+  purpose String
+  channel String
+  transport String @default("mock")
+  observationDate String
+  timezone String
+  sourceRevision String
+  sourceWorkoutRevision String
+  idempotencyKey String @unique
+  questions String
+  message String
+  status String @default("queued")
+  attempts Int @default(0)
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime?
+  receiptId String?
+  error String?
+  tokenHash String?
+  tokenExpiresAt DateTime?
+  tokenUsedAt DateTime?
+  replyStatus String @default("none")
+  candidate String?
+  repliedAt DateTime?
+  confirmedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+  @@index([status, nextAttemptAt])
+}
+
+// At-most-once authenticated Telegram update ingestion. No message body retained.
+model TelegramCoachingUpdate {
+  id String @id
+  status String @default("processing")
+  createdAt DateTime @default(now())
+  @@index([createdAt])
 }

@@ -1,267 +1,128 @@
 "use client";
-
-import { useEffect, useState, useRef, useCallback } from "react";
-import { Bell, Mail, Send, MessageCircle, Save } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
-import { t, type Lang } from "@/lib/i18n";
+import type { ReplyCandidate, MissingQuestion } from "@/lib/coaching-communication";
 
+type Preferences = { primaryChannel: string; paused: boolean; dailyPlan: boolean; sessionFeedback: boolean; missingData: boolean;
+  timezone: string; minuteOfDay: number; quietStart: number; quietEnd: number; declinedOptional: string[]; consentVersion?: string | null;
+  verifiedChatId?: string | null; verifiedActorId?: string | null; verifiedEmail?: string | null; verificationTransport?: string | null };
+type Prompt = { transport: string; id: string; sessionId: string; purpose: string; observationDate: string; timezone: string; sourceRevision: string;
+  status: string; replyStatus: string; error?: string | null; attempts: number; nextAttemptAt?: string | null; message: string;
+  candidate: ReplyCandidate | null; questions: MissingQuestion[] };
+const blank: Preferences = { primaryChannel: "app", paused: true, dailyPlan: false, sessionFeedback: false, missingData: false,
+  timezone: "UTC", minuteOfDay: 1020, quietStart: 1260, quietEnd: 420, declinedOptional: [] };
+const clockText = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+const clockNumber = (value: string) => { const [h, m] = value.split(":").map(Number); return h * 60 + m; };
+async function api(path: string, method = "GET", body?: unknown, signal?: AbortSignal) {
+  const response = await fetch(path, { method, signal, ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
+  const data = await response.json(); if (!response.ok) throw new Error(data.error || "Request failed"); return data;
+}
+function ReplyEditor({ prompt, es, disabled, onSubmit }: { prompt: Prompt; es: boolean; disabled: boolean; onSubmit: (prompt: Prompt, action: string, candidate?: ReplyCandidate) => void }) {
+  const [answer, setAnswer] = useState<ReplyCandidate>(prompt.candidate!);
+  const label = (en: string, spanish: string) => es ? spanish : en;
+  return <section className="space-y-3 border-t pt-3" aria-label={label("Review answer", "Revisar respuesta")}>
+    <p className="font-semibold">{label("Review and edit before saving", "Revisa y edita antes de guardar")}</p>
+    <p>{label("Observation date", "Fecha observada")}: {prompt.observationDate} ({prompt.timezone}). {label("No training data changed yet.", "Todavía no se cambió ningún dato de entrenamiento.")}</p>
+    <label className="block">{label("Outcome", "Resultado")}<select className="input" value={answer.status} onChange={e => setAnswer({ ...answer, status: e.target.value as ReplyCandidate["status"], ...(e.target.value === "skipped" ? { minutes: null, rpe: null, sport: null } : {}) })}>
+      {[["completed", "Completed", "Completado"], ["partial", "Partial", "Parcial"], ["substituted", "Substituted", "Sustituido"], ["skipped", "Skipped", "Omitido"], ["unknown", "Unknown", "Desconocido"]].map(([value,en,sp]) => <option key={value} value={value}>{label(en,sp)}</option>)}
+    </select></label>
+    <div className="grid sm:grid-cols-2 gap-3">
+      <label>{label("Actual minutes (blank = unknown)", "Minutos reales (vacío = desconocido)")}<input className="input" type="number" min={0} max={1440} value={answer.minutes ?? ""} onChange={e => setAnswer({ ...answer, minutes: e.target.value === "" ? null : Number(e.target.value) })}/></label>
+      <label>{label("Session RPE (blank = unknown)", "RPE de la sesión (vacío = desconocido)")}<input className="input" type="number" min={1} max={10} value={answer.rpe ?? ""} onChange={e => setAnswer({ ...answer, rpe: e.target.value === "" ? null : Number(e.target.value) })}/></label>
+    </div>
+    <p className="text-sm">1 {label("very easy", "muy fácil")}, 3 {label("easy", "fácil")}, 5 {label("moderate", "moderado")}, 7 {label("hard", "duro")}, 9 {label("very hard", "muy duro")}, 10 {label("maximal", "máximo")}.</p>
+    <label className="block">{label("Actual sport", "Deporte real")}<select className="input" value={answer.sport ?? ""} onChange={e => setAnswer({ ...answer, sport: e.target.value || null })}>
+      <option value="">{label("Unknown", "Desconocido")}</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing", "other"].map(s => <option key={s}>{s}</option>)}
+    </select></label>
+    {prompt.questions.filter(q => q.optional).map(q => <label key={q.key} className="flex gap-2"><input type="checkbox" checked={answer.declinedOptional.includes(q.key)} onChange={e => setAnswer({ ...answer, declinedOptional: e.target.checked ? [...answer.declinedOptional, q.key] : answer.declinedOptional.filter(k => k !== q.key) })}/>{label("Do not ask again for optional", "No volver a pedir este dato opcional")}: {q.key}</label>)}
+    <p className="text-sm">{label("Symptoms and safety answers stay in the private check-in. Confirmed actuals require a new check-in before further training.", "Los síntomas y las respuestas de seguridad se registran en el chequeo privado. Después de confirmar, actualiza el chequeo antes de seguir entrenando.")}</p>
+    <div className="flex gap-3"><button className="btn-primary" disabled={disabled} onClick={() => onSubmit(prompt, "confirm", answer)}>{label("Confirm these actuals", "Confirmar datos reales")}</button><button className="btn-secondary" disabled={disabled} onClick={() => onSubmit(prompt, "dismiss")}>{label("Dismiss", "Descartar")}</button></div>
+  </section>;
+}
 export default function RemindersPage() {
-  const { user } = useAuth();
-  const lang = (user?.language || "es") as Lang;
-  const [prefs, setPrefs] = useState<any>({ emailEnabled: false, telegramEnabled: false, telegramChatId: "", reminderHour: "17", remindBeforeMin: "0" });
-  const [telegramConfigured, setTelegramConfigured] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState<any>(null);
-  const [busy, setBusy] = useState(false);
-  const [digestSent, setDigestSent] = useState(false);
-  const [digestBusy, setDigestBusy] = useState(false);
-  // Telegram auto-pairing: personal code + one-tap detect
-  const [pairing, setPairing] = useState<{ code: string; botUsername: string | null; configured: boolean } | null>(null);
-  const [pairBusy, setPairBusy] = useState(false);
-  const [pairMsg, setPairMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [chatSaved, setChatSaved] = useState(false);
-  // Scheduled-delivery health: proves the cron is actually configured + shows recent deliveries
-  const [health, setHealth] = useState<any>(null);
-
-  const loadHealth = useCallback(async () => {
-    const res = await fetch("/api/reminders/health");
-    if (res.ok) setHealth(await res.json());
+  const { user } = useAuth(); const es = user?.language === "es";
+  const label = (en: string, spanish: string) => es ? spanish : en;
+  const [prefs, setPrefs] = useState<Preferences>(blank), [enabled, setEnabled] = useState(false), [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [transport, setTransport] = useState("mock"), [consentVersion, setConsentVersion] = useState("mock-coaching-v1"), [pairingUrl, setPairingUrl] = useState<string | null>(null);
+  const [workouts, setWorkouts] = useState<Array<{ id: string; title: string; date: string }>>([]);
+  const [error, setError] = useState(""), [notice, setNotice] = useState(""), [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(false);
+  const [sessionId, setSessionId] = useState(""), [purpose, setPurpose] = useState("sessionFeedback"), [syntheticId, setSyntheticId] = useState("");
+  const [outgoing, setOutgoing] = useState<{ prompt: Prompt; replyToken: string | null } | null>(null), [reply, setReply] = useState("");
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const [p, q, w] = await Promise.all([api("/api/coaching/preferences", "GET", undefined, signal), api("/api/coaching/prompts", "GET", undefined, signal), api("/api/workouts?days=14", "GET", undefined, signal)]);
+    setPrefs(p.preferences); setEnabled(p.enabled); setTransport(p.transport); setConsentVersion(p.consentVersion); setPrompts(q.prompts); setWorkouts(w.workouts); setLoaded(true);
   }, []);
-
-  // Chat ID persists immediately — no Save button needed.
-  async function saveChatId(value: string) {
-    if (value.trim() && value.trim() !== savedChatIdRef.current) setError("Use Detect to verify your private Telegram chat. Pasted IDs cannot enable delivery.");
+  useEffect(() => { if (!user) return; const controller = new AbortController(); load(controller.signal).catch(e => { if (!controller.signal.aborted) setError(e.message); }); return () => controller.abort(); }, [user, load]);
+  async function action(work: () => Promise<void>) { setBusy(true); setError(""); setNotice(""); try { await work(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
+  async function save(pause = prefs.paused) {
+    const { primaryChannel, dailyPlan, sessionFeedback, missingData, timezone, minuteOfDay, quietStart, quietEnd, declinedOptional } = prefs;
+    await api("/api/coaching/preferences", "PUT", { primaryChannel, paused: pause, dailyPlan, sessionFeedback, missingData, timezone, minuteOfDay, quietStart, quietEnd, declinedOptional, consentVersion });
+    setOutgoing(null); await load(); setNotice(transport === "telegram" ? label("Preferences saved for verified Telegram. Pause stops future attempts.", "Preferencias guardadas para Telegram verificado. Pausar detiene futuros intentos.") : label("Preferences saved. No external delivery is enabled.", "Preferencias guardadas. No se activó ningún envío externo."));
   }
-  const savedChatIdRef = useRef("");
-
-  const loadPairing = useCallback(async () => {
-    const res = await fetch("/api/reminders/telegram-detect");
-    if (res.ok) setPairing(await res.json());
-  }, []);
-
-  async function detectChat() {
-    setPairBusy(true); setPairMsg(null);
-    try {
-      const res = await fetch("/api/reminders/telegram-detect", { method: "POST" });
-      const d = await res.json();
-      if (d.ok) {
-        setPairMsg({ ok: true, text: `${lang === "es" ? "Chat conectado" : "Chat connected"}: ${d.chatId}` });
-        load();
-        loadHealth();
-      } else {
-        setPairMsg({ ok: false, text: d.error || "Not found" });
-      }
-    } catch (e: any) {
-      setPairMsg({ ok: false, text: e.message });
-    } finally {
-      setPairBusy(false);
-    }
+  async function pair() {
+    const challenge = await api("/api/coaching/pairing", "POST");
+    if (challenge.transport === "telegram") { setPairingUrl(challenge.pairingUrl); setNotice(label("Open your Telegram bot with this short-lived link, send the pairing message, then refresh. Linking does not opt you in.", "Abre el bot con este enlace temporal, envía el mensaje y actualiza. Vincular no activa ningún fin.")); return; }
+    await api("/api/coaching/pairing", "PUT", prefs.primaryChannel === "telegram" ? { token: challenge.token, channel: "telegram", actorId: syntheticId, chatId: syntheticId, chatType: "private" } : { token: challenge.token, channel: "email", email: user?.email });
+    await load(); setNotice(label("Synthetic binding verified. No real account was contacted. Choose purposes and save to opt in.", "Vínculo de prueba verificado. No se contactó ninguna cuenta real. Elige los fines y guarda para aceptar."));
   }
-
-  const load = useCallback(async () => {
-    const res = await fetch("/api/reminders");
-    const d = await res.json();
-    setTelegramConfigured(d.telegramConfigured);
-    if (d.prefs) { savedChatIdRef.current = d.prefs.telegramChatId || ""; setPrefs((previous: any) => ({ ...previous, ...d.prefs, reminderHour: String(d.prefs.reminderHour ?? 6), remindBeforeMin: String(d.prefs.remindBeforeMin ?? 0) })); }
-  }, []);
-  useEffect(() => { if (user) { load(); loadPairing(); loadHealth(); } }, [user, load, loadPairing, loadHealth]);
-
-  const set = (k: string, v: any) => setPrefs((p: any) => ({ ...p, [k]: v, ...(v && k === "emailEnabled" ? { telegramEnabled: false } : {}), ...(v && k === "telegramEnabled" ? { emailEnabled: false } : {}) }));
-
-  async function save() {
-    setBusy(true); setError(null); setSaved(false);
-    try {
-      const res = await fetch("/api/reminders", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...prefs, reminderHour: Number(prefs.reminderHour), remindBeforeMin: Number(prefs.remindBeforeMin) }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not save preferences");
-      setSaved(true); setTimeout(() => setSaved(false), 2500);
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not save preferences"); }
-    finally { setBusy(false); }
+  async function submitReply() {
+    if (!outgoing?.replyToken || !user) return;
+    const p = outgoing.prompt;
+    await api("/api/coaching/replies", "POST", { promptId: p.id, sessionId: p.sessionId, observationDate: p.observationDate, timezone: p.timezone,
+      sourceRevision: p.sourceRevision, token: outgoing.replyToken, text: reply,
+      actorId: prefs.primaryChannel === "telegram" ? prefs.verifiedActorId : user.id,
+      chatId: prefs.primaryChannel === "telegram" ? prefs.verifiedChatId : prefs.primaryChannel === "email" ? prefs.verifiedEmail : user.id });
+    setOutgoing(null); setReply(""); await load(); setNotice(label("Answer parsed. Review and confirm below; nothing has affected training yet.", "Respuesta interpretada. Revisa y confirma abajo; aún no afecta al entrenamiento."));
   }
-
-  async function sendNow(when: "today" | "tomorrow" = "today") {
-    setBusy(true); setError(null); setSent(null);
-    try {
-      const res = await fetch("/api/reminders/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ when }) });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || data.result?.email?.error || data.result?.telegram?.error || "Delivery was not confirmed");
-      setSent(data);
-    } catch (e) { setError(e instanceof Error ? e.message : "Delivery was not confirmed"); }
-    finally { setBusy(false); }
+  async function confirm(prompt: Prompt, type: string, candidate?: ReplyCandidate) {
+    const result = await api("/api/coaching/replies", "PUT", { promptId: prompt.id, action: type, expectedRevision: prompt.sourceRevision, candidate });
+    await load(); setNotice(result.applied ? label("Confirmed. Update today's check-in to reassess training.", "Confirmado. Actualiza el chequeo de hoy para reevaluar el entrenamiento.") : label("Draft dismissed.", "Borrador descartado."));
   }
-
-  // Moved here from Settings so every message-delivery control lives on one tab.
-  async function sendDigest() {
-    setDigestBusy(true);
-    const res = await fetch("/api/email/digest", { method: "POST" });
-    setDigestBusy(false);
-    setDigestSent(res.ok);
-    setTimeout(() => setDigestSent(false), 4000);
-  }
-
-  return (
-    <ProtectedPage>
-      <div className="space-y-6 max-w-2xl">
-        <div>
-          <h1 className="font-display text-2xl font-bold">{t(lang, "rem.title")}</h1>
-          <p className="text-slate-500 text-sm">Morning (hour &lt; 12): short reminder of today&apos;s session. Evening (hour ≥ 12, default 17:00): the full detailed plan for tomorrow + readiness recommendation — one chosen email or Telegram channel. Future sessions remain pending until a current check-in.</p>
-        </div>
-
-        {error && <div role="alert" className="text-red-700">{error}</div>}
-        {saved && <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{t(lang, "rem.saved")}</div>}
-        {sent && <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">Provider accepted — {sent.result?.email?.ok ? "email ok" : sent.result?.email?.error || "email not sent"}{sent.result?.telegram ? (sent.result.telegram.ok ? " · telegram ok" : ` · telegram: ${sent.result.telegram.error}`) : ""}</div>}
-
-        {/* Delivery status — makes the scheduled cron visible instead of silent */}
-        {health && (
-          <div className={`card ${health.cronConfigured ? "border-emerald-200 bg-emerald-50/40" : "border-red-200 bg-red-50"}`}>
-            <h2 className="font-display font-bold text-base mb-2 flex items-center gap-2">
-              <span className={`inline-block w-2.5 h-2.5 rounded-full ${health.cronConfigured ? "bg-emerald-500" : "bg-red-500"}`} />
-              {lang === "es" ? "Envío programado" : "Scheduled delivery"}
-            </h2>
-            {health.cronConfigured ? (
-              <p className="text-sm text-emerald-800">
-                ✓ {lang === "es"
-                  ? `Configurado para intentar el envío a las ${String(health.reminderHour).padStart(2, "0")}:00 (hora local). La aceptación del proveedor no confirma lectura.`
-                  : `Configured to attempt delivery at ${String(health.reminderHour).padStart(2, "0")}:00 (your local time). Provider acceptance does not confirm reading.`}
-              </p>
-            ) : (
-              <p className="text-sm text-red-800">
-                ⚠ {lang === "es"
-                  ? "El envío automático está desactivado o no configurado. Elige un canal antes de enviar manualmente."
-                  : "Automatic delivery is disabled or not configured. Manual delivery is available only after choosing a channel."}
-              </p>
-            )}
-            {prefs.telegramEnabled && !health.telegramBound && (
-              <p className="text-sm text-amber-700 mt-2">
-                ⚠ {lang === "es"
-                  ? "Telegram activado pero sin chat vinculado — completa la conexión automática abajo."
-                  : "Telegram is on but no chat is paired — complete the automatic setup below."}
-              </p>
-            )}
-            {health.deliveries?.length > 0 && (
-              <div className="mt-3 space-y-1">
-                {health.deliveries.slice(0, 4).map((d: any, i: number) => (
-                  <div key={i} className="text-xs text-slate-600 flex items-center gap-2">
-                    <span>{d.channel === "telegram" ? "✈️" : "📧"}</span>
-                    <span className="font-mono">{d.day}</span>
-                    <span className={d.status === "sent" ? "text-emerald-600" : d.status === "failed" ? "text-red-600" : "text-slate-400"}>
-                      {d.status}{d.error ? ` — ${d.error}` : ""}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="card">
-          <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><Bell className="w-5 h-5 text-ocean-500" /> {t(lang, "rem.channels")}</h2>
-          <div className="space-y-4">
-            <label className="flex items-center gap-3 p-3 rounded-xl border border-sand-200">
-              <input type="checkbox" checked={prefs.emailEnabled} onChange={(e) => set("emailEnabled", e.target.checked)} />
-              <Mail className="w-5 h-5 text-ocean-500" />
-              <div className="flex-1"><div className="font-semibold text-sm">{t(lang, "rem.email")}</div><div className="text-xs text-slate-400">{user?.email}</div></div>
-            </label>
-
-            <label className="flex items-center gap-3 p-3 rounded-xl border border-sand-200">
-              <input type="checkbox" checked={prefs.telegramEnabled} onChange={(e) => set("telegramEnabled", e.target.checked)} />
-              <MessageCircle className="w-5 h-5 text-ocean-500" />
-              <div className="flex-1"><div className="font-semibold text-sm">{t(lang, "rem.telegram")}</div>
-                {telegramConfigured ? <div className="text-xs text-slate-400">{t(lang, "rem.chatId")}</div> : <div className="text-xs text-amber-600">{t(lang, "rem.telegramToken")}</div>}
-              </div>
-            </label>
-            {prefs.telegramEnabled && (
-              <div className="space-y-3">
-                {/* Auto-pairing: one link + one Detect press — no hunting for numbers */}
-                <div className="rounded-xl border border-ocean-200 bg-ocean-50/60 p-3 space-y-2">
-                  <div className="font-semibold text-sm text-ocean-900">{lang === "es" ? "Conexión automática (recomendado)" : "Automatic setup (recommended)"}</div>
-                  {pairing?.botUsername ? (
-                    <a
-                      href={`https://t.me/${pairing.botUsername}?start=${pairing.code}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-secondary text-sm w-full justify-center"
-                    >
-                      {lang === "es" ? "1. Abrir el bot y enviar el código" : "1. Open the bot & send the code"} {pairing.code}
-                    </a>
-                  ) : (
-                    <div className="text-xs text-slate-600">
-                      {lang === "es"
-                        ? <>1. Abre nuestro bot en Telegram y envía: <code className="bg-white px-1 rounded">/start {pairing?.code}</code></>
-                        : <>1. Open our bot in Telegram and send: <code className="bg-white px-1 rounded">/start {pairing?.code}</code></>}
-                    </div>
-                  )}
-                  <div className="text-xs text-slate-500">
-                    {lang === "es" ? "2. Vuelve aquí y pulsa Detectar — conectamos tu chat automáticamente." : "2. Come back here and press Detect — we link your chat automatically."}
-                  </div>
-                  <button onClick={detectChat} disabled={pairBusy} className="btn-primary text-sm w-full justify-center">
-                    {pairBusy ? (lang === "es" ? "Detectando…" : "Detecting…") : (lang === "es" ? "2. Detectar mi chat" : "2. Detect my chat")}
-                  </button>
-                  {pairMsg && (
-                    <div className={`text-xs rounded-lg px-2 py-1.5 ${pairMsg.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{pairMsg.text}</div>
-                  )}
-                </div>
-                <div>
-                  <label className="label">{lang === "es" ? "O pega tu Chat ID manualmente" : "Or paste your Chat ID manually"}</label>
-                  <input
-                    className="input"
-                    value={prefs.telegramChatId}
-                    onChange={(e) => set("telegramChatId", e.target.value)}
-                    onBlur={(e) => saveChatId(e.target.value)}
-                    placeholder="e.g. 123456789"
-                  />
-                  <div className="text-[10px] text-slate-400 mt-1">{lang === "es" ? "Copia el número de @userinfobot — se guarda solo al salir del campo." : "Copy the number from @userinfobot — it saves automatically when you leave the field."}</div>
-                  {chatSaved && <div className="text-[11px] text-emerald-600 mt-1">✓ {lang === "es" ? "Chat ID guardado permanentemente" : "Chat ID saved permanently"}</div>}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="card">
-          <h2 className="font-display font-bold text-lg mb-3">{t(lang, "rem.schedule")}</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="label">{t(lang, "rem.dailyHour")}</label><input type="number" min={0} max={23} className="input" value={prefs.reminderHour} onChange={(e) => set("reminderHour", e.target.value)} />
-              <div className="text-[10px] text-slate-400 mt-1">17 = 5pm detailed plan for tomorrow. Pick a morning hour for a short today-reminder instead.</div>
-            </div>
-            <div className="flex items-end pb-1">
-              <div className="text-sm text-slate-600">
-                {(() => {
-                  const h = parseInt(prefs.reminderHour, 10);
-                  if (isNaN(h) || h < 0 || h > 23) return lang === "es" ? "Elige una hora (0-23)" : "Pick an hour (0-23)";
-                  const label = `${((h + 11) % 12) + 1}:00 ${h < 12 ? "AM" : "PM"}`;
-                  return lang === "es"
-                    ? `${label} — ${h < 12 ? "recordatorio corto de hoy" : "plan detallado de mañana"}`
-                    : `${label} — ${h < 12 ? "short today reminder" : "detailed tomorrow plan"}`;
-                })()}
-              </div>
-            </div>
-            <div><label className="label">{t(lang, "rem.leadTime")}</label><input type="number" min={0} className="input" value={prefs.remindBeforeMin} onChange={(e) => set("remindBeforeMin", e.target.value)} /></div>
-          </div>
-          <button onClick={save} disabled={busy} className="btn-primary justify-center mt-4"><Save className="w-4 h-4" /> {t(lang, "rem.savePrefs")}</button>
-        </div>
-
-        <div className="card bg-ocean-50 border-ocean-200">
-          <p className="text-sm text-ocean-900 mb-3">{t(lang, "rem.sendNow")}</p>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => sendNow("today")} disabled={busy} className="btn-secondary"><Send className="w-4 h-4" /> {t(lang, "rem.sendNowBtn")}</button>
-            <button onClick={() => sendNow("tomorrow")} disabled={busy} className="btn-secondary">
-              <Send className="w-4 h-4" /> {lang === "es" ? "Enviar plan de mañana" : "Send tomorrow's plan"}
-            </button>
-          </div>
-        </div>
-
-        <div className="card">
-          <h2 className="font-display font-bold text-lg mb-2 flex items-center gap-2"><Mail className="w-5 h-5 text-ocean-500" /> Daily Motivation Email</h2>
-          <p className="text-sm text-slate-500 mb-3">Your daily quote, coach message and today&apos;s session in your inbox ({user?.email}).</p>
-          <button onClick={sendDigest} disabled={digestBusy} className="btn-primary w-full justify-center">
-            <Mail className="w-4 h-4" /> {digestBusy ? "Sending…" : "Send Today's Digest Now"}
-          </button>
-          {digestSent && <div className="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-2">✓ Digest sent (or queued via SMTP)</div>}
-        </div>
-      </div>
-    </ProtectedPage>
-  );
+  return <ProtectedPage><div className="space-y-6 max-w-3xl">
+    <h1 className="font-display text-2xl font-bold">{label("Coaching communications", "Comunicaciones de entrenamiento")}</h1>
+    <p className="rounded-xl border border-amber-300 bg-amber-50 p-4">{transport === "telegram" && enabled ? label("Telegram delivery is enabled only for your verified private chat and selected purposes. Provider acceptance does not establish reading. Email and other delivery channels remain disabled.", "Telegram solo está activo para tu chat privado verificado y los fines elegidos. La aceptación del proveedor no prueba lectura. El correo y los otros canales están desactivados.") : label("External delivery is disabled pending provider and privacy review. The isolated test mode below simulates acceptance only; it never sends Telegram or email, or claims a read receipt.", "El envío externo está desactivado hasta revisar proveedores y privacidad. El modo de prueba solo simula aceptación; no envía Telegram ni correo ni confirma lectura.")}</p>
+    {error && <p role="alert" className="text-red-700">{error}</p>}{notice && <p role="status" className="text-emerald-800">{notice}</p>}
+    {!loaded ? <p role="status">{label("Loading preferences…", "Cargando preferencias…")}</p> : <>
+    <section className="card space-y-4"><h2 className="font-bold text-lg">{label("Your choices", "Tus preferencias")}</h2>
+      <label className="block">{label("One primary channel", "Un canal principal")}<select className="input" value={prefs.primaryChannel} onChange={e => setPrefs({ ...prefs, primaryChannel: e.target.value, paused: true })}>
+        <option value="app">{label("App", "Aplicación")}</option><option value="telegram">Telegram ({transport === "telegram" ? label("verified chat", "chat verificado") : label("available, disabled / mock only", "disponible, desactivado / solo prueba")})</option><option value="email">{label("Email (mock only)", "Correo (solo prueba)")}</option>
+      </select></label>
+      {([ ["dailyPlan", "Selected-session guidance", "Guía de la sesión seleccionada"], ["sessionFeedback", "Session outcome / actual minutes / RPE questions", "Preguntas de resultado, minutos reales y RPE"], ["missingData", "Missing-input questions with their decision consequences", "Preguntas de datos que faltan y sus consecuencias"] ] as const).map(([key,en,sp]) => <label key={key} className="flex gap-3 items-start"><input type="checkbox" checked={prefs[key]} onChange={e => setPrefs({ ...prefs, [key]: e.target.checked })}/>{label(en,sp)}</label>)}
+      <p className="text-sm">{label("Each purpose is optional and off until you choose it. One channel, at most three prompts per local day. Symptoms, history and body measurements stay in the app. Unconfirmed answers expire after seven days and are cleared on the next app visit or scheduler run; raw audio and incoming text are not stored by this flow. Confirmed edits preserve an audit history.", "Cada fin es opcional y está desactivado hasta que lo elijas. Un canal, máximo tres avisos por día local. Síntomas, historial y medidas corporales quedan en la aplicación. Las respuestas sin confirmar vencen en siete días y se borran en la próxima visita o ejecución programada. Este flujo no guarda audio ni el texto recibido. Las ediciones confirmadas conservan historial de auditoría.")}</p>
+      <label className="flex gap-3"><input type="checkbox" checked={prefs.paused} onChange={e => setPrefs({ ...prefs, paused: e.target.checked })}/>{label("Pause all purposes", "Pausar todos los fines")}</label>
+      <label className="block">{label("Schedule timezone (IANA)", "Zona horaria (IANA)")}<input className="input" value={prefs.timezone} onChange={e => setPrefs({ ...prefs, timezone: e.target.value })}/></label>
+      <div className="grid sm:grid-cols-3 gap-3">{([ ["minuteOfDay", "Daily time", "Hora diaria"], ["quietStart", "Quiet hours start", "Inicio de silencio"], ["quietEnd", "Quiet hours end", "Fin de silencio"] ] as const).map(([key,en,sp]) => <label key={key}>{label(en,sp)}<input className="input" type="time" value={clockText(prefs[key])} onChange={e => setPrefs({ ...prefs, [key]: clockNumber(e.target.value) })}/></label>)}</div>
+      <p className="text-sm">{label("Quiet hours postpone the attempt. A daylight-saving repeated hour is used once; a skipped time moves to the next available local minute.", "El horario de silencio pospone el intento. Una hora repetida se usa una vez; una hora inexistente pasa al próximo minuto local disponible.")}</p>
+      {prefs.declinedOptional.length > 0 && <div><p>{label("Optional inputs you declined", "Datos opcionales rechazados")}: {prefs.declinedOptional.join(", ")}</p><button className="btn-secondary" disabled={busy} onClick={() => setPrefs({ ...prefs, declinedOptional: [] })}>{label("Allow those questions again (save required)", "Permitir esas preguntas (debes guardar)")}</button></div>}
+      <div className="flex flex-wrap gap-3"><button className="btn-secondary" disabled={busy} onClick={() => action(async () => { await api("/api/coaching/pairing", "DELETE"); setOutgoing(null); setPairingUrl(null); await load(); setNotice(label("Disconnected. Outstanding linking challenges and answers are revoked.", "Desconectado. Se revocaron los enlaces y respuestas pendientes.")); })}>{label("Disconnect and revoke", "Desconectar y revocar")}</button><button className="btn-primary" disabled={busy} onClick={() => action(() => save())}>{label("Save these choices", "Guardar preferencias")}</button><button className="btn-secondary" disabled={busy} onClick={() => action(() => save(true))}>{label("Pause / unsubscribe", "Pausar / cancelar suscripción")}</button></div>
+    </section>
+    {enabled && <section className="card space-y-4"><h2 className="font-bold text-lg">{transport === "telegram" ? label("Telegram linking and selected-session delivery", "Vinculación y envío de sesión por Telegram") : label("Isolated mock test", "Prueba aislada")}</h2>
+      {prefs.primaryChannel !== "app" && <div className="space-y-2"><p>{label("Verification status", "Verificación")}: {prefs.verificationTransport === "telegram" ? label("private chat verified", "chat privado verificado") : prefs.verificationTransport === "mock" ? label("synthetic only", "solo sintética") : label("unverified", "sin verificar")}</p>
+        {transport === "mock" && prefs.primaryChannel === "telegram" && <label className="block">{label("Synthetic private chat / sender ID (digits)", "ID de chat privado y remitente de prueba (dígitos)")}<input className="input" inputMode="numeric" value={syntheticId} onChange={e => setSyntheticId(e.target.value)}/></label>}
+        <button className="btn-secondary" disabled={busy || (transport === "mock" && prefs.primaryChannel === "telegram" && !syntheticId)} onClick={() => action(pair)}>{transport === "telegram" ? label("Link my private Telegram chat", "Vincular mi chat privado") : label("Verify synthetic binding", "Verificar vínculo de prueba")}</button>
+        {pairingUrl && <a className="underline" href={pairingUrl} target="_blank" rel="noopener noreferrer">{label("Open pairing link in Telegram", "Abrir enlace en Telegram")}</a>}
+        {transport === "telegram" && <button className="btn-secondary" disabled={busy} onClick={() => action(() => load())}>{label("Refresh verification", "Actualizar verificación")}</button>}
+      </div>}
+      <label className="block">{label("Select the exact session", "Selecciona la sesión exacta")}<select className="input" value={sessionId} onChange={e => { setSessionId(e.target.value); setOutgoing(null); }}><option value="">{label("Choose a session", "Elige una sesión")}</option>{workouts.map(w => <option key={w.id} value={w.id}>{w.date.slice(0,10)} · {w.title}</option>)}</select></label>
+      <label className="block">{label("Purpose", "Fin")}<select className="input" value={purpose} onChange={e => setPurpose(e.target.value)}><option value="sessionFeedback">{label("Session feedback", "Respuesta de sesión")}</option><option value="missingData">{label("Missing inputs", "Datos que faltan")}</option><option value="dailyPlan">{label("Session guidance", "Guía de sesión")}</option></select></label>
+      <button className="btn-secondary" disabled={busy || !sessionId} onClick={() => action(async () => { const result = await api("/api/coaching/prompts", "POST", { sessionId, purpose }); setOutgoing(result); setReply(""); await load(); setNotice(result.duplicate ? label("Existing prompt reused; no duplicate attempt.", "Aviso existente; no se repitió el intento.") : (transport === "telegram" ? `${label("Delivery result", "Resultado del envío")}: ${result.prompt.status}` : label("Mock acceptance recorded. No external message sent.", "Aceptación de prueba registrada. Sin envío externo."))); })}>{transport === "telegram" ? label("Send selected prompt", "Enviar aviso seleccionado") : label("Simulate selected prompt", "Simular aviso seleccionado")}</button>
+      {outgoing?.replyToken && <div className="space-y-3"><p>{label("The one-time test reply expires after 30 minutes. Use labeled English field names; other languages and free text use the app form.", "La respuesta de prueba vence en 30 minutos. Usa campos en inglés; para otros idiomas y texto libre, usa el formulario de la aplicación.")}</p><label className="block">{label("Mock answer", "Respuesta de prueba")}<textarea className="input" value={reply} onChange={e => setReply(e.target.value)} placeholder="status=completed; minutes=30; rpe=5; sport=run"/></label><button className="btn-secondary" disabled={busy || !reply.trim()} onClick={() => action(submitReply)}>{label("Parse into editable draft", "Crear borrador editable")}</button></div>}
+    </section>}
+    <section className="space-y-3"><h2 className="font-bold text-lg">{label("Prompts and answers", "Avisos y respuestas")}</h2>
+      {!prompts.length && <p>{label("No attempts or answers yet.", "Todavía no hay intentos ni respuestas.")}</p>}
+      {prompts.map(p => <article className="card space-y-3" key={p.id}><h3 className="font-semibold">{p.purpose} · {p.observationDate}</h3><p>{label("Delivery", "Entrega")}: {p.status} ({p.transport === "mock" ? label("mock only", "solo prueba") : "Telegram"}) · {label("Answer", "Respuesta")}: {p.replyStatus} · {label("Attempts", "Intentos")}: {p.attempts}</p>
+        {p.error && <p className="text-amber-800">{p.error}</p>}{p.nextAttemptAt && <p>{label("Retry no earlier than", "Reintentar después de")}: {new Date(p.nextAttemptAt).toLocaleString()}</p>}
+        <details><summary className="cursor-pointer">{label("Message and exact missing inputs", "Mensaje y datos concretos que faltan")}</summary><p className="whitespace-pre-wrap text-sm">{p.message}</p><ul className="list-disc pl-5">{p.questions.map(q => <li key={q.key}>{q.question} {q.consequence} {q.optional ? label("Optional", "Opcional") : ""}</li>)}</ul></details>
+        {p.questions.filter(q => q.optional && !prefs.declinedOptional.includes(q.key)).map(q => <button key={q.key} className="btn-secondary" disabled={busy} onClick={() => action(async () => {
+          const { primaryChannel, paused, dailyPlan, sessionFeedback, missingData, timezone, minuteOfDay, quietStart, quietEnd } = prefs;
+          await api("/api/coaching/preferences", "PUT", { primaryChannel, paused, dailyPlan, sessionFeedback, missingData, timezone, minuteOfDay, quietStart, quietEnd, declinedOptional: [...prefs.declinedOptional, q.key], consentVersion });
+          setOutgoing(null); await load();
+        })}>{label("Don't ask again for optional", "No volver a pedir este dato opcional")}: {q.key}</button>)}
+        <a className="underline" href={`/daily?sessionId=${encodeURIComponent(p.sessionId)}`}>{label("Open this session", "Abrir esta sesión")}</a>
+        {p.replyStatus === "pending" && ["simulated", "sent"].includes(p.status) && p.candidate && <ReplyEditor prompt={p} es={es} disabled={busy} onSubmit={(p,a,c) => action(() => confirm(p,a,c))}/>}
+      </article>)}
+    </section><a className="underline" href="/checkin">{label("Open private check-in", "Abrir chequeo privado")}</a>
+    </>}
+  </div></ProtectedPage>;
 }

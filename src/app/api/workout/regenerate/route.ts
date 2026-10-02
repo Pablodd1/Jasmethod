@@ -14,6 +14,7 @@ export async function POST(req: Request) {
     if (!resolved) throw new ApiError("Workout not found", 404);
     requireSessionRevision(resolved.canonical, b.expectedRevision);
     if (resolved.canonical.verdict !== "ready") throw new ApiError(resolved.canonical.reason, 409);
+    if (resolved.canonical.sportStructure) throw new ApiError("Explicit sport structure must be edited directly; a generic variant would discard its lengths, sets or components.", 409);
     if (resolved.canonical.steps.some(s => s.endpoint.type !== "time" || (s.target.source === "explicit" && s.target.type !== "open")))
       throw new ApiError("This session has specific endpoints or numeric targets. Review edits in the plan instead of generating a generic variant.", 409);
     const result = await prisma.$transaction(async (tx) => {

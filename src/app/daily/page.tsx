@@ -3,6 +3,7 @@
 // Distinct visual format (dark, card-numbered guidance) living alongside Today;
 // both read the same plan. This page handles loading/empty/error states.
 import { useEffect, useState, useCallback, useRef } from "react";
+import { StructuredSportEditor } from "@/components/StructuredSportEditor";
 import { DailyTrainingScreen } from "@/components/daily-training/DailyTrainingScreen";
 import { isDailyTraining } from "@/components/daily-training/training-contract";
 import type { DailyTraining } from "@/components/daily-training/training-contract";
@@ -102,6 +103,7 @@ export default function DailyTrainingPage() {
   return (
     <>
     {state.plan.sessions && state.plan.sessions.length > 1 && <nav aria-label="Today's sessions" className="jmm-screen jmm-session-switcher"><label>Select today&apos;s session <select value={session.id} onChange={e => selectSession(e.target.value)}>{state.plan.sessions.map(s => <option key={s.id} value={s.id}>{s.startTime ? `${s.startTime} · ` : ""}{s.title} · {s.sport}</option>)}</select></label></nav>}
+    <div className="mx-auto max-w-[540px] px-4 py-3"><StructuredSportEditor key={`structure-${session.id}-${session.sourceRevision}`} sessionId={session.id} sport={session.sport} onSaved={() => load()} /></div>
     <DailyTrainingScreen
       key={`${session.id}-${session.revision}`}
       plan={state.plan}

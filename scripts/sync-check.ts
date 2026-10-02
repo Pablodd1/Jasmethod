@@ -16,6 +16,9 @@ const original = globalThis.fetch,
   previous = {
     cron: process.env.CRON_SECRET,
     automatedDelivery: process.env.ENABLE_AUTOMATED_DELIVERY,
+    mockCoaching: process.env.ENABLE_MOCK_COACHING,
+    telegramCoaching: process.env.ENABLE_TELEGRAM_COACHING,
+    transport: process.env.COACHING_TRANSPORT,
     smtp: process.env.SMTP_HOST,
     telegram: process.env.TELEGRAM_BOT_TOKEN,
   };
@@ -152,23 +155,24 @@ async function main() {
       headers: { authorization: "Bearer local-reminder-test" },
     });
   delete process.env.ENABLE_AUTOMATED_DELIVERY;
+  delete process.env.ENABLE_MOCK_COACHING;
+  delete process.env.ENABLE_TELEGRAM_COACHING;
+  delete process.env.COACHING_TRANSPORT;
   const disabled = await (await reminders(req())).json();
   assert.equal(disabled.enabled, false);
   assert.equal(await db.reminderDelivery.count({ where: { userId } }), 0);
   process.env.ENABLE_AUTOMATED_DELIVERY = "true";
   const first = await (await reminders(req())).json();
   assert.equal(first.sent, 0);
-  assert.equal(first.failed, 1);
+  assert.equal(first.enabled, false, "Legacy reminder preferences alone cannot authorize purpose-specific coaching delivery");
   const second = await (await reminders(req())).json();
   assert.equal(second.sent, 0);
-  assert.equal(second.failed, 0);
-  const deliveries = await db.reminderDelivery.findMany({ where: { userId } });
-  assert.equal(deliveries.length, 1);
-  assert.equal(deliveries[0].channel, "telegram");
-  assert.equal(deliveries[0].status, "failed");
+  assert.equal(second.enabled, false);
+  assert.equal(await db.reminderDelivery.count({ where: { userId } }), 0);
+  assert.equal(await db.coachingPrompt.count({ where: { userId } }), 0);
   assert.equal(await db.sentEmail.count({ where: { userId } }), 0);
   console.log(
-    "Sync integration passed: concurrent imports, plan matching, calendar create/rename/delete, preference-aware delivery and repeat suppression. No external requests or messages were sent.",
+    "Sync integration passed: concurrent imports, plan matching, calendar create/rename/delete, legacy preference isolation (new purpose-specific delivery/retry is covered by the coaching suite). No external requests or messages were sent.",
   );
 }
 main()
@@ -181,6 +185,9 @@ main()
     for (const [key, value] of Object.entries({
       CRON_SECRET: previous.cron,
       ENABLE_AUTOMATED_DELIVERY: previous.automatedDelivery,
+      ENABLE_MOCK_COACHING: previous.mockCoaching,
+      ENABLE_TELEGRAM_COACHING: previous.telegramCoaching,
+      COACHING_TRANSPORT: previous.transport,
       SMTP_HOST: previous.smtp,
       TELEGRAM_BOT_TOKEN: previous.telegram,
     })) {
