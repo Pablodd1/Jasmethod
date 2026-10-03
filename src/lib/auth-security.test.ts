@@ -146,7 +146,7 @@ test("retired demo access and legacy sessions fail closed without production mut
     assert.ok(sessions.has(auth.hashToken(cookieToken)));
     assert.equal((await auth.getCurrentUser())?.id, "synthetic-new");
   });
-  await t.test("verified OAuth callback issues a usable namespaced session without network calls", async () => {
+  await t.test("legacy unsigned OAuth callback fails closed without creating a session", async () => {
     reset(); currentUser = user(auth.hashPassword(uniquePassword));
     process.env.GOOGLE_CLIENT_ID = "synthetic-client";
     process.env.GOOGLE_CLIENT_SECRET = "synthetic-oauth-fixture";
@@ -157,12 +157,12 @@ test("retired demo access and legacy sessions fail closed without production mut
     });
     try {
       const response = await google.GET(new Request("http://localhost/api/auth/google/callback?code=synthetic-code&state=synthetic-state"));
-      assert.equal(response.status, 307);
-      assert.equal(response.headers.get("location"), "http://localhost/today");
-      cookieToken = /jmm_session=([^;]+)/.exec(response.headers.get("set-cookie") || "")![1];
-      assert.ok(sessions.has(auth.hashToken(cookieToken)));
-      assert.equal((await auth.getCurrentUser())?.id, "synthetic-athlete");
-      assert.equal(writes, 1);
+      assert.equal(response.status, 303);
+      assert.match(response.headers.get("location") || "", /\/login\?.*error=invalid_state/);
+      assert.doesNotMatch(response.headers.get("set-cookie") || "", /jmm_session=/);
+      assert.equal(sessions.size, 0);
+      assert.equal(writes, 0);
+      assert.equal(fetchMock.mock.callCount(), 0);
     } finally { fetchMock.mock.restore(); }
   });
 });
