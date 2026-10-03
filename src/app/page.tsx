@@ -17,20 +17,20 @@ const es = (lang: string) => lang === "es";
 
 const COPY = {
   hero: {
-    kicker: ["Science-backed daily coaching", "Entrenamiento diario con ciencia"],
+    kicker: ["Daily coaching, explained", "Entrenamiento diario, explicado"],
     h1a: ["Training that reads ", "Entrenamiento que lee "],
     h1b: ["your body", "tu cuerpo"],
     h1c: [", not your ego.", ", no tu ego."],
     sub: [
-      "KCoach adapts every session to your recovery, sleep and HRV — then delivers it to your watch, your calendar and your phone. Built on published sports science, not folklore.",
-      "KCoach adapta cada sesión a tu recuperación, sueño y HRV — y la entrega en tu reloj, tu calendario y tu teléfono. Construido con ciencia del deporte publicada, no folklore.",
+      "Start with a manual check-in and review your session in the app. Download supported FIT workouts for manual transfer. Devices are optional; integrations depend on availability, setup and consent.",
+      "Empieza con un chequeo manual y revisa tu sesión en la app. Descarga entrenamientos FIT compatibles para transferirlos manualmente. Los dispositivos son opcionales; las integraciones dependen de su disponibilidad, configuración y tu consentimiento.",
     ],
     cta: ["Sign in / Create account", "Entrar / Crear cuenta"],
     cta2: ["See the science", "Ver la ciencia"],
     langNote: ["English · Español (use the selector above)", "English · Español (usa el selector de arriba)"],
   },
   stats: [
-    { n: "365", en: "days of history imported on day one", es: "días de historial importados el primer día" },
+    { n: "0", en: "devices required for manual coaching", es: "dispositivos necesarios para entrenamiento manual" },
     { n: "80/20", en: "polarized training model by default", es: "modelo polarizado por defecto" },
     { n: "100+", en: "research-cited protocols (PMIDs in-app)", es: "protocolos citados con PMID" },
     { n: "5", en: "languages, bilingual coaching", es: "idiomas, coach bilingüe" },
@@ -44,8 +44,8 @@ const COPY = {
     steps: [
       {
         icon: HeartPulse,
-        en: ["1 · Check in", "30 seconds: sleep, soreness, mood. Your Whoop/Oura ring syncs HRV, RHR and recovery by itself."],
-        es: ["1 · Chequeo", "30 segundos: sueño, dolor, ánimo. Tu Whoop/anillo Oura sincroniza HRV, FC reposo y recuperación solo."],
+        en: ["1 · Check in", "Report sleep, soreness, mood and available time. Supported, connected services can add available measurements; no device is required."],
+        es: ["1 · Chequeo", "Registra sueño, dolor, ánimo y tiempo disponible. Los servicios compatibles y conectados pueden aportar mediciones disponibles; no necesitas dispositivo."],
       },
       {
         icon: Brain,
@@ -54,13 +54,13 @@ const COPY = {
       },
       {
         icon: Watch,
-        en: ["3 · Delivered", "Structured workout to your Garmin/COROS via Intervals.icu, plus Telegram, email and Google Calendar."],
-        es: ["3 · Entrega", "Entrenamiento estructurado a tu Garmin/COROS vía Intervals.icu, más Telegram, email y Google Calendar."],
+        en: ["3 · Review & transfer", "Read your workout in the app. Download supported FIT files for manual transfer; verify compatibility and import on your device."],
+        es: ["3 · Revisa y transfiere", "Consulta tu entrenamiento en la app. Descarga archivos FIT compatibles para transferirlos manualmente; comprueba la compatibilidad y la importación en tu dispositivo."],
       },
       {
         icon: Activity,
-        en: ["4 · Analyzed", "Completed activity returns from Strava — pace vs your baseline, load, and tomorrow's plan learns from it."],
-        es: ["4 · Análisis", "La actividad completada vuelve de Strava — ritmo vs tu base, carga, y el plan de mañana aprende."],
+        en: ["4 · Report & review", "Report what you actually did and how it felt. A supported, enabled activity connection can add imported history for review."],
+        es: ["4 · Registra y revisa", "Registra lo que realmente hiciste y cómo te sentiste. Una conexión de actividades compatible y activada puede añadir historial importado para revisarlo."],
       },
     ],
   },
@@ -103,10 +103,10 @@ const COPY = {
   integrations: {
     title: ["Plays with your ecosystem", "Funciona con tu ecosistema"],
     rows: [
-      ["Strava", "Completed activities in — from any watch you sync to it.", "Actividades completadas — desde cualquier reloj que sincronices."],
-      ["Whoop · Oura", "Recovery, HRV, sleep — absorbed and re-analyzed daily.", "Recuperación, HRV, sueño — absorbidos y re-analizados a diario."],
+      ["Strava", "Optional activity imports after connecting a supported account. Check the import status.", "Importación opcional de actividades tras conectar una cuenta compatible. Comprueba el estado de la importación."],
+      ["Whoop · Oura", "Optional recovery inputs where supported and connected. Missing values stay unknown.", "Datos de recuperación opcionales cuando sean compatibles y estén conectados. Los valores ausentes siguen sin conocerse."],
       ["Manual workout FIT", "Download supported workouts for compatible devices. USB transfer and device compatibility must be checked.", "Descarga entrenamientos compatibles. Comprueba la transferencia USB y la compatibilidad de tu dispositivo."],
-      ["Google Calendar · Telegram · Email", "The day's plan where you already look.", "El plan del día donde ya miras."],
+      ["Telegram · Google Calendar", "Optional channels depend on enabled services, setup and consent. Check the current options in the app.", "Los canales opcionales dependen de los servicios habilitados, la configuración y tu consentimiento. Consulta las opciones actuales en la app."],
     ],
   },
   audience: {
@@ -327,8 +327,8 @@ export default function Home() {
           <h2 className="display-2xl">{es(language) ? "Empieza hoy." : "Start today."}</h2>
           <p className="text-sm text-ink-500 mt-2">
             {es(language)
-              ? "Entrenamiento diario, adaptado a tu cuerpo, en tu reloj."
-              : "Daily training, adapted to your body, on your watch."}
+              ? "Entrenamiento diario, guiado por tus chequeos, disponible en la app."
+              : "Daily training, guided by your check-ins, available in the app."}
           </p>
           <Link href="/login" className="btn-primary mt-5">
             {pick(COPY.hero.cta)} <ChevronRight className="w-4 h-4" />
