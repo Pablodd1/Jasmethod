@@ -86,6 +86,9 @@ jobs:
           ENABLE_MOCK_COACHING: "true"
         run: npm run test:followup
 
+      - name: Persistent conversational coach acceptance
+        run: npm run test:conversation
+
       - name: Native Telegram webhook acceptance with dummy config and no provider traffic
         run: |
           kill "$(cat /tmp/jmm-ci-server.pid)"
@@ -116,4 +119,5 @@ jobs:
             .local/jmm-followup-integration/*.zip
             .local/jmm-followup-integration/*-decoded.json
             .local/jmm-telegram-webhook-integration/report.json
+            .local/jmm-conversation-integration/report.json
           if-no-files-found: ignore
