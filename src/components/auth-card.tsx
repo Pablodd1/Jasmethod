@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { SocialSignIn } from "./social-sign-in";
 
 interface AuthCardProps {
   /** initial mode */
@@ -26,24 +27,13 @@ export function AuthCard({
   const [error, setError] = useState("");
   const [detail, setDetail] = useState("");
   const [busy, setBusy] = useState(false);
-  const [googleNotice, setGoogleNotice] = useState<string | null>(null);
-
-  // Google Sign-In returns here on failure: /login?google=not-configured or
-  // /login?google=error&reason=...
+  const fieldId = useId();
+  const [linkMode, setLinkMode] = useState(false);
+  const [linkAfterLogin, setLinkAfterLogin] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("google") === "not-configured") {
-      setGoogleNotice(
-        "Google sign-in is not configured on the server yet. Use email & password below, or ask the administrator to add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel.",
-      );
-    } else if (params.get("google") === "error") {
-      const reason = params.get("reason") || "unknown";
-      setGoogleNotice(
-        reason === "access_blocked"
-          ? "Google sign-in was blocked. If this is a test user, the administrator must add your email as a test user in the Google Cloud OAuth consent screen."
-          : `Google sign-in failed (${reason}). Use email & password below.`,
-      );
-    }
+    setLinkMode(params.get("link") === "1");
+    setLinkAfterLogin(params.get("error") === "account_link_required");
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -70,13 +60,23 @@ export function AuthCard({
       }
       // First-time signups enter the onboarding wizard; sign-ins go straight
       // to training (the wizard self-skips for onboarded users anyway).
-      window.location.href = mode === "signup" ? "/onboard" : redirectTo === "/onboard" ? "/today" : redirectTo;
+      window.location.href = mode === "signup" ? "/onboard" : linkAfterLogin ? "/login?link=1" : redirectTo === "/onboard" ? "/today" : redirectTo;
     } catch {
       setError("Network error — please try again.");
       setDetail("");
       setBusy(false);
     }
   }
+
+  if (linkMode) return (
+    <div className="rounded-3xl border border-ink-200 bg-white p-6 sm:p-8 shadow-sm">
+      <h2 className="font-display text-xl font-bold text-ink-900">Link a sign-in option</h2>
+      <p className="mt-2 text-sm text-ink-600">After signing in to your existing account, choose the provider you want to link. Your training stays in the same account.</p>
+      <SocialSignIn />
+      <a href="/login" className="mt-4 inline-block text-sm underline">Sign in with email instead</a>
+      <a href="/today" className="mt-4 ml-4 inline-block text-sm underline">Back to training</a>
+    </div>
+  );
 
   return (
     <div className="rounded-3xl border border-ink-200 bg-white p-6 sm:p-8 shadow-sm">
@@ -90,6 +90,7 @@ export function AuthCard({
           <button
             key={m}
             type="button"
+            aria-pressed={mode === m}
             onClick={() => {
               setMode(m);
               setError("");
@@ -108,10 +109,13 @@ export function AuthCard({
       <form onSubmit={submit} className="space-y-4">
         {mode === "signup" && (
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
+            <label htmlFor={`${fieldId}-name`} className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
               Full name
             </label>
             <input
+              id={`${fieldId}-name`}
+              name="name"
+              autoComplete="name"
               className="field-editorial"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -122,14 +126,17 @@ export function AuthCard({
         )}
         {mode === "signup" && (
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
+            <label htmlFor={`${fieldId}-birth-year`} className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
               Birth year (13+ to use the app)
             </label>
             <input
+              id={`${fieldId}-birth-year`}
+              name="birth-year"
+              autoComplete="bday-year"
               className="field-editorial"
               type="number"
               min={1930}
-              max={2012}
+              max={new Date().getFullYear() - 13}
               value={birthYear}
               onChange={(e) => setBirthYear(e.target.value)}
               placeholder="1990"
@@ -137,10 +144,13 @@ export function AuthCard({
           </div>
         )}
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
+          <label htmlFor={`${fieldId}-email`} className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
             Email
           </label>
           <input
+            id={`${fieldId}-email`}
+            name="email"
+            autoComplete="email"
             className="field-editorial"
             type="email"
             value={email}
@@ -150,10 +160,13 @@ export function AuthCard({
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
+          <label htmlFor={`${fieldId}-password`} className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
             Password
           </label>
           <input
+            id={`${fieldId}-password`}
+            name="password"
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
             className="field-editorial"
             type="password"
             value={password}
@@ -164,7 +177,7 @@ export function AuthCard({
           />
         </div>
         {error && (
-          <div className="text-sm text-vermillion-600 bg-vermillion-400/10 rounded-lg px-3 py-2">
+          <div role="alert" className="text-sm text-vermillion-600 bg-vermillion-400/10 rounded-lg px-3 py-2">
             {error}
           </div>
         )}
@@ -182,29 +195,7 @@ export function AuthCard({
         </button>
       </form>
 
-      {/* Google Sign-In — available for all users */}
-      <div className="mt-4">
-        <div className="flex items-center gap-3 text-[10px] uppercase tracking-wide text-ink-400">
-          <span className="h-px flex-1 bg-ink-200" /> or <span className="h-px flex-1 bg-ink-200" />
-        </div>
-        <a
-          href="/api/auth/google"
-          className="mt-3 flex w-full items-center justify-center gap-3 rounded-xl border border-ink-200 bg-white px-4 py-2.5 text-sm font-semibold text-ink-800 transition-colors hover:bg-paper-100"
-        >
-          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-            <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62Z" />
-            <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.32A9 9 0 0 0 9 18Z" />
-            <path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.96H.96a9 9 0 0 0 0 8.08l3.01-2.32Z" />
-            <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59A9 9 0 0 0 .96 4.96l3.01 2.32C4.68 5.16 6.66 3.58 9 3.58Z" />
-          </svg>
-          Continue with Google
-        </a>
-        {googleNotice && (
-          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
-            {googleNotice}
-          </div>
-        )}
-      </div>
+      <SocialSignIn />
 
       <p className="micro mt-5 text-center !normal-case !tracking-normal !text-[11px] !text-ink-400">
         Free for athletes. Your blood, DNA and training data stay private.
