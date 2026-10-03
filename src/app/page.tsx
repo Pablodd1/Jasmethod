@@ -106,7 +106,7 @@ const COPY = {
       ["Strava", "Optional activity imports after connecting a supported account. Check the import status.", "Importación opcional de actividades tras conectar una cuenta compatible. Comprueba el estado de la importación."],
       ["Whoop · Oura", "Optional recovery inputs where supported and connected. Missing values stay unknown.", "Datos de recuperación opcionales cuando sean compatibles y estén conectados. Los valores ausentes siguen sin conocerse."],
       ["Manual workout FIT", "Download supported workouts for compatible devices. USB transfer and device compatibility must be checked.", "Descarga entrenamientos compatibles. Comprueba la transferencia USB y la compatibilidad de tu dispositivo."],
-      ["Telegram · Google Calendar", "Optional channels depend on enabled services, setup and consent. Email plan delivery is unavailable; the plan stays in the app.", "Los canales opcionales dependen de los servicios habilitados, la configuración y tu consentimiento. El envío del plan por email no está disponible; el plan sigue en la app."],
+      ["Telegram · Google Calendar", "Optional channels depend on enabled services, setup and consent. Check the current options in the app.", "Los canales opcionales dependen de los servicios habilitados, la configuración y tu consentimiento. Consulta las opciones actuales en la app."],
     ],
   },
   audience: {

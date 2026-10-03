@@ -33,7 +33,7 @@ for (const language of ["en", "es"] as const) {
     assert.match(hero, language === "en" ? /FIT workouts for manual transfer/ : /FIT compatibles para transferirlos manualmente/);
     assert.match(hero, language === "en" ? /availability, setup and consent/ : /disponibilidad, configuración y tu consentimiento/);
     assert.match(html, language === "en" ? /verify compatibility and import on your device/ : /comprueba la compatibilidad y la importación en tu dispositivo/);
-    assert.match(html, language === "en" ? /Email plan delivery is unavailable/ : /El envío del plan por email no está disponible/);
+    assert.match(html, language === "en" ? /Optional channels depend on enabled services, setup and consent/ : /Los canales opcionales dependen de los servicios habilitados, la configuración y tu consentimiento/);
     assert.match(html, language === "en" ? /guided by your check-ins, available in the app/ : /guiado por tus chequeos, disponible en la app/);
     assert.doesNotMatch(html, /delivers it to your watch|la entrega en tu reloj|Structured workout to your Garmin|Entrenamiento estructurado a tu Garmin|via Intervals\.icu|vía Intervals\.icu|on your watch\.|en tu reloj\.|syncs HRV, RHR and recovery by itself|sincroniza HRV, FC reposo y recuperación solo|days of history imported on day one|días de historial importados el primer día/i);
     assert.doesNotMatch(hero, /science-backed|scientifically validated|científicamente validado/i);

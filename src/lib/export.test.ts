@@ -74,7 +74,8 @@ test("WHOOP OAuth state uses its required length and rejects altered responses",
   assert.equal(whoop.length, 8);
   assert.equal(google.length, 64);
   assert.equal(validOAuthState(whoop, whoop, "whoop"), true);
-  assert.equal(validOAuthState(`${whoop.slice(0, 7)}x`, whoop, "whoop"), false);
+  const changed = `${whoop.slice(0, 7)}${whoop.endsWith("x") ? "y" : "x"}`;
+  assert.equal(validOAuthState(changed, whoop, "whoop"), false);
   assert.equal(validOAuthState(google, google, "google-cal"), true);
   assert.equal(validOAuthState(whoop, whoop, "google-cal"), false);
 });
