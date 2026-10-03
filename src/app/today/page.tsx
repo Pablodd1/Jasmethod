@@ -1,6 +1,7 @@
 "use client";
 import { StructuredSportEditor } from "@/components/StructuredSportEditor";
 import { CoachingConversation } from "@/components/coaching-conversation";
+import { CoachConversation } from "@/components/daily-training/coach-conversation";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Watch } from "lucide-react";
@@ -29,17 +30,12 @@ export default function TodayPage() {
     [selected, setSelected] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sessionId")),
     [busy, setBusy] = useState(false),
     [feedback, setFeedback] = useState(false),
-    [message, setMessage] = useState(""),
-    [question, setQuestion] = useState(""),
-    [answer, setAnswer] = useState("");
+    [message, setMessage] = useState("");
   useEffect(() => {
     const onHistory = () => { setSelected(new URLSearchParams(window.location.search).get("sessionId")); setFeedback(false); setMessage(""); setError(""); };
     window.addEventListener("popstate", onHistory);
     return () => window.removeEventListener("popstate", onHistory);
   }, []);
-  const [externalConsent, setExternalConsent] = useState(false);
-  const [assistantMode, setAssistantMode] = useState("");
-  const [assistantProposal, setAssistantProposal] = useState<{command:string;value:number|null;sport:string|null;editorUrl:string}|null>(null);
   const load = useCallback(async () => {
     if (!user) return;
     try {
@@ -790,51 +786,14 @@ export default function TodayPage() {
             </Link>
           </div>
         )}
-        <span id="jasai" className="block scroll-mt-24" />
-        <details className="card">
-          <summary className="cursor-pointer font-semibold">
-            {es ? "Preguntar a KCoach" : "Ask KCoach"}
-          </summary>
-          <form
-            className="flex gap-2 mt-3"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setBusy(true);
-              try {
-                const r = await fetch("/api/assistant", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ question, externalConsent }),
-                });
-                const d = await r.json();
-                setAnswer(d.answer || d.error);
-                setAssistantMode(d.mode || "");
-                setAssistantProposal(d.proposal || null);
-                setExternalConsent(false);
-              } catch {
-                setAnswer("Unable to reach the assistant.");
-                setAssistantMode(""); setAssistantProposal(null);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <input
-              className="input flex-1"
-              maxLength={1000}
-              aria-label="Question for coach"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-            />
-            <button disabled={busy || offline} className="btn-primary">
-              {es ? "Preguntar" : "Ask"}
-            </button>
-          </form>
-          <label className="flex gap-2 mt-3 text-xs"><input type="checkbox" checked={externalConsent} onChange={e=>setExternalConsent(e.target.checked)}/>{es ? "Permitir IA externa: envía esta pregunta + un resumen de tu perfil, datos recientes y próxima carrera. Sin tokens ni credenciales. Sin consentimiento, KCoach responde igualmente con tus datos reales (modo local)." : "Allow external AI: sends this question + a summary of your profile, recent data and next race. No tokens or credentials. Without consent, KCoach still answers from your real data (local mode)."}</label>
-          {assistantMode && <p className="text-xs text-slate-500 mt-2">{assistantMode === "kcoach_ai" ? (es ? "KCoach con IA externa — basado en tus datos; no es una prescripción revisada." : "KCoach with external AI — grounded in your data; not a reviewed prescription.") : (es ? "KCoach local — calculado de tus datos reales en la app." : "KCoach local — computed from your real in-app data.")}</p>}
-          {answer && <p className="text-sm mt-3">{answer}</p>}
-          {assistantProposal && <div className="mt-3 border rounded-lg p-3 text-sm"><p>{es ? "Interpretación para revisar" : "Interpretation to review"}: {assistantProposal.command.replaceAll("_", " ")}{assistantProposal.value != null ? ` (${assistantProposal.value})` : ""}{assistantProposal.sport ? ` → ${assistantProposal.sport}` : ""}</p><p>{es ? "Ninguna sesión ha cambiado." : "No workout has changed."}</p><Link className="btn-secondary mt-2" href={assistantProposal.editorUrl}>{es ? "Abrir editor para revisar y confirmar" : "Open editor to review and confirm"}</Link></div>}
-        </details>
+        {user && <CoachConversation
+          key={user.id}
+          athleteId={user.id}
+          es={es}
+          offline={offline}
+          sessions={(data?.sessions || []).map((item: { id: string; title: string; sport: string }) => ({ id: item.id, title: item.title, sport: item.sport, date: data.date }))}
+          onConfirmed={load}
+        />}
       </div>
     {data?.motivation && <section className="card"><h2 className="font-bold">Your daily coaching cue</h2><p className="text-lg mt-2">{data.motivation.quote}</p><p className="text-sm mt-2">{data.motivation.message}</p><p className="text-xs text-slate-500 mt-2">{data.motivation.source}</p></section>}
       <CoachingConversation />

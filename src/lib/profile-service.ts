@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { parsePlanningSetup } from "./planning-setup";
 import { readPlanningSetup } from "./planning-setup-store";
 import { createHash } from "node:crypto";
@@ -9,7 +10,7 @@ export function profileRevision(profile: unknown) {
   return createHash("sha256").update(JSON.stringify(profile ?? null)).digest("hex");
 }
 
-export async function saveProfile(actorId: string, athlete: {id: string; timezone: string}, body: Record<string, unknown>) {
+export async function saveProfile(actorId: string, athlete: {id: string; timezone: string}, body: Record<string, unknown>, transaction?: Prisma.TransactionClient) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError("Invalid profile body");
   const { expectedRevision, reason, setup: rawSetup, expectedSetupRevision, ...fields } = body;
   let setup;
@@ -20,7 +21,7 @@ export async function saveProfile(actorId: string, athlete: {id: string; timezon
   const data = profilePatch(fields, athlete.timezone);
   if (!Object.keys(data).length && !setup) throw new ApiError("No profile changes supplied");
   try {
-    return await prisma.$transaction(async tx => {
+    const apply = async (tx: Prisma.TransactionClient) => {
       const before = await tx.athleteProfile.findUnique({where: {userId: athlete.id}});
       if (expectedRevision !== undefined && expectedRevision !== profileRevision(before))
         throw new ApiError("This profile changed while you were editing. Reload and review the latest values.", 409);
@@ -39,7 +40,8 @@ export async function saveProfile(actorId: string, athlete: {id: string; timezon
         after: JSON.stringify(setup), note: "Explicit setup with actor/source recorded; not device measurements or medical clearance",
       } });
       return profile;
-    }, {isolationLevel: "Serializable"});
+    };
+    return await (transaction ? apply(transaction) : prisma.$transaction(apply, {isolationLevel: "Serializable"}));
   } catch(e: any) {
     if (e.code === "P2034") throw new ApiError("Another edit was saved at the same time. Reload before saving again.", 409);
     throw e;

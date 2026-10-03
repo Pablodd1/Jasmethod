@@ -57,6 +57,10 @@ model User {
   forecastSnapshots RaceForecastSnapshot[]
   coachingMessages CoachingMessage[] @relation("MessageAthlete")
   authoredMessages CoachingMessage[] @relation("MessageAuthor")
+  assistantConversation CoachConversation?
+  assistantMessages CoachConversationMessage[]
+  assistantProposals CoachConversationProposal[]
+  assistantRequests CoachConversationRequest[]
 }
 
 // Shared athlete/authorized-coach conversation. Messages do not execute plan edits.
@@ -71,6 +75,79 @@ model CoachingMessage {
   author User @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   @@unique([authorId, clientId])
   @@index([athleteId, createdAt, id])
+}
+
+// Private athlete-only assistant history, separate from shared coach messages.
+// Clearing chat removes messages; durable confirmation receipts and health audits remain.
+model CoachConversation {
+  id         String                      @id @default(cuid())
+  userId     String                      @unique
+  generation Int                         @default(0)
+  revision   Int                         @default(0)
+  createdAt  DateTime                    @default(now())
+  updatedAt  DateTime                    @updatedAt
+  user       User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   CoachConversationMessage[]
+  proposals  CoachConversationProposal[]
+}
+
+model CoachConversationMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  userId         String
+  role           String // user | assistant
+  content        String
+  source         String // text | voice | image | local
+  metadata       String? // bounded provenance; never raw image bytes or credentials
+  createdAt      DateTime          @default(now())
+  conversation   CoachConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, conversationId, createdAt, id])
+}
+
+model CoachConversationProposal {
+  id              String            @id @default(cuid())
+  conversationId  String
+  userId          String
+  generation      Int
+  sourceMessageId String
+  timezone        String
+  revision        Int               @default(1)
+  status          String            @default("pending") // pending | confirmed | review_required | cancelled | superseded
+  candidates      String
+  baseRevisions   String
+  idempotencyKey  String?
+  requestHash     String?
+  receipt         String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  confirmedAt     DateTime?
+  conversation    CoachConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, conversationId, generation, createdAt, id])
+}
+
+// Idempotency/concurrency ledger contains hashes and operational state only.
+// Never persist prompts, image bytes, provider credentials or raw responses here.
+model CoachConversationRequest {
+  id String @id @default(cuid())
+  userId String
+  clientRequestId String
+  requestHash String
+  status String @default("processing") // processing | completed | failed | unknown
+  activeKey String? @unique
+  metered Boolean @default(false)
+  conversationId String
+  generation Int
+  revision Int
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, clientRequestId])
+  @@index([userId, metered, createdAt])
 }
 
 // ---------- TELEMETRY & USAGE METERING ----------

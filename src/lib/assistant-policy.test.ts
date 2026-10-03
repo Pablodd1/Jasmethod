@@ -16,62 +16,49 @@ function route(path:string, modules:Record<string,any>, fetcher:any, env:Record<
  return sandbox.exports as any;
 }
 const user={id:"athlete",name:"SENSITIVE_NAME",language:"en",profile:{ftp:999,secret:"PROVIDER_VALUE"}};
-// Grounded chat context fixture — server-side digest only (no provider
-// payloads, no tokens). The route assembles it from the athlete records.
-const chatCtx={
- name:"Test Athlete",language:"en",
- profileSummary:"goal: olympic · level: amateur",
- anchorsSummary:"FTP 250W · LTHR 170",
- readinessSummary:"today's verdict: full (factor 1)",
- metricsSummary:"latest device data: HRV 60ms, recovery 80%",
- trainingSummary:"active plan \"Olympic\" (12 weeks)",
- historySummary:"last 30d: 12 completed sessions, 9h total",
- raceSummary:"next race: Daytona Tri, 30 days out",
- todaySummary:"Bike: Tempo — 90min Z3",
-};
-function assistant(fetcher:any,env:Record<string,string>={}) {
- return route("src/app/api/assistant/route.ts",{
-  "@/lib/auth":{getCurrentUser:async()=>({...user,timezone:"UTC"})},
-  "@/lib/assistant-policy":policy,
-  "@/lib/gemini-response":{geminiAnswer:(x:any)=>x.answer||"",geminiGenerationConfig:()=>({temperature:0})},
-  "@/lib/kcoach-chat":{
-   buildChatContext:async()=>chatCtx,
-   localGroundedAnswer:(q:string,c:any)=>`local grounded: ${q} | ${c.raceSummary}`,
-   groundedQuestionPayload:(q:string,c:any)=>({system_instruction:{parts:[{text:"KCoach grounded. Context: "+c.raceSummary}]},contents:[{parts:[{text:q}]}]}),
-  },
- },fetcher,env);
+// The persistent assistant route delegates to an owner-scoped service. Its
+// POST stores a conversation/proposal only; confirmation is a separate endpoint.
+function assistant(overrides: Record<string, any> = {}) {
+ let externalCalls = 0;
+ const service = {
+  assistantAccess: async () => ({...user, timezone: "UTC"}),
+  readConversationBody: async (req: Request) => req.json(),
+  appendConversation: async (_actor: unknown, body: any) => ({ok:true, answer:body.message, trainingModified:false, mode:"kcoach_local", proposal:{status:"pending"}}),
+  getConversation: async () => ({ok:true, conversation:{messages:[]}}),
+  clearConversation: async () => ({ok:true, cleared:true}),
+  ...overrides,
+ };
+ return {api:route("src/app/api/assistant/route.ts", {
+  "@/lib/coach-conversation-service": service,
+  "@/lib/access": {errorResponse:(error: any)=>Response.json({error:error.message},{status:error.status||500})},
+ }, async()=>{externalCalls++;throw Error("Unexpected external network");}), externalCalls:()=>externalCalls};
 }
 const request=(body:any)=>new Request("https://jmm.test/api/assistant",{method:"POST",body:JSON.stringify(body)});
 
-test("conversation commands produce a proposal with zero DB or external model access",async()=>{
+test("conversation POST delegates owner scope and cannot claim training was changed",async()=>{
+ let observedActor: any, observedBody: any;
+ const {api,externalCalls}=assistant({appendConversation:async(actor:any,body:any)=>{
+  observedActor=actor; observedBody=body;
+  return {ok:true,answer:"Review first",trainingModified:false,proposal:{status:"pending"}};
+ }});
+ const response=await api.POST(request({message:"make it a rest day",externalConsent:true}));
+ const result=await response.json();assert.equal(result.trainingModified,false);assert.equal(result.proposal.status,"pending");
+ assert.equal(observedActor.id,"athlete");assert.equal(observedBody.message,"make it a rest day");
+ assert.equal(response.headers.get("cache-control"),"private, no-store");assert.equal(externalCalls(),0);
+});
+test("assistant GET and DELETE preserve owner access boundary",async()=>{
  let calls=0;
- const api=assistant(async()=>{calls++;throw Error("Unexpected network");},{EXTERNAL_AI_ENABLED:"true",GEMINI_API_KEY:"test-key"});
- const response=await api.POST(request({question:"make it a rest day",externalConsent:true}));
- const result=await response.json();
- assert.equal(result.trainingModified,false);
- assert.equal(result.mode,"local_proposal");
- assert.equal(result.proposal.requiresConfirmation,true);
- assert.equal(calls,0);
+ const {api}=assistant({assistantAccess:async()=>{throw Object.assign(new Error("Owner only"),{status:403});},getConversation:async()=>{calls++;},clearConversation:async()=>{calls++;}});
+ assert.equal((await api.GET(new Request("https://jmm.test/api/assistant?athleteId=other"))).status,403);
+ assert.equal((await api.DELETE(request({confirmed:true}))).status,403);assert.equal(calls,0);
 });
-test("external answer requires both operator flag and explicit per-question consent — without it the LOCAL grounded answer serves",async()=>{
- let calls=0;const fetcher=async()=>{calls++;return Response.json({answer:"External answer"});};
- for(const [env,consent] of [[{EXTERNAL_AI_ENABLED:"true",GEMINI_API_KEY:"test-key"},false],[{GEMINI_API_KEY:"test-key"},true]] as const){
-  const r=await assistant(fetcher,env).POST(request({question:"How is my race prediction?",externalConsent:consent}));
-  const j=await r.json();
-  assert.equal(j.mode,"kcoach_local");
-  assert.match(j.answer,/local grounded/);
- }
- assert.equal(calls,0);
+test("failed assistant writes remain failures, never fabricated success",async()=>{
+ const {api}=assistant({appendConversation:async()=>{throw Object.assign(new Error("Stale proposal"),{status:409});}});
+ const response=await api.POST(request({message:"my hours are 4"}));assert.equal(response.status,409);const result=await response.json();assert.equal(result.ok,undefined);assert.match(result.error,/Stale/);
 });
-test("consented external payload carries the question + context digest, never raw provider data or client-supplied fields",async()=>{
- let captured="";
- const api=assistant(async(_url:string,init:any)=>{captured=init.body;return Response.json({answer:"Grounded answer"});},{EXTERNAL_AI_ENABLED:"true",GEMINI_API_KEY:"test-key"});
- const r=await api.POST(request({question:"How is my race prediction?",externalConsent:true,profile:{extra:"UNTRUSTED_EXTRA_CONTEXT"}}));
- assert.equal((await r.json()).mode,"kcoach_ai");
- const payload=JSON.parse(captured);
- assert.equal(payload.contents[0].parts[0].text,"How is my race prediction?");
- assert.match(captured,/Daytona Tri/); // race context IS included (grounded chat)
- assert.doesNotMatch(captured,/PROVIDER_VALUE|UNTRUSTED_EXTRA_CONTEXT|999/); // raw client fields and device payloads are not
+test("legacy command parsing still produces review-only proposals",()=>{
+ const parsed=policy.trainingProposal("make it a rest day");assert.ok(parsed);assert.equal(parsed.requiresConfirmation,true);
+ assert.throws(()=>policy.assistantInput({question:""}));
 });
 test("race brief remains deterministic even when external model keys and flags are configured",async()=>{
  let calls=0;
