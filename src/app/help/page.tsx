@@ -1,118 +1,53 @@
-"use client";
-
+import type { Metadata } from "next";
 import { SiteHeader, SiteFooter } from "@/components/site-shell";
-import { LifeBuoy, MessageCircle, Mail, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { SupportContact } from "@/components/support-contact";
+import { supportContacts } from "@/lib/support-contact";
+import { supportTelegramConfigured } from "@/lib/support-delivery";
 
-const FAQ: { q: string; a: string }[] = [
-  {
-    q: "My device isn't syncing. What do I do first?",
-    a: "Open Connections. If the device shows a red 'error' chip or an amber 'reconnect needed' chip, tap Reconnect — that fixes expired permissions in one step. If the card says 'Connection not configured by the owner', tap 'Request this connection' and the administrator is notified instantly.",
-  },
-  {
-    q: "How do I get my training plan on my watch?",
-    a: "On Today, tap 'Send to watch' on your phone — the share sheet opens; pick Garmin Connect to import the structured workout with per-step alerts. On a computer, 'Download .FIT' gives the same file (import once in Garmin Connect → Workouts).",
-  },
-  {
-    q: "Why did today's session change from the plan?",
-    a: "Your daily check-in drives it: sleep, soreness, stress, pain, and the minutes you actually have. The 'Why this session?' line on Today states the exact reason — for example 'TRIM — HRV 12% below your baseline.'",
-  },
-  {
-    q: "I forgot my password / can't log in.",
-    a: "Use 'Continue with Google' if your email is a Gmail address. Otherwise contact support below and we'll reset it for you.",
-  },
-  {
-    q: "Is my health data private?",
-    a: "Your data belongs to your account alone — device connections, training, check-ins and labs are per-user, and device tokens are encrypted. Coaches only see you if an administrator assigns you to them; you can ask to be unassigned at any time.",
-  },
-  {
-    q: "What does 'estimated' mean on TSS / IF / distance?",
-    a: "These are planning estimates from your thresholds and zones (the label says 'est.'). They become exact when you record the session with HR, power or GPS — the plan-versus-actual comparison then uses your real numbers.",
-  },
+export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  title: "Help & Support | JMM",
+  description: "Get help with JMM sign-in, device connections, and daily coaching.",
+  alternates: { canonical: "/help" },
+};
+
+const FAQ = [
+  { q: "My device is not syncing. What should I check?", a: "Open Connections and check the provider status and last successful sync. Reconnect if authorization expired. Record the provider name, time, and error message when contacting support. A connected account alone does not prove that new data has arrived." },
+  { q: "How do I follow training on my watch?", a: "Check the delivery options offered for your device on Today and Connections. Availability depends on the provider and enabled integrations. A downloaded file or a successful send request does not confirm delivery to the watch; check the workout on the device before training." },
+  { q: "Why did today's session change?", a: "Review the explanation alongside your daily session and your latest check-in. Ask the in-app AI coach about the recommendation, or discuss it with your assigned human coach. Missing measurements should not be treated as measured recovery data." },
+  { q: "Can I register or sign in with Google, Apple, or ChatGPT?", a: "Google and Apple can create new accounts when enabled. If an account already uses your email, first sign in to that existing account, then link the provider. This protects your existing training history. Apple may use a private relay email, so link Apple from your existing account to avoid a separate account. ChatGPT sign-in remains unavailable until approved credentials are configured." },
+  { q: "Does recorded data make every training metric exact?", a: "No. Planned distance, TSS, IF, and predictions may be estimates. Recorded heart rate, power, and GPS provide observations, but calculated metrics still depend on sensor quality, your zones, and the calculation used." },
 ];
 
 export default function HelpPage() {
-  const [open, setOpen] = useState<number | null>(0);
-  return (
-    <div className="min-h-screen bg-paper">
-      <SiteHeader />
-      <div className="pub-container py-12 sm:py-16 max-w-2xl">
-        <p className="kicker">Support</p>
-        <h1 className="display-2xl mt-4">Help &amp; Support</h1>
-        <p className="lede mt-5">
-          Fastest answers first — then a human.
-        </p>
-
-        <div className="grid sm:grid-cols-2 gap-4 mt-8">
-          <a
-            href="https://t.me/JMMCOACHINGBOT"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="card flex items-start gap-3 hover:border-ocean-400 transition-colors"
-          >
-            <MessageCircle className="w-6 h-6 text-ocean-600 shrink-0 mt-1" />
-            <div>
-              <div className="font-display font-bold">Message us on Telegram</div>
-              <p className="text-sm text-slate-600 mt-1">
-                Fastest path — usually answered same day.
-              </p>
-            </div>
-          </a>
-          <a
-            href="mailto:coach@jasmiamimethod.com"
-            className="card flex items-start gap-3 hover:border-ocean-400 transition-colors"
-          >
-            <Mail className="w-6 h-6 text-ocean-600 shrink-0 mt-1" />
-            <div>
-              <div className="font-display font-bold">Email the coach</div>
-              <p className="text-sm text-slate-600 mt-1">
-                coach@jasmiamimethod.com — for anything detailed or private.
-              </p>
-            </div>
-          </a>
+  return <div className="min-h-screen bg-paper">
+    <SiteHeader />
+    <main className="pub-container py-12 sm:py-16 max-w-2xl">
+      <p className="kicker">Support</p>
+      <h1 className="display-2xl mt-4">Help &amp; Support</h1>
+      <p className="lede mt-5">Account help, technical questions, and coaching conversations.</p>
+      <section className="card mt-8" aria-labelledby="account-help">
+        <h2 id="account-help" className="font-display font-bold text-xl">Cannot sign in?</h2>
+        <p className="text-sm text-slate-600 mt-2">Recover your existing account to keep your training history. Do not create another account to recover missing records.</p>
+        <div className="flex flex-wrap gap-4 mt-4">
+          <a href="/forgot-password" className="underline text-ocean-700 font-semibold">Reset your password</a>
+          <a href="/login" className="underline text-ocean-700 font-semibold">Sign in</a>
+          <a href="/login?link=1" className="underline text-ocean-700 font-semibold">Link Google or Apple after signing in</a>
         </div>
-
-        <div className="card mt-6 flex items-start gap-3 border-amber-200 bg-amber-50/50">
-          <LifeBuoy className="w-6 h-6 text-amber-600 shrink-0 mt-1" />
-          <div>
-            <div className="font-display font-bold">
-              Medical or injury concern?
-            </div>
-            <p className="text-sm text-slate-700 mt-1">
-              JasMiamiMethod is a coaching tool, not medical care. For chest pain,
-              dizziness, pain that changes how you move, or symptoms of illness —
-              stop training and contact a health professional.{" "}
-              <a href="/terms" className="underline text-ocean-700">
-                Terms &amp; health disclaimer
-              </a>
-              .
-            </p>
-          </div>
-        </div>
-
-        <h2 className="display-lg mt-12 mb-4">Frequently asked</h2>
-        <div className="space-y-2">
-          {FAQ.map((f, i) => (
-            <div key={i} className="card !py-0 overflow-hidden">
-              <button
-                className="w-full text-left px-5 py-4 flex items-center justify-between gap-3"
-                onClick={() => setOpen(open === i ? null : i)}
-              >
-                <span className="font-semibold text-sm">{f.q}</span>
-                <ChevronDown
-                  className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open === i ? "rotate-180" : ""}`}
-                />
-              </button>
-              {open === i && (
-                <p className="px-5 pb-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
-                  {f.a}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-      <SiteFooter />
-    </div>
-  );
+      </section>
+      <SupportContact contacts={supportContacts(process.env)} telegramSupportAvailable={supportTelegramConfigured()} />
+      <section className="card mt-6" aria-labelledby="ai-coaching">
+        <h2 id="ai-coaching" className="font-display font-bold text-xl">Training questions for the AI coach</h2>
+        <p className="text-sm text-slate-600 mt-2">After signing in, use the in-app coach to discuss your training and daily session. It cannot recover your password or fix account access. Human coach conversations, when assigned, are also on Today. Contact the team separately for technical support; messages are not automatically forwarded between these channels.</p>
+        <a href="/today#jasai" className="inline-block mt-4 underline text-ocean-700 font-semibold">Open daily coaching</a>
+      </section>
+      <h2 className="display-lg mt-12 mb-4">Frequently asked</h2>
+      <div className="space-y-2">{FAQ.map(item => <details key={item.q} className="card">
+        <summary className="font-semibold text-sm cursor-pointer focus-visible:outline focus-visible:outline-2">{item.q}</summary>
+        <p className="mt-3 text-sm text-slate-600 leading-relaxed">{item.a}</p>
+      </details>)}</div>
+      <p className="text-sm text-slate-600 mt-8">JMM provides coaching, not medical care. For urgent health concerns, contact a health professional or local emergency services. <a href="/terms" className="underline text-ocean-700">Terms and health disclaimer</a>.</p>
+    </main>
+    <SiteFooter />
+  </div>;
 }
