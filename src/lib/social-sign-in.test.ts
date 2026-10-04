@@ -29,7 +29,7 @@ const rsa = jose.generateKeyPair("RS256");
 const otherRsa = jose.generateKeyPair("RS256");
 const appleKey = jose.generateKeyPair("ES256", { extractable: true }).then(pair => jose.exportPKCS8(pair.privateKey));
 const digest = (s: string) => createHash("sha256").update(s).digest("hex");
-const defaultEnv = { NODE_ENV: "test", APP_URL: "https://app.example.invalid", GOOGLE_CLIENT_ID: "test-google-client", GOOGLE_CLIENT_SECRET: "test-google-secret", CHATGPT_CLIENT_ID: "test-chatgpt-client", CHATGPT_CLIENT_SECRET: "test-chatgpt-secret", APPLE_CLIENT_ID: "test-apple-client", APPLE_TEAM_ID: "test-team", APPLE_KEY_ID: "test-key" };
+const defaultEnv = { SIGN_IN_PROVIDERS: "google,apple,chatgpt", NODE_ENV: "test", APP_URL: "https://app.example.invalid", GOOGLE_CLIENT_ID: "test-google-client", GOOGLE_CLIENT_SECRET: "test-google-secret", CHATGPT_CLIENT_ID: "test-chatgpt-client", CHATGPT_CLIENT_SECRET: "test-chatgpt-secret", APPLE_CLIENT_ID: "test-apple-client", APPLE_TEAM_ID: "test-team", APPLE_KEY_ID: "test-key" };
 
 async function fixture(overrides: Record<string, string | undefined> = {}) {
   const env: Record<string, string | undefined> = { ...defaultEnv, APPLE_PRIVATE_KEY: await appleKey, ...overrides };
@@ -257,4 +257,21 @@ test("Apple callback rejects oversized and wrong-content-type form bodies withou
     assert.match(response.headers.get("location"), /verification_failed/);
     assert.equal(f.state.tokenFetches.length + f.state.sessions.length, 0);
   }
+});
+
+
+test("Google demo disables other providers even when credentials exist", async () => {
+  for (const value of [undefined, "google"]) {
+    const f = await fixture({ SIGN_IN_PROVIDERS: value });
+    assert.ok(f.config.signInConfig("google"));
+    for (const provider of ["apple", "chatgpt"]) {
+      assert.equal(f.config.signInConfig(provider), null);
+      assert.equal((await f.start(provider)).location.searchParams.get("error"), "not_configured");
+      assert.equal(new URL((await f.finish("synthetic-state", provider)).headers.get("location")!).searchParams.get("error"), "not_configured");
+    }
+    assert.equal(f.state.transaction, null);
+    assert.equal(f.state.tokenFetches.length, 0);
+  }
+  const disabled = await fixture({ SIGN_IN_PROVIDERS: "" });
+  assert.equal(disabled.config.signInConfig("google"), null);
 });

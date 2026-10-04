@@ -12,6 +12,9 @@ export function signInBase(req: Request): string {
 }
 
 export function signInConfig(provider: SignInProvider) {
+  // Demo defaults to Google. Credentials alone never enable another provider.
+  const enabled = (process.env.SIGN_IN_PROVIDERS ?? "google").split(",").map(value => value.trim());
+  if (!enabled.includes(provider)) return null;
   if (provider === "google") {
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return null;
     return { clientId: process.env.GOOGLE_CLIENT_ID, secret: process.env.GOOGLE_CLIENT_SECRET,

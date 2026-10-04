@@ -15,7 +15,7 @@ const FAQ = [
   { q: "My device is not syncing. What should I check?", a: "Open Connections and check the provider status and last successful sync. Reconnect if authorization expired. Record the provider name, time, and error message when contacting support. A connected account alone does not prove that new data has arrived." },
   { q: "How do I follow training on my watch?", a: "Check the delivery options offered for your device on Today and Connections. Availability depends on the provider and enabled integrations. A downloaded file or a successful send request does not confirm delivery to the watch; check the workout on the device before training." },
   { q: "Why did today's session change?", a: "Review the explanation alongside your daily session and your latest check-in. Ask the in-app AI coach about the recommendation, or discuss it with your assigned human coach. Missing measurements should not be treated as measured recovery data." },
-  { q: "Can I register or sign in with Google, Apple, or ChatGPT?", a: "Google and Apple can create new accounts when enabled. If an account already uses your email, first sign in to that existing account, then link the provider. This protects your existing training history. Apple may use a private relay email, so link Apple from your existing account to avoid a separate account. ChatGPT sign-in remains unavailable until approved credentials are configured." },
+  { q: "Can I register or sign in with Google?", a: "Google can create new accounts. If an account already uses your email, first sign in to that existing account, then link the provider. This protects your existing training history. Apple and ChatGPT are not offered in this demo." },
   { q: "Does recorded data make every training metric exact?", a: "No. Planned distance, TSS, IF, and predictions may be estimates. Recorded heart rate, power, and GPS provide observations, but calculated metrics still depend on sensor quality, your zones, and the calculation used." },
 ];
 
@@ -32,7 +32,7 @@ export default function HelpPage() {
         <div className="flex flex-wrap gap-4 mt-4">
           <a href="/forgot-password" className="underline text-ocean-700 font-semibold">Reset your password</a>
           <a href="/login" className="underline text-ocean-700 font-semibold">Sign in</a>
-          <a href="/login?link=1" className="underline text-ocean-700 font-semibold">Link Google or Apple after signing in</a>
+          <a href="/login?link=1" className="underline text-ocean-700 font-semibold">Link Google after signing in</a>
         </div>
       </section>
       <SupportContact contacts={supportContacts(process.env)} telegramSupportAvailable={supportTelegramConfigured()} />
