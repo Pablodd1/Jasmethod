@@ -1,4 +1,5 @@
-import { workoutJStress } from "@/lib/j-metrics";
+import { dailyRecoveryContext } from "@/lib/daily-recovery";
+import { workoutJStress, hasPerformedTraining } from "@/lib/j-metrics";
 import { SessionResolutionError } from "@/lib/canonical-session";
 import {personalizedDailyMotivation} from "@/lib/reference";
 import { prisma } from "@/lib/db";
@@ -21,12 +22,11 @@ export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
-  const [workouts, race, connectors, checkin, supplementPrefs] = await Promise.all([
+  const [allWorkouts, race, connectors, checkin, supplementPrefs, restDay] = await Promise.all([
     prisma.workout.findMany({
       where: {
         userId: user.id,
         date: { gte: start, lt: end },
-        planned: true,
       },
       include: { planDay: { select: { notes: true, dayOff: true } } },
       orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
@@ -49,7 +49,10 @@ export async function GET(req: Request) {
       where: { userId_date: { userId: user.id, date: start } },
     }),
     prisma.supplementProfile.findUnique({ where: { userId: user.id } }),
+    prisma.planDay.findFirst({ where: { plan: { userId: user.id, status: "active" }, date: { gte: start, lt: end }, dayOff: true }, select: { id: true } }),
   ]);
+
+  const workouts = allWorkouts.filter(w => w.planned);
 
   // KCoach Activity Reports — narratives generated at sync time (last 7 days,
   // newest first) for the Today page report card.
@@ -184,10 +187,15 @@ export async function GET(req: Request) {
         coachNotes: baseWorkout(w).description || null,
       };
     });
+    let recoveryAnswers = null;
+    try { const parsed = checkin ? JSON.parse(checkin.answers || "null") : null; if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) recoveryAnswers = parsed; } catch { /* Missing safety remains unknown. */ }
+    const plannedRest = !!restDay || (!!workouts.length && workouts.every(w => w.planDay?.dayOff));
+    const recovery = dailyRecoveryContext({ plannedRest, sessions, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     const visibleConnectors = connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled());
     return Response.json({
+      recovery,
       capabilities: trainingCapabilities(),
-      motivation: personalizedDailyMotivation({date:key,name:user.name,goal:user.profile?.goal,sessionTitle:sessions[0]?.title,rest:!!user.profile?.injured || (!!sessions.length && sessions.every(s=>s.durationMin===0)) || (!!todaysWorkouts.length && todaysWorkouts.every(w=>w.planDay?.dayOff)),checkinComplete:!!checkin,enabled:user.motivation?.dailyQuote !== false,style:user.motivation?.style,lang:user.language}),
+      motivation: personalizedDailyMotivation({date:key,name:user.name,goal:user.profile?.goal,sessionTitle:sessions[0]?.title,rest:plannedRest || !!user.profile?.injured || (!!sessions.length && sessions.every(s=>s.durationMin===0)) || (!!todaysWorkouts.length && todaysWorkouts.every(w=>w.planDay?.dayOff)),checkinComplete:!!checkin,enabled:user.motivation?.dailyQuote !== false,style:user.motivation?.style,lang:user.language}),
       date: key,
       timezone: user.timezone,
       units: user.profile?.units === "imperial" ? "imperial" : "metric",

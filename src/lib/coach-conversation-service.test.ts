@@ -76,8 +76,9 @@ function fixture(candidates = [candidate()]) {
         deleteMany: async ({ where }: any) => { draft.messages = draft.messages.filter((row: any) => !matches(row, where)); },
       },
       athleteProfile: { findUnique: async ({ where }: any) => matches(draft.profile, where) ? draft.profile : null, upsert: async ({ where, update: data }: any) => { assert.equal(where.userId, actor.id); draft.writes.push("profile"); return update(draft.profile, data); } },
-      workout: { findMany: async ({ where, select }: any) => { if (select?.completed === true) { assert.equal(where.userId, actor.id); assert.equal(where.matchedPlanId, null); assert.equal(select.tss, undefined); draft.loadQuery = where; return (draft.loadWorkouts || []).filter((row: any) => matches(row, where)); } return []; }, findFirst: async ({ where }: any) => matches(draft.workout, where) ? draft.workout : null, update: async ({ where, data }: any) => { assert.equal(where.id, draft.workout.id); draft.writes.push("workout"); return update(draft.workout, data); } },
+      workout: { findMany: async ({ where, select }: any) => { if (select?.matchedPlanId === true) { assert.equal(where.userId, actor.id); assert.equal(where.matchedPlanId, null); assert.equal(select.tss, undefined); draft.loadQuery = where; return (draft.loadWorkouts || []).filter((row: any) => matches(row, where)); } return select?.planDay ? draft.todayRecoverySessions || [] : []; }, findFirst: async ({ where }: any) => matches(draft.workout, where) ? draft.workout : null, update: async ({ where, data }: any) => { assert.equal(where.id, draft.workout.id); draft.writes.push("workout"); return update(draft.workout, data); } },
       metricObservation: { findMany: async ({ where }: any) => { assert.equal(where.userId, actor.id); draft.restQuery = where; return (draft.restObservations || []).filter((row: any) => matches(row, where)); } },
+      planDay: { findFirst: async ({ where }: any) => { assert.equal(where.plan.userId, actor.id); assert.equal(where.plan.status, "active"); assert.equal(where.dayOff, true); return draft.plannedRestDay ?? null; } },
       dailyCheckin: { findUnique: async () => draft.checkin ?? null },
       auditLog: { findFirst: async () => null, create: async ({ data }: any) => { draft.audits.push(data); return data; } },
     };
@@ -416,4 +417,25 @@ test("stored legacy RPE proposals keep their exact units and reject zero or unit
   assert.throws(() => validateSelectedCandidates([old], [{ ...old, unit: "0-10" }], today));
   const otherField = { ...old, field: "actualDurationMin" };
   assert.throws(() => validateSelectedCandidates([otherField], [otherField], today));
+});
+
+
+test("coach ignores superseded plans on an active rest day but suppresses movement after actual activity", async () => {
+  const f = fixture();
+  try {
+    f.state.plannedRestDay = { id: "rest-day" };
+    f.state.todayRecoverySessions = [{ id: "superseded-plan-row", planned: false, completed: false, approved: true, durationMin: 75, intensity: "z3", planDay: { dayOff: false } }];
+    f.state.checkin = { answers: JSON.stringify({ sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick: false, newPain: false, urgentSymptoms: false, availableMin: 30 }) };
+    const first = await appendConversation(actor, { message: "Explain my recovery day" });
+    assert.match(first.answer, /20 min very easy Z1/);
+    f.state.loadWorkouts = [{ id: "actual-today", userId: actor.id, date: new Date(), completed: true, planned: false, matchedPlanId: null, durationMin: 20, rpe: 2 }];
+    const afterActivity = await appendConversation(actor, { message: "Explain my recovery day now" });
+    assert.doesNotMatch(afterActivity.answer, /20 min very easy Z1/);
+  } finally { f.restore(); }
+  const unknown = fixture();
+  try {
+    const response = await appendConversation(actor, { message: "Explain my recovery day" });
+    assert.match(response.answer, /do not have a confirmed planned rest day/);
+    assert.doesNotMatch(response.answer, /20 min very easy Z1/);
+  } finally { unknown.restore(); }
 });

@@ -1,3 +1,4 @@
+import { dailyRecoveryContext } from "./daily-recovery";
 import { computeJMetrics } from "./j-metrics";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -262,4 +263,31 @@ test("new candidate validation does not accept the retired RPE unit by default",
   assert.deepEqual(validateCoachCandidates([old], context), []);
   assert.equal(validateCoachCandidates([old], { ...context, allowStoredLegacyRpeUnit: true }).length, 1);
   assert.deepEqual(validateCoachCandidates([{ ...old, value: 0 }], { ...context, allowStoredLegacyRpeUnit: true }), []);
+});
+
+
+test("recovery-day coach uses confirmed rest and clear check-in without overriding symptoms or rest choice", () => {
+  const recovery = dailyRecoveryContext({ plannedRest: true, sessions: [], answers: ready.checkin });
+  const response = buildCoachReply("Explain my recovery day", { ...ready, recovery });
+  assert.equal(response.ruleId, "coach-conversation-v1:recovery-day-guide");
+  assert.match(response.answer, /20 min very easy Z1/);
+  assert.match(response.answer, /Complete rest is valid/);
+  assert.equal(buildCoachReply("I choose to rest. Explain my recovery day", { ...ready, recovery }).ruleId, "coach-conversation-v1:respect-rest-choice");
+  assert.equal(buildCoachReply("I have chest pain. Explain recovery", { ...ready, recovery }).ruleId, "coach-conversation-v1:urgent-symptoms");
+  const unknown = buildCoachReply("Explain recovery", { ...context, recovery });
+  assert.doesNotMatch(unknown.answer, /20 min very easy Z1/);
+});
+
+test("daily recovery coaching distinguishes training and empty schedules from planned rest", () => {
+  for (const sessions of [[], [{ durationMin: 40, intensity: "z1", verdict: "ready" }], [{ durationMin: 40, intensity: "z3", verdict: "ready" }]]) {
+    const recovery = dailyRecoveryContext({ plannedRest: false, sessions, answers: ready.checkin });
+    const response = buildCoachReply("Explain my recovery", { ...ready, recovery });
+    assert.equal(response.ruleId, "coach-conversation-v1:daily-recovery-support");
+    assert.doesNotMatch(response.answer, /No workout is prescribed|20 min very easy/);
+    assert.match(response.answer, /No extra 20-minute workout is added/);
+    assert.match(response.answer, /family/);
+    if (!sessions.length) assert.match(response.answer, /empty schedule does not establish/);
+  }
+  const held = dailyRecoveryContext({ plannedRest: true, sessions: [], injured: true, answers: ready.checkin });
+  assert.doesNotMatch(buildCoachReply("Explain recovery", { ...ready, recovery: held }).answer, /20 min very easy/);
 });

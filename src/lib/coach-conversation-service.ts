@@ -1,3 +1,4 @@
+import { dailyRecoveryContext } from "./daily-recovery";
 import { computeJMetrics } from "./j-metrics";
 import { createHash, randomUUID } from "node:crypto";
 import type { Prisma, CoachConversationProposal } from "@prisma/client";
@@ -208,7 +209,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const current = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
       if (!current || current.id !== guard.conversationId || current.generation !== guard.generation || current.revision !== guard.revision) throw new ApiError("The conversation changed while this message was processing. Review the current conversation before sending again.", 409);
       const conversation = await tx.coachConversation.update({ where: { id: current.id, userId: actor.id }, data: { revision: { increment: 1 } } });
-      const [messages, profile, setup, checkin, selected, planned, recentFeedback, safetyConcern, loadWorkouts, restObservations] = await Promise.all([
+      const [messages, profile, setup, checkin, selected, planned, recentFeedback, safetyConcern, loadWorkouts, restObservations, plannedRestDay, todayRecoverySessions] = await Promise.all([
         tx.coachConversationMessage.findMany({ where: { userId: actor.id, conversationId: conversation.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: CONTEXT_MESSAGE_LIMIT, select: { role: true, content: true, createdAt: true } }),
         tx.athleteProfile.findUnique({ where: { userId: actor.id } }),
         readPlanningSetup(actor.id, tx),
@@ -219,6 +220,8 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
         tx.coachConversationMessage.findFirst({ where: { userId: actor.id, conversationId: conversation.id, role: "assistant", OR: [...SAFETY_RULES.map(rule => ({ metadata: { contains: `\"ruleId\":\"coach-conversation-v1:${rule}\"` } })), { metadata: { contains: '"requiresCheckinReview":true' } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { createdAt: true } }),
         tx.workout.findMany({ where: { userId: actor.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null, date: { gte: localDate(addDaysKey(today.key, -89), actor.timezone), lt: today.end } }, select: { id: true, date: true, completed: true, feedbackStatus: true, planned: true, durationMin: true, actualDurationMin: true, rpe: true, matchedPlanId: true } }),
         tx.metricObservation.findMany({ where: { userId: actor.id, metricType: "jmm_rest_day", value: 1, source: "manual", qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: { gte: localDate(addDaysKey(today.key, -89), actor.timezone), lt: today.end } }, select: { observedAt: true } }),
+        tx.planDay.findFirst({ where: { plan: { userId: actor.id, status: "active" }, date: { gte: today.start, lt: today.end }, dayOff: true }, select: { id: true } }),
+        tx.workout.findMany({ where: { userId: actor.id, date: { gte: today.start, lt: today.end } }, select: { id: true, durationMin: true, intensity: true, planned: true, approved: true, completed: true, planDay: { select: { dayOff: true } } } }),
       ]);
       if (sessionId && !selected) throw new ApiError("Session not found", 404);
       if (selected && guard.sessionRevision !== workoutRevision(selected)) throw new ApiError("The selected session changed while this message was processing. Review it before sending again.", 409);
@@ -240,8 +243,16 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       if (checkin) { try { answers = object(JSON.parse(checkin.answers || "{}")); } catch { /* Fail closed without valid current safety answers. */ } }
       const unreviewedCurrentCheckin = candidates.some(candidate => candidate.kind === "checkin" && candidate.observedDate === today.key);
       const possibleCurrentSymptom = candidates.some(candidate => candidate.kind === "checkin" && ["sick", "newPain", "urgentSymptoms", "painAffectsMovement"].includes(candidate.field) && candidate.value === true);
+      const plannedRecoverySessions = todayRecoverySessions.filter(row => row.planned);
       const context: CoachReplyContext = {
         localToday: today.key, language: actor.language, setupReady: planning.ready,
+        recovery: dailyRecoveryContext({
+          plannedRest: !!plannedRestDay || (!!plannedRecoverySessions.length && plannedRecoverySessions.every(row => row.planDay?.dayOff)),
+          sessions: plannedRecoverySessions.map(row => ({ durationMin: row.id === planned?.id && effective ? effective.canonical.durationMin : row.durationMin, intensity: row.intensity,
+            verdict: row.id === planned?.id ? effective?.canonical.verdict ?? "blocked" : row.planned && !row.approved && !row.completed ? "blocked" : undefined })),
+          performedToday: loadWorkouts.some(row => row.date <= new Date() && dateKey(row.date, actor.timezone) === today.key),
+          injured: !!profile?.injured, answers: checkin && !unreviewedCurrentCheckin ? answers : null,
+        }),
         jMetrics: computeJMetrics(loadWorkouts, new Date(), actor.timezone, restObservations.map(row => dateKey(row.observedAt, actor.timezone))),
         unreviewedImageConcern: candidates.some(c => c.source === "image" && c.kind === "checkin" && c.field === "urgentSymptoms" && c.value === true) ? "urgent" : candidates.some(c => c.source === "image" && c.kind === "checkin" && ["sick", "newPain", "painAffectsMovement"].includes(c.field) && c.value === true) ? "symptom" : undefined,
         unresolvedSafetyConcernAt: possibleCurrentSymptom ? new Date().toISOString() : safetyConcern?.createdAt.toISOString() ?? null,

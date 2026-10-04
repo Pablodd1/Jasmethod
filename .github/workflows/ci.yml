@@ -92,6 +92,9 @@ jobs:
       - name: J Metrics authenticated data and rest-day acceptance
         run: npx tsx scripts/jmm-metrics-integration.ts
 
+      - name: Daily recovery and explicit off-day acceptance
+        run: npx tsx scripts/jmm-recovery-integration.ts
+
       - name: Native Telegram webhook acceptance with dummy config and no provider traffic
         run: |
           kill "$(cat /tmp/jmm-ci-server.pid)"
@@ -124,4 +127,5 @@ jobs:
             .local/jmm-telegram-webhook-integration/report.json
             .local/jmm-conversation-integration/report.json
             .local/jmm-metrics-integration/report.json
+            .local/jmm-recovery-integration/report.json
           if-no-files-found: ignore
