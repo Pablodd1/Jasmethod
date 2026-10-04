@@ -104,7 +104,7 @@ export function gearAdvice(input: GearInput): GearAdvice[] {
       title: "Bike power meter",
       advice: input.ftp
         ? `Your FTP is ${input.ftp}W but nothing measures it live. A crank or pedal PM (Assioma, 4iiii, Garmin Rally, Favero) makes every interval measurable — power pacing beats HR for steady efforts.`
-        : "No bike power meter detected. An entry pedal PM (Favero Assioma ~$350-500) unlocks FTP tests, TSS and even pacing. You can't manage what you can't measure.",
+        : "No bike power meter detected. An entry pedal PM (Favero Assioma ~$350-500) supports threshold tests and power-based pacing. Without a meter, reported effort and duration still support training review.",
       sourceIds: ["jobson2009", "sanders2019"],
       priority: 1,
     });
@@ -222,7 +222,7 @@ export function gearAdvice(input: GearInput): GearAdvice[] {
       id: "pacing-power",
       category: "pacing",
       title: `Power pacing for ${input.raceDistance}`,
-      advice: "Use normalized power targets (not average) on hilly courses — surges cost more than steady output. Set interval targets as % of FTP, not feel.",
+      advice: "Use current power and reviewed threshold-relative targets to manage surges on hilly courses. Check perceived effort too; a processed summary power value is not a live interval target.",
       sourceIds: ["croucher2023", "sanders2019"],
       priority: 3,
     });

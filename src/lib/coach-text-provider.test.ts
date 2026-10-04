@@ -51,8 +51,8 @@ test("synthetic Gemini payload contains only question, bounded language and appr
   assert.deepEqual(Object.keys(payload).sort(), ["catalog", "language", "question"]);
   assert.equal(payload.question, input.message);
   assert.equal(payload.language, "en");
-  assert.deepEqual(payload.catalog.map((item: { topic: string }) => item.topic), ["rpe", "endurance", "polarized", "periodization", "recovery", "warmup", "technique"]);
-  assert.equal(payload.catalog[0].paragraphs[0].text, rpeDefinition);
+  assert.deepEqual(payload.catalog.map((item: { topic: string }) => item.topic), ["jmetrics", "rpe", "endurance", "polarized", "periodization", "recovery", "warmup", "technique"]);
+  assert.equal(payload.catalog.find((item: { topic: string }) => item.topic === "rpe").paragraphs[0].text, rpeDefinition);
   for (const item of payload.catalog) {
     assert.deepEqual(Object.keys(item).sort(), ["paragraphs", "topic"]);
     assert.equal(item.paragraphs.length, 2);
@@ -213,4 +213,20 @@ test("deadline cancels a stalled response body as well as the request", async t 
   assert.deepEqual(await pending, { status: "unavailable" });
   assert.equal(signal?.aborted, true);
   assert.equal(cancelled, true);
+});
+
+
+test("JMetrics education preserves missingness and does not accept invented personal metrics", async () => {
+  const result = await coachTextAnswer({ ...input, message: "What is JStress?" }, { env, fetch: async () => providerReply({ topic: "jmetrics", paragraphIds: ["jmetrics_definition", "jmetrics_limits"] }) });
+  assert.equal(result.status, "answered");
+  assert.match(result.answer || "", /unknown, not zero/);
+  assert.match(result.answer || "", /Imported legacy load scores cannot be substituted/);
+  assert.match(result.answer || "", /7 and 42 consecutive known days/);
+  assert.match(result.answer || "", /do not diagnose/);
+  let requests = 0;
+  const personal = await coachTextAnswer({ ...input, message: "What is my JStress today?" }, { env, fetch: async () => { requests++; return providerReply({ topic: "jmetrics", paragraphIds: ["jmetrics_definition"] }); } });
+  assert.equal(personal.status, "policy_local");
+  assert.equal(requests, 0);
+  const invented = await coachTextAnswer({ ...input, message: "What is JStress?" }, { env, fetch: async () => providerReply({ topic: "jmetrics", paragraphIds: ["jmetrics_definition"], jstress: 300 }) });
+  assert.equal(invented.status, "unavailable");
 });

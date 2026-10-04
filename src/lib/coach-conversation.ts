@@ -1,3 +1,4 @@
+import type { JMetrics } from "./j-metrics";
 import { resolveCheckinSafety, type CheckinSafetyInput } from "./checkin-safety";
 
 /** Proposals only. The authenticated review service owns binding and all writes. */
@@ -59,7 +60,7 @@ const fieldRules: Record<CoachCandidate["kind"], Record<string, Rule>> = {
   workout_feedback: {
     feedbackStatus: { type: "string", unit: null, values: ["completed", "partial", "substituted", "skipped"] },
     actualDurationMin: { type: "number", unit: "min", min: 0, max: 1440, integer: true },
-    rpe: { type: "number", unit: "1-10", min: 1, max: 10, integer: true },
+    rpe: { type: "number", unit: "0-10", min: 0, max: 10, integer: true },
     actualSport: { type: "string", unit: null, values: COACH_SPORTS },
   },
   workout_plan: { durationMin: { type: "number", unit: "min", min: 1, max: 1440, integer: true }, sport: { type: "string", unit: null, values: COACH_SPORTS } },
@@ -75,14 +76,16 @@ const binding = (c: CoachCandidate) => `${c.kind}:${c.observedDate || ""}:${c.se
 const simpleId = (x: unknown): x is string => typeof x === "string" && /^[A-Za-z0-9_-]{1,120}$/.test(x);
 /** No coercion, inferred measurements, URL ingestion, or model-authorized operations.
  * Invalid and conflicting fields are removed; callers surface clarification/review. */
-export function validateCoachCandidates(raw: unknown, context: Pick<CandidateContext, "localToday" | "source">): CoachCandidate[] {
+export function validateCoachCandidates(raw: unknown, context: Pick<CandidateContext, "localToday" | "source"> & { allowStoredLegacyRpeUnit?: boolean }): CoachCandidate[] {
   if (!isCoachDate(context.localToday) || !Array.isArray(raw) || raw.length > 40) return [];
   const clean: CoachCandidate[] = [];
   const poisoned = new Set<string>();
   for (const c of raw) {
     if (!record(c) || Object.keys(c).some(k => !candidateKeys.has(k)) || !simpleId(c.id) || typeof c.kind !== "string" || !Object.hasOwn(fieldRules, c.kind) || typeof c.field !== "string" || !Object.hasOwn(fieldRules[c.kind as CoachCandidate["kind"]], c.field)) continue;
     const rule = fieldRules[c.kind as CoachCandidate["kind"]][c.field];
-    if (c.status !== "proposed" || !["text", "voice", "image"].includes(c.source as string) || (context.source && context.source !== c.source) || c.unit !== rule.unit || typeof c.value !== rule.type || c.value === null) continue;
+    // Only confirmation of persisted proposals opts into the retired unit label.
+    const legacyRpeUnit = context.allowStoredLegacyRpeUnit === true && c.kind === "workout_feedback" && c.field === "rpe" && c.unit === "1-10" && typeof c.value === "number" && c.value >= 1 && c.value <= 10;
+    if (c.status !== "proposed" || !["text", "voice", "image"].includes(c.source as string) || (context.source && context.source !== c.source) || (c.unit !== rule.unit && !legacyRpeUnit) || typeof c.value !== rule.type || c.value === null) continue;
     if (typeof c.value === "number" && (!Number.isFinite(c.value) || c.value < rule.min! || c.value > rule.max! || (rule.integer && !Number.isInteger(c.value)))) continue;
     if (typeof c.value === "string" && (!c.value.trim() || c.value.length > (c.field === "painLocation" ? 120 : 100) || (rule.values && !rule.values.includes(c.value)))) continue;
     if (c.observedDate !== null && !isCoachDate(c.observedDate)) continue;
@@ -220,6 +223,7 @@ export function conversationClarifications(message: string, context: CandidateCo
 }
 
 export interface CoachReplyContext {
+  jMetrics?: JMetrics | null;
   localToday: string;
   language?: string;
   approvedSession?: { id: string; title?: string; sport?: string; durationMin?: number; date: string; isRestDay?: boolean; hasWarmup?: boolean; approved: true } | null;
@@ -285,6 +289,18 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
   if (context.unreviewedImageConcern === "symptom") return reply("unreviewed-image-symptoms", "The image may contain a current safety or recovery concern. Verify whether those details describe you today and review the check-in before considering exercise. I won't replace confirmed facts or clear you to train from an unreviewed image.", "La imagen podría contener un problema actual de seguridad o recuperación. Verifica si esos datos te describen hoy y revisa el check-in antes de considerar ejercicio. No sustituiré datos confirmados ni autorizaré entrenar a partir de una imagen sin revisar.");
   if (concern.test(symptomText(t))) return reply("clarify-current-symptoms", "You mentioned a possible physical symptom. What is happening, and is it current? Pause exercise while the concern is unclear; don't push through it. Seek appropriate medical advice for persistent or worsening symptoms, and urgent help for severe symptoms.", "Mencionaste un posible síntoma físico. ¿Qué ocurre y está pasando ahora? Pausa el ejercicio mientras no esté claro; no lo fuerces. Busca asesoramiento médico si persiste o empeora, y ayuda urgente si los síntomas son intensos.");
   if (pendingSafety) return reply("clarify-prior-safety", "You shared new safety, recovery or available-time information. Before discussing a training start, does that information still apply, and has today's check-in been updated since then? An earlier check-in does not resolve newer information.", "Compartiste información nueva de seguridad, recuperación o tiempo disponible. Antes de hablar de empezar a entrenar, ¿sigue siendo válida y has actualizado el check-in de hoy desde entonces? Un check-in anterior no resuelve información posterior.");
+  if (/\b(?:j ?metrics|jstress|j ?base|j ?recent|j ?balance)\b/.test(t)) {
+    const metrics = context.jMetrics;
+    const definition = "JStress = completed minutes × reported session RPE (0–10), in arbitrary units (AU). It uses the published session-RPE method, not provider or legacy load scores.";
+    const definitionEs = "JStress = minutos completados × RPE reportado de la sesión (0–10), en unidades arbitrarias (AU). Usa el método publicado de sesión-RPE, no puntuaciones del proveedor ni cargas históricas.";
+    if (!metrics || metrics.today !== context.localToday) return reply("jmetrics-unknown", `${definition} Current saved JMetrics are unavailable in this context. Report actual duration and overall effort after completing a session; do not treat missing values as zero. See /metrics for the method.`, `${definitionEs} Los JMetrics actuales guardados no están disponibles en este contexto. Reporta duración real y esfuerzo global tras completar la sesión; no trates los datos faltantes como cero. Consulta /metrics para el método.`);
+    const shown = (n: number | null) => typeof n === "number" && Number.isFinite(n) ? `${n} AU` : es ? "desconocido" : "unknown";
+    const day = metrics.series.find(point => point.date === context.localToday);
+    const line = `JStress (${context.localToday}): ${shown(day?.jStress ?? null)}. J Recent: ${shown(metrics.current.jRecent)}. J Base: ${shown(metrics.current.jBase)}. J Balance: ${shown(metrics.current.jBalance)}.`;
+    return reply("jmetrics-recorded-summary",
+      `${definition}\n${line}\nLast ${metrics.windowDays} days: ${metrics.eligibleSessions}/${metrics.totalSessions} performed sessions have scoreable inputs; ${metrics.missingDays} days are unknown. Recorded-session total: ${shown(metrics.totalJStress)} (partial when inputs are missing). J Recent/J Base use 7/42-day exponential averages and require 7/42 consecutive known days; gaps restart them. J Balance = J Base − J Recent. A planned rest day is not confirmed rest. These values do not diagnose recovery or establish a safe training dose. Details: /metrics.`,
+      `${definitionEs}\n${line}\nÚltimos ${metrics.windowDays} días: ${metrics.eligibleSessions}/${metrics.totalSessions} sesiones realizadas tienen datos suficientes; ${metrics.missingDays} días son desconocidos. Total de sesiones registradas: ${shown(metrics.totalJStress)} (parcial si faltan datos). J Recent/J Base usan promedios exponenciales de 7/42 días y requieren 7/42 días conocidos consecutivos; los vacíos los reinician. J Balance = J Base − J Recent. Un descanso planeado no es un descanso confirmado. Estos valores no diagnostican recuperación ni establecen una dosis segura de entrenamiento. Detalles: /metrics.`);
+  }
   const session = context.approvedSession?.approved === true && context.approvedSession.date === context.localToday ? context.approvedSession : null;
   if (session?.isRestDay || session?.sport === "rest" || session?.durationMin === 0) return reply("preserve-rest-day", "Today is an approved recovery/rest day. Protect it rather than replacing it with a workout. Recovery is part of the plan; any change should be reviewed separately, and no missed work is added.", "Hoy hay descanso o recuperación aprobados. Respétalos en lugar de sustituirlos por un entrenamiento. La recuperación forma parte del plan; cualquier cambio se revisa por separado y no se añade trabajo pendiente.");
   const avoidance = /\b(don't feel like|do not feel like|no motivation|low motivation|unmotivated|can't be bothered|lazy|skip|avoid|no tengo ganas|poca motivacion|sin motivacion|pereza|saltarme|evitar)\b/.test(t);
@@ -312,7 +328,7 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
     if (!latest) return reply("missing-reported-history", "I don't have a confirmed recent session report in this context. Tell me the session date, actual outcome, minutes and overall RPE; planned minutes are not proof of what happened.", "No tengo un informe confirmado de una sesión reciente en este contexto. Dime fecha, resultado real, minutos y RPE global; los minutos previstos no demuestran lo realizado.");
     const outcome = ["completed", "partial", "substituted", "skipped"].includes(latest.feedbackStatus || "") ? latest.feedbackStatus : null;
     const minutes = typeof latest.actualDurationMin === "number" && Number.isFinite(latest.actualDurationMin) && latest.actualDurationMin >= 0 && latest.actualDurationMin <= 1440 ? latest.actualDurationMin : null;
-    const rpe = typeof latest.rpe === "number" && Number.isInteger(latest.rpe) && latest.rpe >= 1 && latest.rpe <= 10 ? latest.rpe : null;
+    const rpe = typeof latest.rpe === "number" && Number.isInteger(latest.rpe) && latest.rpe >= 0 && latest.rpe <= 10 ? latest.rpe : null;
     return reply("remember-reported-history", `Your latest reported session is dated ${latest.date}: outcome ${outcome || "unknown"}, actual duration ${minutes === null ? "unknown" : `${minutes} min`}, overall RPE ${rpe === null ? "unknown" : `${rpe}/10`}. These are reported facts, not proof of readiness today; no missing values are filled from the plan.`, `Tu última sesión informada tiene fecha ${latest.date}: resultado ${outcome || "desconocido"}, duración real ${minutes === null ? "desconocida" : `${minutes} min`}, RPE global ${rpe === null ? "desconocido" : `${rpe}/10`}. Son datos informados, no prueba de disposición para hoy; no se completan datos ausentes con el plan.`);
   }
   if (/\b(what (?:was|is) my goal|remind me (?:of )?my goal|cual (?:era|es) mi (?:meta|objetivo))\b/.test(t)) {

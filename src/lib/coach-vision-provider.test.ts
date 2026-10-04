@@ -57,6 +57,9 @@ test("pure request builder emits a pinned image model, strict schema and data UR
 
 test("request schema only allows the exact current candidate field set", () => {
   const branches = buildCoachVisionRequest(input).text.format.schema.properties.candidates.items.anyOf;
+  const rpe = branches.find(branch => branch.properties.field.enum[0] === "rpe")!;
+  assert.equal(rpe.properties.value.minimum, 0);
+  assert.deepEqual(rpe.properties.unit.enum, ["0-10"]);
   assert.deepEqual(branches.map(branch => `${branch.properties.kind.enum[0]}.${branch.properties.field.enum[0]}`).sort(), [
     "profile.goal", "profile.weeklyHours", "profile.weightKg",
     "workout_feedback.feedbackStatus", "workout_feedback.actualDurationMin", "workout_feedback.rpe", "workout_feedback.actualSport",

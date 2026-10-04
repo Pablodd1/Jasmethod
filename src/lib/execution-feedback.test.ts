@@ -5,6 +5,7 @@ import type { Adaptation } from "./adaptive";
 const full: Adaptation = { score: 90, scoreAvailable: true, safetyStatus: "clear", verdict: "full", durationFactor: 1, intensityCap: "z7", message: "Retain plan" };
 test("actual duration times anchored RPE is labeled load and never a planned-duration fallback", () => {
   assert.equal(sessionReportedLoad({ id: "a", feedbackStatus: "partial", actualDurationMin: 20, rpe: 5 }), 100);
+  assert.equal(sessionReportedLoad({ id: "a", feedbackStatus: "completed", actualDurationMin: 20, rpe: 0 }), 0);
   assert.equal(sessionReportedLoad({ id: "a", feedbackStatus: "completed", durationMin: 60, rpe: 5 }), null);
   assert.equal(sessionReportedLoad({ id: "a", feedbackStatus: "skipped", actualDurationMin: 0, rpe: 5 }), null);
   assert.equal(sessionReportedLoad({ id: "a", feedbackStatus: "unknown" }), null);

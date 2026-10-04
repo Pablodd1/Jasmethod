@@ -125,6 +125,11 @@ export default function ProtocolWorkspace({
             Download coaching reference
           </button>
         </div>
+        <p className="text-sm text-slate-600">
+          Review whether the intended adaptation was achieved, then record actual minutes and whole-session effort.
+          JStress describes reported load; it does not prove that a protocol worked or prescribe the next dose. {" "}
+          <Link href="/metrics" className="underline text-ocean-700">J Metrics method and limits</Link>
+        </p>
         {error && (
           <p role="alert" className="card border-red-200 text-red-700">
             {error}

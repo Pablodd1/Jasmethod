@@ -36,6 +36,7 @@ export default function ScienceIndexPage() {
       </section>
 
       <section className="pub-container py-12">
+        <Link href="/metrics" className="topic-nav-link mb-4"><div><h2 className="font-display text-xl font-bold">J Metrics: understand your training load</h2><p className="text-sm text-ink-600 mt-1">JStress, data quality, evidence and the limits of load trends</p></div><ArrowRight className="w-5 h-5" /></Link>
         <Link href="/protocols" className="topic-nav-link mb-4"><div><h2 className="font-display text-xl font-bold">Training protocols</h2><p className="text-sm text-ink-600 mt-1">Speed, power, strength, muscle growth and endurance · reviewed September 2026</p></div><ArrowRight className="w-5 h-5" /></Link>
         <div className="space-y-2">
           {TOPIC_LIST.map((topic) => {

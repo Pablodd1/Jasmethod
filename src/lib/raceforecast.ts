@@ -249,7 +249,7 @@ function hyroxCompromisedRunPace(thresholdSecPerKm: number, fitness?: ForecastIn
   return {
     avgPaceSecPerKm: Math.round(thresholdSecPerKm * (1 + decay)),
     stationDecay: decay,
-    note: `State-space: 8 stations derate each following run km by ~${Math.round(decay * 100)}% (durability factor ${durability.toFixed(2)} from CTL ${Math.round(ctl)}). Sled push/pull and wall balls cost most.`,
+    note: `State-space: 8 stations derate each following run km by ~${Math.round(decay * 100)}% (durability factor ${durability.toFixed(2)} from legacy long-term load ${Math.round(ctl)}). Sled push/pull and wall balls cost most.`,
   };
 }
 
@@ -341,28 +341,28 @@ function fitnessPaceFactor(
   let pace = 1;
   if (tsb >= 10) {
     pace = 0.99;
-    notes.push(`Form is high (TSB ${Math.round(tsb)}) — fresh legs, no fatigue buffer needed.`);
+    notes.push(`Legacy load balance ${Math.round(tsb)}: the heuristic applies a 1% pace adjustment. This does not establish recovery or race readiness.`);
     // TAPER BONUS: TSB in the sweet band with meaningful fitness = the
     // classic tapered state; a proper ~2-week taper yields ~2% performance
     // improvement (taper meta-analysis: volume −41–60%, intensity held).
     if (ctl >= 40 && tsb <= 20) {
       pace = 0.98;
-      notes.push("Taper-adjusted: projected race-day form sits in the tapered sweet spot (+2% from proper taper, meta-analytic mean).");
+      notes.push("Legacy taper heuristic applies a 2% pace adjustment. This fixed model assumption is not an individualized, validated performance gain.");
     }
   } else if (tsb >= -10) {
-    notes.push(`Form neutral (TSB ${Math.round(tsb)}) — inside the ideal −10..+10 race window.`);
+    notes.push(`Legacy load balance ${Math.round(tsb)}: no load-based pace adjustment in this heuristic; there is no universal race-ready range.`);
   } else if (tsb >= -30) {
     pace = 1.02;
-    notes.push(`Fatigued (TSB ${Math.round(tsb)}) — pacing eased ~2% to hold form through the race.`);
+    notes.push(`Legacy load balance ${Math.round(tsb)}: the heuristic eases projected pacing by about 2%. Confirm effort using symptoms, recent performance and coaching review.`);
   } else {
     pace = 1.04;
-    notes.push(`Deeply fatigued (TSB ${Math.round(tsb)}) — forecast assumes a careful ~4% buffer; prioritize recovery pre-race.`);
+    notes.push(`Legacy load balance ${Math.round(tsb)}: the heuristic adds about a 4% pacing buffer; this is not a fatigue measurement.`);
   }
   if (ctl < 40 && (distance === "full" || distance === "half" || distance === "marathon" || distance === "half-marathon")) {
     pace = Math.round(pace * 1.02 * 1000) / 1000;
-    notes.push(`CTL ${Math.round(ctl)} is low for this distance — added a durability buffer.`);
+    notes.push(`Legacy long-term load ${Math.round(ctl)} falls below the model cutoff — a heuristic buffer was added, not a measurement of durability.`);
   }
-  if (fitness.rampRate7d > 8) notes.push(`Ramp rate ${fitness.rampRate7d} CTL/wk is high — this forecast assumes you arrive healthy, not more injured.`);
+  if (fitness.rampRate7d > 8) notes.push(`Legacy long-term load rose ${fitness.rampRate7d} units over the week. Review this change with training history and symptoms; it cannot predict injury.`);
   return { paceFactor: pace, note: notes.join(" ") || null };
 }
 
@@ -834,7 +834,7 @@ export function illustrativeRaceScenario(input: ForecastInput): ForecastResult |
       timeMin: Math.round(runMinTotal),
       pace: fmtSecPerKm(hyrox.avgPaceSecPerKm),
       fuel: toFuelPlan(fuel),
-      notes: [hyrox.note, "Each run km is paced at threshold + station decay — fresh legs only for km 1."],
+      notes: [hyrox.note, "Each run km uses threshold pace plus a heuristic station-decay adjustment; actual fatigue is not measured."],
     });
     segments.push({
       sport: "run",
@@ -842,7 +842,7 @@ export function illustrativeRaceScenario(input: ForecastInput): ForecastResult |
       distanceLabel: "ski · sled ×2 · burpees · row · farmers · lunges · wall balls",
       timeMin: Math.round(stationMinTotal),
       fuel: toFuelPlan(fuel),
-      notes: [`Station load scaled ×${stationScale.toFixed(2)} by durability (CTL ${Math.round(ctl)}).`],
+      notes: [`Station load scaled ×${stationScale.toFixed(2)} by durability (legacy long-term load ${Math.round(ctl)}).`],
     });
     factors.push(`HYROX state-space: mean run-pace decay ${Math.round(hyrox.stationDecay * 100)}% per station.`);
     return buildResult({

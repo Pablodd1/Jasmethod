@@ -17,7 +17,7 @@ export function parseManualWorkout(value: unknown, timezone: string, now = new D
   for (const [key, range] of Object.entries({ avgHr: [20, 240], maxHr: [20, 250], avgPower: [0, 2500], np: [0, 2500], calories: [0, 20000], preWeightKg: [20, 350], postWeightKg: [20, 350] })) {
     if (b[key] !== undefined) optionalMeasurements[key] = optionalCheckinNumber(b[key], key, range[0], range[1], ["avgHr", "maxHr", "calories"].includes(key)) ?? null;
   }
-  const rpe = optionalCheckinNumber(b.rpe, "RPE", 1, 10, true) ?? null;
+  const rpe = optionalCheckinNumber(b.rpe, "RPE", 0, 10, true) ?? null;
   if (b.title != null && typeof b.title !== "string") throw new Error("Invalid title");
   if (b.notes != null && typeof b.notes !== "string") throw new Error("Invalid activity notes");
   return {

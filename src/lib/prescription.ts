@@ -341,6 +341,7 @@ export function estimateDistanceKm(
   return undefined;
 }
 
+// Deprecated legacy ratio retained for API compatibility. Not a validated intensity factor; never JStress.
 export function estimateIf(
   zone: string,
   tss: number,

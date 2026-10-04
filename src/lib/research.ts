@@ -13,7 +13,7 @@ export interface ResearchSource {
 export const RESEARCH_SOURCES: ResearchSource[] = [
   { id: "seiler2009", claim: "80/20 polarized intensity distribution", ref: "Seiler & Tønnessen 2009, Int J Sports Physiol Perform 4:417-429", level: "A", population: "professional" },
   { id: "billat2001", claim: "vVO2max interval prescription", ref: "Billat et al. 2001, Med Sci Sports Exerc 33:1597-1602", level: "A", population: "both" },
-  { id: "coggan", claim: "TSS, FTP, normalized power (PMC basis)", ref: "Allen & Coggan, Training & Racing with a Power Meter", level: "B", population: "both" },
+  { id: "coggan", claim: "Historical TrainingPeaks terminology and threshold-power framework; not evidence validating JMetrics", ref: "Allen & Coggan, Training & Racing with a Power Meter", level: "B", population: "both" },
   { id: "friel", claim: "7-zone HR model on LTHR", ref: "Friel, The Triathlete's Training Bible", level: "B", population: "both" },
   { id: "buchheit2014", claim: "HRV-guided training readiness", ref: "Buchheit 2014, Front Physiol 5:73", level: "A", population: "professional" },
   { id: "plews2013", claim: "HRV RMSSD vs 7-day baseline", ref: "Plews et al. 2013, Sports Med 43:773-781", level: "A", population: "professional" },

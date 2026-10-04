@@ -1,7 +1,7 @@
 import { dateKey, addDaysKey, DEFAULT_TIMEZONE } from "./dates";
 // JasMiamiMethod — Fitness / Performance engine
-// Closes the gap vs TrainingPeaks (PMC fitness/fatigue/form + ramp rate) and
-// TriDot (TrainX execution score, RaceX prediction, EnviroNorm humidity/altitude).
+// Legacy load and forecasting heuristics, retained for history compatibility.
+// Mixed legacy load scales are not interchangeable with JStress.
 // Pure functions (no I/O) — unit-testable. Estimates are heuristics, clearly labeled.
 
 import { exponentialMovingAverage } from "./science";
@@ -35,11 +35,11 @@ export function estimateTss(w: WorkoutTssInput): number {
   }
   if (w.avgHr && w.lthr && w.lthr > 0) {
     const ratio = w.avgHr / w.lthr;
-    // Banister TRIMP: load = min * ratio * 0.64 * exp(0.64 * ratio) (male constant)
+    // Legacy HR heuristic, not the validated HR-reserve TRIMP method.
     const trimp = (sec / 60) * ratio * 0.64 * Math.exp(0.64 * ratio);
     return Math.round(trimp * 10) / 10;
   }
-  // fallback: session-RPE (Foster 1998) scaled to a TSS-like 0-150 range
+  // Legacy rescaled effort fallback; may infer effort. Never use as JStress.
   const rpe =
     w.rpe ??
     (w.intensity === "z1" || w.intensity === "z2"
@@ -117,9 +117,9 @@ export function computePmc(
       : 0;
   let rampWarning: string | null = null;
   if (rampRate7d > 8)
-    rampWarning = `Ramp rate ${rampRate7d} CTL/wk — high injury risk (TP flags >5-8). Back off volume.`;
+    rampWarning = `Legacy long-term load rose ${rampRate7d} units over a week. Review training and data completeness; this is not an injury prediction.`;
   else if (rampRate7d < -8)
-    rampWarning = `Fitness dropping ${Math.abs(rampRate7d)} CTL/wk — detraining or overreached.`;
+    rampWarning = `Legacy long-term load fell ${Math.abs(rampRate7d)} units over a week. Check rest and missing records; this does not establish loss of fitness.`;
   let formZone: PmcResult["formZone"];
   if (cur.tsb >= 10) formZone = "fresh";
   else if (cur.tsb >= -10) formZone = "neutral";
@@ -134,7 +134,7 @@ export function computePmc(
   };
 }
 
-// ---------- TrainX-style execution score ----------
+// ---------- Workout adherence heuristic ----------
 export interface ExecutionScore {
   planned: number;
   completed: number;
@@ -201,7 +201,7 @@ export function executionScore(
   };
 }
 
-// ---------- RaceX-style race prediction ----------
+// ---------- Triathlon race-time heuristic ----------
 export interface RacePrediction {
   distance: string;
   swimMin: number;
@@ -262,7 +262,7 @@ export function predictRace(
   };
 }
 
-// ---------- EnviroNorm: humidity (heat index) + altitude ----------
+// ---------- Environmental context: heat index and altitude ----------
 export function heatIndex(tempC: number, humidityPct: number): number {
   // Rothfusz regression (NOAA) — returns feels-like °C
   const t = (tempC * 9) / 5 + 32;

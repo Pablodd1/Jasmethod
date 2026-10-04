@@ -16,7 +16,7 @@ const FAQ = [
   { q: "How do I follow training on my watch?", a: "Check the delivery options offered for your device on Today and Connections. Availability depends on the provider and enabled integrations. A downloaded file or a successful send request does not confirm delivery to the watch; check the workout on the device before training." },
   { q: "Why did today's session change?", a: "Review the explanation alongside your daily session and your latest check-in. Ask the in-app AI coach about the recommendation, or discuss it with your assigned human coach. Missing measurements should not be treated as measured recovery data." },
   { q: "Can I register or sign in with Google?", a: "Google can create new accounts. If an account already uses your email, first sign in to that existing account, then link the provider. This protects your existing training history. Apple and ChatGPT are not offered in this demo." },
-  { q: "Does recorded data make every training metric exact?", a: "No. Planned distance, TSS, IF, and predictions may be estimates. Recorded heart rate, power, and GPS provide observations, but calculated metrics still depend on sensor quality, your zones, and the calculation used." },
+  { q: "Does recorded data make every training metric exact?", a: "No. JStress is completed minutes multiplied by your reported session effort, in arbitrary units (AU). It is a subjective training-load estimate, not a measurement of injury risk or readiness. J Base, J Recent and J Balance need sufficient recorded history; missing data stay unknown. Sensor observations and race forecasts also have limits. Read the J Metrics guide for formulas, examples and sources." },
 ];
 
 export default function HelpPage() {
@@ -26,6 +26,7 @@ export default function HelpPage() {
       <p className="kicker">Support</p>
       <h1 className="display-2xl mt-4">Help &amp; Support</h1>
       <p className="lede mt-5">Account help, technical questions, and coaching conversations.</p>
+      <p className="mt-4"><a href="/metrics" className="underline text-ocean-700">Understand JStress, J Base, J Recent and J Balance</a></p>
       <section className="card mt-8" aria-labelledby="account-help">
         <h2 id="account-help" className="font-display font-bold text-xl">Cannot sign in?</h2>
         <p className="text-sm text-slate-600 mt-2">Recover your existing account to keep your training history. Do not create another account to recover missing records.</p>

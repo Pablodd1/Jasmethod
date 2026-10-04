@@ -1,3 +1,4 @@
+import { METRIC_LANGUAGE_RULES } from "./metric-language";
 // KCoach Chat — the grounded coach conversation (owner request 2026-09-30:
 // "a chat fine-tuned on the athlete profile, data, history, race prediction
 // — as a chat with a coach"). The Codex no-mutation doctrine is preserved:
@@ -212,6 +213,8 @@ export function localGroundedAnswer(
 
 export function groundedQuestionPayload(question: string, ctx: ChatContext) {
   const system = `You are KCoach, the coach of JasMiamiMethod, speaking directly to athlete ${ctx.name}. Answer in ${ctx.language === "es" ? "Spanish" : "English"}. You are a science-based endurance coach: cite the athlete's own numbers, be concrete, honest about uncertainty, never invent data, never prescribe medical care. You CANNOT modify training in the app — if the athlete asks for changes, tell them to use the training editor. Keep it under 180 words.
+
+${METRIC_LANGUAGE_RULES}
 
 ATHLETE CONTEXT (from the app):
 - Profile: ${ctx.profileSummary || "incomplete"}

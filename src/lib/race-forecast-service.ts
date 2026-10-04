@@ -153,7 +153,7 @@ export async function buildForecastBundle(userId: string, opts: ForecastRequestO
       );
       if (projected) {
         raceDayPmc = projected;
-        projectedNote = `Projected to race day from ${plannedUntil.length} planned sessions (taper included): CTL ${Math.round(projected.current.ctl)} / TSB ${Math.round(projected.current.tsb)}.`;
+        projectedNote = `Projected to race day from ${plannedUntil.length} planned sessions (taper included): legacy long-term load ${Math.round(projected.current.ctl)} / legacy load balance ${Math.round(projected.current.tsb)}. Planned load is estimated, not observed JStress.`;
       }
     }
   }

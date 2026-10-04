@@ -31,3 +31,7 @@ test("corrupt originalPlan cannot be normalized into a fresh workout", () => {
   assert.equal(checkinPrescriptionInputError(base), null);
   for (const originalPlan of ["{bad", "null", "[]", JSON.stringify({ ...base, sport: "hacked" }), JSON.stringify({ ...base, durationMin: -3 }), JSON.stringify({ ...base, intensity: "z99" })]) assert.ok(checkinPrescriptionInputError({ ...base, originalPlan }));
 });
+
+test("manual effort zero stays explicit rather than unknown", () => {
+  assert.equal(parseManualWorkout({ sport: "mobility", date: "2026-10-01", actualDurationMin: 10, rpe: 0 }, "America/New_York", now).rpe, 0);
+});

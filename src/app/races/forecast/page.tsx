@@ -1,5 +1,6 @@
 "use client";
 
+import { JMetricsCard, type JMetrics } from "@/components/j-metrics-card";
 import { saveReviewedProfile } from "@/lib/profile-client";
 import { useEffect, useState } from "react";
 import { Gauge, Waves, Bike, Zap, Fuel, Target, Flag, AlertTriangle, Info, RefreshCw, Clock, Mountain, Thermometer, Droplets, FileText, Sparkles } from "lucide-react";
@@ -25,6 +26,7 @@ export default function RaceForecastPage() {
   const [raceId, setRaceId] = useState<string>("");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [jMetrics, setJMetrics] = useState<JMetrics | null>(null);
   const [pmc, setPmc] = useState<any>(null);
   const [brief, setBrief] = useState<{ source: string; text: string } | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
@@ -107,9 +109,8 @@ export default function RaceForecastPage() {
   }
 
   useEffect(() => {
-    fetch("/api/fitness").then((r) => r.json()).then((d) => setPmc(d.pmc || null)).catch(() => {});
-
     if (!user) return;
+    fetch("/api/fitness").then((r) => { if (!r.ok) throw Error("Metrics unavailable"); return r.json(); }).then((d) => { setPmc(d.pmc || null); setJMetrics(d.jMetrics || null); }).catch(() => { setPmc(null); setJMetrics(null); });
     loadRaces();
     loadForecast();
     loadProfile();
@@ -273,7 +274,8 @@ export default function RaceForecastPage() {
         </div>
       )}
 
-      {/* PMC — the performance curve this engine learns from */}
+      {/* Keep existing forecast model separate from athlete-reported JStress. */}
+      <JMetricsCard metrics={jMetrics} es={lang === "es"} allowRestEntry={false} />
       <PmcCard pmc={pmc} lang={lang} />
 
       </div>
@@ -286,16 +288,16 @@ function PmcCard({ pmc, lang }: { pmc: any; lang: string }) {
   if (!pmc?.series?.length) {
     return (
       <div className="card text-center py-8 text-sm text-slate-400">
-        {es ? "La curva de rendimiento (Fitness/Fatiga/Form) aparece al completar entrenamientos." : "The performance curve (Fitness/Fatigue/Form) appears as you complete workouts."}
+        {es ? "Modelo de carga anterior: no hay historial disponible." : "Legacy load model: no history available."}
       </div>
     );
   }
   return (
     <div className="card">
-      <div className="font-display font-bold mb-1">{es ? "Tu curva de rendimiento" : "Your performance curve"}</div>
+      <div className="font-display font-bold mb-1">{es ? "Modelo de carga anterior" : "Legacy load model"}</div>
       <div className="text-xs text-slate-500 mb-3">
-        {es ? "Esta es la data que AdvanzedRacing usa para predecir: " : "This is the data AdvanzedRacing predicts from: "}
-        CTL (Fitness) {Math.round(pmc.current.ctl)} · ATL (Fatigue) {Math.round(pmc.current.atl)} · TSB (Form) {Math.round(pmc.current.tsb)}.
+        {es ? "Escala anterior; no es JStress ni una medición de preparación: " : "Legacy scale; not JStress or a readiness measurement: "}
+        42d {Math.round(pmc.current.ctl)} · 7d {Math.round(pmc.current.atl)} · Δ {Math.round(pmc.current.tsb)}.
       </div>
       <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
@@ -303,9 +305,9 @@ function PmcCard({ pmc, lang }: { pmc: any; lang: string }) {
             <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} minTickGap={24} />
             <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
-            <Line type="monotone" dataKey="ctl" name={es ? "Fitness (CTL)" : "Fitness (CTL)"} stroke="#0ea5e9" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="atl" name={es ? "Fatiga (ATL)" : "Fatigue (ATL)"} stroke="#f59e0b" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="tsb" name={es ? "Forma (TSB)" : "Form (TSB)"} stroke="#10b981" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="ctl" name={es ? "Carga 42 días" : "42-day load"} stroke="#0ea5e9" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="atl" name={es ? "Carga 7 días" : "7-day load"} stroke="#f59e0b" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="tsb" name={es ? "Diferencia" : "Difference"} stroke="#10b981" dot={false} strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
       </div>

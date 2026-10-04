@@ -11,6 +11,8 @@ export async function GET() {
   const urls = [
     { loc: `${BASE}/`, priority: "1.0" },
     { loc: `${BASE}/science`, priority: "0.9" },
+    { loc: `${BASE}/metrics`, priority: "0.8" },
+    { loc: `${BASE}/science/j-metrics`, priority: "0.8" },
     { loc: `${BASE}/how-it-works`, priority: "0.8" },
     { loc: `${BASE}/privacy`, priority: "0.3" },
     { loc: `${BASE}/terms`, priority: "0.3" },

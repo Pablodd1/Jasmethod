@@ -103,7 +103,7 @@ export async function buildWeeklyReview(
     "",
     es ? `Sesiones completadas: ${donePlanned}/${plannedCount || "—"}${adherencePct != null ? ` (${adherencePct}%)` : ""}` : `Sessions completed: ${donePlanned}/${plannedCount || "—"}${adherencePct != null ? ` (${adherencePct}%)` : ""}`,
     `${es ? "Tiempo total" : "Total time"}: ${Math.round(totalMin / 60)}h ${totalMin % 60 ? `${Math.round(totalMin % 60)}m` : ""}`,
-    bestEffort ? `${es ? "Mejor esfuerzo" : "Best effort"}: ${bestEffort}${bestTss ? ` (TSS est. ${Math.round(bestTss)})` : ""}` : null,
+    bestEffort ? `${es ? "Mejor esfuerzo" : "Best effort"}: ${bestEffort}${bestTss ? ` (${es ? "carga histórica est." : "legacy load est."} ${Math.round(bestTss)})` : ""}` : null,
     verdictLine ? "" : null,
     verdictLine ? `💪 ${verdictLine}` : null,
     nextWeekFocus ? `🎯 ${nextWeekFocus}` : null,

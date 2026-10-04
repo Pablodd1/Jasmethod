@@ -214,13 +214,13 @@ export const CAFFEINE_MG_PER_KG = C(
 // ---------------------------------------------------------------------------
 
 export const CTL_TIME_CONSTANT_DAYS = C(
-  "ctl_time_constant_days", 42, "VERIFIED", "Training-methodology standard (Coggan PMC)",
+  "ctl_time_constant_days", 42, "TUNED_DEFAULT", "Legacy model parameter choice (Coggan framework); not physiological validation",
 );
 export const ATL_TIME_CONSTANT_DAYS = C(
-  "atl_time_constant_days", 7, "VERIFIED", "Training-methodology standard (Coggan PMC)",
+  "atl_time_constant_days", 7, "TUNED_DEFAULT", "Legacy model parameter choice (Coggan framework); not physiological validation",
 );
 export const TSB_RACE_TARGET = C(
-  "tsb_race_target", [-10, 10], "HEURISTIC", "Coach heuristic for race-day form — not physics",
+  "tsb_race_target", [-10, 10], "HEURISTIC", "Legacy model cutoff; not a validated race-readiness range",
 );
 export const DECOUPLING_WARNING_PCT = C(
   "aerobic_decoupling_warning_pct", 5, "HEURISTIC",

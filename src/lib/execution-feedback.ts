@@ -6,7 +6,7 @@ export interface ExecutionFeedback {
 /** Session-RPE load is a self-report proxy in arbitrary units, not work or injury risk. */
 export function sessionReportedLoad(feedback: ExecutionFeedback): number | null {
   if (!["completed", "partial", "substituted"].includes(feedback.feedbackStatus || "")) return null;
-  if (feedback.actualDurationMin == null || !Number.isFinite(feedback.actualDurationMin) || feedback.actualDurationMin < 0 || feedback.actualDurationMin > 1440 || feedback.rpe == null || !Number.isInteger(feedback.rpe) || feedback.rpe < 1 || feedback.rpe > 10) return null;
+  if (feedback.actualDurationMin == null || !Number.isFinite(feedback.actualDurationMin) || feedback.actualDurationMin < 0 || feedback.actualDurationMin > 1440 || feedback.rpe == null || !Number.isInteger(feedback.rpe) || feedback.rpe < 0 || feedback.rpe > 10) return null;
   return feedback.actualDurationMin * feedback.rpe;
 }
 export function applyExecutionFeedback(adaptation: Adaptation, feedback: ExecutionFeedback[]) {

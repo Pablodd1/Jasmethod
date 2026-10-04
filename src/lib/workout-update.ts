@@ -65,7 +65,7 @@ export async function updateWorkout(
       const n = Number(body[key]);
       if (
         !Number.isFinite(n) ||
-        n < (key === "rpe" ? 1 : 0) ||
+        n < 0 ||
         n > max ||
         (["durationMin", "actualDurationMin", "rpe", "avgHr", "maxHr"].includes(
           key,

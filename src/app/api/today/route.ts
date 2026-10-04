@@ -1,3 +1,4 @@
+import { workoutJStress } from "@/lib/j-metrics";
 import { SessionResolutionError } from "@/lib/canonical-session";
 import {personalizedDailyMotivation} from "@/lib/reference";
 import { prisma } from "@/lib/db";
@@ -89,6 +90,8 @@ export async function GET(req: Request) {
         id: w.id, title: w.title || "Session needs review", sport: w.sport, type: w.type,
         revision: null, verdict: "blocked", resolutionReason: resolved.resolutionError,
         capability: { available: false, mode: "unavailable", reason: resolved.resolutionError, deviceTested: false },
+        matchedPlanId: w.matchedPlanId,
+        jStress: workoutJStress(w),
         durationMin: 0, durationIsEstimate: false, intensity: null, tss: null, if: null, distanceKm: null,
         startTime: w.startTime, completed: w.completed, feedbackStatus: w.feedbackStatus,
         actualDurationMin: w.actualDurationMin, actualSport: w.actualSport, rpe: w.rpe, regenCount: w.regenCount, approved: w.approved,
@@ -133,7 +136,7 @@ export async function GET(req: Request) {
             examples: postBase?.examples,
           }
         : null;
-      // TrainingPeaks-style summary: load (TSS), intensity factor, distance.
+      // Legacy estimates retained for API compatibility; actual JStress is separate.
       const tss = estimateTss({
         durationMin: p.durationMin,
         intensity: p.intensity || undefined,
@@ -159,6 +162,8 @@ export async function GET(req: Request) {
         type: p.type,
         durationMin: p.durationMin,
         intensity: p.intensity,
+        matchedPlanId: w.matchedPlanId,
+        jStress: workoutJStress(w),
         tss,
         if: ifFactor,
         distanceKm,
