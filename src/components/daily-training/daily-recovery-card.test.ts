@@ -63,3 +63,16 @@ test("Spanish recovery includes safety limits, optional mental rehearsal and ins
   assert.match(html, /href="\/science"/);
   assert.doesNotMatch(html, /20 min|20 minutos/);
 });
+
+test("Urgent recovery provides an immediate safety alert without requiring a workout card", () => {
+  const recovery: DailyRecoveryView = { ...rest, mode: "hold", safetyStatus: "urgent", allowMovement: false, optionalMovementMinutes: null };
+  const en = render(recovery);
+  assert.match(en, /role="alert"[^>]*>Stop exercise\./);
+  assert.match(en, /contact local emergency services now/);
+  assert.match(en, /not a diagnosis or clearance to resume training/);
+  const es = render(recovery, true);
+  assert.match(es, /role="alert"[^>]*>Detén el ejercicio\./);
+  assert.match(es, /contacta ahora con los servicios de emergencia locales/);
+  assert.match(es, /no es un diagnóstico ni autorización para volver a entrenar/);
+  assert.doesNotMatch(en + es, /20 min|20 minutes|20 minutos/);
+});

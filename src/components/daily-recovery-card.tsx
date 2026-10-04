@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { dayOffProtocol } from "@/lib/day-off";
+import { resolveCheckinSafety } from "@/lib/checkin-safety";
 
 export interface DailyRecoveryView {
   mode: "hold" | "planned-rest" | "easy-day" | "training" | "unplanned";
@@ -15,6 +16,7 @@ export function DailyRecoveryCard({ recovery, es = false, offline = false }: { r
   const mode = recovery?.mode ?? "unplanned";
   const unknown = !recovery || recovery.safetyStatus === "unknown" || offline;
   const held = mode === "hold" || recovery?.safetyStatus === "hold" || recovery?.safetyStatus === "urgent";
+  const urgent = recovery?.safetyStatus === "urgent";
   // Server clearance, current connectivity and the correct day context must all agree.
   const allowMovement = !unknown && !held && mode === "planned-rest" && recovery?.allowMovement === true && recovery.safetyStatus === "clear" && !recovery.recoveryNeedsReview && recovery.optionalMovementMinutes === 20;
   const protocol = dayOffProtocol(es ? "es" : "en", { allowMovement });
@@ -25,6 +27,7 @@ export function DailyRecoveryCard({ recovery, es = false, offline = false }: { r
   return <section id="daily-recovery" className="card space-y-4 border-ocean-200" aria-labelledby="daily-recovery-title">
     <h2 id="daily-recovery-title" className="font-display text-xl font-bold">{title}</h2>
     <p className="text-sm">{es ? "La recuperación forma parte de todos los días, incluso sin una sesión. El descanso completo es válido; no necesitas compensar entrenamientos perdidos." : "Recovery belongs in every day, including days without a workout. Complete rest is valid; you do not need to make up missed training."}</p>
+    {urgent && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">{es ? "Detén el ejercicio. El malestar actual en el pecho, desmayo, falta de aire intensa sin explicación, confusión o colapso requieren evaluación médica urgente. Si los síntomas son intensos o continúan, contacta ahora con los servicios de emergencia locales. No se prescribe entrenamiento; esto no es un diagnóstico ni autorización para volver a entrenar." : resolveCheckinSafety({ urgentSymptoms: true }).message}</p>}
     {held ? <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{es ? "No se ofrece ejercicio. Sigue las indicaciones de seguridad de tu check-in y las restricciones de tu profesional; estas prácticas no autorizan volver a entrenar." : "No exercise is offered. Follow your check-in safety guidance and professional restrictions; these practices do not clear you to resume training."}</p>
       : mode === "training" || mode === "easy-day" ? <p className="text-sm font-medium">{es ? "Estas opciones no añaden ejercicio al entrenamiento revisado. No añadas otra sesión para mejorar una puntuación." : "These choices add no exercise to your reviewed training. Do not add another session to improve a score."}</p>
       : mode === "unplanned" ? <p className="text-sm">{es ? "No se prescribe ejercicio adicional aquí. Revisa tu plan y tu check-in antes de entrenar." : "No additional exercise is prescribed here. Review your plan and check-in before training."}</p> : null}

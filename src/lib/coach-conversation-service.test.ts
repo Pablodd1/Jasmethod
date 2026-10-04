@@ -420,10 +420,11 @@ test("stored legacy RPE proposals keep their exact units and reject zero or unit
 });
 
 
-test("coach service identifies an explicit sessionless rest day and suppresses movement after actual activity", async () => {
+test("coach ignores superseded plans on an active rest day but suppresses movement after actual activity", async () => {
   const f = fixture();
   try {
     f.state.plannedRestDay = { id: "rest-day" };
+    f.state.todayRecoverySessions = [{ id: "superseded-plan-row", planned: false, completed: false, approved: true, durationMin: 75, intensity: "z3", planDay: { dayOff: false } }];
     f.state.checkin = { answers: JSON.stringify({ sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick: false, newPain: false, urgentSymptoms: false, availableMin: 30 }) };
     const first = await appendConversation(actor, { message: "Explain my recovery day" });
     assert.match(first.answer, /20 min very easy Z1/);

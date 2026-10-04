@@ -243,11 +243,12 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       if (checkin) { try { answers = object(JSON.parse(checkin.answers || "{}")); } catch { /* Fail closed without valid current safety answers. */ } }
       const unreviewedCurrentCheckin = candidates.some(candidate => candidate.kind === "checkin" && candidate.observedDate === today.key);
       const possibleCurrentSymptom = candidates.some(candidate => candidate.kind === "checkin" && ["sick", "newPain", "urgentSymptoms", "painAffectsMovement"].includes(candidate.field) && candidate.value === true);
+      const plannedRecoverySessions = todayRecoverySessions.filter(row => row.planned);
       const context: CoachReplyContext = {
         localToday: today.key, language: actor.language, setupReady: planning.ready,
         recovery: dailyRecoveryContext({
-          plannedRest: !!plannedRestDay || (!!todayRecoverySessions.length && todayRecoverySessions.every(row => row.planDay?.dayOff)),
-          sessions: todayRecoverySessions.map(row => ({ durationMin: row.id === planned?.id && effective ? effective.canonical.durationMin : row.durationMin, intensity: row.intensity,
+          plannedRest: !!plannedRestDay || (!!plannedRecoverySessions.length && plannedRecoverySessions.every(row => row.planDay?.dayOff)),
+          sessions: plannedRecoverySessions.map(row => ({ durationMin: row.id === planned?.id && effective ? effective.canonical.durationMin : row.durationMin, intensity: row.intensity,
             verdict: row.id === planned?.id ? effective?.canonical.verdict ?? "blocked" : row.planned && !row.approved && !row.completed ? "blocked" : undefined })),
           performedToday: loadWorkouts.some(row => row.date <= new Date() && dateKey(row.date, actor.timezone) === today.key),
           injured: !!profile?.injured, answers: checkin && !unreviewedCurrentCheckin ? answers : null,
