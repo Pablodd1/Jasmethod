@@ -1,3 +1,4 @@
+import { dayOffProtocolText } from "./day-off";
 import { postFuelPersonalized } from "./fueling";
 import { supplementAllowed } from "./supplement-db";
 import { resolveCheckinSafety } from "./checkin-safety";
@@ -168,8 +169,7 @@ export function recoveryFor(date: Date): RecoveryPlan {
 }
 
 // ---------- 1b. DAY OFF PROTOCOL (picked rest days) ----------
-// A day off is NOT zero: 20 min Z1 in any modality keeps blood flow + habit
-// alive, then a breathing technique drives vagal recovery (Lehrer 2014).
+// Planning contains no current safety clearance; use the shared no-exercise guide.
 export interface DayOffProtocol {
   title: string;
   minutes: number;
@@ -177,15 +177,8 @@ export interface DayOffProtocol {
   description: string;
 }
 
-export function dayOffProtocol(date: Date): DayOffProtocol {
-  const rec = recoveryFor(date);
-  return {
-    title: "Day Off — Rest",
-    minutes: 0,
-    zone: "z1",
-    description:
-      "No structured workout is prescribed. Rest; comfortable movement and relaxed breathing are optional if you feel well.",
-  };
+export function dayOffProtocol(_date: Date): DayOffProtocol {
+  return { title: "Recovery Day — Rest", minutes: 0, zone: "z1", description: dayOffProtocolText("en") };
 }
 
 // ---------- 1c. TRAINING TIME-OF-DAY (athlete-picked window) ----------

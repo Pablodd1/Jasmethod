@@ -75,8 +75,8 @@ test("day-off guidance keeps rest optional, avoids default supplements and fixed
   for (const lang of ["en", "es"] as const) {
     const p = dayOffProtocol(lang);
     const all = JSON.stringify(p);
-    assert.match(all, /8 hours|8 horas/);
-    assert.doesNotMatch(all, /creatin|20 min Z1|2-3 L/);
+    assert.match(all, /own needs|tus necesidades/);
+    assert.doesNotMatch(all, /creatin|2-3 L|20 min very easy|20 min muy suaves/);
     assert.match(all, /No supplements|No se recomiendan suplementos/);
     assert.ok(p.essentials.length >= 4, "sleep, fuel, supplementation, movement");
     assert.strictEqual(p.visualizationFull.length, 8, "full 8-step visualization routine");

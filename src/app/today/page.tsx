@@ -10,7 +10,7 @@ import { FuelTimeline } from "@/components/fuel-timeline";
 import { WorkoutSparkline } from "@/components/workout-sparkline";
 import { fmtVolumeDual } from "@/lib/units";
 import { fmtDistance } from "@/lib/units";
-import { dayOffProtocol } from "@/lib/day-off";
+import { DailyRecoveryCard } from "@/components/daily-recovery-card";
 import { FitDownloadActions, fitDownloadUrl } from "@/components/daily-training/FitDownloadActions";
 import { endpointLabel } from "@/components/daily-training/training-contract";
 import { ProtectedPage } from "@/components/gate";
@@ -251,7 +251,8 @@ export default function TodayPage() {
         {!data && !error && (
           <p role="status">{es ? "Cargando sesión…" : "Loading session…"}</p>
         )}
-        {data && !data.sessions.length && (
+        {data && <DailyRecoveryCard recovery={data.recovery} es={es} offline={offline} />}
+        {data && !data.sessions.length && data.recovery?.mode !== "planned-rest" && data.recovery?.mode !== "hold" && (
           <div className="card">
             <h2 className="font-bold">
               {es ? "Sin sesiones programadas" : "No sessions planned"}
@@ -458,44 +459,6 @@ export default function TodayPage() {
                 ) : (
                   <div>
                     <p>{session.verdict === "blocked" ? session.resolutionReason : (es ? "Descanso hoy." : "Rest today.")}</p>
-                    {/* The full day-off protocol: sleep/journal, fuel,
-                        supplementation reminder, visualization routine. */}
-                    {session.verdict === "rest" && <div className="mt-3 rounded-xl border border-ocean-200 bg-ocean-50/40 p-4 space-y-2">
-                      {(() => {
-                        const p = dayOffProtocol(es ? "es" : "en");
-                        return (
-                          <>
-                            <div className="font-display font-bold text-ocean-900">{p.title}</div>
-                            {p.essentials.map((e) => (
-                              <div key={e.label} className="flex gap-2 text-sm">
-                                <span className="text-lg leading-none">{e.icon}</span>
-                                <div>
-                                  <span className="font-semibold">{e.label}</span>
-                                  <span className="text-slate-600"> — {e.detail}</span>
-                                </div>
-                              </div>
-                            ))}
-                            <div className="text-sm text-slate-700 border-t border-ocean-200 pt-2">
-                              {p.visualizationShort}
-                            </div>
-                            <details>
-                              <summary className="cursor-pointer text-xs font-semibold text-ocean-700">
-                                {es ? "Protocolo completo de visualización (8 pasos)" : "Full visualization protocol (8 steps)"}
-                              </summary>
-                              <ol className="mt-2 space-y-2">
-                                {p.visualizationFull.map((v) => (
-                                  <li key={v.step} className="text-xs">
-                                    <span className="font-bold">{v.step}</span>{" "}
-                                    <span className="text-slate-600">{v.text}</span>
-                                  </li>
-                                ))}
-                              </ol>
-                            </details>
-                            <div className="text-xs italic text-ocean-700 pt-1">{p.closing}</div>
-                          </>
-                        );
-                      })()}
-                    </div>}
                   </div>
                 )}
                 {session.durationMin > 0 && (

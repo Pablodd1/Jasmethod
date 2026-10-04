@@ -181,11 +181,11 @@ export async function POST(req: Request) {
     if (race && race.getTime() - start.getTime() < 28 * 86400000) throw new ApiError("This short event horizon needs a reviewed preparation plan; automatic progression cannot promise the requested result.");
     // Preserve actual day placement, reducing rather than making up omitted work.
     const startWeekday = new Date(dateKey(start,user.timezone)+"T12:00Z").getUTCDay();
-    const {weeks: generated, weeklyBudget} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday);
+    const {weeks: generated, weeklyBudget, recoveryPolicy} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday, level);
     if (!generated.some(week=>week.sessions.length)) throw new ApiError("The current template does not fit your available days/time. A coach should review the schedule; no sessions were assigned.", 422);
     const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true}});
     const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated })).digest("hex");
-    if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated}, previewToken,
+    if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated, recoveryPolicy}, previewToken,
       planningBasis: setup.baselinePlanOptIn ? "baseline_only" : "baseline", targetReview: readiness.targetReview ?? [],
       warning: "Numeric targets remain aspirations: this plan is not optimized or promised to reach them. Future sessions are provisional and bounded by reported recent training. Existing prescriptions and completed activity will be preserved. A goal is not a guaranteed outcome; daily safety checks still apply."});
     if (body.previewToken !== previewToken) throw new ApiError("Preview the current plan and confirm it before replacing future training.", 409);
@@ -243,6 +243,9 @@ export async function POST(req: Request) {
                   if (!bySlot.has(slot)) bySlot.set(slot, []);
                   bySlot.get(slot)!.push(s);
                 });
+                // Save explicit off-days with no compulsory workout. This is
+                // still only a prescription, never a completed-rest report.
+                for (const slot of week.restDaySlots) bySlot.set(slot, []);
                 return Array.from(bySlot.entries()).map(
                   ([slot, slotSessions]) => {
                     const date = localDate(
@@ -255,8 +258,9 @@ export async function POST(req: Request) {
                       dayOfWeek: new Date(
                         dateKey(date, user.timezone) + "T12:00Z",
                       ).getUTCDay(),
-                      focus: slotSessions[0].sport,
-                      notes: slotSessions[0].description,
+                      dayOff: slotSessions.length === 0,
+                      focus: slotSessions[0]?.sport ?? "recovery",
+                      notes: slotSessions[0]?.description ?? "Planned rest: no compulsory workout. Optional recovery is offered separately when appropriate; this does not confirm completed rest.",
                       sessions: {
                         create: slotSessions.map((s) => ({
                           userId: user.id,
@@ -293,7 +297,7 @@ export async function POST(req: Request) {
             after: JSON.stringify({
               name: plan.name,
               weeks: weeksCount,
-              startDate: start, setupRule: readiness.ruleId, setupRevision: setupState.revision, previewToken, weeklyBudgetMin: weeklyBudget, previousPlanIds: currentPlans.map(p => p.id),
+              startDate: start, setupRule: readiness.ruleId, setupRevision: setupState.revision, previewToken, weeklyBudgetMin: weeklyBudget, recoveryPolicy, previousPlanIds: currentPlans.map(p => p.id),
             }),
           },
         });
@@ -339,6 +343,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       plannerVersion: "manual-setup-bounded-v1",
+      recoveryPolicy,
       plan: {
         id: plan.id,
         name: plan.name,

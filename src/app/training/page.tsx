@@ -21,7 +21,7 @@ import {
   Download,
 } from "lucide-react";
 import { workoutDetail } from "@/lib/workout-view";
-import { dateKey } from "@/lib/dates";
+import { addDaysKey, dateKey } from "@/lib/dates";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import {
@@ -357,9 +357,25 @@ export default function TrainingPage() {
           {preview && <section className="mt-4 border rounded-xl p-4" aria-label="Plan preview">
             <h3 className="font-semibold">Review before assigning</h3>
             <p>{preview.preview.distance}, {preview.preview.weeks} weeks. Weekly time ceiling: {preview.preview.weeklyBudgetMin} minutes. Event date: {preview.preview.raceDate ? String(preview.preview.raceDate).slice(0,10) : "No event date supplied"}.</p>
+            {preview.preview.recoveryPolicy && <div className="my-3 rounded-lg border border-ink-200 bg-paper p-3 space-y-2">
+              <p><strong>Recovery planning:</strong> {preview.preview.recoveryPolicy.minimumRestDays === 0 ? "No fixed minimum off-days for a professional profile. This does not require seven training days." : `At least ${preview.preview.recoveryPolicy.minimumRestDays} planned off-day${preview.preview.recoveryPolicy.minimumRestDays === 1 ? "" : "s"} per seven-day plan block for your current experience level.`}</p>
+              <p className="text-sm">These are coaching defaults, not universal research-established off-day counts. Your unavailable days, symptoms, fatigue and coach review can require more rest. Review the dates below before confirming.</p>
+              <p className="text-sm"><strong>First week off-days:</strong> {preview.preview.weeksPreview[0]?.restDaySlots?.length ? preview.preview.weeksPreview[0].restDaySlots.map((slot:number)=>addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),slot)).join(", ") : "None fixed in this preview; add rest whenever needed."} No compulsory workout is assigned on these dates. Planned rest does not count as confirmed completed rest.</p>
+            </div>}
             <p>{preview.warning}</p>
             <p>{preview.preview.existingPlans ? "Confirming will archive the current plan and supersede its uncompleted future sessions. History is retained." : "Confirming will assign this provisional plan."}</p>
-            <details className="my-3"><summary className="cursor-pointer underline">Review every week and session</summary>{preview.preview.weeksPreview.map((week:any)=><div className="my-3" key={week.week}><h4 className="font-semibold">Week {week.week}: {week.totalMinutes} min</h4><ul>{week.sessions.map((session:any,index:number)=><li key={index}>{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.description}</li>)}</ul></div>)}</details>
+            <details className="my-3"><summary className="cursor-pointer underline">Review every week, off-day and session</summary>{preview.preview.weeksPreview.map((week:any,weekIndex:number)=><div className="my-4" key={week.week}>
+              <h4 className="font-semibold">Week {week.week}: {week.totalMinutes} min</h4>
+              <ul className="mt-2 space-y-2">{Array.from({length:7},(_,slot)=>{
+                const localDay=addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+slot);
+                const sessions=week.sessions.filter((session:any)=>session.daySlot===slot);
+                const isOff=week.restDaySlots?.includes(slot) || sessions.length===0;
+                return <li key={slot} className="border-l-2 border-ink-200 pl-3">
+                  <strong>{localDay}{isOff?" · Planned off-day":""}</strong>
+                  {isOff?<p className="text-sm">No compulsory workout. Optional recovery guidance remains separate; record only what you actually do.</p>:sessions.map((session:any,index:number)=><p key={index}>{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.description}</p>)}
+                </li>;
+              })}</ul>
+            </div>)}</details>
             <div className="flex gap-3"><button type="button" className="btn-primary" disabled={generating} onClick={()=>generate(undefined,true)}>Confirm this plan</button><button type="button" className="btn-secondary" onClick={()=>setPreview(null)}>Cancel preview</button></div>
           </section>}
           {error && (

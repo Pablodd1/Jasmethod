@@ -1,3 +1,5 @@
+import { dayOffProtocol, dayOffProtocolText } from "./day-off";
+import type { dailyRecoveryContext } from "./daily-recovery";
 import type { JMetrics } from "./j-metrics";
 import { resolveCheckinSafety, type CheckinSafetyInput } from "./checkin-safety";
 
@@ -223,6 +225,7 @@ export function conversationClarifications(message: string, context: CandidateCo
 }
 
 export interface CoachReplyContext {
+  recovery?: ReturnType<typeof dailyRecoveryContext>;
   jMetrics?: JMetrics | null;
   localToday: string;
   language?: string;
@@ -300,6 +303,23 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
     return reply("jmetrics-recorded-summary",
       `${definition}\n${line}\nLast ${metrics.windowDays} days: ${metrics.eligibleSessions}/${metrics.totalSessions} performed sessions have scoreable inputs; ${metrics.missingDays} days are unknown. Recorded-session total: ${shown(metrics.totalJStress)} (partial when inputs are missing). J Recent/J Base use 7/42-day exponential averages and require 7/42 consecutive known days; gaps restart them. J Balance = J Base − J Recent. A planned rest day is not confirmed rest. These values do not diagnose recovery or establish a safe training dose. Details: /metrics.`,
       `${definitionEs}\n${line}\nÚltimos ${metrics.windowDays} días: ${metrics.eligibleSessions}/${metrics.totalSessions} sesiones realizadas tienen datos suficientes; ${metrics.missingDays} días son desconocidos. Total de sesiones registradas: ${shown(metrics.totalJStress)} (parcial si faltan datos). J Recent/J Base usan promedios exponenciales de 7/42 días y requieren 7/42 días conocidos consecutivos; los vacíos los reinician. J Balance = J Base − J Recent. Un descanso planeado no es un descanso confirmado. Estos valores no diagnostican recuperación ni establecen una dosis segura de entrenamiento. Detalles: /metrics.`);
+  }
+  if (/\b(?:recovery|rest day|day off|meditation|visualization|visualisation|recuperacion|dia de descanso|dia libre|meditacion|visualizacion)\b/.test(t)) {
+    const recovery = context.recovery;
+    if (recovery?.mode === "planned-rest") {
+      const allowMovement = recovery.allowMovement === true && safety.status === "clear";
+      return reply("recovery-day-guide", dayOffProtocolText("en", { allowMovement }), dayOffProtocolText("es", { allowMovement }));
+    }
+    if (recovery?.mode === "hold") return reply("recovery-hold-guide",
+      `Training is on hold. Optional exercise is not offered; review the restriction with your coach or appropriate professional.\n${dayOffProtocolText("en")}`,
+      `El entrenamiento está en pausa. No se ofrece ejercicio opcional; revisa la restricción con tu entrenador o profesional adecuado.\n${dayOffProtocolText("es")}`);
+    const support = (lang: "en" | "es") => {
+      const guide = dayOffProtocol(lang);
+      return [...guide.essentials.filter(item => item.key !== "movement").map(item => `${item.icon} ${item.label} — ${item.detail}`), guide.visualizationShort].join("\n");
+    };
+    return reply("daily-recovery-support",
+      `${recovery?.mode === "training" || recovery?.mode === "easy-day" ? "Recovery supports today's existing training; keep its reviewed limits." : "I do not have a confirmed planned rest day in this context. An empty schedule does not establish recovery or a rest prescription."} No extra 20-minute workout is added.\n${support("en")}`,
+      `${recovery?.mode === "training" || recovery?.mode === "easy-day" ? "La recuperación acompaña el entrenamiento existente de hoy; mantén sus límites revisados." : "No tengo un día de descanso planificado confirmado en este contexto. Una agenda vacía no demuestra recuperación ni prescribe descanso."} No se añade un entrenamiento extra de 20 minutos.\n${support("es")}`);
   }
   const session = context.approvedSession?.approved === true && context.approvedSession.date === context.localToday ? context.approvedSession : null;
   if (session?.isRestDay || session?.sport === "rest" || session?.durationMin === 0) return reply("preserve-rest-day", "Today is an approved recovery/rest day. Protect it rather than replacing it with a workout. Recovery is part of the plan; any change should be reviewed separately, and no missed work is added.", "Hoy hay descanso o recuperación aprobados. Respétalos en lugar de sustituirlos por un entrenamiento. La recuperación forma parte del plan; cualquier cambio se revisa por separado y no se añade trabajo pendiente.");
