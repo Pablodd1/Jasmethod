@@ -9,7 +9,7 @@ import { KeyRound } from "lucide-react";
 // ADMIN_EMAILS allowlist.
 export default function AdminRecoveryPage() {
   const [token, setToken] = useState("");
-  const [email, setEmail] = useState("jasmelacosta@gmail.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -56,6 +56,7 @@ export default function AdminRecoveryPage() {
                 Recovery token
               </label>
               <input
+                type="password" autoComplete="off" aria-label="Recovery token"
                 className="field-editorial font-mono"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
@@ -69,7 +70,7 @@ export default function AdminRecoveryPage() {
               </label>
               <input
                 className="field-editorial"
-                type="email"
+                type="email" autoComplete="email" aria-label="Admin email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -77,19 +78,20 @@ export default function AdminRecoveryPage() {
             </div>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
-                New password (8+ characters)
+                New password (12+ characters)
               </label>
               <input
                 className="field-editorial"
-                type="password"
+                type="password" autoComplete="new-password" aria-label="New password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                minLength={8}
+                minLength={12}
                 required
               />
             </div>
             {msg && (
               <div
+                role={msg.ok ? "status" : "alert"}
                 className={`text-sm rounded-lg px-3 py-2 ${
                   msg.ok
                     ? "text-emerald-700 bg-emerald-50"

@@ -15,7 +15,7 @@ const errorMessages: Record<string, string> = {
   invalid_state: "Your sign-in session expired or could not be verified. Please start again.",
   verification_failed: "We couldn't verify your sign-in. Please try again or use email and password.",
   email_required: "We need a verified email address to create your account. Please allow email sharing or use email and password.",
-  account_link_required: "An account already uses this email. Sign in with your existing method to keep your account secure.",
+  account_link_required: "This email already belongs to a JMM account. Sign in with your JMM email and password first, then link this provider. If your password no longer works, use Forgot password to keep your existing training data.",
   server_error: "Sign-in is temporarily unavailable. Please try again or use email and password.",
 };
 

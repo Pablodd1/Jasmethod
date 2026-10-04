@@ -50,7 +50,13 @@ async function fixture(overrides: Record<string, string | undefined> = {}) {
       findUnique: async () => state.transaction,
     },
     signInAccount: {
-      findUnique: async () => state.account,
+      findUnique: async ({ where }: any) => {
+        if (state.account) return state.account;
+        const key = where.issuer_clientId_subject;
+        const mapping = state.mappings.find((row: any) =>
+          row.issuer === key.issuer && row.clientId === key.clientId && row.subject === key.subject);
+        return mapping ? { ...mapping, user: state.owner } : null;
+      },
       create: async ({ data }: any) => { state.mappings.push(data); return data; },
     },
     user: {
@@ -174,6 +180,35 @@ test("social explicit account linking needs existing login and rejects another u
   const g = await fixture(); g.state.currentUser = { id: "owner" }; g.state.account = { userId: "someone-else", user: { id: "someone-else" } };
   const other = await g.start("google", true); assert.match((await g.finish(other.state)).headers.get("location")!, /account_link_required/);
   assert.equal(g.state.sessions.length + g.state.mappings.length, 0);
+});
+
+test("one athlete links all three providers and each later signs into the same account", async () => {
+  const f = await fixture();
+  f.state.owner = { id: "same-athlete", email: "athlete@example.invalid", onboarded: true };
+  f.state.currentUser = f.state.owner;
+  f.state.existingEmail = f.state.owner;
+  for (const provider of ["google", "apple", "chatgpt"]) {
+    // Explicit linking also supports Apple's private relay address.
+    f.state.claims = { email: provider === "apple" ? "relay@privaterelay.appleid.com" : "athlete@example.invalid" };
+    const started = await f.start(provider, true);
+    const response = await f.finish(started.state, provider, provider === "apple" ? "POST" : "GET");
+    assert.equal(response.headers.get("location"), `${f.env.APP_URL}/today`);
+  }
+  assert.equal(f.state.mappings.length, 3);
+  assert.equal(new Set(f.state.mappings.map((row: any) => row.issuer)).size, 3);
+  assert.ok(f.state.mappings.every((row: any) => row.userId === "same-athlete"));
+  f.state.currentUser = null;
+  f.state.linkSession = null;
+  f.jar.delete("jmm_session");
+  f.state.claims = { email: undefined, email_verified: undefined };
+  for (const provider of ["google", "apple", "chatgpt"]) {
+    const started = await f.start(provider);
+    const response = await f.finish(started.state, provider, provider === "apple" ? "POST" : "GET");
+    assert.equal(response.headers.get("location"), `${f.env.APP_URL}/today`);
+  }
+  assert.equal(f.state.creates.length, 0, "must not duplicate the athlete");
+  assert.equal(f.state.mappings.length, 3, "returning login must reuse the identity mapping");
+  assert.deepEqual(f.state.sessions, Array(6).fill("same-athlete"));
 });
 
 test("Apple form-post callback uses secure SameSite=None cookie and signed client secret", async () => {

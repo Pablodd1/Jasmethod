@@ -9,6 +9,7 @@ import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { AdminCoachEditor } from "@/components/admin-coach-editor";
 import { CoachAssignmentsCard } from "@/components/coach-assignments-card";
+import { AdminPasswordReset } from "@/components/password-recovery";
 
 const FIELDS: [string, string][] = [
   ["birthYear", "Birth year"],
@@ -116,6 +117,7 @@ export default function AthletePage() {
         {!data && !error && <p>Loading athlete…</p>}
         {data && (
           <>
+            {user?.role === "admin" && <AdminPasswordReset userId={params.id} email={data.athlete.email} />}
             <div className="card bg-ocean-50 border-ocean-200">
               <p className="text-xs uppercase tracking-wide">
                 Coaching workspace · Signed in as {user?.name}

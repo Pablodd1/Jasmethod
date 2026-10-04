@@ -3,14 +3,13 @@ import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
+import { timingSafeEqual } from "crypto";
+import { passwordResetError } from "@/lib/password-reset";
 
 // POST /api/auth/admin-recovery — owner-only account recovery.
-// The account exists in production with a password that was forgotten, SMTP
-// (email reset) is broken, and Google Sign-In isn't configured yet — so this
-// endpoint lets the OWNER set a new password directly, gated by a secret
-// recovery token (ADMIN_RECOVERY_TOKEN env) AND the ADMIN_EMAILS allowlist.
-// Two independent server-side secrets must both match; nobody who merely
-// knows the admin email can use it.
+// Break-glass recovery when email is unavailable. Requires the server-only
+// ADMIN_RECOVERY_TOKEN and an ADMIN_EMAILS-listed existing account. Does not
+// grant or change roles; resets credentials and revokes prior access atomically.
 export async function POST(req: Request) {
   const rl = rateLimit(`admin-recovery:${clientIp(req)}`, 5, 15 * 60 * 1000);
   if (!rl.ok)
@@ -23,7 +22,7 @@ export async function POST(req: Request) {
         { error: "Recovery is not configured." },
         { status: 503 },
       );
-    if (typeof token !== "string" || token !== expected)
+    if (typeof token !== "string" || Buffer.byteLength(token) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(token), Buffer.from(expected)))
       return NextResponse.json({ error: "Invalid recovery token." }, { status: 401 });
     const normalized = String(email || "").toLowerCase().trim();
     if (!isAdminEmail(normalized))
@@ -31,9 +30,10 @@ export async function POST(req: Request) {
         { error: "This email is not on the admin allowlist." },
         { status: 403 },
       );
-    if (typeof newPassword !== "string" || newPassword.length < 8)
+    const policyError = passwordResetError(newPassword);
+    if (policyError)
       return NextResponse.json(
-        { error: "New password must be at least 8 characters." },
+        { error: policyError },
         { status: 400 },
       );
     const user = await prisma.user.findUnique({ where: { email: normalized } });
@@ -42,13 +42,18 @@ export async function POST(req: Request) {
         { error: "No account with this email — sign up first, then recover." },
         { status: 404 },
       );
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { passwordHash: hashPassword(newPassword), role: "admin" },
+    const passwordHash = hashPassword(newPassword);
+    await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${user.id} FOR UPDATE`;
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+      await tx.authSession.deleteMany({ where: { userId: user.id } });
+      await tx.passwordReset.deleteMany({ where: { userId: user.id } });
+      await tx.signInTransaction.deleteMany({ where: { linkUserId: user.id } });
+      await tx.auditLog.create({ data: { actorId: user.id, subjectId: user.id, action: "owner_password_recovery", note: "Secret-gated owner recovery; role unchanged and sessions revoked." } });
     });
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    console.error("admin-recovery error:", e);
+  } catch {
+    console.error("[ADMIN_RECOVERY] Recovery failed.");
     return NextResponse.json({ error: "Recovery failed." }, { status: 500 });
   }
 }

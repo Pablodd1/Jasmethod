@@ -195,6 +195,7 @@ export function AuthCard({
         </button>
       </form>
 
+      <a href="/forgot-password" className="mt-4 inline-block text-sm underline">Forgot password or cannot access your account?</a>
       <SocialSignIn />
 
       <p className="micro mt-5 text-center !normal-case !tracking-normal !text-[11px] !text-ink-400">
