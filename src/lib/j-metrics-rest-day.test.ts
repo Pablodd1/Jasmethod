@@ -5,6 +5,9 @@ import { addDaysKey, dateKey, localDate } from "./dates";
 const require = createRequire(import.meta.url);
 
 test("rest-day route authorization, local dates, conflict and idempotency", async t => {
+  const priorOrigin = process.env.APP_URL;
+  process.env.APP_URL = "https://app.example.invalid";
+  t.after(() => { if (priorOrigin === undefined) delete process.env.APP_URL; else process.env.APP_URL = priorOrigin; });
   const user = { id: "athlete-a", timezone: "Pacific/Honolulu", passwordHash: `salt:${"a".repeat(64)}` };
   let authenticated = true, completed = false, fail = false;
   const rows: any[] = [{ userId: "athlete-b", metricType: "jmm_rest_day", observedAt: localDate(dateKey(new Date(), user.timezone), user.timezone) }];

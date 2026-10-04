@@ -1,3 +1,4 @@
+import { appMutationOriginAllowed } from "@/lib/request-origin";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -6,7 +7,7 @@ import { addDaysKey, dateKey, localDate } from "@/lib/dates";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  if (req.headers.get("origin") !== new URL(req.url).origin || req.headers.get("sec-fetch-site") === "cross-site") {
+  if (!appMutationOriginAllowed(req)) {
     return NextResponse.json({ error: "Use the rest-day form on this website." }, { status: 403 });
   }
   try {
