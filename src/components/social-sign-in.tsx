@@ -70,22 +70,17 @@ export function SocialSignIn() {
         <span className="h-px flex-1 bg-ink-200" /> or <span className="h-px flex-1 bg-ink-200" />
       </div>
       <div className="mt-3 space-y-2" aria-label="Other sign-in options">
-        {providers.map((provider) => available.includes(provider.id) ? (
+        {providers.filter(provider => available.includes(provider.id)).map(provider => (
           <a key={provider.id} href={`/api/auth/${provider.id}${linkMode ? "?link=1" : ""}`} className={`${buttonClass} hover:bg-paper-100`}>
             {linkMode ? "Link" : "Continue with"} {provider.label}
           </a>
-        ) : (
-          <button key={provider.id} type="button" disabled aria-describedby={statusId}
-            className={`${buttonClass} cursor-not-allowed bg-paper-100 text-ink-600`}>
-            {linkMode ? "Link" : "Continue with"} {provider.label} — {loading ? "checking…" : "unavailable"}
-          </button>
         ))}
       </div>
       <p id={statusId} role="status" className="mt-2 min-h-10 text-xs text-ink-600">
         {loading ? "Checking sign-in options…" : failed
           ? "We couldn't load other sign-in options. You can still use email and password."
-          : available.length < providers.length
-            ? "Some sign-in options aren't available yet. You can use an available option or email and password."
+          : available.length === 0
+            ? "Social sign-in is unavailable right now. You can use email and password."
             : linkMode ? "Choose a provider to link to your signed-in account." : "New here? Continue with a provider to create your account and set up your profile."}
       </p>
       {notice && <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{notice}</p>}

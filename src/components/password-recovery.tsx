@@ -28,7 +28,7 @@ export function PasswordRecovery({ reset = false }: { reset?: boolean }) {
       });
       const body = await result.json();
       if (!result.ok) { setError(body.error || "Could not complete the request. Please try again."); return; }
-      setMessage(reset ? "Your password is updated. Sign in again, then link Google or Apple to this same account." : body.message || "If an account matches this email, a reset link will be sent. Check your inbox and spam folder.");
+      setMessage(reset ? "Your password is updated. Sign in again, then link Google to this same account." : body.message || "If an account matches this email, a reset link will be sent. Check your inbox and spam folder.");
       if (reset) { setDone(true); setToken(""); setPassword(""); setConfirmation(""); }
     } catch { setError("Connection failed. Please try again."); }
     finally { setBusy(false); }

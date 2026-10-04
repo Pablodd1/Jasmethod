@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 
 const steps = [
   { id: "account", title: "1. Create or recover the right account", href: "/login", link: "Open sign-in", paragraphs: [
-    "New athletes can register with email and password, or use Google or Apple when the button is enabled. ChatGPT sign-in is unavailable until approved credentials are configured. An unavailable button is not an account error.",
-    "Already have training data? Sign in to your existing account first, then open Link sign-in options to add Google or Apple. A matching email does not automatically merge accounts. Apple can use a private relay address, so linking from your existing account avoids accidentally creating a second profile.",
+    "New athletes can register with email and password, or use Google when the button is enabled. Apple and ChatGPT are not offered in this demo.",
+    "Already have training data? Sign in to your existing account first, then open Link sign-in options to add Google. A matching email does not automatically merge accounts. Linking from your existing account keeps its training history together.",
     "Forgot your password? Use password recovery with the email belonging to that account. Check spam and follow the single-use link. Do not register again to recover missing records. If you use separate administrator/coach and athlete accounts, sign out before switching and check the displayed account identity.",
   ] },
   { id: "profile", title: "2. Complete your athlete profile and goal", href: "/settings", link: "Open settings", paragraphs: [
