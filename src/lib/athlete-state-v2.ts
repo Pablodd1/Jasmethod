@@ -167,9 +167,9 @@ function computeTrainingLoadStatus(input: AthleteStateInput): Dimension {
   const ramp = tss.length >= 7
     ? (tss.slice(-3).reduce((a, b) => a + b, 0) / 3) / Math.max(1, tss.slice(0, -3).reduce((a, b) => a + b, 0) / Math.max(1, tss.length - 3)) - 1
     : 0;
-  if (avg > 100 || ramp > 0.3) return { status: "caution", value: avg, confidence: 0.7, reason: `High load (avg TSS ${Math.round(avg)}, ramp ${(ramp * 100).toFixed(0)}%)`, evidenceClaimIds: claims };
-  if (avg < 20) return { status: "neutral", value: avg, confidence: 0.5, reason: `Low load (avg TSS ${Math.round(avg)})`, evidenceClaimIds: claims };
-  return { status: "neutral", value: avg, confidence: 0.7, reason: `Moderate load (avg TSS ${Math.round(avg)})`, evidenceClaimIds: claims };
+  if (avg > 100 || ramp > 0.3) return { status: "caution", value: avg, confidence: 0.7, reason: `High load (average legacy load ${Math.round(avg)}, ramp ${(ramp * 100).toFixed(0)}%)`, evidenceClaimIds: claims };
+  if (avg < 20) return { status: "neutral", value: avg, confidence: 0.5, reason: `Low load (average legacy load ${Math.round(avg)})`, evidenceClaimIds: claims };
+  return { status: "neutral", value: avg, confidence: 0.7, reason: `Moderate load (average legacy load ${Math.round(avg)})`, evidenceClaimIds: claims };
 }
 
 function computeMusculoskeletalStatus(input: AthleteStateInput): Dimension {

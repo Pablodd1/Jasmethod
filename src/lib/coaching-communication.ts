@@ -116,7 +116,7 @@ export function validateCandidate(value: unknown): ReplyCandidate {
   if (Object.keys(c).some(k => !["status", "minutes", "rpe", "sport", "declinedOptional"].includes(k))) throw Error("Unknown answer field");
   if (typeof c.status !== "string" || !["completed", "partial", "substituted", "skipped", "unknown"].includes(c.status)) throw Error("Choose a session outcome");
   if (c.minutes !== null && (!Number.isInteger(c.minutes) || Number(c.minutes) < 0 || Number(c.minutes) > 1440)) throw Error("Actual minutes must be 0–1440 or unknown");
-  if (c.rpe !== null && (!Number.isInteger(c.rpe) || Number(c.rpe) < 1 || Number(c.rpe) > 10)) throw Error("RPE must be 1–10 or unknown");
+  if (c.rpe !== null && (!Number.isInteger(c.rpe) || Number(c.rpe) < 0 || Number(c.rpe) > 10)) throw Error("RPE must be 0–10 or unknown");
   if (c.sport !== null && (typeof c.sport !== "string" || !ACTUAL_SPORTS.includes(c.sport))) throw Error("Choose an actual sport or unknown");
   if (!Array.isArray(c.declinedOptional) || c.declinedOptional.some(k => !OPTIONAL_INPUTS.includes(k))) throw Error("Invalid declined optional input");
   if (c.status === "skipped" && (c.minutes !== null || c.rpe !== null || c.sport !== null)) throw Error("A skipped session cannot report effort, minutes or another sport. Log other activity separately.");

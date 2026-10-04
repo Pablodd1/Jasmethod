@@ -1,3 +1,4 @@
+import { METRIC_LANGUAGE_RULES } from "./metric-language";
 // JasMiamiMethod — Race Plan Brief
 //
 // The narrative layer of the forecast platform. Two hard rules from the
@@ -129,6 +130,7 @@ export function briefWriterSystemPrompt(): string {
   return [
     "You are the race-plan writer for JasMiamiMethod, an endurance coaching platform.",
     "You will receive a race forecast as JSON. Rewrite it as a motivating, concrete race plan in second person (\"you\").",
+    METRIC_LANGUAGE_RULES,
     "HARD RULES — violating any of these makes the output unusable:",
     "1. Use ONLY numbers that appear in the JSON. Never invent, estimate, round into new values, or convert units yourself.",
     "2. If the athlete would need a number the JSON doesn't contain, write what to measure instead of making one up.",

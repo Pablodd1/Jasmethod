@@ -68,10 +68,10 @@ const COPY = {
     title: ["The analytics your coach actually uses", "Los analíticos que tu coach realmente usa"],
     cards: [
       {
-        title: ["Fitness & fatigue (PMC)", "Forma y fatiga (PMC)"],
+        title: ["J Metrics: explained load", "J Metrics: carga explicada"],
         body: [
-          "Chronic load (CTL), acute load (ATL) and form (TSB) projected to race day — if you execute the plan, this is your shape on the line.",
-          "Carga crónica (CTL), aguda (ATL) y forma (TSB) proyectadas al día de carrera — si ejecutas el plan, esta es tu forma en la línea.",
+          "JStress combines completed minutes and your reported effort. J Base, J Recent and J Balance summarize recorded load with visible data gaps; they do not measure fitness or readiness.",
+          "JStress combina minutos realizados y esfuerzo reportado. J Base, J Recent y J Balance resumen carga registrada y muestran lagunas; no miden condición física ni preparación.",
         ],
       },
       {
@@ -205,22 +205,23 @@ export default function Home() {
         <section className="mt-16">
           <h2 className="display-xl">{pick(COPY.analytics.title)}</h2>
           <p className="text-xs text-ink-400 mt-2 italic">
-            {es(language) ? <>Ejemplos ilustrativos — la app usa tus datos reales.</> : <>Illustrative examples — the app computes these from your real data.</>}
+            {es(language) ? <>Ejemplos ilustrativos, no datos de atletas ni resultados previstos.</> : <>Illustrative examples, not athlete measurements or predicted outcomes.</>}
           </p>
           <div className="mt-6 grid lg:grid-cols-3 gap-4">
-            {/* PMC curve */}
+            {/* Illustrative load curves */}
             <div className="card p-5">
               <h3 className="font-display font-bold text-sm">{pick(COPY.analytics.cards[0].title)}</h3>
-              <svg viewBox="0 0 300 130" className="w-full mt-3" role="img" aria-label="PMC curve example">
+              <svg viewBox="0 0 300 130" className="w-full mt-3" role="img" aria-label="Illustrative load curves, not athlete data">
                 <line x1="10" y1="115" x2="290" y2="115" stroke="#94a3b8" strokeWidth="1" />
                 <path d="M10,95 C60,85 110,70 160,62 C210,54 250,50 290,48" fill="none" stroke="#0369a1" strokeWidth="2.5" />
                 <path d="M10,100 C50,80 90,105 130,95 C170,85 210,100 250,70 C270,58 280,55 290,54" fill="none" stroke="#dc2626" strokeWidth="2" strokeDasharray="5 3" />
                 <path d="M10,80 C60,72 110,84 160,78 C210,72 250,55 290,50" fill="none" stroke="#65a30d" strokeWidth="2" />
-                <text x="12" y="14" fontSize="9" fill="#0369a1">CTL (fitness)</text>
-                <text x="200" y="30" fontSize="9" fill="#dc2626">ATL (fatigue)</text>
-                <text x="12" y="70" fontSize="9" fill="#65a30d">TSB</text>
+                <text x="12" y="14" fontSize="9" fill="#0369a1">Longer trend</text>
+                <text x="200" y="30" fontSize="9" fill="#dc2626">Recent trend</text>
+                <text x="12" y="70" fontSize="9" fill="#65a30d">Difference</text>
               </svg>
               <p className="text-xs text-ink-500 mt-2">{pick(COPY.analytics.cards[0].body)}</p>
+              <Link href="/metrics" className="underline text-sm text-ocean-700">{es(language) ? "Guía de J Metrics" : "J Metrics guide"}</Link>
             </div>
             {/* Taper volume bars */}
             <div className="card p-5">

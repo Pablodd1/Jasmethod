@@ -1,33 +1,34 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { computeJMetrics } from "@/lib/j-metrics";
+import { addDaysKey, dateKey, localDate } from "@/lib/dates";
 import { computePmc, executionScore, predictRace } from "@/lib/fitness";
 
-// GET /api/fitness — PMC (fitness/fatigue/form + ramp), execution score, race prediction
+// Owner-only JMetrics and legacy estimates retained for history compatibility.
 export async function GET() {
   const user = await getCurrentUser();
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const profile = await prisma.athleteProfile.findUnique({
-    where: { userId: user.id },
-  });
+  const asOf = new Date();
+  const since90 = localDate(addDaysKey(dateKey(asOf, user.timezone), -89), user.timezone);
+  const [profile, completed, rest] = await Promise.all([
+    prisma.athleteProfile.findUnique({ where: { userId: user.id } }),
+    prisma.workout.findMany({
+      where: { userId: user.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null, date: { gte: since90, lte: asOf } },
+      orderBy: { date: "asc" },
+    }),
+    prisma.metricObservation.findMany({
+      where: { userId: user.id, metricType: "jmm_rest_day", source: "manual", value: 1, qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: { gte: since90, lte: asOf } },
+      select: { observedAt: true },
+    }),
+  ]);
   const ftp = profile?.ftp ?? null;
   const lthr = profile?.lthr ?? null;
-
-  // Completed workouts for the last 90 days → PMC
-  const since90 = new Date(Date.now() - 90 * 86400000);
-  const completed = await prisma.workout.findMany({
-    where: {
-      userId: user.id,
-      completed: true,
-      matchedPlanId: null,
-      date: { gte: since90, lte: new Date() },
-    },
-    orderBy: { date: "asc" },
-  });
+  const jMetrics = computeJMetrics(completed, asOf, user.timezone, rest.map(r => dateKey(r.observedAt, user.timezone)));
   const pmc = computePmc(
-    completed.map((w) => ({
+    completed.filter(w => w.completed).map((w) => ({
       date: w.date,
       tssInput: {
         durationMin: w.actualDurationMin ?? w.durationMin,
@@ -40,6 +41,7 @@ export async function GET() {
         lthr,
       },
     })),
+    asOf, user.timezone,
   );
 
   // Execution score over the last 7 days
@@ -90,6 +92,7 @@ export async function GET() {
 
   return NextResponse.json({
     pmc,
+    jMetrics,
     execution,
     predictions,
     goalDistance: profile?.goal ?? null,

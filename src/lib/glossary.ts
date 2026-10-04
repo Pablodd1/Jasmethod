@@ -1,6 +1,6 @@
 // JasMiamiMethod — plain-language glossary.
-// Terminology is aligned with what athletes already know from the industry
-// standard platforms (verified against the official sources, Aug 2026):
+// Legacy field keys remain compatible with stored records; display labels distinguish
+// them from JMetrics. Historical references (not a current verification claim):
 //   • TrainingPeaks glossary: TSS, CTL (= Fitness, 42-day), ATL (= Fatigue, 7-day),
 //     TSB (= Form, CTL−ATL), IF, NP — trainingpeaks.com/learn/articles/glossary-of-trainingpeaks-metrics
 //   • TriDot: FitLogic (engine), TrainX (training execution score), RaceX (race prediction)
@@ -25,60 +25,81 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     source: "TrainingPeaks / Allen & Coggan",
   },
   tss: {
-    abbr: "TSS",
+    abbr: "Legacy load",
     plain: {
-      en: "TSS — Training Stress Score: one number for how hard a session was (duration × intensity). The industry standard from TrainingPeaks.",
-      es: "TSS — puntuación de estrés de entrenamiento: un número que resume qué tan dura fue la sesión (tiempo × intensidad). El estándar de TrainingPeaks.",
+      en: "Historical training-load value retained for continuity. Its source and estimation method may vary; it is not JStress or a measurement of biological stress.",
+      es: "Carga histórica conservada para continuidad. Su fuente y método pueden variar; no es JStress ni una medición del estrés biológico.",
     },
-    source: "TrainingPeaks",
   },
   ctl: {
-    abbr: "CTL",
+    abbr: "Long-term load",
     plain: {
-      en: "CTL = Fitness — your average daily training load over the last ~6 weeks (42 days). It grows slowly and only with consistency.",
-      es: "CTL = forma física — tu carga promedio de las últimas ~6 semanas (42 días). Crece despacio y solo con constancia.",
+      en: "42-day exponentially weighted legacy load estimate. It describes recorded training, not measured fitness, and cannot be compared numerically with J Base.",
+      es: "Estimación de carga histórica con ponderación exponencial de 42 días. Describe el entrenamiento registrado, no la condición física medida; no equivale a J Base.",
     },
-    source: "TrainingPeaks",
   },
   atl: {
-    abbr: "ATL",
+    abbr: "Recent load",
     plain: {
-      en: "ATL = Fatigue — your training load over the last 7 days. Rises fast after hard days; fades in a few easy ones.",
-      es: "ATL = fatiga — tu carga de los últimos 7 días. Sube rápido con días duros y baja con días fáciles.",
+      en: "7-day exponentially weighted legacy load estimate. It describes recorded training, not measured fatigue, and is not J Recent.",
+      es: "Estimación de carga histórica con ponderación exponencial de 7 días. Describe el entrenamiento registrado, no la fatiga medida; no es J Recent.",
     },
-    source: "TrainingPeaks",
   },
   tsb: {
-    abbr: "TSB",
+    abbr: "Load balance",
     plain: {
-      en: "TSB = Form — Fitness minus Fatigue. Positive = fresh (race-ready). Negative = normal tiredness mid-training; race week you want it near zero.",
-      es: "TSB = forma del día — forma física menos fatiga. Positivo = fresco (listo para competir). Negativo = cansancio normal a mitad del bloque.",
+      en: "Long-term minus recent legacy load. A positive value does not establish recovery or race readiness; this is not J Balance.",
+      es: "Carga histórica a largo plazo menos carga reciente. Un valor positivo no demuestra recuperación ni preparación para competir; no es J Balance.",
     },
-    source: "TrainingPeaks",
   },
   pmc: {
-    abbr: "PMC",
+    abbr: "Legacy load trends",
     plain: {
-      en: "PMC — Performance Management Chart: the Fitness / Fatigue / Form curve over time, the standard chart from TrainingPeaks.",
-      es: "PMC — gráfico de gestión del rendimiento: la curva de forma física / fatiga / forma del día a lo largo del tiempo (estándar de TrainingPeaks).",
+      en: "Long-term load, recent load and their difference over time, using historical data and estimates. Missing sessions limit interpretation.",
+      es: "Carga a largo plazo, carga reciente y su diferencia, usando datos históricos y estimaciones. Las sesiones faltantes limitan su interpretación.",
     },
-    source: "TrainingPeaks",
   },
   if: {
-    abbr: "IF",
+    abbr: "Legacy intensity estimate",
     plain: {
-      en: "IF — Intensity Factor: how hard a session was relative to your threshold (1.0 = a full hour at threshold effort).",
-      es: "IF — factor de intensidad: qué tan dura fue la sesión frente a tu umbral (1.0 = una hora completa a esfuerzo de umbral).",
+      en: "Historical threshold-relative intensity estimate. Check its source and threshold date; it is not reported session RPE.",
+      es: "Estimación histórica de intensidad relativa al umbral. Revisa la fuente y fecha del umbral; no es el RPE reportado de la sesión.",
     },
-    source: "TrainingPeaks",
   },
   np: {
-    abbr: "NP",
+    abbr: "Provider power metric",
     plain: {
-      en: "NP — Normalized Power: the power your body felt like it produced, weighting hard surges more than easy coasting.",
-      es: "NP — potencia normalizada: la potencia que tu cuerpo percibió, dando más peso a los arranques duros que al pedaleo suave.",
+      en: "Imported or legacy processed power value, in watts. Consult the source provider for its method; it is not JMM-original or JStress.",
+      es: "Valor de potencia procesado, importado o histórico, en vatios. Consulta el método del proveedor; no es una métrica original de JMM ni JStress.",
     },
-    source: "TrainingPeaks",
+  },
+  jstress: {
+    abbr: "JStress",
+    plain: {
+      en: "Completed minutes × reported session RPE (0–10), in arbitrary units. Missing duration or RPE means unknown, not zero. This session-RPE method is not a new JMM scientific discovery.",
+      es: "Minutos completados × RPE reportado de la sesión (0–10), en unidades arbitrarias. Sin duración o RPE, el valor es desconocido, no cero. El método sesión-RPE no es un nuevo descubrimiento de JMM.",
+    },
+  },
+  jrecent: {
+    abbr: "J Recent",
+    plain: {
+      en: "7-day exponential average of daily JStress, available after 7 consecutive known days. Gaps restart the series; unknown days are not rest. This is not a fatigue measurement.",
+      es: "Promedio exponencial de JStress diario de 7 días, disponible tras 7 días conocidos consecutivos. Los vacíos reinician la serie; un día desconocido no es descanso. No mide fatiga.",
+    },
+  },
+  jbase: {
+    abbr: "J Base",
+    plain: {
+      en: "42-day exponential average of daily JStress, available after 42 consecutive known days. Check coverage and source; this describes recorded load, not measured fitness.",
+      es: "Promedio exponencial de JStress diario de 42 días, disponible tras 42 días conocidos consecutivos. Revisa cobertura y fuente; describe carga registrada, no condición física medida.",
+    },
+  },
+  jbalance: {
+    abbr: "J Balance",
+    plain: {
+      en: "J Base minus J Recent, available only when both are known on the same JStress scale. Positive or negative values do not establish recovery, safety or race readiness.",
+      es: "J Base menos J Recent, disponible solo si ambos son conocidos en la misma escala de JStress. Un valor positivo o negativo no demuestra recuperación, seguridad ni preparación competitiva.",
+    },
   },
   lthr: {
     abbr: "LTHR",
@@ -90,15 +111,15 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   hrv: {
     abbr: "HRV",
     plain: {
-      en: "HRV — heart-rate variability: the tiny beat-to-beat variation your watch measures each morning. Above your baseline = recovered; clearly below = back off.",
-      es: "HRV — variabilidad de la frecuencia cardíaca: la pequeña variación entre latidos que tu reloj mide cada mañana. Sobre tu promedio = recuperado; muy por debajo = mejor suave.",
+      en: "HRV — variation between heartbeats. Compare the same measurement method with your own baseline alongside symptoms, sleep and training; it does not diagnose recovery or autonomic health.",
+      es: "HRV — variación entre latidos. Compara el mismo método con tu referencia personal junto con síntomas, sueño y entrenamiento; no diagnostica recuperación ni salud autonómica.",
     },
   },
   rmssd: {
     abbr: "RMSSD",
     plain: {
-      en: "RMSSD — the standard morning HRV number (in milliseconds) reported by Whoop, Oura, Garmin and Apple Watch.",
-      es: "RMSSD — el número estándar de HRV matutina (en milisegundos) que reportan Whoop, Oura, Garmin y Apple Watch.",
+      en: "RMSSD — one HRV measurement, in milliseconds. Devices can use different measures and sampling periods; do not treat SDNN and RMSSD as interchangeable.",
+      es: "RMSSD — una medida de HRV, en milisegundos. Los dispositivos pueden usar medidas y períodos distintos; SDNN y RMSSD no son intercambiables.",
     },
   },
   vo2max: {
@@ -125,8 +146,8 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   rpe: {
     abbr: "RPE",
     plain: {
-      en: "RPE — how hard something FEELS, from 1 (couch) to 10 (all-out). Your brain's effort gauge.",
-      es: "RPE — qué tan duro SE SIENTE el esfuerzo, de 1 (sofá) a 10 (al máximo). El medidor de esfuerzo de tu cerebro.",
+      en: "RPE — how hard something FEELS, from 0 (rest) to 10 (maximal effort). Your brain's effort gauge.",
+      es: "RPE — qué tan duro SE SIENTE el esfuerzo, de 0 (reposo) a 10 (esfuerzo máximo). El medidor de esfuerzo de tu cerebro.",
     },
   },
   tpace: {
@@ -160,15 +181,15 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   cmj: {
     abbr: "CMJ",
     plain: {
-      en: "CMJ — countermovement jump: a morning vertical-jump test that flags neuromuscular fatigue (a tired jump = a tired nervous system).",
-      es: "CMJ — salto con contramovimiento: una prueba matutina de salto vertical que detecta fatiga neuromuscular (salto bajo = sistema nervioso cansado).",
+      en: "CMJ — countermovement jump: a repeatable jump test for performance trends. Changes can reflect fatigue, technique or measurement variation; they do not diagnose nervous-system status.",
+      es: "CMJ — salto con contramovimiento: prueba repetible para observar tendencias. Los cambios pueden reflejar fatiga, técnica o variación de medición; no diagnostican el estado del sistema nervioso.",
     },
   },
   sd: {
     abbr: "1 SD",
     plain: {
-      en: "1 SD — one 'normal day-to-day swing' in your own readings. Beyond that, it's a real signal, not noise.",
-      es: "1 SD — una 'variación normal del día a día' en tus propias mediciones. Más que eso es señal real, no ruido.",
+      en: "1 SD — one standard deviation, a measure of variation in your readings. Exceeding it alone does not prove a meaningful physiological change.",
+      es: "1 SD — una desviación estándar, una medida de variación en tus lecturas. Superarla por sí sola no demuestra un cambio fisiológico relevante.",
     },
   },
   trainx: {
@@ -182,10 +203,10 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   racex: {
     abbr: "AdvanzedRacing",
     plain: {
-      en: "AdvanzedRacing — JasMiamiMethod's race-day prediction engine (same idea as TriDot's RaceX): your current fitness + the course + the weather, in one number.",
-      es: "AdvanzedRacing — el motor de predicción de carrera de JasMiamiMethod (la misma idea que RaceX de TriDot): tu condición actual + el recorrido + el clima, en un solo número.",
+      en: "AdvanzedRacing — JasMiamiMethod's race-day prediction engine (a model estimate, not a guaranteed result): your current fitness + the course + the weather, in one number.",
+      es: "AdvanzedRacing — el motor de predicción de carrera de JasMiamiMethod (una estimación del modelo, no un resultado garantizado): tu condición actual + el recorrido + el clima, en un solo número.",
     },
-    source: "JasMiamiMethod (concept: TriDot RaceX)",
+    source: "JasMiamiMethod",
   },
 };
 

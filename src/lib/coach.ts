@@ -1,3 +1,4 @@
+import { METRIC_LANGUAGE_RULES } from "./metric-language";
 // JasMiamiMethod — AI Coach (Gemini Flash via Google AI Studio, direct API).
 // Caches a briefing for the current athlete context and serves instantly; generation runs fire-and-forget
 // in the background and backfills the cache. (ponytail: in-memory Map — survives across
@@ -131,6 +132,8 @@ DNA highlights: ${c.dnaHighlights.length ? c.dnaHighlights.join("; ") : "none on
 Athlete history (analyze this BEFORE advising):
 ${c.historyDigest || "no history yet"}
 ${protocolCoachContext(c.todaySession ? [c.todaySession] : [])}
+
+${METRIC_LANGUAGE_RULES}
 
 Coaching rules: use only current observations to judge readiness. Missing or stale HRV means uncertainty, not a red day. Review symptoms and performance with recovery trends; a single wearable score is not a diagnosis. Completion alone is not permission to increase training. An injury flag or saved rest decision takes precedence. Never invent measurements or sources. Do not override the saved prescription; propose changes through the reviewed protocol workflow.
 

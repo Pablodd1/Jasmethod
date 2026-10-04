@@ -63,6 +63,9 @@ export default function CalendarPage() {
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [activityBusy, setActivityBusy] = useState(false);
   const [activityMessage, setActivityMessage] = useState("");
+  const [resultFor, setResultFor] = useState<any>(null);
+  const [resultBusy, setResultBusy] = useState(false);
+  const [resultError, setResultError] = useState("");
   const [evForm, setEvForm] = useState({
     title: "",
     date: format(new Date(), "yyyy-MM-dd"),
@@ -112,6 +115,46 @@ export default function CalendarPage() {
       const observed = new Date(`${String(fields.date)}T12:00:00`);
       setMonth(observed); await load(observed);
     } catch (error) { setMutationError((error as Error).message); } finally { setActivityBusy(false); }
+  }
+
+  useEffect(() => {
+    if (resultFor) document.getElementById("session-result-outcome")?.focus();
+  }, [resultFor]);
+
+  function openResult(session: any) {
+    setResultError(""); setActivityMessage(""); setMutationError("");
+    if (session.matchedPlanId) {
+      const actual = [...workouts, ...stripWorkouts, ...allSessions].find(item => item.id === session.matchedPlanId && !item.matchedPlanId);
+      if (!actual) {
+        setResultFor(null);
+        setMutationError(es ? "Esta sesión está vinculada a una actividad importada. Abre la fecha de esa actividad y edita su resultado; el plan no se cuenta otra vez en JStress." : "This plan is linked to an imported activity. Open that activity's date and edit its result; the plan is not counted again in JStress.");
+        return;
+      }
+      setActivityMessage(es ? "Editando la actividad importada vinculada. El plan se conserva y no se cuenta dos veces." : "Editing the linked imported activity. Its plan is retained and is not counted twice.");
+      setResultFor(actual);
+      return;
+    }
+    setResultFor(session);
+  }
+
+  async function saveResult(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resultFor || resultBusy) return;
+    setResultBusy(true); setResultError("");
+    const fields = Object.fromEntries(new FormData(event.currentTarget));
+    try {
+      const response = await fetch("/api/plan", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: resultFor.id, expectedRevision: resultFor.revision, ...fields }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.ok !== true || result.workout?.id !== resultFor.id) throw Error(result.error || "Could not verify the saved workout result.");
+      setResultFor(null);
+      setActivityMessage(es ? "Resultado actualizado en la sesión existente. No se creó otra actividad." : "Result updated on the existing session. No additional activity was created.");
+      try { await load(month); }
+      catch { setMutationError(es ? "El resultado se guardó, pero no se pudo actualizar el calendario. Recarga la página." : "The result was saved, but the calendar could not refresh. Reload the page."); }
+    } catch (error) { setResultError(error instanceof Error ? error.message : "Could not save result."); }
+    finally { setResultBusy(false); }
   }
 
   async function addEvent(e: React.FormEvent) {
@@ -273,6 +316,26 @@ export default function CalendarPage() {
         </div>
 
         {activityMessage && <p role="status" className="text-sm text-ocean-700">{activityMessage}</p>}
+        {resultFor && <form key={resultFor.id} className="card space-y-3" onSubmit={saveResult}>
+          <h2 className="font-display text-lg font-bold">{es ? "Editar resultado" : "Edit workout result"}: {resultFor.title}</h2>
+          <p className="text-sm">{dateKey(new Date(resultFor.date), user?.timezone)} · {es ? "Edita esta actividad existente, incluso si llegó de un dispositivo. No añadas otra para la misma sesión." : "Update this existing activity, including a device import. Do not add another activity for the same session."}</p>
+          <p className="text-xs text-slate-600">{es ? "Deja vacío lo desconocido; no uses minutos planificados como reales. JStress requiere minutos reales y tu esfuerzo percibido." : "Leave unknown values blank; do not use planned minutes as actuals. JStress needs actual minutes and your reported effort."}</p>
+          <fieldset disabled={resultBusy} className="grid sm:grid-cols-3 gap-3">
+            <label>{es ? "Resultado" : "Outcome"}<select id="session-result-outcome" name="feedbackStatus" required className="input" defaultValue={resultFor.feedbackStatus || ""}>
+              <option value="">{es ? "Elige resultado" : "Choose outcome"}</option>
+              <option value="completed">{es ? "Completado" : "Completed"}</option>
+              <option value="partial">{es ? "Parcial" : "Partially completed"}</option>
+              <option value="substituted">{es ? "Sustituido" : "Substituted"}</option>
+              <option value="skipped">{es ? "Omitido" : "Skipped"}</option>
+              <option value="unknown">{es ? "Desconocido" : "Unknown / not reported"}</option>
+            </select></label>
+            <label>{es ? "Minutos reales" : "Actual minutes"}<input name="actualDurationMin" className="input" type="number" min="0" max="1440" step="1" defaultValue={resultFor.actualDurationMin ?? ""} placeholder="—" /></label>
+            <label>{es ? "Esfuerzo 0–10" : "Session effort 0–10"}<input name="rpe" className="input" type="number" min="0" max="10" step="1" defaultValue={resultFor.rpe ?? ""} placeholder="—" /><span className="text-xs">{es ? "0 sin esfuerzo · 10 máximo" : "0 no effort · 10 maximal"}</span></label>
+            <label className="sm:col-span-3">{es ? "Notas (opcional)" : "Notes (optional)"}<textarea name="feedbackNote" className="input" maxLength={4000} defaultValue={resultFor.feedbackNote || ""} /></label>
+          </fieldset>
+          {resultError && <p role="alert" className="text-red-700">{resultError}</p>}
+          <div className="flex gap-2"><button type="submit" disabled={resultBusy} className="btn-primary">{resultBusy ? (es ? "Guardando…" : "Saving…") : (es ? "Guardar resultado" : "Save result")}</button><button type="button" className="btn-secondary" disabled={resultBusy} onClick={() => setResultFor(null)}>{es ? "Cancelar" : "Cancel"}</button></div>
+        </form>}
         {showActivityForm && (
           <form className="card space-y-3" onSubmit={addUnplannedActivity}>
             <h2 className="font-display font-bold text-lg">{es ? "Actividad realizada no planificada" : "Unplanned activity you actually did"}</h2>
@@ -281,7 +344,7 @@ export default function CalendarPage() {
               <label className="text-sm">{es ? "Deporte realizado" : "Actual sport"}<select name="sport" required defaultValue="" className="input"><option value="" disabled>{es ? "Seleccionar" : "Choose"}</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing", "other"].map((sport) => <option key={sport} value={sport}>{sport}</option>)}</select></label>
               <label className="text-sm">{es ? "Fecha local observada" : "Local observation date"}<input name="date" type="date" required max={dateKey(new Date(), user?.timezone)} defaultValue={selected || ""} className="input" /></label>
               <label className="text-sm">{es ? "Minutos reales" : "Actual minutes"}<input name="actualDurationMin" type="number" required min={1} max={1440} step={1} className="input" placeholder="—" /></label>
-              <label className="text-sm">{es ? "Esfuerzo 1–10 (opcional)" : "Exertion 1–10 (optional)"}<input name="rpe" type="number" min={1} max={10} step={1} className="input" placeholder="—" /><span className="text-xs text-slate-500">{es ? "1 muy fácil · 5 moderado · 10 máximo" : "1 very easy · 5 moderate · 10 maximal"}</span></label>
+              <label className="text-sm">{es ? "Esfuerzo 0–10 (opcional)" : "Exertion 0–10 (optional)"}<input name="rpe" type="number" min={0} max={10} step={1} className="input" placeholder="—" /><span className="text-xs text-slate-500">{es ? "0 sin esfuerzo · 5 moderado · 10 máximo" : "0 no effort · 5 moderate · 10 maximal"}</span></label>
               <label className="text-sm">{es ? "Distancia (km, opcional)" : "Distance (km, optional)"}<input name="distanceKm" type="number" min={0} max={1500} step="any" className="input" placeholder="—" /></label>
               <label className="text-sm">{es ? "Repeticiones (opcional)" : "Repetitions (optional)"}<input name="reps" type="number" min={0} max={100000} step={1} className="input" placeholder="—" /></label>
               <label className="text-sm">{es ? "Carga (kg, opcional)" : "Load (kg, optional)"}<input name="loadKg" type="number" min={0} max={1500} step="any" className="input" placeholder="—" /></label>
@@ -460,6 +523,7 @@ export default function CalendarPage() {
                               )}
                               <span className="truncate">{"priority" in e ? `🏁 ${e.name}` : e.title}</span>
                             </div>
+                            {"planned" in e && dateKey(new Date(e.date), user?.timezone) <= dateKey(new Date(), user?.timezone) && <button type="button" className="btn-secondary text-xs mt-2" disabled={resultBusy} onClick={() => openResult(e)}>{es ? "Editar resultado" : "Edit result"}</button>}
                             <div className="text-[11px] text-slate-500 mt-0.5">
                               {"priority" in e ? (
                                 <>
@@ -675,6 +739,7 @@ export default function CalendarPage() {
                             {fmtMin(s.durationMin)} ·{" "}
                             {s.intensity?.toUpperCase() || "Z2"}
                           </span>
+                          <button type="button" className="btn-secondary text-xs px-2.5 py-1.5" disabled={resultBusy || dateKey(new Date(s.date), user?.timezone) > dateKey(new Date(), user?.timezone)} onClick={() => openResult(s)}>{es ? "Editar resultado" : "Edit result"}</button>
                           <button
                             onClick={() => openMove(s)}
                             className="btn-secondary text-xs px-2.5 py-1.5"

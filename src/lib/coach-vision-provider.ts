@@ -28,7 +28,7 @@ const fieldRules: readonly FieldRule[] = [
   { kind: "profile", field: "weightKg", type: "number", unit: "kg", min: 20, max: 350 },
   { kind: "workout_feedback", field: "feedbackStatus", type: "string", unit: null, values: ["completed", "partial", "substituted", "skipped"] },
   { kind: "workout_feedback", field: "actualDurationMin", type: "number", unit: "min", min: 0, max: 1440, integer: true },
-  { kind: "workout_feedback", field: "rpe", type: "number", unit: "1-10", min: 1, max: 10, integer: true },
+  { kind: "workout_feedback", field: "rpe", type: "number", unit: "0-10", min: 0, max: 10, integer: true },
   { kind: "workout_feedback", field: "actualSport", type: "string", unit: null, values: COACH_SPORTS },
   { kind: "workout_plan", field: "durationMin", type: "number", unit: "min", min: 1, max: 1440, integer: true },
   { kind: "workout_plan", field: "sport", type: "string", unit: null, values: COACH_SPORTS },

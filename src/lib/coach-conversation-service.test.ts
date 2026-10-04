@@ -76,7 +76,8 @@ function fixture(candidates = [candidate()]) {
         deleteMany: async ({ where }: any) => { draft.messages = draft.messages.filter((row: any) => !matches(row, where)); },
       },
       athleteProfile: { findUnique: async ({ where }: any) => matches(draft.profile, where) ? draft.profile : null, upsert: async ({ where, update: data }: any) => { assert.equal(where.userId, actor.id); draft.writes.push("profile"); return update(draft.profile, data); } },
-      workout: { findMany: async () => [], findFirst: async ({ where }: any) => matches(draft.workout, where) ? draft.workout : null, update: async ({ where, data }: any) => { assert.equal(where.id, draft.workout.id); draft.writes.push("workout"); return update(draft.workout, data); } },
+      workout: { findMany: async ({ where, select }: any) => { if (select?.completed === true) { assert.equal(where.userId, actor.id); assert.equal(where.matchedPlanId, null); assert.equal(select.tss, undefined); draft.loadQuery = where; return (draft.loadWorkouts || []).filter((row: any) => matches(row, where)); } return []; }, findFirst: async ({ where }: any) => matches(draft.workout, where) ? draft.workout : null, update: async ({ where, data }: any) => { assert.equal(where.id, draft.workout.id); draft.writes.push("workout"); return update(draft.workout, data); } },
+      metricObservation: { findMany: async ({ where }: any) => { assert.equal(where.userId, actor.id); draft.restQuery = where; return (draft.restObservations || []).filter((row: any) => matches(row, where)); } },
       dailyCheckin: { findUnique: async () => draft.checkin ?? null },
       auditLog: { findFirst: async () => null, create: async ({ data }: any) => { draft.audits.push(data); return data; } },
     };
@@ -382,4 +383,37 @@ test("unreviewed available-time updates persist a safety review marker until cle
       assert.notEqual(JSON.parse(latest.metadata).ruleId, "coach-conversation-v1:clarify-prior-safety");
     } finally { f.restore(); }
   }
+});
+
+
+test("conversation reads owner-only actual JStress and explicit rest without legacy substitution", async () => {
+  const f = fixture();
+  try {
+    const recordedAt = new Date(); recordedAt.setUTCDate(recordedAt.getUTCDate() - 1);
+    const recorded = { id: "actual-a", userId: actor.id, date: recordedAt, completed: true, planned: false, matchedPlanId: null, durationMin: 25, actualDurationMin: null, rpe: 4, tss: 999 };
+    f.state.loadWorkouts = [recorded, { ...recorded, id: "other", userId: "athlete-b" }, { ...recorded, id: "matched-plan", matchedPlanId: "actual-a" }, { ...recorded, id: "incomplete", completed: false }, { ...recorded, id: "partial", completed: false, feedbackStatus: "partial", actualDurationMin: 10, rpe: 3 }];
+    f.state.restObservations = [{ userId: actor.id, metricType: "jmm_rest_day", source: "manual", value: 1, qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: new Date(`${today}T00:00Z`) }];
+    const result = await appendConversation(actor, { message: "What is my JStress?" });
+    assert.match(result.answer, /Recorded-session total: 130 AU/);
+    assert.match(result.answer, /2\/2 performed sessions/);
+    assert.match(result.answer, new RegExp(`JStress \\(${today}\\): 0 AU`));
+    assert.match(result.answer, /88 days are unknown/);
+    assert.doesNotMatch(result.answer, /999/);
+    assert.equal(f.state.loadQuery.userId, actor.id);
+    assert.equal(f.state.restQuery.measurementMethod, "athlete_reported_rest");
+    assert.equal(f.state.loadQuery.date.gte.toISOString().slice(11), "00:00:00.000Z");
+  } finally { f.restore(); }
+});
+
+
+test("stored legacy RPE proposals keep their exact units and reject zero or unit changes", () => {
+  const old = candidate({ id: "legacy-rpe", kind: "workout_feedback", field: "rpe", value: 4, unit: "1-10", sessionId: "session-a" });
+  assert.deepEqual(validateSelectedCandidates([old], [old], today), [old]);
+  assert.deepEqual(validateSelectedCandidates([old], [{ ...old, value: 1 }], today), [{ ...old, value: 1 }]);
+  assert.throws(() => validateSelectedCandidates([old], [{ ...old, value: 0 }], today));
+  assert.throws(() => validateSelectedCandidates([old], [{ ...old, value: 11 }], today));
+  assert.throws(() => validateSelectedCandidates([old], [{ ...old, value: "4" }], today));
+  assert.throws(() => validateSelectedCandidates([old], [{ ...old, unit: "0-10" }], today));
+  const otherField = { ...old, field: "actualDurationMin" };
+  assert.throws(() => validateSelectedCandidates([otherField], [otherField], today));
 });

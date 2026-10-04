@@ -1,3 +1,4 @@
+import { computeJMetrics } from "./j-metrics";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildCoachReply, conversationClarifications, extractLocalCandidates, parseConversationInput, validateCoachCandidates, type CoachCandidate, type CoachReplyContext } from "./coach-conversation";
@@ -218,4 +219,47 @@ test("personal coaching uses saved goal/session and never invents a warm-up", ()
 test("last recorded workout question uses reported actual minutes", () => {
   const reply = buildCoachReply("What was my last recorded workout?", { ...ready, recentFeedback: [{ date: ready.localToday, feedbackStatus: "completed", actualDurationMin: 25, rpe: 4 }] });
   assert.match(reply.ruleId, /remember-reported-history$/); assert.match(reply.answer, /25 min/);
+});
+
+
+test("local JMetrics reply uses saved actual effort, preserves unknown trends and rest-day questions", () => {
+  const jMetrics = computeJMetrics([{ date: new Date("2026-10-03T12:00Z"), completed: true, planned: true, durationMin: 90, actualDurationMin: 30, rpe: 4 }], new Date("2026-10-03T18:00Z"), "UTC");
+  const result = buildCoachReply("What is my JStress?", { ...context, jMetrics, approvedSession: { id: "rest", date: context.localToday, approved: true, isRestDay: true } });
+  assert.equal(result.ruleId, "coach-conversation-v1:jmetrics-recorded-summary");
+  assert.match(result.answer, /JStress \(2026-10-03\): 120 AU/);
+  assert.match(result.answer, /J Base: unknown/);
+  assert.equal(buildCoachReply("Explain my J Metrics", { ...context, jMetrics }).ruleId, "coach-conversation-v1:jmetrics-recorded-summary");
+  assert.match(result.answer, /1\/1 performed sessions/);
+  assert.match(result.answer, /89 days are unknown/);
+  assert.doesNotMatch(result.answer, /360 AU/);
+  assert.match(buildCoachReply("Explica mis J Metrics", { ...context, language: "es", jMetrics }).answer, /89 días son desconocidos/);
+  assert.equal(buildCoachReply("What is JStress? I have chest pain", { ...context, jMetrics }).ruleId, "coach-conversation-v1:urgent-symptoms");
+});
+
+test("local JMetrics cannot fabricate values from missing or stale context", () => {
+  for (const jMetrics of [undefined, computeJMetrics([], new Date("2026-10-02T18:00Z"), "UTC")]) {
+    const result = buildCoachReply("What is my J Base?", { ...context, jMetrics });
+    assert.equal(result.ruleId, "coach-conversation-v1:jmetrics-unknown");
+    assert.match(result.answer, /unavailable/);
+    assert.doesNotMatch(result.answer, /J Base: 0/);
+  }
+});
+
+
+test("reported RPE zero remains a real value in text proposals and remembered history", () => {
+  const proposal = extractLocalCandidates("Today I completed my walk for 10 minutes, RPE 0/10.", { ...context, sessionId: "workout_1" }).find(candidate => candidate.field === "rpe");
+  assert.equal(proposal?.value, 0);
+  assert.equal(proposal?.unit, "0-10");
+  assert.equal(validateCoachCandidates([proposal], { localToday: context.localToday }).length, 1);
+  const response = buildCoachReply("What was my last recorded workout?", { ...context, recentFeedback: [{ date: context.localToday, actualDurationMin: 10, feedbackStatus: "completed", rpe: 0 }] });
+  assert.match(response.answer, /RPE 0\/10/);
+  assert.doesNotMatch(response.answer, /RPE unknown/);
+});
+
+
+test("new candidate validation does not accept the retired RPE unit by default", () => {
+  const old = { ...sample, kind: "workout_feedback", field: "rpe", unit: "1-10", value: 4, observedDate: context.localToday };
+  assert.deepEqual(validateCoachCandidates([old], context), []);
+  assert.equal(validateCoachCandidates([old], { ...context, allowStoredLegacyRpeUnit: true }).length, 1);
+  assert.deepEqual(validateCoachCandidates([{ ...old, value: 0 }], { ...context, allowStoredLegacyRpeUnit: true }), []);
 });

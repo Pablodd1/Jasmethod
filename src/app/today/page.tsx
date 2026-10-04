@@ -1,4 +1,5 @@
 "use client";
+import { JMetricsCard } from "@/components/j-metrics-card";
 import { StructuredSportEditor } from "@/components/StructuredSportEditor";
 import { CoachingConversation } from "@/components/coaching-conversation";
 import { CoachConversation } from "@/components/daily-training/coach-conversation";
@@ -317,11 +318,11 @@ export default function TodayPage() {
                 {session.verdict === "blocked" && <Link className="btn-secondary" href="/checkin">{es ? "Revisar check-in" : "Review check-in"}</Link>}
                 {session.capability && <FitDownloadActions key={`${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} title={session.title} capability={session.capability} disabled={offline || busy} es={es} />}
                 <StructuredSportEditor key={`structure-${session.id}-${session.revision}`} sessionId={session.id} sport={session.sport} disabled={offline || busy} es={es} onSaved={load} />
-                {/* TrainingPeaks-style summary: load · intensity · distance */}
+                {/* Reported load is separate from planned intensity and distance. */}
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: es ? "Carga est." : "TSS est.", value: session.tss ?? "—" },
-                    { label: es ? "IF est." : "IF est.", value: session.if ?? "—" },
+                    { label: "JStress (AU)", value: session.jStress?.value ?? "—" },
+                    { label: es ? "Intensidad objetivo" : "Target intensity", value: session.intensity?.toUpperCase() || "—" },
                     {
                       label: session.distanceKind === "prescribed_steps" ? (es ? "Distancia en bloques" : "Distance blocks") : (es ? "Distancia est." : "Distance est."),
                       value:
@@ -336,6 +337,9 @@ export default function TodayPage() {
                     </div>
                   ))}
                 </div>
+                <p className="text-xs text-slate-600">{es ? "JStress usa minutos realizados y RPE reportado; — indica datos incompletos." : "JStress uses completed minutes and reported RPE; — means incomplete data."} <Link href="/metrics" className="underline">{es ? "Cómo se calcula" : "How it is calculated"}</Link></p>
+                {session.jStress?.reason && <p className="text-xs text-slate-600">{session.jStress.reason}</p>}
+                {session.matchedPlanId && <p className="text-sm"><Link href="/calendar" className="underline text-ocean-700">{es ? "Edita el resultado de la actividad importada vinculada en Calendario. El plan no se cuenta dos veces." : "Edit the linked imported activity's result in Calendar. The plan is not counted twice."}</Link></p>}
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                   🍚 {es ? "COMBUSTIBLE PRE" : "PRE-WORKOUT FUEL"}: {session.fuel?.preSession?.carbsG > 0 ? (
                     <>
@@ -379,7 +383,7 @@ export default function TodayPage() {
                       <div className="space-y-2">
                         {session.prescription.steps.map((s: any, i: number) => (
                           <div key={i}>
-                            {/* Repeat-set header — the TrainingPeaks "Repeat N ×" line */}
+                            {/* Repeat-set header */}
                             {s.group && session.prescription.steps[i - 1]?.group !== s.group && (
                               <div className="mt-2 mb-1.5 first:mt-0 rounded-lg bg-ink-900 text-paper px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide">
                                 🔁 {s.group}
@@ -641,13 +645,13 @@ export default function TodayPage() {
                   >
                     {es ? "Publicar en Intervals.icu" : "Publish to Intervals.icu"}
                   </button>}
-                  <button
+                  {!session.matchedPlanId && <button
                     className="btn-secondary"
                     disabled={busy || offline}
                     onClick={() => setFeedback(!feedback)}
                   >
                     {es ? "Registrar resultado" : "Log workout result"}
-                  </button>
+                  </button>}
                   <button
                     className="btn-secondary"
                     disabled={
@@ -671,7 +675,7 @@ export default function TodayPage() {
                 </div>
               </div>
             </div>
-            {feedback && (
+            {feedback && !session.matchedPlanId && (
               <form
                 className="card space-y-3"
                 onSubmit={(e) => {
@@ -725,12 +729,12 @@ export default function TodayPage() {
                     />
                   </label>
                   <label>
-                    {es ? "Esfuerzo 1–10" : "Effort 1–10"}
+                    {es ? "Esfuerzo 0–10" : "Effort 0–10"}
                     <input
                       name="rpe"
                       className="input"
                       type="number"
-                      min="1"
+                      min="0"
                       max="10"
                       defaultValue={session.rpe ?? ""}
                     />
@@ -786,6 +790,7 @@ export default function TodayPage() {
             </Link>
           </div>
         )}
+        {user && data && <JMetricsCard key={user.id} es={es} refreshKey={data} />}
         {user && <CoachConversation
           key={user.id}
           athleteId={user.id}
