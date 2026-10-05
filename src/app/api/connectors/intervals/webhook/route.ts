@@ -1,84 +1,44 @@
-import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "@/lib/capabilities";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { logEvent } from "@/lib/telemetry";
-
+import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "@/lib/capabilities";
+import { intervalsEventTypes, intervalsEventHash, intervalsSecretMatches } from "@/lib/intervals-ingest";
 export const dynamic = "force-dynamic";
-
-// POST /api/connectors/intervals/webhook — Intervals.icu app webhooks.
-// Registered in the OAuth application form. Intervals signs nothing; the
-// shared secret travels in the Authorization header (configured in the app
-// form + INTERVALS_WEBHOOK_SECRET env). Events are persisted to WebhookEvent
-// and reconciled by the worker/cron — the route itself only records, so
-// retries are always safe.
+// Official app webhook contract: { secret, events: [...] }. Do not persist the secret.
+// https://forum.intervals.icu/t/intervals-icu-api-integration-cookbook/80090
 export async function POST(req: Request) {
   if (!intervalsConnectorEnabled()) return NextResponse.json({ error: INTERVALS_DISABLED_MESSAGE }, { status: 503 });
   const secret = process.env.INTERVALS_WEBHOOK_SECRET;
   if (!secret) return NextResponse.json({ error: "Not configured" }, { status: 503 });
-  const auth = req.headers.get("authorization") || "";
-  if (auth !== `Bearer ${secret}` && auth !== secret)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const body = await req.json().catch(() => null);
-  const type = String(body?.type || "");
-  const athleteId = String(body?.athlete_id || body?.athleteId || "");
-  if (!type || !athleteId)
-    return NextResponse.json({ error: "Bad payload" }, { status: 400 });
-
-  // Persist first (Codex review P1-6): if we cannot record the event we must
-  // NOT acknowledge it — Intervals will retry, which is the correct behavior.
-  // Processing is the durable queue's job; this route only records.
+  let body: any;
   try {
-    await prisma.webhookEvent.create({
-      data: {
-        provider: "intervals",
-        eventId: `${type}:${athleteId}:${body?.event_id || Date.now()}`,
-        payload: JSON.stringify(body).slice(0, 8000),
-      },
+    if (Number(req.headers.get("content-length")) > 1048576) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+    const text = await req.text();
+    if (Buffer.byteLength(text) > 1048576) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+    body = JSON.parse(text);
+  } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+  if (!intervalsSecretMatches(body?.secret, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!Array.isArray(body.events) || body.events.length > 100 || body.events.some((e: any) => !e || typeof e.type !== "string" || typeof e.athlete_id !== "string" || !e.athlete_id || e.athlete_id.length > 128 || typeof e.timestamp !== "string" || !Number.isFinite(Date.parse(e.timestamp))))
+    return NextResponse.json({ error: "Invalid events" }, { status: 400 });
+  try {
+    const result = await prisma.$transaction(async tx => {
+      let queued = 0, ignored = 0;
+      for (const event of body.events) {
+        if (!intervalsEventTypes.has(event.type)) { ignored++; continue; }
+        const connections = await tx.connector.findMany({ where: { provider: "intervals", externalRef: event.athlete_id, status: { in: ["connected", "error"] } }, select: { id: true, userId: true } });
+        if (!connections.length) { ignored++; continue; }
+        if (connections.length > 1) throw new Error("Ambiguous Intervals athlete mapping");
+        const conn = connections[0];
+        // Carry only routing metadata; the worker fetches the current, authorized record.
+        const safeEvent = { athlete_id: event.athlete_id, type: event.type, timestamp: event.timestamp,
+          ...(event.activity?.id != null ? { activity: { id: event.activity.id } } : {}) };
+        const dedupeKey = `intervals:${conn.id}:${intervalsEventHash(event)}`;
+        await tx.syncJob.upsert({ where: { dedupeKey }, update: {}, create: {
+          userId: conn.userId, kind: "intervals", dedupeKey, payload: JSON.stringify({ connectorId: conn.id, event: safeEvent }),
+        } });
+        queued++;
+      }
+      return { queued, ignored };
     });
-  } catch (e: any) {
-    // Duplicate redelivery = already recorded = accept (Intervals must not
-    // retry forever). ONLY a genuine storage outage returns 503.
-    if (e?.code === "P2002")
-      return NextResponse.json({ ok: true, duplicate: true });
-    return NextResponse.json({ error: "Could not persist event" }, { status: 503 });
-  }
-
-  await logEvent({
-    kind: "info",
-    source: "sync",
-    route: "/api/connectors/intervals/webhook",
-    message: `type=${type} athlete=${athleteId}`,
-  }).catch(() => {});
-
-  // CONSUMER (Codex review #3 P1-3): route the event to the athlete via the
-  // stored externalRef, then enqueue a DURABLE refresh of their connected
-  // ingest providers. An Intervals "ACTIVITY_UPLOADED" bell almost always
-  // means the athlete's watch also pushed to Strava/Garmin — the refresh is
-  // what actually moves data into the athlete record and coaching pipeline.
-  const connector = await prisma.connector
-    .findFirst({
-      where: { provider: "intervals", externalRef: athleteId, status: "connected" },
-      select: { userId: true },
-    })
-    .catch(() => null);
-  if (!connector)
-    // Unknown athlete: recorded (above) but nothing to refresh — accepted so
-    // Intervals stops retrying; the mapping is fixed at connect time.
-    return NextResponse.json({ ok: true, routed: false });
-  const { enqueueSyncJob } = await import("@/lib/background-jobs");
-  const connected = await prisma.connector
-    .findMany({
-      where: { userId: connector.userId, status: "connected", provider: { in: ["strava", "whoop", "oura", "google_cal"] } },
-      select: { provider: true },
-    })
-    .catch(() => []);
-  for (const { provider } of connected)
-    await enqueueSyncJob(
-      connector.userId,
-      "sync",
-      `ivwh:${provider}:${connector.userId}:${body?.event_id || type}:${Date.now()}`,
-      { provider },
-    ).catch(() => {});
-  return NextResponse.json({ ok: true, routed: true, providers: connected.length });
+    return NextResponse.json({ ok: true, ...result });
+  } catch { return NextResponse.json({ error: "Could not queue events" }, { status: 503 }); }
 }

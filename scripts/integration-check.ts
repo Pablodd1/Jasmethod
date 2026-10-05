@@ -240,8 +240,9 @@ async function main() {
       (s: any) => s.durationMin === 0,
     ),
   );
+  const restRevision = (await request("/api/today", a.cookie)).data.sessions.find((s: any) => s.id === w.id).revision;
   await request(
-    `/api/workout/approve?sessionId=${w.id}`,
+    `/api/workout/approve?sessionId=${w.id}&expectedRevision=${restRevision}`,
     a.cookie,
     "POST",
     undefined,
@@ -258,7 +259,8 @@ async function main() {
     })
   ).data.workout;
   assert.ok(JSON.parse(variation.prescription).steps.length > 3);
-  const fit = await fetch(`${base}/api/workout/approve?sessionId=${w.id}`, {
+  const currentRevision = (await request("/api/today", a.cookie)).data.sessions.find((s: any) => s.id === w.id).revision;
+  const fit = await fetch(`${base}/api/workout/approve?sessionId=${w.id}&expectedRevision=${currentRevision}`, {
     method: "POST",
     headers: { cookie: a.cookie },
   });
@@ -533,7 +535,7 @@ async function main() {
     4,
   );
   const protocolFit = await fetch(
-    `${base}/api/workout/approve?sessionId=${protocolSession.id}`,
+    `${base}/api/workout/approve?sessionId=${protocolSession.id}&expectedRevision=${protocolToday.revision}`,
     { method: "POST", headers: { cookie: c.cookie } },
   );
   assert.equal(protocolFit.status, 200, protocolFit.status !== 200 ? await protocolFit.text() : undefined);

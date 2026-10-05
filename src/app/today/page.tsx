@@ -571,13 +571,17 @@ export default function TodayPage() {
                   )}
                 </details>
                 <div className="flex flex-wrap gap-2">
-                  <button className="btn-secondary" disabled={busy || offline || !session.capability?.available || session.approved} onClick={() => void approveSession()}>
-                    {es ? "Aprobar (correo si está activado)" : "Approve (email if opted in)"}
+                  <button className="btn-secondary" disabled={busy || offline || !session.capability?.available} onClick={() => void approveSession()}>
+                    {es ? "Aprobar revisión actual (correo si está activado)" : "Approve current revision (email if opted in)"}
                   </button>
+                  {data?.capabilities?.intervalsConnector === true && session.intervalsPublication && <p className="w-full text-xs text-slate-600" role="status">
+                    Intervals.icu: {session.intervalsPublication.status}. {es ? "Registro de publicación; no confirma el estado actual del calendario ni del reloj." : "Publication record; this does not confirm the current calendar or watch state."}
+                    {!session.intervalsPublication.revisionMatches && (es ? " La sesión ha cambiado desde esa publicación." : " The session has changed since that publication.")}
+                  </p>}
                   {data?.capabilities?.intervalsConnector === true &&
                   <button
                     className="btn-secondary"
-                    disabled={busy || offline || session.durationMin === 0}
+                    disabled={busy || offline || session.durationMin === 0 || !session.capability?.available || !["run", "bike"].includes(session.sport)}
                     onClick={async () => {
                       setBusy(true);
                       setError("");
@@ -588,16 +592,10 @@ export default function TodayPage() {
                           body: JSON.stringify({ sessionId: session.id, expectedRevision: session.revision }),
                         });
                         const d = await r.json().catch(() => ({}));
-                        if (!r.ok) throw Error(d.error || "Push failed");
-                        setMessage(
-                          d.structured
-                            ? es
-                              ? "Publicado en Intervals.icu con estructura de bicicleta. La recepción en el reloj no está verificada."
-                              : "Published to Intervals.icu with bike structure. Watch receipt is unverified."
-                            : es
-                              ? "Evento de calendario publicado en Intervals.icu con instrucciones. No se confirma un entrenamiento estructurado ni recepción en el reloj."
-                              : "Calendar event published to Intervals.icu with instructions. Structured device delivery and watch receipt are unconfirmed."
-                        );
+                        if (!r.ok || d.status !== "published") throw Error(d.error || "Publication was not confirmed. Refresh and check connection status.");
+                        setMessage(d.verification === "previous_receipt"
+                          ? (es ? "Esta revisión ya tiene un registro de publicación. No se comprobó de nuevo el calendario remoto ni el reloj." : "This revision already has a publication receipt. The remote calendar and watch were not checked again.")
+                          : (es ? "Entrenamiento estructurado aceptado por Intervals.icu. Comprueba Garmin Connect y tu reloj; la recepción no está verificada." : "Structured workout accepted by Intervals.icu. Check Garmin Connect and your watch; device receipt is not verified."));
                         await load();
                       } catch (e: any) {
                         setError(e.message);
@@ -608,6 +606,16 @@ export default function TodayPage() {
                   >
                     {es ? "Publicar en Intervals.icu" : "Publish to Intervals.icu"}
                   </button>}
+                  {data?.capabilities?.intervalsConnector === true && session.intervalsPublication && <button className="btn-secondary" disabled={busy || offline} onClick={async () => {
+                    setBusy(true); setError("");
+                    try {
+                      const r = await fetch("/api/workout/intervals-push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: session.id, expectedRevision: session.revision, action: "cancel" }) });
+                      const d = await r.json();
+                      if (!r.ok || d.status !== "cancelled") throw Error(d.error || "Cancellation was not confirmed.");
+                      setMessage(es ? "Publicación cancelada en Intervals.icu. Comprueba si tu reloj conserva una copia." : "Publication cancelled in Intervals.icu. Check whether your watch retains a copy.");
+                      await load();
+                    } catch (e: any) { setError(e.message); } finally { setBusy(false); }
+                  }}>{es ? "Cancelar publicación" : "Cancel publication"}</button>}
                   {!session.matchedPlanId && <button
                     className="btn-secondary"
                     disabled={busy || offline}

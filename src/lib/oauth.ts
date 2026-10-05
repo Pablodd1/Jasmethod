@@ -5,8 +5,10 @@ import { prisma } from "./db";
 import { encryptSecret } from "./crypto";
 import * as api from "./importers";
 import { createOAuthState } from "./oauth-state";
+import { intervalsAuthUrl, intervalsExchangeToken, intervalsOAuthConfigured, IntervalsOAuthError } from "./intervals-oauth";
 
 const providers = {
+  intervals: { env: "INTERVALS", key: "intervals", auth: intervalsAuthUrl, exchange: intervalsExchangeToken },
   strava: {
     env: "STRAVA",
     key: "strava",
@@ -36,6 +38,7 @@ function config(provider: string) {
   const route = provider === "google_cal" ? "google-cal" : provider;
   const p = providers[route as keyof typeof providers];
   if (!p) throw new Error("unsupported_provider");
+  if (p.key === "intervals" && !intervalsOAuthConfigured()) throw new Error("not_configured");
   const clientId = process.env[`${p.env}_CLIENT_ID`],
     clientSecret = process.env[`${p.env}_CLIENT_SECRET`];
   if (!clientId || !clientSecret) throw new Error("not_configured");
@@ -61,6 +64,9 @@ function config(provider: string) {
 export async function authorize(req: Request, provider: string) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
+  const targetAthlete = new URL(req.url).searchParams.get("athleteId");
+  if (provider === "intervals" && targetAthlete && targetAthlete !== user.id)
+    return Response.json({ error: "Each athlete must authorize their own Intervals.icu account." }, { status: 403 });
   try {
     const { p, cfg } = config(provider),
       state = createOAuthState(provider);
@@ -177,7 +183,8 @@ export async function callback(req: Request, provider: string) {
       ...(token.refresh_token
         ? { refreshEnc: encryptSecret(token.refresh_token) }
         : {}),
-      expiresAt: new Date(
+      ...(p.key === "intervals" ? { refreshEnc: null, lastSyncAt: null, lastSyncCount: null, syncStartedAt: null } : {}),
+      expiresAt: p.key === "intervals" ? null : new Date(
         token.expires_at
           ? token.expires_at * 1000
           : Date.now() + (token.expires_in || 3600) * 1000,
@@ -186,6 +193,14 @@ export async function callback(req: Request, provider: string) {
       ...(externalRef ? { externalRef } : {}),
     };
     await prisma.$transaction(async tx => {
+    if (p.key === "intervals") {
+      const other = await tx.connector.findFirst({ where: { provider: p.key, externalRef,
+        userId: { not: userId }, tokenEnc: { not: null } } });
+      if (other) throw new IntervalsOAuthError("provider_account_already_linked", "This Intervals.icu account is already connected to another athlete.", 409);
+      const previous = await tx.connector.findUnique({ where: { userId_provider: { userId, provider: p.key } } });
+      if (previous?.tokenEnc && previous.externalRef && previous.externalRef !== externalRef)
+        throw new IntervalsOAuthError("disconnect_previous_account", "Disconnect the previous Intervals.icu account before connecting a different one.", 409);
+    }
     await tx.connector.upsert({
       where: { userId_provider: { userId, provider: p.key } },
       create: { userId, provider: p.key, ...data },
@@ -193,13 +208,17 @@ export async function callback(req: Request, provider: string) {
     });
 
     await tx.syncJob.create({data:{userId,kind:"sync",dedupeKey:`initial:${p.key}:${userId}:${state}`,payload:JSON.stringify({provider:p.key})}});
-    });
+    }, p.key === "intervals" ? { isolationLevel: "Serializable" } : undefined);
 
     const okUrl = new URL(returnUrl || `${base}/connectors`);
     okUrl.searchParams.set("ok", p.key);
     okUrl.searchParams.set("sync", "queued");
     return NextResponse.redirect(okUrl.toString());
   } catch (e) {
+    if (canonical === "intervals") {
+      // Error codes are application constants. Do not log provider/DB messages.
+      return redirect(e instanceof IntervalsOAuthError ? e.code : "connection_failed");
+    }
     const reason = String(e instanceof Error ? e.message : e)
       .replace(/Bearer\s+\S+/gi, "[redacted]")
       .slice(0, 250);

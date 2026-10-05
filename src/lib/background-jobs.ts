@@ -1,15 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from './db';
-export async function enqueueSyncJob(userId: string, kind: 'sync'|'strava'|'whoop', dedupeKey: string, payload: unknown) {
+export async function enqueueSyncJob(userId: string, kind: 'sync'|'strava'|'whoop'|'intervals', dedupeKey: string, payload: unknown) {
   return prisma.syncJob.upsert({where:{dedupeKey},update:{},create:{userId,kind,dedupeKey,payload:JSON.stringify(payload)}});
 }
 export async function processSyncJob(job: { userId:string;kind:string;payload:string }) {
   const payload=JSON.parse(job.payload);
   if(job.kind==='sync') {
     const {syncUserConnectors}=await import('./sync');
-    if(!['oura','whoop','strava','google_cal'].includes(payload.provider)) throw new Error('Unsupported provider');
+    if(!['oura','whoop','strava','google_cal','intervals'].includes(payload.provider)) throw new Error('Unsupported provider');
     const result=await syncUserConnectors(job.userId,payload.provider);
     if(result.results.some(r=>!r.ok)) throw new Error('Provider reconciliation failed');
+  } else if(job.kind==='intervals') {
+    const {processIntervalsEvent}=await import('./intervals-ingest');
+    await processIntervalsEvent(job.userId,payload);
   } else if(job.kind==='whoop'||job.kind==='strava') {
     const worker=job.kind==='whoop'?await import('./worker-whoop'):await import('./worker-strava');
     const response=await worker.processVerifiedEvent(new Request('http://localhost/internal-event',{method:'POST',body:JSON.stringify(payload)}),job.userId);

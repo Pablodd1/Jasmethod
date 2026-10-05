@@ -1,6 +1,5 @@
-// Optional Intervals.icu calendar integration. The launch bridge publishes
-// canonical human-readable instructions only; structured ZWO and device receipt
-// are unvalidated. Keep the isolated ZWO helper for future validated work.
+// OAuth structured FIT publication using documented bulk upsert and stable app-owned IDs.
+// Provider acceptance does not establish downstream device receipt. Legacy ZWO is never published.
 import { providerFetch } from "./provider-fetch";
 import { requireIntervalsConnector } from "./capabilities";
 
@@ -56,105 +55,34 @@ ${blocks}
 `;
 }
 
-export interface IntervalsEvent {
-  dateLocal: string; // YYYY-MM-DD
-  sport: string; // run | bike | swim | strength | ...
-  title: string;
-  description: string;
-  trainingLoad?: number; // planned TSS
-  steps?: IntervalStep[];
+// Documented OAuth bulk upsert; FIT is generated from the exact canonical revision.
+// Provider acceptance is not proof of downstream watch receipt.
+export class IntervalsDeliveryError extends Error {
+  constructor(message: string, public definite = false, public status = 502) { super(message); }
 }
-
-// Create the calendar event. Returns the Intervals event id (saved by the
-// caller for later updates/deletes).
-export async function intervalsCreateEvent(
-  apiKey: string,
-  ev: IntervalsEvent,
-): Promise<{ id: string }> {
+export async function intervalsUpsertFit(authorization: string, event: { external_id: string; start_date_local: string; filename: string; file_contents_base64: string }) {
   requireIntervalsConnector();
-
-  const body: Record<string, unknown> = {
-    category: "WORKOUT",
-    // Their API requires local dates WITHOUT time — must end T00:00:00.
-    start_date_local: `${ev.dateLocal}T00:00:00`,
-    type:
-      ev.sport === "bike" ? "Ride" : ev.sport === "run" ? "Run" : ev.sport === "swim" ? "Swim" : "Other",
-    name: ev.title.slice(0, 80),
-    description: ev.description.slice(0, 1000),
-    ...(ev.trainingLoad ? { icu_training_load: Math.round(ev.trainingLoad) } : {}),
-  };
-  const resp = await providerFetch(`${INTERVALS_API}/athlete/0/events`, {
-    method: "POST",
-    headers: {
-      // API key as basic-auth password, literal "API_KEY" as the username
-      // (their documented convention). Browser-like UA avoids Cloudflare
-      // blocks on scripted clients.
-      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-      "Content-Type": "application/json",
-      "User-Agent": "JasMiamiMethod/1.0 (https://jasmiamimethod.fit)",
-    },
-    body: JSON.stringify(body),
+  const response = await providerFetch(`${INTERVALS_API}/athlete/0/events/bulk?upsert=true`, {
+    method: "POST", headers: { Authorization: authorization, "Content-Type": "application/json" },
+    body: JSON.stringify([{ category: "WORKOUT", ...event }]), redirect: "error",
   });
-  if (!resp.ok) {
-    // DEFINITE rejection: the provider answered and refused — no workout was
-    // created. Callers may safely release their publication claim and retry.
-    const err: any = new Error(
-      `Intervals.icu push failed: ${resp.status} ${(await resp.text().catch(() => "")).slice(0, 140)}`,
-    );
-    err.definite = true;
-    throw err;
-  }
-  const created = await resp.json();
-  return { id: String(created.id ?? created.event_id ?? "") };
+  if (!response.ok) throw new IntervalsDeliveryError("Intervals rejected or could not confirm the workout publication.", response.status >= 400 && response.status < 500 && response.status !== 408, response.status === 429 ? 429 : 502);
+  let data: unknown;
+  try { data = await response.json(); } catch { throw new IntervalsDeliveryError("Intervals returned an unreadable publication receipt."); }
+  if (!Array.isArray(data) || data.length !== 1 || !data[0] || !["string", "number"].includes(typeof data[0].id) || String(data[0].id).length === 0 ||
+      (data[0].external_id != null && data[0].external_id !== event.external_id)) throw new IntervalsDeliveryError("Intervals did not return a matching publication receipt.");
+  return { id: String(data[0].id) };
 }
-
-// Update an existing calendar event (PUT) — the re-push path; keeps edits
-// and plan changes from stacking duplicates on the athlete's calendar.
-export async function intervalsUpdateEvent(
-  apiKey: string,
-  eventId: string,
-  ev: IntervalsEvent,
-): Promise<void> {
+export async function intervalsDeleteOwnedEvent(authorization: string, externalId: string, legacyId?: string) {
   requireIntervalsConnector();
-
-  const body: Record<string, unknown> = {
-    category: "WORKOUT",
-    start_date_local: `${ev.dateLocal}T00:00:00`,
-    type:
-      ev.sport === "bike" ? "Ride" : ev.sport === "run" ? "Run" : ev.sport === "swim" ? "Swim" : "Other",
-    name: ev.title.slice(0, 80),
-    description: ev.description.slice(0, 1000),
-    ...(ev.trainingLoad ? { icu_training_load: Math.round(ev.trainingLoad) } : {}),
-  };
-  const resp = await providerFetch(`${INTERVALS_API}/athlete/0/events/${encodeURIComponent(eventId)}`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-      "Content-Type": "application/json",
-      "User-Agent": "JasMiamiMethod/1.0 (https://jasmiamimethod.fit)",
-    },
-    body: JSON.stringify(body),
+  const response = await providerFetch(`${INTERVALS_API}/athlete/0/events/bulk-delete`, {
+    method: "PUT", headers: { Authorization: authorization, "Content-Type": "application/json" },
+    body: JSON.stringify([legacyId ? { id: legacyId } : { external_id: externalId }]), redirect: "error",
   });
-  if (!resp.ok)
-    throw new Error(`Intervals.icu update failed: ${resp.status}`);
-}
-
-// Key check for the connect flow — reads the key's own athlete profile.
-export async function intervalsVerifyKey(
-  apiKey: string,
-): Promise<{ ok: boolean; athlete?: string; athleteId?: string | null; error?: string }> {
-  requireIntervalsConnector();
-  try {
-    const resp = await providerFetch(`${INTERVALS_API}/athlete/0`, {
-      headers: {
-        Authorization: `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`,
-        "User-Agent": "JasMiamiMethod/1.0 (https://jasmiamimethod.fit)",
-      },
-    });
-    if (!resp.ok) return { ok: false, error: `Intervals.icu rejected the key (${resp.status})` };
-    const a = await resp.json();
-    return { ok: true, athlete: String(a.name || a.id || "athlete"), athleteId: a.id != null ? String(a.id) : null };
-  } catch (e) {
-    return { ok: false, error: String((e as Error).message).slice(0, 120) };
-  }
+  if (!response.ok) throw new IntervalsDeliveryError("Intervals could not confirm cancellation.", response.status >= 400 && response.status < 500 && response.status !== 408);
+  // The documented response is a count, including zero for an absent event.
+  let count: unknown;
+  try { count = await response.json(); } catch { throw new IntervalsDeliveryError("Intervals returned an unreadable cancellation receipt."); }
+  if (typeof count !== "number" || !Number.isInteger(count) || count < 0) throw new IntervalsDeliveryError("Intervals did not confirm cancellation.");
+  return { cancelled: true };
 }

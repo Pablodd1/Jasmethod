@@ -7,6 +7,7 @@ import { buildFuelingPlan } from "./fueling";
 import { sportIcon, calendarDescription } from "./plan-formats";
 import { effectivePrescription } from "./effective-prescription";
 import { SessionResolutionError } from "./canonical-session";
+import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "./capabilities";
 
 export interface SyncResult {
   provider: string;
@@ -21,6 +22,7 @@ export interface SyncSummary {
   profileSynced?: Record<string, unknown>;
 }
 const configs = {
+  intervals: { env: "INTERVALS", path: "intervals", refresh: async (..._args: any[]): Promise<any> => { throw new Error("Reconnect Intervals OAuth authorization"); } },
   strava: { env: "STRAVA", path: "strava", refresh: api.stravaRefreshToken },
   google_cal: {
     env: "GOOGLE",
@@ -51,15 +53,21 @@ export async function syncUserConnectors(
   for (const conn of connections) {
     const cfg = configs[conn.provider as keyof typeof configs];
     if (!cfg) continue;
+    if (conn.provider === "intervals" && !intervalsConnectorEnabled()) {
+      if (onlyProvider === "intervals") results.push({ provider: "intervals", ok: false, imported: 0, error: INTERVALS_DISABLED_MESSAGE });
+      continue;
+    }
+    const syncStartedAt = new Date();
     const lease = await prisma.connector.updateMany({
       where: {
         id: conn.id,
+        ...(conn.provider === "intervals" ? { tokenEnc: conn.tokenEnc, status: { in: ["connected", "error"] } } : {}),
         OR: [
           { syncStartedAt: null },
           { syncStartedAt: { lt: new Date(Date.now() - 10 * 60000) } },
         ],
       },
-      data: { syncStartedAt: new Date() },
+      data: { syncStartedAt },
     });
     if (!lease.count) {
       results.push({
@@ -110,7 +118,10 @@ export async function syncUserConnectors(
         ? new Date(conn.lastSyncAt.getTime() - 86400000)
         : new Date(Date.now() - (conn.provider === "strava" ? 365 : 180) * 86400000);
       let imported = 0;
-      if (conn.provider === "strava") {
+      if (conn.provider === "intervals") {
+        const { ingestIntervals } = await import("./intervals-ingest");
+        imported = await ingestIntervals(userId, user.timezone, conn);
+      } else if (conn.provider === "strava") {
         const activities = await api.stravaGetActivities(access, since, 100);
         for (const a of activities)
           if (
@@ -351,8 +362,8 @@ export async function syncUserConnectors(
         }
       }
 
-      await prisma.connector.update({
-        where: { id: conn.id },
+      const saved = await prisma.connector.updateMany({
+        where: { id: conn.id, ...(conn.provider === "intervals" ? { tokenEnc: conn.tokenEnc, syncStartedAt, status: { in: ["connected", "error"] } } : {}) },
         data: {
           lastSyncAt: new Date(),
           lastSyncCount: imported,
@@ -361,6 +372,7 @@ export async function syncUserConnectors(
           syncStartedAt: null,
         },
       });
+      if (conn.provider === "intervals" && !saved.count) throw new Error("Intervals connection changed during sync");
       // Usage metering: rows synced per user (feeds the admin cost panel).
       if (imported > 0) {
         const { meterUsage } = await import("./telemetry");
@@ -371,8 +383,8 @@ export async function syncUserConnectors(
       const error = String(e?.message || "Provider sync failed")
         .replace(/Bearer\s+\S+/gi, "[redacted]")
         .slice(0, 250);
-      await prisma.connector.update({
-        where: { id: conn.id },
+      await prisma.connector.updateMany({
+        where: { id: conn.id, ...(conn.provider === "intervals" ? { tokenEnc: conn.tokenEnc, syncStartedAt, status: { in: ["connected", "error"] } } : {}) },
         data: { status: "error", lastError: error, syncStartedAt: null },
       });
       results.push({ provider: conn.provider, ok: false, imported: 0, error });
