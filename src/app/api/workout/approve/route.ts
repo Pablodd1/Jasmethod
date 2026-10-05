@@ -12,16 +12,23 @@ export async function GET(req: Request) { return run(req, false); }
 export async function POST(req: Request) { return run(req, true); }
 async function run(req: Request, markApproved: boolean) {
   try {
-    const { athlete: user } = await trainingAccess(req);
+    const { athlete: user, actor } = await trainingAccess(req);
     const url = new URL(req.url);
     const sessionId = url.searchParams.get("sessionId");
     if (!sessionId) throw new ApiError("Select the session to download.");
     const resolved = await effectivePrescription(user.id, sessionId);
     if (!resolved) throw new ApiError("Session not found", 404);
     const { workout, canonical } = resolved;
-    requireSessionRevision(canonical, url.searchParams.get("expectedRevision"));
+    const expectedRevision = url.searchParams.get("expectedRevision");
+    if (markApproved && !expectedRevision) throw new ApiError("Refresh and approve the current workout revision.", 409);
+    requireSessionRevision(canonical, expectedRevision);
     const { bytes: fit, filename, contentType } = buildSessionDownload(canonical);
-    const approval = markApproved ? await prisma.workout.updateMany({ where: { id: workout.id, userId: user.id, approved: false, prescription: workout.prescription }, data: { approved: true } }) : null;
+    const approval = markApproved ? await prisma.$transaction(async db => {
+      const changed = await db.workout.updateMany({ where: { id: workout.id, userId: user.id, approved: false, prescription: workout.prescription }, data: { approved: true } });
+      if (!changed.count && !await db.workout.findFirst({ where: { id: workout.id, userId: user.id, approved: true, prescription: workout.prescription } })) throw new ApiError("The workout changed. Refresh before approving.", 409);
+      await db.auditLog.create({ data: { actorId: actor.id, subjectId: user.id, action: "workout.approved", entityId: workout.id, after: JSON.stringify({ revision: canonical.revision }) } });
+      return changed;
+    }) : null;
     const newlyApproved = approval?.count === 1;
     await meterUsage(user.id, "fit_exports", 1);
     let emailed = false;

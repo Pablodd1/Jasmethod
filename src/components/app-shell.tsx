@@ -255,6 +255,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <ErrorTelemetry />
         <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-8">
           {children}
+          <footer className="mt-8 text-xs text-slate-500">
+            {lang === "es" ? "Los gráficos y análisis pueden incluir datos de dispositivos Garmin, importados mediante Intervals.icu." : "Charts and analysis may include data from Garmin devices, imported through Intervals.icu."}
+          </footer>
         </div>
       </main>
     </div>

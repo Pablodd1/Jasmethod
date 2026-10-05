@@ -26,7 +26,6 @@ export default function ConnectorsPage() {
   const [err, setErr] = useState("");
   const [syncing, setSyncing] = useState(false);
   const handledCallback = useRef(false);
-  const apiKeyRef = useRef("");
   // Real-time sync progress: devices sync ONE per request so the bar moves
   // truthfully (no fake animation). Athlete sees per-device status + elapsed.
   const [sync, setSync] = useState<{
@@ -166,6 +165,14 @@ export default function ConnectorsPage() {
         invalid_state: "The authorization response could not be verified. Connect again.",
         authorization_declined: "Authorization was cancelled or declined.",
         connection_failed: "Authorization returned, but the provider connection could not be saved. Connect again.",
+        provider_account_already_linked: "This Intervals.icu account is linked to another JMM athlete. Use your own account or contact support.",
+        disconnect_previous_account: "Disconnect your previous Intervals.icu account before linking a different one.",
+        insufficient_scope: "Allow activity, wellness and calendar access to finish connecting Intervals.icu.",
+        invalid_token_response: "Intervals.icu did not return a valid authorization. Connect again.",
+        token_exchange_failed: "Intervals.icu authorization could not be completed. Connect again.",
+        state_unavailable: "The authorization request expired or was already used. Connect again.",
+        authorization_storage_failed: "The authorization request could not be stored. Please retry connecting.",
+        denied: "Authorization was cancelled or declined.",
       };
       setErr(messages[error] || "The provider connection failed.");
       window.history.replaceState({}, "", "/connectors");
@@ -251,6 +258,18 @@ export default function ConnectorsPage() {
   function stepsFor(p: any, lang: Lang): string[] {
     const es = lang === "es";
     switch (p.id) {
+      case "intervals":
+        return es ? [
+          "Conecta tu propia cuenta de Intervals.icu y autoriza actividad, bienestar y calendario.",
+          "En Intervals.icu conecta Garmin y activa el envío de entrenamientos planificados para tus deportes compatibles.",
+          "Publica una sesión aprobada desde Hoy, o activa la publicación automática aquí. Comprueba los pasos en Garmin Connect y en tu reloj.",
+          "La sincronización importa datos permitidos y mantiene publicaciones anteriores. No confirma recepción en el reloj. Las actividades de origen Strava se excluyen de esta conexión."
+        ] : [
+          "Connect your own Intervals.icu account and authorize activity, wellness and calendar access.",
+          "In Intervals.icu connect Garmin and enable planned workout forwarding for your supported sports.",
+          "Publish an approved session from Today, or enable automatic publication here. Check the steps in Garmin Connect and on your watch.",
+          "Synchronization imports permitted data and maintains existing publications. It cannot confirm watch receipt. Strava-sourced activities are excluded from this connection."
+        ];
       case "strava":
         return es
           ? [
@@ -583,7 +602,7 @@ export default function ConnectorsPage() {
                             {p.lastError}
                           </span>
                         )}
-                        {["connected", "error"].includes(p.status) && (
+                        {["connected", "error", "disconnecting"].includes(p.status) && (
                           <button
                             className="underline mt-2"
                             onClick={async () => {
@@ -593,7 +612,7 @@ export default function ConnectorsPage() {
                                 body: JSON.stringify({ provider: p.id }),
                               });
                               if (r.ok) await load();
-                              else setErr("Could not disconnect");
+                              else { const d = await r.json().catch(() => ({})); setErr(d.error || "Could not disconnect"); await load(); }
                             }}
                           >
                             Disconnect
@@ -608,49 +627,7 @@ export default function ConnectorsPage() {
                 </div>
 
                 <div className="mt-4">
-                  {p.method === "api_key" && (
-                    <div className="space-y-2">
-                      {p.status !== "connected" ? (
-                        <>
-                          <input
-                            aria-label={lang === "es" ? "API key de Intervals.icu" : "Intervals.icu API key"}
-                            type="password"
-                            placeholder={lang === "es" ? "Pega tu API key de Intervals.icu" : "Paste your Intervals.icu API key"}
-                            className="input w-full"
-                            onChange={(e) => (apiKeyRef.current = e.target.value)}
-                          />
-                          <button
-                            className="btn-primary w-full justify-center"
-                            onClick={async () => {
-                              setErr(""); setMsg("");
-                              const r = await fetch("/api/connectors/intervals/connect", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ apiKey: apiKeyRef.current }),
-                              });
-                              const d = await r.json();
-                              if (!r.ok) { setErr(d.error || "Connection failed"); return; }
-                              setMsg(lang === "es" ? `Intervals.icu conectado (${d.athlete}).` : `Intervals.icu connected (${d.athlete}).`);
-                              await load();
-                            }}
-                          >
-                            {lang === "es" ? "Conectar Intervals.icu" : "Connect Intervals.icu"}
-                          </button>
-                          <div className="text-[11px] text-slate-500">
-                            {lang === "es"
-                              ? "1) Crea una cuenta gratis en intervals.icu y enlaza tu Garmin/COROS en Settings → Account Connections. 2) Copia tu API key en Settings → Developer Settings. 3) Pégala aquí."
-                              : "1) Create a free intervals.icu account and link your Garmin/COROS in Settings → Account Connections. 2) Copy your API key from Settings → Developer Settings. 3) Paste it here."}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-xs text-emerald-700">
-                          {lang === "es"
-                            ? "Conectado. La publicación en Intervals.icu no confirma recepción en el reloj."
-                            : "Connected. Publication to Intervals.icu does not confirm watch receipt."}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {p.id === "intervals" && p.status === "connected" && <IntervalsPreferences lang={lang} />}
                   {p.method === "oauth" &&
                     (p.configured ? (
                       <a
@@ -1066,4 +1043,33 @@ function RequestButton({
         : es ? "Pedir esta conexión" : "Request this connection"}
     </button>
   );
+}
+
+function IntervalsPreferences({ lang }: { lang: Lang }) {
+  const [value, setValue] = useState<{ enabled: boolean; available: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch("/api/connectors/intervals/preferences").then(async r => {
+      if (!r.ok) throw new Error("Could not load publication settings.");
+      setValue(await r.json());
+    }).catch(e => setError(e.message));
+  }, []);
+  return <div className="rounded-lg border p-3 mb-3 text-sm">
+    <label className="flex gap-2 items-start">
+      <input type="checkbox" checked={value?.enabled ?? false} disabled={busy || !value || (!value.available && !value.enabled)}
+        onChange={async e => {
+          setBusy(true); setError("");
+          try {
+            const r = await fetch("/api/connectors/intervals/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: e.target.checked }) });
+            const d = await r.json(); if (!r.ok) throw new Error(d.error || "Could not save preference.");
+            setValue(v => v ? { ...v, enabled: d.enabled } : v);
+          } catch (e: any) { setError(e.message); } finally { setBusy(false); }
+        }} />
+      {lang === "es" ? "Publicar automáticamente mis sesiones aprobadas de carrera y bicicleta" : "Automatically publish my approved run and bike workouts"}
+    </label>
+    <p className="text-xs text-slate-500 mt-2">{lang === "es" ? "Al desactivar se detienen las publicaciones nuevas. Las sesiones publicadas siguen programadas y reciben actualizaciones o cancelaciones de seguridad. La recepción en el reloj no está confirmada." : "Turning this off stops new publications. Published sessions stay scheduled and receive safety updates or cancellations. Watch receipt is not confirmed."}</p>
+    {value && !value.available && <p className="text-xs text-amber-700 mt-2">{lang === "es" ? "La publicación automática aún no está activada en este servidor." : "Automatic publication is not enabled on this server yet."}</p>}
+    {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+  </div>;
 }

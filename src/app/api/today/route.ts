@@ -1,6 +1,7 @@
 import { dailyRecoveryContext } from "@/lib/daily-recovery";
 import { workoutJStress, hasPerformedTraining } from "@/lib/j-metrics";
 import { SessionResolutionError } from "@/lib/canonical-session";
+import { readIntervalsReceipt } from "@/lib/intervals-delivery";
 import {personalizedDailyMotivation} from "@/lib/reference";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
@@ -156,6 +157,10 @@ export async function GET(req: Request) {
       return {
         id: w.id,
         revision: canonical.revision,
+        intervalsPublication: w.deliveryProvider === "intervals" ? (() => {
+          const receipt = readIntervalsReceipt(w.deliveryId);
+          return receipt ? { status: receipt.status, revisionMatches: receipt.revision === canonical.revision, deviceReceived: false } : { status: "legacy", revisionMatches: false, deviceReceived: false };
+        })() : null,
         capability: canonical.capability,
         verdict: canonical.verdict,
         resolutionReason: canonical.reason,

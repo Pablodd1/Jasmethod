@@ -40,6 +40,7 @@ export async function storeActivity(
         "np",
         "tss",
         "calories",
+        "notes",
       ];
       await tx.workout.update({
         where: { id: existing.id },
@@ -88,6 +89,7 @@ export async function storeActivity(
       "tss",
       "calories",
       "source",
+      "notes",
       "externalId",
     ];
     const data = Object.fromEntries(

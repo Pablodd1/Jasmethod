@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { intervalsConnectorEnabled, automatedDeliveryEnabled } from "./capabilities";
-import { intervalsCreateEvent, intervalsUpdateEvent, intervalsVerifyKey } from "./intervals";
+import { intervalsUpsertFit, intervalsDeleteOwnedEvent } from "./intervals";
 import { allDeliveryGuides } from "./device-delivery";
 
 // Never call a real provider, even if a developer has an enabled local flag.
@@ -14,17 +14,16 @@ test("optional capabilities fail closed; only explicit true enables them", () =>
   assert.equal(automatedDeliveryEnabled({ ENABLE_AUTOMATED_DELIVERY: "true" }), true);
 });
 
-test("Intervals verification, create and update make zero network calls while disabled", async () => {
+test("Intervals upsert and cancellation make zero network calls while disabled", async () => {
   const flag = process.env.ENABLE_INTERVALS_CONNECTOR;
   const originalFetch = globalThis.fetch;
   let calls = 0;
   process.env.ENABLE_INTERVALS_CONNECTOR = "false";
   globalThis.fetch = async () => { calls++; throw new Error("Unexpected provider call"); };
-  const event = { dateLocal: "2026-10-02", sport: "run", title: "Synthetic test", description: "Fixture" };
+  const event = { external_id: "synthetic", start_date_local: "2026-10-02T00:00:00", filename: "test.fit", file_contents_base64: "" };
   try {
-    await assert.rejects(intervalsVerifyKey("synthetic-test-only"), /disabled/);
-    await assert.rejects(intervalsCreateEvent("synthetic-test-only", event), /disabled/);
-    await assert.rejects(intervalsUpdateEvent("synthetic-test-only", "test-id", event), /disabled/);
+    await assert.rejects(intervalsUpsertFit("Bearer synthetic-test-only", event), /disabled/);
+    await assert.rejects(intervalsDeleteOwnedEvent("Bearer synthetic-test-only", "test-id"), /disabled/);
     assert.equal(calls, 0);
   } finally {
     if (flag == null) delete process.env.ENABLE_INTERVALS_CONNECTOR; else process.env.ENABLE_INTERVALS_CONNECTOR = flag;

@@ -1,0 +1,196 @@
+JMM / INTERVALS.ICU IMPLEMENTATION AND RELEASE REVIEW
+5 October 2026
+
+RELEASE DECISION
+Implementation is prepared for a gated pilot. Do not describe Garmin two-way
+synchronization as device-verified until the live acceptance sequence below passes.
+No AI-provider migration is included in this change. Existing AI configuration is
+preserved; this report does not claim that the currently deployed model was audited.
+No Prisma schema migration or athlete-account restoration is included.
+
+WHAT WAS BROKEN AND WHAT CHANGED
+1. Multi-athlete authorization
+   The old UI requested personal API keys. Each athlete now starts Intervals OAuth
+   from their authenticated JMM account. The server requests ACTIVITY:READ,
+   WELLNESS:READ and CALENDAR:WRITE. The callback uses durable, expiring, single-use
+   state tied to the initiating athlete, encrypted Bearer storage, and the returned
+   Intervals athlete ID. It rejects insufficient permissions, cross-account identity
+   conflicts and unsafe replacement of an existing remote account. An authorization
+   callback is not proof that imports or watch delivery succeeded.
+
+2. Actual inbound synchronization
+   The previous webhook triggered other providers rather than importing Intervals.
+   The new importer reads Intervals activities and wellness directly. First OAuth
+   authorization/reconnection schedules 180 days of history; incremental reconciliation
+   covers the most recent 7 days. Dates use athlete timezone; missing measurements
+   remain missing. RMSSD and SDNN are separate. Readiness scales and training-load
+   labels are not invented or converted into another provider's score.
+   Activity original source/device attribution is retained in notes. The application
+   shell discloses that charts/analysis may include Garmin device data.
+   Strava-sourced and unknown-source activities are excluded from this connection.
+   This is not an audit of every existing Strava-to-AI path elsewhere in JMM.
+
+3. Correct webhook contract and durable processing
+   The route accepts the documented {secret, events:[...]} payload, authenticates
+   before database work, maps the provider athlete to one JMM athlete, and stores
+   routing metadata in durable deduplicated jobs. It does not store the shared secret
+   or full health payload. Database failure returns 503 so the provider can retry.
+   Supported events: ACTIVITY_UPLOADED, ACTIVITY_ANALYZED, ACTIVITY_UPDATED,
+   ACTIVITY_DELETED, WELLNESS_UPDATED and CALENDAR_UPDATED.
+   Activity jobs fetch the current authorized record: a delayed delete event cannot
+   delete an activity that was restored. Only confirmed absence causes local deletion.
+   Scope-change, connected-service and fitness/settings/chat event contracts are not
+   implemented. Authorization failures request reconnection instead of fabricating data.
+
+4. Real structured publication
+   Previous publication sent calendar notes. New publication sends a canonical FIT
+   file through Intervals' documented bulk upsert endpoint. Native run/bike steps use
+   the same exact revision as the JMM download: duration/distance endpoints and
+   individualized pace/power/heart-rate targets. Other sports are not advertised as
+   validated native structured exports. No legacy zone-percentage ZWO helper is sent.
+   A stable app-owned external ID prevents duplicate events on retry. Conditional
+   claims prevent simultaneous first sends. Stale revisions, rest and blocked
+   prescriptions are rejected. Changes during a request trigger removal of the
+   superseded publication. Ambiguous network/storage outcomes remain unknown.
+
+5. Automatic publication and maintenance
+   A separate server flag AND the athlete's explicit opt-in are required before
+   previously unpublished workouts can be sent automatically. The workout must have
+   approval of the exact current canonical revision. A legacy approved=true flag is
+   insufficient. The Today screen allows reapproval of the current revision.
+   Existing publications receive JMM revision updates and cancellations without a
+   second send click. The effective-prescription safety gate currently allows
+   exporting today only after the relevant daily check-in; a future calendar date
+   does not inherit today's readiness. Archived/held/completed/deleted sessions are retracted where
+   their app-owned receipt is available. Removed local rows use the audit ownership
+   trail; local-midnight handling was corrected during independent review.
+   Turning automatic publication off stops NEW sends. It does not erase previously
+   published calendar entries or stop their safety maintenance. Disconnecting stops
+   local sync, resets opt-in, and revokes the OAuth token; failure retains the encrypted
+   credential only for revocation retry and reports the failure.
+
+6. Honest UI and status
+   Connections now uses OAuth, shows actionable callback/revocation errors, and offers
+   the automatic-publication preference. Today offers publish/cancel and a stored
+   publication status. Responses distinguish fresh provider acceptance, an earlier
+   receipt, cancellation, busy, rejection and unknown outcome. Every response keeps
+   deviceReceived=false: Intervals accepting a file does not prove Garmin Connect
+   forwarded it, or that a watch received it or supports every target/alert.
+
+PIPELINE / WORKFLOW
+A. Athlete signs in to JMM -> Connections -> Intervals authorization -> callback.
+B. Encrypted account binding + initial import job are saved together.
+C. Worker/import normalizes permitted history -> existing activity deduplication and
+   plan matching -> observed metrics and daily summaries -> existing coaching inputs.
+D. Athlete check-in refresh can import data, but does NOT publish while new health
+   answers are still being saved. JMM resolves the effective prescription afterward.
+E. Athlete/authorized coach approves the exact workout revision. Manual publication
+   sends immediately, or explicit auto-publish consent allows scheduled publication.
+F. JMM canonical FIT -> Intervals calendar -> athlete-configured Garmin forwarding ->
+   Garmin Connect -> compatible watch. The last two hops need a physical pilot test.
+G. Completed watch activity -> athlete-configured provider connection -> Intervals ->
+   webhook -> durable JMM worker -> history and plan matching -> next coaching input.
+H. Scheduled hourly reconciliation covers missed recent data and JMM publication
+   changes. The existing worker schedule is every 5 minutes. These are configured
+   schedules, not measured latency guarantees or proof of a successful production run.
+
+CURRENT EXTERNAL SETUP
+Intervals application 1143:
+- A valid 175-character description was saved (the earlier form was too long).
+- Callback saved and verified after reload:
+  https://jasmiamimethod.fit/api/connectors/intervals/callback
+- Webhook saved and verified after reload:
+  https://jasmiamimethod.fit/api/connectors/intervals/webhook
+- Only the six supported event types listed above are selected.
+- Dashboard shows hidden/unlisted, zero testing athletes, no visible Pending label.
+  Official docs distinguish approval from public directory listing. Actual OAuth
+  remains unproven until the pilot; a hidden listing alone is not a blocker.
+
+Production configuration prepared:
+- INTERVALS_CLIENT_ID=1143
+- INTERVALS_REDIRECT_URI points to the callback above.
+- ENABLE_INTERVALS_CONNECTOR=false
+- ENABLE_INTERVALS_AUTO_PUBLISH=false
+- TOKEN_ENCRYPTION_KEY and CRON_SECRET exist in production configuration; this review
+  checked presence, not their secret values.
+- INTERVALS_CLIENT_SECRET still needs a fresh replacement.
+- INTERVALS_WEBHOOK_SECRET exists but must be replaced together with the dashboard
+  secret because a webhook secret was exposed in conversation.
+- No exposed OAuth/client/webhook secret was inserted into source or new configuration.
+
+REQUIRED LIVE ACCEPTANCE (NOT YET PASSED)
+1. Owner replaces the exposed OAuth client and webhook credentials. If the app page
+   has no client-secret regeneration control, ask Intervals support to rotate it.
+   Store the new client secret and matching webhook secret as sensitive Production
+   Vercel variables. Never paste credentials into chat, tickets or the repository.
+2. Deploy with the connector enabled for the controlled pilot; leave automatic new
+   publication disabled initially. Confirm the app is approved if OAuth is rejected.
+3. Two separate test athletes authorize their own Intervals accounts. Confirm return
+   to JMM, exact account ownership, historical imports, failure messages and isolation.
+4. In each athlete's Intervals account, connect Garmin and enable planned workout
+   forwarding for the supported sports. Record watch model and firmware.
+5. Send a short, clearly labeled run and bike test. Inspect every step, target, unit,
+   date and repeat in Intervals, Garmin Connect and the watch before executing it.
+   Keep explicit evidence of each hop; do not infer a watch result from HTTP 200.
+6. Repeat-send/update/cancel; confirm no duplicate calendar entry and inspect any
+   remaining cached watch copy. Test a held/rest revision and a deleted local session.
+7. Record a completed activity; verify it returns once, matches the intended plan,
+   preserves measured values and is visible to the correct athlete/authorized coach.
+8. Verify provider webhook delivery, durable job completion, scheduled cron execution,
+   lost-webhook recovery, revocation and reconnect without manually pressing Sync.
+9. Enable automatic publication only after those checks, athlete opt-in and current
+   revision approval; verify both enabled and opted-out athletes. Request public
+   directory listing from Intervals after the integration test evidence is complete.
+
+IMPORTANT LIMITS / NEXT ENGINEERING WORK
+- This is bidirectional activity/wellness import plus planned-workout publication;
+  it is not full bidirectional editing of every calendar, profile, zone or metric.
+- Edits/deletions made directly in the remote calendar are not mirrored into JMM.
+  JMM remains the prescription source; unchanged receipts are not fresh remote reads.
+- Initial history is 180 days, not unlimited history. Wellness corrections older than
+  7 days require backfill/reconnection; the current UI has no arbitrary-range backfill.
+- Native automated publication is run/bike only. Swimming, strength, multisport,
+  COROS-specific delivery and every model's alert behavior require separate validation.
+- Oura and WHOOP primarily supply recovery data; this work does not turn them into
+  structured workout receivers. Their existing direct integrations were not retested.
+- No direct Garmin developer-program approval/API implementation is supplied here.
+  Intervals is a separate integration, not a way to bypass Strava app quotas or terms.
+- Per pass, delivery maintenance considers 50 workouts and 100 matching audit entries.
+  The hourly cron still processes athletes in the existing sequential loop. Before a
+  broad rollout, add per-athlete queued reconciliation, pagination, shared rate-limit
+  budgeting and durable backfill checkpoints; load-test with realistic histories.
+- Full-resolution activity streams, laps, GPS, raw FIT downloads and physiological
+  threshold extraction are not implemented by this summary importer.
+- The tests use deterministic mock provider/database boundaries and real FIT encoding
+  and decoding. They cannot certify actual PostgreSQL concurrency, provider approval,
+  device forwarding or physical watch compatibility.
+
+AUTHORITATIVE REFERENCES
+OAuth/scopes/revocation/approval versus listing:
+https://forum.intervals.icu/t/intervals-icu-oauth-support/2759
+Official endpoint and field schemas:
+https://intervals.icu/api/v1/docs
+Webhook envelope and activity/wellness examples:
+https://forum.intervals.icu/t/intervals-icu-api-integration-cookbook/80090
+Structured workout file upload/upsert:
+https://forum.intervals.icu/t/uploading-planned-workouts-to-intervals-icu/63624
+API terms and Garmin attribution requirement:
+https://forum.intervals.icu/t/intervals-icu-api-terms-and-conditions/114087
+
+VALIDATION / RELEASE RECORD
+Full repository suite: 612 passed, 0 failed, 0 skipped.
+TypeScript: passed. Production Next.js build: passed.
+Lint: passed with three pre-existing React hook warnings in HYROX,
+admin-coach-editor and coach-assignments-card; no new lint warnings.
+Independent delivery review found the UTC/local-date orphan issue; it was fixed
+and covered by a regression test. Consent/disconnect concurrency and stale approval
+findings were also fixed and covered by tests.
+Authenticated browser walkthrough of the new feature remains part of the live pilot;
+the public application has the connector deliberately disabled pending credentials.
+Release commit/PR and deployment verification are recorded in the final task report.
+No live OAuth, real PostgreSQL concurrency, Garmin Connect or watch success is claimed.
+
+Pull request: https://github.com/Pablodd1/Jasmethod/pull/26
+The first CI run passed build and authenticated integration, then caught a disabled-
+capability response-order regression. Publication now checks the flag before parsing;
+a regression test covers that. The retired API-key endpoint correctly returns 410.

@@ -31,7 +31,7 @@ async function run(req: Request) {
   const connected = await prisma.connector.findMany({
     where: {
       status: { in: ["connected", "error"] },
-      provider: { in: ["strava", "google_cal", "whoop", "oura"] },
+      provider: { in: ["strava", "google_cal", "whoop", "oura", "intervals"] },
     },
     select: { userId: true },
     distinct: ["userId"],
@@ -51,6 +51,13 @@ async function run(req: Request) {
       select: { email: true, name: true },
     });
     const { results, total, profileSynced } = await syncUserConnectors(userId);
+    // Publication reconciles only from the scheduled path, never during a pre-save check-in refresh.
+    if (results.some(r => r.provider === "intervals" && r.ok)) {
+      try {
+        const { reconcileIntervalsPublications } = await import("@/lib/intervals-delivery");
+        await reconcileIntervalsPublications(userId);
+      } catch { results.push({ provider: "intervals_delivery", ok: false, imported: 0, error: "Publication reconciliation failed; retry or review delivery status." }); }
+    }
     const failures = results
       .filter((r) => !r.ok)
       .map((r) => ({ provider: r.provider, error: r.error || "unknown" }));

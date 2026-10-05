@@ -1,4 +1,5 @@
 import { preserveSportStructure } from "@/lib/preserve-sport-structure";
+import { intervalsConnectorEnabled } from "@/lib/capabilities";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
@@ -144,7 +145,7 @@ export async function POST(req: Request) {
     if (b.sessionFelt && !["easier", "normal", "harder"].includes(b.sessionFelt)) throw new ApiError("Invalid sessionFelt");
     checkin.sessionFelt = b.sessionFelt || undefined;
     // Retain honest per-provider outcomes, including resolved calls containing failures.
-    const providerQuery = { userId: user.id, status: { in: ["connected", "error"] }, provider: { in: ["strava", "whoop", "oura"] } };
+    const providerQuery = { userId: user.id, status: { in: ["connected", "error"] }, provider: { in: ["strava", "whoop", "oura", ...(intervalsConnectorEnabled() ? ["intervals"] : [])] } };
     let deviceProviders = await prisma.connector.findMany({ where: providerQuery, select: { provider: true, status: true, lastSyncAt: true } });
     const syncAttempted = deviceProviders.some((p) => p.status !== "connected" || !p.lastSyncAt || Date.now() - p.lastSyncAt.getTime() >= 6 * 3600000);
     let syncResults: FreshnessResult[] | null = null;
@@ -435,7 +436,7 @@ export async function POST(req: Request) {
     const { enqueueSyncJob } = await import("@/lib/background-jobs");
     const hourKey = new Date().toISOString().slice(0, 13); // ≤1 refresh/hour
     const connectedProviders = await prisma.connector.findMany({
-      where: { userId: user.id, status: "connected", provider: { in: ["strava", "whoop", "oura", "google_cal"] } },
+      where: { userId: user.id, status: "connected", provider: { in: ["strava", "whoop", "oura", "google_cal", ...(intervalsConnectorEnabled() ? ["intervals"] : [])] } },
       select: { provider: true },
     });
     for (const { provider } of connectedProviders)

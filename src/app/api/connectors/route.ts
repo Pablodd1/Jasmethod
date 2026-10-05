@@ -1,7 +1,9 @@
 import { intervalsConnectorEnabled, trainingCapabilities } from "@/lib/capabilities";
+import { intervalsOAuthConfigured } from "@/lib/intervals-oauth";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { athlinksConfigured } from "@/lib/athlinks";
+import { disconnectIntervals, IntervalsOAuthError } from "@/lib/intervals-oauth";
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -92,15 +94,16 @@ export async function GET() {
         id: "intervals",
         name: "Intervals.icu",
         description:
-          "Optional Intervals.icu calendar publication. All sports use calendar notes; native structured provider export is unvalidated. Device receipt is unverified.",
-        method: "api_key" as const,
-        configured: true,
-        capabilities: { imports: false, publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
+          "Authorize your own Intervals.icu account to import permitted activities and wellness, and publish structured run/bike workouts. Garmin forwarding requires your Intervals connection; watch receipt remains unverified.",
+        method: "oauth" as const,
+        connectUrl: "/api/connectors/intervals/authorize",
+        setupEnv: ["INTERVALS_CLIENT_ID", "INTERVALS_CLIENT_SECRET"],
+        capabilities: { imports: true, publishesStructuredWorkouts: true, automaticDeviceDelivery: false },
       },
     ].map((p) => ({
       ...p,
-      method: p.id === "athlinks" ? "athlinks" : p.id === "intervals" ? "api_key" : "upload",
-      configured: p.id === "athlinks" ? athlinksConfigured() : true,
+      method: p.id === "athlinks" ? "athlinks" : p.id === "intervals" ? "oauth" : "upload",
+      configured: p.id === "athlinks" ? athlinksConfigured() : p.id === "intervals" ? intervalsOAuthConfigured() : true,
       status:
         connectors.find((c) => c.provider === p.id)?.status || "disconnected",
     })),
@@ -117,7 +120,19 @@ export async function GET() {
 export async function DELETE(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const { provider } = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body.provider !== "string") return Response.json({ error: "Provider is required" }, { status: 400 });
+  const provider = body.provider;
+  if (provider === "intervals") {
+    const targetAthlete = body.athleteId || new URL(req.url).searchParams.get("athleteId");
+    if (targetAthlete && targetAthlete !== user.id) return Response.json({ error: "Disconnect your own account." }, { status: 403 });
+    try { return Response.json(await disconnectIntervals(user.id)); }
+    catch (error) {
+      return Response.json({ error: error instanceof IntervalsOAuthError ? error.message : "Could not disconnect. Please retry.",
+        code: error instanceof IntervalsOAuthError ? error.code : "disconnect_failed" },
+      { status: error instanceof IntervalsOAuthError ? error.status : 503 });
+    }
+  }
   await prisma.connector.updateMany({
     where: { userId: user.id, provider: String(provider) },
     data: {

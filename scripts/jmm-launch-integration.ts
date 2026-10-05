@@ -479,7 +479,7 @@ async function main() {
     assert.ok(!connectors.providers.some((provider: any) => provider.id === "intervals"));
     const today = await json("/api/today", a);
     assert.ok(!today.connectors.some((connector: any) => connector.provider === "intervals"));
-    await request("/api/connectors/intervals/connect", a, { body: { athleteId: "synthetic-fixture-only", apiKey: "not-a-provider-key" }, status: 503 });
+    await request("/api/connectors/intervals/connect", a, { body: { athleteId: "synthetic-fixture-only", apiKey: "not-a-provider-key" }, status: 410 });
     await request("/api/connectors/sync", a, { body: { provider: "intervals" }, status: 503 });
     assert.deepEqual(await db.connector.findMany({ where: { userId: a.id } }), before);
   });
