@@ -503,3 +503,16 @@ test('Intervals preferences: opt-out remains available with connector feature di
   const f=intervalsPreferencesFixture({enabled:false});assert.equal((await f.route.PUT(preferencesRequest({enabled:false}))).status,200);
   assert.equal(f.log.claims.length,0);assert.equal(JSON.parse(f.log.audits[0].after).enabled,false);
 });
+
+test('Intervals publication route: disabled capability rejects before parsing or provider work',async()=>{
+  let parsed=0,published=0;
+  const route=load(original,'src/app/api/workout/intervals-push/route.ts',{
+    'next/server':{NextResponse},
+    '@/lib/access':{trainingAccess:async()=>({athlete:{id:'athlete-A'},actor:{id:'athlete-A'}}),errorResponse:()=>{throw Error('Unexpected generic error');}},
+    '@/lib/canonical-session':require('./canonical-session'),
+    '@/lib/intervals-delivery':{publishIntervalsWorkout:async()=>{published++;}},
+    '@/lib/capabilities':{requireIntervalsConnector:()=>{throw Object.assign(new Error('Intervals disabled'),{status:503});}},
+  },{Error});
+  const r=await route.POST({json:async()=>{parsed++;return{};}});
+  assert.equal(r.status,503);assert.equal(parsed,0);assert.equal(published,0);
+});

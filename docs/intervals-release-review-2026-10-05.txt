@@ -178,7 +178,7 @@ API terms and Garmin attribution requirement:
 https://forum.intervals.icu/t/intervals-icu-api-terms-and-conditions/114087
 
 VALIDATION / RELEASE RECORD
-Full repository suite: 611 passed, 0 failed, 0 skipped.
+Full repository suite: 612 passed, 0 failed, 0 skipped.
 TypeScript: passed. Production Next.js build: passed.
 Lint: passed with three pre-existing React hook warnings in HYROX,
 admin-coach-editor and coach-assignments-card; no new lint warnings.
@@ -189,3 +189,8 @@ Authenticated browser walkthrough of the new feature remains part of the live pi
 the public application has the connector deliberately disabled pending credentials.
 Release commit/PR and deployment verification are recorded in the final task report.
 No live OAuth, real PostgreSQL concurrency, Garmin Connect or watch success is claimed.
+
+Pull request: https://github.com/Pablodd1/Jasmethod/pull/26
+The first CI run passed build and authenticated integration, then caught a disabled-
+capability response-order regression. Publication now checks the flag before parsing;
+a regression test covers that. The retired API-key endpoint correctly returns 410.

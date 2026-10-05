@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { SessionResolutionError } from "@/lib/canonical-session";
 import { publishIntervalsWorkout } from "@/lib/intervals-delivery";
+import { requireIntervalsConnector } from "@/lib/capabilities";
 export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const { athlete, actor } = await trainingAccess(req);
+    requireIntervalsConnector();
     const body = await req.json();
     if (!body || typeof body.sessionId !== "string" || typeof body.expectedRevision !== "string" || (body.action != null && !["publish", "cancel"].includes(body.action))) return NextResponse.json({ error: "Provide a session ID, current revision and publish or cancel action." }, { status: 400 });
     const result = await publishIntervalsWorkout({ athleteId: athlete.id, actorId: actor.id, sessionId: body.sessionId, expectedRevision: body.expectedRevision, action: body.action });
