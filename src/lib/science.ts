@@ -658,59 +658,21 @@ export function easyShareOf(sessions: PlanSession[]): number {
   return Math.round((easy / total) * 100);
 }
 
-const EASY_TITLE: Record<string, string> = {
-  "Bike: Threshold Intervals": "Bike: Easy Aerobic",
-  "Bike: Tempo": "Bike: Easy Aerobic",
-  "Bike: VO2max Intervals": "Bike: Easy Aerobic",
-  "Bike: Race Simulation": "Bike: Easy Aerobic",
-  "Bike: Race Pace Intervals": "Bike: Easy Aerobic",
-  "Run: Track Intervals": "Run: Easy Aerobic",
-  "Run: Tempo": "Run: Easy Aerobic",
-  "Run: Hill Repeats": "Run: Easy Aerobic",
-  "Run: Race Pace": "Run: Easy Aerobic",
-  "Run: Cruise Intervals": "Run: Easy Aerobic",
-  "Swim: Threshold Set": "Swim: Easy Aerobic",
-  "Swim: Race Pace + Open Water": "Swim: Easy Aerobic",
-  "Swim: Sharpening": "Swim: Easy Aerobic",
-};
-
-const QUALITY_TITLE: Record<string, string> = {
-  "Bike: Long Endurance": "Bike: Tempo",
-  "Bike: Aerobic Spin": "Bike: Tempo",
-  "Run: Long Aerobic": "Run: Tempo",
-  "Run: Easy + Strides": "Run: Tempo",
-  "Swim: Endurance & Technique": "Swim: Tempo Set",
-};
-
 export function enforceSplit(sessions: PlanSession[], easyPct: number): PlanSession[] {
+  if (!Number.isFinite(easyPct)) throw new Error("Invalid easy-training percentage");
   const target = Math.max(45, Math.min(90, easyPct));
-  const work = sessions.map((s) => ({ ...s }));
-  const isEasy = (s: PlanSession) => s.zone === "z1" || s.zone === "z2";
-  for (let i = 0; i < 12; i++) {
-    const E = work.filter(isEasy).reduce((a, s) => a + s.minutes, 0);
-    const T = work.reduce((a, s) => a + s.minutes, 0) || 1;
-    const cur = (E / T) * 100;
-    if (Math.abs(cur - target) <= 3) break;
-    // Best single flip: solve the new minutes so (easy)/(total) lands on target.
-    let bestIdx = -1, bestM2 = 0, bestDist = Infinity, bestDir: "promote" | "demote" | null = null;
-    work.forEach((s, idx) => {
-      if (isEasy(s) && s.zone === "z2" && s.type === "endurance") {
-        // Round AFTER the clamp — Math.min(s.minutes * 1.5, …) can pass a
-        // fractional bound (45 × 1.5 = 67.5) straight into an Int column.
-        const m2 = Math.round(Math.max(10, Math.min(s.minutes * 1.5, (100 * E - target * T + target * s.minutes) / (100 + target))));
-        const dist = Math.abs(((E - m2) / (T - s.minutes + m2)) * 100 - target);
-        if (dist < bestDist) { bestDist = dist; bestIdx = idx; bestM2 = m2; bestDir = "promote"; }
-      } else if (!isEasy(s) && s.sport !== "brick" && s.type !== "brick" && s.type !== "strength" && s.type !== "plyo") {
-        const m2 = Math.round(Math.max(10, Math.min(s.minutes * 1.5, (target * T - target * s.minutes - 100 * E) / (100 - target))));
-        const dist = Math.abs(((E + m2) / (T - s.minutes + m2)) * 100 - target);
-        if (dist < bestDist) { bestDist = dist; bestIdx = idx; bestM2 = m2; bestDir = "demote"; }
-      }
-    });
-    if (bestIdx < 0 || !bestDir || bestM2 === work[bestIdx].minutes) break;
-    const s = work[bestIdx];
-    work[bestIdx] = bestDir === "promote"
-      ? { ...s, minutes: bestM2, zone: "z3", type: "tempo", title: QUALITY_TITLE[s.title] || s.title, description: `${s.description} Auto-promoted (${bestM2} min) to hit your ${target}% easy / ${100 - target}% quality split.` }
-      : { ...s, minutes: bestM2, zone: "z2", type: "endurance", title: EASY_TITLE[s.title] || s.title, description: `${s.description} Auto-demoted (${bestM2} min) to hit your ${target}% easy / ${100 - target}% quality split.` };
+  const work = sessions.map(s => ({ ...s }));
+  // A planning preference is a lower bound on easy aerobic minutes, not a
+  // quota that justifies promoting recovery into harder work. Strength,
+  // transitions and station work cannot be classified by their HR label.
+  const aerobic = (s: PlanSession) => ["run", "bike", "swim"].includes(s.sport) && !["strength", "plyo", "brick"].includes(s.type);
+  const total = work.filter(aerobic).reduce((sum, s) => sum + s.minutes, 0);
+  let easy = work.filter(s => aerobic(s) && ["z1", "z2"].includes(s.zone)).reduce((sum, s) => sum + s.minutes, 0);
+  const candidates = work.map((s, index) => ({ s, index })).filter(({ s }) => aerobic(s) && !["z1", "z2"].includes(s.zone)).sort((a, b) => a.s.minutes - b.s.minutes);
+  for (const { s, index } of candidates) {
+    if (!total || easy / total * 100 >= target) break;
+    work[index] = { ...s, zone: "z2", type: "endurance", title: `${s.sport}: Easy aerobic session`, description: `${s.minutes} minutes total at comfortable conversational effort, including an easy start and finish. This replaces the original hard set to respect the selected easy-training preference. The percentage is a planning approximation, not measured time in physiological zones.` };
+    easy += s.minutes;
   }
   return work;
 }
@@ -832,26 +794,30 @@ export function buildSessionDetail(
 
 // ---------- HYROX ----------
 // 8 × (1km run + functional station), 8km running total. Weights/distances from the
-// official HYROX rulebook (Singles, Open divisions). W/M = Open women/men; Pro listed separately.
+// official HYROX rulebook (Singles, all four divisions). Race loads are reference values, not training prescriptions.
 export interface HyroxStation {
   key: string;
   name: string;
   spec: string;   // distance/reps
   women: string;  // open weight (or "—")
   men: string;
-  pro: string;
+  womenPro: string;
+  menPro: string;
+  targetHeightM?: { women: number; men: number; womenPro: number; menPro: number };
   focus: string;
 }
 
+export const HYROX_SINGLES_RULEBOOK = "https://hyrox.mx/wp-content/uploads/2026/07/26_27_HYROX_RulebookSingles_EN_240626.pdf";
+export const HYROX_STATION_DIVISION_LABELS = { women: "Women Open", men: "Men Open", womenPro: "Women Pro", menPro: "Men Pro" } as const;
 export const HYROX_STATIONS: HyroxStation[] = [
-  { key: "ski", name: "SkiErg", spec: "1000m", women: "—", men: "—", pro: "—", focus: "Lats, shoulders, core + aerobic. Arrive off Run 1 — don't spike HR here. 2026/27: clarified SkiErg standard — full handle return, no partial pulls." },
-  { key: "sledpush", name: "Sled Push", spec: "50m (4×12.5m)", women: "102kg", men: "152kg", pro: "202kg", focus: "Legs, posterior chain, calves. Raw strength + grip shoes." },
-  { key: "sledpull", name: "Sled Pull", spec: "50m (4×12.5m)", women: "78kg", men: "103kg", pro: "153kg", focus: "Glutes, back, biceps, grip. Hand-over-hand rope under fatigue." },
-  { key: "burpee", name: "Burpee Broad Jumps", spec: "80m", women: "—", men: "—", pro: "—", focus: "Full body + biggest HR spike of the race. Pacing beats sprinting. 2026/27: tighter burpee broad-jump movement standard — full hip extension every rep." },
-  { key: "row", name: "Rowing", spec: "1000m", women: "—", men: "—", pro: "—", focus: "Back, legs, aerobic. Go conservative early — pays off late." },
-  { key: "farmers", name: "Farmers Carry", spec: "200m", women: "2×16kg", men: "2×24kg", pro: "2×32kg", focus: "Grip, traps, postural endurance. Grip is already compromised here." },
-  { key: "lunges", name: "Sandbag Lunges", spec: "100m", women: "10kg", men: "20kg", pro: "30kg", focus: "Quads, hip flexors. Knee-to-floor standard fails when hip flexors are tight. 2026/27: clarified lunge standard — sandbag penalty (not DQ) on first fault; incomplete station = DQ." },
-  { key: "wallball", name: "Wall Balls", spec: "100 reps", women: "4kg", men: "6kg", pro: "9kg", focus: "Squat mechanics, shoulders, lungs. Everything is loaded by this point." },
+  { key: "ski", name: "SkiErg", spec: "1000m", women: "—", men: "—", womenPro: "—", menPro: "—", focus: "Lats, shoulders, core + aerobic. Arrive off Run 1 — don't spike HR here." },
+  { key: "sledpush", name: "Sled Push", spec: "50m (4×12.5m)", women: "102kg", men: "152kg", womenPro: "152kg", menPro: "202kg", focus: "Legs, posterior chain, calves. Raw strength + grip shoes." },
+  { key: "sledpull", name: "Sled Pull", spec: "50m (4×12.5m)", women: "78kg", men: "103kg", womenPro: "103kg", menPro: "153kg", focus: "Glutes, back, biceps, grip. Hand-over-hand rope under fatigue." },
+  { key: "burpee", name: "Burpee Broad Jumps", spec: "80m", women: "—", men: "—", womenPro: "—", menPro: "—", focus: "Full body + biggest HR spike of the race. Pacing beats sprinting." },
+  { key: "row", name: "Rowing", spec: "1000m", women: "—", men: "—", womenPro: "—", menPro: "—", focus: "Back, legs, aerobic. Go conservative early — pays off late." },
+  { key: "farmers", name: "Farmers Carry", spec: "200m", women: "2×16kg", men: "2×24kg", womenPro: "2×24kg", menPro: "2×32kg", focus: "Grip, traps, postural endurance. Grip is already compromised here." },
+  { key: "lunges", name: "Sandbag Lunges", spec: "100m", women: "10kg", men: "20kg", womenPro: "20kg", menPro: "30kg", focus: "Quads, hip flexors. Knee-to-floor standard fails when hip flexors are tight." },
+  { key: "wallball", name: "Wall Balls", spec: "100 reps", women: "4kg", men: "6kg", womenPro: "6kg", menPro: "9kg", targetHeightM: { women: 2.7, womenPro: 2.7, men: 3, menPro: 3 }, focus: "Squat mechanics, shoulders, lungs. Everything is loaded by this point." },
 ];
 
 // HYROX periodized generator — run + station-specific strength + "compromised running"
@@ -892,43 +858,47 @@ export function generateHyroxPlan(opts: {
       sessions.push({ sport: "run", title: "Run: Long Run", minutes: Math.round(runMin * 0.4), zone: "z2", type: "endurance", description: "Longer Z2 run. Cap HR at 89% LTHR. Run slow to run fast." });
       sessions.push({ sport: "run", title: "Run: Strides", minutes: Math.round(runMin * 0.15), zone: "z5", type: "interval", description: "Easy run + 6×20s strides at Z5 to keep leg speed without fatigue." });
     } else if (ph === "build") {
-      sessions.push({ sport: "run", title: "Run: 1km Repeats", minutes: Math.round(runMin * 0.4), zone: "z5", type: "interval", description: "6×1km at ~5k pace (Z5) with 90s jog recovery. Mirrors the exact HYROX run segment length." });
-      sessions.push({ sport: "run", title: "Run: Tempo", minutes: Math.round(runMin * 0.3), zone: "z4", type: "threshold", description: "3×10 min at T-pace (Z4) with 3 min easy. The sustained run pace you'll hold between stations." });
-      sessions.push({ sport: "run", title: "Run: Easy + Hills", minutes: Math.round(runMin * 0.3), zone: "z2", type: "endurance", description: "Easy Z2 + 8×60s hill repeats for run economy (Rønnestad 2014)." });
+      sessions.push({ sport: "run", title: "Run: 1km Repeats", minutes: Math.round(runMin * 0.4), zone: "z5", type: "interval", description: "Coach-selected repeatable running intervals within the allocated time, including warm-up and recovery. Do not infer race pace or a six-kilometre work set from the session label." });
+      sessions.push({ sport: "run", title: "Run: Tempo", minutes: Math.round(runMin * 0.3), zone: "z4", type: "threshold", description: "Controlled running work within the allocated time. Use reviewed running anchors and complete recoveries; station fatigue does not establish a threshold or race pace." });
+      sessions.push({ sport: "run", title: "Run: Easy + Hills", minutes: Math.round(runMin * 0.3), zone: "z2", type: "endurance", description: "Easy conversational running within the allocated time. Hill intervals are additional hard work and require a separately reviewed prescription." });
     } else if (ph === "peak") {
-      sessions.push({ sport: "run", title: "Run: Race-Pace 1km", minutes: Math.round(runMin * 0.5), zone: "z4", type: "interval", description: "5×1km at race pace with 2 min walk/jog. Dial in the exact effort you'll race at." });
-      sessions.push({ sport: "run", title: "Run: Sharpening", minutes: Math.round(runMin * 0.3), zone: "z3", type: "tempo", description: "Short and sharp: 3×8 min at 90-93% LTHR." });
+      sessions.push({ sport: "run", title: "Run: Race-Pace 1km", minutes: Math.round(runMin * 0.5), zone: "z4", type: "interval", description: "Reviewed running intervals within the allocated time including warm-up and recovery. Race pace requires a valid individual anchor; this template does not establish it." });
+      sessions.push({ sport: "run", title: "Run: Sharpening", minutes: Math.round(runMin * 0.3), zone: "z3", type: "tempo", description: "Short controlled efforts based on current running anchors, with full recoveries and total work fitted to the allocated time." });
     } else {
-      sessions.push({ sport: "run", title: "Run: Taper Jog", minutes: Math.round(runMin * 0.6), zone: "z2", type: "recovery", description: "Easy 20-30 min with 4×20s strides. Legs stay sharp, fatigue stays low." });
+      sessions.push({ sport: "run", title: "Run: Taper Jog", minutes: Math.round(runMin * 0.6), zone: "z2", type: "recovery", description: "Easy running within the allocated time. Add only familiar strides after reviewing recovery and proximity to the actual event." });
     }
 
     // STRENGTH / STATIONS
     if (ph === "base") {
-      sessions.push({ sport: "strength", title: "Strength: Sled & Squat Foundation", minutes: Math.round(strengthMin * 0.35), zone: "z1", type: "strength", description: "Heavy compound lifts (back squat, deadlift, sled push/pull light) 3×5-8 + plyometric primer (box jumps 3×5, broad jumps 3×5) — plyo 1-2×/week is mandatory in every plan (Ramírez-Campillo 2022). Build the raw posterior-chain strength HYROX stations demand." });
-      sessions.push({ sport: "strength", title: "Engine: SkiErg + Row", minutes: Math.round(strengthMin * 0.3), zone: "z2", type: "endurance", description: "SkiErg 5×500m + Row 5×500m at steady aerobic pace. Learn the erg technique you'll use on race day." });
-      sessions.push({ sport: "strength", title: "Conditioning: Carry + Lunge + Wall Ball", minutes: Math.round(strengthMin * 0.35), zone: "z3", type: "strength", description: "Farmers carry 4×50m, sandbag lunges 4×25m, wall balls 3×20. Light weights, full movement standards." });
+      sessions.push({ sport: "strength", title: "Strength: Sled & Squat Foundation", minutes: Math.round(strengthMin * 0.35), zone: "z1", type: "strength", description: "Technique-focused squat, hinge and light sled practice within the allocated time. A coach should select familiar loads and repetitions from experience, equipment and tolerance. Plyometrics are optional after movement review, not mandatory." });
+      sessions.push({ sport: "strength", title: "Engine: SkiErg + Row", minutes: Math.round(strengthMin * 0.3), zone: "z2", type: "endurance", description: "Familiar SkiErg and rowing technique at steady aerobic effort within the allocated time; select repetitions and distances from current capacity." });
+      sessions.push({ sport: "strength", title: "Conditioning: Carry + Lunge + Wall Ball", minutes: Math.round(strengthMin * 0.35), zone: "z3", type: "strength", description: "Familiar carries, lunges and wall-ball technique within the allocated time, using reviewed repetitions and loads appropriate to current capacity." });
     } else if (ph === "build") {
-      sessions.push({ sport: "strength", title: "Station: Sled Push + Pull", minutes: Math.round(strengthMin * 0.35), zone: "z4", type: "strength", description: "Sled push 8×12.5m + sled pull 8×12.5m at race weight (build toward it) + plyometric circuit 2×/week: depth jumps 3×5, bounding 3×20m — the explosive stiffness that makes sleds and walls cheaper (Ramírez-Campillo 2022)." });
-      sessions.push({ sport: "strength", title: "Station: Erg Intervals", minutes: Math.round(strengthMin * 0.3), zone: "z4", type: "interval", description: "SkiErg + Row 8×500m at race pace with 1:1 rest. Damper ~6 (race setting)." });
-      sessions.push({ sport: "strength", title: "Station: Burpees + Carries + Wall Balls", minutes: Math.round(strengthMin * 0.35), zone: "z4", type: "strength", description: "80m burpee broad jumps, 200m farmers carry, 100m lunges, 3×30 wall balls — full movement standards, race weights." });
+      sessions.push({ sport: "strength", title: "Station: Sled Push + Pull", minutes: Math.round(strengthMin * 0.35), zone: "z4", type: "strength", description: "Coach-selected sled push/pull practice within the allocated time. Confirm division, sled surface, equipment and demonstrated capacity before selecting loads or distances. Race loads and depth jumps are not defaults." });
+      sessions.push({ sport: "strength", title: "Station: Erg Intervals", minutes: Math.round(strengthMin * 0.3), zone: "z4", type: "interval", description: "SkiErg/row technique and repeatable efforts within the allocated time, with complete recoveries. Adjust damper to your practiced setting; a preset is not an individual prescription." });
+      sessions.push({ sport: "strength", title: "Station: Burpees + Carries + Wall Balls", minutes: Math.round(strengthMin * 0.35), zone: "z4", type: "strength", description: "Coach-reviewed station technique within the allocated time. Confirm equipment, division and demonstrated capacity before selecting loads, repetitions or distances; race loads are not defaults." });
     } else if (ph === "peak") {
-      sessions.push({ sport: "strength", title: "Station: Full-Weight Dress Rehearsal", minutes: Math.round(strengthMin * 0.6), zone: "z4", type: "strength", description: "Every station at race weight, once through, with 500m jog between. Lock in the movement standards." });
+      sessions.push({ sport: "strength", title: "Station: Reviewed Dress Rehearsal", minutes: Math.round(strengthMin * 0.6), zone: "z4", type: "strength", description: "Scaled station rehearsal within the allocated time using reviewed familiar loads. Full race loads and a complete race simulation require separate approval and sufficient time." });
     } else {
       sessions.push({ sport: "strength", title: "Strength: Maintenance", minutes: Math.round(strengthMin * 0.5), zone: "z1", type: "strength", description: "Light, explosive: 2×8 moderate load. No heavy lifting within 7-10 days of race." });
     }
 
     // COMPROMISED RUNNING (the defining HYROX skill)
     if (ph === "build" || ph === "peak") {
-      sessions.push({ sport: "hyrox", title: "Compromised Run: Station Intervals", minutes: 45, zone: "z3", type: "brick", description: "Run 1km → 1 station (ski/sled/wallball, rotating) → run 1km → next station, ×4. This is where HYROX is won — learn to run on tired, loaded legs." });
+      sessions.push({ sport: "hyrox", title: "Compromised Run: Station Intervals", minutes: 45, zone: "z3", type: "brick", description: "Alternate short, controlled running and familiar station technique within the allocated time. Division, equipment, running capacity and station competence must guide the detailed prescription." });
     }
     if (ph === "peak" || ph === "taper") {
-      sessions.push({ sport: "hyrox", title: "Race Sim: Full/Short HYROX", minutes: ph === "peak" ? 60 : 40, zone: "z4", type: "brick", description: ph === "peak" ? "Full 8-station simulation with 1km runs (or scaled to 60 min). Practice pacing + transitions." : "Half simulation — 4 stations + 4×500m. Stay sharp, don't dig deep." });
+      sessions.push({ sport: "hyrox", title: "Race Sim: Full/Short HYROX", minutes: ph === "peak" ? 60 : 40, zone: "z4", type: "brick", description: ph === "peak" ? "Scaled transition practice within the allocated time, using individually reviewed station loads and distances. This is not a complete eight-station race simulation." : "Short reviewed transition practice within the allocated time; scale both running and stations to current capacity." });
     }
 
     // RECOVERY + MOBILITY
     sessions.push({ sport: "recovery", title: "Recovery: Mobility + Grip/Ankle Care", minutes: Math.round(otherMin > 0 ? otherMin : 25), zone: "z1", type: "recovery", description: "Hip-flexor, ankle and wrist mobility (lunges + wall balls + farmers carry punish them). Easy Z1 flush. Sleep 8h." });
 
-    weeksOut.push({ week: w, theme: theme[ph], sessions: sessions.map((x) => capSessionMinutes(x, totalMin, undefined)), totalMinutes: sessions.map((x) => capSessionMinutes(x, totalMin, undefined)).reduce((a, x) => a + x.minutes, 0) });
+    const capped = sessions.map(x => capSessionMinutes(x, totalMin, undefined));
+    const sum = capped.reduce((a, x) => a + x.minutes, 0);
+    const factor = Math.min(1, totalMin / Math.max(1, sum));
+    const bounded = capped.map(x => ({ ...x, minutes: Math.max(0, Math.floor(x.minutes * factor)) })).filter(x => x.minutes > 0);
+    weeksOut.push({ week: w, theme: theme[ph], sessions: bounded, totalMinutes: bounded.reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }
@@ -1163,24 +1133,24 @@ export function generateSingleSport(opts: {
     if (sport === "bike") {
       sessions.push({ sport: "bike", title: "Endurance Ride (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Steady aerobic miles — cadence 85-95 rpm. The engine builder (Seiler 2009: 80/20)." });
       sessions.push({ sport: "bike", title: "Sweet Spot Intervals", minutes: Math.round(totalMin * 0.25), zone: "z3", type: "interval", description: "3×12 min @ 88-94% FTP, 6 min spin between. Best fitness-per-minute of any bike workout (Seiler 2010)." });
-      sessions.push({ sport: "bike", title: "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Endurance spin, keep it easy today." : "5×4 min @ 106-120% FTP, 4 min easy. Raise the ceiling (Billat 2001)." });
-      sessions.push({ sport: "strength", title: "Cyclist Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Squats, hip thrusts, single-leg work 3×8 + plyometric primer (box jumps 3×5, pogo hops 3×20s) — plyo 1-2×/week mandatory (Ramírez-Campillo 2022). Preserves power and bone (Ronnestad 2020)." });
-      sessions.push({ sport: "mobility", title: "Recovery Spin + Hip Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ultra-light spin + hip flexor/hamstring flow. Blood flow without load." });
+      sessions.push({ sport: "bike", title: ph === "base" ? "Easy Aerobic Session" : "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: ph === "base" ? "z2" : "z5", type: ph === "base" ? "endurance" : "interval", description: ph === "base" ? "Endurance spin, keep it easy today." : "5×4 min @ 106-120% FTP, 4 min easy. Raise the ceiling (Billat 2001)." });
+      sessions.push({ sport: "strength", title: "Cyclist Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Familiar squat, hip-hinge and single-leg exercises at reviewed loads and repetitions within the session budget. Plyometrics are optional after movement and injury review; progress using recorded tolerance." });
+      sessions.push({ sport: "mobility", title: "Recovery Spin + Hip Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ultra-light spin + hip flexor/hamstring flow. Keep effort light; cycling still contributes training load." });
     } else if (sport === "swim") {
       sessions.push({ sport: "swim", title: "Technique + Aerobic Swim", minutes: Math.round(totalMin * 0.3), zone: "z2", type: "endurance", description: "Drills (catch-up, fingertip drag) then steady swims. Technique first — speed follows form." });
       sessions.push({ sport: "swim", title: "Threshold Swim Set", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "interval", description: "10×100 @ CSS pace, 15s rest. Threshold is the swim engine (Olbrecht 2015)." });
-      sessions.push({ sport: "swim", title: "VO2max Sprints", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Easy pull buoy set instead today." : "8×50m max effort, 60s full recovery. Race-speed Neuromuscular work." });
-      sessions.push({ sport: "strength", title: "Swimmer Strength", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "strength", description: "Pull-ups, rows, rotator cuff work 3×10 + plyometric primer (clap push-ups 3×5, med-ball slams 3×8) — plyo 1-2×/week mandatory (Ramírez-Campillo 2022). Shoulder durability = swim career length." });
+      sessions.push({ sport: "swim", title: ph === "base" ? "Easy Aerobic Session" : "VO2max Sprints", minutes: Math.round(totalMin * 0.15), zone: ph === "base" ? "z2" : "z5", type: ph === "base" ? "endurance" : "interval", description: ph === "base" ? "Easy pull buoy set instead today." : "8×50m max effort, 60s full recovery. Race-speed Neuromuscular work." });
+      sessions.push({ sport: "strength", title: "Swimmer Strength", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "strength", description: "Reviewed pulling and shoulder-strength exercises within the session budget. Choose loads and repetitions for current ability; explosive exercises are optional after movement and injury review." });
       sessions.push({ sport: "mobility", title: "Ankle & Shoulder Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ankle flexibility = better kick; thoracic mobility = longer catch." });
     } else if (sport === "run") {
-      sessions.push({ sport: "run", title: "Long Aerobic Run (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Steady conversational miles — the aerobic engine (Seiler 2009: 80/20). Build the long run ≤10% distance per week." });
+      sessions.push({ sport: "run", title: "Long Aerobic Run (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Steady conversational running. Review recent load, recovery and available time before progressing; a fixed weekly percentage does not establish safe progression." });
       sessions.push({ sport: "run", title: "Tempo / Threshold Run", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "threshold", description: "20-30 min @ lactate threshold (T-pace). The single best marathon/half predictor (Billat 2001)." });
-      sessions.push({ sport: "run", title: "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: "z5", type: "interval", description: ph === "base" ? "Easy strides instead today." : "6×800m or 5×1000m @ ~5k pace, equal-time jog recovery. Raise the ceiling." });
-      sessions.push({ sport: "strength", title: "Runner Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Single-leg squats, calf raises, glute bridge 3×10 + plyometrics 1-2×/week (pogo hops, A-skips, bounds — mandatory, Ramírez-Campillo 2022). Running economy + injury-proofing (Ronnestad 2020)." });
-      sessions.push({ sport: "mobility", title: "Recovery Run + Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Easy shakeout jog + hip/ankle mobility flow. Blood flow with zero load." });
+      sessions.push({ sport: "run", title: ph === "base" ? "Easy Aerobic Session" : "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: ph === "base" ? "z2" : "z5", type: ph === "base" ? "endurance" : "interval", description: ph === "base" ? "Easy conversational running within the allocated time." : "6×800m or 5×1000m @ ~5k pace, equal-time jog recovery. Raise the ceiling." });
+      sessions.push({ sport: "strength", title: "Runner Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Reviewed single-leg strength, calf and hip exercises within the session budget. Plyometrics are optional after movement and injury review; strength work does not guarantee injury prevention." });
+      sessions.push({ sport: "mobility", title: "Recovery Run + Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Optional easy shakeout plus hip/ankle mobility. Running still adds impact and training load; use non-impact mobility when a recovery run is inappropriate." });
     } else {
       // lifting-only — progressive overload is the plan
-      sessions.push({ sport: "strength", title: "Lower Body Heavy", minutes: Math.round(totalMin * 0.3), zone: "z1", type: "strength", description: "Squat 4×5, RDL 3×8, lunges 3×10 + plyometric primer (jump squats 3×5, med-ball throws 3×8) — plyo 1-2×/week mandatory (Ramírez-Campillo 2022). Add 2.5kg or 1 rep vs last week — the 6-week wave adds ~8% load (Schoenfeld 2016)." });
+      sessions.push({ sport: "strength", title: "Lower Body Heavy", minutes: Math.round(totalMin * 0.3), zone: "z1", type: "strength", description: "Familiar squat, hinge and lunge patterns at reviewed loads and repetitions within the session budget. Log effort, technique and symptoms before progressing; no automatic weekly weight increase. Plyometrics require a separate movement and injury review." });
       sessions.push({ sport: "strength", title: "Upper Body Heavy", minutes: Math.round(totalMin * 0.25), zone: "z1", type: "strength", description: "Bench 4×5, rows 4×8, overhead press 3×8. Log every set — beat the logbook." });
       sessions.push({ sport: "strength", title: "Full Body Volume", minutes: Math.round(totalMin * 0.25), zone: "z1", type: "strength", description: "3×10 hypertrophy circuit @ 70% — the volume that grows muscle and work capacity." });
       sessions.push({ sport: "mobility", title: "Mobility + Core", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "recovery", description: "Hips, shoulders, spine + anti-rotation core. Mobility is what lets you keep loading heavy." });

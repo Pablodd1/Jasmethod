@@ -55,6 +55,20 @@ export const COACH_REQUEST_TIMEOUT = 35_000;
 export const COACH_SEND_TIMEOUT = 60_000;
 export const COACH_VOICE_TIMEOUT = 60_000;
 
+/** Handle expired sessions and non-JSON gateway failures without leaking response bodies. */
+export async function readCoachResponse(response: Response, es: boolean): Promise<CoachPayload> {
+  if (response.status === 401) throw new Error(es
+    ? "Tu sesión ha caducado. Inicia sesión de nuevo y recarga la conversación."
+    : "Your session expired. Sign in again, then reload the conversation.");
+  let payload: CoachPayload;
+  try { payload = await response.json(); }
+  catch { throw new Error(es ? "El servicio no respondió correctamente. Recarga la conversación para verificar el resultado." : "The service did not respond correctly. Reload the conversation to verify the result."); }
+  if (!payload || typeof payload !== "object" || !response.ok || payload.ok !== true) {
+    throw new Error(typeof payload?.error === "string" ? payload.error : (es ? "La solicitud no se completó. Recarga la conversación." : "The request did not complete. Reload the conversation."));
+  }
+  return payload;
+}
+
 export function validateCoachImage(file: { size: number; type: string }): "type" | "size" | null {
   if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) return "type";
   if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > COACH_IMAGE_LIMIT) return "size";

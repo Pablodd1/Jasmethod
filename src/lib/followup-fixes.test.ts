@@ -62,10 +62,11 @@ test("coach 120% cannot push a 30-minute budget to 38 minutes", () => {
 
 // ---- Follow-up review: fueling unit label ----
 
-test("post-fuel note states TOTAL grams, not g/kg/h", () => {
+test("post-fuel ordinary meal example does not imply hourly replacement", () => {
   const r = postFuelPersonalized({ durationMin: 120, intensity: "z4", weightKg: 70 });
   assert.ok(!/g\/kg\/h/.test(r.note), "misleading unit must be gone");
-  assert.match(r.note, /84 g carbs TOTAL/);
+  assert.match(r.note, /84 g carbohydrate/);
+  assert.match(r.note, /one feeding/);
 });
 
 // ---- Day-off protocol (owner spec) ----

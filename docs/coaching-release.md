@@ -1,5 +1,7 @@
 # Coaching workspace and reliability release
 
+Historical implementation report. Use [RELEASE-GATES.md](RELEASE-GATES.md) for current deployment, schema, authentication and acceptance requirements. Original results below are not a current live-release claim.
+
 Implemented on `codex/reliable-coaching-admin`, based on `4d9032652019325560499ad5bcac1d55451d2e1d`.
 
 ## What the administrator can do
@@ -31,14 +33,14 @@ The dashboard loads AI commentary independently of core data and requests a boun
 - Syncs have a database lease, bounded network timeouts and visible failures. Safe provider reads retry transient failures once. Direct Garmin/COROS integration is not offered; supported files remain available.
 - WHOOP webhooks verify their signed body and timestamp. Strava callbacks require a configured secret in the registered callback URL; an optional subscription ID further limits requests.
 - Cron routes fail closed without `CRON_SECRET`. Reminder delivery respects enabled channels, records failures and suppresses duplicate daily delivery attempts. Missing SMTP does not count as a sent email. An interrupted pending delivery is not automatically replayed, because the external delivery outcome may be unknown.
-- Free one-tap access remains available for the eight original whitelisted athlete accounts. Existing accounts are reused without changing their profile, plans, workouts, metrics or history; a button cannot bypass a password that the athlete has changed. The optional data seed still requires explicit local opt-in.
+- Shared one-tap demo access has since been permanently retired. Use ordinary authenticated access and approved recovery; see [shared-demo-retirement.md](shared-demo-retirement.md). Do not restore shared credentials or seed real accounts to recover access.
 
 Provider behavior was checked against [Garmin FIT SDK](https://developer.garmin.com/fit/), [Google Calendar events](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert), [Oura API v2](https://cloud.ouraring.com/v2/docs) and [WHOOP webhooks](https://developer.whoop.com/docs/developing/webhooks/). Provider tests use fixtures. Live OAuth consent, token refresh, real watch import and external delivery still require acceptance tests with configured accounts.
 
 ## Deploy and enable Jasmel
 
 1. Configure the deployment's server environment: `DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_APP_URL`, and a strong `TOKEN_ENCRYPTION_KEY`. Add provider credentials, `CRON_SECRET` and delivery settings only for services you intend to enable. Keep secrets in the hosting platform's environment settings.
-2. Back up the existing database. On Vercel, a Production build applies pending additive migrations through Prisma before compiling; Preview builds never mutate the production schema. `DATABASE_URL` and `DIRECT_URL` must both be configured for the Production environment. Other hosts should run `npm run db:deploy` as a release step before `npm run build` and `npm start`.
+2. Follow [RELEASE-GATES.md](RELEASE-GATES.md): verify the target database, back it up and review migrations before an explicit authorized migration step. npm run build generates Prisma and compiles Next.js; it does not apply migrations. Verify schema compatibility separately. Never point synthetic acceptance tests at production.
 3. The deployment migration promotes an existing `jasmel@jasmiamimethod.com` or `jasmelacosta@gmail.com` account to full administrator without changing its athlete data. Jasmel signs in with the account's normal password; administrator access is deliberately absent from the public one-tap buttons. If neither account exists when the migration runs, create the account with a unique password and run `npm run admin:grant -- exact-account-email@example.com`.
 4. Sign in normally and open `/admin`. Confirm the expected athlete list, save a controlled profile/session change and verify its history entry.
 5. Register new OAuth callback URLs. For Strava webhook delivery, register `/api/connectors/strava/webhook?key=<STRAVA_WEBHOOK_SECRET>` and configure the verification token. Reconnect accounts whose scopes changed, then test one sync per provider.

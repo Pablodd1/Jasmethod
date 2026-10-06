@@ -1,0 +1,47 @@
+JMM — coaching reliability and science review, 6 October 2026
+
+Release scope
+This change improves access and error handling for J Koach, corrects specific training/fueling defects, expands the public science explanation, and replaces contradictory release instructions. It is not evidence that every application workflow or provider integration is ready.
+
+J Koach
+The user reports chat will not open/load. Production conversation tables and their migrations were verified present through a read-only schema check. The available browser was signed out; the original authenticated failure has not been reproduced. A query for recent production HTTP500 logs returned no entries, which does not rule out browser, authentication or network failures.
+Added /coach with protected access, a route error boundary and direct desktop/mobile links. Existing Today chat remains compatible. Session verification has a15-second timeout and explicit retry state rather than endless loading or an unexplained homepage redirect. Chat handles expired sessions and non-JSON gateway errors without displaying parser/internal response details. No migration, provider credential change or athlete-history rewrite is part of this release.
+
+Training corrections
+The easy-training preference no longer promotes easy work or expands duration solely to hit a percentage. It remains a planning approximation based on session labels, not measured time in physiological zones, and is not uniformly applied to every sport generator.
+New HYROX weeks are bounded by allocated weekly minutes. Hardcoded long sets and compulsory race loads/depth jumps were replaced with reviewed within-budget instructions. Women Pro and Men Pro references and wall-ball target heights are distinct. Generic running, cycling and swimming base substitutions now encode easy title/type/zone consistently, rather than describing easy work while storing z5.
+These are template corrections; they do not establish that generated sessions were tested as complete human interventions. Existing stored plans are not rewritten automatically.
+
+Fueling and recovery
+All rates mean total carbohydrate from food, drinks and gels combined. A universal minimum60g glucose/hour after one hour is not supported. General30–60g/hour and longer-session practiced60–90 guidance is differentiated from selected higher-intake research. Optional80/90/100 rehearsal targets require context and tolerance; they are not automatic weekly increases.
+Corrected displayed carbohydrate:protein ratio to match the actual quantities. Ordinary recovery meal examples are distinguished from hourly carbohydrate restoration for a known short turnaround. Removed public instructions that treated thirst as a mandatory fluid minimum or automatically prescribed caffeine.
+IMPORTANT: new detailed carbohydratePractice/nextSessionInHours engine inputs have tests but are not yet persisted or wired through the complete UI/API workflow. No claim of fully automated high-intake personalization is made.
+
+Evidence reviewed
+AND/DC/ACSM nutrition position: https://pubmed.ncbi.nlm.nih.gov/26891166/
+ISSN nutrient timing: https://pubmed.ncbi.nlm.nih.gov/28919842/
+Gut-training trial: https://pubmed.ncbi.nlm.nih.gov/28177715/
+High-intake running study: https://pubmed.ncbi.nlm.nih.gov/41191077/
+Training-distribution synthesis: https://pubmed.ncbi.nlm.nih.gov/39888556/
+HRV-guided training synthesis: https://pubmed.ncbi.nlm.nih.gov/34489178/
+HYROX simulated Open study: https://pubmed.ncbi.nlm.nih.gov/40230601/
+HYROX Pro-men study: https://pubmed.ncbi.nlm.nih.gov/42697540/
+HYROX prospective health study: https://pubmed.ncbi.nlm.nih.gov/42780891/
+Official Singles2026/27 rules: https://hyrox.mx/wp-content/uploads/2026/07/26_27_HYROX_RulebookSingles_EN_240626.pdf
+Hyponatremia consensus: https://pubmed.ncbi.nlm.nih.gov/26102445/
+ISSN caffeine: https://pubmed.ncbi.nlm.nih.gov/33388079/
+Small HYROX observational studies describe demands/associations; they do not validate JMM's generated program, forecast or injury prevention.
+
+Open implementation work — next platform must not call these complete
+1. Reproduce the owner's signed-in chat failure, capture the visible error, then test open/load/send/reload/confirmation from desktop/mobile on the deployed candidate.
+2. Resolve AI-provider mismatch: owner requested DeepSeek; current inspected conversation adapter configures Gemini. This release does not silently transfer data or change providers. Verify intended provider, credentials and consent before a separate tested adapter change.
+3. Persist dated nutrition practice observations: actual grams/hour, product mixture, sport, duration, intensity, conditions, GI symptoms, and explicit reviewed target. Bind one nutrition result to the canonical session revision across Today/check-in/race/messages. Add authorized edits and audit history.
+4. HYROX: collect division, equipment, station competency and repeated assessments, running anchors, event date and available days. Use those inputs in generation; account for hard hybrid work in weekly load. Current six-week template does not constitute event-aligned individualized periodization.
+5. Complete the uploaded protocol-library contract. Audit found sprint JSON but no equivalent endurance import, no runtime numeric-confidence gate and unknown evidence filters that fail open. Exact generated doses need eligible reviewed protocol IDs and population applicability, not citations alone. An unused400m segment helper also needs correction or retirement.
+6. Review remaining generic fixed-set descriptions and scientific superlatives against structured executable steps and available time. Science/content audit covered critical paths and documents, not every claim in every legacy page.
+7. Finish Intervals secret/configuration and one-athlete acceptance before expansion. API acceptance is not Garmin Connect visibility or watch receipt. Test revised/cancelled workouts, retries, import attribution, then5/50-athlete capacity with measured results. No provider flags were enabled here.
+8. Test Google/password identity, linking/recovery, assigned coach permissions, no-device journey, canonical plan revision, recovery/illness/actuals, notifications and support. Use RELEASE-GATES.md and preserve Pending for unobserved live steps.
+
+Verification record
+Local unit/contract run:626 tests passed after final code corrections. TypeScript passed. Production build and candidate CI/deployment evidence are recorded with the release/PR; do not infer live acceptance from these local results. Existing lint warnings concern HYROX loadPlan, admin-coach-editor effect dependencies and coach-assignments load.
+Added HTTP availability/authentication smoke (public pages and unauthenticated private APIs) and standalone coach route/noindex acceptance. These explicitly do not replace authenticated browser or hardware testing.

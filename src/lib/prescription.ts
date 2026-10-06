@@ -115,11 +115,11 @@ function boxingSteps(minutes: number, variant: number, capZone = 5): WorkoutStep
 }
 
 const HYROX_STATIONS = [
-  { name: "Sled push emulation", note: "Heavy pushes or steep-incline treadmill walks — low position, short steps" },
-  { name: "Wall balls", note: "Sets of 25, squat depth to full extension, exhale on the throw" },
-  { name: "Lunge walks", note: "Weighted walking lunges — knee tracks over toes, controlled down" },
-  { name: "Farmers carry", note: "Heavy carry 30-40 m laps — tall posture, grip is the limiter" },
-  { name: "Row blocks", note: "500 m repeats at race effort — legs then arms, 1:2 drive-recovery rhythm" },
+  { name: "Sled push emulation", note: "Use only a coach-reviewed familiar load and suitable equipment; otherwise practice unloaded movement technique" },
+  { name: "Wall balls", note: "Use reviewed load and repetitions that fit this block; maintain controlled technique, without a mandatory set of 25" },
+  { name: "Lunge walks", note: "Use bodyweight or a reviewed familiar load, controlled movement and adequate rest" },
+  { name: "Farmers carry", note: "Use a reviewed familiar load and distance that fits this block; maintain posture and rest as needed" },
+  { name: "Row blocks", note: "Controlled rowing technique within this timed block; do not add a fixed distance or infer race effort" },
 ];
 
 function hyroxSteps(minutes: number, variant: number, capZone = 4): WorkoutStep[] {
@@ -130,9 +130,9 @@ function hyroxSteps(minutes: number, variant: number, capZone = 4): WorkoutStep[
   // Station blocks follow the session's capped zone — an easy day is easy
   // everywhere (review finding: Z4 blocks inside a Z2-capped prescription).
   const blockZone = "z" + Math.min(capZone, 4);
-  const blockPace = capZone <= 2 ? "conversational effort — this is an easy day" : "Hold your planned between-station 1 km pace — even effort, not sprint-and-die";
+  const blockPace = capZone <= 2 ? "conversational effort — this is an easy day" : "Use the reviewed effort for this block; race pace is not inferred from station fitness";
   const steps: WorkoutStep[] = [
-    { name: "Warm-up — build to race HR", seconds: warm, zone: "z2", phase: "warmup", note: "Easy run 5 min, dynamic drills, 2 × 20 m accelerations" },
+    { name: "Warm-up — easy movement", seconds: warm, zone: "z2", phase: "warmup", note: "Easy movement and familiar dynamic drills within the displayed warm-up time" },
   ];
   // Alternating run + station blocks sized to the session.
   const stations = Math.max(2, Math.floor(main / (8 * 60)));
@@ -140,7 +140,7 @@ function hyroxSteps(minutes: number, variant: number, capZone = 4): WorkoutStep[
   for (let i = 0; i < stations; i++) {
     const st = HYROX_STATIONS[(i + variant) % HYROX_STATIONS.length];
     steps.push({
-      name: `Run ${i + 1} — race pace`,
+      name: `Run ${i + 1} — controlled effort`,
       seconds: blockSec, zone: blockZone, phase: "active",
       note: blockPace,
     });

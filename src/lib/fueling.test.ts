@@ -72,7 +72,7 @@ test("post fuel is weight-personalized with the recovery-window instruction", ()
   assert.strictEqual(hard.ratio, "4:1");
   const strength = postFuelPersonalized({ durationMin: 60, intensity: "z3", sport: "strength", weightKg: 70 });
   assert.ok(strength.proteinG != null && strength.proteinG >= 28, "strength: protein-forward");
-  assert.strictEqual(strength.ratio, "1:1");
+  assert.strictEqual(strength.ratio, "1.3:1", "ratio reflects the displayed grams, not a universal recovery rule");
 });
 
 test("reference curve is monotonic non-decreasing and honors gut training", () => {
@@ -104,4 +104,67 @@ test("reported sweat remains unverified; heat never relabels it as a measurement
  const p=buildFuelingPlan({durationMin:120,intensity:"z3",sweatRateMlH:700,heatFactor:1.3});
  assert.equal(p.fluidSource,"reported");assert.equal(p.fluidMlPerHour,700);assert.ok(p.measurementGaps.some(g=>/date\/conditions/.test(g)));
  assert.throws(()=>buildFuelingPlan({durationMin:60,intensity:"z2",weightKg:NaN}));
+});
+
+import { enforceSplit, generateSingleSport, generateHyroxPlan, HYROX_STATIONS, HYROX_STATION_DIVISION_LABELS, type PlanSession } from "./science";
+test("easy-distribution preference cannot create intensity or extra minutes", () => {
+  const easy: PlanSession[] = [{ sport: "run" as const, title: "Easy run", minutes: 40, zone: "z2", type: "endurance", description: "Easy" }];
+  assert.deepStrictEqual(enforceSplit(easy, 70), easy);
+  const mixed: PlanSession[] = [...easy, { sport: "run" as const, title: "Intervals", minutes: 30, zone: "z5", type: "interval", description: "6 x 1km hard" }];
+  const result = enforceSplit(mixed, 80);
+  assert.equal(result.reduce((n, s) => n + s.minutes, 0), 70);
+  assert.equal(result[1].zone, "z2"); assert.ok(!result[1].description.includes("6 x 1km"));
+  assert.equal(mixed[1].zone, "z5", "existing input plan is not mutated");
+});
+test("new HYROX weeks stay within the selected availability and remove mandatory depth jumps", () => {
+  const weeks = generateHyroxPlan({ level: "beginner", weeks: 6, startDate: new Date("2026-10-06"), weeklyHours: 2 });
+  assert.ok(weeks.every(w => w.totalMinutes <= 120));
+  assert.ok(weeks.every(w => w.totalMinutes === w.sessions.reduce((n, s) => n + s.minutes, 0)));
+  assert.ok(!weeks.flatMap(w => w.sessions).some(s => /is mandatory|depth jumps 3/.test(s.description)));
+});
+test("carbohydrate practice cannot escalate beyond demonstrated tolerance or short-session context", () => {
+  const base = { durationMin: 240, intensity: "z3", gutTrained: true };
+  const plan = (targetGPerHour: number, toleratedGPerHour: number, reviewedHighIntake = false, giSymptoms: "none" | "moderate" = "none") => buildFuelingPlan({ ...base, carbohydratePractice: { targetGPerHour, toleratedGPerHour, reviewedHighIntake, giSymptoms } });
+  assert.equal(plan(80, 60).carbsPerHourG, 60);
+  assert.equal(plan(80, 80).carbsPerHourG, 80);
+  assert.equal(plan(100, 100).carbsPerHourG, 90);
+  assert.equal(plan(100, 100, true).carbsPerHourG, 100);
+  assert.ok(plan(100, 100, true, "moderate").carbsPerHourG <= 60);
+  assert.equal(buildFuelingPlan({ ...base, durationMin: 60, carbohydratePractice: { targetGPerHour: 100, toleratedGPerHour: 100, giSymptoms: "none", reviewedHighIntake: true } }).carbsPerHourG, 15);
+  assert.match(plan(100, 100, true).gutNote!, /not automatic/);
+});
+test("rapid carbohydrate restoration is hourly only for documented short recovery", () => {
+  const normal = postFuelPersonalized({ durationMin: 150, intensity: "z4", weightKg: 70 });
+  assert.ok(!normal.note.includes("PER HOUR"));
+  const rapid = postFuelPersonalized({ durationMin: 150, intensity: "z4", weightKg: 70, nextSessionInHours: 3 });
+  assert.match(rapid.note, /70–84 g carbohydrate PER HOUR/);
+  assert.throws(() => postFuelPersonalized({ durationMin: 150, intensity: "z4", weightKg: 70, nextSessionInHours: -1 }));
+});
+
+test("HYROX reference distinguishes Women Pro from Men Pro", () => {
+  assert.strictEqual(HYROX_STATION_DIVISION_LABELS.womenPro, "Women Pro");
+  const push = HYROX_STATIONS.find(s => s.key === "sledpush")!;
+  assert.strictEqual(push.womenPro, "152kg");
+  assert.strictEqual(push.menPro, "202kg");
+  const wall = HYROX_STATIONS.find(s => s.key === "wallball")!;
+  assert.strictEqual(wall.targetHeightM?.womenPro, 2.7);
+  assert.strictEqual(wall.targetHeightM?.men, 3);
+  for (const station of HYROX_STATIONS) {
+    assert.strictEqual(station.womenPro, station.men);
+    assert.ok(!("pro" in station), "ambiguous division must not be exposed");
+  }
+});
+
+test("single-sport base substitutes encode easy intensity consistently", () => {
+  for (const sport of ["run", "bike", "swim"] as const) {
+    const weeks = generateSingleSport({ sport, level: "beginner", weeks: 3, startDate: new Date("2026-10-05T00:00:00Z"), weeklyHours: 4 });
+    for (const week of weeks.slice(0, 2)) {
+      const easy = week.sessions.find(s => s.title === "Easy Aerobic Session");
+      assert.ok(easy, sport);
+      assert.strictEqual(easy.zone, "z2");
+      assert.strictEqual(easy.type, "endurance");
+      assert.ok(!week.sessions.some(s => s.title.startsWith("VO2max")));
+    }
+    assert.ok(weeks[2].sessions.some(s => s.title.startsWith("VO2max") && s.zone === "z5"));
+  }
 });

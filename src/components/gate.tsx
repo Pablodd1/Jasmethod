@@ -6,14 +6,21 @@ import { useAuth } from "./auth";
 import { AppShell, MobileNav } from "./app-shell";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, error, language } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/");
-  }, [loading, user, router]);
+    if (!loading && !user && !error) router.replace("/login");
+  }, [loading, user, error, router]);
 
-  if (loading || !user) {
+  if (error && !user) return <div className="min-h-screen flex items-center justify-center bg-sand-100 p-6">
+    <div role="alert" className="text-center space-y-4 max-w-md">
+      <p>{language === "es" ? "No pudimos verificar tu sesión. Comprueba la conexión e inténtalo de nuevo." : "We could not verify your session. Check your connection and try again."}</p>
+      <button className="btn-primary" onClick={() => window.location.reload()}>{language === "es" ? "Intentar de nuevo" : "Try again"}</button>
+    </div>
+  </div>;
+
+  if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-sand-100">
         <div className="text-center">

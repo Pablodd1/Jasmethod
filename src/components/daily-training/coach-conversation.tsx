@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   COACH_MESSAGE_LIMIT, COACH_REQUEST_TIMEOUT, COACH_SEND_TIMEOUT, COACH_VOICE_TIMEOUT,
-  CoachRequestGate, coachExternalPermissions, coachConfirmationAttempt, coachSendAttempt, coachSendWasRecorded, coachPendingActions, editedCoachCandidate, mergeCoachSessions, validateCoachImage, verifiedCoachReceipt,
+  CoachRequestGate, readCoachResponse, coachExternalPermissions, coachConfirmationAttempt, coachSendAttempt, coachSendWasRecorded, coachPendingActions, editedCoachCandidate, mergeCoachSessions, validateCoachImage, verifiedCoachReceipt,
   type CoachCandidate, type CoachCapabilities, type CoachConfirmationAttempt, type CoachMessage, type CoachPayload, type CoachProposal, type CoachReceipt, type CoachSession, type CoachSendAttempt, type CoachSendBody,
 } from "./coach-conversation-client";
 
@@ -134,9 +134,8 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     const timeout = setTimeout(() => { timedOut = true; ticket.abort(); }, kind === "send" ? COACH_SEND_TIMEOUT : COACH_REQUEST_TIMEOUT);
     try {
       const response = await fetch(url, { method, cache: "no-store", signal: ticket.signal, ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }) });
-      const payload = await response.json() as CoachPayload;
+      const payload = await readCoachResponse(response, es);
       if (!ticket.current() || !mounted.current) return null;
-      if (!response.ok || payload.ok !== true) throw new Error(payload.error || (es ? "La solicitud no se completó." : "The request did not complete."));
       return payload;
     } catch (cause) {
       if (!mounted.current || !ticket.latest()) return null;
