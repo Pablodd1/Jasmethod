@@ -1,0 +1,516 @@
+JMM / INTERVALS ECOSYSTEM: 20-APP COMPARISON AND RELEASE GATES
+Review date: 5 October 2026
+Scope: products named in the owner's supplied Intervals.icu app directory;
+current JMM integration findings supplied by the deployment reviewer;
+official vendor documentation, product listings and first-party repositories.
+
+DECISION
+
+Keep JMM as the authoritative athlete profile, coaching plan, approval and
+audit system. Keep DeepSeek. Intervals is the transport and interoperability
+hub; optional companion apps fill particular ingestion or execution gaps.
+Do not connect several autonomous planners as simultaneous writers of the
+same calendar. Do not substitute an MCP connector for provider authorization
+or device delivery. None of the 20 app listings proves JMM works end to end.
+
+This comparison verifies documented product capabilities, not clinical
+efficacy, prediction accuracy, an executed integration, or access to a
+vendor's internal API. Prices are observed public consumer listings; they
+are not negotiated commercial prices for 50 athletes. A directory listing
+does not grant code reuse, data-processing rights or a commercial API license.
+
+CURRENT READINESS: WHAT THE DEPLOYMENT REVIEWER VERIFIED
+
+* Main merge 9f9a9a1b86b515d89c4e2069961902b55ff94853 is deployed Ready.
+  A Ready deployment is not a real-athlete acceptance result. See the
+  verification record below for CI and local test results.
+* Intervals OAuth client 1143 is hidden and shows zero testing athletes.
+  Its callback and webhook settings are correct. Six supported webhook
+  types are selected: ACTIVITY_UPLOADED, ACTIVITY_ANALYZED, ACTIVITY_UPDATED,
+  ACTIVITY_DELETED, WELLNESS_UPDATED and CALENDAR_UPDATED.
+* INTERVALS_CLIENT_SECRET is absent from Production at the time inspected.
+  The owner agreed to replace and save both previously exposed credentials;
+  completion has not been verified. No credential values belong in this
+  report. Do not activate the connector using exposed credentials.
+* The owner's Intervals Garmin connection has download activities, download
+  wellness and upload planned workouts enabled. Its displayed last upload
+  was one week ago. This proves configured permissions, not a JMM-created
+  workout passing through Garmin Connect and onto a physical watch.
+* Each athlete needs their own JMM identity, their own Intervals consent,
+  and their own Intervals-to-Garmin authorization. The owner's connection
+  cannot serve as shared authorization for 50 athletes.
+
+JMM's implemented path is:
+  Garmin -> athlete's Intervals account -> JMM summary/wellness importer
+  JMM approved run/bike prescription -> FIT -> athlete's Intervals calendar
+  -> athlete's configured Garmin forwarding -> Garmin Connect -> watch.
+
+Initial JMM import covers up to 180 days of AVAILABLE activity summaries
+and wellness. It does not import an entire Garmin account/profile, all
+historical records, sport-zone settings, GPS/HR/power streams or all FIT
+details. Intervals must first possess and expose the relevant source data.
+Incremental reads use a recent window. An old corrected record may need an
+explicit backfill. Aggregated wellness can have incomplete source provenance.
+
+Native publication currently supports run and bike FIT workouts. Automatic
+new publication requires enabled server flags, the athlete's opt-in, current
+day readiness and approval of the exact canonical revision. This is not
+unconditional publication of every future session or every sport.
+Provider acceptance is distinct from Garmin forwarding and watch receipt.
+There is no verified watch receipt; JMM must not display "on your watch"
+merely because Intervals accepted an event.
+
+FIFTY ATHLETES: CAPACITY IS PLAUSIBLE, RELIABILITY IS NOT YET PROVEN
+
+Current app dashboard limits: 8,000 requests/day, 2,500/15 minutes and an
+additional 10 requests/second per IP. These observed app limits govern the
+review; a public guide's 5,000 minimum differs and must not override the
+actual client dashboard. Recheck before rollout or when limits change.
+
+Illustrative lower-bound budget, not a load-test result:
+* 50 athletes x 24 hourly polls x 2 endpoints = 2,400 daily read requests.
+* Initial 180-day import in six 30-day chunks x 2 endpoints x 50 = 600 reads.
+* Both exclude pagination where necessary, publication, reconciliation,
+  webhook-triggered reads, retries, errors and manual sync requests.
+* Concurrent imports can hit 10 requests/second despite a low daily total.
+* Current sequential cron processing is not a sound 50-athlete capacity
+  guarantee. Function timeouts, a slow athlete and repeated backfills must
+  not block every later athlete.
+
+Use durable per-athlete jobs, checkpointed backfills, bounded concurrency,
+an app-wide rate governor, jitter, Retry-After-aware retry/backoff, leases
+and deduplication. Prove this with load tests before broad activation.
+
+COMPARISON TABLE — EXACTLY 20 PRODUCTS
+
+Legend: INTEGRATE = a documented interoperability path worth piloting;
+BUILD = learn the feature pattern and implement independently;
+PARTNER = commercial access must be negotiated; SOURCE = licensed code may
+be evaluated, subject to license/dependency/content review.
+
+01 | AI Endurance | BUILD / optional athlete companion
+Documented: individualized run/bike/triathlon modeling, incoming history,
+rolling one-week export and accepted workout changes forwarded to services.
+JMM value: rolling delivery, cross-source deduplication, threshold consistency
+and clear reasons for adaptation. Do not enable competing calendar writers.
+Cost/access: $20/month or $200/year; 14-day trial. No public embeddable
+coaching API verified. Prediction accuracy is a vendor claim, not independently
+validated in this review.
+Sources:
+https://aiendurance.com/en/faq
+https://aiendurance.com/fr/pricing
+
+02 | Athletica | BUILD / PARTNER
+Documented: baseline testing, evolving zones, multi-sport plans, Intervals
+planned-workout exports and wellness imports. Explicit B2B AI engine and
+white-label offering exists; this is a real partnership route to evaluate.
+JMM value: benchmark athlete onboarding and plan explanations. If a planning
+engine partnership is ever desired, clarify data rights, science validation,
+cost and control; it need not replace DeepSeek's explanation role.
+Cost/access: consumer $19.90/month or $189/year; B2B quotation required.
+Consumer subscription does not buy a commercial engine license.
+Sources:
+https://athletica.ai/pricing
+https://athletica.ai/ai-engine
+https://news.athletica.ai/posts/athletica-x-intervals-icu-integration-is-live
+
+03 | TrainerDay | INTEGRATE for indoor bike execution / BUILD UX
+Documented: cycling library, plan builder, indoor app, Intervals workout of
+the day. JMM can pilot calendar delivery through Intervals to TrainerDay.
+JMM value: quick session start and clear workout execution. Do not import
+the commercial/community workout library wholesale without rights review.
+Cost/access: free restrictions; Pro $4.99/month or $3.33/month billed yearly.
+Test target semantics: vendor forum documents limitations around zone
+workouts. A successful calendar transfer does not prove matching resistance.
+Sources:
+https://www.trainerday.com/
+https://home.trainerday.com/blog/how-coached-cyclists-can-use-trainerday
+https://forums.trainerday.com/t/solved-intervals-icu-wod-misinterpreting-zones/72603/2
+
+04 | HealthFit | INTEGRATE as Apple ingestion companion
+Documented: Apple Health workout/history export, health analytics and
+Intervals support. Release notes document scheduled Intervals workout import.
+JMM value: Apple Watch -> Apple Health -> HealthFit -> Intervals -> JMM.
+Preserve HRV measurement type and original recording device. Validate any
+planned-workout execution separately; import support alone is insufficient.
+Cost/access: US App Store $6.99 plus in-app purchases. Native iOS app needed;
+no public JMM embedding API verified. This is Stephane Lizeray's HealthFit,
+not unrelated products with a similar name.
+Source:
+https://apps.apple.com/us/app/healthfit/id1202650514
+
+05 | Health Sync | INTEGRATE selectively for ingestion gaps
+Documented: Android/iOS health and activity source/destination mappings,
+historical sync and filters; Intervals destination; Health Connect and Apple
+Health coverage varies by platform and metric.
+JMM value: unsupported-device ingestion without inventing a native JMM
+health integration. Preserve provenance, timestamps, permissions and dedupe.
+Cost/access: trial/paid licenses; local price not verified. This is not proof
+of structured-workout publication to Garmin. Do not treat indirect routes
+or marketing language as permission to bypass source data restrictions.
+Sources:
+https://healthsync.app/
+https://healthsync.app/about/
+
+06 | RunGap | INTEGRATE optionally for history/migration
+Documented: configurable iOS activity sources/destinations and auto-sharing.
+JMM value: an athlete-directed history consolidation tool, not the core
+server-side delivery dependency.
+Cost/access: paid Swag Bag needed for auto-sharing; current local price not
+verified. Vendor says iOS controls background execution and may need several
+attempts. Completed activity redistribution is not planned-workout delivery.
+Source:
+https://rungap.zendesk.com/hc/en-us/articles/115004348594-Using-Auto-Sharing-with-RunGap
+
+07 | FitnessSyncer | PARTNER / potential alternate aggregator
+Documented: health/activity aggregation and a real OAuth API with source,
+destination, history, sync-status and webhook features. Intervals field
+mapping is documented separately.
+JMM value: evaluate when Intervals lacks a required data source; avoid a
+second overlapping importer unless deduplication/provenance are explicit.
+Cost/access: personal free tier has five sources/tasks and daily sync;
+personal Pro $4.99/month or $49.99/year. Group/commercial use needs quote and
+client provisioning. Intervals FAQ says RHR read unavailable; multiple
+daily records can be last-write-wins; historical sync requires Pro.
+Sources:
+https://www.fitnesssyncer.com/api/documentation.html
+https://www.fitnesssyncer.com/support/intervals-icu
+https://www.fitnesssyncer.com/go-pro
+
+08 | Watchletic | INTEGRATE: priority watch-execution pilot
+Documented: Intervals planned imports and completed exports; structured
+steps/targets/alerts on Apple Watch and Wear OS; supported Bluetooth sensors.
+JMM value: JMM -> Intervals -> Watchletic -> watch -> Intervals -> JMM.
+Test actual exported run/bike FITs, target units, repeat steps, pause/resume,
+timezone/date changes and completed-session matching on real hardware.
+Cost/access: core free; scheduled-workout/FIT imports require Watchletic
+Club. Local price is displayed in app. Platform/device differences remain.
+Sources:
+https://www.watchletic.com/
+https://www.watchletic.com/pricing
+
+09 | Cadence | INTEGRATE optionally for phone-first execution
+Documented: phone run/bike recording, sensors, navigation, structured
+workouts and Intervals connectivity.
+JMM value: athletes without a dedicated head unit can use a phone execution
+screen. Benchmark readable targets, spoken cues and perceived-exertion entry.
+Cost/access: free recording/upload; structured workouts require Elite,
+$5.99/month or $39.99/year. No public embedding API verified.
+Sources:
+https://getcadence.app/features/
+https://getcadence.app/pricing/
+
+10 | ErgZone | INTEGRATE after sport-specific support
+Documented: today's Intervals sessions imported, supported erg monitors
+programmed, completed sessions uploaded and matched to planned sessions.
+JMM value: rowing/ski/erg execution. First add canonical sport semantics,
+export validation and sport-specific physiological/technical prescriptions.
+Cost/access: Intervals is listed under premium features; exact price not
+verified. JMM's current run/bike FIT support does not establish rowing support.
+Sources:
+https://help.erg.zone/article/439-integrations-intervals-icu
+https://help.erg.zone/article/153-what-is-ergzone-plus
+
+11 | Hexis | BUILD fueling UX / optional companion
+Documented: planned-session-driven fueling, 72-hour context, meal carbohydrate
+guidance and Intervals connection.
+JMM value: nutrition follows upcoming work and changes when the plan changes;
+keep prescribed and actually consumed intake separate.
+Cost/access: EUR16.99/month or EUR109.99/year. No public JMM nutrition API
+verified. Staff publications do not validate every app output. Do not copy
+proprietary Carb Codes branding or imply exact metabolic measurement.
+Source:
+https://athlete.hexis.live/
+
+12 | Saturday | INTEGRATE nutrition companion / BUILD conflict handling
+Documented: imports seven planned Intervals days, maps workout targets to
+fueling context, writes planned carbohydrate rates and completed nutrition
+comments, protects existing coach targets and prevents duplicate comments.
+JMM value: strongest documented nutrition round-trip candidate. Pilot only
+after JMM supports the relevant fields, provenance and conflict rules.
+Cost/access: 14-day trial then paid; exact price not verified. Public
+third-party API not verified. Changelog records real sync/conflict fixes,
+illustrating the need for round-trip tests, not merely an OAuth screenshot.
+Sources:
+https://saturday.fit/changelog/
+https://saturday.fit/download/
+https://saturday.fit/support/
+
+13 | Avitu | BUILD transparent calculations / optional companion
+Documented: deterministic, inspectable nutrition formulas; reads Intervals
+plans, activities and biometrics; writes carbohydrate targets/intake/macros.
+JMM value: expose formula, input values, units, evidence and calculation
+version; preserve user/coach override. DeepSeek explains verified results.
+Cost/access: EUR4.99/month or EUR49.99/year; 14-day trial. No public embedding
+API verified. Gram precision and load-to-glycogen claims are not independently
+established here. Present uncertainty, not exact depletion from a load score.
+Source:
+https://avitu.co/
+
+14 | Course2Workout | BUILD race-specific preparation / optional file flow
+Documented: GPX to power workout, terrain segments, profile assumptions,
+weather/wind scenarios and Intervals calendar scheduling.
+JMM value: route-based preparation, effort ceilings and editable assumptions.
+Show estimate ranges and distinguish route simulation from measured power.
+Cost/access: free planner; three initial download tokens; additional file
+downloads paid. No public calculation API or embedding agreement verified.
+Sources:
+https://course2workout.com/
+https://course2workout.com/terms
+
+15 | RunPact | BUILD race intelligence benchmark
+Documented: ultra course/GPX analysis, terrain pacing, cutoff tools, race
+comparison, finish-time estimates and matching Intervals runs to plans.
+JMM value: checkpoint time windows, terrain-specific pacing and uncertainty.
+Validate forecasts against held-out races; do not claim best accuracy without
+measured error, calibration and suitable comparison cohorts.
+Cost/access: EUR10/month or EUR99/year; 14-day trial; some public tools free.
+No public prediction API or independent accuracy validation verified.
+Sources:
+https://runpact.com/
+https://runpact.com/demo
+
+16 | Domestique | SOURCE / BUILD planner validation
+Documented: local cycling planner, periodization, FIT import, adaptation,
+scientific-reference documentation and inspectable source/tests.
+JMM value: audit specific validation rules and cited papers; selectively
+adapt reviewed components. Local single-user architecture is not a model
+for JMM's production tenant isolation and cloud credential storage.
+Cost/access: Apache-2.0; preserve LICENSE/NOTICE, inspect dependencies and
+workout content licenses. Its injury-prevention wording is not clinical
+proof; evaluate each rule rather than copying numerical thresholds blindly.
+Source:
+https://github.com/platypus45/domestique
+
+17 | Veloq | SOURCE / BUILD athlete-readable analytics
+Documented: mobile Intervals client, synchronized map/chart scrubbing,
+route matching, fitness views and sync/performance diagnostics.
+JMM value: repeated-route comparisons and support dashboards showing last
+sync, coverage, counts and failures. Streams/GPS are prerequisites.
+Cost/access: Apache-2.0. React Native/Expo and Rust matching are not drop-in
+web components; review portability and licenses. Current JMM summary reads
+do not supply all the data required for these analyses.
+Source:
+https://github.com/evanjt/veloq
+
+18 | Unpack - Training Journal | BUILD device-free check-in UX
+Documented: voice becomes editable structured notes about effort, feelings,
+niggles, sleep and recurring themes; diary works without a device.
+JMM value: optional one-minute spoken check-in; athlete corrects extracted
+facts before saving; original context supports coach review and trends.
+Cost/access: official iOS listing says free early access; no public API
+verified. Explicit recording consent, retention controls and transcript
+correction are essential. Do not diagnose an injury from diary text.
+Sources:
+https://play.google.com/store/apps/details?id=fit.unpack.app
+https://apps.apple.com/nz/app/training-journal-unpack/id6773091709
+https://unpack.fit
+
+19 | Incyclist | INTEGRATE optional indoor execution / SOURCE
+Documented: indoor cycling, Intervals calendar workouts/ZWO, GPX simulation,
+trainer/sensor connectivity; device library documents BLE, ANT and Wi-Fi.
+JMM value: execution companion without building a trainer controller into
+JMM now. Device libraries may inform a future native/desktop app.
+Cost/access: free/open source; MIT licenses shown for device/services/UI
+modules. Check each imported component and its dependencies. Native bindings
+do not become usable by an ordinary browser just because code is JavaScript.
+Sources:
+https://incyclist.com/index.html
+https://github.com/incyclist
+https://github.com/incyclist/devices
+
+20 | easy-intervals MCP | BUILD narrow tool contracts / optional external AI
+Documented: hosted AI tools for Intervals activity, wellness, plans and writes.
+JMM value: narrow evidence-backed tool responses, permissioned mutations and
+audited revisions for the existing DeepSeek backend. MCP is not needed to
+deliver Garmin workouts and does not expand provider data rights.
+Cost/access: site advertises seven days full access then 15 requests/day
+free and a paid option. Proprietary terms; no source reuse grant. Homepage
+API-key instructions and newer OAuth guide differ, so confirm onboarding
+before recommending. Do not add a second ungoverned coaching writer.
+Sources:
+https://easy-intervals.de/en/connect
+https://easy-intervals.de/en/connect/claude
+https://easy-intervals.de/en
+https://easy-intervals.de/en/terms
+
+PRIORITIZED IMPLEMENTATION TICKETS FOR THE NEXT PLATFORM
+
+P0-A / Activation and one-athlete consent proof
+Owner replaces exposed OAuth and webhook credentials in their secure
+provider/hosting dashboards. Verify presence/configuration without logging
+values. Confirm callback and webhook exact matches, necessary permissions,
+server flags and cron availability. Complete a real athlete OAuth round trip.
+Acceptance: correct athlete binding, encrypted stored token, no secrets in
+logs, minimal scopes, denial/missing-scope/revocation behavior verified.
+Do not report connection success on an authorization redirect alone.
+
+P0-B / Tenant-safe durable ingestion and rate management
+One job per athlete/provider/window; unique idempotency key; resumable
+backfill cursor and actual coverage timestamps. Scheduler enqueues bounded
+work instead of completing all athletes in a sequential request. A shared
+governor accounts for daily, rolling-window and per-IP bursts, with headroom
+for user requests. Use backoff/jitter, honor Retry-After, quarantine repeated
+authorization errors and expose actionable failures.
+Acceptance: a slow/failed athlete does not block others; restart resumes
+without duplicate activities; duplicate webhook and concurrent cron collapse;
+revoked tokens cannot resurrect; 50-athlete simulated load respects all
+limits and runtime budgets. No live health data needed for synthetic load.
+
+P0-C / Delivery, revision ownership and reconciliation
+JMM is authoritative for its own published events. Stable external IDs,
+exact canonical revision and remote-account binding must survive retries.
+Publication/update/delete operations need an auditable receipt. Do not
+delete or overwrite another planner's events. Reconcile approved edits,
+cancellations, completed sessions and disconnects explicitly.
+Acceptance: one published event per approved session; duplicate retries do
+not duplicate workouts; edited targets replace the correct event; canceled
+workouts disappear; remote failures remain failed/unknown, not delivered.
+Display separate stages: JMM prepared, Intervals accepted, Garmin Connect
+observed, watch confirmed. Record manual hardware verification when no
+provider device receipt exists. Test minutes/seconds, miles/km, pace/speed,
+power/HR, repeats, rests, dates/timezones/DST, warm-up and cool-down.
+
+P1-A / Profile, threshold and provenance import
+Inventory Intervals settings/profile API fields before adding scope. If
+SETTINGS:READ is required, request incremental explicit consent; never
+silently expand authorization. Do not call Intervals settings a full Garmin
+profile. Store values as observations: metric, units, source/provider/device,
+remote ID, measured-at, imported-at, method, quality and effective period.
+Store manual/coach overrides separately; imported values must not erase
+them. Present disagreements and stale zones for review, not silent overwrite.
+Acceptance: profile/zone history is explainable; unknown source remains
+unknown; SDNN and RMSSD are distinct; tests cover units, timezone, duplicates,
+missing fields, invalid values, stale thresholds and conflicting devices.
+
+P1-B / Activity detail required for analysis
+Add explicitly authorized, paginated and checkpointed raw-detail/stream/FIT
+fetches only for the analyses JMM supports. Keep raw imported evidence
+separate from derived metrics. Define storage, deletion and retention.
+Acceptance: interval compliance, terrain analysis or durability charts cite
+actual available samples; missing streams show an explanation rather than
+invented precision. Every derived metric carries algorithm/version metadata.
+
+P1-C / Source restrictions and wellness attribution
+Maintain source allowlists and source-level usage rights throughout imports,
+merges, exports, dashboards and DeepSeek context construction. Do not treat
+an Intervals or another bridge copy of restricted data as unrestricted.
+Unknown-source data must not silently become AI training/coach data. Separate
+AI inference from model training; both must satisfy applicable provider
+terms and athlete consent. Use minimal task-relevant context, not whole
+health histories by default. Honor disconnection/deletion requirements.
+Acceptance: restricted sources cannot enter blocked AI/coaching/export
+paths; mixed-source fields retain attribution; logs omit health payloads,
+tokens and private identifiers; tests prove owner/coach scope isolation.
+
+P1-D / Device-free daily coaching and recovery
+Offer short manual/voice inputs: available time, sleep duration and quality,
+fatigue, stress, mood, motivation, soreness location/severity, illness signs,
+session RPE, actual food/fluid intake and GI tolerance. Keep unknown distinct
+from zero. Let athlete and coach correct the extracted facts, then record
+who changed them. Missing devices must not fabricate objective biometrics.
+Acceptance: no-device athletes get an explained conservative prescription;
+illness/pain escalation overrides scheduled intensity; rest remains rest
+when required; competing edits produce one reviewed revision.
+
+P2-A / Optional companion qualification
+Pilot Watchletic and HealthFit first, then Health Sync for missing ingestion
+sources, TrainerDay/Cadence for execution, ErgZone after sport support.
+Maintain a compatibility matrix with sport, direction, fields, required
+subscription, device model/firmware, tested date and known limitations.
+Do not label an untested app as supported because it appears in the directory.
+
+P2-B / Fueling and race strategy
+Deterministic calculators own numerical prescriptions; DeepSeek explains
+their inputs and evidence. Version formulas and distinguish recommendation,
+user-reported intake and measured values. Nutrition depends on planned and
+actual workload, tolerance, preferences and clinically relevant constraints;
+do not infer exact glycogen use from a load score. Support coach overrides.
+Race predictions need course/terrain/weather inputs, data-quality warnings,
+uncertainty intervals and prospective/out-of-sample validation. Product
+marketing and a cited paper are not validation of JMM's implemented model.
+
+ROLLOUT ACCEPTANCE: ONE -> FIVE -> FIFTY
+
+1 ATHLETE: credential rotation confirmed; consent returns to correct JMM
+account; known Garmin activity and wellness values compare correctly;
+available-history coverage visible; approved run and bike accepted by
+Intervals, observed in Garmin Connect and opened with correct steps on a
+real compatible watch. Complete a short test activity and prove return and
+plan matching. Test edit/cancel, duplicate webhook, disconnect and reconnect.
+Store dates, revisions, redacted evidence and exact hardware—not assertions
+based solely on a green unit suite or provider HTTP 200.
+
+5 ATHLETES: separate permissions and histories, at least two device models,
+different timezones, one no-device athlete, one intermittent/offline device,
+one consent/reconnect failure. Verify no cross-account visibility or
+publication. Observe a complete operational cycle including automatic
+ingestion, daily adaptation, approval, delivery and completion import.
+
+50 ATHLETES: synthetic capacity tests first, then staged real onboarding
+with each athlete's consent. Demonstrate bounded queue age, no missed jobs,
+request-limit headroom, isolated failures, duplicate prevention, retry
+recovery, daily monitoring and a rollback/disable path. Define numerical
+latency/error objectives before the test, measure against them and publish
+failures. Do not infer real-world readiness from the arithmetic budget.
+
+FINAL POSITION
+
+The architecture supports the intended two-direction Garmin workflow via
+Intervals, subject to per-athlete permissions, available data, supported
+workout formats and compatible devices. Current evidence does not establish
+that JMM has completed that workflow for one athlete, much less 50. The
+immediate blocker is unverified replacement/configuration of credentials;
+the next gates are real OAuth, hardware round-trip acceptance and reliable
+per-athlete scheduling. Broadening the app ecosystem comes after these
+foundations. DeepSeek remains in place.
+
+VERIFICATION RECORD AND CHANGES IN THIS FOLLOW-UP
+
+Merged-main CI run 37373271066 was retried and completed SUCCESS. The earlier
+attempt never acquired a hosted runner; it did not discover an application
+failure. The successful run includes schema, typecheck, lint, unit/provider
+contracts, database sync, authenticated acceptance, decoded FIT semantics,
+conversational coaching, J Metrics, recovery and synthetic Telegram checks.
+https://github.com/Pablodd1/Jasmethod/actions/runs/37373271066
+
+GitHub production deployment 6869333264 records merge SHA 9f9a9a1.
+Vercel production deployment dpl_F3qnEWvkywsWT7Pr9euWQbbq9ZZH is Ready.
+Unauthenticated production connector list and authorize probes returned 401,
+as required. Browser navigation to JMM Connections did not provide an
+authenticated athlete session. These checks do not prove live provider data
+transfer, a successful OAuth exchange, or physical watch execution.
+
+This follow-up adds an English/Spanish Garmin-through-Intervals checklist
+visible even when the connector is unavailable, with explicit data/export
+limits and setup for every athlete. It also corrects the Strava banner so
+completed-activity imports cannot be mistaken for planned-workout delivery.
+
+An admin import-health bug is corrected: never-synced, disabled, disconnected,
+overdue, stale or invalid/future sync states no longer look green. The API
+includes reasons and explicitly states that its health is import freshness,
+not watch delivery. Earliest-record coverage is labelled as all-source data,
+not evidence of a completed provider backfill. Existing admin authorization
+is preserved. This does not replace per-provider coverage/load testing.
+The summary covers users with connector records, not the entire roster;
+this population limit is explicitly labelled in the API response.
+
+Follow-up local validation: 617 unit/provider tests passed, zero failures;
+TypeScript, targeted ESLint, diff checks and production build passed.
+No schema, AI provider, credential or athlete-data mutations are included.
+New follow-up changes require their own review/deployment; the successful
+merged-main CI run above applies to the earlier merged integration.
+
+Primary transport documentation:
+https://forum.intervals.icu/t/upload-planned-workouts-to-garmin-connect/1521
+https://forum.intervals.icu/t/intervals-icu-oauth-support/2759
+https://forum.intervals.icu/t/api-access-to-intervals-icu/609
+https://developer.garmin.com/gc-developer-program/training-api/
+https://developer.garmin.com/gc-developer-program/
+
+The Intervals forwarding guide describes roughly the next week of planned
+workouts and compatible-device synchronization. JMM's stricter current-day
+approval/readiness gate is an additional application rule, not an Intervals
+API limitation. Garmin's direct Training API is an alternative official
+publication route, but separate developer access/integration is required;
+it is not activated by an Intervals client ID or a Strava subscription.
