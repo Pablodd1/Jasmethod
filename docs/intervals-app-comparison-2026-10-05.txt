@@ -492,6 +492,8 @@ includes reasons and explicitly states that its health is import freshness,
 not watch delivery. Earliest-record coverage is labelled as all-source data,
 not evidence of a completed provider backfill. Existing admin authorization
 is preserved. This does not replace per-provider coverage/load testing.
+The summary covers users with connector records, not the entire roster;
+this population limit is explicitly labelled in the API response.
 
 Follow-up local validation: 617 unit/provider tests passed, zero failures;
 TypeScript, targeted ESLint, diff checks and production build passed.

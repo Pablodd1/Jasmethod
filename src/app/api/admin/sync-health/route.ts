@@ -64,6 +64,7 @@ export async function GET() {
   return NextResponse.json({
     healthScope: "import_freshness_not_device_delivery",
     coverageScope: "all_sources_not_provider_backfill_completion",
+    populationScope: "users_with_connector_records_not_entire_roster",
     athletes,
     summary: {
       athletes: athletes.length,

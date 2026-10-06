@@ -25,6 +25,7 @@ test("errors dominate freshness while disabled errors remain disabled", () => {
 test("stale and future timestamps cannot appear healthy", () => {
   for (const date of [new Date(now - 27 * 3600000), new Date(now + 60000), new Date(NaN)]) {
     assert.equal(connectorHealth([{ ...connected, lastSyncAt: date }], now, true).health, "amber");
+    assert.equal(connectorHealth([{ ...connected, syncStartedAt: date }], now, true).health, "amber");
   }
 });
 test("recent successful imports are green without implying device delivery", () => {

@@ -27,8 +27,11 @@ export function connectorHealth(connectors: ConnectorHealthInput[], now: number,
         reasons.push(`${c.provider}:stale_or_invalid_sync_time`);
       }
     }
-    if (c.syncStartedAt && now - c.syncStartedAt.getTime() > 30 * 60000) {
-      reasons.push(`${c.provider}:sync_overdue`);
+    if (c.syncStartedAt) {
+      const started = c.syncStartedAt.getTime();
+      if (!Number.isFinite(started) || started > now || now - started > 30 * 60000) {
+        reasons.push(`${c.provider}:sync_overdue_or_invalid_start`);
+      }
     }
   }
   if (!connectors.length) reasons.push("no_connectors");
