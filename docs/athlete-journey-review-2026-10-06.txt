@@ -1,0 +1,35 @@
+JMM athlete journey implementation — 6 October 2026
+
+Scope
+Device-first, optional athlete setup; clearer free registration and existing-account Google linking; simpler navigation; trustworthy HYROX scenario behavior. No schema migration, account deletion, credential change or provider enablement is included.
+
+Implemented workflow
+Welcome -> Devices -> Profile -> Training anchors -> Goals/race -> Travel -> Today.
+Every setup section can be skipped and the athlete can enter the app with saved details. Completing onboarding does not manufacture a plan or bypass planning readiness and prescription approval. Saved profile values are shown; unsupported or unknown measurements remain unknown.
+
+Device connections use the existing configured OAuth authorization routes with a return to Devices. Initial imports remain asynchronous. Connection status, last recorded import and errors are visible. A new owner-scoped read-only endpoint supplies recent usable weight, resting heart rate, HRV and sleep observations for review. Weight adoption is explicit. This does not claim every provider imports every metric, all history or training zones.
+
+Each Save writes only its section. Skipped demographics, goals or anchors cannot leak into a later travel save. Initial profile loading disables editing but not global Skip. Travel-only changes merge with the server's persisted planning context and preserve its confirmation age, source and restrictions, including past goals. Revisions reject stale edits. Travel is stored context only; it does not yet change workout scheduling or account timezone automatically.
+
+Goals, optional coach preference and an optional race remain separate. Coach preference does not grant access. Race saving checks for a matching owned name/date/distance before creating another event; duplicates require review. This check reduces accidental duplicates on reload but is not a database uniqueness guarantee for simultaneous requests. Race updates now whitelist scalar editable fields and reject ownership, nested relation and imported course/provenance changes.
+
+Login now exposes free personal registration and a guided existing-account Google linking flow. The existing account must be authenticated before linking; the page shows its name, email and role. Existing records are preserved. Shared public athlete/admin shortcuts are not restored. No claim is made that the owner's Google callback or password recovery was exercised in this release.
+
+Primary navigation is Today, Plan & Calendar, J Koach and Profile. Other tools are grouped under Training & progress, Recovery & science, and Setup & support. Daily cards remain an alternative Today display, preserving the selected session when switching.
+
+HYROX corrections
+GET/POST now share a consistent pace source. Missing pace is an actionable error, not an invented 4:30/km. Saved threshold is clearly an unadjusted scenario anchor. Open/Pro is explicit; unsupported sex/division multipliers were removed. Segment rounding sums to the target. Infeasible arithmetic and malformed splits are rejected. Blank actuals remain missing, observed segments are compared like-for-like, unknown transitions are excluded, and pacing fade follows chronological runs. The scenario is not a validated finish prediction or an individualized station prescription.
+
+Validation before publication
+649 local tests passed. TypeScript passed. Lint passed with two existing hook-dependency warnings outside the changed surfaces. Local browser used the real rendered application with synthetic API fixtures: Devices -> manual profile; edit weight -> skip -> save travel -> reload confirms original weight; incomplete setup -> Today. The synthetic Today APIs intentionally return unavailable and were not used as evidence of coaching functionality. Build, isolated database CI and production probe results are recorded in the release follow-up.
+
+Still pending real acceptance / further implementation
+1. Owner's password/Google account linking and correct athlete/admin identity in a live signed-in session.
+2. Each provider's approvals, scopes, rotated secrets, token refresh, initial history and scheduled sync. Garmin Connect visibility and physical watch step/alert receipt require an authorized end-to-end device test. No evidence yet clears fifty-athlete rollout.
+3. Import-derived thresholds need sport-specific provenance and explicit review; cycling FTP cannot be reused as Stryd running power.
+4. HYROX individualized station testing, equipment/load scaling, strength progression and event-specific programming exceed this split-calculator repair.
+5. Travel-aware rescheduling, expanded questionnaire chips and a more concise review of computed sport zones remain follow-up work.
+6. DeepSeek remains the owner's requested AI provider; this change does not migrate the existing Gemini adapter. The owner's reported J Koach failure still requires a live signed-in reproduction.
+
+Recommended acceptance order
+One no-device athlete completes setup, confirms a safe plan and records a session; one existing athlete links Google without losing history; one authorized connected athlete imports, publishes and observes the workout on a watch; then expand to five and fifty with queue, rate-limit, retry, duplicate and tenant-isolation evidence. Keep unknown delivery states visible.

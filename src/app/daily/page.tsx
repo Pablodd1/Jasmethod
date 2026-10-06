@@ -3,6 +3,7 @@
 // Distinct visual format (dark, card-numbered guidance) living alongside Today;
 // both read the same plan. This page handles loading/empty/error states.
 import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import { StructuredSportEditor } from "@/components/StructuredSportEditor";
 import { DailyTrainingScreen } from "@/components/daily-training/DailyTrainingScreen";
 import { isDailyTraining } from "@/components/daily-training/training-contract";
@@ -71,9 +72,17 @@ export default function DailyTrainingPage() {
     return () => controller.abort();
   }, [load]);
 
+  const displayNavigation = <nav aria-label="Today's training display" className="mx-auto max-w-[540px] px-4 py-3 flex flex-wrap gap-4 items-center text-sm">
+    <Link className="underline font-semibold" href={selected ? `/today?sessionId=${encodeURIComponent(selected)}` : "/today"}>Today: full view</Link>
+    <span aria-current="page">Workout card view</span>
+    <Link className="underline" href="/coach">J Koach</Link>
+    <Link className="underline" href="/calendar">Plan &amp; Calendar</Link>
+  </nav>;
+
   if (state.kind !== "ready")
     return (
       <main className="jmm-screen" role={state.kind === "error" ? "alert" : "status"}>
+        {displayNavigation}
         <div className="jmm-state">
           <h1>Daily training</h1>
           <p>
@@ -102,6 +111,7 @@ export default function DailyTrainingPage() {
   const session = state.plan.session;
   return (
     <>
+    {displayNavigation}
     {state.plan.sessions && state.plan.sessions.length > 1 && <nav aria-label="Today's sessions" className="jmm-screen jmm-session-switcher"><label>Select today&apos;s session <select value={session.id} onChange={e => selectSession(e.target.value)}>{state.plan.sessions.map(s => <option key={s.id} value={s.id}>{s.startTime ? `${s.startTime} · ` : ""}{s.title} · {s.sport}</option>)}</select></label></nav>}
     <div className="mx-auto max-w-[540px] px-4 py-3"><StructuredSportEditor key={`structure-${session.id}-${session.sourceRevision}`} sessionId={session.id} sport={session.sport} onSaved={() => load()} /></div>
     <DailyTrainingScreen

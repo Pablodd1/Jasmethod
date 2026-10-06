@@ -47,6 +47,34 @@ async function ask(a:Actor,message:string,extra:Record<string,unknown>={}) {retu
 function pending(result:any) {assert.ok(result.proposal?.id,"Expected a reviewable saved proposal");assert.ok(result.proposal.candidates?.length,"Expected explicit candidates");return result.proposal;}
 function confirmBody(p:any,candidates=p.candidates) {return {proposalId:p.id,expectedRevision:p.revision,candidates,idempotencyKey:randomUUID(),confirmed:true};}
 async function main() {
+  await scenario("Optional onboarding finishes without a plan and imported observations remain owner-scoped",async()=>{
+    await request("/api/onboard/import-review",undefined,{status:401});
+    const a=await actor("onboarding-a"),b=await actor("onboarding-b");
+    const p=await json("/api/profile",a);
+    await json("/api/profile",a,{method:"PUT",body:{expectedRevision:p.revision,expectedSetupRevision:p.setupRevision,setup:{travel:{destinationTimezone:"Asia/Tokyo",equipmentNotes:"Hotel gym",maxSessionMinutes:30},coachPreference:"Optional coach"}}});
+    const saved=await json("/api/profile",a);assert.equal(saved.setup.travel.destinationTimezone,"Asia/Tokyo");assert.equal(saved.setup.coachPreference,"Optional coach");assert.equal(saved.planningReadiness.ready,false);
+    const completed=await json("/api/onboard",a,{body:{}});assert.equal(completed.ok,true);assert.equal(completed.next,"/today");assert.equal(await db.workout.count({where:{userId:a.id}}),0);
+    assert.equal((await db.user.findUniqueOrThrow({where:{id:a.id}})).onboarded,true);
+    const own=await db.metricObservation.create({data:{userId:a.id,observedAt:new Date(),metricType:"weight_kg",value:71,unit:"kg",source:"synthetic-test",qualityFlag:"ok"}});
+    const other=await db.metricObservation.create({data:{userId:b.id,observedAt:new Date(),metricType:"weight_kg",value:92,unit:"kg",source:"synthetic-test",qualityFlag:"ok"}});
+    const imported=await json(`/api/onboard/import-review?athleteId=${b.id}`,a);
+    assert.ok(imported.observations.some((o:any)=>o.id===own.id));assert.ok(!imported.observations.some((o:any)=>o.id===other.id));
+    assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:a.id}})).weightKg,70,"review GET must not overwrite profile");
+  });
+  await scenario("Travel-only edits preserve persisted confirmation age, source and past goals despite forged planning answers",async()=>{
+    const a=await actor("travel-age");
+    const initial=await json("/api/profile",a);
+    const confirmedAt=new Date(Date.now()-10*86400000).toISOString();
+    const baseline={...initial.setup,confirmedAt,source:"coach_set",restrictions:"present",targetGoal:{metric:"completion",sport:"run",kind:"goal_not_capacity",targetDate:yesterday}};
+    await db.auditLog.create({data:{actorId:a.id,subjectId:a.id,action:"profile.setup",after:JSON.stringify(baseline),note:"Synthetic old confirmation"}});
+    const before=await json("/api/profile",a);
+    await json("/api/profile",a,{method:"PUT",body:{expectedRevision:before.revision,expectedSetupRevision:before.setupRevision,setupSection:"travel",setup:{...baseline,confirmedAt:new Date().toISOString(),source:"athlete_reported",restrictions:"none",goalDescription:"Forged goal",targetGoal:null,travel:{destinationTimezone:"Asia/Tokyo",maxSessionMinutes:20}}}});
+    const after=await json("/api/profile",a);
+    assert.equal(after.setup.confirmedAt,confirmedAt);assert.equal(after.setup.source,"coach_set");assert.equal(after.setup.restrictions,"present");assert.equal(after.setup.goalDescription,baseline.goalDescription);assert.equal(after.setup.targetGoal.targetDate,yesterday);assert.equal(after.setup.travel.maxSessionMinutes,20);assert.equal(after.planningReadiness.ready,false);
+    await request("/api/profile",a,{method:"PUT",body:{expectedRevision:after.revision,expectedSetupRevision:after.setupRevision,setupSection:"travel",weightKg:99,setup:{travel:null}},status:400});
+    await request("/api/profile",a,{method:"PUT",body:{expectedRevision:after.revision,expectedSetupRevision:before.setupRevision,setupSection:"travel",setup:{travel:null}},status:409});
+    assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:a.id}})).weightKg,70);
+  });
   await scenario("Standalone coach route exists and stays out of search indexes",async()=>{
     const page=await request("/coach",undefined,{status:200});
     const html=await page.text();

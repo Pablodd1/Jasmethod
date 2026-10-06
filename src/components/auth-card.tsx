@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { Suspense, useEffect, useId, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { SocialSignIn } from "./social-sign-in";
+import { useAuth } from "./auth";
 
 interface AuthCardProps {
   /** initial mode */
@@ -13,13 +16,19 @@ interface AuthCardProps {
   redirectTo?: string;
 }
 
-export function AuthCard({
+export function AuthCard(props: AuthCardProps) {
+  return <Suspense fallback={<p role="status">Loading sign-in…</p>}><AuthCardContent {...props} /></Suspense>;
+}
+
+function AuthCardContent({
   initialMode = "login",
-  title = "Sign in to your method",
-  subtitle = "Or register — free for athletes.",
+  title,
+  subtitle = "Athlete registration is free. Use your own account to keep your training together.",
   redirectTo = "/today",
 }: AuthCardProps) {
-  const [mode, setMode] = useState<"login" | "signup">(initialMode);
+  const { user, loading: sessionLoading, error: sessionError, refresh, logout } = useAuth();
+  const params = useSearchParams();
+  const [selectedMode, setMode] = useState<"login" | "signup">(() => params.get("mode") === "signup" ? "signup" : initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -28,13 +37,14 @@ export function AuthCard({
   const [detail, setDetail] = useState("");
   const [busy, setBusy] = useState(false);
   const fieldId = useId();
-  const [linkMode, setLinkMode] = useState(false);
-  const [linkAfterLogin, setLinkAfterLogin] = useState(false);
+  const linkMode = params.get("link") === "1";
+  const linkAfterLogin = params.get("error") === "account_link_required";
+  const mode = linkMode || linkAfterLogin ? "login" : selectedMode;
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setLinkMode(params.get("link") === "1");
-    setLinkAfterLogin(params.get("error") === "account_link_required");
-  }, []);
+    if (params.get("link") === "1" || params.get("error") === "account_link_required") setMode("login");
+    else if (params.get("mode") === "signup") setMode("signup");
+    else setMode(initialMode);
+  }, [params, initialMode]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,7 +70,7 @@ export function AuthCard({
       }
       // First-time signups enter the onboarding wizard; sign-ins go straight
       // to training (the wizard self-skips for onboarded users anyway).
-      window.location.href = mode === "signup" ? "/onboard" : linkAfterLogin ? "/login?link=1" : redirectTo === "/onboard" ? "/today" : redirectTo;
+      window.location.href = mode === "signup" ? "/onboard" : linkMode || linkAfterLogin ? "/login?link=1" : redirectTo === "/onboard" ? "/today" : redirectTo;
     } catch {
       setError("Network error — please try again.");
       setDetail("");
@@ -68,24 +78,40 @@ export function AuthCard({
     }
   }
 
-  if (linkMode) return (
+  const linking = linkMode || linkAfterLogin;
+  if (linking && (sessionLoading || sessionError)) return (
     <div className="rounded-3xl border border-ink-200 bg-white p-6 sm:p-8 shadow-sm">
-      <h2 className="font-display text-xl font-bold text-ink-900">Link a sign-in option</h2>
-      <p className="mt-2 text-sm text-ink-600">After signing in to your existing account, choose the provider you want to link. Your training stays in the same account.</p>
-      <SocialSignIn />
-      <a href="/login" className="mt-4 inline-block text-sm underline">Sign in with email instead</a>
-      <a href="/today" className="mt-4 ml-4 inline-block text-sm underline">Back to training</a>
+      <h2 className="font-display text-xl font-bold">Link Google to your existing account</h2>
+      <p className="mt-3 text-sm" role={sessionError ? "alert" : "status"}>{sessionError ? "We could not verify your session. Try again before linking a sign-in option." : "Checking which account is signed in…"}</p>
+      {sessionError && <button className="btn-editorial mt-4" onClick={() => void refresh()}>Check session again</button>}
+      <Link href="/login" className="mt-4 block text-sm underline">Back to sign-in</Link>
+    </div>
+  );
+
+  if (user) return (
+    <div className="rounded-3xl border border-ink-200 bg-white p-6 sm:p-8 shadow-sm">
+      <h2 className="font-display text-xl font-bold text-ink-900">{linking ? "Link a sign-in option" : "You are signed in"}</h2>
+      <p className="mt-3 text-sm text-ink-700 break-words"><strong>{user.name}</strong><br />{user.email}<br />Account role: {user.role}</p>
+      {linking ? <>
+        <p className="mt-3 text-sm text-ink-600">Confirm this is the account whose training you want to keep. Linking adds Google as another way to sign in to this account; it does not combine separate athlete and coach accounts.</p>
+        <SocialSignIn intent="link" />
+      </> : <Link href="/login?link=1" className="mt-5 block text-sm font-semibold underline">Link Google to this account</Link>}
+      <div className="mt-5 flex flex-wrap gap-4 items-center">
+        <Link href="/today" className="btn-editorial">Continue to Today</Link>
+        <button type="button" onClick={() => void logout()} className="text-sm underline">Sign out to use another account</button>
+      </div>
     </div>
   );
 
   return (
     <div className="rounded-3xl border border-ink-200 bg-white p-6 sm:p-8 shadow-sm">
       <h2 className="font-display text-xl sm:text-2xl font-bold text-ink-900">
-        {title}
+        {linking ? "First, sign in to your existing account" : title || (mode === "signup" ? "Create your free athlete account" : "Welcome back")}
       </h2>
-      <p className="text-sm text-ink-500 mt-1">{subtitle}</p>
+      <p className="text-sm text-ink-600 mt-1">{linking ? "Use your existing JMM email and password. After sign-in, you can link Google without losing this account's training data." : subtitle}</p>
+      {linking && <ol className="mt-4 list-decimal pl-5 space-y-1 text-sm text-ink-700"><li>Sign in below, or recover your password.</li><li>Check the account name and email on the next screen.</li><li>Choose Link Google and finish Google&apos;s authorization.</li></ol>}
 
-      <div className="flex rounded-full border border-ink-200 bg-paper-100 p-1 mt-6 mb-5">
+      {!linking && <div className="flex rounded-full border border-ink-200 bg-paper-100 p-1 mt-6 mb-5">
         {(["login", "signup"] as const).map((m) => (
           <button
             key={m}
@@ -94,6 +120,7 @@ export function AuthCard({
             onClick={() => {
               setMode(m);
               setError("");
+              setDetail("");
             }}
             className={`flex-1 py-2 rounded-full text-sm font-semibold transition-colors ${
               mode === m
@@ -101,12 +128,12 @@ export function AuthCard({
                 : "text-ink-500 hover:text-ink-900"
             }`}
           >
-            {m === "login" ? "Sign in" : "Register"}
+            {m === "login" ? "Sign in" : "Create free account"}
           </button>
         ))}
-      </div>
+      </div>}
 
-      <form onSubmit={submit} className="space-y-4">
+      <form onSubmit={submit} className="space-y-4 mt-5">
         {mode === "signup" && (
           <div>
             <label htmlFor={`${fieldId}-name`} className="block text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1">
@@ -119,7 +146,7 @@ export function AuthCard({
               className="field-editorial"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Jasmel Acosta"
+              placeholder="Your full name"
               required
             />
           </div>
@@ -191,15 +218,22 @@ export function AuthCard({
           disabled={busy}
           className="btn-editorial-accent w-full justify-center py-2.5"
         >
-          {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Start free"}
+          {busy ? "Please wait…" : mode === "login" ? linking ? "Sign in, then link Google" : "Sign in" : "Create free athlete account"}
         </button>
       </form>
 
-      <a href="/forgot-password" className="mt-4 inline-block text-sm underline">Forgot password or cannot access your account?</a>
-      <SocialSignIn />
+      <Link href="/forgot-password" className="mt-4 inline-block text-sm underline">Forgot password or cannot access your account?</Link>
+      {linking ? <p className="text-sm text-ink-600 mt-3">After resetting your password, return to <Link className="underline" href="/login?link=1">this linking page</Link>. Do not create another account to recover existing data.</p> : <>
+        <SocialSignIn intent={mode} />
+        <details className="mt-4 rounded-xl border border-ink-200 p-3 text-sm text-ink-700">
+          <summary className="cursor-pointer font-semibold">Already have an account but Google does not open it?</summary>
+          <p className="mt-2">An existing email does not automatically link accounts. Use your JMM password first; then choose Link Google. If you cannot sign in, recover the password for your existing email.</p>
+          <Link className="inline-block mt-3 underline font-semibold" href="/login?link=1">Start guided Google linking</Link>
+        </details>
+      </>}
 
       <p className="micro mt-5 text-center !normal-case !tracking-normal !text-[11px] !text-ink-400">
-        Free for athletes. Your blood, DNA and training data stay private.
+        Free athlete account. No wearable required. See our <Link className="underline" href="/privacy">privacy policy</Link> for how your data is used.
       </p>
       <p className="text-[10px] text-ink-400 text-center mt-3 leading-snug">
         {mode === "signup" ? (

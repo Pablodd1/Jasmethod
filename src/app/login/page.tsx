@@ -5,7 +5,9 @@ import { AuthCard } from "@/components/auth-card";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Sign in — JasMiamiMethod",
+  title: "Sign in or create a free athlete account — JasMiamiMethod",
+  description: "Create your free JMM athlete account, sign in, recover access, or securely link Google to your existing training history.",
+  alternates: { canonical: "/login" },
 };
 
 // Dedicated sign-in page. Also the landing spot for Google Sign-In errors:
@@ -15,7 +17,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-paper">
       <SiteHeader />
-      <div className="pub-container py-12 sm:py-16">
+      <main className="pub-container py-12 sm:py-16">
+        <h1 className="sr-only">Sign in or create a free JMM athlete account</h1>
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-900 mb-6"
@@ -25,7 +28,7 @@ export default function LoginPage() {
         <div className="max-w-md">
           <AuthCard initialMode="login" redirectTo="/today" />
         </div>
-      </div>
+      </main>
       <SiteFooter />
     </div>
   );

@@ -394,6 +394,7 @@ export default function ConnectorsPage() {
           <h1 className="font-display text-2xl font-bold">
             {t(lang, "conn.title")}
           </h1>
+          <a className="inline-block underline text-sm my-2" href="/onboard?redo=1&step=devices">{lang === "es" ? "Volver a la configuración del atleta" : "Return to athlete setup"}</a>
           <p className="text-slate-500 text-sm">
             {lang === "es"
               ? "Conecta tus dispositivos o importa tu historial. Dos caminos: autoriza una vez y los datos llegan solos — o sube un archivo cuando quieras."

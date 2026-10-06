@@ -1,10 +1,13 @@
 "use client";
 
-import { ONBOARDING_STEP, onboardingNext, type OnboardingStep } from "@/lib/onboarding-flow";
-import { saveReviewedProfile, onboardingProfileFields } from "@/lib/profile-client";
-import { useEffect, useState } from "react";
+import { ONBOARDING_STEP, onboardingNext, onboardingResume, type OnboardingStep } from "@/lib/onboarding-flow";
+import { saveReviewedProfile } from "@/lib/profile-client";
+import { onboardingSectionPayload, type OnboardingSection, type SavedOnboarding } from "@/lib/onboarding-save";
+import { TravelFields } from "@/components/travel-fields";
+import type { TravelContext } from "@/lib/planning-setup";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Watch, Flag, CheckCircle2, ArrowRight, ArrowLeft, Globe } from "lucide-react";
+import { User, Flag, CheckCircle2, ArrowRight, ArrowLeft } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 
@@ -16,11 +19,11 @@ const LANGS = [
 export default function OnboardPage() {
   const { user, refresh } = useAuth();
   const router = useRouter();
-  const es = user?.language === "es";
   const [step, setStep] = useState<OnboardingStep>(ONBOARDING_STEP.welcome);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState<string | null>(null);
+  const savedOnboarding = useRef<SavedOnboarding>({ profile: {}, setup: null });
 
   const [lang, setLang] = useState(user?.language || "es");
   const [checking, setChecking] = useState(true);
@@ -32,49 +35,70 @@ export default function OnboardPage() {
   useEffect(() => {
     if (!user) return;
     if (new URLSearchParams(window.location.search).get("redo") === "1") {
+      setStep(onboardingResume(new URLSearchParams(window.location.search).get("step")));
       setChecking(false);
       return;
     }
-    fetch("/api/onboard")
+    fetch("/api/onboard", {signal:AbortSignal.timeout(15000),cache:"no-store"})
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d && d.onboarded && d.profileComplete) router.replace("/today");
-        else setChecking(false);
+        if (d && d.onboarded) router.replace("/today");
+        else { try { setStep(onboardingResume(sessionStorage.getItem(`jmm_setup_step_${user.id}`))); } catch {} setChecking(false); }
       })
       .catch(() => setChecking(false));
   }, [user, router]);
 
+  useEffect(() => { if (user?.id && !checking) { try { sessionStorage.setItem(`jmm_setup_step_${user.id}`, String(step)); } catch {} } }, [step, user?.id, checking]);
+
   // Profile form
   const [profile, setProfile] = useState({
     birthYear: "", sex: "", heightCm: "", weightKg: "",
-    experience: "", goal: "", weeklyHours: "",
+    experience: "", goal: "", weeklyHours: "", lthr: "", maxHr: "", ftp: "", runPaceBase: "", swimPaceBase: "",
   });
 
   const [setupRevision, setSetupRevision] = useState<string | null>(null);
-  const [setup, setSetup] = useState({ adultConfirmed: false, profileConfirmed: false, goalDescription: "", baselineWeeklyMinutes: "", baselineObservedAt: "", interruptions: "unknown", restrictions: "unknown", qualifiedReview: "unknown", trainingDays: [] as number[], maxSessionMinutes: "", equipmentAccess: "", planWeeks: "", trackEvent: "", baselinePlanOptIn: false, targetGoal: null as {context?:string;contextDescription?:string;metric:string; sport:string; value?:string|number;unit?:string;targetDate?:string}|null });
+  const [setup, setSetup] = useState({ travel: null as TravelContext | null, coachPreference: "", adultConfirmed: false, profileConfirmed: false, goalDescription: "", baselineWeeklyMinutes: "", baselineObservedAt: "", interruptions: "unknown", restrictions: "unknown", qualifiedReview: "unknown", trainingDays: [] as number[], maxSessionMinutes: "", equipmentAccess: "", planWeeks: "", trackEvent: "", baselinePlanOptIn: false, targetGoal: null as {context?:string;contextDescription?:string;metric:string; sport:string; value?:string|number;unit?:string;targetDate?:string}|null });
 
   useEffect(() => {
     if (!user?.id) return;
     let active = true;
     setRevision(null);
-    fetch("/api/profile").then(async r => {
+    savedOnboarding.current = { profile: {}, setup: null };
+    fetch("/api/profile", {signal:AbortSignal.timeout(15000),cache:"no-store"}).then(async r => {
       const d = await r.json();
       if (!r.ok) throw Error(d.error || "Could not load profile");
       if (!active) return;
+      savedOnboarding.current = { profile: d.profile ?? {}, setup: d.setup ?? null };
       if (d.profile) setProfile({
         birthYear: String(d.profile.birthYear ?? ""), sex: d.profile.sex ?? "",
         heightCm: String(d.profile.heightCm ?? ""), weightKg: String(d.profile.weightKg ?? ""),
         experience: d.setup?.profileConfirmed ? d.profile.experience : "", goal: d.profile.goal ?? "",
         weeklyHours: d.setup?.profileConfirmed ? String(d.profile.weeklyHours ?? "") : "",
+        lthr: String(d.profile.lthr ?? ""), maxHr: String(d.profile.maxHr ?? ""), ftp: String(d.profile.ftp ?? ""), runPaceBase: String(d.profile.runPaceBase ?? ""), swimPaceBase: String(d.profile.swimPaceBase ?? ""),
       });
-      if (d.setup) setSetup(d.setup);
+      if (d.setup) setSetup(current => ({...current, ...d.setup}));
       setSetupRevision(d.setupRevision ?? null);
       setRevision(d.revision);
     }).catch(e => { if (active) setError(String(e.message)); });
     return () => { active = false; };
   }, [user?.id]);
 
+  const [providers, setProviders] = useState<any[]>([]);
+  const [connectionError, setConnectionError] = useState("");
+  const [imports, setImports] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  async function reviewImports() {
+    setRefreshing(true); setConnectionError("");
+    try {
+      const [c, i] = await Promise.all([fetch("/api/connectors", {cache:"no-store", signal:AbortSignal.timeout(15000)}), fetch("/api/onboard/import-review", {cache:"no-store", signal:AbortSignal.timeout(15000)})]);
+      if (!c.ok || !i.ok) throw Error("Could not refresh connections. You can continue without a device.");
+      setProviders((await c.json()).providers || []); setImports((await i.json()).observations || []);
+    } catch (e) { setConnectionError((e as Error).message); } finally { setRefreshing(false); }
+  }
+  useEffect(() => { if (user?.id) void reviewImports(); }, [user?.id]);
+
   // Race
+  const [raceId, setRaceId] = useState<string | null>(null);
   const [race, setRace] = useState({ name: "", distance: "", date: "", location: "" });
 
   // Set language
@@ -84,9 +108,14 @@ export default function OnboardPage() {
     await refresh();
   }
 
-  async function saveProfile() {
+  async function saveProfile(section: OnboardingSection) {
     setSaving(true); setError("");
-    try { const result = await saveReviewedProfile({...onboardingProfileFields(profile), setup, expectedSetupRevision: setupRevision}, revision); setRevision(result.revision); setSetupRevision(result.setupRevision); return true; }
+    try {
+      const fields = onboardingSectionPayload(section, profile, setup, savedOnboarding.current, setupRevision);
+      const result = await saveReviewedProfile(fields, revision);
+      savedOnboarding.current = { profile: result.profile ?? {}, setup: result.setup ?? null };
+      setRevision(result.revision); setSetupRevision(result.setupRevision); return true;
+    }
     catch(e) { setError((e as Error).message); return false; }
     finally { setSaving(false); }
   }
@@ -96,8 +125,17 @@ export default function OnboardPage() {
     if (!race.name || !race.date || !race.distance) { setError("Confirm race name, actual date and distance, or leave every event field empty."); return false; }
     setSaving(true); setError("");
     try {
-      const r = await fetch("/api/races", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({...race, priority:1})});
+      let existingId = raceId;
+      if (!existingId) {
+        const listed = await fetch("/api/races", {cache:"no-store",signal:AbortSignal.timeout(15000)});
+        if (!listed.ok) throw Error("Could not check existing races. Retry before adding an event.");
+        const matches = ((await listed.json()).races || []).filter((r: {name:string;date:string;distance:string}) => r.name.trim().toLowerCase() === race.name.trim().toLowerCase() && r.date.slice(0,10) === race.date && r.distance === race.distance);
+        if (matches.length > 1) throw Error("More than one matching race exists. Review your races before editing this event.");
+        existingId = matches[0]?.id ?? null;
+      }
+      const r = await fetch("/api/races", {method:existingId ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({...race, ...(existingId ? {id:existingId} : {}), priority:1})});
       if (!r.ok) { const d = await r.json(); throw Error(d.error || "Could not save race"); }
+      const saved = await r.json(); setRaceId(saved.race.id);
       return true;
     } catch(e) { setError((e as Error).message); return false; }
     finally { setSaving(false); }
@@ -109,14 +147,15 @@ export default function OnboardPage() {
     try {
       const r = await fetch("/api/onboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       if (!r.ok) throw Error("Could not finish onboarding. Please retry.");
-      router.push("/training");
+      try { sessionStorage.removeItem(`jmm_setup_step_${user?.id}`); } catch {}
+      router.push("/today");
     } catch(e) { setError((e as Error).message); } finally { setSaving(false); }
   }
 
   const t = (en: string, esp: string) => (lang === "es" ? esp : en);
 
   // Step indicator
-  const STEPS = [t("Welcome", "Bienvenido"), t("Profile", "Perfil"), t("Devices", "Dispositivos"), t("Goal Race", "Carrera objetivo"), t("Done", "Listo")];
+  const STEPS = [t("Welcome", "Bienvenido"), t("Devices", "Dispositivos"), t("Profile", "Perfil"), t("Zones", "Zonas"), t("Goals & race", "Objetivos y carrera"), t("Travel", "Viajes"), t("Ready", "Listo")];
 
   if (checking) {
     return (
@@ -139,6 +178,8 @@ export default function OnboardPage() {
           ))}
         </div>
 
+        <nav aria-label={t("Setup steps", "Pasos de configuración")} className="flex flex-wrap gap-2 mb-5">{STEPS.map((label,index) => <button key={label} disabled={saving} aria-current={step===index ? "step" : undefined} className={`text-sm rounded-full px-3 py-2 border ${step===index ? "bg-ocean-700 text-white" : "bg-white"}`} onClick={() => {setError("");setStep(index as OnboardingStep);}}>{label}</button>)}</nav>
+        <p className="text-sm text-slate-600 mb-5">{t("Every section is optional. Save keeps your edits; Skip does not save them. Return from Profile whenever you want. Personalized training waits for the information it needs.", "Cada sección es opcional. Guardar conserva los cambios; Omitir no los guarda. Vuelve desde Perfil cuando quieras. El entrenamiento personalizado espera los datos necesarios.")}</p>
         {/* Step 0: Language + Welcome */}
         {step === ONBOARDING_STEP.welcome && (
           <div className="text-center py-8">
@@ -152,9 +193,9 @@ export default function OnboardPage() {
             </p>
             <div className="text-left space-y-3 mb-6">
               {[
-                { icon: "📋", en: "Set your profile — age, goals, experience", es: "Configura tu perfil — edad, metas, experiencia" },
-                { icon: "⌚", en: "Review available connections or continue without a device", es: "Revisa las conexiones disponibles o continúa sin dispositivo" },
-                { icon: "🏁", en: "Add your goal race — we'll build the plan", es: "Añade tu carrera objetivo — creamos el plan" },
+                { icon: "📋", en: "Connect first — or continue without devices", es: "Conecta primero — o continúa sin dispositivos" },
+                { icon: "⌚", en: "Review saved information and fill only what is missing", es: "Revisa datos guardados y completa solo lo que falta" },
+                { icon: "🏁", en: "Review zones, goals, an optional race and travel", es: "Revisa zonas, objetivos, carrera opcional y viajes" },
               ].map((s, i) => (
                 <div key={i} className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
                   <span className="text-2xl">{s.icon}</span>
@@ -162,32 +203,68 @@ export default function OnboardPage() {
                 </div>
               ))}
             </div>
-            <button onClick={() => setStep(ONBOARDING_STEP.profile)} className="btn-primary w-full justify-center">
+            <button onClick={() => setStep(ONBOARDING_STEP.devices)} className="btn-primary w-full justify-center">
               {lang === "es" ? "Empezar" : "Get started"} <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>
         )}
 
         {/* Step 1: Profile */}
+        <fieldset disabled={!revision || saving} aria-label={t("Editable setup sections", "Secciones de configuración editables")}>
         {step === ONBOARDING_STEP.profile && (
           <div>
             <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
               <User className="w-5 h-5 text-ocean-600" /> {lang === "es" ? "Tu perfil" : "Your profile"}
             </h2>
+            <div className="card mb-4"><h3 className="font-semibold">{t("Imported observations to review", "Observaciones importadas para revisar")}</h3><p className="text-sm">{t("Review source and date before using a value. Imports do not overwrite your profile automatically.", "Revisa fuente y fecha antes de usar un valor. Las importaciones no sobrescriben tu perfil automáticamente.")}</p>{imports.length ? imports.map(o=><div className="py-2 border-b text-sm" key={o.id}>{o.metricType}: {o.value} {o.unit} · {o.source} · {new Date(o.observedAt).toLocaleDateString()}{o.metricType === "weight_kg" && <button className="underline ml-3" onClick={()=>setProfile({...profile,weightKg:String(o.value)})}>{t("Use reviewed weight", "Usar peso revisado")}</button>}</div>) : <p className="text-sm">{t("No recent usable observations imported yet. All fields remain optional.", "Aún no hay observaciones recientes utilizables. Todos los campos son opcionales.")}</p>}</div>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="label">{lang === "es" ? "Año de nacimiento" : "Birth year"}</label><input className="input" type="number" placeholder="1995" value={profile.birthYear} onChange={(e) => setProfile({ ...profile, birthYear: e.target.value })} /></div>
-                <div><label className="label">{lang === "es" ? "Sexo" : "Sex"}</label>
-                  <select className="input" value={profile.sex} onChange={(e) => setProfile({ ...profile, sex: e.target.value })}>
+                <div><label htmlFor="onboard-field-1" className="label">{lang === "es" ? "Año de nacimiento" : "Birth year"}</label><input id="onboard-field-1" className="input" type="number" placeholder="1995" value={profile.birthYear} onChange={(e) => setProfile({ ...profile, birthYear: e.target.value })} /></div>
+                <div><label htmlFor="onboard-field-2" className="label">{lang === "es" ? "Sexo" : "Sex"}</label><select id="onboard-field-2" className="input" value={profile.sex} onChange={(e) => setProfile({ ...profile, sex: e.target.value })}>
                     <option value="">—</option><option value="male">{lang === "es" ? "Masculino" : "Male"}</option><option value="female">{lang === "es" ? "Femenino" : "Female"}</option>
                   </select>
                 </div>
-                <div><label className="label">{lang === "es" ? "Altura (cm)" : "Height (cm)"}</label><input className="input" type="number" placeholder="175" value={profile.heightCm} onChange={(e) => setProfile({ ...profile, heightCm: e.target.value })} /></div>
-                <div><label className="label">{lang === "es" ? "Peso (kg)" : "Weight (kg)"}</label><input className="input" type="number" step="0.1" placeholder="70" value={profile.weightKg} onChange={(e) => setProfile({ ...profile, weightKg: e.target.value })} /></div>
+                <div><label htmlFor="onboard-field-3" className="label">{lang === "es" ? "Altura (cm)" : "Height (cm)"}</label><input id="onboard-field-3" className="input" type="number" placeholder="175" value={profile.heightCm} onChange={(e) => setProfile({ ...profile, heightCm: e.target.value })} /></div>
+                <div><label htmlFor="onboard-field-4" className="label">{lang === "es" ? "Peso (kg)" : "Weight (kg)"}</label><input id="onboard-field-4" className="input" type="number" step="0.1" placeholder="70" value={profile.weightKg} onChange={(e) => setProfile({ ...profile, weightKg: e.target.value })} /></div>
               </div>
+            </div>
+            <div className="flex justify-between mt-6">
+              <button onClick={() => setStep(ONBOARDING_STEP.devices)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
+              <button onClick={async () => { setStep(onboardingNext(ONBOARDING_STEP.profile, await saveProfile("profile"))); }} disabled={saving || !revision} className="btn-primary">
+                {saving ? "…" : lang === "es" ? "Guardar perfil" : "Save profile"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === ONBOARDING_STEP.devices && <section className="space-y-4">
+          <h2 className="font-display text-2xl">{t("Connect first, or continue manually", "Conecta primero o continúa manualmente")}</h2>
+          <p>{t("Authorize your own account. You return here after connecting; the initial import is queued in the background. A connection is not proof that every metric or watch delivery is available.", "Autoriza tu cuenta. Volverás aquí; la importación inicial se programa en segundo plano. Una conexión no confirma todos los datos ni la entrega al reloj.")}</p>
+          {connectionError && <p role="alert">{connectionError}</p>}
+          {providers.map(p => <div className="card flex flex-wrap items-center gap-3" key={p.id}><div className="flex-1"><h3 className="font-semibold">{p.name}</h3><p className="text-sm">{p.description}</p><p className="text-xs mt-1">{p.status} · {p.lastSyncAt ? `${t("Last import", "Última importación")}: ${new Date(p.lastSyncAt).toLocaleString()}` : t("No successful import recorded", "Sin importación registrada")}</p>{p.lastError && <p role="status" className="text-sm text-amber-800">{p.lastError}</p>}</div>
+          {p.configured && p.method === "oauth" && typeof p.connectUrl === "string" && p.connectUrl.startsWith("/api/connectors/") ? <a className="btn-secondary" href={`${p.connectUrl}?return=${encodeURIComponent("/onboard?redo=1&step=devices")}`}>{t("Connect / reconnect", "Conectar / reconectar")}</a> : p.method === "upload" ? <a className="underline" href="/connectors?onboarding=1">{t("Import a file", "Importar archivo")}</a> : <span>{t("Unavailable", "No disponible")}</span>}</div>)}
+          <button className="btn-secondary" disabled={refreshing} onClick={reviewImports}>{refreshing ? "…" : t("Refresh import status", "Actualizar importación")}</button>
+          <button className="btn-primary ml-3" onClick={() => setStep(ONBOARDING_STEP.profile)}>{t("Continue — devices are optional", "Continuar — dispositivos opcionales")}</button>
+        </section>}
+        {step === ONBOARDING_STEP.zones && <section className="space-y-4">
+          <h2 className="font-display text-2xl">{t("Review your training anchors", "Revisa tus referencias de entrenamiento")}</h2>
+          <p>{t("Saved values are prefilled. Enter only known references; no test or device is required to continue. Unknown zones stay unknown. These entries do not verify a laboratory test or establish HYROX station ability.", "Los datos guardados aparecen aquí. Introduce solo referencias conocidas; puedes continuar sin pruebas ni dispositivos. Las zonas desconocidas siguen desconocidas. No se verifica una prueba de laboratorio ni la capacidad en estaciones HYROX.")}</p>
+          {([['lthr','Threshold heart rate (bpm)','FC umbral (lpm)'],['maxHr','Measured maximum heart rate (bpm)','FC máxima medida (lpm)'],['ftp','Cycling FTP (W)','FTP ciclismo (W)'],['runPaceBase','Running threshold pace (seconds/km)','Ritmo umbral carrera (segundos/km)'],['swimPaceBase','Swimming threshold pace (seconds/100 m)','Ritmo umbral natación (segundos/100 m)']] as const).map(([field,en,esp]) => <label className="block" key={field}>{t(en,esp)}<input type="number" className="input" value={profile[field]} onChange={e=>setProfile({...profile,[field]:e.target.value})}/></label>)}
+          <p className="text-sm">{t("Running power from Stryd requires a separate reviewed running-power reference; cycling FTP must not be reused. You can continue with perceived effort and reviewed pace/heart-rate guidance.", "La potencia de carrera de Stryd requiere su propia referencia revisada; no se reutiliza el FTP ciclista. Puedes continuar con esfuerzo percibido y ritmo/FC revisados.")}</p>
+          <button className="btn-primary" disabled={saving || !revision} onClick={async()=>{if(await saveProfile("zones")) setStep(ONBOARDING_STEP.race);}}>{t("Save and continue", "Guardar y continuar")}</button>
+        </section>}
+        {/* Step 3: Goal race */}
+        {step === ONBOARDING_STEP.race && (
+          <div>
+            <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
+              <Flag className="w-5 h-5 text-coral-500" /> {lang === "es" ? "Objetivos y carrera opcional" : "Goals and optional race"}
+            </h2>
+            <p className="text-sm text-slate-500 mb-4">
+              {lang === "es" ? "Completa solo lo que conoces. Puedes guardar el perfil sin añadir una carrera." : "Fill only what you know. You can save your goals without adding a race."}
+            </p>
+            <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="label">{lang === "es" ? "Experiencia" : "Experience"}</label>
-                  <select className="input" value={profile.experience} onChange={(e) => setProfile({ ...profile, experience: e.target.value })}>
+                <div><label htmlFor="onboard-field-5" className="label">{lang === "es" ? "Experiencia" : "Experience"}</label><select id="onboard-field-5" className="input" value={profile.experience} onChange={(e) => setProfile({ ...profile, experience: e.target.value })}>
                     <option value="">{t("Choose experience", "Elige experiencia")}</option>
                     <option value="beginner">{lang === "es" ? "Principiante" : "Beginner"}</option>
                     <option value="amateur">{lang === "es" ? "Amateur" : "Amateur"}</option>
@@ -195,10 +272,9 @@ export default function OnboardPage() {
                     <option value="pro">Pro</option>
                   </select>
                 </div>
-                <div><label className="label">{lang === "es" ? "Horas/semana" : "Weekly hours"}</label><input className="input" type="number" value={profile.weeklyHours} onChange={(e) => setProfile({ ...profile, weeklyHours: e.target.value })} /></div>
+                <div><label htmlFor="onboard-field-6" className="label">{lang === "es" ? "Horas/semana" : "Weekly hours"}</label><input id="onboard-field-6" className="input" type="number" value={profile.weeklyHours} onChange={(e) => setProfile({ ...profile, weeklyHours: e.target.value })} /></div>
               </div>
-              <div><label className="label">{lang === "es" ? "Objetivo" : "Goal"}</label>
-                <select className="input" value={profile.goal} onChange={(e) => setProfile({ ...profile, goal: e.target.value })}>
+              <div><label htmlFor="onboard-field-7" className="label">{lang === "es" ? "Objetivo" : "Goal"}</label><select id="onboard-field-7" className="input" value={profile.goal} onChange={(e) => setProfile({ ...profile, goal: e.target.value })}>
                   <option value="">{t("Choose a goal", "Elige un objetivo")}</option>
                   <option value="sprint">Sprint</option>
                   <option value="olympic">Olympic</option>
@@ -214,7 +290,7 @@ export default function OnboardPage() {
                 </select>
               </div>
             </div>
-            <fieldset className="mt-6 space-y-3 border rounded-xl p-4">
+            <details className="mt-5"><summary className="cursor-pointer font-semibold">{t("Optional planning details — complete when ready to build a plan", "Detalles opcionales — completa cuando quieras crear un plan")}</summary><fieldset className="mt-6 space-y-3 border rounded-xl p-4">
               <legend className="font-semibold">{t("Training context and pilot eligibility", "Contexto y elegibilidad del piloto")}</legend>
               <p className="text-sm text-slate-600">{t("Unknown answers stay unknown. A device and performance tests are optional. Individual planning waits for relevant setup and a confirmed preview.", "Las respuestas desconocidas siguen sin conocerse. Dispositivos y pruebas son opcionales. El plan espera los datos relevantes y una vista previa confirmada.")}</p>
               <label className="flex gap-2"><input type="checkbox" checked={setup.adultConfirmed} onChange={e => setSetup({...setup, adultConfirmed:e.target.checked})}/>{t("I confirm I am 18 or older", "Confirmo que tengo 18 años o más")}</label>
@@ -253,105 +329,52 @@ export default function OnboardPage() {
               <label className="block">{t("Planning horizon, weeks (no event date is invented)", "Horizonte del plan, semanas (no se inventa una fecha de carrera)")}<input className="input" type="number" min="4" max="30" value={setup.planWeeks ?? ""} onChange={e=>setSetup({...setup,planWeeks:e.target.value})}/></label>
               <p className="text-sm">{t("Unsupported circumstances pause automated planning for qualified review; this form does not provide medical clearance. If you report no recent tolerated training, ask a qualified coach for an appropriate starting load.", "Las circunstancias no admitidas pausan el plan para revisión profesional; este formulario no da autorización médica. Sin entrenamiento reciente tolerado, pide a un entrenador cualificado una carga inicial adecuada.")}</p>
             </fieldset>
-            <div className="flex justify-between mt-6">
-              <button onClick={() => setStep(ONBOARDING_STEP.welcome)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
-              <button onClick={async () => { setStep(onboardingNext(ONBOARDING_STEP.profile, await saveProfile())); }} disabled={saving || !revision} className="btn-primary">
-                {saving ? "…" : lang === "es" ? "Guardar perfil" : "Save profile"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Devices */}
-        {step === ONBOARDING_STEP.devices && (
-          <div>
-            <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
-              <Watch className="w-5 h-5 text-ocean-600" /> {lang === "es" ? "Conecta tus dispositivos" : "Connect your devices"}
-            </h2>
-            <p className="text-sm text-slate-500 mb-4">
-              {lang === "es"
-                ? "La sincronización programada requiere una conexión autorizada y un servidor configurado. Verifica estado y fechas en Conectores; también puedes continuar sin dispositivo."
-                : "Scheduled synchronization requires an authorized connection and configured server. Check status and timestamps in Connectors; you can also continue without a device."}
-            </p>
+            </details>
+            <label className="block mt-4">{t("Your coach, if any (optional)", "Tu entrenador, si tienes (opcional)")}<input className="input" value={setup.coachPreference ?? ""} maxLength={200} onChange={e=>setSetup({...setup,coachPreference:e.target.value})}/></label><p className="text-xs">{t("This is a preference, not an access grant. Coach access requires an administrator assignment.", "Es una preferencia, no concede acceso. Un administrador debe asignar al entrenador.")}</p>
+            <h3 className="font-semibold mt-5">{t("Optional race", "Carrera opcional")}</h3>{raceId && <p role="status">{t("Race saved; further edits update this same event.", "Carrera guardada; los cambios actualizan este evento.")}</p>}
             <div className="space-y-3">
-              <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
-                <span className="text-2xl">⌚</span>
-                <div className="flex-1"><div className="font-semibold text-sm">Whoop</div><div className="text-xs text-slate-500">{lang === "es" ? "VFC, recuperación, sueño, entrenamientos" : "HRV, recovery, sleep, workouts"}</div></div>
-                <Watch className="w-4 h-4 text-slate-300" />
-              </div>
-              <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
-                <span className="text-2xl">⌚</span>
-                <div className="flex-1"><div className="font-semibold text-sm">Garmin / COROS</div><div className="text-xs text-slate-500">{lang === "es" ? "Garmin: importa Activities.csv o TCX. Garmin/COROS: conexión directa aún no disponible." : "Garmin: import Activities.csv or TCX. Garmin/COROS: direct connection not available yet."}</div></div>
-                <Watch className="w-4 h-4 text-slate-300" />
-              </div>
-              <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
-                <span className="text-2xl">💍</span>
-                <div className="flex-1"><div className="font-semibold text-sm">Oura Ring</div><div className="text-xs text-slate-500">{lang === "es" ? "Sueño, VFC, recuperación" : "Sleep, HRV, recovery"}</div></div>
-                <Watch className="w-4 h-4 text-slate-300" />
-              </div>
-              <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
-                <span className="text-2xl">🍏</span>
-                <div className="flex-1"><div className="font-semibold text-sm">Apple Health</div><div className="text-xs text-slate-500">{lang === "es" ? "Importa export.xml desde la exportación de Apple Health" : "Import export.xml from your Apple Health export"}</div></div>
-                <Watch className="w-4 h-4 text-slate-300" />
-              </div>
-            </div>
-            <a href="/connectors" target="_blank" rel="noopener noreferrer" className="underline text-sm">{lang === "es" ? "Abrir Conectores en otra pestaña" : "Open Connectors in another tab"}</a>
-            <div className="flex justify-between mt-6">
-              <button onClick={() => setStep(ONBOARDING_STEP.profile)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
-              <button onClick={() => setStep(ONBOARDING_STEP.race)} className="btn-primary">{lang === "es" ? "Siguiente" : "Next"} <ArrowRight className="w-4 h-4 ml-1" /></button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Goal race */}
-        {step === ONBOARDING_STEP.race && (
-          <div>
-            <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
-              <Flag className="w-5 h-5 text-coral-500" /> {lang === "es" ? "Tu carrera objetivo" : "Your goal race"}
-            </h2>
-            <p className="text-sm text-slate-500 mb-4">
-              {lang === "es" ? "Añade tu carrera principal y crearemos el plan de entrenamiento hacia esa fecha." : "Add your goal race and we'll build the training plan toward that date."}
-            </p>
-            <div className="space-y-3">
-              <div><label className="label">{lang === "es" ? "Nombre de la carrera" : "Race name"}</label><input className="input" placeholder="Miami 70.3" onChange={(e) => setRace({ ...race, name: e.target.value })} /></div>
+              <div><label htmlFor="onboard-field-8" className="label">{lang === "es" ? "Nombre de la carrera" : "Race name"}</label><input id="onboard-field-8" className="input" placeholder="Miami 70.3" value={race.name} onChange={(e) => setRace({ ...race, name: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="label">{lang === "es" ? "Distancia" : "Distance"}</label>
-                  <select className="input" onChange={(e) => setRace({ ...race, distance: e.target.value })} value={race.distance}>
+                <div><label htmlFor="onboard-field-9" className="label">{lang === "es" ? "Distancia" : "Distance"}</label><select id="onboard-field-9" className="input" onChange={(e) => setRace({ ...race, distance: e.target.value })} value={race.distance}>
                     <option value="">{t("Choose actual distance", "Elige la distancia real")}</option><option value="sprint">Sprint</option><option value="olympic">Olympic</option><option value="half">Half Ironman</option><option value="full">Full Ironman</option><option value="hyrox">HYROX</option><option value="10k">10K</option>
                   </select>
                 </div>
-                <div><label className="label">{lang === "es" ? "Fecha" : "Date"}</label><input className="input" type="date" onChange={(e) => setRace({ ...race, date: e.target.value })} /></div>
+                <div><label htmlFor="onboard-field-10" className="label">{lang === "es" ? "Fecha" : "Date"}</label><input id="onboard-field-10" className="input" type="date" value={race.date} onChange={(e) => setRace({ ...race, date: e.target.value })} /></div>
               </div>
-              <div><label className="label">{lang === "es" ? "Ubicación" : "Location"}</label><input className="input" placeholder="Miami, FL" onChange={(e) => setRace({ ...race, location: e.target.value })} /></div>
+              <div><label htmlFor="onboard-field-11" className="label">{lang === "es" ? "Ubicación" : "Location"}</label><input id="onboard-field-11" className="input" placeholder="Miami, FL" value={race.location} onChange={(e) => setRace({ ...race, location: e.target.value })} /></div>
             </div>
+            <button className="btn-secondary mt-4" disabled={saving} onClick={async()=>{if(await saveRace()) setError("");}}>{raceId ? t("Update this race", "Actualizar carrera") : t("Save race separately", "Guardar carrera por separado")}</button>
             <div className="flex justify-between mt-6">
-              <button onClick={() => setStep(ONBOARDING_STEP.devices)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
-              <button onClick={async () => { setStep(onboardingNext(ONBOARDING_STEP.race, await saveRace())); }} disabled={saving} className="btn-primary">
-                {saving ? "…" : lang === "es" ? "Guardar carrera" : "Save race"}
+              <button onClick={() => setStep(ONBOARDING_STEP.zones)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
+              <button onClick={async () => { setStep(onboardingNext(ONBOARDING_STEP.race, await saveProfile("goals"))); }} disabled={saving} className="btn-primary">
+                {saving ? "…" : lang === "es" ? "Guardar objetivos (carrera por separado)" : "Save goals (race saved separately)"}
               </button>
             </div>
           </div>
         )}
 
+        {step === ONBOARDING_STEP.travel && <section className="space-y-4"><h2 className="font-display text-2xl">{t("Travel and availability", "Viajes y disponibilidad")}</h2><TravelFields value={setup.travel} onChange={travel=>setSetup({...setup,travel})} es={lang === "es"}/><button className="btn-primary" disabled={saving || !revision} onClick={async()=>{if(await saveProfile("travel")) setStep(ONBOARDING_STEP.done);}}>{t("Save and continue", "Guardar y continuar")}</button></section>}
+        </fieldset>
         {/* Step 4: Done */}
         {step === ONBOARDING_STEP.done && (
           <div className="text-center py-12">
             <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-            <h2 className="font-display text-3xl font-bold mb-2">{lang === "es" ? "Revisa tu plan" : "Review your plan"}</h2>
+            <h2 className="font-display text-3xl font-bold mb-2">{lang === "es" ? "Tu espacio está listo" : "Your workspace is ready"}</h2>
             <p className="text-lg text-slate-600 mb-6">
               {lang === "es"
                 ? "Puedes guardar datos incompletos. Antes de asignar entrenamiento, completa lo necesario y confirma la vista previa del plan."
                 : "You can save incomplete setup. Before training is assigned, complete the needed inputs and confirm a plan preview."}
             </p>
             <button onClick={finishOnboarding} disabled={saving} className="btn-primary w-full justify-center text-lg">
-              {lang === "es" ? "Revisar plan" : "Review plan"} <ArrowRight className="w-4 h-4 ml-2" />
+              {lang === "es" ? "Abrir Hoy" : "Open Today"} <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>
         )}
 
+        <div className="flex flex-wrap gap-4 mt-6 border-t pt-4"><button disabled={saving} className="underline" onClick={()=>{setError("");setStep(onboardingNext(step));}}>{t("Skip this section for now", "Omitir esta sección por ahora")}</button><button disabled={saving} className="underline" onClick={finishOnboarding}>{t("Enter the app with saved details", "Entrar a la app con lo guardado")}</button></div>
         {/* Navigation: language switcher */}
         <div className="fixed bottom-4 right-4 z-50">
-          <select className="text-xs bg-white border border-slate-300 rounded-lg px-2 py-1 shadow" value={lang} onChange={(e) => changeLang(e.target.value)}>
+          <select aria-label={t("Setup language", "Idioma de configuración")} className="text-xs bg-white border border-slate-300 rounded-lg px-2 py-1 shadow" value={lang} onChange={(e) => changeLang(e.target.value)}>
             {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
           </select>
         </div>

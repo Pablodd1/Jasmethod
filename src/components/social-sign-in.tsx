@@ -19,17 +19,16 @@ const errorMessages: Record<string, string> = {
   server_error: "Sign-in is temporarily unavailable. Please try again or use email and password.",
 };
 
-export function SocialSignIn() {
+export function SocialSignIn({ intent = "login" }: { intent?: "login" | "signup" | "link" }) {
   const [available, setAvailable] = useState<ProviderId[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [linkMode, setLinkMode] = useState(false);
+  const linkMode = intent === "link";
   const statusId = useId();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setLinkMode(params.get("link") === "1");
     const knownProvider = providers.some((p) => p.id === params.get("provider"));
     let code = knownProvider ? params.get("error") : null;
     // Keep old Google callback links useful without displaying raw provider errors.
@@ -67,12 +66,12 @@ export function SocialSignIn() {
   return (
     <div className="mt-4">
       <div className="flex items-center gap-3 text-[10px] uppercase tracking-wide text-ink-500">
-        <span className="h-px flex-1 bg-ink-200" /> or <span className="h-px flex-1 bg-ink-200" />
+        <span className="h-px flex-1 bg-ink-200" /> {linkMode ? "Add a sign-in option" : "or"} <span className="h-px flex-1 bg-ink-200" />
       </div>
       <div className="mt-3 space-y-2" aria-label="Other sign-in options">
         {providers.filter(provider => available.includes(provider.id)).map(provider => (
           <a key={provider.id} href={`/api/auth/${provider.id}${linkMode ? "?link=1" : ""}`} className={`${buttonClass} hover:bg-paper-100`}>
-            {linkMode ? "Link" : "Continue with"} {provider.label}
+            {linkMode ? "Link" : intent === "signup" ? "Create free account with" : "Continue with"} {provider.label}
           </a>
         ))}
       </div>
@@ -81,7 +80,7 @@ export function SocialSignIn() {
           ? "We couldn't load other sign-in options. You can still use email and password."
           : available.length === 0
             ? "Social sign-in is unavailable right now. You can use email and password."
-            : linkMode ? "Choose a provider to link to your signed-in account." : "New here? Continue with a provider to create your account and set up your profile."}
+            : linkMode ? "Choose a provider to link to the account shown above. Check that the Google account you select is yours." : intent === "signup" ? "A new account starts with athlete setup. Already have JMM data? Sign in to that account first, then link Google." : "Google can sign you in or create a new account. If your email already has JMM data, sign in with your existing method first and link Google."}
       </p>
       {notice && <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{notice}</p>}
     </div>
