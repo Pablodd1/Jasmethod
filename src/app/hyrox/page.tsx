@@ -14,30 +14,42 @@ export default function HyroxPage() {
   const [target, setTarget] = useState("75");
   const [pace, setPace] = useState("");
   const [sex, setSex] = useState("male");
+  const [pro, setPro] = useState(false);
+  const [error, setError] = useState("");
   const [plan, setPlan] = useState<any>(null);
   const [actuals, setActuals] = useState<string[]>(Array(16).fill(""));
   const [analysis, setAnalysis] = useState<any>(null);
   const [busy, setBusy] = useState(false);
 
+
   async function loadPlan() {
-    setBusy(true);
-    const q = new URLSearchParams({ target, ...(pace ? { pace } : {}), sex });
-    const res = await fetch(`/api/hyrox/split-planner?${q}`);
-    if (res.ok) setPlan((await res.json()).plan);
-    setBusy(false);
+    if (busy) return;
+    setBusy(true); setError(""); setPlan(null); setAnalysis(null);
+    try {
+      const q = new URLSearchParams({ target, ...(pace ? { pace } : {}), sex, pro: pro ? "1" : "0" });
+      const res = await fetch(`/api/hyrox/split-planner?${q}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to build the scenario.");
+      setPlan(data.plan);
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to build the scenario. Try again."); }
+    finally { setBusy(false); }
   }
-  useEffect(() => { if (user) loadPlan(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [user]);
+  // Do not fabricate a scenario on first visit: the athlete confirms target and division.
+  useEffect(() => { setPlan(null); setAnalysis(null); setError(""); }, [target, pace, sex, pro]);
 
   async function analyze() {
-    setBusy(true);
-    const res = await fetch("/api/hyrox/split-planner", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target, pace: pace || undefined, sex, actualSecs: actuals.map((a) => Number(a) || 0) }),
-    });
-    const d = await res.json();
-    if (res.ok) { setPlan(d.plan); setAnalysis(d.analysis); }
-    setBusy(false);
+    if (busy) return;
+    setBusy(true); setError(""); setAnalysis(null);
+    try {
+      const res = await fetch("/api/hyrox/split-planner", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target, pace: pace || undefined, sex, pro, actualSecs: actuals.map(a => a.trim() === "" ? null : a) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to analyze splits.");
+      setPlan(data.plan); setAnalysis(data.analysis);
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to analyze splits. Try again."); }
+    finally { setBusy(false); }
   }
 
   const fmt = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
@@ -50,26 +62,32 @@ export default function HyroxPage() {
           <h1 className="font-display text-3xl font-bold">{es ? "Planificador de parciales" : "Race Split Planner"}</h1>
           <p className="text-sm text-slate-500 mt-1">
             {es
-              ? "Tu tiempo objetivo convertido en un plan de 16 segmentos (8 carreras + 8 estaciones). Tras la carrera, registra tus parciales reales y te decimos dónde se perdió la carrera."
-              : "Your target finish converted into a 16-segment plan (8 runs + 8 stations). After the race, log your real splits and we show you where the race was lost."}
+              ? "Explora un escenario de 16 segmentos, no una predicción validada. Registra los parciales disponibles para compararlos; los campos vacíos son datos faltantes."
+              : "Explore a 16-segment scenario, not a validated prediction. Log available splits to compare them; blank fields remain missing data."}
           </p>
         </div>
 
         {/* Controls */}
-        <div className="card grid sm:grid-cols-4 gap-3 items-end">
+        <div className="card grid sm:grid-cols-5 gap-3 items-end">
           <div>
-            <label className="label">{es ? "Objetivo (min)" : "Target (min)"}</label>
-            <input className="input" type="number" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="75" />
+            <label htmlFor="hyrox-target" className="label">{es ? "Objetivo (min)" : "Target (min)"}</label>
+            <input id="hyrox-target" disabled={busy} min="1" className="input" type="number" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="75" />
           </div>
           <div>
-            <label className="label">{es ? "Ritmo 1km (seg/km)" : "1km pace (sec/km)"}</label>
-            <input className="input" type="number" value={pace} onChange={(e) => setPace(e.target.value)} placeholder={es ? "auto de tu perfil" : "auto from profile"} />
+            <label htmlFor="hyrox-pace" className="label">{es ? "Ritmo 1km (seg/km)" : "1km pace (sec/km)"}</label>
+            <input id="hyrox-pace" disabled={busy} min="1" className="input" type="number" value={pace} onChange={(e) => setPace(e.target.value)} placeholder={es ? "umbral guardado o ritmo manual" : "saved threshold or manual pace"} />
           </div>
           <div>
-            <label className="label">{es ? "División" : "Division"}</label>
-            <select className="input" value={sex} onChange={(e) => setSex(e.target.value)}>
-              <option value="male">{es ? "Open / Pro hombres" : "Open / Pro men"}</option>
-              <option value="female">{es ? "Open / Pro mujeres" : "Open / Pro women"}</option>
+            <label htmlFor="hyrox-sex" className="label">{es ? "División" : "Division"}</label>
+            <select id="hyrox-sex" disabled={busy} className="input" value={sex} onChange={(e) => setSex(e.target.value)}>
+              <option value="male">{es ? "Hombres" : "Men"}</option>
+              <option value="female">{es ? "Mujeres" : "Women"}</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="hyrox-pro" className="label">Open / Pro</label>
+            <select id="hyrox-pro" disabled={busy} className="input" value={pro ? "1" : "0"} onChange={e => setPro(e.target.value === "1")}>
+              <option value="0">Open</option><option value="1">Pro</option>
             </select>
           </div>
           <button onClick={loadPlan} disabled={busy} className="btn-primary justify-center">
@@ -77,6 +95,10 @@ export default function HyroxPage() {
           </button>
         </div>
 
+        {busy && <p role="status">{es ? "Calculando…" : "Calculating…"}</p>}
+        {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+        <p className="text-sm text-slate-500">{es ? "Sin dispositivo: introduce un ritmo practicado. El umbral del perfil es solo un punto de partida, no el ritmo de competición HYROX. No se infiere una frecuencia cardíaca objetivo; usa tu esfuerzo percibido o zonas revisadas." : "No device needed: enter a practiced pace. Your saved threshold is only a scenario anchor, not HYROX race pace. No target heart rate is inferred; use perceived effort or reviewed personal zones."}</p>
+        {plan && <div className="text-xs text-slate-500 space-y-1">{plan.notes.slice(1).map((note: string) => <p key={note}>{note}</p>)}</div>}
         {/* Plan table */}
         {plan && (
           <div className="card !p-0 overflow-hidden">
@@ -104,8 +126,11 @@ export default function HyroxPage() {
                         <input
                           className="input !py-1 text-xs tabular-nums"
                           type="number"
+                          min="1"
+                          disabled={busy}
+                          aria-label={`${seg.name} actual seconds`}
                           value={actuals[i]}
-                          onChange={(e) => setActuals((a) => a.map((v, j) => (j === i ? e.target.value : v)))}
+                          onChange={(e) => { setAnalysis(null); setActuals((a) => a.map((v, j) => (j === i ? e.target.value : v))); }}
                           placeholder="—"
                         />
                       </td>
@@ -140,8 +165,8 @@ export default function HyroxPage() {
             <p className="text-[11px] text-slate-400 mt-3 flex items-start gap-1.5">
               <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               {es
-                ? "Regla 2026/27: cada estación debe cumplir el estándar completo de movimiento — penalizaciones con sandbag en algunas faltas, pero estación incompleta = descalificación."
-                : "2026/27 rule: every station must meet full movement standard — sandbag penalties on some faults, incomplete station = DQ."}
+                ? "Compara solo segmentos registrados. Las transiciones no están incluidas en los parciales; revisa las reglas oficiales de tu prueba."
+                : "Only logged segments are compared. Transitions are not included in segment actuals; review the official rules for your event."}
             </p>
           </div>
         )}
