@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       plan,
-      next: "/training",
+      next: "/today",
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });

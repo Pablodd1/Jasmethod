@@ -1,5 +1,7 @@
 import {parsePlanningTarget, setupNumber, type PlanningTarget} from "./planning-target";
 import { dateKey } from "./dates";
+import { parseTravelContext, type TravelContext } from "./travel-context";
+export type { TravelContext } from "./travel-context";
 // Source-labelled setup evidence. No wearable or maximal testing is required.
 export const PLANNING_SETUP_VERSION = "manual-setup-v1";
 export const planningGoal = (goal?: string | null) => ["5k","10k","half-marathon","marathon"].includes(goal || "") ? "run-only" : goal ?? null;
@@ -23,6 +25,8 @@ export interface PlanningSetup {
   trackEvent: "100m" | "200m" | "400m" | null;
   targetGoal: PlanningTarget | null;
   baselinePlanOptIn?: boolean;
+  coachPreference?: string;
+  travel?: TravelContext | null;
 }
 export function parsePlanningSetup(value: unknown, now = new Date(), timezone = "UTC", options: {allowPastTarget?:boolean} = {}): PlanningSetup {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid planning setup");
@@ -52,6 +56,8 @@ export function parsePlanningSetup(value: unknown, now = new Date(), timezone = 
     equipmentAccess: typeof v.equipmentAccess === "string" ? v.equipmentAccess.trim().slice(0,1000) : "",
     planWeeks: number("planWeeks", 4, 30),
     baselinePlanOptIn: v.baselinePlanOptIn === true,
+    coachPreference: typeof v.coachPreference === "string" ? v.coachPreference.trim().slice(0,200) : "",
+    travel: parseTravelContext(v.travel),
     targetGoal: parsePlanningTarget(v.targetGoal,now,timezone,options.allowPastTarget),
     trackEvent: v.trackEvent == null || v.trackEvent === "" ? null : option<"100m" | "200m" | "400m">("trackEvent", ["100m","200m","400m"], "100m"),
   };

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { geocodeLocation, getRaceWeather } from "@/lib/weather";
+import { parseRaceUpdate, RaceUpdateError } from "@/lib/race-update";
 
 // GET /api/races — list races. Upcoming races with venue coordinates get
 // live race-day weather (Open-Meteo hourly at the start hour, 30-min cache).
@@ -77,23 +78,15 @@ export async function PUT(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const b = await req.json();
-    if (!b.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-    const existing = await prisma.race.findFirst({ where: { id: b.id, userId: user.id } });
+    let body: unknown;
+    try { body = await req.json(); } catch { throw new RaceUpdateError("Invalid JSON body"); }
+    const { id, data } = parseRaceUpdate(body);
+    const existing = await prisma.race.findFirst({ where: { id, userId: user.id } });
     if (!existing) return NextResponse.json({ error: "Race not found" }, { status: 404 });
-    const data: Record<string, any> = {};
-    const FLOAT_KEYS = ["targetTempC", "humidity", "baseElevM", "goalTimeMin", "resultMin", "bikeElevM", "runElevM", "waterTempC"];
-    for (const [k, v] of Object.entries(b)) {
-      if (k === "id" || v === undefined) continue;
-      if (k === "date") data[k] = new Date(v as string);
-      else if (FLOAT_KEYS.includes(k)) data[k] = v === null || v === "" ? null : parseFloat(v as string);
-      else if (k === "priority") data[k] = parseInt(v as string, 10);
-      else data[k] = v;
-    }
-    const race = await prisma.race.update({ where: { id: existing.id }, data });
+    const race = await prisma.race.update({ where: { id: existing.id, userId: user.id }, data });
     return NextResponse.json({ ok: true, race });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
+    return NextResponse.json({ error: e instanceof RaceUpdateError ? e.message : "Race update failed" }, { status: e instanceof RaceUpdateError ? 400 : 500 });
   }
 }
 
