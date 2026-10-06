@@ -373,7 +373,7 @@ export default function OnboardPage() {
 
         <div className="flex flex-wrap gap-4 mt-6 border-t pt-4"><button disabled={saving} className="underline" onClick={()=>{setError("");setStep(onboardingNext(step));}}>{t("Skip this section for now", "Omitir esta sección por ahora")}</button><button disabled={saving} className="underline" onClick={finishOnboarding}>{t("Enter the app with saved details", "Entrar a la app con lo guardado")}</button></div>
         {/* Navigation: language switcher */}
-        <div className="fixed bottom-4 right-4 z-50">
+        <div className="mt-5 flex justify-end">
           <select aria-label={t("Setup language", "Idioma de configuración")} className="text-xs bg-white border border-slate-300 rounded-lg px-2 py-1 shadow" value={lang} onChange={(e) => changeLang(e.target.value)}>
             {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
           </select>
