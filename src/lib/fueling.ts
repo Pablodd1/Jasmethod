@@ -9,13 +9,13 @@
 //
 // Science anchors:
 // - Carbs during: <30 min none · 30-75 min mouth rinse/small · 1-2.5 h
-//   30-60 g/h · >2.5 h up to 90 g/h as 2:1 glucose:fructose (Jeukendrup 2014
+//   30-60 g/h · >2.5 h up to 90 g/h in practiced glucose/fructose mixtures (Jeukendrup 2014
 //   ACSM review; Pfeiffer 2010 gut tolerance)
 // - Pre: 1 g/kg at 1 h or 2 g/kg at 2-3 h before (Jeukendrup 2011)
-// - Post: 1.0-1.2 g/kg/h carbs + 0.3 g/kg protein in the 0-4 h window,
-//   4:1 when the next session is < 24 h (Ivy 1988; Kerksick 2017)
-// - Fluids: drink to plan around measured sweat rate; gastric emptying caps
-//   absorption near ~1.0 L/h (costly above)
+// - Post: rapid restoration applies to known short recovery (<4 h); ordinary
+//   meals do not require a universal carbohydrate:protein ratio (Kerksick 2017)
+// - Fluids: individualize around representative sweat-rate measurements;
+//   this engine caps general examples at 1.0 L/h, not a universal absorption limit
 // - Sodium: replace sweat sodium = sweat rate × concentration; 200-2000 mg/L
 //   between athletes (Precision Hydration; Baker 2017)
 
@@ -55,7 +55,8 @@ export interface FuelingInput {
   weightKg?: number | null;
   sweatRateMlH?: number | null; // measured via pre/post session weights
   sodiumMgPerL?: number | null; // measured via sweat patch
-  gutTrained?: boolean; // tolerates 90-120 g/h mixtures
+  gutTrained?: boolean; // reports practiced tolerance; does not establish a dose
+  carbohydratePractice?: { toleratedGPerHour: number; targetGPerHour: number; giSymptoms: "none" | "mild" | "moderate" | "severe"; reviewedHighIntake?: boolean };
   heatFactor?: number; // 1 = neutral; >1 hot
   ergosIncludeCaffeine?: boolean;
   caffeineOptIn?: boolean; // explicit request, never inferred from absence of an opt-out
@@ -114,12 +115,12 @@ export function fuelCurveReference(gutTrained = false): {
   label: string;
 }[] {
   return [
-    { hours: 0.5, gPerHour: 0, label: "water only" },
+    { hours: 0.5, gPerHour: 0, label: "usually no extra carbohydrate" },
     { hours: 1, gPerHour: 20, label: "rinse / small sips" },
     { hours: 1.5, gPerHour: 45, label: "30-60 g/h" },
-    { hours: 2.5, gPerHour: 60, label: "60 g/h glucose" },
-    { hours: 3.5, gPerHour: gutTrained ? 90 : 60, label: gutTrained ? "90 g/h 2:1 glu:fru" : "60 (90 after gut training)" },
-    { hours: 5, gPerHour: gutTrained ? 90 : 60, label: "hold the max you tolerate" },
+    { hours: 2.5, gPerHour: 60, label: "60 g/h total carbohydrate" },
+    { hours: 3.5, gPerHour: gutTrained ? 90 : 60, label: gutTrained ? "up to 90 g/h practiced mixtures" : "60 g/h example; establish tolerance" },
+    { hours: 5, gPerHour: gutTrained ? 90 : 60, label: "individualize to demand and practiced tolerance" },
   ];
 }
 
@@ -141,7 +142,16 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
     if (value != null && (!Number.isFinite(value) || value <= 0)) throw new Error(`Invalid ${name}`);
   }
   const hard = isHard(intensity);
-  const carbsPerHourG = carbsPerHourFor(durationMin, intensity, gutTrained);
+  let carbsPerHourG = carbsPerHourFor(durationMin, intensity, gutTrained);
+  const practice = opts.carbohydratePractice;
+  if (practice) {
+    if (![practice.toleratedGPerHour, practice.targetGPerHour].every(v => Number.isFinite(v) && v >= 0 && v <= 120) || !["none", "mild", "moderate", "severe"].includes(practice.giSymptoms)) throw new Error("Invalid carbohydrate practice history");
+    // Actual tolerance is a ceiling, not a schedule. Higher selected targets
+    // require long-session context and explicit reviewed high-intake intent.
+    const ceiling = durationMin >= 150 ? (practice.reviewedHighIntake === true ? 120 : 90) : durationMin >= 75 ? 60 : carbsPerHourG;
+    carbsPerHourG = Math.min(practice.targetGPerHour, practice.toleratedGPerHour, ceiling);
+    if (practice.giSymptoms !== "none") carbsPerHourG = Math.min(carbsPerHourG, carbsPerHourFor(durationMin, intensity, false));
+  }
 
   // These are planning examples, not a requirement to replace every ml lost.
   // A saved number alone does not establish measurement date or conditions.
@@ -163,6 +173,7 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
   if (sweatRateMlH) personalization.push(`${measured ? "measured in supplied conditions" : "reported, unverified"} sweat ${sweatRateMlH} ml/h`);
   if (sodiumMgPerL) personalization.push(`reported sweat sodium ${sodiumMgPerL} mg/L; context unverified`);
   if (gutTrained) personalization.push("athlete reports practiced carbohydrate tolerance");
+  if (practice) personalization.push(`Reported tolerance ${practice.toleratedGPerHour} g/h TOTAL carbohydrate; requested ${practice.targetGPerHour} g/h; GI symptoms: ${practice.giSymptoms}. Higher intake is never inferred from a checkbox alone.`);
 
   // ---- Pre-session ----
   const preSession: PreSessionFuel =
@@ -213,7 +224,7 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
     notes.push(`${carbsPerHourG} g/h is a general example within the 30–60 g/h range; choose familiar food or drink and adjust for tolerance.`);
   else
     notes.push(
-      `${carbsPerHourG} g/h${carbsPerHourG > 60 ? " as 2:1 glucose:fructose (mixed transport — that is what unlocks >60)" : " — add fructose only after gut training"}.`,
+      `${carbsPerHourG} g/h${carbsPerHourG > 60 ? " total carbohydrate using a practiced glucose/maltodextrin plus fructose mixture; ratio depends on the product and tolerance" : " TOTAL carbohydrate from all foods, drinks and gels combined"}.`,
     );
   notes.push(`Fluid example ${fluidMlPerHour} ml/h (${measured ? "derived from supplied measurement; applies only to similar conditions" : "unverified estimate, not measured need"}). Drink according to thirst and conditions; do not force this volume. Avoid overdrinking or gaining body weight during exercise. Extra sodium does not make overdrinking safe. Count carbohydrate from drinks and gels together, once.`);
   if (durationMin >= 60)
@@ -226,8 +237,8 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
   else if (verdict === "trim")
     notes.push("Trimmed session — fuel stays proportional; no extra loading needed.");
 
-  const gutNote = !gutTrained && durationMin >= 150
-    ? "Practice familiar carbohydrate choices in training and adjust to gastrointestinal tolerance. Do not increase automatically or assume a fixed timeline to tolerate more."
+  const gutNote = (!gutTrained || !!practice) && durationMin >= 150
+    ? "Practice familiar carbohydrate choices in training and log the total g/h actually consumed, product mixture, sport, duration, conditions and GI symptoms. Possible rehearsal targets such as 60, 80, 90 or 100 g/h are optional, not automatic weekly steps or minimums. Only consider higher targets after the current amount is tolerated; intake above 90 g/h needs individualized review and rehearsal, never a first attempt on race day."
     : undefined;
 
   let caffeineMg: number | undefined;
@@ -259,6 +270,7 @@ export function postFuelPersonalized(opts: {
   intensity: string;
   sport?: string;
   weightKg?: number | null;
+  nextSessionInHours?: number | null;
 }): {
   carbsG: number | null;
   proteinG: number | null;
@@ -276,15 +288,17 @@ export function postFuelPersonalized(opts: {
   if (!Number.isFinite(weightKg) || weightKg <= 0) throw new Error("Invalid weightKg");
   const w = weightKg;
 
-  // 1.0-1.2 g/kg carbs + 0.3 g/kg protein in the first hour; 4:1 when
-  // another session is coming within 24 h, protein-forward after strength.
+  // Meal examples. Rapid hourly carbohydrate replacement is reserved for a
+  // documented short turnaround, not inferred from session duration alone.
   const carbsG = Math.round(
     long ? w * 1.2 : hard ? w * 1.0 : Math.max(30, w * 0.5),
   );
   const proteinG = Math.round(strength ? Math.max(25, w * 0.4) : w * 0.3);
-  const ratio = strength ? "1:1" : long || hard ? "4:1" : "2:1";
-  const note = long || hard
-    ? `Recovery window (next 4 h): ${carbsG}-${Math.round(w * 1.2)} g carbs TOTAL across the window, ${proteinG} g protein now. This is a general recovery example; next-session timing and dietary context matter. Drink according to thirst; replace losses gradually only when measured in context. Extra sodium does not protect against overdrinking.`
-    : `Recovery snack now; normal meal within 2 h. Prioritize protein (${proteinG} g) — the carb demand was modest.`;
+  const ratio = `${Number((carbsG / proteinG).toFixed(1))}:1`;
+  if (opts.nextSessionInHours != null && (!Number.isFinite(opts.nextSessionInHours) || opts.nextSessionInHours < 0)) throw new Error("Invalid recovery interval");
+  const rapid = opts.nextSessionInHours != null && opts.nextSessionInHours < 4 && (long || hard);
+  const note = rapid
+    ? `Short recovery before the next session: rapid glycogen restoration may use approximately ${Math.round(w)}–${Math.round(w * 1.2)} g carbohydrate PER HOUR (1.0–1.2 g/kg/h), split into tolerated feedings during the available recovery period. This is not a four-hour total. Include familiar protein-containing food; individual dietary needs and GI tolerance matter.`
+    : `A recovery meal or snack example is ${carbsG} g carbohydrate and ${proteinG} g protein. These are one feeding's approximate amounts, not a mandatory ratio or four-hour total. Ordinary meals can meet recovery needs; rapid hourly refuelling depends on a short turnaround, which is not assumed. Drink to thirst and replace measured losses gradually; avoid overdrinking.`;
   return { carbsG, proteinG, ratio, note };
 }

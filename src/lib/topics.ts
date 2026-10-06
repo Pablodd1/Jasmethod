@@ -289,50 +289,54 @@ const RACE_FUEL: Topic = {
   title: "Race & Training Fuel",
   subtitle: "Carbs, fluid and sodium — tuned to duration, heat and effort.",
   lede:
-    "Fueling is a strategy, not a snack. The gut can be trained to absorb carbohydrates, but only within physiogical limits that shift with exercise duration, heat and intensity. The science gives you a ladder; your job is climbing it in training so race day is reflexive.",
+    "Fueling is a strategy, not a snack. The gut can be trained to absorb carbohydrates, but only within physiological limits that shift with exercise duration, heat and intensity. Practice informs an individualized plan; higher intake is not automatically better.",
   glance: [
     { value: "30–60", unit: "g/h", label: "Carbs for 1–2.5h efforts" },
-    { value: "60–90", unit: "g/h", label: "Carbs over 2.5h — glucose:fructose 2:1" },
-    { value: "400–1000", unit: "mg/h", label: "Sodium in heat / heavy sweat (ACSM 2007)" },
-    { value: "0.4–1.2", unit: "L/h", label: "Fluid — matched to sweat rate" },
+    { value: "60–90", unit: "g/h", label: "Long efforts — practiced mixed carbohydrate intake" },
+    { value: "Individual", unit: "", label: "Sodium depends on losses and context" },
+    { value: "Avoid", unit: "overdrinking", label: "Do not force fluid to meet a number" },
   ],
   sections: [
     {
       heading: "The carbohydrate ladder",
       paragraphs: [
-        "Under ~60 minutes, water is enough — no fuel needed. 1–2.5 hours: 30–60 g/h. Beyond 2.5 hours, the ceiling rises to 60–90 g/h, but only with multiple transportable carbs (glucose + fructose in a 2:1 ratio), because each uses a different intestinal transporter (Jeukendrup 2014). Pushing a single carb type past ~60 g/h just leaves sugar sitting in the gut.",
+        "Short easy sessions usually need no extra carbohydrate during exercise; demanding efforts of about 45–75 minutes may benefit from small amounts or a carbohydrate mouth rinse. About 1–2.5 hours: 30–60 g/h is a common starting range. Longer efforts may benefit from up to 90 g/h of practiced glucose/maltodextrin plus fructose mixtures. Ratios vary with the product and tolerance; 2:1 is not the only valid ratio. Selected trained athletes have been studied at higher intakes, but 100–120 g/h is not a universal target or proof of better performance for everyone. All rates mean TOTAL carbohydrate from food, drinks and gels combined.",
       ],
       bullets: [
-        "Train the gut: build up to target intake over weeks, not on race morning.",
+        "Rehearse intake and log actual total g/h, product mixture, sport, conditions and gastrointestinal symptoms. Progress only when tolerated; no fixed weekly increase is guaranteed.",
         "Practical: one gel (~25g) every 30 min at the low end; two types of carb above 2.5h.",
-        "Under 75 min — skip it; the cost of GI distress exceeds any marginal glycogen saving.",
+        "Optional rehearsal levels such as 60, 80, 90 or 100 g/h depend on duration, intensity and demonstrated tolerance; none is a mandatory minimum after one hour.",
       ],
     },
     {
       heading: "Sodium and fluid: match the sweat",
       paragraphs: [
-        "Sweat rate varies wildly between athletes. The only way to know yours is to weigh before and after a representative session (1 kg lost ≈ 1 L sweat). In heat, sodium needs rise to 400–1000 mg/h and fluid to roughly your measured loss rate — drinking to thirst is a floor, not a plan, on long hot days (Casa 2000, ACSM 2007).",
-        "Heat also slows you: the app's temperature model scales pace, trims volume and scales hydration as conditions cross from warm to hot to extreme.",
+        "Sweat losses vary between athletes and conditions. A representative estimate uses pre/post body mass plus fluid consumed minus urine produced, divided by session time. Review measurement conditions before applying it elsewhere. Drink according to thirst and conditions; avoid forced intake or weight gain during exercise. Sodium does not prevent exercise-associated hyponatremia caused by overdrinking (2015 consensus, PMID 26102445).",
+        "Heat can change effort and fluid needs. Treat app estimates as planning examples, not measurements; review acclimatization, conditions, access to fluid and symptoms.",
       ],
     },
     {
       heading: "Caffeine as race fuel",
       paragraphs: [
-        "Pre-race caffeine (3–6 mg/kg) is the highest-confidence acute boost available. For multi-hour events, trickle it — small doses early and mid-race — rather than one large bolus, and never introduce it on race day if you train without it.",
+        "Caffeine can improve performance, but it is optional and responses vary. Research commonly studies 3–6 mg/kg; lower doses may help, and higher intake increases adverse effects without reliable added benefit. Count all sources, consider sleep and individual health or medication factors, and rehearse any chosen intake before race day (ISSN 2021, PMID 33388079).",
       ],
     },
   ],
   protocol: {
     title: "The race-day fuel plan (tested in training)",
-    body: "T-60min: caffeine 3 mg/kg + 500ml electrolytes if hot · start fueling at ~20 min, not when you're empty · 60–90 g/h multi-transportable carbs · sodium to match sweat rate · fluid by measured loss.",
+    body: "Choose familiar pre-race food and a practiced total carbohydrate rate suited to event duration and tolerance. Plan access to food and fluid, avoid overdrinking, and review sodium in context. Caffeine is optional, never an automatic part of the plan.",
   },
   cites: [
     "Jeukendrup 2014 — Multiple transportable carbs (Sports Med 44:S25-33)",
     "Casa et al. 2000 — Hydration / sweat rate",
     "ACSM 2007 — Exercise & fluid replacement",
     "Ely et al. 2007 — Heat pacing",
+    "Hew-Butler et al. 2015 — Hyponatremia consensus (PMID 26102445)",
+    "Guest et al. 2021 — Caffeine position stand (PMID 33388079)",
+    "Costa et al. 2017 — Gut-training trial (PMID 28177715)",
+    "Ravikanti et al. 2025 — High carbohydrate intake in elite male marathon runners (PMID 41191077)",
   ],
-  appTie: "Every check-in returns a fuel plan — carbs/h, sodium mg/h, fluid ml/h — scaled to today's session duration, intensity and the A-race's expected heat. A heat factor automatically raises your fluid and sodium targets.",
+  appTie: "JMM displays general fueling examples using available session and profile information. Missing or unverified measurements must remain visible. A reported gut-training checkbox does not establish tolerance to a particular dose; detailed practice history is not yet a complete automatic personalization workflow.",
 };
 
 export const TOPICS: Record<TopicSlug, Topic> = {

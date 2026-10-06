@@ -1,100 +1,39 @@
-# JasMiamiMethod — Deployment & Credentials Ledger
+# JMM deployment and credential locations
 
-> Maintained by the project owner + AI developer. This file is the single source of
-> truth for **where every credential lives** and **what steps are needed to go live**.
-> ⚠️ Real secret values are NEVER committed to git — they live in the deploy platform's
-> secret store (or, for local dev only, in the gitignored `.env`). This ledger records
-> **names, locations, and instructions**, not raw passwords/keys.
+Updated 6 October 2026. [RELEASE-GATES.md](RELEASE-GATES.md) is the authoritative release procedure and acceptance matrix. Historical reports do not establish current production configuration or readiness.
 
----
+## Configuration
 
-## 1. Architecture
+Use package.json and the lockfile for framework versions. The app uses Next.js, Prisma/PostgreSQL, application sessions and configured social sign-in adapters. See SOCIAL_SIGN_IN.md for sign-in configuration.
 
-| Layer | Technology | Where |
-|---|---|---|
-| Frontend + API | Next.js 14 (App Router) | Vercel (or any Node host) |
-| Database | PostgreSQL | **Supabase** (project ref `aycckjrkhgnwaggrrejp`, region `us-east-1`) |
-| ORM | Prisma 5.22 | `prisma/schema.prisma`, `prisma/migrations/0_init` |
-| Auth | DB sessions (bcrypt + `jmm_session` cookie) | no external auth provider |
-| AI coach | Google Gemini (optional) | falls back to rule-based |
-| Email | SMTP (optional) | falls back to console logging |
+Credentials belong in the hosting platform secret manager or a gitignored local environment file. Record names and presence, never values.
 
----
+| Configuration | Purpose |
+|---|---|
+| DATABASE_URL | Application connection; privately verify the intended environment. |
+| DIRECT_URL | Migration connection; verify target before any authorized operation. |
+| NEXT_PUBLIC_APP_URL | Actual public origin; compare exact OAuth callbacks with provider registrations. |
+| TOKEN_ENCRYPTION_KEY | Provider-token encryption; preserve existing token access when managing keys. |
+| CRON_SECRET | Scheduler authentication; verify invocation frequency/runtime support. |
+| Provider credentials and feature flags | Check current adapter contracts; distinguish sign-in, calendar access, observations and workout publication. |
+| SMTP and Telegram credentials | Test opt-in delivery and failures. Missing transport is not successful delivery. |
 
-## 2. Required environment variables
+External AI and providers require separate configuration, consent and acceptance. The owner requested DeepSeek; older Gemini setup instructions do not establish that this requirement is implemented. Inspect the actual adapter before describing the active provider.
 
-Set these in **Vercel → Project → Settings → Environment Variables** (or GitHub → repo
-Settings → Secrets and variables → Actions, if built via Actions).
+## Schema and builds
 
-| Variable | Required | Value / source |
-|---|---|---|
-| `DATABASE_URL` | ✅ | Supabase **Transaction pooler** URL (port `6543`, `?pgbouncer=true`) |
-| `DIRECT_URL` | ✅ | Supabase **Direct** URL (port `5432`) — needed by `prisma migrate deploy` |
-| `NEXT_PUBLIC_APP_URL` | ✅ | Deployed app URL, e.g. `https://<project>.vercel.app` |
-| `CRON_SECRET` | ⚠️ cron only | Random string; protects `/api/cron/reminders` |
-| `GEMINI_API_KEY` | optional | AI coach (rule-based fallback if empty) |
-| `GEMINI_MODEL` | optional | default `gemini-3.6-flash` |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | optional | email delivery (console fallback if empty) |
-| `TELEGRAM_BOT_TOKEN` | optional | Telegram reminders |
-| OAuth vars (Strava / Garmin / Google / Oura / Terra) | optional | device connectors — skip for MVP |
+`npm run build` runs `prisma generate && next build`. It does **not** apply migrations. Build success or hosting Ready status does not prove schema compatibility.
 
-> Note: `AUTH_SECRET` appears in older docs but the DB-session auth code **does not read
-> it**. It is not required for the MVP.
+Migrations are an explicit authorized operator step after target verification, backup and migration review. `npm run db:deploy` invokes Prisma migration deployment. The separate `npm run db:migrate-production` wrapper requires VERCEL_ENV=production, configured database URLs and JMM_PRODUCTION_MIGRATIONS_APPROVED=true. It is not a build lifecycle hook. These command descriptions are not authorization to run them against production.
 
----
+Do not use db:push, demo seeds or old provisioning scripts as production migration or account-recovery shortcuts. Follow [RELEASE-GATES.md](RELEASE-GATES.md).
 
-## 3. One-time database setup (Supabase)
+## Account access
 
-```bash
-# One-shot: builds DATABASE_URL + DIRECT_URL from ref/region/password,
-# applies the schema, and provisions the two accounts.
-SUPABASE_DB_PASSWORD='...' npx tsx scripts/setup-supabase.ts
-```
+Shared demo credentials and one-tap authentication are retired. Former credential values have been removed from this document. See [shared-demo-retirement.md](shared-demo-retirement.md). Removing this text does not rotate credentials or remove historical repository copies.
 
-Or manually:
-```bash
-npx prisma migrate deploy            # 1) creates all tables
-npx tsx scripts/create-accounts.ts   # 2) provisions Evgenia + Jasmel
-```
+Recover existing accounts through approved password-reset or administrator workflows after ownership verification. Preserve athlete records and provider links. Do not recreate accounts or rerun seeds to recover access. Tests use isolated synthetic accounts and unique credentials.
 
-`npm run build` already runs `prisma migrate deploy && prisma generate && next build`,
-so a Vercel/GitHub deploy also auto-applies the schema — but only if `DIRECT_URL` is set
-(otherwise the build fails with `P1012` by design).
+## Release record
 
----
-
-## 4. Account ledger (MVP demo)
-
-| Name | Email | Role | Password | Notes |
-|---|---|---|---|---|
-| Evgenia T | `evgenia@jasmiamimethod.com` | athlete | `123456789` | run + gym plan |
-| Jasmel | `jasmel@jasmiamimethod.com` | **admin** | `12345679` | triathlon plan, sees Admin dashboard |
-
-> ⚠️ These are **demo passwords**. Rotate them before any real users or real data are added.
-
-Provisioning is idempotent (upserts) — safe to re-run: `npx tsx scripts/create-accounts.ts`.
-
----
-
-## 5. Credential location map (the "memory")
-
-| Credential | Where it lives | Committed to git? |
-|---|---|---|
-| Supabase project ref (`aycckjrkhgnwaggrrejp`) + region (`us-east-1`) | this file / connection URL | ✅ (not secret) |
-| Supabase DB password | **Supabase → Project Settings → Database → Reset password** (owner only) | ❌ never |
-| `DATABASE_URL` / `DIRECT_URL` | Vercel (or GitHub Actions secrets) + local `.env` | ❌ never (`.env` is gitignored) |
-| `CRON_SECRET` | Vercel/GitHub secret + local `.env` | ❌ never |
-| `GEMINI_API_KEY`, SMTP creds, OAuth keys | Vercel/GitHub secrets | ❌ never |
-| Demo account passwords | `scripts/create-accounts.ts` (hardcoded for MVP) | ⚠️ yes — rotate for prod |
-
----
-
-## 6. Deploy checklist
-
-- [ ] Supabase project created + DB password known
-- [ ] `DATABASE_URL` (pooler, 6543) and `DIRECT_URL` (direct, 5432) set in deploy env
-- [ ] `NEXT_PUBLIC_APP_URL` set to the deployed URL
-- [ ] `npx prisma migrate deploy` runs clean (or build auto-applies)
-- [ ] `npx tsx scripts/create-accounts.ts` provisions Evgenia + Jasmel
-- [ ] Login as both accounts returns `200`
-- [ ] (optional) `CRON_SECRET`, SMTP, `GEMINI_API_KEY` set
+Record repository, candidate commit, migration state, deployment ID/origin, enabled capabilities and dated acceptance evidence. Verify the production source branch in hosting settings; do not infer it from historical documents. Publish only redacted configuration presence and outcomes. The release gate matrix separates source inspection, isolated tests, live provider acceptance and physical-device proof.

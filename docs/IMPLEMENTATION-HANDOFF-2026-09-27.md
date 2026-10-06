@@ -62,7 +62,7 @@ node --env-file=.env --import tsx scripts/coaching-integration-check.ts
 
 The HTTP harness deliberately refuses any database except `127.0.0.1/jmm_original_integration_utf8_test`; create this disposable UTF-8 database and apply migrations before running it. It expects the app on port 3220, with the same database. Keep `EXTERNAL_AI_ENABLED=false` and omit live provider/mail credentials during this test.
 
-**Deployment caution:** the repository's existing `npm run build` invokes `prebuild`, which applies migrations when `VERCEL_ENV=production` (and skips them otherwise). The verification above calls Next directly so compilation does not implicitly migrate a deployment database. In staging, review migrations, take a backup, explicitly apply `prisma migrate deploy`, generate Prisma and build against the intended schema. New migrations are `202609270001_coaching_messages` and `202609270003_durable_sync_jobs`.
+**Updated deployment caution (6 October 2026):** this is a historical implementation handoff. The current npm run build only generates Prisma and compiles Next.js; no automatic build migration occurs. Follow [RELEASE-GATES.md](RELEASE-GATES.md). Verify the target, backup and compatibility before an explicitly authorized migration. This increment introduced 202609270001_coaching_messages and 202609270003_durable_sync_jobs; inspect all subsequent migrations for the actual candidate.
 
 Set `CRON_SECRET`, encryption/session configuration and correct app URL through the host's secret manager. Confirm cron frequency and runtime entitlement; the five-minute worker configuration alone does not run a scheduler locally. Test rollback/recovery and queue observability before onboarding real athletes.
 

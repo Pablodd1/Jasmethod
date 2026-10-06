@@ -34,6 +34,7 @@ import { LANGS, t, type Lang } from "@/lib/i18n";
 
 const NAV = [
   { href: "/today", key: "nav.today", icon: Play },
+  { href: "/coach", key: "nav.coach", icon: Sparkles },
   { href: "/daily", key: "nav.daily", icon: Zap },
   { href: "/dashboard", key: "nav.dashboard", icon: Home },
   { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
@@ -286,11 +287,11 @@ export function MobileNav() {
       })}
       {/* KCoach — one tap from ANY page (the coach is never buried) */}
       <Link
-        href="/today#jasai"
+        href="/coach"
         className="flex flex-col items-center gap-0.5 text-[10px] text-vermillion-500"
       >
         <Sparkles className="w-5 h-5" />
-        KCoach
+        J Koach
       </Link>
     </div>
   );

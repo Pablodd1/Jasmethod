@@ -89,6 +89,9 @@ jobs:
       - name: Persistent conversational coach acceptance
         run: npm run test:conversation
 
+      - name: Public route and unauthenticated API smoke
+        run: node scripts/jmm-public-smoke.mjs
+
       - name: J Metrics authenticated data and rest-day acceptance
         run: npx tsx scripts/jmm-metrics-integration.ts
 

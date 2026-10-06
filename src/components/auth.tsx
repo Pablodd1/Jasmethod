@@ -25,6 +25,7 @@ interface User {
 interface AuthCtx {
   user: User | null;
   loading: boolean;
+  error: boolean;
   language: Lang;
   setLanguage: (l: Lang) => Promise<void>;
   refresh: () => Promise<void>;
@@ -34,6 +35,7 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx>({
   user: null,
   loading: true,
+  error: false,
   language: "es",
   setLanguage: async () => {},
   refresh: async () => {},
@@ -54,6 +56,7 @@ function applyLang(l: Lang) {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [language, setLanguageState] = useState<Lang>("es");
 
   // Spanish default; honor a stored preference from a previous visit.
@@ -68,9 +71,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      const res = await fetch("/api/auth/me");
+      const res = await fetch("/api/auth/me", { cache: "no-store", signal: controller.signal });
+      if (!res.ok) throw new Error("Session verification unavailable");
       const data = await res.json();
+      if (!data || !("user" in data)) throw new Error("Invalid session response");
       setUser(data.user);
       try {
         if (data.user) localStorage.setItem("jmm_last_user", data.user.id);
@@ -88,7 +97,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {
       setUser(null);
+      setError(true);
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   }, []);
@@ -131,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ user, loading, language, setLanguage, refresh, logout }}
+      value={{ user, loading, error, language, setLanguage, refresh, logout }}
     >
       {children}
     </Ctx.Provider>

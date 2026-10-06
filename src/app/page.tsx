@@ -31,8 +31,8 @@ const COPY = {
   },
   stats: [
     { n: "0", en: "devices required for manual coaching", es: "dispositivos necesarios para entrenamiento manual" },
-    { n: "80/20", en: "polarized training model by default", es: "modelo polarizado por defecto" },
-    { n: "100+", en: "research-cited protocols (PMIDs in-app)", es: "protocolos citados con PMID" },
+    { n: "1", en: "individual goal guides your training mix", es: "objetivo individual orienta tu entrenamiento" },
+    { n: "PMID", en: "research references you can review", es: "referencias científicas que puedes revisar" },
     { n: "5", en: "languages, bilingual coaching", es: "idiomas, coach bilingüe" },
   ],
   loop: {
@@ -77,15 +77,15 @@ const COPY = {
       {
         title: ["Race-day taper", "Taper hacia la carrera"],
         body: [
-          "A-race weeks taper −41% to −60% in volume with intensity held (the meta-analytic sweet spot). B-races train through.",
-          "Las semanas de carrera A reducen −41% a −60% el volumen manteniendo la intensidad (el punto óptimo meta-analítico). Las B se entrenan en carga.",
+          "Review pre-race volume and key intensity with your coach against the event, recent load and recovery. A published average is a starting point, not your guaranteed optimum.",
+          "Revisa con tu coach el volumen previo y la intensidad clave según la prueba, la carga reciente y tu recuperación. Un promedio publicado orienta; no garantiza tu dosis óptima.",
         ],
       },
       {
         title: ["Readiness verdicts", "Veredictos de disposición"],
         body: [
-          "HRV vs your 7-day baseline, sleep debt, soreness and life stress become one honest call: green, amber or red.",
-          "HRV vs tu base de 7 días, deuda de sueño, dolor y estrés se vuelven una señal honesta: verde, ámbar o rojo.",
+          "Review current symptoms, sleep, soreness and life stress alongside available measurements. HRV needs a comparable personal baseline; missing data is not evidence of recovery.",
+          "Revisa síntomas actuales, sueño, dolor y estrés junto con las mediciones disponibles. La VFC necesita una base personal comparable; datos ausentes no demuestran recuperación.",
         ],
       },
     ],
@@ -93,9 +93,9 @@ const COPY = {
   science: {
     title: ["Published science, cited in-app", "Ciencia publicada, citada en la app"],
     items: [
-      ["Taper meta-analysis: −41–60% volume, ~2 weeks, intensity held.", "Meta-análisis de taper: −41–60% volumen, ~2 semanas, intensidad mantenida."],
-      ["Rønnestad 30/15 short intervals — ~2× the VO₂max gain of long intervals.", "Intervalos cortos 30/15 de Rønnestad — ~2× la ganancia de VO₂max vs largos."],
-      ["80/20 polarized distribution as the default weekly shape.", "Distribución polarizada 80/20 como forma semanal por defecto."],
+      ["Purposeful cycles: build, practice, recover and review before progressing.", "Ciclos con propósito: desarrollar, practicar, recuperar y revisar antes de progresar."],
+      ["Choose interval work and recovery for the adaptation and the athlete; study results are not promised outcomes.", "Elige trabajo y recuperación según la adaptación y el atleta; los resultados de un estudio no son promesas."],
+      ["Individualize the training mix with your coach using goals, history, availability and response; no fixed intensity split suits everyone.", "Individualiza la mezcla con tu coach según objetivos, historial, disponibilidad y respuesta; ninguna proporción fija sirve para todos."],
       ["Supplement guidance anchored to IOC consensus and AIS Group A evidence.", "Suplementos anclados al consenso del COI y evidencia AIS Grupo A."],
     ],
     link: ["Browse the science library →", "Explorar la biblioteca científica →"],
@@ -111,8 +111,8 @@ const COPY = {
   },
   audience: {
     a: [
-      "New to structured training? Answer a few questions — a safe, complete plan starts today, no gadgets required.",
-      "¿Nuevo en entrenamiento estructurado? Responde unas preguntas — un plan seguro y completo empieza hoy, sin aparatos.",
+      "New to structured training? Complete your profile and review a starting plan that fits your experience and available time. No wearable is required.",
+      "¿Nuevo en entrenamiento estructurado? Completa tu perfil y revisa un plan inicial según tu experiencia y tiempo disponible. No necesitas dispositivo.",
     ],
     b: [
       "Data-driven athlete? Bring your FTP, LTHR, 5K PB and lactate numbers — thresholds, zones and race forecasts sharpen to your measurements.",
