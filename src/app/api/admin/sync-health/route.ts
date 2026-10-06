@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { connectorHealth } from "@/lib/connector-health";
+import { intervalsConnectorEnabled } from "@/lib/capabilities";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/admin/sync-health — per-athlete connector health + data coverage
-// (the ops answer to "is everyone syncing?"). Coverage shows the earliest
-// data we hold per source so an incomplete backfill is visible, not hidden.
+// Import freshness, not device delivery. Coverage is aggregated across sources;
+// an old manual upload does not prove that a provider backfill completed.
 export async function GET() {
   const me = await getCurrentUser();
   if (!me) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -39,14 +41,9 @@ export async function GET() {
   const metsBy = new Map(mets.map((m) => [m.userId, m._min.date]));
   const iso = (d: Date | null | undefined) => (d ? new Date(d).toISOString() : null);
 
+  const now = Date.now();
+  const intervalsEnabled = intervalsConnectorEnabled();
   const athletes = users.map((u) => {
-    const failing = u.connectors.filter((c) => c.status === "error");
-    const stale = u.connectors.filter(
-      (c) =>
-        c.status === "connected" &&
-        c.lastSyncAt &&
-        Date.now() - new Date(c.lastSyncAt).getTime() > 26 * 3600000,
-    );
     return {
       id: u.id,
       name: u.name,
@@ -60,11 +57,13 @@ export async function GET() {
         earliestActivity: iso(actsBy.get(u.id) ?? null),
         earliestMetric: iso(metsBy.get(u.id) ?? null),
       },
-      health: failing.length ? "red" : stale.length ? "amber" : "green",
+      ...connectorHealth(u.connectors, now, intervalsEnabled),
     };
   });
 
   return NextResponse.json({
+    healthScope: "import_freshness_not_device_delivery",
+    coverageScope: "all_sources_not_provider_backfill_completion",
     athletes,
     summary: {
       athletes: athletes.length,

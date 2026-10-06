@@ -258,29 +258,17 @@ export default function ConnectorsPage() {
   function stepsFor(p: any, lang: Lang): string[] {
     const es = lang === "es";
     switch (p.id) {
-      case "intervals":
-        return es ? [
-          "Conecta tu propia cuenta de Intervals.icu y autoriza actividad, bienestar y calendario.",
-          "En Intervals.icu conecta Garmin y activa el envío de entrenamientos planificados para tus deportes compatibles.",
-          "Publica una sesión aprobada desde Hoy, o activa la publicación automática aquí. Comprueba los pasos en Garmin Connect y en tu reloj.",
-          "La sincronización importa datos permitidos y mantiene publicaciones anteriores. No confirma recepción en el reloj. Las actividades de origen Strava se excluyen de esta conexión."
-        ] : [
-          "Connect your own Intervals.icu account and authorize activity, wellness and calendar access.",
-          "In Intervals.icu connect Garmin and enable planned workout forwarding for your supported sports.",
-          "Publish an approved session from Today, or enable automatic publication here. Check the steps in Garmin Connect and on your watch.",
-          "Synchronization imports permitted data and maintains existing publications. It cannot confirm watch receipt. Strava-sourced activities are excluded from this connection."
-        ];
       case "strava":
         return es
           ? [
               "Pulsa «Conectar Strava» e inicia sesión con tu cuenta.",
               "Autoriza a JasMiamiMethod a leer tus actividades (pantalla de Strava).",
-              "Todo tu historial se importa automáticamente.",
+              "La primera sincronización consulta hasta 365 días de actividades disponibles; las siguientes consultan actividades desde un día antes de la última sincronización.",
             ]
           : [
               'Click "Connect Strava" and log in.',
               "Authorize JasMiamiMethod to read your activities.",
-              "Your full history imports automatically.",
+              "The first sync requests up to 365 days of available activities; later syncs request activities from one day before the last sync onward.",
             ];
       case "garmin":
         return p.method === "oauth" && p.configured
@@ -298,12 +286,12 @@ export default function ConnectorsPage() {
           : es
             ? [
                 "Entra en connect.garmin.com con tu cuenta.",
-                "Abre una actividad → ⋯ (engranaje) → «Exportar original» (.tcx).",
+                "Abre una actividad y elige «Exportar a TCX» en el menú de exportación. «Exportar original» puede generar un FIT, que este importador no acepta.",
                 "Sube el archivo .tcx aquí abajo.",
               ]
             : [
                 "Go to connect.garmin.com and log in.",
-                'Open an activity → ⋯ (gear) → "Export Original" (.tcx).',
+                'Open an activity and choose "Export to TCX" from its export menu. "Export Original" may produce a FIT file, which this importer does not accept.',
                 "Upload the .tcx file here.",
               ];
       case "google_cal":
@@ -627,6 +615,7 @@ export default function ConnectorsPage() {
                 </div>
 
                 <div className="mt-4">
+                  {p.id === "intervals" && <IntervalsGarminHelp lang={lang} configured={p.configured === true} />}
                   {p.id === "intervals" && p.status === "connected" && <IntervalsPreferences lang={lang} />}
                   {p.method === "oauth" &&
                     (p.configured ? (
@@ -764,19 +753,23 @@ export default function ConnectorsPage() {
           })}
         </div>
 
-        {/* Strava bridge — the best automatic path for Garmin/COROS today */}
+        {!loading && !providers.some(p => p.id === "intervals") && (
+          <div className="card"><IntervalsGarminHelp lang={lang} configured={false} /></div>
+        )}
+
+        {/* Strava imports completed activities; it does not deliver planned workouts. */}
         <div className="card border-emerald-200 bg-emerald-50/60">
           <div className="flex gap-3">
             <RefreshCw className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
             <div className="text-sm text-emerald-900">
               <strong>
                 {lang === "es"
-                  ? "Tienes Garmin o COROS? El puente automático:"
-                  : "Garmin or COROS? The automatic bridge:"}
+                  ? "Garmin o COROS: importar actividades mediante Strava"
+                  : "Garmin or COROS: import activities through Strava"}
               </strong>{" "}
               {lang === "es"
-                ? "1) Conecta tu reloj con Strava (en la app del reloj: Ajustes → Aplicaciones → Strava) — se hace una sola vez. 2) Conecta Strava aquí arriba. Desde ese momento cada entrenamiento del reloj entra solo a esta app, sin subir nada."
-                : "1) Link your watch to Strava (in the watch app: Settings → Applications → Strava) — a one-time setup. 2) Connect Strava above. From then on every watch workout lands in this app by itself — no manual uploads."}
+                ? "Conecta tu cuenta de Garmin o COROS a Strava y después autoriza Strava aquí, si está disponible. Esto permite importar actividades completadas que Strava autorice compartir. No envía entrenamientos estructurados de JMM a Garmin Connect ni al reloj."
+                : "Connect your Garmin or COROS account to Strava, then authorize Strava here if available. This imports completed activities that Strava permits sharing. It does not send JMM structured workouts to Garmin Connect or your watch."}
             </div>
           </div>
         </div>
@@ -787,8 +780,8 @@ export default function ConnectorsPage() {
             <div className="text-sm text-ocean-900">
               <strong>{t(lang, "conn.which")}</strong>{" "}
               {lang === "es"
-                ? "Strava importa los últimos 30 días en la primera sincronización. Los archivos TCX y Garmin CSV permiten añadir historial anterior. Whoop y Oura aportan recuperación y sueño; Apple Health acepta export.xml hasta 40 MB."
-                : "Strava imports the last 30 days on first sync. TCX and Garmin CSV imports can add earlier history. Whoop and Oura supply recovery and sleep; Apple Health accepts export.xml up to 40 MB."}
+                ? "Strava consulta hasta 365 días de actividades disponibles en la primera sincronización. Los archivos TCX y Garmin CSV permiten añadir historial anterior. Whoop y Oura aportan recuperación y sueño; Apple Health acepta export.xml hasta 40 MB."
+                : "Strava requests up to 365 days of available activities on first sync. TCX and Garmin CSV imports can add earlier history. Whoop and Oura supply recovery and sleep; Apple Health accepts export.xml up to 40 MB."}
             </div>
           </div>
         </div>
@@ -1043,6 +1036,41 @@ function RequestButton({
         : es ? "Pedir esta conexión" : "Request this connection"}
     </button>
   );
+}
+
+function IntervalsGarminHelp({ lang, configured }: { lang: Lang; configured: boolean }) {
+  const es = lang === "es";
+  const steps = es ? [
+    "Cada atleta necesita sus propias cuentas de JMM, Intervals.icu y Garmin Connect. La conexión del coach no conecta a sus atletas.",
+    "En Ajustes de Intervals.icu, conecta Garmin Connect y activa la descarga de actividades y los datos de bienestar disponibles. Activa también «Upload planned workouts» para enviar sesiones al dispositivo compatible.",
+    "Conecta Intervals.icu desde JMM y autoriza actividad, bienestar y calendario. Revisa la última sincronización y los datos importados aquí.",
+    "Completa el chequeo diario y aprueba la versión actual de tu sesión de hoy. Publica desde Hoy o activa la publicación automática cuando esté disponible. Actualmente se envían sesiones estructuradas de carrera y bicicleta mediante FIT; no otros deportes.",
+    "Comprueba la sesión y sus pasos en Garmin Connect, sincroniza el reloj y abre el entrenamiento en él antes de empezar. Si falta, revisa cada paso de la conexión; no vuelvas a crear la sesión para forzar el envío.",
+  ] : [
+    "Each athlete needs their own JMM, Intervals.icu and Garmin Connect accounts. Connecting the coach does not connect the athletes.",
+    "In Intervals.icu Settings, connect Garmin Connect and enable activity downloads and available wellness data. Also enable “Upload planned workouts” to forward sessions to your compatible device.",
+    "Connect Intervals.icu from JMM and authorize activity, wellness and calendar access. Review the last successful sync and imported data here.",
+    "Complete your daily check-in and approve the current version of today's workout. Publish from Today or enable automatic publication when available. Structured run and bike workouts are currently sent as FIT; other sports are not supported yet.",
+    "Check the workout and its steps in Garmin Connect, sync your watch, and open the workout on it before starting. If it is missing, check each connection step; do not create a duplicate workout to force delivery.",
+  ];
+  return <details className="rounded-lg border border-slate-200 p-3 mb-3 text-sm text-slate-700">
+    <summary className="cursor-pointer font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-600">
+      {es ? "Garmin mediante Intervals.icu: configuración y límites" : "Garmin through Intervals.icu: setup and limits"}
+    </summary>
+    {!configured && <p className="mt-3 text-amber-800">{es
+      ? "Esta conexión aún no está disponible en JMM. Puedes revisar estos pasos, pero la configuración en Intervals.icu por sí sola no activa la sincronización con JMM."
+      : "This connection is not available in JMM yet. You can review these steps, but setup in Intervals.icu alone does not activate JMM synchronization."}</p>}
+    <ol className="list-decimal pl-5 mt-3 space-y-2">{steps.map(step => <li key={step}>{step}</li>)}</ol>
+    <p className="mt-3">{es
+      ? "Qué se importa: resúmenes de actividades y bienestar disponible, con una consulta inicial de hasta 180 días. Depende de los datos presentes en Intervals.icu y de tus permisos. No incluye el perfil completo de Garmin, zonas o umbrales, ni todos los puntos GPS, vueltas o muestras. Revisa tus zonas y objetivos en JMM; no se completan automáticamente mediante esta conexión. Se excluyen actividades de origen Strava o de origen desconocido."
+      : "What imports: activity summaries and available wellness data, with an initial lookback of up to 180 days. This depends on data present in Intervals.icu and your permissions. It does not include your complete Garmin profile, zones or thresholds, or all GPS points, laps and samples. Review your zones and goals in JMM; this connection does not fill them automatically. Strava-sourced and unknown-source activities are excluded."}</p>
+    <p className="mt-3 font-medium">{es
+      ? "Una publicación aceptada confirma la recepción en Intervals.icu. JMM no recibe confirmación de entrega de Garmin Connect ni del reloj."
+      : "An accepted publication confirms receipt by Intervals.icu. JMM does not receive delivery confirmation from Garmin Connect or your watch."}</p>
+    <a href="https://forum.intervals.icu/t/upload-planned-workouts-to-garmin-connect/1521" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-3 text-ocean-700 underline">
+      {es ? "Guía de Intervals.icu para Garmin" : "Intervals.icu Garmin guide"}<ExternalLink className="w-3 h-3" aria-hidden="true" />
+    </a>
+  </details>;
 }
 
 function IntervalsPreferences({ lang }: { lang: Lang }) {
