@@ -1,3 +1,4 @@
+import { invalidateDoubleDay } from "@/lib/double-day";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { prescribeToday } from "@/lib/adaptive";
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
       const checked = canonicalSession({ athleteId: athlete.id, workout: w, prescription: p, profile: resolved.targetProfile, dateLocal: resolved.canonical.dateLocal, timezone: athlete.timezone });
       if (checked.verdict !== "ready" || checked.durationMin > resolved.canonical.durationMin) throw new ApiError(checked.reason || "Variant could not preserve the reviewed allocation.", 409);
       const base = { ...baseWorkout(w), variantSeed: seed };
-      const updated = await tx.workout.update({ where: { id: w.id }, data: { originalPlan: JSON.stringify(base), prescription: JSON.stringify(p), notes: p.detail.main, regenCount: seed, approved: false } });
+      const updated = await tx.workout.update({ where: { id: w.id }, data: { originalPlan: invalidateDoubleDay(JSON.stringify(base)), prescription: JSON.stringify(p), notes: p.detail.main, regenCount: seed, approved: false } });
       await tx.auditLog.create({ data: { actorId: actor.id, subjectId: athlete.id, action: "workout.variant", entityId: w.id, before: w.prescription, after: JSON.stringify(p), note: `Preserved current effective duration/cap; source revision ${resolved.canonical.revision}` } });
       return updated;
     });

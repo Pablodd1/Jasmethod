@@ -62,6 +62,7 @@ export default function TrainingPage() {
   });
   const [error, setError] = useState("");
   const [planningReadiness, setPlanningReadiness] = useState<any>(null);
+  const [doubleDayConfirmed,setDoubleDayConfirmed]=useState(false);
   const [preview, setPreview] = useState<any>(null);
   const [zones, setZones] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
@@ -105,11 +106,11 @@ export default function TrainingPage() {
       const res = await fetch("/api/plan/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({...form, preview: !confirmed, previewToken: confirmed ? preview?.previewToken : undefined}),
+        body: JSON.stringify({...form, confirmDoubleDay:confirmed&&doubleDayConfirmed, preview: !confirmed, previewToken: confirmed ? preview?.previewToken : undefined}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      if (!confirmed) { setPreview(data); return; }
+      if (!confirmed) { setDoubleDayConfirmed(false); setPreview(data); return; }
       setPreview(null);
       await load();
     } catch (err: any) {
@@ -364,17 +365,19 @@ export default function TrainingPage() {
             <p>{preview.preview.existingPlans ? "Confirming will archive the current plan and supersede its uncompleted future sessions. History is retained." : "Confirming will assign this provisional plan."}</p>
             <details className="my-3"><summary className="cursor-pointer underline">Review every week, off-day and session</summary>{preview.preview.weeksPreview.map((week:any,weekIndex:number)=><div className="my-4" key={week.week}>
               <h4 className="font-semibold">Week {week.week}: {week.totalMinutes} min</h4>
+              <p className="text-sm">{week.doubleDayNote}</p>
               <ul className="mt-2 space-y-2">{Array.from({length:7},(_,slot)=>{
                 const localDay=addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+slot);
                 const sessions=week.sessions.filter((session:any)=>session.daySlot===slot);
                 const isOff=week.restDaySlots?.includes(slot) || sessions.length===0;
                 return <li key={slot} className="border-l-2 border-ink-200 pl-3">
                   <strong>{localDay}{isOff?" · Planned off-day":""}</strong>
-                  {isOff?<p className="text-sm">No compulsory workout. Optional recovery guidance remains separate; record only what you actually do.</p>:sessions.map((session:any,index:number)=><p key={index}>{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.description}</p>)}
+                  {isOff?<p className="text-sm">No compulsory workout. Optional recovery guidance remains separate; record only what you actually do.</p>:sessions.map((session:any,index:number)=><p key={index}>{session.startTime ? `${session.startTime} · ` : ""}{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.movedFromSlot!==undefined ? `Moved from ${addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+session.movedFromSlot)}. ` : ""}{session.description}</p>)}
                 </li>;
               })}</ul>
             </div>)}</details>
-            <div className="flex gap-3"><button type="button" className="btn-primary" disabled={generating} onClick={()=>generate(undefined,true)}>Confirm this plan</button><button type="button" className="btn-secondary" onClick={()=>setPreview(null)}>Cancel preview</button></div>
+            {preview.doubleDayAgreementRequired && <label className="flex gap-2 items-start text-sm my-3"><input type="checkbox" checked={doubleDayConfirmed} onChange={e=>setDoubleDayConfirmed(e.target.checked)}/>I reviewed both sessions, dates and times for the optional pairs. I agree to report the first and complete a fresh check-in before the second; I can decline or skip without catch-up work.</label>}
+            <div className="flex gap-3"><button type="button" className="btn-primary" disabled={generating||(preview.doubleDayAgreementRequired&&!doubleDayConfirmed)} onClick={()=>generate(undefined,true)}>Confirm this plan</button><button type="button" className="btn-secondary" onClick={()=>setPreview(null)}>Cancel preview</button></div>
           </section>}
           {error && (
             <div role="alert" className="text-sm text-coral-600 mt-3 bg-coral-50 rounded-lg px-3 py-2">

@@ -265,8 +265,8 @@ export default function ProtocolWorkspace({
                   Select the workout to replace. The preview fits complete sets
                   and recovery into its existing time budget. Logged results
                   remain in history. A weekly double day is optional and needs athlete agreement,
-                  practical time and recovery review. This screen cannot record the full
-                  agreement/review workflow yet; two demanding sessions on one day are held.
+                  practical time and recovery review. Configure an optional pair in athlete setup,
+                  then confirm both sessions in the plan preview. Two demanding sessions on one day remain held.
                 </p>
               </div>
               <label className="block text-sm font-medium">

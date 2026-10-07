@@ -1,3 +1,4 @@
+import { parseDoubleDay, type DoubleDayPreference } from "./double-day";
 import {parsePlanningTarget, setupNumber, type PlanningTarget} from "./planning-target";
 import { dateKey } from "./dates";
 import { parseTravelContext, type TravelContext } from "./travel-context";
@@ -27,6 +28,7 @@ export interface PlanningSetup {
   baselinePlanOptIn?: boolean;
   coachPreference?: string;
   travel?: TravelContext | null;
+  doubleDay?: DoubleDayPreference | null;
 }
 export function parsePlanningSetup(value: unknown, now = new Date(), timezone = "UTC", options: {allowPastTarget?:boolean} = {}): PlanningSetup {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid planning setup");
@@ -58,6 +60,7 @@ export function parsePlanningSetup(value: unknown, now = new Date(), timezone = 
     baselinePlanOptIn: v.baselinePlanOptIn === true,
     coachPreference: typeof v.coachPreference === "string" ? v.coachPreference.trim().slice(0,200) : "",
     travel: parseTravelContext(v.travel),
+    doubleDay: parseDoubleDay(v.doubleDay),
     targetGoal: parsePlanningTarget(v.targetGoal,now,timezone,options.allowPastTarget),
     trackEvent: v.trackEvent == null || v.trackEvent === "" ? null : option<"100m" | "200m" | "400m">("trackEvent", ["100m","200m","400m"], "100m"),
   };

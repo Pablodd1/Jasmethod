@@ -1,3 +1,4 @@
+import { doubleDayPlan, hasDoubleDayMetadata } from "@/lib/double-day";
 import { createHash } from "node:crypto";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { prisma } from "@/lib/db";
@@ -92,6 +93,7 @@ export async function POST(req: Request) {
           include: { planDay: { include: { plan: true } } },
         });
         if (!w) throw new ApiError("Session not found.", 404);
+        if(hasDoubleDayMetadata(w)&&!doubleDayPlan(w)) throw new ApiError("Saved pair metadata needs review. Generate a new reviewed plan before replacing this session.",409);
         const eligibility = reviewProtocolAthlete({ protocolId: protocol.id, ...profile });
         if (eligibility.status !== "eligible")
           throw new ApiError(eligibility.reasons.map(r => r.message).join(" "));
@@ -135,6 +137,7 @@ export async function POST(req: Request) {
           description: `${protocol.purpose} ${protocol.dose} ${protocol.progression} ${protocol.stop}`,
           startTime: w.startTime,
           protocol: { ...spec, minutes: raw.durationMin },
+          ...(doubleDayPlan(w) ? {doubleDay:{...doubleDayPlan(w)!,invalidated:true}} : {}),
         };
         const { key, start, end } = dayBounds(athlete.timezone, w.date);
         const [nearby, race, checkin] = await Promise.all([

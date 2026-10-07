@@ -49,13 +49,22 @@ code that queries the new field.
 
 ## Remaining work and limits
 
-- The full athlete-owned optional weekly double-day agreement/scheduling workflow
-  is not in this initial change. Existing easy+easy/easy+quality scheduling is
-  otherwise unchanged; two demanding or unassessed sessions are held at the
-  effective boundary. No universal weekly double-hard rule is introduced.
-  Follow-on implementation must bind agreement to both sessions, respect total
-  time/load, reassess after the first bout and let athletes decline without
-  punitive language. Missing implementation is not clinical contraindication.
+- Optional weekly double days now have athlete-owned weekday, purpose, times,
+  prior-tolerance, food/fluid and between-session recheck confirmations. Plan
+  generation moves one existing easy bout, adds no weekly load, preserves daily
+  limits/rest rules, and records both session IDs/snapshots after explicit athlete
+  preview acceptance. If no safe pair fits, the single-session schedule and
+  specific reason remain visible. No weekly quota or double-hard assignment.
+- The optional second bout waits for explicit first-session actual duration,
+  sport and effort plus a later check-in. Setup/consent changes, skipped first
+  bouts, changed snapshots and prescription edits hold it. Imported completion
+  without explicit comparable actuals is not automatically sufficient. The
+  current supported order keeps the priority session first and the easy bout
+  second; reversing priority or double-demanding pairs needs a separate review.
+- Standalone planned sessions and reported actuals are included in same-day load
+  review. New plans keep single-session days unless an eligible pair was expressly
+  selected. Existing untagged easy pairs are unchanged; demanding/unassessed pairs
+  remain held. Authenticated synthetic acceptance tests exercise the new workflow.
 - This is not a complete five-sport protocol expansion, full legacy generator
   rewrite, sprint-prescription replacement, or unified race/supplement engine.
   `sprint-prescription.ts` currently has no runtime consumers and remains an

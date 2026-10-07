@@ -26,6 +26,7 @@ export async function saveProfile(actorId: string, athlete: {id: string; timezon
   } catch (e) { throw new ApiError((e as Error).message); }
   if (typeof expectedRevision !== "string") throw new ApiError("Reload the profile before saving", 409);
   if (setup?.profileConfirmed && (typeof fields.experience !== "string" || fields.experience === "" || fields.weeklyHours == null || fields.weeklyHours === "")) throw new ApiError("Select your actual experience and available weekly hours before confirming them");
+  if (setup?.doubleDay?.athleteAgreed && actorId !== athlete.id) throw new ApiError("Only the athlete can record their optional double-day agreement.",403);
   if (setup && actorId !== athlete.id) setup.source = "coach_set";
   const data = profilePatch(fields, athlete.timezone);
   if (reviewedWeightObservationId !== undefined && (typeof reviewedWeightObservationId !== "string" || !reviewedWeightObservationId.trim() || reviewedWeightObservationId.length > 200 || typeof data.weightKg !== "number")) throw new ApiError("Select a valid imported weight and include its value");

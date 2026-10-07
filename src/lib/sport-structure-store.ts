@@ -1,3 +1,4 @@
+import { invalidateDoubleDay } from "./double-day";
 import type { Prisma } from "@prisma/client";
 import { ApiError } from "./access";
 import { effectivePrescription } from "./effective-prescription";
@@ -33,7 +34,7 @@ export async function applySportStructureEdit(tx: Prisma.TransactionClient, cont
   const prescription = JSON.stringify(nextPrescription);
   const updated = await tx.workout.updateMany({
     where: { id: body.id, userId: context.athleteId, planned: true, completed: false, prescription: current.workout.prescription, feedbackAt: null, feedbackStatus: null, feedbackNote: null, actualDurationMin: null, actualSport: null, actualDetails: null, rpe: null },
-    data: { prescription, approved: false },
+    data: { prescription, approved: false, originalPlan: invalidateDoubleDay(current.workout.originalPlan) },
   });
   if (updated.count !== 1) throw new ApiError("This session changed while saving. Reload before editing.", 409);
   await tx.auditLog.create({ data: { actorId: context.actorId, subjectId: context.athleteId, action: "workout.sportStructure", entityId: body.id, before: current.workout.prescription, after: prescription, note: `${body.sportStructure === null ? "Cleared explicit structure and obsolete executable steps" : "Saved explicit sport structure"}; source revision ${body.expectedRevision}` } });
