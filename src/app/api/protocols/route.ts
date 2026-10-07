@@ -11,6 +11,7 @@ import {
   PROTOCOL_RULES,
 } from "@/lib/protocols";
 import { reviewProtocolSchedule } from "@/lib/protocol-scheduling";
+import { reviewProtocolAthlete } from "@/lib/protocol-eligibility";
 import { prescribeToday } from "@/lib/adaptive";
 
 export const dynamic = "force-dynamic";
@@ -86,17 +87,9 @@ export async function POST(req: Request) {
         const profile = await tx.athleteProfile.findUnique({
           where: { userId: athlete.id },
         });
-        if (profile?.injured)
-          throw new ApiError(
-            "The injury flag is active. Review the athlete's recovery before assigning training.",
-          );
-        if (
-          profile?.birthYear &&
-          new Date().getFullYear() - profile.birthYear < 18
-        )
-          throw new ApiError(
-            "These adult protocols require a separate youth coaching plan for this athlete.",
-          );
+        const eligibility = reviewProtocolAthlete({ protocolId: protocol.id, ...profile });
+        if (eligibility.status !== "eligible")
+          throw new ApiError(eligibility.reasons.map(r => r.message).join(" "));
         const w = await tx.workout.findFirst({
           where: { id: body.sessionId, userId: athlete.id },
           include: { planDay: { include: { plan: true } } },
@@ -217,11 +210,12 @@ export async function POST(req: Request) {
             "The current check-in pauses this protocol. Choose another day or reassess recovery.",
           );
         const previewToken = createHash("sha256")
-          .update(JSON.stringify({ w, profile, prescription, review, checkin }))
+          .update(JSON.stringify({ w, profile, prescription, review, checkin, nearby, race, eligibility }))
           .digest("hex");
         if (body.mode === "preview")
           return {
             preview: prescription,
+            eligibility,
             ...review,
             previewToken,
             session: {

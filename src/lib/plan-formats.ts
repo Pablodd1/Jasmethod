@@ -53,6 +53,7 @@ export function stepEndpointLabel(step: NonNullable<PlanFormatSession["steps"]>[
 }
 
 export function postFuelLabel(post: NonNullable<PlanFormatSession["post"]>): string {
+  if (post.note) return post.note;
   return post.carbsG != null && post.proteinG != null
     ? `${post.carbsG}g carbs + ${post.proteinG}g protein`
     : post.note || "Body mass is unknown. Have a familiar mixed meal; gram targets are unavailable.";
@@ -115,7 +116,7 @@ export function telegramPlan(
       );
     if (s.fuel?.carbsPerHourG || s.fuel?.fluidMlPerHour)
       lines.push(
-        `   ⛽ ${s.fuel.carbsPerHourG}g/h + ${s.fuel.fluidMlPerHour}ml/h`,
+        `   ⛽ ${s.fuel.carbsPerHourG}g/h + up to ${s.fuel.fluidMlPerHour}ml/h as general examples. Drink to need; never force fluids or overdrink.`,
       );
     if (s.post) lines.push(`   🍚 post: ${postFuelLabel(s.post)}`);
     if (s.appUrl) lines.push(`   Full instructions and feedback: ${s.appUrl}`);
@@ -153,7 +154,7 @@ export function gmailPlanHtml(
             .join("");
           const fuelLine =
             s.fuel && (s.fuel.carbsPerHourG || s.fuel.fluidMlPerHour)
-              ? `<div style="background:#fff7ed;border-radius:8px;padding:6px 10px;margin-top:8px;font-size:12px;color:#9a3412">⛽ ${s.fuel.carbsPerHourG}g carbs/h · ${s.fuel.fluidMlPerHour}ml/h${s.fuel.sodiumMgPerHour ? ` · ${s.fuel.sodiumMgPerHour}mg sodium/h` : ""}</div>`
+              ? `<div style="background:#fff7ed;border-radius:8px;padding:6px 10px;margin-top:8px;font-size:12px;color:#9a3412">⛽ ${s.fuel.carbsPerHourG}g carbs/h · ${s.fuel.fluidMlPerHour}ml/h${s.fuel.sodiumMgPerHour ? ` · ${s.fuel.sodiumMgPerHour}mg sodium/h` : ""}. General examples, not measured current needs. Never force fluids or overdrink.</div>`
               : "";
           const postLine = s.post
             ? `<div style="font-size:12px;color:#475569;margin-top:6px">🍚 Post: ${esc(postFuelLabel(s.post))}</div>`
@@ -203,7 +204,7 @@ export function calendarDescription(
     lines.push(`⛽ Pre: ${s.fuel.preSession.carbsG}g ${s.fuel.preSession.timingLabel}`);
   if (s.fuel?.carbsPerHourG || s.fuel?.fluidMlPerHour)
     lines.push(
-      `⛽ During: ${s.fuel.carbsPerHourG}g/h + ${s.fuel.fluidMlPerHour}ml/h`,
+      `⛽ During: ${s.fuel.carbsPerHourG}g/h + up to ${s.fuel.fluidMlPerHour}ml/h as general examples. Drink to need; never force fluids or overdrink.`,
     );
   if (s.post) lines.push(`🍚 Post: ${postFuelLabel(s.post)}`);
   lines.push("— JasMiamiMethod · check in before training");

@@ -1,3 +1,4 @@
+import { parseNutritionContext } from "./nutrition-context";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -54,7 +55,7 @@ test("weight suggestions omit stale, disconnected and suspect values without gue
 function adoptionFixture(weightSource="manual") {
   const {helper}=fixture();
   class ApiError extends Error { constructor(message:string, public status=400){super(message)} }
-  const patch=load("src/lib/profile-update.ts",{"./access":{ApiError},"./dates":{parseDate:()=>{throw Error("unexpected date edit")}}});
+  const patch=load("src/lib/profile-update.ts",{"./nutrition-context":{parseNutritionContext},"./access":{ApiError},"./dates":{parseDate:()=>{throw Error("unexpected date edit")}}});
   const state={source:"strava",connected:true,quality:"ok",observedAt:new Date(),writes:[] as any[],audits:[] as any[]};
   const before={id:"profile",userId:"owner",weightKg:70,weightSource};
   const tx={

@@ -48,6 +48,7 @@ export async function GET(req: Request) {
     const resolvedSessions = Object.fromEntries(resolved.filter((r): r is NonNullable<typeof r> => r !== null).map(r => [r.workout.id, r.canonical]));
     const zip = buildTrainingBundle({
       resolvedSessions,
+      resolvedNutrition: Object.fromEntries(resolved.filter((r): r is NonNullable<typeof r> => r !== null).map(r => [r.workout.id, r.nutrition])),
       resolutionErrors,
       athlete: {
         name: athlete.name,

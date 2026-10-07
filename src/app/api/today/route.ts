@@ -6,14 +6,10 @@ import {personalizedDailyMotivation} from "@/lib/reference";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
-import { postWorkoutFuel } from "@/lib/adaptive";
 import { estimateIf, estimateDistanceKm } from "@/lib/prescription";
 import { estimateTss } from "@/lib/fitness";
 import {
-  buildFuelingPlan,
   fuelCurveReference,
-  postFuelPersonalized,
-  caffeineAllowedFromPrefs,
 } from "@/lib/fueling";
 import { effectivePrescription } from "@/lib/effective-prescription";
 import { intervalsConnectorEnabled, trainingCapabilities } from "@/lib/capabilities";
@@ -23,7 +19,7 @@ export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
-  const [allWorkouts, race, connectors, checkin, supplementPrefs, restDay] = await Promise.all([
+  const [allWorkouts, race, connectors, checkin, restDay] = await Promise.all([
     prisma.workout.findMany({
       where: {
         userId: user.id,
@@ -49,7 +45,6 @@ export async function GET(req: Request) {
     prisma.dailyCheckin.findUnique({
       where: { userId_date: { userId: user.id, date: start } },
     }),
-    prisma.supplementProfile.findUnique({ where: { userId: user.id } }),
     prisma.planDay.findFirst({ where: { plan: { userId: user.id, status: "active" }, date: { gte: start, lt: end }, dayOff: true }, select: { id: true } }),
   ]);
 
@@ -69,14 +64,6 @@ export async function GET(req: Request) {
     take: 5,
     select: { id: true, date: true, title: true, sport: true, insights: true },
   });
-
-    // Caffeine opt-out must reach every fuel recommendation (review finding F).
-    const caffeineOk = caffeineAllowedFromPrefs({
-      enabled: supplementPrefs?.enabled,
-      likes: supplementPrefs?.likes,
-      dislikes: supplementPrefs?.dislikes,
-      optsOut: supplementPrefs?.optsOut,
-    });
 
     // GET is read-only. Missing plans require explicit setup/plan creation.
     const todaysWorkouts = workouts;
@@ -103,43 +90,8 @@ export async function GET(req: Request) {
         fuel: null, fuelCurve: [], post: null, coachNotes: null,
       }];
       const { prescription: p, canonical, targetProfile } = resolved;
-      // V2 fueling: personalized (weight, sweat rate, sweat sodium, gut
-      // training) with the scrollable session timeline + target curve.
-      const fuel = buildFuelingPlan({
-        durationMin: p.durationMin,
-        intensity: p.intensity,
-        weightKg: user.profile?.weightKg,
-        sweatRateMlH: user.profile?.sweatRateMlH,
-        sodiumMgPerL: user.profile?.sodiumMgPerL,
-        gutTrained: user.profile?.gutTrained,
-        verdict: p.verdict,
-        ergosIncludeCaffeine: !caffeineOk ? true : undefined,
-      });
-      // Explicit suppression: when caffeine is opted out, drop the field
-      // entirely rather than relying on the flag's fallback suggestion.
-      if (!caffeineOk) delete (fuel as { caffeineMg?: number }).caffeineMg;
-      const postBase = p.durationMin
-        ? postWorkoutFuel(p)
-        : null;
-      // Personalized numbers are the source of truth; the generic builder
-      // only contributes its food examples (old mixed amounts removed).
-      const postPers = p.durationMin
-        ? postFuelPersonalized({
-            durationMin: p.durationMin,
-            intensity: p.intensity,
-            sport: p.sport,
-            weightKg: user.profile?.weightKg,
-          })
-        : null;
-      const post = postPers
-        ? {
-            carbsG: postPers.carbsG,
-            proteinG: postPers.proteinG,
-            ratio: postPers.ratio,
-            note: postPers.note,
-            examples: postBase?.examples,
-          }
-        : null;
+      const fuel = resolved.nutrition?.fuel ?? null;
+      const post = resolved.nutrition?.post ?? null;
       // Legacy estimates retained for API compatibility; actual JStress is separate.
       const tss = estimateTss({
         durationMin: p.durationMin,
@@ -187,7 +139,7 @@ export async function GET(req: Request) {
         dayOff: !!w.planDay?.dayOff,
         prescription: { ...p, steps: canonical.steps, targets: {} },
         fuel,
-        fuelCurve: fuelCurveReference(!!user.profile?.gutTrained),
+        fuelCurve: fuel ? fuelCurveReference(false) : [],
         post,
         coachNotes: baseWorkout(w).description || null,
       };

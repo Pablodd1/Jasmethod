@@ -290,7 +290,8 @@ model AthleteProfile {
   hrvBaseline   Float? // ms
   sweatRateMlH  Float? // measured sweat rate ml/h (pre/post weight test) — fuel planning
   sodiumMgPerL  Float? // measured sweat sodium mg/L (sweat patch test)
-  gutTrained    Boolean @default(false) // tolerates 90-120 g/h carb mixtures
+  gutTrained    Boolean @default(false) // reported practice only; never establishes a dose
+  nutritionContext String? // versioned dated practice, sweat provenance and session-scoped turnaround
   draftSkill    String? // none | mixed | good — open-water swim drafting
   federation    String? // USAT | WORLD_TRIATHLON | BRITISH_TRIATHLON | IRONMAN — wetsuit rules
   category      String? // age_group | elite

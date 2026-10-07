@@ -141,8 +141,13 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
   for (const [name, value] of Object.entries({ weightKg, sweatRateMlH, sodiumMgPerL })) {
     if (value != null && (!Number.isFinite(value) || value <= 0)) throw new Error(`Invalid ${name}`);
   }
+  if (!Number.isFinite(heat) || heat <= 0) throw new Error("Invalid heat factor");
+  if (weightKg != null && (weightKg < 20 || weightKg > 350)) throw new Error("Invalid weightKg");
+  if (sweatRateMlH != null && (sweatRateMlH < 100 || sweatRateMlH > 3000)) throw new Error("Invalid sweatRateMlH");
+  if (sodiumMgPerL != null && (sodiumMgPerL < 100 || sodiumMgPerL > 2500)) throw new Error("Invalid sodiumMgPerL");
   const hard = isHard(intensity);
-  let carbsPerHourG = carbsPerHourFor(durationMin, intensity, gutTrained);
+  // A legacy checkbox alone never establishes tolerance to a higher dose.
+  let carbsPerHourG = carbsPerHourFor(durationMin, intensity, false);
   const practice = opts.carbohydratePractice;
   if (practice) {
     if (![practice.toleratedGPerHour, practice.targetGPerHour].every(v => Number.isFinite(v) && v >= 0 && v <= 120) || !["none", "mild", "moderate", "severe"].includes(practice.giSymptoms)) throw new Error("Invalid carbohydrate practice history");
@@ -172,7 +177,7 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
   if (weightKg) personalization.push(`${weightKg} kg supplied body weight (confirm it is current)`);
   if (sweatRateMlH) personalization.push(`${measured ? "measured in supplied conditions" : "reported, unverified"} sweat ${sweatRateMlH} ml/h`);
   if (sodiumMgPerL) personalization.push(`reported sweat sodium ${sodiumMgPerL} mg/L; context unverified`);
-  if (gutTrained) personalization.push("athlete reports practiced carbohydrate tolerance");
+  if (gutTrained) personalization.push("athlete reports practice; the checkbox alone does not establish a dose");
   if (practice) personalization.push(`Reported tolerance ${practice.toleratedGPerHour} g/h TOTAL carbohydrate; requested ${practice.targetGPerHour} g/h; GI symptoms: ${practice.giSymptoms}. Higher intake is never inferred from a checkbox alone.`);
 
   // ---- Pre-session ----
@@ -278,6 +283,8 @@ export function postFuelPersonalized(opts: {
   note: string;
 } {
   const { durationMin, intensity, sport, weightKg } = opts;
+  if (!Number.isFinite(durationMin) || durationMin < 0 || durationMin > 1440) throw new Error("Invalid session duration");
+  if (opts.nextSessionInHours != null && (!Number.isFinite(opts.nextSessionInHours) || opts.nextSessionInHours < 0 || opts.nextSessionInHours > 168)) throw new Error("Invalid recovery interval");
   const hard = isHard(intensity);
   const long = durationMin >= 90;
   const strength = sport === "strength";
@@ -285,7 +292,7 @@ export function postFuelPersonalized(opts: {
     carbsG: null, proteinG: null, ratio: "—",
     note: "Current weight is unknown, so weight-based totals are unavailable. Have a familiar meal or snack containing carbohydrate and protein, and drink according to thirst. Next-session timing, dietary needs and measured losses can change recovery needs; do not force fluids.",
   };
-  if (!Number.isFinite(weightKg) || weightKg <= 0) throw new Error("Invalid weightKg");
+  if (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 350) throw new Error("Invalid weightKg");
   const w = weightKg;
 
   // Meal examples. Rapid hourly carbohydrate replacement is reserved for a

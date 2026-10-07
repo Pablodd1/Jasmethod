@@ -59,6 +59,13 @@ export function reviewProtocolSchedule(opts: {
       );
     else warnings.push(note);
   }
+  // A replacement is not evidence of agreement to two demanding sessions.
+  // No permission is inferred from the fact that both sessions already exist.
+  const sameDay = opts.nearby.filter(w => w.id !== selected.id && dateKey(w.date, timezone) === key && w.durationMin > 0);
+  if (isDemanding(candidate) && sameDay.some(isDemanding))
+    blocks.push("Two demanding sessions on one day require recorded athlete agreement, qualified-coach review, time/separation and recovery checks. This protocol workflow cannot verify those yet; keep a single demanding session or reorganize the day.");
+  if (sameDay.length)
+    warnings.push("A same-day second session is optional, never a weekly quota. Confirm athlete agreement, available time, food/fluid access and recovery; reassess after the first session.");
   if (opts.nextRace) {
     const days = Math.round(
       (Date.parse(dateKey(opts.nextRace, timezone)) - Date.parse(key)) /

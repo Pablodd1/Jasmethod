@@ -3,7 +3,6 @@ import { encryptSecret, decryptSecret } from "./crypto";
 import { addDaysKey, dayBounds, dateKey, localDate } from "./dates";
 import { storeActivity } from "./activity-store";
 import * as api from "./importers";
-import { buildFuelingPlan } from "./fueling";
 import { sportIcon, calendarDescription } from "./plan-formats";
 import { effectivePrescription } from "./effective-prescription";
 import { SessionResolutionError } from "./canonical-session";
@@ -228,11 +227,8 @@ export async function syncUserConnectors(
           const session = ready ? resolved!.canonical : null;
           const prescription = ready ? resolved!.prescription : null;
           const appUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit").replace(/\/$/, "")}/daily?sessionId=${encodeURIComponent(w.id)}`;
-          const fuelPlan = ready ? buildFuelingPlan({
-            durationMin: session!.durationMin, intensity: prescription.intensity,
-            weightKg: profile?.weightKg, sweatRateMlH: profile?.sweatRateMlH,
-            sodiumMgPerL: profile?.sodiumMgPerL, gutTrained: profile?.gutTrained,
-          }) : null;
+          const fuelPlan = ready ? resolved!.nutrition?.fuel ?? null : null;
+          const postPlan = ready ? resolved!.nutrition?.post ?? null : null;
           const gid = await api.googleCalUpsertEvent(access, {
             summary: ready
               ? `${sportIcon(session!.sport)} ${session!.title} · ${session!.durationMin} min${session!.exactTimeSeconds == null ? " estimated" : ""}`
@@ -243,6 +239,7 @@ export async function syncUserConnectors(
               revision: session!.revision, verdict: session!.verdict, appUrl,
               steps: session!.steps.map(step => ({ ...step, targetLabel: step.target.label })),
               fuel: fuelPlan,
+              post: postPlan,
             }) + `\nSummary only. Full warm-up, work, recovery, cooldown and current targets: ${appUrl}\nPlan revision: ${session!.revision}` : `Provisional calendar placeholder only. No exercise is cleared by this entry. Open the session and complete the session-day check-in before training. Planned calendar time may change.\n${appUrl}`,
             start: localDate(dateKey(w.date, user.timezone), user.timezone, w.startTime || "07:00"),
             durationMin: session?.durationMin ?? w.durationMin,

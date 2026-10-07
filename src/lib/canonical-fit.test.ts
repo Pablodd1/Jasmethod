@@ -265,3 +265,47 @@ test("brick reduced-day caps resolve each real component sport rather than the p
   structure.components[0].steps[0].target = { type: "speed", low: 1.5, high: 2 };
   assert.equal(resolve().canonical.verdict, "blocked");
 });
+
+test('double-day holds preserve urgent safety and require actual effort review', () => {
+  const base = record();
+  const workout = { ...base.workout, intensity: 'z5', prescription: JSON.stringify({sport:'bike', intensity:'z5', verdict:'full', durationMin:1,steps:[step({zone:'z5'})]}) };
+  const sameDaySessions = [{id:'other',sport:'run',durationMin:30,intensity:'z2',completed:true,actualSport:'hyrox',actualDurationMin:40}];
+  const held = effectiveSessionFromRecords(record({workout,sameDaySessions}));
+  assert.equal(held.canonical.verdict,'blocked');
+  assert.match(held.canonical.reason,/athlete agreement/);
+  const urgent = effectiveSessionFromRecords(record({workout,sameDaySessions,checkin:{...base.checkin,answers:JSON.stringify({...answers,urgentSymptoms:true})}}));
+  assert.doesNotMatch(urgent.canonical.reason,/athlete agreement/);
+  assert.match(urgent.canonical.reason,/urgent|medical|emergency/i);
+  const unknownEffort = effectiveSessionFromRecords(record({workout,sameDaySessions:[{id:'other',sport:'run',durationMin:30,intensity:'z2',completed:true,rpe:null}]}));
+  assert.equal(unknownEffort.canonical.verdict,'blocked');
+});
+test('stored old protocol is held before screen or export even with clear check-in', () => {
+  const base=record();
+  const prescription=JSON.parse(base.workout.prescription);
+  const result=effectiveSessionFromRecords(record({profile:{birthYear:1990,injured:false,experience:'advanced',goal:'cycle'},workout:{...base.workout,prescription:JSON.stringify({...prescription,protocol:{id:'aerobic-power',version:'old'}})}}));
+  assert.equal(result.canonical.verdict,'blocked');
+  assert.match(result.canonical.reason,/no longer current/);
+});
+test('low session labels cannot hide expanded hard steps or explicit high targets from double-day gate',()=>{
+  const base=record();
+  for(const work of [step({zone:'z5'}),step({zone:'z1',target:{type:'power',low:230,high:250}})]) {
+    const workout={...base.workout,prescription:JSON.stringify({sport:'bike',intensity:'z2',verdict:'full',durationMin:1,steps:[work]})};
+    const sameDaySessions=[{id:'other',sport:'bike',durationMin:30,intensity:'z5'}];
+    const result=effectiveSessionFromRecords(record({workout,sameDaySessions}));
+    assert.equal(result.canonical.verdict,'blocked');
+    assert.match(result.canonical.reason,/athlete agreement/);
+  }
+  const hardWorkout={...base.workout,intensity:'z5',prescription:JSON.stringify({sport:'bike',intensity:'z5',verdict:'full',durationMin:1,steps:[step({zone:'z5'})]})};
+  const hiddenOther={id:'other',sport:'bike',durationMin:1,intensity:'z2',prescription:JSON.stringify({sport:'bike',intensity:'z2',verdict:'full',durationMin:1,steps:[step({zone:'z5'})]})};
+  assert.equal(effectiveSessionFromRecords(record({workout:hardWorkout,sameDaySessions:[hiddenOther]})).canonical.verdict,'blocked');
+  const solo=effectiveSessionFromRecords(record({workout:{...base.workout,prescription:JSON.stringify({sport:'bike',intensity:'z2',verdict:'full',durationMin:1,steps:[step({zone:'z5'})]})}}));
+  assert.equal(solo.nutrition?.intensity,'z5');
+});
+test('Z3 policy and declared demanding labels stay consistent across scheduling and canonical review',()=>{
+ const base=record();
+ for(const [declared,zone] of [['z2','z3'],['z5','z2']]) {
+  const workout={...base.workout,intensity:declared,prescription:JSON.stringify({sport:'bike',intensity:declared,verdict:'full',durationMin:1,steps:[step({zone})]})};
+  const sameDaySessions=[{id:'other',sport:'bike',durationMin:30,intensity:'z3'}];
+  assert.equal(effectiveSessionFromRecords(record({workout,sameDaySessions})).canonical.verdict,'blocked');
+ }
+});

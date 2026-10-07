@@ -12,6 +12,7 @@ export interface TargetProfile {
   ftp?: number | null; lthr?: number | null; runPaceBase?: number | null; swimPaceBase?: number | null;
   units?: string | null; intensityPct?: number | null; injured?: boolean | null;
   weightKg?: number | null; sweatRateMlH?: number | null; sodiumMgPerL?: number | null; gutTrained?: boolean | null;
+  nutritionContext?: string | null;
   goal?: string | null; experience?: string | null; weeklyHours?: number | null; birthYear?: number | null;
 }
 export interface ResolvedTarget {
@@ -255,7 +256,7 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
     } catch (error) { steps = []; sportStructure = undefined; components = undefined; verdict = "blocked"; reason = error instanceof SessionResolutionError || error instanceof SportStructureError ? error.message : "The saved prescription is malformed. Review it before training or export."; }
   }
   const core = { schemaVersion: SESSION_SCHEMA_VERSION as 2, id: String(w.id || ""), athleteId: input.athleteId, dateLocal: input.dateLocal, timezone: input.timezone, title: typeof p?.title === "string" ? p.title : w.title, sport, durationMin: verdict === "ready" ? (p?.durationMin ?? w.durationMin) : 0, verdict, reason, steps, exactTimeSeconds: steps.length && steps.every(s => s.endpoint.type === "time") ? steps.reduce((sum, s) => sum + (s.endpoint.type === "time" ? s.endpoint.seconds : 0), 0) : null, capability: exportCapability(sport, steps, verdict, sportStructure, components), ...(sportStructure ? { sportStructure } : {}), ...(components ? { components } : {}) };
-  const revision = createHash("sha256").update(JSON.stringify({ core, source: [w.prescription, w.originalPlan, w.intensity, w.notes, w.startTime], actuals: [w.feedbackStatus, w.feedbackAt, w.feedbackNote, w.actualDurationMin, w.actualSport, w.actualDetails, w.rpe, w.completed, w.distanceKm, w.avgHr, w.avgPower], profile: [profile?.ftp, profile?.lthr, profile?.runPaceBase, profile?.swimPaceBase, profile?.intensityPct, profile?.injured, profile?.units, profile?.weightKg, profile?.sweatRateMlH, profile?.sodiumMgPerL, profile?.gutTrained], safety, context: input.revisionContext })).digest("hex");
+  const revision = createHash("sha256").update(JSON.stringify({ core, source: [w.prescription, w.originalPlan, w.intensity, w.notes, w.startTime], actuals: [w.feedbackStatus, w.feedbackAt, w.feedbackNote, w.actualDurationMin, w.actualSport, w.actualDetails, w.rpe, w.completed, w.distanceKm, w.avgHr, w.avgPower], profile: [profile?.ftp, profile?.lthr, profile?.runPaceBase, profile?.swimPaceBase, profile?.intensityPct, profile?.injured, profile?.units, profile?.weightKg, profile?.sweatRateMlH, profile?.sodiumMgPerL, profile?.gutTrained, profile?.nutritionContext], safety, context: input.revisionContext })).digest("hex");
   return { ...core, revision, revisionNumber: parseInt(revision.slice(0, 12), 16) };
 }
 export function requireSessionRevision(session: CanonicalSession, expected: unknown) {

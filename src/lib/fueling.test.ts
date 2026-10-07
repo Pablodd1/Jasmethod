@@ -43,7 +43,7 @@ test("timeline segments scale to the session and never appear on short sessions"
   const long = buildFuelingPlan({ durationMin: 240, intensity: "z4", gutTrained: true, weightKg: 70 });
   assert.ok(long.segments.length >= 8, `4h session needs a real timeline, got ${long.segments.length}`);
   const perSeg = long.segments[0].carbsG;
-  assert.ok(Math.abs(perSeg - Math.round(90 * 15 / 60)) <= 1, "90 g/h → ~23 g per 15-min segment");
+  assert.ok(Math.abs(perSeg - Math.round(60 * 15 / 60)) <= 1, "checkbox alone keeps 60 g/h example → 15 g per segment");
   assert.strictEqual(long.segments[0].atMin, 15, "fueling starts in the first 15 min");
 });
 

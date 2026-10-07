@@ -1,4 +1,9 @@
 // Single athlete-scoped, date-scoped safety boundary for screen, messages and FIT.
+import { canonicalDemand, canonicalFuelIntensity } from "./session-demand";
+import { protocolEvidence } from "./reviewed-evidence";
+import { isDemanding, PROTOCOL_VERSION } from "./protocols";
+import { reviewProtocolAthlete } from "./protocol-eligibility";
+import { buildSessionNutrition, type SessionNutrition } from "./session-nutrition";
 import { prisma } from "./db";
 import { dateKey, dayBounds, localDate, addDaysKey } from "./dates";
 import { resolveCheckinSafety } from "./checkin-safety";
@@ -33,9 +38,10 @@ export interface EffectiveRecords {
   maxDailyMinutes?: number | null;
   revisionContext?: unknown;
   reportedActivity?: ReportedActivity[];
+  sameDaySessions?: { id: string; sport: string; durationMin: number; intensity?: string | null; type?: string | null; rpe?: number | null; completed?: boolean; actualDurationMin?: number | null; actualSport?: string | null; prescription?: string | null }[];
   now?: Date;
 }
-export function effectiveSessionFromRecords(input: EffectiveRecords): { workout: any; prescription: any; canonical: CanonicalSession; targetProfile: TargetProfile | null | undefined } {
+export function effectiveSessionFromRecords(input: EffectiveRecords): { workout: any; prescription: any; canonical: CanonicalSession; targetProfile: TargetProfile | null | undefined; nutrition: SessionNutrition } {
   const { workout, profile, userId, timezone } = input;
   const key = dateKey(workout.date, timezone);
   const now = input.now ?? new Date();
@@ -64,13 +70,33 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
     return !Number.isFinite(reviewedAt) || reviewedAt > now.getTime() || !Number.isFinite(observedWrite) || observedWrite > reviewedAt;
   });
   if (safety.status === "clear" && changedExecution) safety = { ...safety, status: "unknown", reason: "Activity or feedback was recorded or corrected after this check-in, or its timing is unverified. Update today's check-in before the next workout so actual work and available time can be reassessed." };
-  const revisionContext = { source: input.revisionContext, reportedActivity: activity, executionReviewedAt: Number.isFinite(reviewedAt) ? reviewedAt : null };
+  const revisionContext = { source: input.revisionContext, reportedActivity: activity, sameDaySessions: input.sameDaySessions ?? null, executionReviewedAt: Number.isFinite(reviewedAt) ? reviewedAt : null };
   const p = parsed(workout.prescription);
+  if (safety.status === "clear" && p?.protocol) {
+    const eligibility = reviewProtocolAthlete({ protocolId: p.protocol.id, ...profile, now });
+    if (p.protocol.version !== PROTOCOL_VERSION || protocolEvidence(p.protocol.id).status !== "eligible")
+      safety = { ...safety, status: "unknown", reason: "The saved protocol or its evidence is no longer current. Preview the reviewed template again before training or export." };
+    else if (eligibility.status !== "eligible") safety = { ...safety, status: "unknown", reason: eligibility.reasons.map(r => r.message).join(" ") };
+  }
+
   // Missing and malformed prescriptions are both held, with distinct reasons.
   // Only the budget-aware check-in transaction may regenerate a session; a
   // read/export must not independently spend the full day budget a second time.
   if (safety.status === "clear" && !input.planning?.ready) safety = { ...safety, status: "unknown", reason: `Complete or review your athlete setup before individualized training. ${[...(input.planning?.missing || []), ...(input.planning?.review || [])].join(". ")}` };
   let canonical = canonicalSession({ athleteId: userId, workout, prescription: p ?? workout.prescription, profile, dateLocal: key, timezone, safety, revisionContext });
+  if (safety.status === "clear" && canonical.verdict === "ready" && (isDemanding({...workout,...p}) || canonicalDemand(canonical, profile) !== "easy")) {
+    const anotherDemand = input.sameDaySessions?.some(w => {
+      if (w.id === workout.id || (w.actualDurationMin ?? w.durationMin) <= 0) return false;
+      if (isDemanding({ ...w, sport: w.actualSport || w.sport, durationMin: w.actualDurationMin ?? w.durationMin })) return true;
+      if (w.completed && w.rpe == null) return true;
+      const other = canonicalSession({ athleteId: userId, workout: { ...w, userId, title: "Other session" }, prescription: parsed(w.prescription), profile, dateLocal: key, timezone });
+      return canonicalDemand(other, profile) !== "easy";
+    });
+    if (anotherDemand) {
+      safety = { ...safety, status: "unknown", reason: "Two demanding or unassessed sessions on one day need recorded athlete agreement, coach review, time/separation and recovery checks, including actual effort. This workflow cannot verify those yet. Reorganize the day to a single demanding session; no weekly double-hard quota is imposed." };
+      canonical = canonicalSession({ athleteId: userId, workout, prescription: p, profile, dateLocal: key, timezone, safety, revisionContext });
+    }
+  }
   if (canonical.verdict === "ready") {
     const original = parsed(workout.originalPlan);
     const originalMin = original?.durationMin ?? p?.scaled?.originalMin;
@@ -104,7 +130,9 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
   const prescription = canonical.verdict === "ready"
     ? { ...p, title: canonical.title, sport: canonical.sport, durationMin: canonical.durationMin, steps: canonical.steps, revision: canonical.revision }
     : { ...p, title: canonical.verdict === "rest" ? "Rest and recover" : workout.title, sport: workout.sport, type: "recovery", intensity: "z1", verdict: "rest", durationMin: 0, steps: [], targets: { rpe: 0 }, why: canonical.reason, safetyStatus: canonical.verdict, revision: canonical.revision, detail: { wu: "No warm-up prescribed.", main: canonical.reason, cd: "Reassess before training.", breathing: "", study: "" }, scaled: { originalMin: workout.durationMin, factor: 0, reason: canonical.reason }, sources: [] };
-  return { workout, prescription, canonical, targetProfile: profile };
+  const nutrition = buildSessionNutrition(profile, { id: canonical.id, dateLocal: key, timezone, sport: canonical.sport,
+    durationMin: canonical.durationMin, intensity: canonicalFuelIntensity(canonical, prescription.intensity, profile), startTime: workout.startTime, verdict: canonical.verdict }, now);
+  return { workout, prescription, canonical, targetProfile: profile, nutrition };
 }
 type EffectivePrescriptionReader = Pick<typeof prisma, "workout" | "athleteProfile" | "user" | "auditLog" | "supplementProfile" | "dailyCheckin" | "benchmarkTest">;
 export async function effectivePrescription(userId: string, workoutId: string, db: EffectivePrescriptionReader = prisma) {
@@ -121,7 +149,7 @@ export async function effectivePrescription(userId: string, workoutId: string, d
   const sessionDate = localDate(dateKey(workout.date, timezone), timezone);
   const today = dayBounds(timezone);
   const appliedIds = applied.flatMap(a => a.entityId ? [a.entityId] : []);
-  const [checkin, currentCheckin, tests, reportedActivity] = await Promise.all([
+  const [checkin, currentCheckin, tests, reportedActivity, sameDaySessions] = await Promise.all([
     db.dailyCheckin.findUnique({ where: { userId_date: { userId, date: sessionDate } } }),
     sessionDate.getTime() === today.start.getTime() ? Promise.resolve(null) : db.dailyCheckin.findUnique({ where: { userId_date: { userId, date: today.start } } }),
     db.benchmarkTest.findMany({ where: { userId, id: { in: appliedIds }, completed: true, skipped: false }, orderBy: { date: "desc" } }),
@@ -130,6 +158,7 @@ export async function effectivePrescription(userId: string, workoutId: string, d
       select: { id: true, userId: true, date: true, createdAt: true, feedbackAt: true, feedbackStatus: true, feedbackNote: true, actualDurationMin: true, actualSport: true, actualDetails: true, rpe: true, completed: true, planned: true, sport: true, durationMin: true },
       orderBy: [{ date: "asc" }, { id: "asc" }],
     }),
+    db.workout.findMany({ where: { userId, date: { gte: sessionDate, lt: localDate(addDaysKey(dateKey(workout.date, timezone), 1), timezone) }, matchedPlanId: null, AND: [{ OR: [{ feedbackStatus: null }, { feedbackStatus: { not: "skipped" } }] }], OR: [{ completed: true }, { planned: true, planDay: { dayOff: false, plan: { status: "active" } } }] }, select: { id: true, sport: true, durationMin: true, intensity: true, type: true, rpe: true, completed: true, actualDurationMin: true, actualSport: true, prescription: true } }),
   ]);
-  return effectiveSessionFromRecords({ userId, timezone, workout, profile: evidencedTargetProfile(profile, tests, appliedIds), checkin, currentCheckin, reportedActivity, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
+  return effectiveSessionFromRecords({ userId, timezone, workout, profile: evidencedTargetProfile(profile, tests, appliedIds), checkin, currentCheckin, reportedActivity, sameDaySessions, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
 }
