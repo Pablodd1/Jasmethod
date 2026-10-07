@@ -87,14 +87,15 @@ export async function POST(req: Request) {
         const profile = await tx.athleteProfile.findUnique({
           where: { userId: athlete.id },
         });
-        const eligibility = reviewProtocolAthlete({ protocolId: protocol.id, ...profile });
-        if (eligibility.status !== "eligible")
-          throw new ApiError(eligibility.reasons.map(r => r.message).join(" "));
         const w = await tx.workout.findFirst({
           where: { id: body.sessionId, userId: athlete.id },
           include: { planDay: { include: { plan: true } } },
         });
         if (!w) throw new ApiError("Session not found.", 404);
+        const eligibility = reviewProtocolAthlete({ protocolId: protocol.id, ...profile });
+        if (eligibility.status !== "eligible")
+          throw new ApiError(eligibility.reasons.map(r => r.message).join(" "));
+
         if (
           !w.planned ||
           w.completed ||
