@@ -42,7 +42,8 @@ test("telegram plan: compact, emoji-led, fuel + post included, steps truncated",
   const t = telegramPlan("Jasmel", "Tuesday, Sep 22", [session]);
   assert.match(t, /⚡️ Jasmel — Tuesday, Sep 22/);
   assert.match(t, /🏃 07:00 · Run: Tempo — 60 min 🟠Z4/);
-  assert.match(t, /⛽ 60g\/h \+ 750ml\/h/);
+  assert.match(t, /never force fluids or overdrink/);
+  assert.match(t, /⛽ 60g\/h \+ up to 750ml\/h/);
   assert.match(t, /🍚 post: 84g carbs \+ 21g protein/);
   // Only the first 2 active steps appear (chat stays scannable)
   const bullets = t.split("\n").filter((l) => l.startsWith("   •"));
@@ -70,7 +71,8 @@ test("calendar description: icons, key steps with notes, fuel, plain-text safe",
   assert.match(d, /🏃 Run: Tempo — 60 min 🟠Z4/);
   assert.match(d, /• 40 min Tempo block \(hold threshold effort\)/);
   assert.match(d, /⛽ Pre: 140g 2-3 h before/);
-  assert.match(d, /⛽ During: 60g\/h \+ 750ml\/h/);
+  assert.match(d, /never force fluids or overdrink/);
+  assert.match(d, /⛽ During: 60g\/h \+ up to 750ml\/h/);
   assert.match(d, /🍚 Post: 84g carbs \+ 21g protein/);
   // ICS-safe: no raw newlines get through icsText at the call site; here just structure
   assert.ok(d.includes("\n"));

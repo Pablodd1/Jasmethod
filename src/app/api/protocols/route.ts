@@ -1,3 +1,4 @@
+import { doubleDayPlan, hasDoubleDayMetadata } from "@/lib/double-day";
 import { createHash } from "node:crypto";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { prisma } from "@/lib/db";
@@ -11,6 +12,7 @@ import {
   PROTOCOL_RULES,
 } from "@/lib/protocols";
 import { reviewProtocolSchedule } from "@/lib/protocol-scheduling";
+import { reviewProtocolAthlete } from "@/lib/protocol-eligibility";
 import { prescribeToday } from "@/lib/adaptive";
 
 export const dynamic = "force-dynamic";
@@ -86,22 +88,16 @@ export async function POST(req: Request) {
         const profile = await tx.athleteProfile.findUnique({
           where: { userId: athlete.id },
         });
-        if (profile?.injured)
-          throw new ApiError(
-            "The injury flag is active. Review the athlete's recovery before assigning training.",
-          );
-        if (
-          profile?.birthYear &&
-          new Date().getFullYear() - profile.birthYear < 18
-        )
-          throw new ApiError(
-            "These adult protocols require a separate youth coaching plan for this athlete.",
-          );
         const w = await tx.workout.findFirst({
           where: { id: body.sessionId, userId: athlete.id },
           include: { planDay: { include: { plan: true } } },
         });
         if (!w) throw new ApiError("Session not found.", 404);
+        if(hasDoubleDayMetadata(w)&&!doubleDayPlan(w)) throw new ApiError("Saved pair metadata needs review. Generate a new reviewed plan before replacing this session.",409);
+        const eligibility = reviewProtocolAthlete({ protocolId: protocol.id, ...profile });
+        if (eligibility.status !== "eligible")
+          throw new ApiError(eligibility.reasons.map(r => r.message).join(" "));
+
         if (
           !w.planned ||
           w.completed ||
@@ -141,6 +137,7 @@ export async function POST(req: Request) {
           description: `${protocol.purpose} ${protocol.dose} ${protocol.progression} ${protocol.stop}`,
           startTime: w.startTime,
           protocol: { ...spec, minutes: raw.durationMin },
+          ...(doubleDayPlan(w) ? {doubleDay:{...doubleDayPlan(w)!,invalidated:true}} : {}),
         };
         const { key, start, end } = dayBounds(athlete.timezone, w.date);
         const [nearby, race, checkin] = await Promise.all([
@@ -217,11 +214,12 @@ export async function POST(req: Request) {
             "The current check-in pauses this protocol. Choose another day or reassess recovery.",
           );
         const previewToken = createHash("sha256")
-          .update(JSON.stringify({ w, profile, prescription, review, checkin }))
+          .update(JSON.stringify({ w, profile, prescription, review, checkin, nearby, race, eligibility }))
           .digest("hex");
         if (body.mode === "preview")
           return {
             preview: prescription,
+            eligibility,
             ...review,
             previewToken,
             session: {

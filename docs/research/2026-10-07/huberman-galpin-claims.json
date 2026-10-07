@@ -1,0 +1,796 @@
+{
+  "schemaVersion": 1,
+  "reviewedOn": "2026-10-07",
+  "scope": "Targeted official-source and human-evidence adjudication; not exhaustive systematic review",
+  "attributionPolicy": "Educational inspiration is separate from underlying efficacy evidence. No affiliation, certification or endorsement is claimed. Source linkage is independent corroboration unless explicit authorship is recorded.",
+  "decisionSemantics": {
+    "supported": "Retain only within stated scope and eligibility; not automatic dose authorization",
+    "revise": "Replace broad educational wording with bounded runtime action",
+    "exclude": "Do not use for automatic prescription; may explain why if asked"
+  },
+  "sources": {
+    "HG1": {
+      "title": "Six-part series 1: How to Assess & Improve All Aspects of Your Fitness",
+      "url": "https://www.hubermanlab.com/episode/dr-andy-galpin-how-to-assess-improve-all-aspects-of-your-fitness",
+      "sourceType": "expert_education",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Huberman host; Galpin expert guest; not a trial"
+    },
+    "HG2": {
+      "title": "Six-part series 2: Optimal Protocols to Build Strength & Grow Muscles",
+      "url": "https://www.hubermanlab.com/episode/dr-andy-galpin-optimal-protocols-to-build-strength-and-grow-muscles",
+      "sourceType": "expert_education",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Huberman host; Galpin expert guest; not a trial"
+    },
+    "HG3": {
+      "title": "Six-part series 3: How to Build Physical Endurance & Lose Fat",
+      "url": "https://www.hubermanlab.com/episode/dr-andy-galpin-how-to-build-physical-endurance-and-lose-fat",
+      "sourceType": "expert_education",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Huberman host; Galpin expert guest; not a trial"
+    },
+    "HG4": {
+      "title": "Six-part series 4: Optimize Your Training Program for Fitness & Longevity",
+      "url": "https://www.hubermanlab.com/episode/dr-andy-galpin-optimize-your-training-program-for-fitness-and-longevity",
+      "sourceType": "expert_education",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Huberman host; Galpin expert guest; not a trial"
+    },
+    "HG5": {
+      "title": "Six-part series 5: Maximize Recovery to Achieve Fitness & Performance Goals",
+      "url": "https://www.hubermanlab.com/episode/guest-series-dr-andy-galpin-maximize-recovery-to-achieve-fitness-and-performance-goals",
+      "sourceType": "expert_education",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Huberman host; Galpin expert guest; not a trial"
+    },
+    "HG6": {
+      "title": "Six-part series 6: Optimal Nutrition & Supplementation for Fitness",
+      "url": "https://www.hubermanlab.com/episode/dr-andy-galpin-optimal-nutrition-and-supplementation-for-fitness",
+      "sourceType": "expert_education",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Huberman host; Galpin expert guest; not a trial"
+    },
+    "HGF": {
+      "title": "Huberman Foundational Fitness Protocol",
+      "url": "https://www.hubermanlab.com/newsletter/foundational-fitness-protocol",
+      "sourceType": "expert_education",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Huberman educational template, not intervention validation"
+    },
+    "HGP": {
+      "title": "Foundational Fitness Protocol PDF",
+      "url": "https://www.hubermanlab.com/wp-content/uploads/2022/11/Neural_Network_Newsletter_Foundational_Fitness_Protocol.pdf",
+      "sourceType": "expert_education",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Huberman educational template"
+    },
+    "HGT": {
+      "title": "10-Step Approach to Designing a Training Program",
+      "url": "https://www.hubermanlab.com/wp-content/uploads/2023/02/10-Step-Approach-to-Designing-a-Training-Program.pdf",
+      "sourceType": "expert_education",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Courtesy of Andy Galpin"
+    },
+    "ACSM26": {
+      "title": "Currier et al. ACSM resistance training position stand 2026",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12965823/",
+      "sourceType": "consensus_overview_of_reviews",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "CONC": {
+      "title": "Schumann et al. concurrent training meta-analysis 2022",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/34757594/",
+      "sourceType": "systematic_review_meta_analysis",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "BREATH": {
+      "title": "Balban et al. structured respiration RCT 2023",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9873947/",
+      "sourceType": "human_randomized_trial",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Andrew D Huberman coauthor; not Galpin"
+    },
+    "COLD": {
+      "title": "Roberts et al. cold immersion and resistance adaptation 2015",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/26174323/",
+      "sourceType": "human_randomized_trial",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "SLEEP": {
+      "title": "Walsh et al. athlete sleep consensus 2021",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/33144349/",
+      "sourceType": "expert_consensus_narrative_review",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "MAH": {
+      "title": "Mah et al. sleep extension basketball 2011",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/21731144/",
+      "sourceType": "human_uncontrolled_before_after",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "NATA": {
+      "title": "McDermott et al. NATA fluid replacement 2017",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5634236/",
+      "sourceType": "consensus",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "NUTR": {
+      "title": "Thomas et al. Nutrition and Athletic Performance 2016",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/26891166/",
+      "sourceType": "consensus",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "PROTEIN": {
+      "title": "ISSN protein position stand 2017",
+      "url": "https://doi.org/10.1186/s12970-017-0177-8",
+      "sourceType": "consensus",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "CREATINE": {
+      "title": "ISSN creatine position stand 2017",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+      "sourceType": "consensus",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "CAFFEINE": {
+      "title": "ISSN caffeine position stand 2021",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/33388079/",
+      "sourceType": "consensus",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "GLUTAMINE": {
+      "title": "Ramezani Ahmadi et al. glutamine meta-analysis 2019",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/29784526/",
+      "sourceType": "systematic_review_meta_analysis",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "AIS": {
+      "title": "AIS supplements framework",
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements",
+      "sourceType": "institutional_guidance",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "HELGERUD": {
+      "title": "Helgerud et al. running intervals 2007",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/17414804/",
+      "sourceType": "human_randomized_trial",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "MORTON": {
+      "title": "Morton et al. low/high load resistance training 2016",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4967245/",
+      "sourceType": "human_randomized_trial",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Neither; independently used to adjudicate educational guidance"
+    },
+    "TAPER": {
+      "title": "Luden et al. Myocellular basis for tapering 2010",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/20299622/",
+      "sourceType": "human_before_after",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Andrew Galpin coauthor; not Huberman"
+    },
+    "EGG": {
+      "title": "Bagheri et al. whole eggs versus egg whites 2021",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/33306586/",
+      "sourceType": "human_randomized_trial",
+      "verifiedOn": "2026-10-07",
+      "hubermanGalpinAuthorship": "Andrew J Galpin coauthor; not Huberman"
+    }
+  },
+  "claims": [
+    {
+      "id": "HG_ADAPTATION_TAXONOMY",
+      "topic": "adaptations",
+      "educationalClaim": "Nine adaptation categories help distinguish goals.",
+      "educationalSourceIds": [
+        "HG1"
+      ],
+      "evidenceSourceIds": [],
+      "decision": "supported",
+      "directness": "educational_framework",
+      "population": "General fitness discussion",
+      "limitations": "Taxonomy is not a validated screening tool or a requirement to train every quality each week.",
+      "runtimeAction": "Tag goal and outcome independently; retain sport/event specificity.",
+      "eligibility": [
+        "Goal and event known"
+      ],
+      "runtimeTargets": [
+        "protocols.ts",
+        "science.ts",
+        "coach context"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_FITNESS_BENCHMARKS",
+      "topic": "assessment",
+      "educationalClaim": "Broad-jump, grip, heart-rate recovery and field tests are suggested.",
+      "educationalSourceIds": [
+        "HG1"
+      ],
+      "evidenceSourceIds": [],
+      "decision": "revise",
+      "directness": "expert_heuristics",
+      "population": "Mixed public audience",
+      "limitations": "No universal pass/fail injury prediction or diagnostic thresholds established by this episode.",
+      "runtimeAction": "Require test protocol and provenance; no compulsory maximal test, no diagnosis or exercise clearance from generic benchmark.",
+      "eligibility": [
+        "Appropriate test skill and environment",
+        "Symptoms and clinical risks reviewed"
+      ],
+      "runtimeTargets": [
+        "assessment",
+        "athlete profile"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_THREE_TO_FIVE",
+      "topic": "strength_power",
+      "educationalClaim": "3–5 days/exercises/sets/reps/minutes rest is a mnemonic sample.",
+      "educationalSourceIds": [
+        "HG2"
+      ],
+      "evidenceSourceIds": [
+        "ACSM26"
+      ],
+      "decision": "revise",
+      "directness": "principles_supported_exact_bundle_not_validated",
+      "population": "Healthy adults; training experience varies",
+      "limitations": "No single trial validates the entire mnemonic; maximum combinations add substantial load.",
+      "runtimeAction": "Do not replace sport-specific supporting strength with a 3–5-day quota; separate strength load from ballistic power load.",
+      "eligibility": [
+        "Adult",
+        "Technique familiarization",
+        "Verified load estimate if percentages used",
+        "Weekly sport load known"
+      ],
+      "runtimeTargets": [
+        "protocols.ts",
+        "science.ts",
+        "protocol-scheduling.ts"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {
+        "expertExampleOnly": true
+      },
+      "endorsement": false
+    },
+    {
+      "id": "HG_STRENGTH_POWER_LOAD",
+      "topic": "strength_power",
+      "educationalClaim": "Strength and power require different loading and movement intent.",
+      "educationalSourceIds": [
+        "HG2"
+      ],
+      "evidenceSourceIds": [
+        "ACSM26"
+      ],
+      "decision": "supported",
+      "directness": "consensus_outcome_specific",
+      "population": "Healthy adults in reviewed resistance interventions",
+      "limitations": "Evidence for average adaptation does not establish novice entry doses or sport race transfer.",
+      "runtimeAction": "Allow reviewed goal-specific load range; preserve rest and stop on quality loss.",
+      "eligibility": [
+        "Competent movement",
+        "No acute injury",
+        "Time includes warm-up and rest"
+      ],
+      "runtimeTargets": [
+        "protocols.ts",
+        "supporting strength"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {
+        "strengthEvidenceLoadPercent1RM": ">=80",
+        "powerEvidenceLoadPercent1RM": [
+          30,
+          70
+        ],
+        "strengthEvidenceFrequencyPerWeek": ">=2",
+        "prescriptionStatus": "Evidence ranges, not automatic defaults"
+      },
+      "endorsement": false
+    },
+    {
+      "id": "HG_HYPERTROPHY",
+      "topic": "hypertrophy",
+      "educationalClaim": "Hypertrophy is adaptable across loading schemes.",
+      "educationalSourceIds": [
+        "HG2"
+      ],
+      "evidenceSourceIds": [
+        "MORTON",
+        "ACSM26"
+      ],
+      "decision": "revise",
+      "directness": "human_trial_plus_consensus",
+      "population": "Morton: 49 resistance-trained young men, 12 weeks; consensus broader healthy adults",
+      "limitations": "Morton compared failure-based protocols; that does not prove failure necessary. Higher weekly volume is not universal 10–20-set optimum.",
+      "runtimeAction": "Keep conservative individualized volume; do not force failure or bodybuilding volume for endurance support.",
+      "eligibility": [
+        "Goal includes hypertrophy",
+        "Adequate recovery and energy"
+      ],
+      "runtimeTargets": [
+        "protocols.ts",
+        "claims registry"
+      ],
+      "existingDossierConflict": "Preserve HYPR_VOLUME_OPTIMUM revision in training-evidence.md",
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_CONCURRENT",
+      "topic": "concurrent",
+      "educationalClaim": "Combine aerobic and resistance work with attention to interference.",
+      "educationalSourceIds": [
+        "HG2",
+        "HG4"
+      ],
+      "evidenceSourceIds": [
+        "CONC"
+      ],
+      "decision": "revise",
+      "directness": "pooled_human_interventions",
+      "population": "43 studies of healthy adults, supervised >=4 weeks",
+      "limitations": "Explosive strength more vulnerable than maximal strength or hypertrophy; subgroup separation does not prove a universal threshold.",
+      "runtimeAction": "Prioritize key quality; feasible separation is preference, not compulsory >6 h or permission for doubles.",
+      "eligibility": [
+        "Total multisport load known",
+        "Double-session agreement separately satisfied"
+      ],
+      "runtimeTargets": [
+        "protocol-scheduling.ts",
+        "science.ts",
+        "claim registry"
+      ],
+      "existingDossierConflict": "Consistent with CONCURRENT_SEPARATION correction",
+      "numericParameters": {
+        "reviewSeparationSubgroupHours": ">=3",
+        "mandatoryMinimumHours": null
+      },
+      "endorsement": false
+    },
+    {
+      "id": "HG_ENDURANCE_DOSES",
+      "topic": "endurance",
+      "educationalClaim": "Different endurance goals require different work/rest structures.",
+      "educationalSourceIds": [
+        "HG3"
+      ],
+      "evidenceSourceIds": [
+        "HELGERUD"
+      ],
+      "decision": "revise",
+      "directness": "specific_trial_not_all_sport_validation",
+      "population": "Helgerud: 40 moderately trained healthy men; running 8 weeks",
+      "limitations": "VO2max result is not race-time proof; protocol cannot validate swimming, HYROX, all-out sprinting or universal frequency.",
+      "runtimeAction": "Use existing sport-specific trial menus and readiness gates; do not add exhaustive maximal circuits from examples.",
+      "eligibility": [
+        "Sport match",
+        "Established training tolerance",
+        "Appropriate intensity anchor"
+      ],
+      "runtimeTargets": [
+        "protocols.ts",
+        "science.ts"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {
+        "testedRunningOption": "4 x 4 min at 90–95% HRmax; 3 min active recovery; 3/week in trial",
+        "defaultFrequency": null
+      },
+      "endorsement": false
+    },
+    {
+      "id": "HG_WEEKLY_TEMPLATE",
+      "topic": "weekly_plan",
+      "educationalClaim": "Foundational plan is a modifiable mixed-fitness example.",
+      "educationalSourceIds": [
+        "HGF",
+        "HGP"
+      ],
+      "evidenceSourceIds": [],
+      "decision": "revise",
+      "directness": "expert_template",
+      "population": "General fitness rather than event-specific athletes",
+      "limitations": "Fixed weekday structure and easy-volume target are not individualized workload validation.",
+      "runtimeAction": "Keep as attributed educational reading; no automatic replacement of current event plan or missed-session doubling.",
+      "eligibility": [
+        "Explicit athlete interest in general fitness"
+      ],
+      "runtimeTargets": [
+        "science.ts",
+        "coach context"
+      ],
+      "existingDossierConflict": "Must not restore universal double-hard quota",
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_SPRINT_HR",
+      "topic": "sprint",
+      "educationalClaim": "PDF suggests 20–60 s all-out/10 s rest, 8–12 rounds and reaching HRmax.",
+      "educationalSourceIds": [
+        "HGP"
+      ],
+      "evidenceSourceIds": [],
+      "decision": "exclude",
+      "directness": "unverified_as_universal_sprint_prescription",
+      "population": "General fitness template",
+      "limitations": "Cardiac response lags short efforts; fatigue circuits are not maximal-velocity track practice.",
+      "runtimeAction": "Block as default sprint generator; use distance, speed quality and full recoveries for track speed.",
+      "eligibility": [
+        "No automatic eligibility"
+      ],
+      "runtimeTargets": [
+        "sprint-prescription.ts",
+        "sprint-protocols.ts",
+        "science.ts"
+      ],
+      "existingDossierConflict": "Preserves sprint distance/open targets and full-rest rule",
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_PROGRAM_DESIGN",
+      "topic": "planning",
+      "educationalClaim": "Start with goals, constraints and a structured program design process.",
+      "educationalSourceIds": [
+        "HG4",
+        "HGT"
+      ],
+      "evidenceSourceIds": [],
+      "decision": "supported",
+      "directness": "expert_process",
+      "population": "General programming",
+      "limitations": "A process checklist does not validate an exact progression percentage.",
+      "runtimeAction": "Collect goal, schedule, exercise access and adherence constraints before generating; mark planner doses as JMM inference.",
+      "eligibility": [
+        "Known schedule and resources"
+      ],
+      "runtimeTargets": [
+        "plan generation API",
+        "science.ts"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_BREATHING",
+      "topic": "recovery",
+      "educationalClaim": "Brief deliberate breathing is proposed for post-workout downregulation.",
+      "educationalSourceIds": [
+        "HG5"
+      ],
+      "evidenceSourceIds": [
+        "BREATH"
+      ],
+      "decision": "revise",
+      "directness": "direct_mood_indirect_recovery",
+      "population": "Remote randomized adult study; daily 5 min for one month",
+      "limitations": "Mood/respiratory-rate results; no significant HRV, resting-HR or sleep changes. No exercise-adaptation or race test.",
+      "runtimeAction": "Optional comfortable seated relaxation; no recovery-score bonus or increased training allowance. Avoid hyperventilation/retention in water, while driving or during exertion; stop if dizzy.",
+      "eligibility": [
+        "User wants relaxation",
+        "Safe seated setting"
+      ],
+      "runtimeTargets": [
+        "coach recovery guidance"
+      ],
+      "existingDossierConflict": "Reject episode inference of reliably higher HRV or faster training recovery",
+      "numericParameters": {
+        "optionalRelaxationMinutes": 5,
+        "performanceDose": null
+      },
+      "endorsement": false
+    },
+    {
+      "id": "HG_SLEEP",
+      "topic": "sleep",
+      "educationalClaim": "Recovery should include adequate individualized sleep.",
+      "educationalSourceIds": [
+        "HG5"
+      ],
+      "evidenceSourceIds": [
+        "SLEEP",
+        "MAH"
+      ],
+      "decision": "supported",
+      "directness": "consensus_plus_small_uncontrolled_athlete_study",
+      "population": "Mah: 11 male collegiate basketball players; 5–7-week extension after baseline",
+      "limitations": "10 h in bed was study opportunity, not every athlete sleep requirement; no randomized control. Wearable stages are not diagnosis.",
+      "runtimeAction": "Ask about sleep need, consistency and symptoms; persistent insomnia, snoring/apnea concerns warrant clinical advice. Never replace sleep with NSDR.",
+      "eligibility": [
+        "Contextual sleep history"
+      ],
+      "runtimeTargets": [
+        "coach recovery guidance"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {
+        "universalHours": null
+      },
+      "endorsement": false
+    },
+    {
+      "id": "HG_COLD",
+      "topic": "recovery",
+      "educationalClaim": "Avoid routine immediate cold immersion when hypertrophy is priority.",
+      "educationalSourceIds": [
+        "HG2",
+        "HGF"
+      ],
+      "evidenceSourceIds": [
+        "COLD"
+      ],
+      "decision": "revise",
+      "directness": "direct_small_resistance_trial",
+      "population": "21 active men, 12 weeks, strength twice/week; additional acute study",
+      "limitations": "Cold protocol attenuated adaptation; does not validate exact 6–8 h safe delay or all sport contexts.",
+      "runtimeAction": "Show conditional adaptation tradeoff; do not automatically prescribe extreme cold, heat/cold cycles or an exact safe window.",
+      "eligibility": [
+        "User asks about recovery modality",
+        "Safety and event context reviewed"
+      ],
+      "runtimeTargets": [
+        "coach recovery guidance"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {
+        "validatedSafeDelayHours": null
+      },
+      "endorsement": false
+    },
+    {
+      "id": "HG_FLUID_EQUATION",
+      "topic": "hydration",
+      "educationalClaim": "Bodyweight lb/30 fluid oz each 15–20 min is a rough mnemonic.",
+      "educationalSourceIds": [
+        "HG6"
+      ],
+      "evidenceSourceIds": [
+        "NATA"
+      ],
+      "decision": "exclude",
+      "directness": "expert_heuristic_not_individual_fluid_requirement",
+      "population": "Exercise fluid needs vary with athlete and environment",
+      "limitations": "Galpin explicitly credits other researchers; formula is not his trial. Mass alone omits sweat rate, weather, duration and overdrinking.",
+      "runtimeAction": "Never auto-populate hydration from this equation; use thirst fallback and measured-context plan, avoid exercise weight gain.",
+      "eligibility": [
+        "Sweat/fluid context for numerical plan",
+        "Kidney/cardiac/fluid restrictions require clinician"
+      ],
+      "runtimeTargets": [
+        "nutrition engine",
+        "coach context"
+      ],
+      "existingDossierConflict": "Retain NATA individualized hydration in nutrition-evidence.md",
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_FUELING",
+      "topic": "carbohydrate",
+      "educationalClaim": "Peri-workout carbohydrate examples are rough starting heuristics.",
+      "educationalSourceIds": [
+        "HG6"
+      ],
+      "evidenceSourceIds": [
+        "NUTR"
+      ],
+      "decision": "revise",
+      "directness": "consensus_duration_specific",
+      "population": "Athletes across sport demands",
+      "limitations": "Bodyweight-based peri-workout total is not g/h requirement; heat alone is not carbohydrate expenditure.",
+      "runtimeAction": "Use duration/intensity and practiced tolerance; preserve 30–60 g/h and up-to-90 g/h conditional branches from existing dossier.",
+      "eligibility": [
+        "Duration/intensity known",
+        "Tolerance and food access known",
+        "No forced restriction"
+      ],
+      "runtimeTargets": [
+        "nutrition engine",
+        "science.ts"
+      ],
+      "existingDossierConflict": "Reject mandatory high fueling for every short/easy session",
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_PROTEIN",
+      "topic": "protein",
+      "educationalClaim": "Food/protein adequacy matters more than a compulsory post-workout product.",
+      "educationalSourceIds": [
+        "HG6",
+        "HGF"
+      ],
+      "evidenceSourceIds": [
+        "PROTEIN",
+        "NUTR"
+      ],
+      "decision": "supported",
+      "directness": "consensus",
+      "population": "Exercising adults",
+      "limitations": "No universally necessary whey product, 40 g dose or narrow anabolic window.",
+      "runtimeAction": "Use food-first daily range; compute only from known mass; powder only as convenience.",
+      "eligibility": [
+        "Known mass for g/kg",
+        "Dietary restrictions considered"
+      ],
+      "runtimeTargets": [
+        "nutrition engine"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {
+        "dailyGPerKg": [
+          1.4,
+          2.0
+        ],
+        "mandatorySupplement": false
+      },
+      "endorsement": false
+    },
+    {
+      "id": "HG_CREATINE",
+      "topic": "supplement",
+      "educationalClaim": "Creatine is discussed for performance.",
+      "educationalSourceIds": [
+        "HG6"
+      ],
+      "evidenceSourceIds": [
+        "CREATINE",
+        "AIS"
+      ],
+      "decision": "revise",
+      "directness": "consensus_goal_specific",
+      "population": "Healthy adults; strongest use for repeated high-intensity work and resistance adaptation",
+      "limitations": "Not automatic endurance race or single swim-sprint benefit; weight gain and GI tolerance matter.",
+      "runtimeAction": "Retain optional creatine monohydrate 3–5 g/day discussion, not universal 10–15 g or stack; preserve contraindication/batch-tested gates.",
+      "eligibility": [
+        "Adult",
+        "Goal match",
+        "Renal/pregnancy/medication uncertainty referred",
+        "User interested"
+      ],
+      "runtimeTargets": [
+        "supplement engine"
+      ],
+      "existingDossierConflict": "Keep existing direct null elite-swim evidence",
+      "numericParameters": {
+        "maintenanceGPerDay": [
+          3,
+          5
+        ],
+        "loadingRequired": false
+      },
+      "endorsement": false
+    },
+    {
+      "id": "HG_CAFFEINE",
+      "topic": "supplement",
+      "educationalClaim": "Stimulants can support selected performance demands.",
+      "educationalSourceIds": [
+        "HG6"
+      ],
+      "evidenceSourceIds": [
+        "CAFFEINE",
+        "AIS"
+      ],
+      "decision": "revise",
+      "directness": "consensus_context_dependent",
+      "population": "Mostly healthy adult sport studies",
+      "limitations": "Sleep disruption, anxiety, GI effects and total intake can outweigh benefits; larger dose not reliably better.",
+      "runtimeAction": "Optional individualized lower-dose strategy per existing dossier; no default stimulant for fatigue, illness or poor sleep.",
+      "eligibility": [
+        "Adult",
+        "Known total caffeine",
+        "Tolerance and timing assessed",
+        "Medical/pregnancy concerns referred"
+      ],
+      "runtimeTargets": [
+        "supplement engine",
+        "coach context"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_SUPPLEMENT_STACKS",
+      "topic": "supplement",
+      "educationalClaim": "Educational resources discuss glutamine, alpha-GPC and tyrosine.",
+      "educationalSourceIds": [
+        "HG6",
+        "HGF"
+      ],
+      "evidenceSourceIds": [
+        "AIS",
+        "GLUTAMINE"
+      ],
+      "decision": "exclude",
+      "directness": "insufficient_for_routine_JMM_ergogenic_use",
+      "population": "Heterogeneous evidence and uses",
+      "limitations": "No verified basis here for universal healthy-athlete recovery stack; absence of routine recommendation is not proof every use is ineffective.",
+      "runtimeAction": "Do not generate these supplements or sponsor bundles; retain evidence-specific food-first AIS/IOC gate.",
+      "eligibility": [
+        "No automatic eligibility"
+      ],
+      "runtimeTargets": [
+        "supplement engine"
+      ],
+      "existingDossierConflict": "Preserve excluded/experimental categories rather than promoting by personality",
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_GALPIN_TAPER_RESEARCH",
+      "topic": "taper",
+      "educationalClaim": "Galpin coauthored a human distance-runner taper study. ",
+      "educationalSourceIds": [],
+      "evidenceSourceIds": [
+        "TAPER"
+      ],
+      "decision": "supported",
+      "directness": "direct_small_before_after",
+      "population": "Seven collegiate distance runners, 3-week taper",
+      "limitations": "Small before/after study cannot prove ideal taper length or transfer across events; sex not verified in retrieved abstract.",
+      "runtimeAction": "Add genuine author-conducted research provenance; retain event-specific taper evidence and avoid precise performance promises.",
+      "eligibility": [
+        "Competitive running context"
+      ],
+      "runtimeTargets": [
+        "claim registry",
+        "taper guidance"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {},
+      "endorsement": false
+    },
+    {
+      "id": "HG_GALPIN_EGG_RESEARCH",
+      "topic": "nutrition_research",
+      "educationalClaim": "Galpin coauthored randomized whole-egg versus egg-white training study.",
+      "educationalSourceIds": [],
+      "evidenceSourceIds": [
+        "EGG"
+      ],
+      "decision": "revise",
+      "directness": "direct_limited_food_comparison",
+      "population": "30 resistance-trained young men, 12 weeks; 3 whole eggs versus 6 egg whites after training",
+      "limitations": "Groups differed in nutrients beyond protein; no between-group muscle-mass difference. Not proof whole foods beat all protein powders.",
+      "runtimeAction": "Educational food option only; no compulsory eggs, testosterone target or superiority claim.",
+      "eligibility": [
+        "Food preference/allergy fit"
+      ],
+      "runtimeTargets": [
+        "nutrition sources",
+        "claim registry"
+      ],
+      "existingDossierConflict": null,
+      "numericParameters": {},
+      "endorsement": false
+    }
+  ]
+}

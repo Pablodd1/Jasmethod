@@ -202,7 +202,7 @@ test("old or incomparable HRV cannot generate a current readiness verdict", () =
     bloodFlags: [],
     dnaHighlights: [],
   };
-  assert.equal(fallbackBriefing(c).headline, "CHECK IN");
+  assert.equal(fallbackBriefing(c).headline, "CHECK PLAN");
   assert.equal(
     fallbackBriefing({
       ...c,

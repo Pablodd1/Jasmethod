@@ -1,4 +1,5 @@
 "use client";
+import { NutritionContextEditor } from "@/components/nutrition-context-editor";
 import {BaselineTests} from "@/components/baseline-tests";
 
 import { useEffect, useState } from "react";
@@ -32,6 +33,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [nutritionDraft, setNutritionDraft] = useState<any>(null);
+  const [nutritionDirty, setNutritionDirty] = useState(false);
   const [form, setForm] = useState<any>({});
   const [vo2Estimate, setVo2Estimate] = useState<any>(null);
   const [vo2Source, setVo2Source] = useState<string | null>(null);
@@ -43,6 +46,9 @@ export default function SettingsPage() {
     if (!res.ok) { setError(d.error || "Could not load profile"); setLoading(false); return; }
     setRevision(d.revision);
     setProfile(d.profile);
+    try { setNutritionDraft(d.profile?.nutritionContext ? JSON.parse(d.profile.nutritionContext) : null); }
+    catch { setNutritionDraft(null); }
+    setNutritionDirty(false);
     setZones(d.zones);
     setVo2Source(d.vo2maxSource || null);
     if (d.profile) {
@@ -134,6 +140,7 @@ export default function SettingsPage() {
     if (body.ftp) body.ftp = parseFloat(body.ftp);
     if (body.runPaceBase) body.runPaceBase = parseFloat(body.runPaceBase);
     if (body.swimPaceBase) body.swimPaceBase = parseFloat(body.swimPaceBase);
+    if (nutritionDirty) body.nutritionContext = nutritionDraft;
     setError("");
     const res = await fetch("/api/profile", {
       method: "PUT",
@@ -429,7 +436,7 @@ export default function SettingsPage() {
                       placeholder="e.g. 185"
                     />
                   </div>
-                  {([['cp','Critical power (watts)'],['restingHr','Resting heart rate (bpm)'],['hrvBaseline','Reviewed HRV baseline (ms)'],['sweatRateMlH','Measured sweat rate (mL/hour)'],['sodiumMgPerL','Measured sweat sodium (mg/L)']] as const).map(([field,label])=><label key={field} className="label">{label}<input className="input" type="number" step="any" value={form[field] ?? ''} onChange={e=>setForm({...form,[field]:e.target.value})}/></label>)}
+                  {([['cp','Critical power (watts)'],['restingHr','Resting heart rate (bpm)'],['hrvBaseline','Reviewed HRV baseline (ms)'],['sweatRateMlH','Reported sweat rate (mL/hour)'],['sodiumMgPerL','Reported sweat sodium (mg/L)']] as const).map(([field,label])=><label key={field} className="label">{label}<input className="input" type="number" step="any" value={form[field] ?? ''} onChange={e=>setForm({...form,[field]:e.target.value})}/></label>)}
                   <label className="label flex gap-2 items-center"><input type="checkbox" checked={!!form.injured} onChange={e=>setForm({...form,injured:e.target.checked})}/>Injury restriction active — pause training for review</label>
                   <div>
                     <label className="label">FTP (watts)</label>
@@ -483,6 +490,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
+
+              <NutritionContextEditor value={nutritionDraft} onChange={value=>{setNutritionDraft(value);setNutritionDirty(true);setSaved(false);}} />
 
               <button
                 type="submit"

@@ -10,7 +10,6 @@ import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
 import { effectivePrescription } from "@/lib/effective-prescription";
-import { buildFuelingPlan, postFuelPersonalized } from "@/lib/fueling";
 import { canonicalBlocks, planningDensity } from "@/components/daily-training/training-contract";
 import type {
   DailyTraining,
@@ -74,16 +73,8 @@ export async function GET(req: Request) {
     const blocks = canonicalBlocks(rawSteps);
     const revision = canonical.revisionNumber;
 
-    const fuel = buildFuelingPlan({
-      durationMin: p.durationMin ?? workout.durationMin,
-      intensity: p.intensity,
-      weightKg: user.profile?.weightKg,
-      sweatRateMlH: user.profile?.sweatRateMlH,
-      sodiumMgPerL: user.profile?.sodiumMgPerL,
-      gutTrained: user.profile?.gutTrained,
-      verdict: p.verdict,
-    });
-    const post = postFuelPersonalized({ durationMin: canonical.durationMin, intensity: p.intensity, sport: canonical.sport, weightKg: user.profile?.weightKg });
+    const fuel = resolved.nutrition?.fuel ?? null;
+    const post = resolved.nutrition?.post ?? null;
     const checkin = await prisma.dailyCheckin.findUnique({
       where: { userId_date: { userId: user.id, date: start } },
       select: { answers: true },
@@ -143,18 +134,13 @@ export async function GET(req: Request) {
         },
         preFuel: {
           title: "Fuel before",
-          items: [
-            fuel.preSession?.note ||
-              `Target ~${fuel.carbsPerHourG} g carbs/h on this session.`,
-            ...(fuel.preSession?.carbsG
-              ? [`Pre-session: ${fuel.preSession.carbsG} g carbs ${fuel.preSession.timingLabel}.`]
-              : []),
-            `Fluid ~${Math.round(fuel.fluidMlPerHour)} ml/h (${fuel.fluidSource}).`,
-            "Low fiber, low fat, familiar food before hard work.",
-          ],
-          note: fuel.personalization?.length
-            ? `Personalized: ${fuel.personalization.join("; ")}.`
-            : "Guidance is generated for this session's duration and intensity.",
+          items: fuel ? [
+            fuel.preSession.note,
+            `During: approximately ${fuel.carbsPerHourG} g carbohydrate per hour as an educational example within practiced tolerance.`,
+            `Fluid example up to ${Math.round(fuel.fluidMlPerHour)} ml/h (${fuel.fluidSource}); drink according to need, do not force intake.`,
+            "Fluid and sodium examples are not measured current replacement needs. Avoid overdrinking.",
+          ] : ["Session-specific fueling is unavailable while this session is on hold."],
+          note: fuel ? [...fuel.measurementGaps, "General education; review dietary needs and tolerance."].join(" ") : undefined,
         },
         postFuel: {
           title: "Refuel after",
@@ -163,7 +149,7 @@ export async function GET(req: Request) {
                 post.carbsG == null || post.proteinG == null ? "Personalized recovery amounts unavailable: current weight is not recorded. Choose a familiar meal with carbohydrate and protein." : `~${post.carbsG} g carbs + ~${post.proteinG} g protein (session guidance).`,
                 "Examples, if suitable for your diet: rice with beans, yogurt with fruit, or a sandwich.",
               ]
-            : ["Rehydrate and eat a mixed meal within 2 hours."],
+            : ["Use ordinary meals and fluids according to need; no urgent recovery window is assumed."],
           note: post?.note || undefined,
         },
         downshift: {

@@ -3,6 +3,8 @@
 import { ONBOARDING_STEP, onboardingNext, onboardingResume, type OnboardingStep } from "@/lib/onboarding-flow";
 import { saveReviewedProfile } from "@/lib/profile-client";
 import { onboardingSectionPayload, type OnboardingSection, type SavedOnboarding } from "@/lib/onboarding-save";
+import { DoubleDayFields } from "@/components/double-day-fields";
+import type { DoubleDayPreference } from "@/lib/double-day";
 import { TravelFields } from "@/components/travel-fields";
 import type { TravelContext } from "@/lib/planning-setup";
 import { useEffect, useRef, useState } from "react";
@@ -58,7 +60,7 @@ export function DetailedAthleteSetup() {
   });
 
   const [setupRevision, setSetupRevision] = useState<string | null>(null);
-  const [setup, setSetup] = useState({ travel: null as TravelContext | null, coachPreference: "", adultConfirmed: false, profileConfirmed: false, goalDescription: "", baselineWeeklyMinutes: "", baselineObservedAt: "", interruptions: "unknown", restrictions: "unknown", qualifiedReview: "unknown", trainingDays: [] as number[], maxSessionMinutes: "", equipmentAccess: "", planWeeks: "", trackEvent: "", baselinePlanOptIn: false, targetGoal: null as {context?:string;contextDescription?:string;metric:string; sport:string; value?:string|number;unit?:string;targetDate?:string}|null });
+  const [setup, setSetup] = useState({ doubleDay:null as DoubleDayPreference|null, travel: null as TravelContext | null, coachPreference: "", adultConfirmed: false, profileConfirmed: false, goalDescription: "", baselineWeeklyMinutes: "", baselineObservedAt: "", interruptions: "unknown", restrictions: "unknown", qualifiedReview: "unknown", trainingDays: [] as number[], maxSessionMinutes: "", equipmentAccess: "", planWeeks: "", trackEvent: "", baselinePlanOptIn: false, targetGoal: null as {context?:string;contextDescription?:string;metric:string; sport:string; value?:string|number;unit?:string;targetDate?:string}|null });
 
   useEffect(() => {
     if (!user?.id) return;
@@ -331,6 +333,7 @@ export function DetailedAthleteSetup() {
               <p className="text-sm">{t("Unsupported circumstances pause automated planning for qualified review; this form does not provide medical clearance. If you report no recent tolerated training, ask a qualified coach for an appropriate starting load.", "Las circunstancias no admitidas pausan el plan para revisión profesional; este formulario no da autorización médica. Sin entrenamiento reciente tolerado, pide a un entrenador cualificado una carga inicial adecuada.")}</p>
             </fieldset>
             </details>
+            <DoubleDayFields value={setup.doubleDay} onChange={doubleDay=>setSetup({...setup,doubleDay})}/>
             <label className="block mt-4">{t("Your coach, if any (optional)", "Tu entrenador, si tienes (opcional)")}<input className="input" value={setup.coachPreference ?? ""} maxLength={200} onChange={e=>setSetup({...setup,coachPreference:e.target.value})}/></label><p className="text-xs">{t("This is a preference, not an access grant. Coach access requires an administrator assignment.", "Es una preferencia, no concede acceso. Un administrador debe asignar al entrenador.")}</p>
             <h3 className="font-semibold mt-5">{t("Optional race", "Carrera opcional")}</h3>{raceId && <p role="status">{t("Race saved; further edits update this same event.", "Carrera guardada; los cambios actualizan este evento.")}</p>}
             <div className="space-y-3">

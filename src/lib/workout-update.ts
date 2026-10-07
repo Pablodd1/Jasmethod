@@ -1,3 +1,4 @@
+import { invalidateDoubleDay, doubleDayPlan, hasDoubleDayMetadata } from "./double-day";
 import { holdStructuredPlanEdit } from "./preserve-sport-structure";
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
@@ -41,6 +42,7 @@ export async function updateWorkout(
     if (!existing) throw new ApiError("Session not found", 404);
     if (body.protectHistory && workoutHasHistory(existing)) throw new ApiError("Recorded sessions and feedback cannot be rewritten by the plan editor.", 409);
     const prescriptionKeys = ["title", "type", "durationMin", "intensity", "sport", "notes", "startTime", "date", "indoor"];
+    if(prescriptionKeys.some(key=>body[key]!==undefined) && hasDoubleDayMetadata(existing)&&!doubleDayPlan(existing)) throw new ApiError("Saved pair metadata needs review. Generate a new reviewed plan before editing this session.",409);
     if (prescriptionKeys.some(key => body[key] !== undefined) || body.expectedRevision !== undefined)
       requireWorkoutRevision(existing, body.expectedRevision);
     const data: Record<string, any> = {};
@@ -242,7 +244,7 @@ export async function updateWorkout(
       data.intensity = base.intensity;
       data.title = base.title;
       data.notes = base.description;
-      data.originalPlan = JSON.stringify(base);
+      data.originalPlan = invalidateDoubleDay(JSON.stringify(base));
       data.prescription = holdStructuredPlanEdit(existing.prescription, base.sport, base.title);
       data.approved = false;
     }

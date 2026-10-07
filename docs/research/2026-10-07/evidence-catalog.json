@@ -1,0 +1,1176 @@
+{
+  "title": "JMM targeted evidence source catalog",
+  "reviewed_at": "2026-10-07",
+  "purpose": "Searchable navigation and provenance; neither bibliography size nor appearance establishes eligibility.",
+  "limitations": [
+    "Not an exhaustive systematic review.",
+    "Primary, synthesis, consensus, regulatory, expert-practice and candidate/unextracted sources coexist; read each context.",
+    "No source or protocol is automatically activated by this catalog.",
+    "Legacy repository sources are separately inventoried."
+  ],
+  "sources": [
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/17414804/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 17,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| R1. Helgerud 2007, [PubMed](https://pubmed.ncbi.nlm.nih.gov/17414804/), DOI 10.1249/mss.0b013e3180304570 | 40 healthy moderately trained men; randomized four-arm trial, 8 weeks | Running 3 days/week: 4 × 4 min at 90–95% HRmax, 3-min active recoveries around 70% HRmax; compared with 15/15 intervals, threshold and lower-intensity continuous training, work/frequency matched | VO2max rose 7.2% in 4 × 4 and 5.5% in 15/15 arms; HIIT superior for VO2max. Small groups, no women, not race-performance superiority or novice entry-dose evidence | A tested aerobic-power option, not mandatory frequency. HR is an observed/prescribed range to approach during longer bouts, not a demand to sprint immediately to it |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/23752040/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 18,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| R2. Muñoz 2014, [PubMed](https://pubmed.ncbi.nlm.nih.gov/23752040/), DOI 10.1123/ijspp.2012-0350 | 30 recreational endurance runners randomized; 10 weeks; sex split not verified here | More below-first-threshold polarized training versus more between-threshold training, with zones established through testing | Both improved 10-km performance; 5.0% versus 3.6% improvement, but between-group difference was not significant | Reject “polarized is proven superior for every recreational runner.” Preserve substantial easy running and individualized hard work |"
+        }
+      ]
+    },
+    {
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9299127/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 19,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| R3. Filipas et al. 2022, [full text](https://pmc.ncbi.nlm.nih.gov/articles/PMC9299127/), DOI 10.1111/sms.14101 | 60 well-trained men, VO2peak about 67 mL/kg/min, >2 years running and >5 sessions/week; four randomized groups | 16 weeks: pyramidal, polarized, pyramidal→polarized, or reverse; two 8-week phases, matched TRIMP; study used 3 loading weeks then reduced-load weeks | Pyramidal→polarized produced slightly larger 5-km gains, approximately 0.5% advantage, near typical test error; cannot establish a universal annual sequence | Training distribution can change with phase and goal. Do not freeze every week into an “80/20” target |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/21812820/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 20,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| C1. Seiler 2013 (online 2011), [PubMed](https://pubmed.ncbi.nlm.nih.gov/21812820/), DOI 10.1111/j.1600-0838.2011.01351.x | 35 trained recreational cyclists, 29 men/6 women, prior ~6 h/week; randomized four groups | Two weekly interval sessions for 7 weeks: 4 × 4, 4 × 8 or 4 × 16 min at maximal tolerable session intensity, plus 2–3 low-intensity bouts; low-only comparator | 4 × 8 gave larger combined physiological improvements. Mean HRpeak during intervals ~94%, 90%, 88% respectively. Small samples; combined index is not an 11.4% race improvement | Intensity and accumulated work interact. Eight-minute intervals were not “easy threshold” in this trial; measured lactate was high. Do not call them universally optimal |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/31977120/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 21,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| C2. Rønnestad 2020, [PubMed](https://pubmed.ncbi.nlm.nih.gov/31977120/), DOI 10.1111/sms.13627 | 18 elite cyclists, VO2max 73 ± 4; sex not confirmed from retrieved abstract; 3-week intervention | Three sessions/week: 3 sets of 13 × 30 s work/15 s recovery, 3 min between sets, versus effort-matched 4 × 5 min/2.5 min recovery | Short intervals produced superior performance-related improvements; small, specialized, brief block | Advanced cycling option. Not novice, year-round three-hard-days, track-sprint, or double-hard-day evidence |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42560532/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 22,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| C3. Moran-MacDonald et al. 2026, [PubMed](https://pubmed.ncbi.nlm.nih.gov/42560532/), DOI 10.1007/s00421-026-06380-w | 19 moderately trained cyclists/triathletes, 17 men; randomized 6 weeks | Three HIIT sessions/week with or without 240 min/week additional moderate-domain cycling; intensities re-tested at week 3 | Both improved time trial by mean 8.5%; no significant group-by-time interaction despite more volume. Small sample and short period; not proof easy volume is useless | A current counterexample to overconfident polarized superiority; time budget matters. “Moderate domain” here is physiological below-threshold easy work, not necessarily the middle zone of a three-zone chart |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/33551839/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 23,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| Z1. Karsten et al. 2021, [PubMed](https://pubmed.ncbi.nlm.nih.gov/33551839/), DOI 10.3389/fphys.2020.613151 | 17 trained cyclists/triathletes; measurement agreement study | Critical power versus 20-min-derived FTP | Strong correlation but individual agreement limits about −19 to +33 W; not interchangeable | Store CP and FTP as different fields with test provenance. Do not silently map one onto the other |"
+        }
+      ]
+    },
+    {
+      "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0095025",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 24,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| S1. Kilen et al. 2014, [full text](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0095025), DOI 10.1371/journal.pone.0095025 | 41 Danish national-level swimmers, 30 men/11 women, mostly 50–200 m specialists; randomized 12 weeks | ~17 versus 35 km/week; increased high-intensity work using 6–10 × 10–30 s maximal efforts with 2–4 min rest; both groups ~12 h/week | No significant improvement or deterioration in 100/200-m performance, swim VO2max or economy. Different outcome sample sizes owing to missing tests | Reducing distance can preserve short-event performance in this context; more HIIT was not better. Not a template for beginner swimmers or open-water endurance |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/38380294/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 25,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| S2. Stroke-specific critical speed testing 2024, [PubMed](https://pubmed.ncbi.nlm.nih.gov/38380294/), DOI 10.5114/jhk/170882 | Swimming test-retest study; sample/sex not verified in retrieved abstract | 200- and 400-m tests, stroke-specific critical speed estimates | Critical speed CV <4%, but supra-critical distance capacity substantially less reliable | Use CSS as a field estimate with test error, stroke and pool length recorded; it is not a directly measured lactate threshold |"
+        }
+      ]
+    },
+    {
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7689383/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 26,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| T1. Röhrken et al. 2020, [full text](https://pmc.ncbi.nlm.nih.gov/articles/PMC7689383/), DOI 10.3389/fphys.2020.534688 | 15 moderately trained triathletes, 11 men/4 women; six-week pilot with minimization allocation | Polarized versus moderate-intensity distribution at similar training hours; running and cycling incremental tests | Both improved some running measures; no statistically significant group-by-time differences. Small pilot, not whole-triathlon race proof | Allocate intensity across all three sports together; do not claim polarized superiority or prescribe two hard workouts in each sport independently |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/39139482/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 27,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| D1. Talsnes et al. 2024, [PubMed](https://pubmed.ncbi.nlm.nih.gov/39139482/), DOI 10.3389/fphys.2024.1428536 | 14 trained male endurance athletes, VO2max 69.2 ± 4.2; acute counterbalanced crossover | One running session 6 × 10 min versus two sessions 3 × 10 min, equal intensity/work, 6.5 h between sessions | Splitting reduced acute strain/drift and next-morning perceived fatigue/soreness. No longitudinal adaptation, race gain or injury-incidence test | Justifies discussing a redistribution option for experienced athletes, not adding a second full workout or requiring weekly doubles |"
+        }
+      ]
+    },
+    {
+      "url": "https://www.mynewsdesk.com/no/norges-idrettshogskole/news/slik-gjekk-da-da-25-mosjonistar-testa-dobbel-terskel-508834",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 28,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| D2. Norwegian School of Sport Sciences institutional report, 30 Apr 2026, [primary institutional news](https://www.mynewsdesk.com/no/norges-idrettshogskole/news/slik-gjekk-da-da-25-mosjonistar-testa-dobbel-terskel-508834) | 25 well-trained recreational runners; average ~60 km/week; entry VO2 criteria >60 men/>50 women | Master's project examining single versus split threshold training; report discusses recovery/stress | Not a verified peer-reviewed longitudinal performance trial in this review. “Recreational” here still means highly conditioned, not a beginner | Track as emerging evidence only. Do not present media-reported results as definitive efficacy or a validated eligibility cutoff |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42545996/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 29,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| P1. Zhang et al. 2026, [PubMed](https://pubmed.ncbi.nlm.nih.gov/42545996/), DOI 10.1371/journal.pone.0354592 | 64 male junior sprinters randomized, 8 weeks | High-intensity cross-training combining sprinting, jumps and functional strength versus classical sprint training, similar internal load | More favorable 100-m, first-60-m and selected explosive outcomes in cross-training group; no adult/elite/female generalization; compound intervention cannot isolate the useful ingredient | Candidate junior-coach evidence, not justification to replace adult maximal-speed practice with circuits |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/40873761/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 30,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| P2. Chen et al. 2025, [PubMed](https://pubmed.ncbi.nlm.nih.gov/40873761/), DOI 10.3389/fphys.2025.1544291 | 10 male college sprinters, 100-m PB 11.31 ± 0.30 s; acute crossover | Resisted sprint priming at 5%, 10%, 15% body mass; recovery 4, 8 or 12 min; segmented 100-m testing | Acute potentiation design, not a chronic sprint-training dose trial | Never use an acute PAPE result as evidence of weeks-long speed gains or novice sled-loading safety |"
+        }
+      ]
+    },
+    {
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11994925/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 31,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| H1. Brandt et al. 2025, [full text](https://pmc.ncbi.nlm.nih.gov/articles/PMC11994925/), DOI 10.3389/fphys.2025.1519240 | 11 recreational HYROX athletes, 8 men/3 women; simulated race and physiological tests | Open-division style simulation; about 60% of completion time running; median completion 86.5 min | VO2max correlated with total time (rho −0.71); small correlation study, curved treadmill, not an intervention. Association with body fat is not a weight-loss prescription | Supports preparing both running and stations, not a scientifically optimal weekly split, hard-day count or body-composition target |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42189569/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 32,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| H2. HYROX benchmark study 2026, [PubMed](https://pubmed.ncbi.nlm.nih.gov/42189569/) | 186,411 official race results through 2023/24; descriptive population analysis | Segment and category benchmarks | Norms can reveal relative weaknesses; confounding, repeat competitors and selection complicate causal inference | Use relevant division/sex/age benchmarks as context; never infer a training treatment effect from faster athletes' race profiles |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/18460997/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 33,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| ST1. Støren et al. 2008, [PubMed](https://pubmed.ncbi.nlm.nih.gov/18460997/), DOI 10.1249/MSS.0b013e318168da2f | 17 well-trained runners, 9 men/8 women; randomized, intervention n=8 | Half-squat 4 × 4RM, three times/week, 8 weeks, added to usual running | Running economy improved 5%; time to exhaustion at maximal aerobic speed 21.3%; no VO2max change. Small sample; exhaustion test is not a race | Heavy strength is a plausible adjunct, but unfamiliar lifters need technique and load familiarization rather than immediate 4RM |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/40016936/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 34,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| ST2. Zanini et al. 2025, [PubMed](https://pubmed.ncbi.nlm.nih.gov/40016936/), DOI 10.1249/MSS.0000000000003685 | 28 well-trained male runners, average 10-km 39:02; randomized matched groups | Maximal strength plus plyometrics twice/week for 10 weeks, alongside running | Economy at end of 90-min heavy-domain run improved relative to control; subsequent exhaustion time +35% vs −8%. Not a 35% race-performance gain; women untested | Supports durability-oriented strength, with progression and mechanical-load accounting |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/26953893/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 35,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| ST3. Vikmoen et al. 2016, [PubMed](https://pubmed.ncbi.nlm.nih.gov/26953893/) | 19 well-trained female endurance athletes, ~5.8 h endurance/week | Four leg exercises, 3 × 4–10RM twice/week for 11 weeks | Strength and jumps improved; endurance outcome details require full-text extraction before numerical claims | Retain female evidence and do not assume every strength gain guarantees faster running |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/24862305/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 36,
+          "section": "Evidence matrix: intervention and measurement studies",
+          "review_text": "| ST4. Rønnestad et al. 2015, [PubMed](https://pubmed.ncbi.nlm.nih.gov/24862305/), DOI 10.1111/sms.12257 | 16 young elite cyclists, 9 strength+endurance/7 endurance-only; 25 weeks; sex unverified in abstract | Heavy strength added to endurance | Superior peak aerobic power and 40-min all-out power; no VO2max or economy change | Cycling strength is not only hypertrophy work; assess power/performance outcomes and fatigue cost |"
+        }
+      ]
+    },
+    {
+      "url": "https://link.springer.com/article/10.1186/s40798-019-0221-0",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 40,
+          "section": "Authoritative synthesis and best-practice sources",
+          "review_text": "- **Sprint coaching, not an RCT:** Haugen et al. 2019 integrates research and elite practice and explicitly notes that much experimental sprint evidence comes from team sports. It describes acceleration work over 10–50 m with full recovery, and flying maximal-speed work over 10–30 m after individualized run-ins. Beginner/development examples use 20-m accelerations with ~2-min rest or 10-m flying sections with ~4-min rest; elite examples require much longer recovery. End on technical deterioration or performance drop-off. These are expert-practice ranges, not validated universal doses. [Full text; DOI 10.1186/s40798-019-0221-0](https://link.springer.com/article/10.1186/s40798-019-0221-0)."
+        }
+      ]
+    },
+    {
+      "url": "https://link.springer.com/article/10.1007/s40279-024-02067-4",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 41,
+          "section": "Authoritative synthesis and best-practice sources",
+          "review_text": "- **Elite threshold practice is descriptive:** Haugen and colleagues' 2024 Norwegian training-session study describes elite coaching, including double-threshold practice and approximate 2–4.5 mmol/L lactate targets. Coaches' successful practice does not isolate causality, establish novice safety, or mean every athlete's threshold is at that lactate. [Source; DOI 10.1007/s40279-024-02067-4](https://link.springer.com/article/10.1007/s40279-024-02067-4)."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/34757594/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 42,
+          "section": "Authoritative synthesis and best-practice sources",
+          "review_text": "- **Concurrent training:** Schumann et al. 2022 meta-analysis of 43 studies found no clear average impairment of maximal strength or whole-muscle hypertrophy, but explosive strength gains could be attenuated, especially in the same session. Separation of at least 3 h was a subgroup distinction, not a proven exact recovery threshold. [PubMed; DOI 10.1007/s40279-021-01587-7](https://pubmed.ncbi.nlm.nih.gov/34757594/)."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/17762369/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 43,
+          "section": "Authoritative synthesis and best-practice sources",
+          "review_text": "- **Taper:** Bosquet et al. 2007 pooled 27 studies; about 2 weeks and 41–60% volume reduction with intensity/frequency maintained was a useful competitive-athlete pattern, not a universal optimum. “Maintain intensity” means retaining some quality at reduced volume, not preserving the entire hard workload. [PubMed; DOI 10.1249/mss.0b013e31806010e0](https://pubmed.ncbi.nlm.nih.gov/17762369/)."
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1136/bjsports-2016-096581",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 44,
+          "section": "Authoritative synthesis and best-practice sources",
+          "review_text": "- **Load and safety:** IOC 2016 emphasizes individual, flexible external/internal load management including life stress, symptoms and recovery. Its historical numerical ACWR/10% examples should not be encoded as validated safety guarantees. [Consensus; DOI 10.1136/bjsports-2016-096581](https://doi.org/10.1136/bjsports-2016-096581). Impellizzeri et al. 2020 explains why causal injury-prevention claims from ACWR are unsupported. [PubMed](https://pubmed.ncbi.nlm.nih.gov/32502973/)."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/32502973/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 44,
+          "section": "Authoritative synthesis and best-practice sources",
+          "review_text": "- **Load and safety:** IOC 2016 emphasizes individual, flexible external/internal load management including life stress, symptoms and recovery. Its historical numerical ACWR/10% examples should not be encoded as validated safety guarantees. [Consensus; DOI 10.1136/bjsports-2016-096581](https://doi.org/10.1136/bjsports-2016-096581). Impellizzeri et al. 2020 explains why causal injury-prevention claims from ACWR are unsupported. [PubMed](https://pubmed.ncbi.nlm.nih.gov/32502973/)."
+        }
+      ]
+    },
+    {
+      "url": "https://bjsm.bmj.com/content/57/17/1073.long",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 45,
+          "section": "Authoritative synthesis and best-practice sources",
+          "review_text": "- **Energy availability:** IOC 2023 REDs consensus applies across sexes; problematic under-fueling can compromise health and performance. A chatbot should not diagnose REDs from a score or prescribe aggressive weight loss to improve performance. Concerning symptoms warrant qualified assessment and stopping automatic load escalation. [Consensus; DOI 10.1136/bjsports-2023-106994](https://bjsm.bmj.com/content/57/17/1073.long)."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42697540/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 120,
+          "section": "Evidence gaps and release requirements",
+          "review_text": "- A 2026 official HYROX pacing study and world-champion case study surfaced, but were not fully extracted in this pass; exclude numerical recommendations based on them until verified. Candidate records: https://pubmed.ncbi.nlm.nih.gov/42697540/ and https://link.springer.com/article/10.1007/s12662-026-01162-0."
+        }
+      ]
+    },
+    {
+      "url": "https://link.springer.com/article/10.1007/s12662-026-01162-0",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 120,
+          "section": "Evidence gaps and release requirements",
+          "review_text": "- A 2026 official HYROX pacing study and world-champion case study surfaced, but were not fully extracted in this pass; exclude numerical recommendations based on them until verified. Candidate records: https://pubmed.ncbi.nlm.nih.gov/42697540/ and https://link.springer.com/article/10.1007/s12662-026-01162-0."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/27433992/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 128,
+          "section": "Replace disputed generalized claims",
+          "review_text": "- `HYPR_VOLUME_OPTIMUM`: Replace “10–20 sets maximizes hypertrophy” with “Higher weekly set volume can produce larger average hypertrophy gains, with diminishing returns and individual variation; no universally optimal 10–20-set interval is established.” Schoenfeld et al. 2017 analyzed 15 studies using categories <5, 5–9 and 10+ sets, not a direct validation of a 10–20 optimum. [PubMed; DOI 10.1080/02640414.2016.1210197](https://pubmed.ncbi.nlm.nih.gov/27433992/). Pelland et al. 2026 (online Dec 2025) included 67 studies/2,058 participants (79.1% male); models distinguish direct/indirect sets and show diminishing returns. This is meta-regression, not proof of an individual optimal dose. Supporting strength for endurance must not inherit a bodybuilding volume quota. [PubMed; DOI 10.1007/s40279-025-02344-w](https://pubmed.ncbi.nlm.nih.gov/41343037/)."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/41343037/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 128,
+          "section": "Replace disputed generalized claims",
+          "review_text": "- `HYPR_VOLUME_OPTIMUM`: Replace “10–20 sets maximizes hypertrophy” with “Higher weekly set volume can produce larger average hypertrophy gains, with diminishing returns and individual variation; no universally optimal 10–20-set interval is established.” Schoenfeld et al. 2017 analyzed 15 studies using categories <5, 5–9 and 10+ sets, not a direct validation of a 10–20 optimum. [PubMed; DOI 10.1080/02640414.2016.1210197](https://pubmed.ncbi.nlm.nih.gov/27433992/). Pelland et al. 2026 (online Dec 2025) included 67 studies/2,058 participants (79.1% male); models distinguish direct/indirect sets and show diminishing returns. This is meta-regression, not proof of an individual optimal dose. Supporting strength for endurance must not inherit a bodybuilding volume quota. [PubMed; DOI 10.1007/s40279-025-02344-w](https://pubmed.ncbi.nlm.nih.gov/41343037/)."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/20012179/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 136,
+          "section": "Motivation/adherence: evidence separate from original cues",
+          "review_text": "Silva et al. 2010 randomized 239 women in a one-year weight-management program to an autonomy-supportive intervention versus general health education. Physical activity and autonomous motivation improved. This supports offering choice, meaningful goals and competence-building; it does not validate a particular chatbot phrase, compulsory athlete training dose, or coercive “push.” [Primary study](https://pubmed.ncbi.nlm.nih.gov/20012179/)."
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1080/02640414.2023.2195228",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 138,
+          "section": "Motivation/adherence: evidence separate from original cues",
+          "review_text": "Nuss et al. 2023 tested motivational interviewing, a wearable tracker, both, or education in 40 insufficiently active adults over 12 weeks. Motivational outcomes improved in some intervention conditions without clear improvement in activity participation. This is a useful warning that motivation-score gains do not guarantee adherence. [Primary study DOI 10.1080/02640414.2023.2195228](https://doi.org/10.1080/02640414.2023.2195228); [PubMed abstract](https://pubmed.ncbi.nlm.nih.gov/36966352/). Sex split was not extracted; do not invent it."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/36966352/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "training-evidence.md",
+          "line": 138,
+          "section": "Motivation/adherence: evidence separate from original cues",
+          "review_text": "Nuss et al. 2023 tested motivational interviewing, a wearable tracker, both, or education in 40 insufficiently active adults over 12 weeks. Motivational outcomes improved in some intervention conditions without clear improvement in activity participation. This is a useful warning that motivation-score gains do not guarantee adherence. [Primary study DOI 10.1080/02640414.2023.2195228](https://doi.org/10.1080/02640414.2023.2195228); [PubMed abstract](https://pubmed.ncbi.nlm.nih.gov/36966352/). Sex split was not extracted; do not invent it."
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1249/MSS.0000000000000852",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 28,
+          "section": "Fueling evidence matrix",
+          "review_text": "| Daily carbohydrate | Conventional planning ranges: light/skill days 3–5 g/kg/day; moderate ~1 h/day 5–7; endurance ~1–3 h/day 6–10; very high load ~4–5 h/day 8–12. These are planning ranges, not mandatory ceilings or calorie prescriptions. | A for sufficient carbohydrate supporting glycogen-demanding training; actual need follows work and energy balance. | Requires actual body mass and actual load. Do not infer body mass from sex, sport or a sample athlete. Include exercise carbs in the daily total. [Thomas et al. 2016](https://doi.org/10.1249/MSS.0000000000000852). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1080/02640414.2011.585473",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 29,
+          "section": "Fueling evidence matrix",
+          "review_text": "| Before competition / demanding prolonged exercise | 1–4 g/kg carbohydrate 1–4 h before, adapted to time available and tolerance. Carbohydrate loading for events >90 min: 10–12 g/kg/day for 36–48 h with reduced training, if appropriate. | A: glycogen availability; loading is relevant to prolonged competition, not every sprint or gym visit. | Smaller/less fibrous, lower-fat choices close to start can be easier to tolerate. Do not force maximum intake. No requirement for a glycogen-depletion phase. [Burke et al. 2011](https://doi.org/10.1080/02640414.2011.585473). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 33,
+          "section": "Fueling evidence matrix",
+          "review_text": "| During >2.5–3 h demanding exercise | Up to ~90 g/h using multiple-transportable carbohydrate is well-established; build and rehearse tolerance. | A for appropriate prolonged events. | Absolute g/h rather than automatic g/kg/h. These duration bins overlap intentionally; avoid a discontinuity at minute 75 or 150. [Burke carbohydrate guidance](https://doi.org/10.1080/02640414.2011.585473), [Thomas position statement](https://pubmed.ncbi.nlm.nih.gov/26891166/). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 193,
+          "section": "Additional clinical and protocol guardrails",
+          "review_text": "- Avoid low-carbohydrate/fasted “train-low” blocks as a default performance enhancement. Adaptive signaling is not the same as improved competition performance; insufficient energy/carbohydrate and inability to complete the intended workload are meaningful downsides. [IOC carbohydrate review](https://doi.org/10.1080/02640414.2011.585473), [IOC REDs 2023](https://doi.org/10.1136/bjsports-2023-106994)."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/26891166/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 33,
+          "section": "Fueling evidence matrix",
+          "review_text": "| During >2.5–3 h demanding exercise | Up to ~90 g/h using multiple-transportable carbohydrate is well-established; build and rehearse tolerance. | A for appropriate prolonged events. | Absolute g/h rather than automatic g/kg/h. These duration bins overlap intentionally; avoid a discontinuity at minute 75 or 150. [Burke carbohydrate guidance](https://doi.org/10.1080/02640414.2011.585473), [Thomas position statement](https://pubmed.ncbi.nlm.nih.gov/26891166/). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1123/ijsnem.2025-0239",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 34,
+          "section": "Fueling evidence matrix",
+          "review_text": "| Advanced long-event fueling >90 to 120 g/h | Optional specialist-supervised, rehearsed strategy rather than default. Different glucose/fructose formulations have been studied. | B: laboratory durability/metabolism and selected field recovery findings; stronger cycling feasibility than broad race-outcome evidence. | 2026 UCI race-nutrition review explicitly rejects universal application of ≥120 g/h and does not support simply scaling during-exercise intake by body mass. No routine >120 g/h recommendation. [UCI 2026](https://doi.org/10.1123/ijsnem.2025-0239). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 61,
+          "section": "Hydration, sodium and heat",
+          "review_text": "| Sodium decision | Consider duration, fluid intake relative to losses, food/beverage sodium, palatability, environmental exposure and medical restrictions. Unknown sweat sodium → unknown loss, not a guessed 1,000 mg/L. | Current UCI review emphasizes context and no demonstrated blanket performance benefit. Sodium is not an automatic cramp cure. [UCI 2026](https://doi.org/10.1123/ijsnem.2025-0239). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1186/s12970-017-0189-4",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 35,
+          "section": "Fueling evidence matrix",
+          "review_text": "| Rapid glycogen recovery | When next demanding session is within ~8 h: 1.0–1.2 g/kg/h carbohydrate for first ~4 h is an established rapid-restoration strategy. | A: glycogen restoration; not a requirement after every workout. | With ample recovery time, adequate total food and carbohydrate across normal meals matters more than minute-level timing. [ISSN nutrient timing 2017](https://doi.org/10.1186/s12970-017-0189-4). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 178,
+          "section": "Audit-driven deprecations and replacements",
+          "review_text": "| P0 / NUT-INPUT-02 | nextSessionInHours collected but not persisted/wired, followed by unconditional recovery urgency | Persist nullable hours, validate positive values, and route to NUT-05. Unknown turnaround yields a question/general recovery advice, never an assumed double-session day. | Rapid versus ordinary recovery is supported by [ISSN timing 2017](https://doi.org/10.1186/s12970-017-0189-4); exact UI behavior is product inference. |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1186/s12970-017-0177-8",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 36,
+          "section": "Fueling evidence matrix",
+          "review_text": "| Protein for endurance + strength | General exercising-adult range 1.4–2.0 g/kg/day; distribute quality protein across meals. Studied meal target ~0.25 g/kg or 20–40 g, every 3–4 h. | A for supporting muscle protein synthesis/training adaptation when total needs are met. | Not a narrow 30-minute “anabolic window.” Protein powder is a convenience option; food works. Higher needs can be context-specific, not an automatic sex or age formula. [ISSN protein 2017](https://doi.org/10.1186/s12970-017-0177-8). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 179,
+          "section": "Audit-driven deprecations and replacements",
+          "review_text": "| P0 / NUT-RECOVERY-01 | “Recover within 30 minutes” as a universal deadline | Adequate daily intake plus practical meal timing; rapid glycogen protocol only for short turnaround. Do not imply that food at minute 31 is ineffective. | [ISSN protein 2017](https://doi.org/10.1186/s12970-017-0177-8), timing consensus; phrasing and branching are implementation inference. |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1249/mss.0b013e31815adf19",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 38,
+          "section": "Fueling evidence matrix",
+          "review_text": "**Transport mechanism and gut practice.** Glucose and glucose polymers principally use SGLT1; fructose uses GLUT5. Combining transport pathways can raise exogenous carbohydrate oxidation beyond single-source feeding. “60 g/h glucose ceiling” and “90 g/h total ceiling” are useful historical approximations, not universal hard biological limits. More absorption/oxidation does not automatically equal more race performance. A glucose:fructose ratio of 2:1 is established; newer high-intake studies use ~1:0.8 or 1:1. Do not describe any one ratio as optimal for everyone. [Currell & Jeukendrup 2008](https://doi.org/10.1249/mss.0b013e31815adf19)."
+        }
+      ]
+    },
+    {
+      "url": "https://research.birmingham.ac.uk/en/publications/superior-endurance-performance-with-ingestion-of-multiple-transpo/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 44,
+          "section": "Selected primary carbohydrate studies",
+          "review_text": "| [Currell & Jeukendrup 2008](https://research.birmingham.ac.uk/en/publications/superior-endurance-performance-with-ingestion-of-multiple-transpo/) | Cycling trial comparing glucose+fructose, glucose alone, and water; carbohydrate arms both 1.8 g/min (108 g/h). | Better subsequent endurance performance with mixed transportable carbohydrates. Foundational mechanism/performance evidence, not proof that 108 g/h is each athlete’s optimum. |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/28177715/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 45,
+          "section": "Selected primary carbohydrate studies",
+          "review_text": "| [Costa et al. 2017](https://pubmed.ncbi.nlm.nih.gov/28177715/), DOI 10.1139/apnm-2016-0453 | 25 endurance runners randomized to 2 weeks repeated carbohydrate food/gel gut challenge versus placebo. Challenge: 30 g every 20 min (90 g/h), 2 h running then 1 h distance test. | Repeated practice can improve tolerance and performance-related outcomes. Small study; do not promise that everyone tolerates 90 g/h within exactly 14 days. |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 177,
+          "section": "Audit-driven deprecations and replacements",
+          "review_text": "| P0 / NUT-INPUT-01 | A visible carbohydratePractice input that does not survive save/load or is never consumed | Persist the actual reported intake, source, session sport, duration/intensity, symptom history and recency. Unknown is a first-class state. Every advanced-fueling decision must receive this value through the same validated input model. | Gut practice has human-trial support ([Costa 2017](https://pubmed.ncbi.nlm.nih.gov/28177715/)); persistence/schema requirements are engineering inference, not a trial result. |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1111/sms.12912",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 46,
+          "section": "Selected primary carbohydrate studies",
+          "review_text": "| [Miall et al. 2018](https://doi.org/10.1111/sms.12912) | 18 runners; 2-week carbohydrate versus placebo gut-training intervention, 90 g/h test exposure. | Reduced GI symptoms/malabsorption supports training the exact race strategy. No justification for forcing symptoms or escalating all athletes to elite intake. |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1007/s00421-022-05019-w",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 47,
+          "section": "Selected primary carbohydrate studies",
+          "review_text": "| [Podlogar et al. 2022](https://doi.org/10.1007/s00421-022-05019-w) | 120 versus 90 g/h combined fructose-maltodextrin at different ratios. | Higher exogenous but unchanged endogenous carbohydrate oxidation. Metabolic evidence does not prove glycogen sparing or race-time superiority. |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/41191077/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 48,
+          "section": "Selected primary carbohydrate studies",
+          "review_text": "| [Ravikanti et al. 2025](https://pubmed.ncbi.nlm.nih.gov/41191077/), DOI 10.1152/japplphysiol.00665.2025 | 8 elite male marathoners; mean PB 2:22:54. 120-min running; 60 g/h maltodextrin, 90 g/h 2:1, 120 g/h 1:1. | Hour-2 exogenous oxidation 0.89/1.31/1.68 g/min, respectively; lower oxygen cost at 120 versus 60. Peak nausea/fullness/cramps highest at 120. No marathon race-time test; dose and composition changed together. Industry-funded; small male-only sample. |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1111/sms.70326",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 49,
+          "section": "Selected primary carbohydrate studies",
+          "review_text": "| [Norte et al. 2026](https://doi.org/10.1111/sms.70326), online 19 June 2026 | 16 trained cyclists/triathletes (15 men, 1 woman; >5 h/week; mean VO₂max 51.8 mL/kg/min); 0, 60, 120 g/h with 1:0.8 maltodextrin:fructose during 3 h moderate cycling. | Critical power was estimated from end-test power in a 3-min all-out test: post-exercise 236/257/266 W versus 277 W fresh. W′ declined without between-fueled-condition benefit. Supports durability under this protocol; not a 90-versus-120 comparison or complete triathlon race test. |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.3390/nu12072094",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 50,
+          "section": "Selected primary carbohydrate studies",
+          "review_text": "| [Urdampilleta et al. 2020](https://doi.org/10.3390/nu12072094) | Trail marathon; randomized 60/90/120 g/h groups, 26 runners allocated. | Higher-dose findings concern internal load and 24-h neuromuscular/high-intensity recovery, not a universal optimal marathon race intake. Small field study and population-specific. |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.4085/1062-6050-52.9.02",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 56,
+          "section": "Hydration, sodium and heat",
+          "review_text": "| Begin normally hydrated | Ordinary meals and fluid; assess context using thirst, recent morning mass trend and urine observations together. No “clear urine all day” goal. | A/consensus: [NATA 2017](https://doi.org/10.4085/1062-6050-52.9.02). Urine alone is imperfect and influenced by foods, supplements and timing. |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 63,
+          "section": "Hydration, sodium and heat",
+          "review_text": "| Recovery fluid | If rapid restoration is necessary and a deficit was actually measured, ~1.25–1.5 L/kg mass deficit over recovery with sodium-containing food/fluid can account for continued losses. | A/conditional. This is per kg **lost**, not per kg body mass. Ordinary meals/drinking usually suffice with longer recovery. Do not apply after weight gain or when hyponatremia is suspected. [NATA 2017](https://doi.org/10.4085/1062-6050-52.9.02). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1136/bjsports-2015-095004",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 57,
+          "section": "Hydration, sodium and heat",
+          "review_text": "| During exercise | Drink to thirst is a safe fallback for many situations. Planned drinking can be useful for prolonged/high-performance heat exposure or constrained access, based on measured behavior and losses. | Individualize; neither force a fixed L/h for everyone nor insist all elite athletes ignore planning. [EAH consensus 2015](https://doi.org/10.1136/bjsports-2015-095004); [IOC heat consensus 2023](https://doi.org/10.1136/bjsports-2022-105942). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 60,
+          "section": "Hydration, sodium and heat",
+          "review_text": "| No 100% default replacement | Some mass loss during endurance activity is normal. Avoid a plan that causes fluid-driven weight gain; do not force replacement of every estimated mL or mg. | A for avoiding overdrinking; sodium cannot prevent dilutional hyponatremia with excess fluid. [EAH consensus](https://doi.org/10.1136/bjsports-2015-095004). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1136/bjsports-2022-105942",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 57,
+          "section": "Hydration, sodium and heat",
+          "review_text": "| During exercise | Drink to thirst is a safe fallback for many situations. Planned drinking can be useful for prolonged/high-performance heat exposure or constrained access, based on measured behavior and losses. | Individualize; neither force a fixed L/h for everyone nor insist all elite athletes ignore planning. [EAH consensus 2015](https://doi.org/10.1136/bjsports-2015-095004); [IOC heat consensus 2023](https://doi.org/10.1136/bjsports-2022-105942). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 64,
+          "section": "Hydration, sodium and heat",
+          "review_text": "| Heat | Acclimation/acclimatization, pacing, shade/cooling, clothing and event medical procedures matter as well as fluids. Re-test sweat patterns as weather/acclimation changes. | [IOC 2023](https://doi.org/10.1136/bjsports-2022-105942). Hydration does not guarantee prevention of heat stroke. Confusion, collapse or altered behavior during heat/exertion is an emergency; stop and obtain urgent help. |"
+        }
+      ]
+    },
+    {
+      "url": "https://nata.kglmeridian.com/view/journals/attr/52/9/article-p877.xml",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 58,
+          "section": "Hydration, sodium and heat",
+          "review_text": "| Sweat-rate estimate | Approximate sweat loss L = pre-exercise dry mass kg − post-exercise dry mass kg + drinks L − urine L. Divide by hours. | Not a clinical measurement or automatic drink target. Standardize scale/clothes, dry skin/hair, record all intake/output, repeat in relevant conditions. Long events add respiratory/metabolic mass error; swimming adds retained water error. [NATA](https://nata.kglmeridian.com/view/journals/attr/52/9/article-p877.xml). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1186/1550-2783-10-30",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 62,
+          "section": "Hydration, sodium and heat",
+          "review_text": "| Sodium direct trial | 9 well-trained cyclists (5 men/4 women), ~3-h road TT in ~14°C; salt supplementation versus placebo, ad-libitum drinking. | No performance difference (171 vs 172 min, p=.46). Do not generalize this to all hot ultra-events; it rebuts universal need. [Cosgrove & Black 2013](https://doi.org/10.1186/1550-2783-10-30). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1186/s44410-025-00011-9",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 66,
+          "section": "Hydration, sodium and heat",
+          "review_text": "Sodium recommendations are disputed in detail. A 2025 physiology-focused review links sodium decisions more closely to fluid balance and duration than to mandatory sweat-loss matching; it is a scholarly review, not a universal professional consensus. Keep this uncertainty visible rather than converting its model into a clinical calculator. [McCubbin 2025](https://doi.org/10.1186/s44410-025-00011-9)."
+        }
+      ]
+    },
+    {
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/caffeine/how-and-when-do-i-use-it",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 74,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Caffeine | Low effective doses often ~2–3 mg/kg; much research uses 3–6 mg/kg ~60 min pre-exercise. Forms differ; gum and during/late-event dosing need form-specific timing. No loading cycle needed. | A for endurance and several intense/strength tasks; small variable individual effects. AIS favors lowest effective dose rather than “more is better.” | Insomnia, anxiety, tremor, tachycardia, GI effects; count coffee, gels, drinks and pre-workouts together. Avoid concentrated loose caffeine powders. Medication interactions, arrhythmia, uncontrolled BP, pregnancy/lactation or minors → qualified review, not automatic sport dosing. [AIS caffeine](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/caffeine/how-and-when-do-i-use-it); [IOC 2018](https://doi.org/10.1136/bjsports-2018-099027). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 180,
+          "section": "Audit-driven deprecations and replacements",
+          "review_text": "| P0 / SUP-SPRINT-01 | Automatic caffeine prescription in every sprint plan | Optional evidence card, actual-mass gate for computed dose, all-source caffeine and sleep checks, prior tolerance, medical/context review. Remains off unless chosen. | [AIS caffeine](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/caffeine/how-and-when-do-i-use-it); off-by-default and missing-data gating are conservative product decisions. |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1136/bjsports-2018-099027",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 74,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Caffeine | Low effective doses often ~2–3 mg/kg; much research uses 3–6 mg/kg ~60 min pre-exercise. Forms differ; gum and during/late-event dosing need form-specific timing. No loading cycle needed. | A for endurance and several intense/strength tasks; small variable individual effects. AIS favors lowest effective dose rather than “more is better.” | Insomnia, anxiety, tremor, tachycardia, GI effects; count coffee, gels, drinks and pre-workouts together. Avoid concentrated loose caffeine powders. Medication interactions, arrhythmia, uncontrolled BP, pregnancy/lactation or minors → qualified review, not automatic sport dosing. [AIS caffeine](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/caffeine/how-and-when-do-i-use-it); [IOC 2018](https://doi.org/10.1136/bjsports-2018-099027). |"
+        }
+      ]
+    },
+    {
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/creatine",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 75,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Creatine monohydrate | 3–5 g/day for ~4 weeks without loading; optional ~0.3 g/kg/day for ~5 days in divided doses, then 3–5 g/day. Timing is less important than consistent ingestion. | A for resistance-training strength/lean-mass adaptation and repeated high-intensity work. Not an acute pre-workout stimulant. | Water-associated mass increase and GI symptoms possible; weigh running/climbing trade-off. No credible need for exotic forms. Healthy-adult renal safety evidence should not be extrapolated to existing kidney disease or relevant medications. [AIS creatine](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/creatine); [ISSN 2017](https://doi.org/10.1186/s12970-017-0173-z). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1186/s12970-017-0173-z",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 75,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Creatine monohydrate | 3–5 g/day for ~4 weeks without loading; optional ~0.3 g/kg/day for ~5 days in divided doses, then 3–5 g/day. Timing is less important than consistent ingestion. | A for resistance-training strength/lean-mass adaptation and repeated high-intensity work. Not an acute pre-workout stimulant. | Water-associated mass increase and GI symptoms possible; weigh running/climbing trade-off. No credible need for exotic forms. Healthy-adult renal safety evidence should not be extrapolated to existing kidney disease or relevant medications. [AIS creatine](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/creatine); [ISSN 2017](https://doi.org/10.1186/s12970-017-0173-z). |"
+        }
+      ]
+    },
+    {
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/b-alanine",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 76,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Beta-alanine | Common 3.2–6.4 g/day; AIS practical protocol 1.6 g four times daily with meals/snack (6.4 g/day), ≥4 weeks. Sustained-release/divided doses reduce tingling. | A/B for selected high-intensity capacity/performance tasks ~30 s–10 min, strongest rationale for sustained/repeated glycolytic work. Not established as a direct long-course endurance booster. | Paresthesia; long-term data less comprehensive than creatine; no acute performance benefit from a pre-workout sprinkle. Do not promise response based on lower baseline carnosine in women. [AIS beta-alanine](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/b-alanine). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 181,
+          "section": "Audit-driven deprecations and replacements",
+          "review_text": "| P0 / SUP-SPRINT-02 | Automatic acute beta-alanine recommendation for every sprint | Classify target effort and intervention timescale. No same-day acute effect claim. If appropriate, explain chronic studied protocols and mixed sport-specific evidence without prescribing. | [AIS beta-alanine](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/b-alanine), [elite swim field trial](https://pubmed.ncbi.nlm.nih.gov/23201763/). Automatic exclusion from unrelated sprint cases is applicability logic. |"
+        }
+      ]
+    },
+    {
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/beetroot-juicenitrate/what-does-it-look-like",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 77,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Dietary nitrate / beetroot | AIS commonly ~6–8 mmol nitrate (~372–496 mg; AIS rounds ~350–500 mg), ~2–3 h pre-exercise. Acute or repeated-day strategies. Expert Delphi 2022 discusses broader 8–16 mmol acute and 4–16 mmol/day chronic, final dose 2–4 h pre; these are different recommendations, not a reason to default to the highest dose. | B, conditional ergogenic aid: oxygen cost and some time-trial outcomes, less consistent in highly trained/elite endurance athletes. | Standardized nitrate content matters, not grams of beetroot powder or mL alone. GI discomfort, harmless beeturia; chronic safety uncertainty. Do not use nitrate/nitrite chemicals or fertilizer. Blood-pressure-related medication/clinical issues need clinician/pharmacist review. [AIS nitrate dose](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/beetroot-juicenitrate/what-does-it-look-like); [Delphi 2022](https://doi.org/10.1007/s40279-022-01701-3). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1007/s40279-022-01701-3",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 77,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Dietary nitrate / beetroot | AIS commonly ~6–8 mmol nitrate (~372–496 mg; AIS rounds ~350–500 mg), ~2–3 h pre-exercise. Acute or repeated-day strategies. Expert Delphi 2022 discusses broader 8–16 mmol acute and 4–16 mmol/day chronic, final dose 2–4 h pre; these are different recommendations, not a reason to default to the highest dose. | B, conditional ergogenic aid: oxygen cost and some time-trial outcomes, less consistent in highly trained/elite endurance athletes. | Standardized nitrate content matters, not grams of beetroot powder or mL alone. GI discomfort, harmless beeturia; chronic safety uncertainty. Do not use nitrate/nitrite chemicals or fertilizer. Blood-pressure-related medication/clinical issues need clinician/pharmacist review. [AIS nitrate dose](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/beetroot-juicenitrate/what-does-it-look-like); [Delphi 2022](https://doi.org/10.1007/s40279-022-01701-3). |"
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 191,
+          "section": "Additional clinical and protocol guardrails",
+          "review_text": "- Nitrate protocols depend on oral nitrate-reducing bacteria. Antibacterial mouthwash can interfere; do not tell users to stop prescribed dental care. Refer to the treating professional if this conflicts with an attempted nitrate strategy. [Nitrate expert consensus](https://doi.org/10.1007/s40279-022-01701-3)."
+        }
+      ]
+    },
+    {
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/bicarbonate/how-and-when-do-i-use-it",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 78,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Sodium bicarbonate | Established acute research often 0.2–0.3 g/kg; AIS lists 0.2–0.4 g/kg with a carbohydrate-rich meal ~120–150 min beforehand, often spread over 30–60 min. Individual timing/tolerance testing matters. | A/B for certain sustained/repeated high-intensity efforts; select track running/cycling and swimming contexts. Not a routine distance-running/HYROX supplement. | Frequent nausea/diarrhea/bloating; large sodium load, alkalosis/electrolyte risk; renal/cardiac disease, hypertension/sodium restrictions, medications or recurrent GI problems require medical clearance. Do not offer kitchen-spoon dosing or self-directed serial loading. [AIS protocol](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/bicarbonate/how-and-when-do-i-use-it); [AIS tolerability](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/bicarbonate/are-there-any-concerns-or-considerations). |"
+        }
+      ]
+    },
+    {
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/bicarbonate/are-there-any-concerns-or-considerations",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 78,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Sodium bicarbonate | Established acute research often 0.2–0.3 g/kg; AIS lists 0.2–0.4 g/kg with a carbohydrate-rich meal ~120–150 min beforehand, often spread over 30–60 min. Individual timing/tolerance testing matters. | A/B for certain sustained/repeated high-intensity efforts; select track running/cycling and swimming contexts. Not a routine distance-running/HYROX supplement. | Frequent nausea/diarrhea/bloating; large sodium load, alkalosis/electrolyte risk; renal/cardiac disease, hypertension/sodium restrictions, medications or recurrent GI problems require medical clearance. Do not offer kitchen-spoon dosing or self-directed serial loading. [AIS protocol](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/bicarbonate/how-and-when-do-i-use-it); [AIS tolerability](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/bicarbonate/are-there-any-concerns-or-considerations). |"
+        }
+      ]
+    },
+    {
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements/group_a/medical-supplements2/iron/how-and-when-do-i-use-it",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 79,
+          "section": "Supplements: dose, timing, duration, use case and safety",
+          "review_text": "| Iron | **M only.** AIS clinician framework commonly ~100 mg elemental iron daily or alternate mornings for ~8–12 weeks with repeat blood testing; this describes treatment, not an app recommendation. | Restore confirmed low iron status; benefit depends on deficiency and physiology. Not an ergogenic aid for iron-replete athletes. | Require clinician interpretation of ferritin, hemoglobin, transferrin saturation and inflammation/context. Investigate cause, not just replace. GI effects, overdose/toxicity, iron overload; no automatic iron from sex, vegetarian diet or fatigue. No unsupervised IV route. [AIS iron](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/medical-supplements2/iron/how-and-when-do-i-use-it). |"
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/21471821/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 84,
+          "section": "Primary supplement studies and limits",
+          "review_text": "- **Nitrate:** [Lansley et al. 2011](https://pubmed.ncbi.nlm.nih.gov/21471821/), DOI 10.1249/MSS.0b013e31821597b4: nine club-level male cyclists, ~6.2 mmol beetroot nitrate ~2.5 h before 4-/16.1-km time trials. This is relevant recreational/club evidence, not a sex-neutral elite guarantee."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/8876342/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 85,
+          "section": "Primary supplement studies and limits",
+          "review_text": "- **Creatine swimming caution:** [Burke et al. 1996](https://pubmed.ncbi.nlm.nih.gov/8876342/), DOI 10.1123/ijsn.6.3.222: 32 elite swimmers (18 male/14 female), 20 g/day ×5 days; no significant single-sprint benefit. [Mujika et al. 1996](https://pubmed.ncbi.nlm.nih.gov/8933496/): 20 highly trained swimmers, similarly no 25-/50-/100-m improvement. Strong supporting-strength evidence does not erase direct null swim evidence."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/8933496/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 85,
+          "section": "Primary supplement studies and limits",
+          "review_text": "- **Creatine swimming caution:** [Burke et al. 1996](https://pubmed.ncbi.nlm.nih.gov/8876342/), DOI 10.1123/ijsn.6.3.222: 32 elite swimmers (18 male/14 female), 20 g/day ×5 days; no significant single-sprint benefit. [Mujika et al. 1996](https://pubmed.ncbi.nlm.nih.gov/8933496/): 20 highly trained swimmers, similarly no 25-/50-/100-m improvement. Strong supporting-strength evidence does not erase direct null swim evidence."
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1139/apnm-2012-0286",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 86,
+          "section": "Primary supplement studies and limits",
+          "review_text": "- **Beta-alanine swimming, positive small trial:** [de Salles Painelli et al. 2013](https://doi.org/10.1139/apnm-2012-0286): 16 swimmers, 3.2 g/day week 1 then 6.4 g/day four weeks; 100-/200-m trial improvements ~2%. Small research setting, not a promised real-world effect."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/23201763/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 87,
+          "section": "Primary supplement studies and limits",
+          "review_text": "- **Beta-alanine swimming, field limitation:** [Chung et al. 2012](https://pubmed.ncbi.nlm.nih.gov/23201763/), DOI 10.3390/nu4101441: 41 elite/subelite swimmers (23 male/18 female), 4.8 g/day four weeks then 3.2 g/day through ten weeks; minimal real-world training/competition effect."
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 181,
+          "section": "Audit-driven deprecations and replacements",
+          "review_text": "| P0 / SUP-SPRINT-02 | Automatic acute beta-alanine recommendation for every sprint | Classify target effort and intervention timescale. No same-day acute effect claim. If appropriate, explain chronic studied protocols and mixed sport-specific evidence without prescribing. | [AIS beta-alanine](https://www.ausport.gov.au/ais/nutrition/supplements/group_a/performance-supplements2/b-alanine), [elite swim field trial](https://pubmed.ncbi.nlm.nih.gov/23201763/). Automatic exclusion from unrelated sprint cases is applicability logic. |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1186/1550-2783-10-52",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 88,
+          "section": "Primary supplement studies and limits",
+          "review_text": "- **Bicarbonate repeated swims:** [Mero et al. 2013](https://doi.org/10.1186/1550-2783-10-52): 13 competitive male swimmers, 0.3 g/kg 60 min beforehand, two 100-m swims separated by 12 min; attenuation of second-swim slowing, rather than improved first swim."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/38646853/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 89,
+          "section": "Primary supplement studies and limits",
+          "review_text": "- **Stacks are not additive:** [2024 endurance-trained trial](https://pubmed.ncbi.nlm.nih.gov/38646853/): caffeine 3 mg/kg, bicarbonate 0.3 g/kg and creatine conditions. Caffeine improved 6-min TT mean power; bicarbonate/creatine did not confer automatic additive benefit."
+        }
+      ]
+    },
+    {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/42788859/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 90,
+          "section": "Primary supplement studies and limits",
+          "review_text": "- **New bicarbonate gel, experimental:** [Norte et al. 2026](https://pubmed.ncbi.nlm.nih.gov/42788859/), DOI 10.1111/sms.70373, October issue; PubMed record retrieved 7 October 2026: 11 trained male cyclists, 3 h cycling with 80 g/h carbohydrate, with/without total 18 g sodium bicarbonate +2 g potassium bicarbonate. Subsequent 12-min TT improved by 12 W; 6-s sprint and 2-min TT did not significantly improve. New product-specific small trial, not evidence for homemade or routine during-event bicarbonate. Product supplied by manufacturer; expert-review only."
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1093/sleep/zsae230",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 91,
+          "section": "Primary supplement studies and limits",
+          "review_text": "- **Sleep trade-off:** [Gardiner et al., online 2024 / issue 2025](https://doi.org/10.1093/sleep/zsae230): 23 men, 100/400 mg caffeine at 12/8/4 h before bed; 400 mg disrupted aspects of sleep even 12 h earlier. The 100-mg group null finding is not proof of a universal safe bedtime cutoff, particularly outside this male sample."
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1152/japplphysiol.01072.2025",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 95,
+          "section": "Popular interventions: what not to automate",
+          "review_text": "- **Ketone esters/salts: C for routine performance.** Expensive, heterogeneous findings and possible GI effects; cannot replace carbohydrate. A 2026 human cycling trial found reduced exogenous carbohydrate oxidation/oxidation efficiency with ketone monoester despite 120 g/h carbohydrate. [Primary 2026 trial](https://doi.org/10.1152/japplphysiol.01072.2025). Do not convert laboratory metabolic changes into a training plan."
+        }
+      ]
+    },
+    {
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements/group_c",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 96,
+          "section": "Popular interventions: what not to automate",
+          "review_text": "- **BCAA/leucine alone, HMB, magnesium in replete athletes, phosphate: C** for routine sport-performance additions under AIS framework. Medical correction of deficiency is a separate indication. [AIS Group C](https://www.ausport.gov.au/ais/nutrition/supplements/group_c)."
+        }
+      ]
+    },
+    {
+      "url": "https://www.ausport.gov.au/ais/nutrition/supplements/group_b",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 97,
+          "section": "Popular interventions: what not to automate",
+          "review_text": "- **Tart cherry, collagen/gelatin, omega-3, probiotics, curcumin: B/C depending on the specific endpoint.** Possible recovery, tissue or illness-management contexts are not demonstrated universal race-performance benefits. Strain/product/protocol specificity matters for probiotics. No routine performance dose without a defined indication and a dedicated evidence review. [AIS Group B](https://www.ausport.gov.au/ais/nutrition/supplements/group_b)."
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.3389/fspor.2026.1868776",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 114,
+          "section": "Sport application matrix (inference from the evidence above)",
+          "review_text": "| HYROX | Fueling according to actual projected duration/intensity and safe access; pre-event food often more important than complicated race feeding. | Caffeine/creatine-strength/buffering evidence is extrapolated. A 2026 observational microbiome study of ten HYROX athletes cannot establish supplement or race-performance causality. [Study](https://doi.org/10.3389/fspor.2026.1868776). |"
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1080/15502783.2023.2204066",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 119,
+          "section": "Sex, athlete level, low energy availability and anti-doping",
+          "review_text": "**Sex and training level:** Many intervention studies are small and male-dominated; elite responses are not interchangeable with recreational responses. Female-inclusive swim studies help but do not solve gaps in long-event high-dose fueling, pregnancy, menopause, hormonal contraception or supplement interactions. Record population applicability. The [ISSN female-athlete statement 2023](https://doi.org/10.1080/15502783.2023.2204066) emphasizes energy adequacy and individual physiology; it is not authority to invent sex-only carbohydrate or sodium percentages. Menstrual symptoms, blood loss and health history can inform assessment when voluntarily provided. Do not diagnose hormonal state from calendar dates."
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1136/bjsports-2023-106994",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 121,
+          "section": "Sex, athlete level, low energy availability and anti-doping",
+          "review_text": "**Low energy availability:** Persistent under-fueling can compromise health and performance in athletes of any sex/body size. Recurrent bone stress injury, menstrual disruption, reduced libido, persistent fatigue/illness, restrictive eating or unexplained performance decline warrant qualified evaluation. These are nonspecific signals, not an app diagnosis. Do not apply a universal 30 or 45 kcal/kg fat-free-mass threshold diagnostically, infer energy availability from BMI, or recommend intentional carbohydrate restriction when warning signs exist. [IOC REDs 2023](https://doi.org/10.1136/bjsports-2023-106994). Avoid “earn your food” logic and do not subtract exercise carbohydrates from recovery meals automatically."
+        },
+        {
+          "file": "nutrition-evidence.md",
+          "line": 193,
+          "section": "Additional clinical and protocol guardrails",
+          "review_text": "- Avoid low-carbohydrate/fasted “train-low” blocks as a default performance enhancement. Adaptive signaling is not the same as improved competition performance; insufficient energy/carbohydrate and inability to complete the intended workload are meaningful downsides. [IOC carbohydrate review](https://doi.org/10.1080/02640414.2011.585473), [IOC REDs 2023](https://doi.org/10.1136/bjsports-2023-106994)."
+        }
+      ]
+    },
+    {
+      "url": "https://www.usada.org/substances/supplement-connect/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 123,
+          "section": "Sex, athlete level, low energy availability and anti-doping",
+          "review_text": "**Anti-doping:** Check the list effective on the competition date and governing body. Ingredient permissibility does not verify product safety. Neither WADA nor USADA approves supplements. Third-party sport certification reduces, never eliminates, contamination risk. Verify exact product, flavor and batch/lot in the certifier database; save verification date and lot. [USADA Supplement Connect](https://www.usada.org/substances/supplement-connect/), [USADA batch-verification advisory](https://www.usada.org/athlete-advisory/verify-third-party-logos-supplements/), [WADA 2026 Prohibited List](https://www.wada-ama.org/sites/default/files/2025-09/2026list_en_final_clean_september_2025.pdf). A future list can be published before its effective date; do not confuse publication with applicability."
+        }
+      ]
+    },
+    {
+      "url": "https://www.usada.org/athlete-advisory/verify-third-party-logos-supplements/",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 123,
+          "section": "Sex, athlete level, low energy availability and anti-doping",
+          "review_text": "**Anti-doping:** Check the list effective on the competition date and governing body. Ingredient permissibility does not verify product safety. Neither WADA nor USADA approves supplements. Third-party sport certification reduces, never eliminates, contamination risk. Verify exact product, flavor and batch/lot in the certifier database; save verification date and lot. [USADA Supplement Connect](https://www.usada.org/substances/supplement-connect/), [USADA batch-verification advisory](https://www.usada.org/athlete-advisory/verify-third-party-logos-supplements/), [WADA 2026 Prohibited List](https://www.wada-ama.org/sites/default/files/2025-09/2026list_en_final_clean_september_2025.pdf). A future list can be published before its effective date; do not confuse publication with applicability."
+        }
+      ]
+    },
+    {
+      "url": "https://www.wada-ama.org/sites/default/files/2025-09/2026list_en_final_clean_september_2025.pdf",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 123,
+          "section": "Sex, athlete level, low energy availability and anti-doping",
+          "review_text": "**Anti-doping:** Check the list effective on the competition date and governing body. Ingredient permissibility does not verify product safety. Neither WADA nor USADA approves supplements. Third-party sport certification reduces, never eliminates, contamination risk. Verify exact product, flavor and batch/lot in the certifier database; save verification date and lot. [USADA Supplement Connect](https://www.usada.org/substances/supplement-connect/), [USADA batch-verification advisory](https://www.usada.org/athlete-advisory/verify-third-party-logos-supplements/), [WADA 2026 Prohibited List](https://www.wada-ama.org/sites/default/files/2025-09/2026list_en_final_clean_september_2025.pdf). A future list can be published before its effective date; do not confuse publication with applicability."
+        }
+      ]
+    },
+    {
+      "url": "https://doi.org/10.1186/s12970-021-00458-w",
+      "collection": "targeted_2026_10_07_review",
+      "verification_scope": "See exact surrounding review context; full methods and numeric applicability are not assumed.",
+      "contexts": [
+        {
+          "file": "nutrition-evidence.md",
+          "line": 184,
+          "section": "Audit-driven deprecations and replacements",
+          "review_text": "| P1 / SUP-BUFFER-01 | Beta-alanine and bicarbonate recommendations treated as interchangeable | Distinguish chronic intracellular carnosine loading from acute extracellular buffering. Record protocol timescale and GI risk separately. | [ISSN bicarbonate 2021](https://doi.org/10.1186/s12970-021-00458-w) supports tasks predominantly ~30 s–12 min and dose/timing variability; no rule should imply all intense exercise benefits. |"
+        }
+      ]
+    }
+  ]
+}

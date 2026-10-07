@@ -49,7 +49,7 @@ export interface EvidenceEntry {
   directness: "direct" | "indirect" | "surrogate";
   replicationStatus: "replicated" | "single_study" | "emerging" | "contested";
   lastReviewed: string;       // ISO date of last editorial review
-  status: "active" | "superseded" | "retracted";
+  status: "active" | "needs_review" | "superseded" | "retracted";
   tier: EvidenceTier;
 }
 
@@ -116,22 +116,21 @@ export const EVIDENCE_REGISTRY: EvidenceEntry[] = [
   },
   {
     claimId: "schoenfeld-volume-2017",
-    claim: "Weekly set volume 10-20 sets per muscle group maximises hypertrophy",
+    claim: "Higher weekly resistance-training set volume was associated with greater hypertrophy in the included studies",
     domain: "strength",
     population: "recreational",
     sport: "all",
     studyDesign: "meta-analysis",
     PMID: "27433992",
     publicationYear: 2017,
-    intervention: "Resistance training volume 10-20 sets per muscle group per week",
-    comparator: "Lower volume (<10 sets) or higher volume (>20 sets)",
-    effect: "Higher hypertrophy in 10-20 set range; diminishing returns above",
-    effectSize: "ES=0.25 for 10-20 vs <10",
-    limitations: "Trained populations may benefit from higher volumes",
+    intervention: "Weekly set-volume categories: fewer than 5, 5–9, and 10 or more sets per muscle group",
+    comparator: "Lower versus higher weekly set volumes",
+    effect: "Dose-response association; this review does not establish a universal 10–20-set optimum or a plateau above 20",
+    limitations: "Limited studies and heterogeneous protocols; individual recoverable volume is not established by a population association",
     certainty: "moderate",
     directness: "direct",
     replicationStatus: "replicated",
-    lastReviewed: "2026-09-07",
+    lastReviewed: "2026-10-07",
     status: "active",
     tier: "meta_analysis",
   },
@@ -167,18 +166,18 @@ export const EVIDENCE_REGISTRY: EvidenceEntry[] = [
     sampleSize: 40,
     intervention: "4×4 min at 90-95% HRmax, 3 min jog recovery, 3×/week",
     comparator: "Steady-state running at 70% HRmax",
-    effect: "+7.2% VO2max vs +3.4% for continuous running",
-    effectSize: "+3.8% absolute VO2max difference",
+    effect: "VO2max increased 7.2% in the 4×4 arm; HIIT groups improved more than lower-intensity groups in this trial",
+    limitations: "40 healthy moderately trained men, eight weeks; not novice entry-dose evidence or direct evidence for swimming/cycling",
     certainty: "moderate",
     directness: "direct",
-    replicationStatus: "replicated",
-    lastReviewed: "2026-09-07",
+    replicationStatus: "single_study",
+    lastReviewed: "2026-10-07",
     status: "active",
     tier: "rct",
   },
   {
     claimId: "schumann-concurrent-2022",
-    claim: "Concurrent strength and endurance training does not impair endurance adaptations when properly sequenced",
+    claim: "Concurrent aerobic and strength training was compatible with maximal strength and hypertrophy, with possible attenuation of explosive strength",
     domain: "strength",
     population: "both",
     sport: "all",
@@ -186,13 +185,13 @@ export const EVIDENCE_REGISTRY: EvidenceEntry[] = [
     PMID: "34757594",
     publicationYear: 2022,
     intervention: "Combined strength + endurance training",
-    comparator: "Endurance training alone",
-    effect: "No interference with endurance adaptations; strength gains preserved when separated by >6h",
-    limitations: "Interference effect may appear with very high concurrent volumes",
+    comparator: "Strength training alone",
+    effect: "No significant pooled interference for maximal strength or hypertrophy; explosive-strength attenuation was more pronounced with same-session training than separated sessions",
+    limitations: "This synthesis studied strength/hypertrophy outcomes, not a universal endurance benefit. Separation subgroup findings do not establish a mandatory interval or prove readiness for two hard sessions.",
     certainty: "moderate",
     directness: "direct",
     replicationStatus: "replicated",
-    lastReviewed: "2026-09-07",
+    lastReviewed: "2026-10-07",
     status: "active",
     tier: "meta_analysis",
   },
@@ -371,7 +370,7 @@ export function getEvidence(claimId: string): EvidenceEntry | undefined {
 
 // Validate an array of claim IDs — returns valid IDs and rejects unknown ones.
 export function validateClaimIds(ids: string[]): { valid: string[]; invalid: string[] } {
-  const known = new Set(EVIDENCE_REGISTRY.map((e) => e.claimId));
+  const known = new Set(EVIDENCE_REGISTRY.filter((e) => e.status === "active").map((e) => e.claimId));
   const valid: string[] = [];
   const invalid: string[] = [];
   for (const id of ids) {
@@ -384,6 +383,6 @@ export function validateClaimIds(ids: string[]): { valid: string[]; invalid: str
 // Filter by domain, sport, and minimum tier.
 export function evidenceFor(domain: string, sport?: string): EvidenceEntry[] {
   return EVIDENCE_REGISTRY.filter(
-    (e) => e.domain === domain && (e.sport === "all" || e.sport === sport),
+    (e) => e.status === "active" && e.domain === domain && (e.sport === "all" || e.sport === sport),
   );
 }

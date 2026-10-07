@@ -3,11 +3,12 @@ import { sessionFitEntries } from "./fit-export";
 import { fitFilename, type CanonicalSession } from "./canonical-session";
 import { buildZip, type ZipEntry } from "./zip";
 import { calendarDescription, shapeLink } from "./plan-formats";
-import { buildFuelingPlan } from "./fueling";
+import type { SessionNutrition } from "./session-nutrition";
 
 type Row = Record<string, unknown>;
 
 export interface TrainingExportData {
+  resolvedNutrition?: Record<string, SessionNutrition>;
   resolvedSessions?: Record<string, CanonicalSession>;
   resolutionErrors?: Record<string, string>;
   athlete: { name: string; email: string; timezone: string };
@@ -106,16 +107,10 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
             sport: resolved?.sport ?? String(session.sport),
             revision: resolved?.revision,
             durationMin,
-            intensity: (session.intensity as string) ?? null,
+            intensity: data.resolvedNutrition?.[session.id]?.intensity ?? null,
             steps: resolved?.verdict === "ready" ? resolved.steps.map(s => ({ ...s, targetLabel: s.target.label })) : [],
-            fuel: resolved?.verdict === "ready" ? buildFuelingPlan({
-              durationMin,
-              intensity: String(session.intensity || "z2"),
-              weightKg: data.profile?.weightKg,
-              sweatRateMlH: data.profile?.sweatRateMlH,
-              sodiumMgPerL: data.profile?.sodiumMgPerL,
-              gutTrained: !!data.profile?.gutTrained,
-            }) : null,
+            fuel: resolved?.verdict === "ready" ? data.resolvedNutrition?.[session.id]?.fuel ?? null : null,
+            post: resolved?.verdict === "ready" ? data.resolvedNutrition?.[session.id]?.post ?? null : null,
           })}\n📈 Effort shape: ${shapeLink(String(session.id))}`,
         )}`,
         "END:VEVENT",

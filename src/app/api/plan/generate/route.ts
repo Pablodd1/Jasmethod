@@ -1,6 +1,7 @@
 import { setupNumber } from "@/lib/planning-target";
-import { boundPlanWeeks } from "@/lib/planning-bounds";
-import { createHash } from "node:crypto";
+import { type BoundedPlanSession, boundPlanWeeks } from "@/lib/planning-bounds";
+import { DOUBLE_DAY_VERSION, doubleDayTiming } from "@/lib/double-day";
+import { createHash, randomUUID } from "node:crypto";
 import { assessPlanningSetup, planningGoal } from "@/lib/planning-setup";
 import { readPlanningSetup } from "@/lib/planning-setup-store";
 import { profileRevision } from "@/lib/profile-service";
@@ -64,6 +65,7 @@ export async function POST(req: Request) {
     const readiness = assessPlanningSetup(profile, setupState.setup);
     if (!profile || !readiness.ready || !setupState.setup) return NextResponse.json({error: "Complete and review your setup before generating an individual plan.", ...readiness}, {status: 422});
     const setup = setupState.setup;
+    if(setup.doubleDay?.athleteAgreed && (actor.id!==user.id||setup.source!=="athlete_reported")) throw new ApiError("The athlete must review and confirm their own optional double-day plan.",403);
     const level = profile.experience;
 
     // Preferred training window: an explicit request wins, else the saved
@@ -168,13 +170,29 @@ export async function POST(req: Request) {
     if (race && race.getTime() - start.getTime() < 28 * 86400000) throw new ApiError("This short event horizon needs a reviewed preparation plan; automatic progression cannot promise the requested result.");
     // Preserve actual day placement, reducing rather than making up omitted work.
     const startWeekday = new Date(dateKey(start,user.timezone)+"T12:00Z").getUTCDay();
-    const {weeks: generated, weeklyBudget, recoveryPolicy} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday, level);
+    const pairSlot=setup.doubleDay ? (setup.doubleDay.weekday-startWeekday+7)%7 : 0;
+    const raceDays=[...allRaces.map(r=>dateKey(r.date,user.timezone)),...(race?[dateKey(race,user.timezone)]:[])];
+    const excludedDoubleWeeks=rawGenerated.flatMap((_,i)=>{
+      const candidateDay=Date.parse(addDaysKey(dateKey(start,user.timezone),i*7+pairSlot));
+      return raceDays.some(d=>Date.parse(d)-candidateDay>=0&&Date.parse(d)-candidateDay<=14*86400000)?[i]:[];
+    });
+    const {weeks: generated, weeklyBudget, recoveryPolicy} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday, level, excludedDoubleWeeks);
     if (!generated.some(week=>week.sessions.length)) throw new ApiError("The current template does not fit your available days/time. A coach should review the schedule; no sessions were assigned.", 422);
+    for(const [index,week] of generated.entries()) {
+      const pair=week.sessions.filter(s=>s.doubleDayRole);
+      if(pair.length) {
+        try{doubleDayTiming(addDaysKey(dateKey(start,user.timezone),index*7+pair[0].daySlot),user.timezone,pair.map(s=>({startTime:s.startTime!,durationMin:s.minutes})));}
+        catch(error){throw new ApiError((error as Error).message,422);}
+      }
+    }
+    const doubleDayAgreementRequired=generated.some(w=>w.sessions.some(s=>s.doubleDayRole));
     const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true}});
     const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated })).digest("hex");
     if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated, recoveryPolicy}, previewToken,
       planningBasis: setup.baselinePlanOptIn ? "baseline_only" : "baseline", targetReview: readiness.targetReview ?? [],
+      doubleDayAgreementRequired,
       warning: "Numeric targets remain aspirations: this plan is not optimized or promised to reach them. Future sessions are provisional and bounded by reported recent training. Existing prescriptions and completed activity will be preserved. A goal is not a guaranteed outcome; daily safety checks still apply."});
+    if(doubleDayAgreementRequired && (body.confirmDoubleDay!==true||actor.id!==user.id)) throw new ApiError("Review both sessions and times, then explicitly confirm the optional pairs as the athlete.",422);
     if (body.previewToken !== previewToken) throw new ApiError("Preview the current plan and confirm it before replacing future training.", 409);
 
     // Persist plan + plan days + planned workouts
@@ -186,6 +204,7 @@ export async function POST(req: Request) {
           tx.athleteProfile.findUnique({where:{userId:user.id}}),
           readPlanningSetup(user.id, tx),
         ]);
+        if(latestSetup.setup?.doubleDay?.athleteAgreed && (actor.id!==user.id||latestSetup.setup.source!=="athlete_reported")) throw new ApiError("Athlete agreement must be confirmed by the athlete.",403);
         if (profileRevision(latestProfile) !== profileRevision(profile) || latestSetup.revision !== setupState.revision) throw new ApiError("Your profile or setup changed. Review a new preview.", 409);
         const oldPlans = await tx.trainingPlan.findMany({
           where: { userId: user.id, status: "active" },
@@ -224,7 +243,7 @@ export async function POST(req: Request) {
                 // Group the week's sessions onto 7 day-slots; sessions sharing a slot
                 // (e.g. swim + recovery on Monday) join ONE PlanDay so dates never
                 // duplicate and "Day off" applies to the whole day.
-                const bySlot = new Map<number, PlanSession[]>();
+                const bySlot = new Map<number, BoundedPlanSession[]>();
                 week.sessions.forEach((s) => {
                   const slot = s.daySlot;
                   if (!bySlot.has(slot)) bySlot.set(slot, []);
@@ -239,6 +258,8 @@ export async function POST(req: Request) {
                       addDaysKey(dateKey(start, user.timezone), wi * 7 + slot),
                       user.timezone,
                     );
+                    const rows=slotSessions.map(s=>({...s,id:randomUUID()}));
+                    const pair=rows.filter(s=>s.doubleDayRole).map(s=>({id:s.id,sport:s.sport,type:s.type,intensity:s.zone,durationMin:s.minutes,startTime:s.startTime!}));
                     return {
                       date,
                       week: week.week,
@@ -249,10 +270,12 @@ export async function POST(req: Request) {
                       focus: slotSessions[0]?.sport ?? "recovery",
                       notes: slotSessions[0]?.description ?? "Planned rest: no compulsory workout. Optional recovery is offered separately when appropriate; this does not confirm completed rest.",
                       sessions: {
-                        create: slotSessions.map((s) => ({
+                        create: rows.map((s) => ({
+                          id:s.id,
                           userId: user.id,
                           date,
-                          startTime: sessionStartTime,
+                          startTime: s.startTime ?? sessionStartTime,
+                          ...(s.doubleDayRole && pair.length===2 ? {originalPlan:JSON.stringify({title:s.title,sport:s.sport,type:s.type,intensity:s.zone,durationMin:s.minutes,description:s.description,startTime:s.startTime,doubleDay:{version:DOUBLE_DAY_VERSION,setupRevision:setupState.revision,dateLocal:dateKey(date,user.timezone),purpose:setup.doubleDay!.purpose,role:s.doubleDayRole,pair}})} : {}),
                           sport: s.sport,
                           title: s.title,
                           type: s.type,
@@ -283,6 +306,7 @@ export async function POST(req: Request) {
             entityId: plan.id,
             after: JSON.stringify({
               name: plan.name,
+              doubleDayAgreement: doubleDayAgreementRequired ? {version:DOUBLE_DAY_VERSION,confirmedBy:actor.id,setupRevision:setupState.revision,previewToken} : null,
               weeks: weeksCount,
               startDate: start, setupRule: readiness.ruleId, setupRevision: setupState.revision, previewToken, weeklyBudgetMin: weeklyBudget, recoveryPolicy, previousPlanIds: currentPlans.map(p => p.id),
             }),

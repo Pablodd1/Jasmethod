@@ -1,3 +1,4 @@
+import { parseNutritionContext } from "./nutrition-context";
 import { ApiError } from "./access";
 import { parseDate } from "./dates";
 
@@ -62,7 +63,10 @@ const flags = [
 export function profilePatch(body: Record<string, unknown>, timezone: string) {
   const data: Record<string, any> = {};
   for (const [key, value] of Object.entries(body)) {
-    if (numeric[key]) {
+    if (key === "nutritionContext") {
+      try { const context = parseNutritionContext(value, new Date(), timezone); data.nutritionContext = context === null ? null : JSON.stringify(context); }
+      catch (error) { throw new ApiError((error as Error).message); }
+    } else if (numeric[key]) {
       if (value === null || value === "") {
         if (key === "weeklyHours")
           throw new ApiError("Weekly hours are required");

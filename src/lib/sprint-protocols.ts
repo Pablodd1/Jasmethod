@@ -53,9 +53,13 @@ const EVIDENCE_ORDER = [
 ];
 
 export function selectSprintProtocols(opts: SelectOpts = {}): SprintProtocol[] {
-  const minIdx = opts.minEvidence
-    ? EVIDENCE_ORDER.indexOf(opts.minEvidence)
+  const hasEvidenceFilter = opts.minEvidence !== undefined;
+  const minIdx = hasEvidenceFilter
+    ? EVIDENCE_ORDER.indexOf(opts.minEvidence!)
     : -1;
+  // An unrecognized requested tier must not silently disable the filter.
+  // Preserve unfiltered retrieval only when no evidence tier was requested.
+  if (hasEvidenceFilter && minIdx < 0) return [];
   return DB.protocols.filter((p) => {
     if (opts.domains?.length && !opts.domains.includes(p.domain)) return false;
     if (opts.event && !p.event.includes(opts.event)) return false;

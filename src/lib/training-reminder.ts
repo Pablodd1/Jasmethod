@@ -1,7 +1,6 @@
 import { prisma } from "./db";
 import { localDate, addDaysKey } from "./dates";
 import { effectivePrescription } from "./effective-prescription";
-import { buildFuelingPlan, postFuelPersonalized } from "./fueling";
 import { telegramPlan, gmailPlanHtml, calendarDescription, stepEndpointLabel, type PlanFormatSession } from "./plan-formats";
 import { renderDayPng, type GraphicStep } from "./workout-graphic";
 
@@ -32,13 +31,10 @@ export async function trainingReminder(user: { id: string; name: string; timezon
   for (const item of resolved) {
     if (!item || item.canonical.verdict !== "ready") continue;
     const { canonical: c, workout: w, prescription: p } = item;
-    const fuel = buildFuelingPlan({ durationMin: c.durationMin, intensity: p.intensity,
-      weightKg: user.profile?.weightKg, sweatRateMlH: user.profile?.sweatRateMlH,
-      sodiumMgPerL: user.profile?.sodiumMgPerL, gutTrained: user.profile?.gutTrained, verdict: p.verdict });
-    // A routine reminder never adds supplement advice or sensitive body data.
-    delete (fuel as { caffeineMg?: number }).caffeineMg;
-    const post = postFuelPersonalized({ durationMin: c.durationMin, intensity: p.intensity,
-      sport: c.sport, weightKg: user.profile?.weightKg });
+    const fuel = item.nutrition?.fuel ?? null;
+    const post = item.nutrition?.post ?? null;
+    // Formats expose summarized amounts/cautions only, never saved GI history
+    // or free-text measurement context. No supplement recommendation is added.
     const s: PlanFormatSession = { id: c.id, revision: c.revision, verdict: c.verdict,
       title: c.title, sport: c.sport, durationMin: c.durationMin, intensity: p.intensity,
       startTime: w.startTime, appUrl: `${base}/daily?sessionId=${encodeURIComponent(c.id)}`,

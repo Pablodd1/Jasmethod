@@ -1,5 +1,6 @@
 "use client";
 
+import { protocolEvidence, REVIEWED_CLAIMS } from "@/lib/reviewed-evidence";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "./auth";
@@ -26,6 +27,7 @@ export default function ProtocolWorkspace({
   const [message, setMessage] = useState("");
   const path = `/api/protocols${athleteId ? `?athleteId=${encodeURIComponent(athleteId)}` : ""}`;
   const protocol = TRAINING_PROTOCOLS.find((p) => p.id === protocolId)!;
+  const evidence = protocolEvidence(protocolId);
   const compatible = (data?.sessions || []).filter((s: any) =>
     protocol.sports.includes(s.sport),
   );
@@ -81,6 +83,7 @@ export default function ProtocolWorkspace({
       scope:
         "JMM starting prescriptions for healthy adults. Research-informed coaching rules; not individual medical care or a model fine-tuning dataset.",
       protocols: TRAINING_PROTOCOLS,
+      claims: REVIEWED_CLAIMS,
       rules: PROTOCOL_RULES,
       sources: PROTOCOL_SOURCES,
     };
@@ -218,9 +221,16 @@ export default function ProtocolWorkspace({
                 </summary>
                 <p className="text-xs text-slate-500 mt-3">
                   These are JMM starting templates for healthy adults, adapted
-                  from research and Galpin&apos;s teaching. The exact combined dose
+                  from research and Huberman/Galpin expert education. The exact combined dose
                   is a coaching choice, not a universally validated optimum.
                 </p>
+                <p className="text-xs text-slate-600 mt-2">{evidence.limitation}</p>
+                <ul className="mt-3 space-y-2 text-sm">
+                  {evidence.claims.map(claim => <li key={claim.id} className="border-l-2 border-slate-200 pl-3">
+                    <strong>{claim.classification.replaceAll("_", " ")}</strong>: {claim.claim}
+                    <p className="text-xs text-slate-600">Applies to: {claim.applicability} {claim.limitation}</p>
+                  </li>)}
+                </ul>
                 <ul className="mt-3 space-y-2 text-sm">
                   {protocol.sources.map((id) => (
                     <li key={id}>
@@ -254,7 +264,9 @@ export default function ProtocolWorkspace({
                 <p className="text-sm text-slate-600 mt-1">
                   Select the workout to replace. The preview fits complete sets
                   and recovery into its existing time budget. Logged results
-                  remain in history.
+                  remain in history. A weekly double day is optional and needs athlete agreement,
+                  practical time and recovery review. Configure an optional pair in athlete setup,
+                  then confirm both sessions in the plan preview. Two demanding sessions on one day remain held.
                 </p>
               </div>
               <label className="block text-sm font-medium">

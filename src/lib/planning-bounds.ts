@@ -1,6 +1,7 @@
+import { clockMinutes, doubleDayReadiness } from "./double-day";
 import type {GeneratedWeek,PlanSession} from "./science";
 import type {PlanningSetup} from "./planning-setup";
-export type BoundedPlanSession = PlanSession & {daySlot:number};
+export type BoundedPlanSession = PlanSession & {daySlot:number; startTime?:string; doubleDayRole?:"primary"|"secondary"; movedFromSlot?:number};
 /** Product planning defaults, not scientifically validated recovery thresholds.
  * Intermediate is stored as amateur. Advanced retains a conservative day off;
  * only an explicitly professional profile has no fixed minimum. */
@@ -12,7 +13,7 @@ export function levelRecoveryPolicy(level?: string | null) {
 /** Reduction-only pilot constraints. Preserve generator day order; unavailable
  * days are omitted, never made up or stacked onto an available day. These are
  * implementation limits for review, not a claimed validated coaching model. */
-export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, weeklyHours: number, startWeekday: number, level?: string | null) {
+export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, weeklyHours: number, startWeekday: number, level?: string | null, doubleDayExcludedWeeks: number[] = []) {
   const recoveryPolicy = levelRecoveryPolicy(level);
   const weeklyBudget = Math.min(weeklyHours*60, setup.baselineWeeklyMinutes ?? 0, (setup.maxSessionMinutes ?? 0)*setup.trainingDays.length);
   const hardAbsoluteDays: number[] = [];
@@ -24,6 +25,10 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, wee
       // completion. Optional recovery movement is offered separately on Today.
       .filter(session=>session.sport!=="recovery")
       .sort((a,b)=>a.daySlot-b.daySlot);
+    // One session per day by default; no unagreed template overlap.
+    const seenSlots=new Set<number>();
+    const singleCandidates=candidates.filter(s=>{if(seenSlots.has(s.daySlot))return false;seenSlots.add(s.daySlot);return true;});
+    candidates.splice(0,candidates.length,...singleCandidates);
     const trainingSlots = new Set(candidates.map(session=>session.daySlot));
     // Existing empty/unavailable slots already satisfy the rest minimum.
     // Preserve explicit race/test and quality-session purposes first. This
@@ -60,8 +65,34 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, wee
       dayTotals.set(session.daySlot,(dayTotals.get(session.daySlot)??0)+minutes);
       return {...session,minutes,description:`${session.description} Duration is bounded by your reported recent tolerated training and available time. Use the confirmed daily instructions. Omitted work is not made up.`};
     }).filter(session=>session.minutes>0);
+    let doubleDayNote="No optional double day selected; single-session scheduling retained.";
+    const preference=setup.doubleDay;
+    const consent=doubleDayReadiness(preference,setup.trainingDays);
+    if(preference) {
+      doubleDayNote=consent.reasons.join(" ");
+      if(consent.ready) {
+        const slot=(preference.weekday-startWeekday+7)%7;
+        const primary=sessions.find(s=>s.daySlot===slot);
+        const donors=sessions.filter(s=>s.daySlot!==slot && ['run','bike','swim','mobility'].includes(s.sport) && /^z[12]$/.test(s.zone) && !['race','test','speed','interval','threshold','plyo'].includes(s.type));
+        // Try another already-planned easy bout when the first does not fit;
+        // never shorten its dose or invent extra work merely to fill a quota.
+        const donor=donors.find(s=>primary && primary.minutes+s.minutes<=(setup.maxSessionMinutes??0) && clockMinutes(preference.firstStart)+primary.minutes<clockMinutes(preference.secondStart) && clockMinutes(preference.secondStart)+s.minutes<=1440) ?? donors[0];
+        if(doubleDayExcludedWeeks.includes(weekIndex) || /taper|race|test|freshness|sharpening|deload/i.test(week.theme) || sessions.some(s=>['race','test'].includes(s.type))) doubleDayNote="Optional pair omitted in this race/test/taper week; keep the single-session schedule.";
+        else if(!primary||!donor) doubleDayNote="No suitable existing priority/easy pair fits this weekday. No extra session was invented.";
+        else if(primary.minutes+donor.minutes>(setup.maxSessionMinutes??0)) doubleDayNote="The pair exceeds your daily time limit; the single-session schedule is retained.";
+        else if(clockMinutes(preference.firstStart)+primary.minutes>=clockMinutes(preference.secondStart)||clockMinutes(preference.secondStart)+donor.minutes>1440) doubleDayNote="The selected times do not leave separation or finish within the day. The single-session schedule is retained.";
+        else {
+          const from=donor.daySlot;
+          primary.startTime=preference.firstStart;primary.doubleDayRole="primary";
+          donor.movedFromSlot=from;donor.daySlot=slot;donor.startTime=preference.secondStart;donor.doubleDayRole="secondary";
+          donor.description += " Optional second session: report the first session and complete a new check-in before proceeding. Declining never creates catch-up work.";
+          doubleDayNote=`Optional pair scheduled: ${primary.title} at ${primary.startTime}, then ${donor.title} at ${donor.startTime}, moved from ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(startWeekday+from)%7]}. Purpose: ${preference.purpose}. No weekly minutes added; separation is logistical, not a guarantee of recovery.`;
+          sessions.sort((a,b)=>a.daySlot-b.daySlot||(a.startTime||'').localeCompare(b.startTime||''));
+        }
+      }
+    }
     const populatedSlots=new Set(sessions.map(session=>session.daySlot));
     const restDaySlots=Array.from({length:7},(_,slot)=>slot).filter(slot=>!populatedSlots.has(slot));
-    return {...week,sessions,restDaySlots,totalMinutes:sessions.reduce((sum,session)=>sum+session.minutes,0)};
+    return {...week,sessions,restDaySlots,doubleDayNote,totalMinutes:sessions.reduce((sum,session)=>sum+session.minutes,0)};
   })};
 }

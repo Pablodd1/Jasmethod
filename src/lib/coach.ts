@@ -48,7 +48,7 @@ const FALLBACK: Record<string, { green: string; amber: string; red: string; swap
     swap: 'Swap "{title}" for a 30-min Z1 spin + 15-min mobility flow.',
     trim: 'Run "{title}" but extend the warm-up 10 min and drop the final interval set if RPE climbs early.',
     full: 'Full plan for "{title}" — chase the quality.',
-    none: "No session loaded for today — a good day for an easy 40-min Z2 cross-train or total rest.",
+    none: "No session is prescribed for today. Review your plan with your coach before adding training; keep any planned rest day.",
   },
   es: {
     green: "Tus marcadores de recuperación se ven fuertes hoy. Es día de tomar la sesión clave con ganas — el trabajo de calidad se acumula cuando estás fresco.",
@@ -57,7 +57,7 @@ const FALLBACK: Record<string, { green: string; amber: string; red: string; swap
     swap: 'Cambia "{title}" por 30 min de Z1 + 15 min de movilidad.',
     trim: 'Haz "{title}" pero alarga el calentamiento 10 min y quita la última serie si el esfuerzo sube pronto.',
     full: 'Plan completo para "{title}" — busca la calidad.',
-    none: "Hoy no hay sesión cargada — buen día para 40 min suaves de Z2 o descanso total.",
+    none: "Hoy no hay una sesión prescrita. Revisa el plan con tu entrenador antes de añadir entrenamiento; respeta cualquier día de descanso planificado.",
   },
   ht: {
     green: "Marco rekiperasyon yo byen jodi a. Se yon jou pou pran séans kle a tout kouraj — travay kalite a kwanze lè ou fre.",
@@ -66,7 +66,7 @@ const FALLBACK: Record<string, { green: string; amber: string; red: string; swap
     swap: 'Chanje "{title}" pou 30 minit Z1 + 15 minit mobilite.',
     trim: 'Fè "{title}" men alonge chofa a 10 minit epi retire dènye seri a si efò a monte twò vit.',
     full: 'Plan konplè pou "{title}" — chache kalite a.',
-    none: "Pa gen séans jodi a — bon jou pou 40 minit Z2 fasil oswa repo total.",
+    none: "Pa gen séans preskri pou jodi a. Revize plan an ak antrenè ou anvan ou ajoute antrennman; respekte nenpòt jou repo ki planifye.",
   },
   fr: {
     green: "Tes marqueurs de récupération sont forts aujourd'hui. C'est le jour d'attaquer la séance clé — le travail de qualité se cumule quand tu es frais.",
@@ -75,7 +75,7 @@ const FALLBACK: Record<string, { green: string; amber: string; red: string; swap
     swap: 'Remplace "{title}" par 30 min de Z1 + 15 min de mobilité.',
     trim: "Fais \"{title}\" mais allonge l'échauffement de 10 min et retire la dernière série si l'effort monte trop tôt.",
     full: 'Plan complet pour "{title}" — va chercher la qualité.',
-    none: "Pas de séance aujourd'hui — bon jour pour 40 min de Z2 facile ou du repos complet.",
+    none: "Aucune séance n’est prescrite aujourd’hui. Vérifie le plan avec ton entraîneur avant d’ajouter un entraînement ; respecte tout jour de repos prévu.",
   },
   ru: {
     green: "Показатели восстановления сегодня сильные. День, чтобы взять ключевую тренировку с полной отдачей — качественная работа накапливается, когда вы свежи.",
@@ -84,7 +84,7 @@ const FALLBACK: Record<string, { green: string; amber: string; red: string; swap
     swap: "Замените «{title}» на 30 мин Z1 + 15 мин мобильности.",
     trim: "Выполните «{title}», но удлините разминку на 10 мин и уберите последний интервал, если нагрузка растёт слишком рано.",
     full: "Полный план на «{title}» — работайте над качеством.",
-    none: "На сегодня тренировки нет — хороший день для 40 мин лёгкого Z2 или полного отдыха.",
+    none: "На сегодня тренировка не назначена. Обсудите план с тренером, прежде чем добавлять нагрузку; соблюдайте запланированный день отдыха.",
   },
 };
 
@@ -96,6 +96,11 @@ export function fallbackBriefing(c: CoachContext): Briefing {
       const p = typeof assigned === "string" ? JSON.parse(assigned) : assigned;
       return { mode: "fallback", headline: `${String(p.verdict || "planned").toUpperCase()} · ${p.title}`, briefing: "Your saved prescription is the current training instruction. Complete today's check-in before starting.", adaptation: p.detail?.main || "Review the session in Today.", sources: p.sources || [] };
     } catch {}
+  }
+  // Readiness alone must never create a session on an unprescribed day.
+  if (!c.todaySession) {
+    const message = (FALLBACK[c.language || "en"] || FALLBACK.en).none;
+    return { mode: "fallback", headline: "CHECK PLAN", briefing: message, adaptation: message, sources: [] };
   }
   if (!c.readiness) return { mode: "fallback", headline: "CHECK IN", briefing: "Current recovery data is insufficient for a readiness judgment.", adaptation: c.todaySession ? `Review “${c.todaySession.title}” and complete today's check-in; the plan has not been increased.` : "No session is prescribed. Review your plan or take the planned rest day.", sources: [] };
   const L = FALLBACK[c.language || "en"] || FALLBACK.en;
@@ -180,6 +185,8 @@ function geminiBriefing(c: CoachContext): Promise<Briefing> {
 // Otherwise returns fallback immediately and kicks off background JASAI generation
 // that backfills the cache (so the next load shows the real model output).
 export function getCoachBriefing(userId: string, c: CoachContext): Briefing {
+  // A missing session is a local plan-review state, never a model request.
+  if (!c.todaySession) return fallbackBriefing(c);
   if (process.env.EXTERNAL_AI_ENABLED !== "true" || !c.externalAiEligible) return fallbackBriefing(c);
   const tk = todayKey() + createHash("sha256").update(JSON.stringify(c)).digest("hex");
   const hit = cache.get(userId);

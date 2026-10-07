@@ -1,3 +1,4 @@
+import { invalidateDoubleDay } from "./double-day";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -16,7 +17,7 @@ function fixture(change: (input: any) => void = () => {}) {
   class ApiError extends Error { constructor(message: string, public status = 400) { super(message); } }
   const tx = { $executeRaw: async () => 0, workout: { findFirst: async () => state.workout, update: async ({ data }: any) => { state.writes.push(data); return { ...workout, ...data }; } }, auditLog: { create: async (data: any) => state.audits.push(data) } };
   const deps: Record<string, any> = {
-    "@/lib/db": { prisma: { $transaction: async (fn: any) => fn(tx) } },
+    "@/lib/double-day": { invalidateDoubleDay }, "@/lib/db": { prisma: { $transaction: async (fn: any) => fn(tx) } },
     "@/lib/access": { ApiError, trainingAccess: async () => ({ actor: { id: "a" }, athlete: { id: "a", timezone: "UTC", profile: { intensityPct: 120 } } }), errorResponse: (e: any) => Response.json({ error: e.message }, { status: e.status || 500 }) },
     "@/lib/adaptive": { prescribeToday }, "@/lib/prescription": { baseWorkout },
     "@/lib/effective-prescription": { effectivePrescription: async () => state.resolved },
