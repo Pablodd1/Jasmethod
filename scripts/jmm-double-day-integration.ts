@@ -47,6 +47,10 @@ async function main(){
  const updated=await api('/api/profile');
  await api('/api/profile',{expectedRevision:updated.revision,expectedSetupRevision:updated.setupRevision,experience:'advanced',weeklyHours:8,setup:{...updated.setup,doubleDay:null}},'PUT');
  today=await api('/api/today');assert.equal(today.sessions.find((s:any)=>s.id===second.id).verdict,'blocked','revocation holds the optional second bout');
+ // Standalone manual prescriptions count too; absence of planDay cannot bypass load review.
+ const hard=[];
+ for(let i=0;i<2;i++)hard.push(await db.workout.create({data:{userId,date:day.start,sport:'bike',title:'Synthetic standalone demanding session',type:'interval',durationMin:20,intensity:'z5',planned:true,prescription:JSON.stringify({sport:'bike',title:'Hard fixture',type:'interval',intensity:'z5',verdict:'full',durationMin:20,steps:[{name:'Hard work',seconds:1200,zone:'z5',phase:'active',target:{type:'open'}}]})}}));
+ today=await api('/api/today');for(const w of hard){const shown=today.sessions.find((s:any)=>s.id===w.id);assert.equal(shown.verdict,'blocked');assert.match(shown.prescription.detail.main,/Two demanding/);}
  console.log('PASS optional-pair preview/confirmation, persistent IDs, first-session report, recheck, no premature FIT and consent revocation');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{if(userId)await db.user.delete({where:{id:userId}});await db.$disconnect();});

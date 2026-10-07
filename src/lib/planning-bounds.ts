@@ -73,7 +73,10 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, wee
       if(consent.ready) {
         const slot=(preference.weekday-startWeekday+7)%7;
         const primary=sessions.find(s=>s.daySlot===slot);
-        const donor=sessions.find(s=>s.daySlot!==slot && ['run','bike','swim','mobility'].includes(s.sport) && /^z[12]$/.test(s.zone) && !['race','test','speed','interval','threshold','plyo'].includes(s.type));
+        const donors=sessions.filter(s=>s.daySlot!==slot && ['run','bike','swim','mobility'].includes(s.sport) && /^z[12]$/.test(s.zone) && !['race','test','speed','interval','threshold','plyo'].includes(s.type));
+        // Try another already-planned easy bout when the first does not fit;
+        // never shorten its dose or invent extra work merely to fill a quota.
+        const donor=donors.find(s=>primary && primary.minutes+s.minutes<=(setup.maxSessionMinutes??0) && clockMinutes(preference.firstStart)+primary.minutes<clockMinutes(preference.secondStart) && clockMinutes(preference.secondStart)+s.minutes<=1440) ?? donors[0];
         if(doubleDayExcludedWeeks.includes(weekIndex) || /taper|race|test|freshness|sharpening|deload/i.test(week.theme) || sessions.some(s=>['race','test'].includes(s.type))) doubleDayNote="Optional pair omitted in this race/test/taper week; keep the single-session schedule.";
         else if(!primary||!donor) doubleDayNote="No suitable existing priority/easy pair fits this weekday. No extra session was invented.";
         else if(primary.minutes+donor.minutes>(setup.maxSessionMinutes??0)) doubleDayNote="The pair exceeds your daily time limit; the single-session schedule is retained.";

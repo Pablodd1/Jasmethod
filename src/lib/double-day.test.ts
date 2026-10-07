@@ -87,3 +87,12 @@ test('actual local-time checks reject nonexistent and overlapping DST pair times
  assert.throws(()=>doubleDayTiming('2026-03-08','America/New_York',[{startTime:'01:30',durationMin:45},{startTime:'03:00',durationMin:20}]),/overlaps/);
  assert.equal(doubleDayTiming('2026-10-07','UTC',[{startTime:'07:00',durationMin:40},{startTime:'15:00',durationMin:40}]).length,2);
 });
+
+test('an existing shorter easy donor is selected if the first eligible one exceeds the daily cap',()=>{
+ const sessions=[{...exercise(),minutes:100},{...exercise(),minutes:90},{...exercise(),minutes:30}];
+ const p={...preference,weekday:0};
+ const result=boundPlanWeeks([{...week,sessions}],{...setup,doubleDay:p,maxSessionMinutes:140},10,0,'pro').weeks[0];
+ const pair=result.sessions.filter(s=>s.doubleDayRole);
+ assert.equal(pair.length,2);assert.equal(pair[1].minutes,30);assert.equal(pair[1].movedFromSlot,2);
+ assert.equal(result.totalMinutes,220);
+});
