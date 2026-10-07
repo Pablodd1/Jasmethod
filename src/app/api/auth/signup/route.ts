@@ -5,6 +5,7 @@ import { sendEmail, welcomeEmail } from "@/lib/email";
 import { youthPolicy } from "@/lib/cycle";
 import { isAdminEmail } from "@/lib/admin";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
+import { assertPilotCapacity, PilotFullError } from "@/lib/pilot-limit";
 
 export async function POST(req: Request) {
   try {
@@ -47,16 +48,20 @@ export async function POST(req: Request) {
         { status: 403 },
       );
     }
-    const user = await prisma.user.create({
-      data: {
-        email: normalized,
-        passwordHash: hashPassword(String(password)),
-        name: String(name).trim(),
-        role: "athlete",
-        profile: { create: by ? { birthYear: by } : {} },
-        motivation: { create: {} },
-      },
-    });
+    const passwordHash = hashPassword(String(password));
+    const user = await prisma.$transaction(async tx => {
+      await assertPilotCapacity(tx);
+      return tx.user.create({
+        data: {
+          email: normalized,
+          passwordHash,
+          name: String(name).trim(),
+          role: "athlete",
+          profile: { create: by ? { birthYear: by } : {} },
+          motivation: { create: {} },
+        },
+      });
+    }, { isolationLevel: "ReadCommitted" });
     const token = await createSession(user.id);
     await setSessionCookie(token, req);
 
@@ -64,8 +69,10 @@ export async function POST(req: Request) {
     const { subject, html } = welcomeEmail(user.name);
     void sendEmail({ to: user.email, subject, html, userId: user.id });
 
-    return NextResponse.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    return NextResponse.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role, onboarded: user.onboarded } });
   } catch (e: any) {
+    if (e instanceof PilotFullError) return NextResponse.json({ error: e.message, code: e.code }, { status: 409 });
+    if (e?.code === "P2002") return NextResponse.json({ error: "An account with this email already exists. Sign in or recover access." }, { status: 409 });
     console.error("signup error:", e);
     const code = e?.code as string | undefined;
     const raw = e?.message ? String(e.message) : "";

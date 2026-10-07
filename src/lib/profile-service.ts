@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { prisma } from "./db";
 import { ApiError } from "./access";
 import { profilePatch } from "./profile-update";
+import { importedWeightSuggestions } from "./profile-import-review";
 
 export function profileRevision(profile: unknown) {
   return createHash("sha256").update(JSON.stringify(profile ?? null)).digest("hex");
@@ -13,10 +14,10 @@ export function profileRevision(profile: unknown) {
 
 export async function saveProfile(actorId: string, athlete: {id: string; timezone: string}, body: Record<string, unknown>, transaction?: Prisma.TransactionClient) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError("Invalid profile body");
-  const { expectedRevision, reason, setup: rawSetup, expectedSetupRevision, setupSection, ...fields } = body;
+  const { expectedRevision, reason, setup: rawSetup, expectedSetupRevision, setupSection, reviewedWeightObservationId, ...fields } = body;
   if (setupSection !== undefined && setupSection !== "travel") throw new ApiError("Invalid setup section");
   const travelOnly = setupSection === "travel";
-  if (travelOnly && (Object.keys(fields).length || !rawSetup || typeof rawSetup !== "object" || Array.isArray(rawSetup) || !Object.hasOwn(rawSetup, "travel"))) throw new ApiError("Travel updates require only travel context and revisions");
+  if (travelOnly && (reviewedWeightObservationId !== undefined || Object.keys(fields).length || !rawSetup || typeof rawSetup !== "object" || Array.isArray(rawSetup) || !Object.hasOwn(rawSetup, "travel"))) throw new ApiError("Travel updates require only travel context and revisions");
   let setup: PlanningSetup | undefined;
   let travel: ReturnType<typeof parseTravelContext> = null;
   try {
@@ -27,10 +28,12 @@ export async function saveProfile(actorId: string, athlete: {id: string; timezon
   if (setup?.profileConfirmed && (typeof fields.experience !== "string" || fields.experience === "" || fields.weeklyHours == null || fields.weeklyHours === "")) throw new ApiError("Select your actual experience and available weekly hours before confirming them");
   if (setup && actorId !== athlete.id) setup.source = "coach_set";
   const data = profilePatch(fields, athlete.timezone);
+  if (reviewedWeightObservationId !== undefined && (typeof reviewedWeightObservationId !== "string" || !reviewedWeightObservationId.trim() || reviewedWeightObservationId.length > 200 || typeof data.weightKg !== "number")) throw new ApiError("Select a valid imported weight and include its value");
   if (!Object.keys(data).length && !setup && !travelOnly) throw new ApiError("No profile changes supplied");
   try {
     const apply = async (tx: Prisma.TransactionClient) => {
       const before = await tx.athleteProfile.findUnique({where: {userId: athlete.id}});
+      if (before && reviewedWeightObservationId === undefined && Object.hasOwn(data, "weightKg") && data.weightKg === before?.weightKg) data.weightSource = before.weightSource;
       if (expectedRevision !== undefined && expectedRevision !== profileRevision(before))
         throw new ApiError("This profile changed while you were editing. Reload and review the latest values.", 409);
       if (setup || travelOnly) {
@@ -43,6 +46,15 @@ export async function saveProfile(actorId: string, athlete: {id: string; timezon
           setup = priorSetup.setup ? { ...priorSetup.setup, travel } : parsePlanningSetup({ travel }, new Date(), athlete.timezone, { allowPastTarget: true });
           if (!priorSetup.setup && actorId !== athlete.id) setup.source = "coach_set";
         }
+      }
+      if (reviewedWeightObservationId !== undefined) {
+        const observation = await tx.metricObservation.findFirst({where:{id:reviewedWeightObservationId as string,userId:athlete.id,metricType:"weight_kg"},select:{id:true,value:true,unit:true,source:true,observedAt:true,qualityFlag:true,measurementMethod:true}});
+        if (!observation) throw new ApiError("Imported weight is no longer available. Review your profile again.",409);
+        const connector = await tx.connector.findFirst({where:{userId:athlete.id,provider:observation.source,status:{in:["connected","error"]}},select:{provider:true}});
+        const suggestion = importedWeightSuggestions([observation],connector?[connector.provider]:[])[0];
+        if (!suggestion || suggestion.value !== data.weightKg) throw new ApiError("Imported weight changed or is not eligible. Review it again.",409);
+        if (observation.source === "strava" && actorId !== athlete.id) throw new ApiError("Only the athlete may adopt their Strava profile value",403);
+        data.weightSource = observation.source;
       }
       const merged = {...before, ...data};
       if (merged.maxHr && merged.lthr && merged.lthr > merged.maxHr) throw new ApiError("Threshold heart rate cannot exceed maximum heart rate");

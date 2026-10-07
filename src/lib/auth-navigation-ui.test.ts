@@ -6,6 +6,7 @@ import vm from "node:vm";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
+import { accountLanding } from "./account-landing";
 
 const requireModule = createRequire(import.meta.url);
 const athlete = { id: "fixture-athlete", name: "Fixture Athlete", email: "athlete@example.invalid", role: "athlete", language: "en" };
@@ -19,6 +20,7 @@ function loadComponent(file: string, options: { user?: typeof athlete | null; lo
   const fixtureModule = { exports: {} as Record<string, React.ComponentType<any>> };
   const session = { user: options.user ?? null, loading: options.loading ?? false, error: options.error ?? false, refresh: async () => {}, logout: async () => {} };
   const dependencies: Record<string, unknown> = {
+    "@/lib/account-landing": { accountLanding },
     "./auth": { useAuth: () => session },
     "next/navigation": { usePathname: () => options.pathname || "/today", useSearchParams: () => new URLSearchParams(options.query || "") },
     "next/link": { __esModule: true, default: ({ children, ...props }: any) => React.createElement("a", props, children) },

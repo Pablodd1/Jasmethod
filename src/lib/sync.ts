@@ -131,6 +131,8 @@ export async function syncUserConnectors(
             })
           )
             imported++;
+        const { importStravaProfileWeight } = await import("./profile-import-review");
+        await importStravaProfileWeight(userId, conn.id, conn.externalRef, access);
       } else if (conn.provider === "google_cal") {
         const start = dayBounds(user.timezone).start,
           end = new Date(start.getTime() + 14 * 86400000);

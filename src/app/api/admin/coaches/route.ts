@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, hashPassword } from "@/lib/auth";
 import { ApiError, errorResponse } from "@/lib/access";
 import { randomBytes } from "crypto";
+import { assertPilotCapacity, PilotFullError } from "@/lib/pilot-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -61,28 +62,34 @@ export async function POST(req: Request) {
       throw new ApiError("This email is reserved", 403);
     const exists = await prisma.user.findUnique({ where: { email: normalized } });
     if (exists) throw new ApiError("An account with this email already exists", 409);
-    const coach = await prisma.user.create({
-      data: {
-        email: normalized,
-        name: String(name).trim(),
-        passwordHash: hashPassword(String(tempPassword)),
-        role: "coach",
-        profile: { create: {} },
-        motivation: { create: {} },
-      },
-      select: { id: true, name: true, email: true, role: true },
-    });
-    await prisma.auditLog.create({
-      data: {
-        actorId: me.id,
-        subjectId: coach.id,
-        action: "admin.createCoach",
-        entityId: coach.id,
-        after: JSON.stringify({ email: coach.email, name: coach.name }),
-      },
-    });
+    const passwordHash = hashPassword(String(tempPassword));
+    const coach = await prisma.$transaction(async tx => {
+      await assertPilotCapacity(tx);
+      const created = await tx.user.create({
+        data: {
+          email: normalized,
+          name: String(name).trim(),
+          passwordHash,
+          role: "coach",
+          profile: { create: {} },
+          motivation: { create: {} },
+        },
+        select: { id: true, name: true, email: true, role: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: me.id,
+          subjectId: created.id,
+          action: "admin.createCoach",
+          entityId: created.id,
+          after: JSON.stringify({ email: created.email, name: created.name }),
+        },
+      });
+      return created;
+    }, { isolationLevel: "ReadCommitted" });
     return NextResponse.json({ ok: true, coach });
   } catch (e) {
+    if (e instanceof PilotFullError) return NextResponse.json({ error: e.message, code: e.code }, { status: 409 });
     return errorResponse(e);
   }
 }

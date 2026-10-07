@@ -250,7 +250,7 @@ export default function TrainingPage() {
           </p>
           {planningReadiness && !planningReadiness.ready && <div role="status" className="mb-4 border border-amber-300 rounded-lg p-3">
             <p>Individual planning is waiting for:</p><ul className="list-disc ml-5">{[...planningReadiness.missing, ...planningReadiness.review].map((reason:string)=><li key={reason}>{reason}</li>)}</ul>
-            <a className="underline" href="/onboard?redo=1">Review your setup and editable goals</a>
+            <a className="underline" href="/onboard?redo=1&advanced=1">Review your setup and editable goals</a>
           </div>}
           {planningReadiness?.ready && planningReadiness?.planningBasis === "baseline_only" && <p className="mb-4 text-sm">You explicitly chose baseline-only conservative planning. Your numeric target stays an aspiration; this plan is not optimized or promised to achieve it. Target-driven progression still requires coaching review.</p>}
           <form

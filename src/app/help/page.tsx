@@ -25,6 +25,7 @@ export default function HelpPage() {
     <main className="pub-container py-12 sm:py-16 max-w-2xl">
       <p className="kicker">Support</p>
       <h1 className="display-2xl mt-4">Help &amp; Support</h1>
+      <p className="mt-4"><a href="/help/pilot" className="underline font-semibold">Free pilot: onboarding, administrator controls, next steps and all links</a></p>
       <p className="lede mt-5">Account help, technical questions, and coaching conversations.</p>
       <p className="mt-4"><a href="/metrics" className="underline text-ocean-700">Understand JStress, J Base, J Recent and J Balance</a></p>
       <section className="card mt-8" aria-labelledby="account-help">

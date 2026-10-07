@@ -10,6 +10,7 @@ const providers = [
 type ProviderId = (typeof providers)[number]["id"];
 
 const errorMessages: Record<string, string> = {
+  pilot_full: "The free pilot has reached its 50-account limit. Existing users can still sign in, recover access and link Google. Contact support about joining.",
   not_configured: "This sign-in option isn't available yet. Please use another option or email and password.",
   cancelled: "Sign-in was cancelled. You can try again or choose another option.",
   invalid_state: "Your sign-in session expired or could not be verified. Please start again.",
