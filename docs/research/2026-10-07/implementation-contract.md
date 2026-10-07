@@ -1,5 +1,7 @@
 # JMM evidence to prescription contract
 
+> Historical specification, preserved from the pre-implementation review. For the currently implemented subset, runtime consumers, verification and remaining limits, see [IMPLEMENTATION.md](IMPLEMENTATION.md) and [draft PR32](https://github.com/Pablodd1/Jasmethod/pull/32). Statements below about unimplemented proposals and no remote writes describe that earlier baseline, not the current PR.
+
 Review date: 7 October 2026. Baseline: Pablodd1/Jasmethod main at d185170ba02eba7d5c50087252a06e28166e6ecb. This is an implementation proposal. Except for the separately supplied local sprint-filter and no-session coach patches, the rules below have not been implemented or activated.
 
 ## What an executable protocol must contain
