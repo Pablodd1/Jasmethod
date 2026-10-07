@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SocialSignIn } from "./social-sign-in";
 import { useAuth } from "./auth";
+import { accountLanding } from "@/lib/account-landing";
 
 interface AuthCardProps {
   /** initial mode */
@@ -70,7 +71,7 @@ function AuthCardContent({
       }
       // First-time signups enter the onboarding wizard; sign-ins go straight
       // to training (the wizard self-skips for onboarded users anyway).
-      window.location.href = mode === "signup" ? "/onboard" : linkMode || linkAfterLogin ? "/login?link=1" : redirectTo === "/onboard" ? "/today" : redirectTo;
+      window.location.href = mode === "signup" ? "/onboard" : linkMode || linkAfterLogin ? "/login?link=1" : accountLanding(data.user?.onboarded);
     } catch {
       setError("Network error — please try again.");
       setDetail("");
@@ -97,7 +98,7 @@ function AuthCardContent({
         <SocialSignIn intent="link" />
       </> : <Link href="/login?link=1" className="mt-5 block text-sm font-semibold underline">Link Google to this account</Link>}
       <div className="mt-5 flex flex-wrap gap-4 items-center">
-        <Link href="/today" className="btn-editorial">Continue to Today</Link>
+        <Link href={accountLanding(user.onboarded)} className="btn-editorial">{user.onboarded ? "Continue to Today" : "Continue athlete setup"}</Link>
         <button type="button" onClick={() => void logout()} className="text-sm underline">Sign out to use another account</button>
       </div>
     </div>
@@ -233,7 +234,7 @@ function AuthCardContent({
       </>}
 
       <p className="micro mt-5 text-center !normal-case !tracking-normal !text-[11px] !text-ink-400">
-        Free athlete account. No wearable required. See our <Link className="underline" href="/privacy">privacy policy</Link> for how your data is used.
+        Free pilot: 50 total accounts. No payment or wearable required. See our <Link className="underline" href="/privacy">privacy policy</Link> for how your data is used.
       </p>
       <p className="text-[10px] text-ink-400 text-center mt-3 leading-snug">
         {mode === "signup" ? (

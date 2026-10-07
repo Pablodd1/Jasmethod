@@ -66,6 +66,9 @@ jobs:
       - name: Database sync and reminder tests
         run: npm run test:sync
 
+      - name: Concurrent free-pilot account capacity
+        run: npx tsx scripts/pilot-limit-integration.ts
+
       - name: Production build
         run: npm run build
 

@@ -5,6 +5,7 @@ import { CoachingConversation } from "@/components/coaching-conversation";
 import { CoachConversation } from "@/components/daily-training/coach-conversation";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Watch } from "lucide-react";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { WorkoutSparkline } from "@/components/workout-sparkline";
@@ -17,6 +18,8 @@ import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
   const { user } = useAuth();
+  const router = useRouter();
+  useEffect(() => { if(user?.onboarded === false) router.replace("/onboard"); }, [user?.onboarded,router]);
   const es = user?.language === "es";
   const [stepsView, setStepsView] = useState<"list" | "cards">("list");
   useEffect(() => {
@@ -38,7 +41,7 @@ export default function TodayPage() {
     return () => window.removeEventListener("popstate", onHistory);
   }, []);
   const load = useCallback(async () => {
-    if (!user) return;
+    if (!user || user.onboarded === false) return;
     try {
       const r = await fetch("/api/today");
       if (!r.ok) throw Error("Could not load today's training");
@@ -124,6 +127,7 @@ export default function TodayPage() {
     } catch (cause) { setError((cause as Error).message); }
     finally { approving.current = false; setBusy(false); }
   }
+  if(user?.onboarded === false) return <ProtectedPage><p role="status">Opening connection-first athlete setup…</p></ProtectedPage>;
   return (
     <ProtectedPage>
       <div className="space-y-5 max-w-4xl mx-auto">
@@ -257,6 +261,8 @@ export default function TodayPage() {
             <h2 className="font-bold">
               {es ? "Sin sesiones programadas" : "No sessions planned"}
             </h2>
+            <p className="mt-2 text-sm">{es ? "Orientación general, no una sesión personalizada: registra cómo te sientes, revisa tu perfil y conversa con tu entrenador. No hemos asignado intensidad, volumen ni objetivos sin los datos necesarios." : "General guidance, not a personalized session: record how you feel, review your profile and talk with your coach. No intensity, volume or targets have been assigned without the necessary information."}</p>
+            <div className="flex flex-wrap gap-3 mt-3"><Link className="underline" href="/coach">{es ? "Conversar con J Koach" : "Talk with J Koach"}</Link><Link className="underline" href="/onboard?redo=1&advanced=1">{es ? "Preparar plan personalizado" : "Prepare personalized planning"}</Link><Link className="underline" href="/help/pilot">{es ? "Próximos pasos" : "Next steps"}</Link></div>
             <Link className="btn-primary mt-3" href="/training">
               {es ? "Crear plan" : "Create a plan"}
             </Link>

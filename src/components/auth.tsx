@@ -20,6 +20,7 @@ interface User {
   profile?: any;
   motivation?: any;
   firstRun?: boolean;
+  onboarded?: boolean;
 }
 
 interface AuthCtx {

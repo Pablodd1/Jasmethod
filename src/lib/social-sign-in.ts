@@ -7,6 +7,7 @@ import { createSession, getCurrentUser, hashPassword, hashToken, sessionCookieOn
 import { syncAdminRole } from "./admin";
 import { clientIp, rateLimit } from "./ratelimit";
 import { signInBase, signInConfig, type SignInProvider } from "./sign-in-config";
+import { assertPilotCapacity, lockPilotAccounts, PilotFullError } from "./pilot-limit";
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const random = () => randomBytes(32).toString("base64url");
@@ -145,6 +146,9 @@ export async function finishSignIn(req: Request, provider: SignInProvider) {
     catch { return failure(req, provider, "verification_failed"); }
     const mapping = { issuer: config.issuer, clientId: config.clientId, subject: identity.subject };
     const user = await prisma.$transaction(async db => {
+      // Recheck identity after the global enrollment lock: a simultaneous first
+      // login may already have created this same account while we were waiting.
+      await lockPilotAccounts(db);
       const account = await db.signInAccount.findUnique({ where: { issuer_clientId_subject: mapping }, include: { user: true } });
       if (account) {
         if (tx.linkUserId && account.userId !== tx.linkUserId) throw new SignInError("account_link_required");
@@ -159,12 +163,13 @@ export async function finishSignIn(req: Request, provider: SignInProvider) {
       if (!identity.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity.email)) throw new SignInError("email_required");
       const existing = await db.user.findUnique({ where: { email: identity.email } });
       if (existing) throw new SignInError("account_link_required");
+      await assertPilotCapacity(db);
       return db.user.create({ data: {
         email: identity.email, name: identity.name || identity.email.split("@")[0], role: "athlete",
         passwordHash: hashPassword(randomBytes(32).toString("hex")),
         profile: { create: {} }, motivation: { create: {} }, signInAccounts: { create: { ...mapping, provider } },
       } });
-    });
+    }, { isolationLevel: "ReadCommitted" });
     if (identity.email === user.email) await syncAdminRole(user);
     const session = await createSession(user.id);
     const response = NextResponse.redirect(`${base}${user.onboarded ? "/today" : "/onboard"}`, 303);
@@ -172,6 +177,6 @@ export async function finishSignIn(req: Request, provider: SignInProvider) {
     response.headers.set("Cache-Control", "no-store");
     return sessionCookieOnResponse(session, new Request(`${base}/`), response);
   } catch (error) {
-    return failure(req, provider, error instanceof SignInError ? error.message : "server_error");
+    return failure(req, provider, error instanceof PilotFullError ? "pilot_full" : error instanceof SignInError ? error.message : "server_error");
   }
 }

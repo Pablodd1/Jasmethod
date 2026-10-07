@@ -14,7 +14,7 @@ test("onboarding progresses through every visible stage, blocking failed saves",
  assert.equal(onboardingNext(S.done),S.done);
 });
 test("wizard has exactly one rendered panel per reachable step",()=>{
- const source=readFileSync("src/app/onboard/page.tsx","utf8");
+ const source=readFileSync("src/components/detailed-athlete-setup.tsx","utf8");
  const guards=[...source.matchAll(/step === ONBOARDING_STEP\.(\w+)/g)].map(x=>x[1]);
  assert.deepEqual(guards.sort(),Object.keys(S).sort());
 });

@@ -48,7 +48,7 @@ export function TargetProgressPanel({language="en"}:{language?:string}) {
   }
   const p=state?.progress,target=p?.target;
   return <section className="card space-y-4" aria-labelledby="target-progress-heading">
-    <div className="flex flex-wrap justify-between gap-2"><h2 id="target-progress-heading" className="font-display font-bold text-lg">{t("Target and reported progress", "Objetivo y progreso informado")}</h2><a className="underline" href="/onboard?redo=1">{t("Edit goal or planning choice", "Editar objetivo o elección del plan")}</a></div>
+    <div className="flex flex-wrap justify-between gap-2"><h2 id="target-progress-heading" className="font-display font-bold text-lg">{t("Target and reported progress", "Objetivo y progreso informado")}</h2><a className="underline" href="/onboard?redo=1&advanced=1">{t("Edit goal or planning choice", "Editar objetivo o elección del plan")}</a></div>
     {loading&&<p role="status">{t("Loading source evidence…", "Cargando evidencia…")}</p>}
     {error&&<p role="alert">{error} <button className="underline" type="button" disabled={saving||loading} onClick={()=>void load()}>{t("Reload and review", "Recargar y revisar")}</button></p>}
     {status&&<p role="status">{status}</p>}

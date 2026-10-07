@@ -22,6 +22,7 @@ function fixture() {
     if (name === "node:crypto") return { createHash };
     if (name === "./db") return { prisma: { $transaction: async (fn: any) => fn(tx) } };
     if (name === "./access") return { ApiError };
+    if (name === "./profile-import-review") return { importedWeightSuggestions: () => { throw Error("Travel updates must not adopt weights"); } };
     if (name === "./profile-update") return { profilePatch: (fields: Record<string, unknown>) => { assert.equal(Object.keys(fields).length, 0); return {}; } };
     throw Error(`Unexpected dependency ${name}`);
   } });

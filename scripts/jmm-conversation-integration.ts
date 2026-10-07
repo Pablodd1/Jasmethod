@@ -47,6 +47,24 @@ async function ask(a:Actor,message:string,extra:Record<string,unknown>={}) {retu
 function pending(result:any) {assert.ok(result.proposal?.id,"Expected a reviewable saved proposal");assert.ok(result.proposal.candidates?.length,"Expected explicit candidates");return result.proposal;}
 function confirmBody(p:any,candidates=p.candidates) {return {proposalId:p.id,expectedRevision:p.revision,candidates,idempotencyKey:randomUUID(),confirmed:true};}
 async function main() {
+  await scenario("Credential overview is administrator-only, preserves identities and revokes selected sessions",async()=>{
+    const admin=await actor("credential-admin"),athlete=await actor("credential-athlete"),other=await actor("credential-other");
+    await db.user.update({where:{id:admin.id},data:{role:"admin"}});
+    await request("/api/admin/accounts",undefined,{status:401});await request("/api/admin/accounts",athlete,{status:403});
+    const list=await json("/api/admin/accounts",admin);assert.equal(list.limit,50);assert.equal(list.total,await db.user.count());assert.ok(list.accounts.some((u:any)=>u.id===admin.id));assert.doesNotMatch(JSON.stringify(list),/passwordHash|tokenHash/);
+    await request("/api/admin/accounts",admin,{body:{action:"revoke_sessions",userId:athlete.id},status:400});
+    await request("/api/admin/accounts",admin,{body:{action:"revoke_sessions",userId:admin.id,confirmed:true},status:400});
+    const revoked=await json("/api/admin/accounts",admin,{body:{action:"revoke_sessions",userId:athlete.id,confirmed:true}});assert.equal(revoked.ok,true);
+    assert.equal((await json("/api/auth/me",athlete)).user,null);assert.equal((await json("/api/auth/me",other)).user.id,other.id);assert.equal((await db.user.findUniqueOrThrow({where:{id:athlete.id}})).role,"athlete");
+    assert.equal(await db.auditLog.count({where:{actorId:admin.id,subjectId:athlete.id,action:"account.sessions_revoked"}}),1);
+  });
+  await scenario("Password login distinguishes unfinished onboarding from completed setup",async()=>{
+    const a=await actor("credential-routing"),password=randomBytes(24).toString("hex");
+    await db.user.update({where:{id:a.id},data:{onboarded:false,passwordHash:bcrypt.hashSync(password,10)}});
+    assert.equal((await json("/api/auth/login",undefined,{body:{email:a.email,password}})).user.onboarded,false);
+    await json("/api/onboard",a,{body:{}});
+    assert.equal((await json("/api/auth/login",undefined,{body:{email:a.email,password}})).user.onboarded,true);
+  });
   await scenario("Optional onboarding finishes without a plan and imported observations remain owner-scoped",async()=>{
     await request("/api/onboard/import-review",undefined,{status:401});
     const a=await actor("onboarding-a"),b=await actor("onboarding-b");

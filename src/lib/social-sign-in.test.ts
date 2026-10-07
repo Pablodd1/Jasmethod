@@ -36,8 +36,9 @@ async function fixture(overrides: Record<string, string | undefined> = {}) {
   const config = load("src/lib/sign-in-config.ts", {}, { process: { env } });
   const keys = await rsa;
   const jar = new Map<string, string>();
-  const state: any = { transaction: null, account: null, existingEmail: null, owner: null, currentUser: null, linkSession: null, claims: {}, tokenFetches: [], sessions: [], creates: [], mappings: [], admins: [] };
+  const state: any = { transaction: null, account: null, existingEmail: null, owner: null, currentUser: null, linkSession: null, claims: {}, tokenFetches: [], sessions: [], creates: [], mappings: [], admins: [], totalUsers: 0, enrollmentLocks: 0 };
   const db: any = {
+    $executeRaw: async () => { state.enrollmentLocks++; return 1; },
     authSession: { findUnique: async () => state.linkSession },
     signInTransaction: {
       deleteMany: async ({ where }: any) => {
@@ -60,6 +61,7 @@ async function fixture(overrides: Record<string, string | undefined> = {}) {
       create: async ({ data }: any) => { state.mappings.push(data); return data; },
     },
     user: {
+      count: async () => state.totalUsers,
       findUnique: async ({ where }: any) => where.id ? state.owner : state.existingEmail,
       create: async ({ data }: any) => { state.creates.push(data); return { ...data, id: "new-user", onboarded: false }; },
     },
@@ -75,6 +77,7 @@ async function fixture(overrides: Record<string, string | undefined> = {}) {
     "./admin": { syncAdminRole: async (user: any) => state.admins.push(user.id) },
     "./ratelimit": { clientIp: () => "synthetic-ip", rateLimit: () => ({ ok: true }) },
     "./sign-in-config": config,
+    "./pilot-limit": load("src/lib/pilot-limit.ts", {}),
   }, { process: { env }, fetch: async (url: string, init: any) => {
     state.tokenFetches.push({ url, init });
     const c = config.signInConfig(state.provider);
@@ -114,6 +117,28 @@ test("social JWT verification enforces signature, issuer, audience, expiry, nonc
   for (const verified of [false, undefined, "false"]) {
     assert.equal((await f.handlerModule.verifySignInToken(await token({ email_verified: verified }), "google", "test-nonce")).email, null);
   }
+});
+
+test("full pilot blocks only new OAuth enrollment and preserves existing sign-in and linking", async () => {
+  const full = await fixture(); full.state.totalUsers = 50;
+  const started = await full.start();
+  const refused = await full.finish(started.state);
+  assert.match(refused.headers.get("location")!, /error=pilot_full/);
+  assert.equal(full.state.creates.length + full.state.sessions.length, 0);
+
+  const returning = await fixture(); returning.state.totalUsers = 50;
+  returning.state.account = { userId: "existing", user: { id: "existing", email: "old@example.invalid", onboarded: true } };
+  const again = await returning.start();
+  assert.equal((await returning.finish(again.state)).headers.get("location"), `${returning.env.APP_URL}/today`);
+  assert.deepEqual(returning.state.sessions, ["existing"]);
+  assert.equal(returning.state.creates.length, 0);
+
+  const linking = await fixture(); linking.state.totalUsers = 50;
+  linking.state.currentUser = linking.state.owner = { id: "owner", email: "owner@example.invalid", onboarded: true };
+  const link = await linking.start("google", true);
+  assert.equal((await linking.finish(link.state)).headers.get("location"), `${linking.env.APP_URL}/today`);
+  assert.equal(linking.state.mappings.length, 1);
+  assert.equal(linking.state.creates.length, 0);
 });
 
 test("social provider configuration requires credentials and a production canonical HTTPS origin", async () => {

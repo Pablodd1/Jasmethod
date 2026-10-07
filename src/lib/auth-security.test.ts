@@ -15,12 +15,28 @@ const revokedDigest = "0ead2060b65992dca4769af601a1b3a35ef38cfad2c2c465bb160ea76
 test("retired demo access and legacy sessions fail closed without production mutations", async (t) => {
   let reads = 0, writes = 0, cookieWrites = 0;
   let currentUser: any = null;
+  let transactionActive = false, enrollmentLocked = false;
   let cookieToken = "synthetic-cookie-token";
   const sessions = new Map<string, any>();
-  const prisma = {
+  const prisma: any = {
+    $transaction: async (work: (tx: any) => Promise<any>, options: { isolationLevel?: string }) => {
+      assert.equal(options.isolationLevel, "ReadCommitted");
+      const previousUser = currentUser;
+      transactionActive = true;
+      try { return await work(prisma); }
+      catch (error) { currentUser = previousUser; throw error; }
+      finally { transactionActive = false; enrollmentLocked = false; }
+    },
+    $executeRaw: async (sql: TemplateStringsArray) => {
+      assert.equal(transactionActive, true);
+      assert.match(sql.join(""), /pg_advisory_xact_lock\(1246571856, 1\)/);
+      enrollmentLocked = true;
+      return 1;
+    },
     user: {
+      count: async () => { assert.equal(enrollmentLocked, true); reads++; return currentUser ? 1 : 0; },
       findUnique: async () => { reads++; return currentUser; },
-      create: async ({ data }: any) => { writes++; currentUser = { id: "synthetic-new", ...data }; return currentUser; },
+      create: async ({ data }: any) => { assert.equal(enrollmentLocked, true); writes++; currentUser = { id: "synthetic-new", ...data }; return currentUser; },
       update: async () => { writes++; throw new Error("Unexpected role mutation"); },
     },
     authSession: {

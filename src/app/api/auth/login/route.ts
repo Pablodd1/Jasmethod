@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     user.role = await syncAdminRole(user);
     const token = await createSession(user.id);
     await setSessionCookie(token, req);
-    return NextResponse.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    return NextResponse.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role, onboarded: user.onboarded } });
   } catch (e: any) {
     console.error("login error:", e);
     return NextResponse.json({ error: "Login failed." }, { status: 500 });
