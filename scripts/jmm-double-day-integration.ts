@@ -1,5 +1,6 @@
 /** Synthetic localhost-only acceptance; no production or provider traffic. */
 import assert from 'node:assert/strict';
+import bcrypt from 'bcryptjs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { hashToken } from '../src/lib/auth';
@@ -15,7 +16,7 @@ const timezone=offset===0?'Etc/GMT':`Etc/GMT${offset>0?'+':''}${offset}`;
 const day=dayBounds(timezone);
 let userId='';
 async function main(){
- const user=await db.user.create({data:{name:'Synthetic double-day athlete',email:`double-${randomUUID()}@example.invalid`,passwordHash:'synthetic-no-login-password',timezone,onboarded:true,profile:{create:{birthYear:1990,goal:'cycle',experience:'advanced',weeklyHours:8}},reminder:{create:{emailEnabled:false,telegramEnabled:false}}}});userId=user.id;
+ const user=await db.user.create({data:{name:'Synthetic double-day athlete',email:`double-${randomUUID()}@example.invalid`,passwordHash:bcrypt.hashSync(randomBytes(32).toString('hex'),4),timezone,onboarded:true,profile:{create:{birthYear:1990,goal:'cycle',experience:'advanced',weeklyHours:8}},reminder:{create:{emailEnabled:false,telegramEnabled:false}}}});userId=user.id;
  const token=randomBytes(32).toString('hex');await db.authSession.create({data:{userId,tokenHash:hashToken(token),expiresAt:new Date(Date.now()+3600000)}});
  async function api(path:string,body?:unknown,method=body===undefined?'GET':'POST',expected=200){const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',cookie:`jmm_session=${token}`},...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:'manual'});const text=await r.text();assert.equal(r.status,expected,`${path}: ${text.slice(0,600)}`);try{return JSON.parse(text);}catch{return text;}}
  const current=await api('/api/profile');
@@ -33,7 +34,7 @@ async function main(){
  const first=sessions.find((w:any)=>JSON.parse(w.originalPlan).doubleDay.role==='primary');
  const second=sessions.find((w:any)=>JSON.parse(w.originalPlan).doubleDay.role==='secondary');
  assert.equal(JSON.parse(second.originalPlan).doubleDay.pair[0].id,first.id);
- const checkin={sleep:4,soreness:2,motivation:4,energy:4,stress:2,sick:false,newPain:false,urgentSymptoms:false,availableMin:180};
+ const checkin={sleep:4,soreness:2,motivation:4,energy:4,stress:2,sick:false,newPain:false,urgentSymptoms:false,availableMinutes:180};
  await api('/api/checkin',checkin);
  let today=await api('/api/today');
  assert.equal(today.sessions.find((s:any)=>s.id===first.id).verdict,'ready');
