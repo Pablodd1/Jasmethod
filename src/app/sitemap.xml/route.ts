@@ -14,6 +14,8 @@ export async function GET() {
     { loc: `${BASE}/metrics`, priority: "0.8" },
     { loc: `${BASE}/science/j-metrics`, priority: "0.8" },
     { loc: `${BASE}/how-it-works`, priority: "0.8" },
+    { loc: `${BASE}/race-prediction`, priority: "0.8" },
+    { loc: `${BASE}/personal-coaching`, priority: "0.8" },
     { loc: `${BASE}/privacy`, priority: "0.3" },
     { loc: `${BASE}/terms`, priority: "0.3" },
     { loc: `${BASE}/help`, priority: "0.5" },

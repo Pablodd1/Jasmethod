@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Globe } from "lucide-react";
 import { useAuth } from "./auth";
 import { LANGS, t, type Lang } from "@/lib/i18n";
@@ -39,6 +40,7 @@ export function PublicLanguageSelect({ compact }: { compact?: boolean }) {
 }
 
 export function SiteHeader() {
+  const pathname = usePathname();
   const { language } = useAuth();
   const { user } = useAuth();
   return (
@@ -51,11 +53,13 @@ export function SiteHeader() {
             JasMiamiMethod
           </span>
         </Link>
-        <nav className="flex items-center gap-4 md:gap-6">
+        <nav aria-label="Public navigation" className="flex flex-wrap items-center gap-x-4 gap-y-3 md:gap-x-6">
+          <Link href="/race-prediction" aria-current={pathname === "/race-prediction" ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">AdvanzedRacing</Link>
+          <Link href="/personal-coaching" aria-current={pathname === "/personal-coaching" ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">{language === "es" ? "Coaching diario" : "Daily coaching"}</Link>
           <Link href="/science" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors">
             {t(language, "pub.science")}
           </Link>
-          <Link href="/how-it-works" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors hidden sm:inline">
+          <Link href="/how-it-works" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors">
             {t(language, "pub.howItWorks")}
           </Link>
           {/* Logged-in athletes keep the app one tap away on every public page
@@ -99,7 +103,9 @@ export function SiteFooter() {
         <p className="micro">
           {t(language, "pub.footerBuilt")}
         </p>
-        <div className="flex gap-5 text-sm items-center">
+        <div className="flex flex-wrap gap-5 text-sm items-center">
+          <Link href="/race-prediction" className="text-ink-600 hover:text-ink-900">AdvanzedRacing</Link>
+          <Link href="/personal-coaching" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Coaching diario" : "Daily coaching"}</Link>
           <Link href="/science" className="text-ink-600 hover:text-ink-900">{t(language, "pub.science")}</Link>
           <Link href="/onboarding" className="text-ink-600 hover:text-ink-900">{t(language, "pub.onboarding")}</Link>
         </div>

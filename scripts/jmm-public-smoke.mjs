@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 const origin = new URL(process.env.SMOKE_BASE_URL || "http://127.0.0.1:3220");
 assert.ok(["http:", "https:"].includes(origin.protocol));
-const pages = ["/", "/login", "/forgot-password", "/how-it-works", "/science", "/science/race-fuel", "/protocols", "/metrics", "/privacy", "/terms", "/help", "/coach"];
+const pages = ["/", "/login", "/forgot-password", "/how-it-works", "/race-prediction", "/personal-coaching", "/science", "/science/race-fuel", "/protocols", "/metrics", "/privacy", "/terms", "/help", "/coach"];
 const privateApis = ["/api/assistant", "/api/today", "/api/profile"];
 let failed = 0;
 for (const path of [...pages, ...privateApis]) {
