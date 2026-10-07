@@ -271,11 +271,9 @@ export default function TrainingPage() {
                 <option value="half">Half Ironman (1.9k / 90k / 21.1k)</option>
                 <option value="full">Full Ironman (3.8k / 180k / 42.2k)</option>
                 <option value="hyrox">HYROX (8×1km + 8 stations)</option>
-                <option value="boxing">Boxing (fight camp)</option>
                 <option value="cycle">Cycling only</option>
                 <option value="run-only">Running only</option>
                 <option value="swim-only">Swimming only</option>
-                <option value="lifting">Lifting / Strength only</option>
               </select>
             </div>
             <div>

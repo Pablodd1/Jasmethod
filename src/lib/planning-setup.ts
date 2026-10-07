@@ -5,7 +5,7 @@ export type { TravelContext } from "./travel-context";
 // Source-labelled setup evidence. No wearable or maximal testing is required.
 export const PLANNING_SETUP_VERSION = "manual-setup-v1";
 export const planningGoal = (goal?: string | null) => ["5k","10k","half-marathon","marathon"].includes(goal || "") ? "run-only" : goal ?? null;
-export const PLANNABLE_GOALS = ["sprint", "olympic", "half", "full", "hyrox", "boxing", "track-sprint", "cycle", "run-only", "swim-only", "lifting"];
+export const PLANNABLE_GOALS = ["sprint", "olympic", "half", "full", "hyrox", "track-sprint", "cycle", "run-only", "swim-only"];
 export interface PlanningSetup {
   version: typeof PLANNING_SETUP_VERSION;
   source: "athlete_reported" | "coach_set";

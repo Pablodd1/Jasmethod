@@ -720,7 +720,7 @@ export default function TodayPage() {
                 <label>{es ? "Deporte realizado (opcional)" : "Actual sport (optional)"}
                   <select name="actualSport" className="input" defaultValue={session.actualSport || ""}>
                     <option value="">{es ? "Desconocido / sin informar" : "Unknown / not reported"}</option>
-                    {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing", "other"].map(s => <option key={s} value={s}>{s}</option>)}
+                    {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </label>
                 <textarea

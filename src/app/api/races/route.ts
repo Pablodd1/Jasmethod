@@ -28,6 +28,7 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const b = await req.json();
+    if (["boxing", "lifting"].includes(String(b?.distance || "").toLowerCase())) return NextResponse.json({ error: "Choose swimming, cycling, running, HYROX or triathlon." }, { status: 400 });
     if (!b.name || !b.date) return NextResponse.json({ error: "name and date required" }, { status: 400 });
     const f = (v: unknown) => (v === undefined || v === null || v === "" ? null : parseFloat(String(v)));
     // Auto-geocode the venue from the location text (Open-Meteo geocoding,

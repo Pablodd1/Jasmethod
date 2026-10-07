@@ -23,22 +23,22 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   alternates: { canonical: "/" },
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
-  title: "JasMiamiMethod — Science-Backed Coaching for Triathlon, Running, HYROX, Boxing & Track",
+  title: "JasMiamiMethod — Coaching for Swim, Bike, Run, HYROX & Triathlon",
   description:
-    "Personalized daily coaching for triathlon, running, cycling, HYROX, boxing and track sprinters — built on post-2000 human-performance research. Daily check-in, HRV recovery, sleep, fueling and hydration plans, blood panels, and periodized race plans. Works with or without wearables.",
+    "Personalized daily coaching for swimming, cycling, running, HYROX and triathlon — built on post-2000 human-performance research. Daily check-in, HRV recovery, sleep, fueling and hydration plans, blood panels, and periodized race plans. Works with or without wearables.",
   openGraph: {
     type: "website",
     url: SITE_URL,
     siteName: "JasMiamiMethod",
     title: "JasMiamiMethod — Training that reads your body, not your ego",
     description:
-      "Daily adaptive coaching for triathlon, running, HYROX, boxing and track. Science-backed, works with or without wearables.",
+      "Daily adaptive coaching for swimming, cycling, running, HYROX and triathlon. Science-backed, works with or without wearables.",
   },
   twitter: {
     card: "summary_large_image",
     title: "JasMiamiMethod — Data, not ego.",
     description:
-      "Daily adaptive coaching for triathlon, running, HYROX, boxing and track. Science-backed, works with or without wearables.",
+      "Daily adaptive coaching for swimming, cycling, running, HYROX and triathlon. Science-backed, works with or without wearables.",
   },
 };
 

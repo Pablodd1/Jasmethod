@@ -17,7 +17,6 @@ import { prisma } from "@/lib/db";
 import {
   generatePlan,
   generateHyroxPlan,
-  generateBoxingCamp,
   generateSingleSport,
   buildZoneTable,
   type ZoneTable,
@@ -109,24 +108,21 @@ export async function POST(req: Request) {
         "half",
         "full",
         "hyrox",
-        "boxing",
         "track-sprint",
         "cycle",
         "run-only",
         "swim-only",
-        "lifting",
       ].includes(dist) ||
       !Number.isFinite(weeksCount)
     )
       throw new ApiError("Invalid plan parameters");
     const isHyrox = dist === "hyrox";
-    const isBoxing = dist === "boxing";
+
     const isTrackSprint = dist === "track-sprint";
     const isSingleSport =
       dist === "cycle" ||
       dist === "swim-only" ||
-      dist === "run-only" ||
-      dist === "lifting";
+      dist === "run-only";
     const rawGenerated = isTrackSprint
       ? generateTrackSprint({ level, event: setup.trackEvent!, weeks: weeksCount, startDate: start })
       : isSingleSport
@@ -136,23 +132,14 @@ export async function POST(req: Request) {
               ? "bike"
               : dist === "swim-only"
                 ? "swim"
-                : dist === "run-only"
-                  ? "run"
-                  : "strength",
+                : "run",
           level,
           weeks: weeksCount,
           startDate: start,
           weeklyHours: profile.weeklyHours || undefined,
           hasRace: Boolean(race),
         })
-      : isBoxing
-        ? generateBoxingCamp({
-            level,
-            weeks: weeksCount,
-            startDate: start,
-            weeklyHours: profile.weeklyHours || undefined,
-          })
-        : isHyrox
+      : isHyrox
           ? generateHyroxPlan({
               level,
               weeks: weeksCount,

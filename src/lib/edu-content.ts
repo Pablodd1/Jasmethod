@@ -36,7 +36,7 @@ export const ONBOARDING_STEPS: { icon: string; title: string; text: string }[] =
   { icon: "⌚", title: "A watch is optional", text: "Use supported optional providers or import completed activity files. The daily plan and manual feedback need no watch. FIT file transfer does not confirm watch receipt." },
   { icon: "📋", title: "Your prescription appears", text: "The coach reads your check-in + biometrics + calendar and writes TODAY'S exact session: warm-up, main set, heart-rate or pace targets from YOUR tests, cooldown. You don't think — you execute." },
   { icon: "📈", title: "Every 6 weeks: test & re-anchor", text: "The plan runs in 6-week cycles. Test weeks schedule your baselines (time trial, FTP, HR thresholds). Completing a test re-anchors your zones — the next cycle gets harder as you get fitter, or backs off if life gets busy." },
-  { icon: "🎯", title: "Your goal sets the structure", text: "Triathlon, HYROX, boxing camp, cycling, swimming, or just lifting — the cycle adapts to the goal. Racing adds a taper; non-racers get a steady 6-week progression wave." },
+  { icon: "🎯", title: "Your goal sets the structure", text: "Swimming, cycling, running, HYROX and triathlon, with supporting strength training — the cycle adapts to the goal. Racing adds a taper; non-racers get a steady 6-week progression wave." },
   { icon: "🔥", title: "Intensity grows with you", text: "The app watches your heart rate, duration and weights. Complete weeks and load rises ~5-8%; fail check-ins and it drops before you break. Progressive overload without the guesswork." },
 ];
 
