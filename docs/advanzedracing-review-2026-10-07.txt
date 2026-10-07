@@ -1,0 +1,29 @@
+AdvanzedRacing audit and release roadmap - 7 October 2026
+
+Current source: main d3781a9; forecast-availability.ts disables personalized numeric forecasts. HYROX has a separate scenario planner. No measured JMM accuracy is established.
+
+Current dormant engine
+Running: threshold pace, Riegel exponent default 1.06, environmental/terrain and load adjustments. A threshold is not a documented recent race performance; the model must distinguish them.
+Swimming: pace times distance with open-water/current/wetsuit/drafting multipliers. Stroke, pool geometry and athlete-specific transfer need validation.
+Cycling: FTP-based sustainable fraction and resistance/drag model. CdA and bike mass may be generic defaults; aggregate climb is not a complete course profile.
+Triathlon: constituent legs plus transitions and a heuristic bike-to-run penalty. Validate by event distance and drafting rules.
+HYROX: legacy combined heuristics plus the separate user-entered split scenario. No validated personalized event predictor.
+Weather scenarios are not confidence intervals. HRV and recorded load cannot be sold as validated percentage improvements in race time.
+
+Proposed sequence - NOT implemented by this public-page change
+1. Version an athlete evidence snapshot: observed date, sport, event, duration, conditions, source, permission, quality, and missingness for every anchor. Distinguish threshold/test/race/training and power-device calibration. Retain unknowns. No automatic inference from device ownership.
+2. Version race context: exact distance, course geometry/quality, elevation/surface, start, weather issue time/horizon, format/division/rules; transitions and HYROX station loads. No invented long-range weather precision.
+3. Benchmark separate sport/distance models against simple baselines using only permitted, pre-race information. Do not train or forward restricted provider data without a reviewed legal/data-use basis.
+4. Run shadow predictions saved before each event; freeze model/input version. Evaluate later against actual outcomes without using the same race to both fit and score. Separate athletes/events and time periods; prevent leakage. Race-time durability discovered after the finish is not a prospective predictor.
+5. Report MAE minutes, median/mean percentage error, signed bias, interval coverage and width, sample size and uncertainty by sport, distance, sex, age, level and conditions where sample sizes support interpretation. Publish gaps and out-of-domain cases; no universal 95%-accurate label.
+6. Predefine acceptable errors for intended decisions, then approve each sport/distance separately. Begin with the best-supported narrow scope. Fifty pilot accounts cannot establish general accuracy across five sports and all populations.
+7. Integrate validated forecasts with a shared canonical session/nutrition context, coach review and explainable scenarios. Keep AI explanation separate from reproducible numerical calculation. Distinguish target, scenario, forecast and completed result in UI and exports.
+
+Research reviewed (supporting principles, not JMM validation)
+Running durability: https://pubmed.ncbi.nlm.nih.gov/35511416/
+Swimming test reliability: https://pmc.ncbi.nlm.nih.gov/articles/PMC10875687/
+Cycling physics: https://pubmed.ncbi.nlm.nih.gov/28121252/
+Drafted triathlon specificity: https://pubmed.ncbi.nlm.nih.gov/12904633/
+HYROX simulated competition, n=11: https://pubmed.ncbi.nlm.nih.gov/40230601/
+
+Deliverable in this change: bilingual public pages /race-prediction and /personal-coaching with navigation, realistic scope, research links and this roadmap. No numerical forecasting enabled; no migration, model calibration or athlete data changes.

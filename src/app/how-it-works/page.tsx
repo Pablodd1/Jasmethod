@@ -48,6 +48,7 @@ export default function HowItWorksPage() {
       <p className="kicker">Getting started</p>
       <h1 className="display-2xl mt-4">How to use JMM</h1>
       <p className="lede mt-5">From your first sign-in to a daily coaching routine, with or without a wearable.</p>
+      <div className="grid sm:grid-cols-2 gap-4 mt-8"><Link className="card block" href="/personal-coaching"><h2 className="font-bold">Meet your daily coach</h2><p className="mt-2">How your profile, check-in, reviewed session and actual results work together.</p></Link><Link className="card block" href="/race-prediction"><h2 className="font-bold">Explore AdvanzedRacing</h2><p className="mt-2">Race preparation, HYROX scenarios and the current limits of personalized prediction.</p></Link></div>
       <nav aria-label="Guide sections" className="card mt-8 flex flex-wrap gap-4 text-sm">
         {steps.map(step => <a key={step.id} href={`#${step.id}`} className="underline text-ocean-700">{step.title}</a>)}
         <a href="#coach-admin" className="underline text-ocean-700">For coaches and administrators</a>
