@@ -21,8 +21,8 @@ export type CoachImageInput = { mimeType: "image/png" | "image/jpeg" | "image/we
 export interface ConversationInput { message: string; source: "text" | "voice"; externalConsent: boolean; textProviderConsent?: "gemini"; imageConsent: boolean; imageProviderConsent?: "openai"; image?: CoachImageInput }
 export interface CandidateContext { localToday: string; sessionId?: string; sessionDate?: string; source?: "text" | "voice" | "image" }
 export const COACH_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
-export const COACH_GOALS = ["sprint", "olympic", "half", "full", "hyrox", "boxing", "run-only", "track-sprint", "cycle", "swim-only", "lifting", "5k", "10k", "half-marathon", "marathon"] as const;
-export const COACH_SPORTS = ["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing", "other"] as const;
+export const COACH_GOALS = ["sprint", "olympic", "half", "full", "hyrox", "run-only", "track-sprint", "cycle", "swim-only", "5k", "10k", "half-marathon", "marathon"] as const;
+export const COACH_SPORTS = ["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"] as const;
 const imageTypes = ["image/png", "image/jpeg", "image/webp"] as const;
 const normalize = (s: string) => s.replace(/(^|\s|[¿¡])sí(?=\s|[,.;!?]|$)/gi, "$1yes").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’‘]/g, "'");
 function record(x: unknown): x is Record<string, unknown> { return !!x && typeof x === "object" && !Array.isArray(x) && [Object.prototype, null].includes(Object.getPrototypeOf(x)); }
@@ -153,7 +153,7 @@ export function extractLocalCandidates(message: string, context: CandidateContex
   const uncertainNumber = /\b(?:less than|more than|up to|at least|around|about|approximately|menos de|mas de|hasta|aproximadamente)\s+\d|\b\d+(?:[.,]\d+)?\s*(?:-|to|a|or|o)\s*\d+\s*(?:hours?|horas?|kg|lb)/.test(text);
   // A target is a preference, never a pace, power, HR or physiological reference.
   if (!historicalProfile && /\b(?:my (?:goal|target)\s*(?:is(?!n't|\s+(?:not|no longer))\b|:)|i am training for|i'm training for|i want to (?:run|finish|complete)|mi (?:objetivo|meta)\s*(?:es\b(?!\s+no)|:)|entreno para|quiero (?:correr|completar|terminar))/.test(text)) {
-    const goals: [string, RegExp][] = [["half-marathon", /\b(half[ -]marathon|media maraton|medio maraton)\b/], ["marathon", /\b(marathon|maraton)\b/], ["10k", /\b10\s?k(?:m)?\b/], ["5k", /\b5\s?k(?:m)?\b/], ["olympic", /\b(olympic|olimpico|olimpica)\b/], ["sprint", /\bsprint triathlon\b|\btriatlon sprint\b/], ["half", /\b(70\.3|half ironman)\b/], ["full", /\b(full ironman|ironman completo|140\.6)\b/], ["hyrox", /\bhyrox\b/], ["boxing", /\b(boxing|boxeo)\b/]];
+    const goals: [string, RegExp][] = [["half-marathon", /\b(half[ -]marathon|media maraton|medio maraton)\b/], ["marathon", /\b(marathon|maraton)\b/], ["10k", /\b10\s?k(?:m)?\b/], ["5k", /\b5\s?k(?:m)?\b/], ["olympic", /\b(olympic|olimpico|olimpica)\b/], ["sprint", /\bsprint triathlon\b|\btriatlon sprint\b/], ["half", /\b(70\.3|half ironman)\b/], ["full", /\b(full ironman|ironman completo|140\.6)\b/], ["hyrox", /\bhyrox\b/]];
     const found = goals.filter(([, pattern]) => pattern.test(text)).map(([goal]) => goal).filter(g => g !== "marathon" || !/\b(half[ -]marathon|media maraton|medio maraton)\b/.test(text));
     if (found.length === 1) add("profile", "goal", found[0], null, message);
   }

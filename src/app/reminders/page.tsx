@@ -33,7 +33,7 @@ function ReplyEditor({ prompt, es, disabled, onSubmit }: { prompt: Prompt; es: b
     </div>
     <p className="text-sm">1 {label("very easy", "muy fácil")}, 3 {label("easy", "fácil")}, 5 {label("moderate", "moderado")}, 7 {label("hard", "duro")}, 9 {label("very hard", "muy duro")}, 10 {label("maximal", "máximo")}.</p>
     <label className="block">{label("Actual sport", "Deporte real")}<select className="input" value={answer.sport ?? ""} onChange={e => setAnswer({ ...answer, sport: e.target.value || null })}>
-      <option value="">{label("Unknown", "Desconocido")}</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing", "other"].map(s => <option key={s}>{s}</option>)}
+      <option value="">{label("Unknown", "Desconocido")}</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s}>{s}</option>)}
     </select></label>
     {prompt.questions.filter(q => q.optional).map(q => <label key={q.key} className="flex gap-2"><input type="checkbox" checked={answer.declinedOptional.includes(q.key)} onChange={e => setAnswer({ ...answer, declinedOptional: e.target.checked ? [...answer.declinedOptional, q.key] : answer.declinedOptional.filter(k => k !== q.key) })}/>{label("Do not ask again for optional", "No volver a pedir este dato opcional")}: {q.key}</label>)}
     <p className="text-sm">{label("Symptoms and safety answers stay in the private check-in. Confirmed actuals require a new check-in before further training.", "Los síntomas y las respuestas de seguridad se registran en el chequeo privado. Después de confirmar, actualiza el chequeo antes de seguir entrenando.")}</p>

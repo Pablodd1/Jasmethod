@@ -8,7 +8,8 @@ const complete = () => parsePlanningSetup({adultConfirmed:true,profileConfirmed:
 test("missing setup never invents Olympic goal, beginner experience, horizon or race",()=>{
  const input=starterPlanInputs(null); assert.equal(input.distance,null);assert.equal(input.level,null);assert.equal(input.weeks,null);assert.equal(input.hasRace,false);assert.equal(input.ready,false);
  assert.equal(starterPlanInputs({goal:"unrecognized"}).distance,null);
- assert.equal(starterPlanInputs({goal:"boxing"}).distance,"boxing");
+ assert.equal(starterPlanInputs({goal:"boxing"}).distance,null);
+ assert.equal(starterPlanInputs({goal:"lifting"}).distance,null);
 });
 test("adult manual setup with no devices, weight, HRV or benchmarks can become ready",()=>{
  const setup=complete();assert.deepEqual(assessPlanningSetup(profile,setup,now),{ready:true,missing:[],review:[],ruleId:"manual-setup-v1"});

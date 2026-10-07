@@ -18,7 +18,6 @@ import {
 
 const LANGS_DISCIPLINES = [
   { v: "track-sprint", label: "Track Sprint (100–400m)" },
-  { v: "boxing", label: "Boxing" },
   { v: "sprint", label: "Sprint triathlon" },
   { v: "olympic", label: "Olympic triathlon" },
   { v: "half", label: "Half-distance" },
@@ -27,10 +26,9 @@ const LANGS_DISCIPLINES = [
   { v: "swim-only", label: "Swim only" },
   { v: "cycle", label: "Cycling" },
   { v: "hyrox", label: "HYROX" },
-  { v: "lifting", label: "Lifting / strength" },
 ];
 
-const SPORTS = ["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "boxing", "hyrox"];
+const SPORTS = ["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox"];
 const TYPES = ["interval", "tempo", "threshold", "endurance", "recovery", "strength", "skill", "race", "test", "speed", "plyo", "volume"];
 const ZONES = ["z1", "z2", "z3", "z4", "z5", "z6", "z7"];
 

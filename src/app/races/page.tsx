@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 
-const DISTANCES = ["sprint", "olympic", "half", "full", "5k", "10k", "half-marathon", "marathon", "40k", "100k", "180k", "gran-fondo", "750m", "1500m", "1900m", "3800m", "hyrox", "boxing"];
+const DISTANCES = ["sprint", "olympic", "half", "full", "5k", "10k", "half-marathon", "marathon", "40k", "100k", "180k", "gran-fondo", "750m", "1500m", "1900m", "3800m", "hyrox"];
 const TERRAINS = ["flat", "rolling", "hilly", "mountain", "trail"];
 const VENUES = ["pool", "lake", "ocean", "river"];
 const FEDERATIONS = ["USAT", "WORLD_TRIATHLON", "BRITISH_TRIATHLON", "IRONMAN"];

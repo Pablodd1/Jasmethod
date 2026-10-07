@@ -296,11 +296,9 @@ export default function SettingsPage() {
                     <option value="half">Half Ironman</option>
                     <option value="full">Full Ironman</option>
                     <option value="hyrox">HYROX</option>
-                    <option value="boxing">Boxing</option>
                     <option value="cycle">Cycling (no triathlon)</option>
                     <option value="run-only">Running only</option>
                     <option value="swim-only">Swimming only</option>
-                    <option value="lifting">Lifting / Strength only</option>
                   </select>
                 </div>
                 <div>
@@ -577,7 +575,7 @@ export default function SettingsPage() {
               <p className="text-[11px] text-slate-400 mt-3">
                 Zones follow the MyProCoach 5-zone model anchored on max HR
                 (run). Bike = run − 6 bpm. Swim uses CSS/threshold pace. Gym,
-                boxing &amp; HYROX use the same zones guided by RPE. Run the
+                Strength &amp; HYROX use the same zones guided by RPE. Run the
                 tests in{" "}
                 <a href="/labs" className="text-ocean-600 underline">
                   Labs &amp; Tests

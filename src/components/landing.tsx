@@ -13,7 +13,6 @@ import {
   Medal,
   Moon,
   Pill,
-  Swords,
   Waves,
   Watch,
   Zap,
@@ -79,14 +78,13 @@ const FUNCTIONS: { icon: typeof Activity; titleKey: string; textKey: string }[] 
   { icon: Watch, titleKey: "pub.fn7.title", textKey: "pub.fn7.text" },
 ];
 
-// The six engines we coach — triathlon, HYROX, swim, bike, run, boxing.
+// Five primary sports; strength remains supporting training.
 const SPORTS: { icon: typeof Activity; nameKey: string; descKey: string }[] = [
   { icon: Medal, nameKey: "pub.sport.triathlon.name", descKey: "pub.sport.triathlon.desc" },
   { icon: Layers, nameKey: "pub.sport.hyrox.name", descKey: "pub.sport.hyrox.desc" },
   { icon: Waves, nameKey: "pub.sport.swim.name", descKey: "pub.sport.swim.desc" },
   { icon: Bike, nameKey: "pub.sport.bike.name", descKey: "pub.sport.bike.desc" },
   { icon: Zap, nameKey: "pub.sport.run.name", descKey: "pub.sport.run.desc" },
-  { icon: Swords, nameKey: "pub.sport.boxing.name", descKey: "pub.sport.boxing.desc" },
 ];
 
 const STEPS: { n: string; titleKey: string; textKey: string }[] = [

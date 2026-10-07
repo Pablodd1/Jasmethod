@@ -37,8 +37,6 @@ const GOALS = [
   "cycle",
   "swim-only",
   "hyrox",
-  "boxing",
-  "lifting",
 ];
 const equipment = [
   "hasHrm",
@@ -409,7 +407,6 @@ export default function AthletePage() {
                             "mobility",
                             "recovery",
                             "hyrox",
-                            "boxing",
                             "brick",
                             "other",
                           ].map((s) => (
