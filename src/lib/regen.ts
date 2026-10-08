@@ -1,12 +1,7 @@
 // JasMiamiMethod — Workout regeneration engine.
-// Two modes, both preserving the SESSION GOAL (zone, duration, weekly intent):
-//  - variant:   same sport, same intensity, different structure (steps, rep
-//               lengths, set shapes) picked deterministically by regen seed.
-//  - alternate: different modality with the same training effect, chosen by
-//               the session's goal — aerobic days swap run/bike/swim freely;
-//               speed/strength days become plyometrics or weights (specific
-//               to the athlete's sport); recovery stays recovery.
-// All alternatives respect the mandatory plyometrics rule and sport specificity.
+// Variants retain the intended sport and allocation. Alternate modalities
+// provide another conditioning option, not an equivalent physiological stimulus.
+// Generic alternatives cannot establish eligibility for explosive lifts or jumps.
 
 export interface RegenSession {
   sport: string;
@@ -101,9 +96,9 @@ export function variantFor(sport: string, type: string, zone: string, minutes: n
 
   if (sport === "strength" || type === "strength") {
     return [
-      { title: "Strength: Compound", description: `Main: squat, deadlift/hinge, press, row — 3-5×5-8 heavy + plyometric primer (box jumps 3×5). Leave 2 reps in reserve.`, },
-      { title: "Strength: Circuit", description: `Main: 4 rounds — 8 weighted step-ups/leg, 8 pull-ups/rows, 12 push-ups, 30s plank, 8 med-ball slams. Density format, same total work.`, },
-      { title: "Strength: Unilateral + Core", description: `Main: 3×8/leg Bulgarian split squat + single-leg RDL, 3×10 single-arm press, Pallof 3×10/side, hanging knee raises 3×10 — fixes sides, protects spine.`, },
+      { title: "Strength: Compound", description: `Main: familiar coach-reviewed squat, hinge, press and pull movements within the allocated time. Select tolerable loads, repetitions and full recovery from movement technique and training history; no jumps are assigned automatically.`, },
+      { title: "Strength: Circuit", description: `Main: familiar coach-reviewed squat, pull, press and trunk movements within the allocated time. Adjust circuit repetitions and rest to current technique and tolerance; no explosive movements or fixed loaded dose is assumed.`, },
+      { title: "Strength: Unilateral + Core", description: `Main: familiar coach-reviewed single-leg, hinge, press and trunk movements within the allocated time. Choose tolerable loads, repetitions and recovery from movement technique and training history; this does not guarantee correction of asymmetry or injury prevention.`, },
     ][s];
   }
 
@@ -123,12 +118,9 @@ export function variantFor(sport: string, type: string, zone: string, minutes: n
   ][s];
 }
 
-// ---- CROSS-MODALITY ALTERNATES (same training effect, different sport) ----
-// Aerobic days: rotate run/bike/swim (specificity preserved per the athlete's
-// sport profile; the weekly plan re-balances). Speed/strength days: everyone
-// earns plyometrics or weights — runners and cyclists get run/ride-specific
-// plyo, swimmers get upper-body-dominant plyo + pull strength, HYROX athletes
-// get station-specific power. Recovery stays recovery.
+// ---- CROSS-MODALITY ALTERNATES ----
+// Recovery remains recovery. Other modalities change the training stimulus;
+// specific movement and experience review is required before optional power work.
 export function alternateFor(sport: string, type: string, zone: string, minutes: number, athleteGoal: string): RegenSession {
   const z = zone.toUpperCase();
   const aerobic = z === "Z1" || z === "Z2" || type === "endurance";
@@ -140,16 +132,8 @@ export function alternateFor(sport: string, type: string, zone: string, minutes:
   }
 
   if (speed || type === "threshold" || z === "Z4" || z === "Z3") {
-    // Quality day -> plyometrics (mandatory rule lives here too) or power strength
-    const isSwimmer = sport === "swim";
-    const isCyclist = athleteGoal === "cycle";
-    if (isSwimmer) {
-      return { sport: "strength", type: "plyo", intensity: "z3", title: "Alt: Upper Plyo + Pull Strength", description: `Main (same goal as your ${type} day, new modality): plyo push-ups 4×8, med-ball chest pass 4×8, clap push-ups 3×5 + weighted pull-ups/rows 4×6, rotator band work 3×15. Explosive upper body = a faster catch and pull. Full recoveries, land/hit quiet (Ramírez-Campillo 2022).` };
-    }
-    if (isCyclist) {
-      return { sport: "strength", type: "plyo", intensity: "z3", title: "Alt: Cycling Power Plyo", description: `Main (same goal as your ${type} day, new modality): jump squats 4×6, single-leg pogo hops 3×20s/leg, box jumps 4×5 + hip thrust 4×6, single-leg press 4×8/leg. Explosive legs push bigger watts (Ramírez-Campillo 2022).` };
-    }
-    return { sport: "strength", type: "plyo", intensity: "z3", title: "Alt: Plyometric Power", description: `Main (same goal as your ${type} day, new modality): depth jumps 4×5, bounds 4×20m, single-leg hops 3×10/leg, sprint starts 4×15m + core anti-rotation 3×10/side. Full recovery between sets — stiffness and speed (Ramírez-Campillo 2022).` };
+    const focus = sport === "swim" ? "Upper-body" : athleteGoal === "cycle" ? "Cycling support" : "General";
+    return { sport: "strength", type: "strength", intensity: "z3", title: `Alt: ${focus} strength preparation`, description: `Use familiar coach-reviewed strength movements within the allocated time, with tolerable loads and adequate recovery. This changes the stimulus from the original ${sport} ${type} session; it is not an equivalent sport-specific dose. Optional plyometrics or explosive lifts need specific movement, experience, equipment and tolerance review; no jumps are prescribed automatically.` };
   }
 
   if (aerobic || type === "tempo") {
@@ -167,6 +151,6 @@ export function alternateFor(sport: string, type: string, zone: string, minutes:
     return { sport: pick, type: "endurance", intensity: "z2", title: altTitle, description: altDesc };
   }
 
-  // strength day -> plyo alternate
-  return { sport: "strength", type: "plyo", intensity: "z3", title: "Alt: Plyometrics", description: `Main (same strength goal, explosive form): box jumps 4×5, broad jumps 3×5, pogo hops 3×20s, med-ball throws 4×8 + heavy carry 3×40m. Power is strength expressed fast (Ramírez-Campillo 2022).` };
+  // A generic strength alternate retains controlled familiar movement.
+  return { sport: "strength", type: "strength", intensity: "z3", title: "Alt: Strength practice — review first", description: "Use familiar coach-reviewed strength and trunk movements within the allocated time, with tolerable loads and adequate recovery. Optional plyometrics require specific movement, experience, equipment and tolerance review; no jumps or explosive lifts are assigned automatically." };
 }
