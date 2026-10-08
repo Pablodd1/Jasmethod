@@ -1,0 +1,277 @@
+{
+  "coverage_date": "2026-10-08",
+  "scope": "Bounded primary-source cycling, running, triathlon pacing/weather/fueling comparison; not exhaustive internet coverage.",
+  "candidate_count": 19,
+  "method": "Broad web discovery followed by primary docs and GitHub API tree/license/source inspection. No stars used as accuracy evidence. No installation, account signup, external upload or application changes.",
+  "candidates": [
+    {
+      "id": "GoldenCheetah/GoldenCheetah",
+      "kind": "github_repository",
+      "url": "https://github.com/GoldenCheetah/GoldenCheetah",
+      "decision": "reference_only",
+      "rationale": "Power-duration and field-calibration reference; no plug-in individualized race predictor.",
+      "license": "GPL-2.0-or-later in inspected source; COPYING GPLv2.",
+      "evidence": "PDModel.cpp and PhysicsUtility.cpp read; test/aerolab fixtures found; no held-out race benchmark established.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "852c821ef53df1ad8d5790b06d7ecdd0542a21e2",
+        "default_branch": "master",
+        "pushed_at": "2026-10-06T21:42:58Z",
+        "archived": false
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "Runalyze/Runalyze",
+      "kind": "github_repository",
+      "url": "https://github.com/Runalyze/Runalyze",
+      "decision": "historical_reference_only",
+      "rationale": "Archived 2019; do not equate legacy source with current hosted product.",
+      "license": "No top-level license established in inspected branch; reuse blocked pending file/revision license review.",
+      "evidence": "VO2max prognosis code and composer read; prognosis unit-test paths found; endurance correction explicitly heuristic.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "5669237a78c7d3512df969052fd0d97e5dca6820",
+        "default_branch": "support/4.3.x",
+        "pushed_at": "2019-11-08T18:45:20Z",
+        "archived": true
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "dyfan-davies/cycling-performance-model",
+      "kind": "github_repository",
+      "url": "https://github.com/dyfan-davies/cycling-performance-model",
+      "decision": "reference_only",
+      "rationale": "Dynamic physics and optimizer ideas; unsafe to transplant physiology/fueling heuristics.",
+      "license": "GPL-3.0 LICENSE verified.",
+      "evidence": "physics_engine.py inspected; no test files in inspected tree; no held-out empirical benchmark found.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "74278051ad4c34de005995f7fc64a95691fa983a",
+        "default_branch": "main",
+        "pushed_at": "2026-08-15T23:48:26Z",
+        "archived": false
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "BarnBedford/PowerClimb",
+      "kind": "github_repository",
+      "url": "https://github.com/BarnBedford/PowerClimb",
+      "decision": "reject_reuse",
+      "rationale": "FTP-derived CP/Wprime, simplistic NP, no cleared license.",
+      "license": "No license file in tree; GitHub license null.",
+      "evidence": "power_curve.py and power_climb.py inspected; no tests in tree.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "66c4286dc80ddbe779b189614d0c230692b26acd",
+        "default_branch": "main",
+        "pushed_at": "2026-02-23T12:25:12Z",
+        "archived": false
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "alexgasconn/RaceTimePredictor",
+      "kind": "github_repository",
+      "url": "https://github.com/alexgasconn/RaceTimePredictor",
+      "decision": "reject_reuse",
+      "rationale": "Useful naive baseline concept; fixed exponent and no out-of-sample intervals.",
+      "license": "README says MIT; no license file in tree; insufficient clearance.",
+      "evidence": "scripts/manual.js inspected; no tests in tree; displayed range is min/max of trimmed predictions.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "1a972ebd333a9eb309e617666c08f826617f2292",
+        "default_branch": "main",
+        "pushed_at": "2025-05-07T13:50:20Z",
+        "archived": false
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "Fransandi/Runalytics",
+      "kind": "github_repository",
+      "url": "https://github.com/Fransandi/Runalytics",
+      "decision": "screened_not_selected",
+      "rationale": "Overlaps simple Riegel baseline, less useful than evaluation-focused candidates.",
+      "license": "No license identified by GitHub/tree inspection.",
+      "evidence": "README/search and repository metadata/tree only; no code deep review.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "01a09c2e7121e1af803d5a6d476f1f8129dd2089",
+        "default_branch": "main",
+        "pushed_at": "2025-10-22T02:50:18Z",
+        "archived": false
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "danielissing/race-predictor",
+      "kind": "github_repository",
+      "url": "https://github.com/danielissing/race-predictor",
+      "decision": "evaluate_permissive_components",
+      "rationale": "Strongest inspected reusable validation/grade-bin concept, but must repair evaluation design and validate locally.",
+      "license": "MIT LICENSE verified, copyright notice required.",
+      "evidence": "validate.py, pace_builder.py and prediction.py inspected; LOOCV exists, quick mode in-sample; variance calibration leave-none-out; no automated test paths in tree.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "421adc894477fc396066f7561cb36a8a9de973ac",
+        "default_branch": "main",
+        "pushed_at": "2026-05-02T17:55:30Z",
+        "archived": false
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "rygao/racepacer",
+      "kind": "github_repository",
+      "url": "https://github.com/rygao/racepacer",
+      "decision": "evaluate_permissive_components",
+      "rationale": "Good target-conserving split allocation and UI inspiration; not capacity estimation.",
+      "license": "MIT LICENSE verified, copyright notice required.",
+      "evidence": "minetti.js and paceCalc.js inspected; no tests in tree; formula origin needs independent verification.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "10df2ee83ca37e992a0c55a0174f975cc58cee42",
+        "default_branch": "main",
+        "pushed_at": "2026-05-11T04:19:01Z",
+        "archived": false
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "Zettt/gpx-pacer",
+      "kind": "github_repository",
+      "url": "https://github.com/Zettt/gpx-pacer",
+      "decision": "reference_pending_license",
+      "rationale": "Good aid-station, split/export and post-race comparison concepts.",
+      "license": "README says MIT, no LICENSE in tree or pyproject license field; clarify before reuse.",
+      "evidence": "pacer.py and pyproject inspected; unit/integration test paths present but not executed.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "9773dba1be8365af88cc092c801d99cdde5ef559",
+        "default_branch": "main",
+        "pushed_at": "2026-05-13T08:48:12Z",
+        "archived": false
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "Hamadispolar/triathlon-predictor",
+      "kind": "github_repository",
+      "url": "https://github.com/Hamadispolar/triathlon-predictor",
+      "decision": "reject_accuracy_and_reuse",
+      "rationale": "ML error metrics derive from synthetic target generator; fixed split proportions; no validated triathlon forecast.",
+      "license": "README says MIT; no LICENSE in inspected tree; clarify before reuse.",
+      "evidence": "model.py and metrics.json inspected; 600 generated samples, MAE 4.99 min / R2 .9806 are synthetic-test metrics.",
+      "checked_at": "2026-10-08",
+      "snapshot": {
+        "head_sha": "d2ad2b31c8501963a80f5b0f5b811f87fad6d2bc",
+        "default_branch": "main",
+        "pushed_at": "2026-04-30T06:03:21Z",
+        "archived": false
+      },
+      "validation_executed": false
+    },
+    {
+      "id": "Best Bike Split",
+      "kind": "commercial_product",
+      "url": "https://www.bestbikesplit.com/",
+      "additional_source": "https://support.bestbikesplit.com/section/10/race-plan-details",
+      "decision": "product_inspiration_only",
+      "rationale": "Cycling physics/variable-power pacing/exports; 2–3% is provider claim, not independent audit.",
+      "license": "No source-code reuse permission established; treat implementation as proprietary.",
+      "checked_at": "2026-10-08",
+      "validation_executed": false
+    },
+    {
+      "id": "myWindsock",
+      "kind": "commercial_product",
+      "url": "https://mywindsock.com/page/discussion/how-does-a-mywindsock-forecast-actually-work/",
+      "additional_source": "https://mywindsock.com/page/api/",
+      "decision": "product_inspiration_only",
+      "rationale": "Route/time weather, mechanics, resistive parameter feedback; API requires application.",
+      "license": "No source-code reuse permission established; treat implementation as proprietary.",
+      "checked_at": "2026-10-08",
+      "validation_executed": false
+    },
+    {
+      "id": "Garmin PacePro",
+      "kind": "commercial_product",
+      "url": "https://support.garmin.com/en-GB/?faq=svpm2I38YB2sU5CiqFXyfA",
+      "additional_source": "https://www.garmin.com/en-CA/garmin-technology/maps-for-smartwatches/pacepro/",
+      "decision": "product_inspiration_only",
+      "rationale": "User target allocation with grade; not equivalent to Garmin Race Predictor.",
+      "license": "No source-code reuse permission established; treat implementation as proprietary.",
+      "checked_at": "2026-10-08",
+      "validation_executed": false
+    },
+    {
+      "id": "Garmin Race Predictor",
+      "kind": "commercial_product",
+      "url": "https://support.garmin.com/id-ID/?faq=HUB4yrzJkg1BbgmozWkBm7",
+      "additional_source": "https://www.garmin.com/en-CA/blog/fitness/free-race-day-features-on-your-garmin-running-smartwatch/",
+      "decision": "product_inspiration_only",
+      "rationale": "Generic and event-specific capacity estimates; formulas/empirical error not established.",
+      "license": "No source-code reuse permission established; treat implementation as proprietary.",
+      "checked_at": "2026-10-08",
+      "validation_executed": false
+    },
+    {
+      "id": "Stryd Race Power",
+      "kind": "commercial_product",
+      "url": "https://help.stryd.com/en/articles/6879547-race-power-calculator",
+      "additional_source": "https://help.stryd.com/en/articles/8955821-stryd-race-calculations-faq",
+      "decision": "product_inspiration_only",
+      "rationale": "90-day history, fatigue and power-duration curve, course adjustments; no transferred accuracy guarantee.",
+      "license": "No source-code reuse permission established; treat implementation as proprietary.",
+      "checked_at": "2026-10-08",
+      "validation_executed": false
+    },
+    {
+      "id": "Runalyze hosted",
+      "kind": "commercial_product",
+      "url": "https://runalyze.com/help/article/marathon-shape?_locale=en",
+      "additional_source": "https://blog.runalyze.com/features/new-marathon-shape-for-other-distances/",
+      "decision": "product_inspiration_only",
+      "rationale": "Training-volume/long-run endurance adjustment; official admission heuristic.",
+      "license": "No source-code reuse permission established; treat implementation as proprietary.",
+      "checked_at": "2026-10-08",
+      "validation_executed": false
+    },
+    {
+      "id": "Precision Fuel & Hydration",
+      "kind": "commercial_product",
+      "url": "https://www.precisionhydration.com/planner/",
+      "additional_source": "https://www.precisionhydration.com/us/en/products/strategy-stickers/?currency=USD&variant=45867579834587",
+      "decision": "product_inspiration_only",
+      "rationale": "Separate fuel/fluid/sodium logistics; public planner shell only, no algorithm audit.",
+      "license": "No source-code reuse permission established; treat implementation as proprietary.",
+      "checked_at": "2026-10-08",
+      "validation_executed": false
+    },
+    {
+      "id": "Fuelin",
+      "kind": "commercial_product",
+      "url": "https://fuelin.com/articles/the-magic-behind-fuelin",
+      "additional_source": null,
+      "decision": "product_inspiration_only",
+      "rationale": "Planned-versus-completed work recalculation and cutoff UX; not independent physiology validation.",
+      "license": "No source-code reuse permission established; treat implementation as proprietary.",
+      "checked_at": "2026-10-08",
+      "validation_executed": false
+    },
+    {
+      "id": "Maurten Fuel Planner",
+      "kind": "commercial_product",
+      "url": "https://planner.maurten.com/",
+      "additional_source": null,
+      "decision": "product_inspiration_only",
+      "rationale": "Official shell confirms run/cycle/triathlon scope; internal outputs/algorithm not audited.",
+      "license": "No source-code reuse permission established; treat implementation as proprietary.",
+      "checked_at": "2026-10-08",
+      "validation_executed": false
+    }
+  ]
+}
