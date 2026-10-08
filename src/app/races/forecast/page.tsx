@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { JMetricsCard, type JMetrics } from "@/components/j-metrics-card";
 import { saveReviewedProfile } from "@/lib/profile-client";
 import { useEffect, useState } from "react";
@@ -132,6 +133,7 @@ export default function RaceForecastPage() {
         {data?.reason === "personalized_forecasts_disabled" && <div role="status" className="card border-amber-300">
           {lang === "es" ? "Los pronósticos numéricos personalizados no están disponibles en este piloto. Faltan validación de referencias fechadas, historial, recorrido y error del modelo. El tiempo objetivo es una meta, no una predicción." : data.message}
         </div>}
+        <Link href="/races/scenarios" className="btn-secondary w-fit">{lang === "es" ? "Explorar escenarios no validados de AdvanzedRacing →" : "Explore unvalidated AdvanzedRacing scenarios →"}</Link>
         {/* Controls */}
         <div className="card">
           <div className="grid md:grid-cols-[1fr_1fr_auto] gap-3 items-end">

@@ -1,3 +1,5 @@
+> Historical design proposal, superseded for current runtime behavior. Personalized forecasts described below remain disabled. See [current race scenario workspace](race-scenario-workspace.md) for the implemented experimental execution tool and explicit limits. Do not treat this old roadmap as release approval.
+
 # Race Forecast Platform — Architecture & Roadmap
 
 _Adjudicated build — September 8, 2026. Every model constant in the engine

@@ -1,0 +1,222 @@
+{
+  "version": "jmm-scenario-v1",
+  "status": "research_design_with_shipped_subset",
+  "researchCutoff": "2026-10-08",
+  "input": {
+    "sport": "run_road|run_trail|run_sprint|bike_road|bike_tt|swim|triathlon|hyrox",
+    "baseline": {
+      "source": "benchmark|manual_actual|manual_target",
+      "sourceId": "string|null",
+      "observedAt": "ISO date|null; required for actual",
+      "context": "string; sport/distance/conditions/equipment",
+      "metric": "pace_sec_km|power_w|pace_sec_100m|elapsed_s",
+      "value": "finite positive number",
+      "distanceM": "finite positive|null",
+      "isActual": "boolean; targets are not observations"
+    },
+    "legs": "array of leg inputs; triathlon uses separate run/bike/swim plus transitions",
+    "leg": {
+      "id": "stable string",
+      "mode": "run|bike|swim|manual_split",
+      "distanceM": "positive finite",
+      "target": {
+        "kind": "pace_sec_km|power_w|pace_sec_100m|elapsed_s",
+        "value": "positive finite",
+        "source": "selected_baseline|manual_target",
+        "baselineId": "string|null"
+      },
+      "segments": "optional array of surfaceDistanceM, riseM, horizontalDistanceM, headingDeg, surface, speedCapMps; sum distance reconciled",
+      "bike": "totalMassKg,CdAM2,Crr,airDensityKgM3,drivetrainEfficiency; all explicit to compute speed",
+      "run": "gradeMode none|energetic_scenario; downhillCapMps or no_downhill_credit",
+      "timeModifier": "explicit positive user factor with label; null means not modeled",
+      "hrTargetBpm": "optional athlete-entered [low,high]; no synthesized HR",
+      "runningPowerW": "optional same-device user target with deviceId; never computed from pace"
+    },
+    "weather": {
+      "kind": "observation|forecast|climatology|manual|unknown",
+      "issuedAt": "ISO timestamp|null",
+      "validFrom": "ISO timestamp|null",
+      "validTo": "ISO timestamp|null",
+      "source": "string|null",
+      "temperatureC": "finite|null",
+      "humidityPct": "0..100|null",
+      "pressurePa": "positive|null",
+      "windMps": "nonnegative|null",
+      "windFromDeg": "0..360|null",
+      "raceStart": "ISO timestamp offset required",
+      "timezone": "IANA",
+      "location": "lat/lon nullable",
+      "coverage": "forecast must cover complete modeled event; no synthetic future weather"
+    },
+    "fuel": {
+      "practicedCarbsGph": "nonnegative finite|null",
+      "source": "user_practiced|clinician_plan|null",
+      "feedingWindows": "non-swim windows only",
+      "productCarbsG": "positive finite|null"
+    },
+    "sensitivityCases": "named explicit alternative input bundles, not random confidence samples"
+  },
+  "output": {
+    "classification": "scenario|calibrated_estimate",
+    "elapsedS": "finite|null",
+    "legs": "per-leg elapsedS, paceSecKm|null,powerW|null,hrTargetBpm|null,workKj|null,metabolicKcal|null,missingInputs[],warnings[],assumptions[]",
+    "totalMechanicalWorkKj": "only power-observed/modeled bicycle work; null where unavailable, never treated as all-sport energy",
+    "fuelCarbsG": "practicedCarbsGph*eligible planned intake duration h, with delivery-window feasibility",
+    "rangeLabel": "scenario range; not confidence interval",
+    "provenance": "immutable calculation input snapshot, model version and source references"
+  },
+  "formulas": {
+    "runningCost": "155.4*g^5 -30.4*g^4 -43.3*g^3 +46.3*g^2 +19.5*g +3.6",
+    "runningSegmentTime": "distanceM*flatPaceSecKm/1000*C(g)/3.6*timeModifier; apply speed cap",
+    "cyclingSteadyCrankW": "(m*9.80665*sin(atan(g)) + Crr*m*9.80665*cos(atan(g)) +0.5*rho*CdA*(v+h)*abs(v+h))*v/etaDrive",
+    "workKj": "sum(powerW*timeS)/1000",
+    "metabolicKcal": "workKj/explicitGrossEfficiency/4.184",
+    "swimTime": "distanceM*paceSec100m/100",
+    "manualTotal": "sum(legs.elapsedS)+transitionsS+stopsS"
+  },
+  "gates": [
+    "Reject NaN, Infinity, numeric strings unless explicitly parsed, negative distance, duplicate leg IDs, unknown enum values and out-of-range humidity/efficiency.",
+    "Do not derive bike speed without explicit mass/CdA/Crr/density/etaDrive and target power.",
+    "Do not derive HR from age/FTP/pace; absent remains absent.",
+    "Do not derive running power from pace.",
+    "Do not apply time target from run5k to other distances as observed sustainable pace; selected target must be visibly confirmed.",
+    "No automatic heat/humidity/altitude/acclimation or fatigue adjustment.",
+    "No generic grade model for sprint/swim/HYROX station.",
+    "No automatic grade extrapolation beyond +/-0.15 product gate; require manual target.",
+    "FTP/CP are reference labels not long-event sustainable power guarantees.",
+    "No calibrated confidence level unless independently validated.",
+    "Null missing finish components makes whole-event total null while known components remain available."
+  ],
+  "numericTests": [
+    {
+      "id": "flat_run",
+      "inputs": "distanceM=10000,paceSecKm=300,grade=0,modifier=1",
+      "expected": "3000 s"
+    },
+    {
+      "id": "positive_grade",
+      "inputs": "grade=.1",
+      "expected": "C=5.968214 J/kg/m; ratio=1.6578372222222222"
+    },
+    {
+      "id": "negative_grade",
+      "inputs": "grade=-.1",
+      "expected": "C=2.151706 J/kg/m; do not turn metabolic ratio into uncapped trail speed"
+    },
+    {
+      "id": "bike_work",
+      "inputs": "200 W,3600 s",
+      "expected": "720 kJ mechanical"
+    },
+    {
+      "id": "metabolic",
+      "inputs": "720 kJ,explicit etaGross=.25",
+      "expected": "688.3365200764818 kcal"
+    },
+    {
+      "id": "swim",
+      "inputs": "1500m,120sec/100m",
+      "expected": "1800s"
+    },
+    {
+      "id": "fuel",
+      "inputs": "60g/h,2h eligible feeding duration",
+      "expected": "120g; unrelated to power"
+    },
+    {
+      "id": "wind",
+      "inputs": "heading north,wind FROM north 5m/s",
+      "expected": "headwind +5m/s; south is -5m/s"
+    },
+    {
+      "id": "unknown",
+      "inputs": "bike mass=null or pace=null",
+      "expected": "dependent output null with missingInputs; no default athlete"
+    },
+    {
+      "id": "forecast",
+      "inputs": "race beyond provider validTo",
+      "expected": "not forecast; unknown/manual/climatology selectable"
+    },
+    {
+      "id": "coast",
+      "inputs": "descent speed cap requiring negative crank power",
+      "expected": "0W crank; braking flag, no negative work"
+    },
+    {
+      "id": "snapshots",
+      "inputs": "mutate source input after compute",
+      "expected": "prior saved snapshot unchanged"
+    },
+    {
+      "id": "sprint",
+      "inputs": "run_sprint with generic grade model",
+      "expected": "unsupported; manual splits only"
+    }
+  ],
+  "sources": [
+    {
+      "id": "grade",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/12183501/"
+    },
+    {
+      "id": "cycling",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/28121252/"
+    },
+    {
+      "id": "running_scaling",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/27570626/"
+    },
+    {
+      "id": "critical_power",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5371646/"
+    },
+    {
+      "id": "durability",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11235642/"
+    },
+    {
+      "id": "nutrition",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/24791914/"
+    },
+    {
+      "id": "weather",
+      "url": "https://www.ecmwf.int/en/forecasts/documentation-and-support/medium-range-forecasts"
+    }
+  ],
+  "implementation": {
+    "engine": "src/lib/race-scenario.ts",
+    "tests": "src/lib/race-scenario.test.ts",
+    "version": "scenario-v1",
+    "supportedEventTypes": [
+      "run_road",
+      "run_trail",
+      "bike_road",
+      "bike_tt",
+      "triathlon",
+      "swim"
+    ],
+    "notShipped": [
+      "HYROX station splits",
+      "sprint splits",
+      "CP fitting",
+      "distance power-law projection",
+      "automatic condition calibration",
+      "probability intervals",
+      "automated forecast ingestion"
+    ],
+    "note": "The input/output sections above describe the broader research design, not an exact JSON schema. TypeScript interfaces and strict parser are authoritative for the shipped subset.",
+    "functions": [
+      "parseRaceScenarioInput(raw, asOf?:Date)",
+      "calculateScenario(input, asOf?:Date)"
+    ],
+    "validation": "23 focused engine tests passing; see the verification report for full integration and build evidence",
+    "course": "Segment distanceM is ALONG-PATH distance; GPX horizontal run must be converted and leg totals reconciled. Empty run/bike segments require flatCourseConfirmed true.",
+    "recency": "90-day product review gate on baseline/intensity/fuel; not physiological expiry. Future actual observation dates invalid.",
+    "power": "powerW selected target, actualAveragePowerW realized model result, segment actualPowerW includes cap/coasting behavior. Cycling timeMultiplier fixed1.",
+    "evidence": "intensityEvidence and fuelEvidence require date/source/context/confirmed; running power additionally requires runPowerDevice.",
+    "swimFuel": "Standalone swim intake remains null because feeding windows are not modeled. Triathlon scheduling counts bike+run only.",
+    "sensitivity": "Explicit symmetric elapsed-time sensitivity percent, not model uncertainty/confidence.",
+    "weather": "Weather contextual only; unknown never synthetic actual; complete forecast validity checked but automatic wind projection/provider fetch owned outside engine."
+  }
+}
