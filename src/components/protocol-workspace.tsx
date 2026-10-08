@@ -291,10 +291,11 @@ export default function ProtocolWorkspace({
                 </select>
               </label>
               {data && !compatible.length && (
-                <p className="text-sm text-slate-600">
-                  No compatible unfinished session in the next 8 weeks. Set up
-                  or edit the athlete&apos;s plan first.
-                </p>
+                <div role="status" className="rounded-lg border border-amber-300 p-4 space-y-3">
+                  <p className="font-semibold">{data.sessions.length ? "No matching session for this protocol" : "Create a plan before applying a protocol"}</p>
+                  <p className="text-sm">{data.sessions.length ? "Choose a protocol matching an upcoming session's sport, or review the plan. Completed workouts and off-days cannot be replaced here." : "Protocols replace compatible unfinished sessions in an active plan. First complete planning setup, preview a plan and confirm it. Then return here to choose a session and review the protocol before applying it."}</p>
+                  <Link className="btn-primary" href={athleteId ? `/admin/athletes/${encodeURIComponent(athleteId)}` : "/training"}>{athleteId ? "Review athlete plan" : "Open training plan"}</Link>
+                </div>
               )}
               <button
                 className="btn-primary"
