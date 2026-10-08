@@ -7,8 +7,10 @@ import { DoubleDayFields } from "@/components/double-day-fields";
 import type { DoubleDayPreference } from "@/lib/double-day";
 import { TravelFields } from "@/components/travel-fields";
 import type { TravelContext } from "@/lib/planning-setup";
+import { PLANNABLE_GOALS } from "@/lib/planning-setup";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { User, Flag, CheckCircle2, ArrowRight, ArrowLeft } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -21,6 +23,9 @@ const LANGS = [
 export function DetailedAthleteSetup() {
   const { user, refresh } = useAuth();
   const router = useRouter();
+  const query = useSearchParams();
+  const returnToTraining = query.get("return") === "training";
+  const [savedReadiness, setSavedReadiness] = useState<{ready:boolean;missing:string[];review:string[]}|null>(null);
   const [step, setStep] = useState<OnboardingStep>(ONBOARDING_STEP.welcome);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -80,11 +85,17 @@ export function DetailedAthleteSetup() {
         lthr: String(d.profile.lthr ?? ""), maxHr: String(d.profile.maxHr ?? ""), ftp: String(d.profile.ftp ?? ""), runPaceBase: String(d.profile.runPaceBase ?? ""), swimPaceBase: String(d.profile.swimPaceBase ?? ""),
       });
       if (d.setup) setSetup(current => ({...current, ...d.setup}));
+      if (returnToTraining) {
+        const goal = query.get("goal"), weeks = Number(query.get("weeks"));
+        // Carry selected goal/horizon into an unsaved review; never infer eligibility or consent.
+        if (goal && PLANNABLE_GOALS.includes(goal)) setProfile(current=>({...current,goal}));
+        if ([4,6,8,12,16,20,24,30].includes(weeks)) setSetup(current=>({...current,planWeeks:String(weeks)}));
+      }
       setSetupRevision(d.setupRevision ?? null);
       setRevision(d.revision);
     }).catch(e => { if (active) setError(String(e.message)); });
     return () => { active = false; };
-  }, [user?.id]);
+  }, [user?.id, returnToTraining, query]);
 
   const [providers, setProviders] = useState<any[]>([]);
   const [connectionError, setConnectionError] = useState("");
@@ -118,6 +129,8 @@ export function DetailedAthleteSetup() {
       if(section === "profile" && reviewedWeightId) fields.reviewedWeightObservationId = reviewedWeightId;
       const result = await saveReviewedProfile(fields, revision);
       savedOnboarding.current = { profile: result.profile ?? {}, setup: result.setup ?? null };
+      setSavedReadiness(result.planningReadiness ?? null);
+      if (section === "goals" && returnToTraining && result.planningReadiness?.ready) router.push("/training");
       setRevision(result.revision); setSetupRevision(result.setupRevision); return true;
     }
     catch(e) { setError((e as Error).message); return false; }
@@ -175,6 +188,11 @@ export function DetailedAthleteSetup() {
   return (
     <ProtectedPage>
       <div className="max-w-2xl mx-auto py-8 px-4">
+        {returnToTraining && <section className="mb-5 rounded-xl border border-ocean-200 bg-ocean-50 p-4 space-y-2">
+          <h1 className="font-display text-2xl">{t("Planning setup", "Configuración del plan")}</h1>
+          <p>{t("Review your goal, recent training, availability and restrictions below. Devices, zones and a race are optional. Save this section to return to your plan preview; nothing is assigned automatically.", "Revisa objetivo, entrenamiento reciente, disponibilidad y restricciones. Dispositivos, zonas y carrera son opcionales. Guarda esta sección para volver al plan; no se asigna nada automáticamente.")}</p>
+          <Link className="underline" href="/training">{t("Back to training without saving", "Volver al entrenamiento sin guardar")}</Link>
+        </section>}
         {error && <div role="alert" className="mb-4 text-red-700">{error} <button type="button" className="underline" onClick={() => window.location.reload()}>Reload and review</button></div>}
         {/* Progress bar */}
         <div className="flex gap-1.5 mb-6">
@@ -293,7 +311,7 @@ export function DetailedAthleteSetup() {
                 </select>
               </div>
             </div>
-            <details className="mt-5"><summary className="cursor-pointer font-semibold">{t("Optional planning details — complete when ready to build a plan", "Detalles opcionales — completa cuando quieras crear un plan")}</summary><fieldset className="mt-6 space-y-3 border rounded-xl p-4">
+            <details className="mt-5" open={returnToTraining || undefined}><summary className="cursor-pointer font-semibold">{returnToTraining ? t("Details needed for a personalized plan", "Datos necesarios para un plan personalizado") : t("Optional planning details — complete when ready to build a plan", "Detalles opcionales — completa cuando quieras crear un plan")}</summary><fieldset className="mt-6 space-y-3 border rounded-xl p-4">
               <legend className="font-semibold">{t("Training context and pilot eligibility", "Contexto y elegibilidad del piloto")}</legend>
               <p className="text-sm text-slate-600">{t("Unknown answers stay unknown. A device and performance tests are optional. Individual planning waits for relevant setup and a confirmed preview.", "Las respuestas desconocidas siguen sin conocerse. Dispositivos y pruebas son opcionales. El plan espera los datos relevantes y una vista previa confirmada.")}</p>
               <label className="flex gap-2"><input type="checkbox" checked={setup.adultConfirmed} onChange={e => setSetup({...setup, adultConfirmed:e.target.checked})}/>{t("I confirm I am 18 or older", "Confirmo que tengo 18 años o más")}</label>
@@ -348,10 +366,14 @@ export function DetailedAthleteSetup() {
               <div><label htmlFor="onboard-field-11" className="label">{lang === "es" ? "Ubicación" : "Location"}</label><input id="onboard-field-11" className="input" placeholder="Miami, FL" value={race.location} onChange={(e) => setRace({ ...race, location: e.target.value })} /></div>
             </div>
             <button className="btn-secondary mt-4" disabled={saving} onClick={async()=>{if(await saveRace()) setError("");}}>{raceId ? t("Update this race", "Actualizar carrera") : t("Save race separately", "Guardar carrera por separado")}</button>
-            <div className="flex justify-between mt-6">
+            {returnToTraining && savedReadiness && !savedReadiness.ready && <div role="status" className="mt-4 rounded-lg border border-amber-300 p-3">
+              <p>{t("Answers saved. Planning still needs the following review; no plan has been assigned.", "Respuestas guardadas. Falta revisar lo siguiente; no se ha asignado un plan.")}</p>
+              <ul className="list-disc ml-5">{[...savedReadiness.missing,...savedReadiness.review].map(reason=><li key={reason}>{reason}</li>)}</ul>
+            </div>}
+            <div className="flex flex-wrap gap-3 justify-between mt-6">
               <button onClick={() => setStep(ONBOARDING_STEP.zones)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
-              <button onClick={async () => { setStep(onboardingNext(ONBOARDING_STEP.race, await saveProfile("goals"))); }} disabled={saving} className="btn-primary">
-                {saving ? "…" : lang === "es" ? "Guardar objetivos (carrera por separado)" : "Save goals (race saved separately)"}
+              <button onClick={async () => { const saved = await saveProfile("goals"); if(saved && !returnToTraining) setStep(onboardingNext(ONBOARDING_STEP.race)); }} disabled={saving || !revision} className="btn-primary">
+                {saving ? "…" : returnToTraining ? t("Save setup and return to training", "Guardar y volver al entrenamiento") : lang === "es" ? "Guardar objetivos (carrera por separado)" : "Save goals (race saved separately)"}
               </button>
             </div>
           </div>

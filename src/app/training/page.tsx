@@ -52,6 +52,7 @@ export default function TrainingPage() {
   const { user } = useAuth();
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [form, setForm] = useState({
     distance: "",
@@ -82,16 +83,24 @@ export default function TrainingPage() {
   >({});
 
   async function load() {
-    const [p, z] = await Promise.all([
-      fetch("/api/plan").then((r) => r.json()),
-      fetch("/api/profile").then((r) => r.json()),
+    setLoading(true);
+    setLoadError("");
+    try {
+    const [planResponse, profileResponse] = await Promise.all([
+      fetch("/api/plan", {cache:"no-store", signal:AbortSignal.timeout(15000)}),
+      fetch("/api/profile", {cache:"no-store", signal:AbortSignal.timeout(15000)}),
     ]);
+    if (!planResponse.ok || !profileResponse.ok) throw Error("Could not load your plan and planning setup. Retry to check your saved information.");
+    const [p, z] = await Promise.all([planResponse.json(), profileResponse.json()]);
     setPlans(p.plans || []);
     setZones(z.zones);
     setProfile(z.profile);
     setPlanningReadiness(z.planningReadiness);
     setForm(previous => ({...previous, distance: previous.distance || planningGoal(z.profile?.goal) || "", weeks: previous.weeks || String(z.setup?.planWeeks ?? "")}));
-    setLoading(false);
+    } catch (err) {
+      setPlanningReadiness(null);
+      setLoadError(err instanceof Error ? err.message : "Could not load training.");
+    } finally { setLoading(false); }
   }
 
   useEffect(() => {
@@ -100,6 +109,7 @@ export default function TrainingPage() {
 
   async function generate(e?: React.FormEvent, confirmed = false) {
     e?.preventDefault();
+    if (!planningReadiness?.ready) return;
     setGenerating(true);
     setError("");
     try {
@@ -197,6 +207,7 @@ export default function TrainingPage() {
   }
 
   const plan = plans[0];
+  const setupHref = `/onboard?redo=1&advanced=1&step=race&return=training&goal=${encodeURIComponent(form.distance)}&weeks=${encodeURIComponent(form.weeks)}`;
   const sessions = plan?.days?.flatMap((d: any) => d.sessions) || [];
   const completedCount = sessions.filter((s: any) => s.completed).length;
   const totalCount = sessions.length;
@@ -249,18 +260,23 @@ export default function TrainingPage() {
               ? "Saved physiological references remain reported values; dated, verified anchors are needed for exact targets."
               : "No threshold benchmark is required. Use effort and talk-test guidance; missing physiology is not estimated from age, sex or weight."}
           </p>
-          {planningReadiness && !planningReadiness.ready && <div role="status" className="mb-4 border border-amber-300 rounded-lg p-3">
-            <p>Individual planning is waiting for:</p><ul className="list-disc ml-5">{[...planningReadiness.missing, ...planningReadiness.review].map((reason:string)=><li key={reason}>{reason}</li>)}</ul>
-            <a className="underline" href="/onboard?redo=1&advanced=1">Review your setup and editable goals</a>
+          {loadError && <div role="alert" className="mb-4 rounded-lg border border-red-300 p-3"><p>{loadError}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={()=>void load()}>Retry loading training</button></div>}
+          {planningReadiness && !planningReadiness.ready && <div role="status" className="mb-4 border border-amber-300 rounded-lg p-3 space-y-3">
+            <p className="font-semibold">Complete your planning setup to unlock a preview</p>
+            <p className="text-sm">You can use JMM without completing onboarding. A personalized plan needs your recent training, available time and current restrictions. No device, threshold test or race entry is required.</p>
+            <details><summary className="cursor-pointer underline">See what needs review ({planningReadiness.missing.length + planningReadiness.review.length})</summary><ul className="list-disc ml-5 mt-2">{[...planningReadiness.missing, ...planningReadiness.review].map((reason:string)=><li key={reason}>{reason}</li>)}</ul></details>
+            <a className="btn-primary" href={setupHref}>Complete planning setup</a>
+            <p className="text-sm">Save your answers, return here, preview the plan, then confirm it. Protocols can then replace compatible upcoming sessions.</p>
           </div>}
           {planningReadiness?.ready && planningReadiness?.planningBasis === "baseline_only" && <p className="mb-4 text-sm">You explicitly chose baseline-only conservative planning. Your numeric target stays an aspiration; this plan is not optimized or promised to achieve it. Target-driven progression still requires coaching review.</p>}
           <form
             onSubmit={generate}
-            className="grid md:grid-cols-6 gap-4 items-end"
+            className="grid gap-4 items-end [grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr))]"
           >
             <div>
-              <label className="label">Training goal / sport</label>
+              <label htmlFor="plan-goal" className="label">Training goal / sport</label>
               <select
+                id="plan-goal"
                 className="input"
                 value={form.distance}
                 onChange={(e) => setForm({ ...form, distance: e.target.value })}
@@ -278,8 +294,9 @@ export default function TrainingPage() {
               </select>
             </div>
             <div>
-              <label className="label">Weeks</label>
+              <label htmlFor="plan-weeks" className="label">Weeks</label>
               <select
+                id="plan-weeks"
                 className="input"
                 value={form.weeks}
                 onChange={(e) => setForm({ ...form, weeks: e.target.value })}
@@ -293,8 +310,9 @@ export default function TrainingPage() {
               </select>
             </div>
             <div>
-              <label className="label">Start date</label>
+              <label htmlFor="plan-start" className="label">Start date</label>
               <input
+                id="plan-start"
                 type="date"
                 className="input"
                 value={form.startDate}
@@ -304,8 +322,9 @@ export default function TrainingPage() {
               />
             </div>
             <div>
-              <label className="label">Training time</label>
+              <label htmlFor="plan-window" className="label">Training time</label>
               <select
+                id="plan-window"
                 className="input"
                 value={form.trainingWindow}
                 onChange={(e) =>
@@ -322,11 +341,12 @@ export default function TrainingPage() {
               </select>
             </div>
             <div>
-              <label className="label">
+              <label htmlFor="plan-split" className="label">
                 Easy / quality split: {form.easyPct}% /{" "}
                 {100 - Number(form.easyPct)}%
               </label>
               <input
+                id="plan-split"
                 type="range"
                 min={50}
                 max={85}
@@ -339,19 +359,19 @@ export default function TrainingPage() {
                 % of weekly minutes in Z1-Z2 (easy). 70 = 70/30.
               </div>
             </div>
-            <button
+            {planningReadiness && !planningReadiness.ready ? <a href={setupHref} className="btn-primary justify-center">Complete setup to preview</a> : <button
               type="submit"
-              disabled={generating || !planningReadiness?.ready}
+              disabled={generating || loading || !planningReadiness?.ready}
               className="btn-primary justify-center"
             >
-              {generating ? (
+              {loading ? "Loading setup…" : generating ? (
                 "Preparing preview…"
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" /> Preview Plan
                 </>
               )}
-            </button>
+            </button>}
           </form>
           {preview && <section className="mt-4 border rounded-xl p-4" aria-label="Plan preview">
             <h3 className="font-semibold">Review before assigning</h3>
@@ -767,8 +787,7 @@ export default function TrainingPage() {
             <Dumbbell className="w-12 h-12 mx-auto mb-3 text-slate-300" />
             <p className="font-medium text-slate-500">No training plan yet</p>
             <p className="text-sm">
-              Choose your distance, set your 70/30 split, and generate your
-              personalized plan above.
+              {planningReadiness?.ready ? "Preview a plan above, review its sessions and confirm it to add training. Then choose protocols for compatible sessions." : "Complete planning setup using the button above. You can browse protocols now; applying one requires a confirmed plan and a compatible session."}
             </p>
           </div>
         )}
