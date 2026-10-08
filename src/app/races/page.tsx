@@ -93,11 +93,11 @@ export default function RacesPage() {
       <div className="space-y-6">
         <div>
           <h1 className="font-display text-2xl font-bold">Races &amp; Venues</h1>
-          <p className="text-slate-500 text-sm">Goal races with full venue data — temperature, elevation, terrain, and water conditions drive your plan.</p>
+          <p className="text-slate-500 text-sm">Keep your event and venue details together, then review explicit course and weather assumptions in a race scenario.</p>
         </div>
 
-        <Link href="/races/forecast" className="btn-primary justify-center w-fit">
-          <Gauge className="w-4 h-4" /> AdvanzedRacing
+        <Link href="/races/scenarios" className="btn-primary justify-center w-fit">
+          <Gauge className="w-4 h-4" aria-hidden="true" /> {lang === "es" ? "AdvanzedRacing · Escenarios" : "AdvanzedRacing · Scenarios"}
         </Link>
 
         {err && <div className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
@@ -149,7 +149,7 @@ export default function RacesPage() {
                   {r.swimVenue && <div><Waves className="w-3 h-3 inline mr-1" />{r.swimVenue}{r.waterTempC != null ? ` · ${r.waterTempC}°C` : ""}{r.swimCurrent && r.swimCurrent !== "none" ? ` · ${r.swimCurrent} current` : ""}</div>}
                   {(r.courseKm != null || r.courseElevM != null) && (
                     <div className="bg-emerald-50 text-emerald-800 rounded-lg px-2 py-1">
-                      📐 {lang === "es" ? "Medido (GPX)" : "Measured (GPX)"}: {r.courseKm} km · {r.courseElevM} m {lang === "es" ? "ascenso — aplicado en el pronóstico" : "ascent — applied in the forecast"}
+                      📐 {lang === "es" ? "Estimación derivada del GPX" : "GPX-derived estimate"}: {r.courseKm} km · {r.courseElevM} m {lang === "es" ? "ascenso · revisar en escenarios" : "ascent · review in scenarios"}
                     </div>
                   )}
                   <div className="pt-1">
@@ -167,7 +167,7 @@ export default function RacesPage() {
                         }}
                       />
                     </label>
-                    <div className="text-[10px] text-slate-400 mt-0.5">{lang === "es" ? "La distancia y el ascenso reales alimentan el pronóstico." : "Real distance + ascent feed the forecast."}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{lang === "es" ? "Revisa la distancia, la elevación y su procedencia antes de usar un escenario." : "Review distance, elevation and provenance before using a scenario."}</div>
                   </div>
                 </div>
               </div>

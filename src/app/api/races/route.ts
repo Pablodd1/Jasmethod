@@ -1,25 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { geocodeLocation, getRaceWeather } from "@/lib/weather";
 import { parseRaceUpdate, RaceUpdateError } from "@/lib/race-update";
 
-// GET /api/races — list races. Upcoming races with venue coordinates get
-// live race-day weather (Open-Meteo hourly at the start hour, 30-min cache).
+// Race listing is read-only and does not silently disclose venue details to a
+// provider. The scenario workspace offers explicit licensed weather lookup.
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const races = await prisma.race.findMany({ where: { userId: user.id }, orderBy: { date: "asc" } });
-
-  const withWeather = await Promise.all(races.map(async (r) => {
-    const daysAway = (new Date(r.date).getTime() - Date.now()) / 86400000;
-    if (r.lat == null || r.lng == null || daysAway < 0 || daysAway > 16) return { ...r, weather: null };
-    const startHour = r.startTime ? Number(String(r.startTime).slice(0, 2)) : 7;
-    const w = await getRaceWeather(r.lat, r.lng, new Date(r.date), isNaN(startHour) ? 7 : startHour);
-    return { ...r, weather: w };
-  }));
-
-  return NextResponse.json({ races: withWeather });
+  return NextResponse.json({ races: races.map(r => ({...r, weather: null})) }, {headers:{"Cache-Control":"private, no-store"}});
 }
 
 // POST /api/races — add a race (goal)
@@ -31,15 +21,9 @@ export async function POST(req: Request) {
     if (["boxing", "lifting"].includes(String(b?.distance || "").toLowerCase())) return NextResponse.json({ error: "Choose swimming, cycling, running, HYROX or triathlon." }, { status: 400 });
     if (!b.name || !b.date) return NextResponse.json({ error: "name and date required" }, { status: 400 });
     const f = (v: unknown) => (v === undefined || v === null || v === "" ? null : parseFloat(String(v)));
-    // Auto-geocode the venue from the location text (Open-Meteo geocoding,
-    // free) so race-day weather can be pulled automatically.
-    let lat: number | null = null, lng: number | null = null;
-    if (b.location) {
-      try {
-        const g = await geocodeLocation(String(b.location));
-        if (g) { lat = g.lat; lng = g.lng; }
-      } catch { /* geocoding is best-effort */ }
-    }
+    // Never infer a race start location from an ambiguous place-name match.
+    // Coordinates and provider lookups are explicit in the scenario workspace.
+    const lat: number | null = null, lng: number | null = null;
     const race = await prisma.race.create({
       data: {
         userId: user.id,

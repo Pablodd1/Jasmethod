@@ -81,6 +81,9 @@ jobs:
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3220/api/auth/me && break; sleep 1; done
           npm run test:integration
 
+      - name: Authenticated race scenario boundaries
+        run: npx tsx scripts/jmm-race-scenario-integration.ts
+
       - name: Optional double-day agreement and recovery acceptance
         run: npx tsx scripts/jmm-double-day-integration.ts
 
@@ -137,4 +140,5 @@ jobs:
             .local/jmm-conversation-integration/report.json
             .local/jmm-metrics-integration/report.json
             .local/jmm-recovery-integration/report.json
+            .local/jmm-race-scenario-integration/report.json
           if-no-files-found: ignore
