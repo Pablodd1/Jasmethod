@@ -2,6 +2,7 @@
 
 // Public privacy policy — required by OAuth providers (Whoop/Strava/Oura show
 // this link in the authorization flow). Bilingual EN + ES on one page.
+import { PUBLIC_CONTACT_EMAIL, PUBLIC_CONTACT_MAILTO } from "@/lib/public-contact";
 import { SiteHeader, SiteFooter } from "@/components/site-shell";
 
 export default function PrivacyPage() {
@@ -10,7 +11,7 @@ export default function PrivacyPage() {
       <SiteHeader />
       <main className="pub-container py-12 max-w-3xl mx-auto">
         <h1 className="font-display text-3xl font-bold mb-2">Privacy Policy · Política de Privacidad</h1>
-        <p className="micro mb-8">JasMiamiMethod · jasmelacosta@gmail.com · Last updated: September 2026</p>
+        <p className="micro mb-8">JasMiamiMethod · <a href={PUBLIC_CONTACT_MAILTO} className="underline">{PUBLIC_CONTACT_EMAIL}</a> · Last updated: September 2026</p>
 
         <section className="space-y-4 text-sm leading-relaxed text-ink-700">
           <div className="rounded-2xl border border-ink-200 bg-white p-5">
@@ -27,8 +28,8 @@ export default function PrivacyPage() {
 
           <div className="rounded-2xl border border-ink-200 bg-white p-5">
             <h2 className="font-display font-bold text-lg mb-1">3. Storage, retention & security / Almacenamiento y seguridad</h2>
-            <p><strong>EN:</strong> Data is stored in an encrypted-access managed Postgres database (Supabase, US region) with row-level security; device access tokens are encrypted at rest. We keep your data while your account is active. You may request export or full deletion of your data at any time by emailing jasmelacosta@gmail.com — deletion is final and completes within 30 days.</p>
-            <p className="mt-2"><strong>ES:</strong> Los datos se guardan en una base de datos Postgres gestionada (Supabase, región EE.UU.) con seguridad por filas; los tokens de dispositivos se cifran en reposo. Conservamos tus datos mientras tu cuenta esté activa. Puedes solicitar exportación o eliminación total en cualquier momento escribiendo a jasmelacosta@gmail.com — la eliminación es definitiva y se completa en 30 días.</p>
+            <p><strong>EN:</strong> Data is stored in an encrypted-access managed Postgres database (Supabase, US region) with row-level security; device access tokens are encrypted at rest. We keep your data while your account is active. You may request export or full deletion of your data at any time by emailing <a href={PUBLIC_CONTACT_MAILTO} className="underline">{PUBLIC_CONTACT_EMAIL}</a> — deletion is final and completes within 30 days.</p>
+            <p className="mt-2"><strong>ES:</strong> Los datos se guardan en una base de datos Postgres gestionada (Supabase, región EE.UU.) con seguridad por filas; los tokens de dispositivos se cifran en reposo. Conservamos tus datos mientras tu cuenta esté activa. Puedes solicitar exportación o eliminación total en cualquier momento escribiendo a <a href={PUBLIC_CONTACT_MAILTO} className="underline">{PUBLIC_CONTACT_EMAIL}</a> — la eliminación es definitiva y se completa en 30 días.</p>
           </div>
 
           <div className="rounded-2xl border border-ink-200 bg-white p-5">
@@ -39,7 +40,7 @@ export default function PrivacyPage() {
 
           <div className="rounded-2xl border border-vermillion-300 bg-paper-100 p-5">
             <h2 className="font-display font-bold text-lg mb-1">Contact / Contacto</h2>
-            <p>Jasmel Acosta · jasmelacosta@gmail.com · Miami, FL</p>
+            <p>Jasmel Acosta · <a href={PUBLIC_CONTACT_MAILTO} className="underline">{PUBLIC_CONTACT_EMAIL}</a> · Miami, FL</p>
           </div>
         </section>
       </main>

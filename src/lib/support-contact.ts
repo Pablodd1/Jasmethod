@@ -1,13 +1,15 @@
+import { PUBLIC_CONTACT_EMAIL } from "./public-contact";
+
 export type SupportContacts = { email: string | null; telegramUsername: string | null };
 export const supportCategories = { login: "Account and sign-in", device: "Device connection or workout delivery", question: "Question or inquiry" } as const;
 export type SupportCategory = keyof typeof supportCategories;
 
-// Explicit public destinations only. Never derive from credentials or redirects.
+// Use the shared verified mailbox, even if an old SUPPORT_EMAIL remains deployed.
+// Never derive public destinations from credentials or redirects.
 export function supportContacts(env: Record<string, string | undefined>): SupportContacts {
-  const email = env.SUPPORT_EMAIL?.trim() || "";
   const username = (env.SUPPORT_TELEGRAM_USERNAME?.trim() || "").replace(/^@/, "");
   return {
-    email: email.length <= 254 && /^[A-Za-z0-9.!#$%&'*+/=^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(email) ? email : null,
+    email: PUBLIC_CONTACT_EMAIL,
     telegramUsername: /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username) ? username : null,
   };
 }
