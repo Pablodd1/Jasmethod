@@ -66,10 +66,11 @@ test("gmail html: styled cards with zones, fuel strip and escaped content", () =
   assert.match(html, /🍚 Post: 84g carbs \+ 21g protein/);
 });
 
-test("calendar description: icons, key steps with notes, fuel, plain-text safe", () => {
+test("calendar description: icons, key steps without private free-text notes, fuel, plain-text safe", () => {
   const d = calendarDescription(session);
   assert.match(d, /🏃 Run: Tempo — 60 min 🟠Z4/);
-  assert.match(d, /• 40 min Tempo block \(hold threshold effort\)/);
+  assert.match(d, /• 40 min Tempo block/);
+  assert.doesNotMatch(d, /hold threshold effort/);
   assert.match(d, /⛽ Pre: 140g 2-3 h before/);
   assert.match(d, /never force fluids or overdrink/);
   assert.match(d, /⛽ During: 60g\/h \+ up to 750ml\/h/);

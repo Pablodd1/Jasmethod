@@ -41,6 +41,6 @@ test('nutrition changes invalidate canonical revision and ICS uses resolved nutr
   const nutrition=buildSessionNutrition(profile,session,now)!;
   const text=buildTrainingCalendar({athlete:{name:'Test',email:'test@example.invalid',timezone:'UTC'},workouts:[],metrics:[],sleep:[],checkins:[],resolvedSessions:{[session.id]:canonical},resolvedNutrition:{[session.id]:nutrition},plan:{name:'Test',days:[{date:now,week:1,dayOff:false,sessions:[workout]}]}});
   assert.match(text,/PER HOUR/);
-  assert.match(text,/50g\/h|50 g\/h/);
+  assert.match(text,/50g\/h|50 g\/h|50 g TOTAL carbohydrate\/hour/);
   assert.doesNotMatch(text,/PRIVATE_CONDITIONS/);
 });

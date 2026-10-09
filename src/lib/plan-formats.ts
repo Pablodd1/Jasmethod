@@ -198,7 +198,7 @@ export function calendarDescription(
   const key = (s.steps || []).filter((x) => x.phase === "active").slice(0, 4);
   for (const st of key)
     lines.push(
-      `• ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}${st.note ? ` (${st.note})` : ""}`,
+      `• ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}`,
     );
   if (s.fuel?.preSession?.carbsG)
     lines.push(`⛽ Pre: ${s.fuel.preSession.carbsG}g ${s.fuel.preSession.timingLabel}`);
@@ -207,6 +207,7 @@ export function calendarDescription(
       `⛽ During: ${s.fuel.carbsPerHourG}g/h + up to ${s.fuel.fluidMlPerHour}ml/h as general examples. Drink to need; never force fluids or overdrink.`,
     );
   if (s.post) lines.push(`🍚 Post: ${postFuelLabel(s.post)}`);
+  lines.push("Preparation: check equipment, route and current local conditions. Weather is not verified here. In heat, plan cooling and water access. Optional: a comfortable breathing pause to focus.");
   lines.push("— JasMiamiMethod · check in before training");
   return lines.join("\n");
 }

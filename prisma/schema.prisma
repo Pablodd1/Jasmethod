@@ -14,6 +14,8 @@ datasource db {
 // ---------- IDENTITY ----------
 
 model User {
+  manualWorkoutEmail ManualWorkoutEmailPreference?
+  manualWorkoutEmails ManualWorkoutEmailOutbox[]
   passwordReset PasswordReset?
   signInAccounts SignInAccount[]
   syncJobs SyncJob[]
@@ -862,4 +864,55 @@ model TelegramCoachingUpdate {
   status String @default("processing")
   createdAt DateTime @default(now())
   @@index([createdAt])
+}
+
+// Dedicated, explicit manual Garmin email consent. Legacy reminder flags never enable it.
+model ManualWorkoutEmailPreference {
+  userId String @id
+  enabled Boolean @default(false)
+  daily Boolean @default(false)
+  revisions Boolean @default(false)
+  calendarGuidance Boolean @default(false)
+  consentVersion String?
+  consentAt DateTime?
+  recipient String?
+  verifiedAt DateTime?
+  challengeHash String?
+  challengeExpiresAt DateTime?
+  challengeSentAt DateTime?
+  challengeAttempts Int @default(0)
+  timezone String
+  minuteOfDay Int @default(360)
+  leadMinutes Int @default(60)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// No email bodies or health answers stored here. Unknown SMTP outcomes are never retried.
+model ManualWorkoutEmailOutbox {
+  id String @id @default(cuid())
+  userId String
+  sessionId String
+  revision String
+  kind String
+  dedupeKey String @unique
+  recipient String
+  status String @default("queued")
+  acceptedAt DateTime?
+  attemptedAt DateTime?
+  receiptId String?
+  error String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, sessionId, createdAt])
+  @@index([status, createdAt])
+}
+
+// Serializes distinct revisions for one athlete/session; no message contents.
+model ManualWorkoutEmailDispatch {
+  key String @id
+  outboxId String?
+  leasedUntil DateTime
 }

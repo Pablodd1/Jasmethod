@@ -1,9 +1,13 @@
+import { manualWorkoutCalendarPlaceholder } from "./manual-workout-calendar";
+import { manualEmailLanguage } from "./manual-workout-email-locale";
+import { eligibleManualEmail, manualEmailConfigured } from "./manual-workout-email";
+import { manualWorkoutCalendarDescription } from "./manual-workout-email-content";
 import { prisma } from "./db";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { addDaysKey, dayBounds, dateKey, localDate } from "./dates";
 import { storeActivity } from "./activity-store";
 import * as api from "./importers";
-import { sportIcon, calendarDescription } from "./plan-formats";
+
 import { effectivePrescription } from "./effective-prescription";
 import { SessionResolutionError } from "./canonical-session";
 import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "./capabilities";
@@ -37,7 +41,7 @@ export async function syncUserConnectors(
 ): Promise<SyncSummary> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { timezone: true, profile: { select: { weightKg: true, sweatRateMlH: true, sodiumMgPerL: true, gutTrained: true } } },
+    select: { timezone: true, email: true, language: true, profile: { select: { weightKg: true, sweatRateMlH: true, sodiumMgPerL: true, gutTrained: true } } },
   });
   const profile = user.profile;
   const connections = await prisma.connector.findMany({
@@ -223,24 +227,24 @@ export async function syncUserConnectors(
           let resolved: Awaited<ReturnType<typeof effectivePrescription>> = null;
           try { resolved = await effectivePrescription(userId, w.id); }
           catch (error) { if (!(error instanceof SessionResolutionError)) throw error; }
-          const ready = resolved?.canonical.verdict === "ready";
+          const [emailPref, deliveryUser, approval] = await Promise.all([
+            manualEmailConfigured() ? prisma.manualWorkoutEmailPreference.findUnique({ where: { userId } }) : Promise.resolve(null),
+            prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true, language: true, timezone: true } }),
+            prisma.auditLog.findFirst({ where: { subjectId: userId, entityId: w.id, action: "workout.approved" }, orderBy: { createdAt: "desc" } }),
+          ]);
+          let approvedRevision: string | null = null;
+          try { approvedRevision = approval?.after ? JSON.parse(approval.after).revision : null; } catch { /* no approval evidence */ }
+          const ready = resolved?.canonical.verdict === "ready" && w.approved && approvedRevision === resolved.canonical.revision;
+          const language = manualEmailLanguage(deliveryUser.language);
+          const shareGuidance = !!language && !!emailPref?.calendarGuidance && eligibleManualEmail(emailPref, deliveryUser.email) && emailPref.timezone === deliveryUser.timezone;
           const session = ready ? resolved!.canonical : null;
-          const prescription = ready ? resolved!.prescription : null;
           const appUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit").replace(/\/$/, "")}/daily?sessionId=${encodeURIComponent(w.id)}`;
-          const fuelPlan = ready ? resolved!.nutrition?.fuel ?? null : null;
-          const postPlan = ready ? resolved!.nutrition?.post ?? null : null;
+          const placeholder = manualWorkoutCalendarPlaceholder(deliveryUser.language, !!ready, appUrl);
           const gid = await api.googleCalUpsertEvent(access, {
-            summary: ready
-              ? `${sportIcon(session!.sport)} ${session!.title} · ${session!.durationMin} min${session!.exactTimeSeconds == null ? " estimated" : ""}`
-              : `${sportIcon(w.sport)} ${w.title} · provisional plan`,
-            description: ready ? calendarDescription({
-              id: w.id, title: session!.title, sport: session!.sport,
-              durationMin: session!.durationMin, intensity: prescription.intensity,
-              revision: session!.revision, verdict: session!.verdict, appUrl,
-              steps: session!.steps.map(step => ({ ...step, targetLabel: step.target.label })),
-              fuel: fuelPlan,
-              post: postPlan,
-            }) + `\nSummary only. Full warm-up, work, recovery, cooldown and current targets: ${appUrl}\nPlan revision: ${session!.revision}` : `Provisional calendar placeholder only. No exercise is cleared by this entry. Open the session and complete the session-day check-in before training. Planned calendar time may change.\n${appUrl}`,
+            summary: placeholder.summary,
+            description: ready && shareGuidance
+              ? manualWorkoutCalendarDescription(session!, resolved!.nutrition, w.startTime, language!) + `\n${language === "es" ? "Plan actual y gráfico" : "Current plan and workout graphic"}: ${appUrl}\n${language === "es" ? "Revisión" : "Plan revision"}: ${session!.revision}`
+              : placeholder.description,
             start: localDate(dateKey(w.date, user.timezone), user.timezone, w.startTime || "07:00"),
             durationMin: session?.durationMin ?? w.durationMin,
             workoutId: w.id,

@@ -2,7 +2,9 @@ import { dateKey, localDate } from "./dates";
 import { sessionFitEntries } from "./fit-export";
 import { fitFilename, type CanonicalSession } from "./canonical-session";
 import { buildZip, type ZipEntry } from "./zip";
-import { calendarDescription, shapeLink } from "./plan-formats";
+import { manualWorkoutCalendarDescription } from "./manual-workout-email-content";
+import { manualWorkoutCalendarPlaceholder } from "./manual-workout-calendar";
+import { manualEmailLanguage } from "./manual-workout-email-locale";
 import type { SessionNutrition } from "./session-nutrition";
 
 type Row = Record<string, unknown>;
@@ -11,7 +13,7 @@ export interface TrainingExportData {
   resolvedNutrition?: Record<string, SessionNutrition>;
   resolvedSessions?: Record<string, CanonicalSession>;
   resolutionErrors?: Record<string, string>;
-  athlete: { name: string; email: string; timezone: string };
+  athlete: { name: string; email: string; timezone: string; language?: string };
   workouts: Array<
     Row & {
       date: Date;
@@ -92,6 +94,20 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
           ? session.startTime
           : "06:00",
       );
+      const savedLanguage = data.athlete.language ?? "en";
+      const language = manualEmailLanguage(savedLanguage);
+      const appUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit").replace(/\/$/, "")}/daily?sessionId=${encodeURIComponent(String(session.id))}`;
+      const placeholder = manualWorkoutCalendarPlaceholder(savedLanguage, resolved?.verdict === "ready", appUrl);
+      const snapshotNotice: Record<string, string> = {
+        en: "Downloaded calendar snapshot: later changes require a fresh export; this file does not auto-sync.",
+        es: "Copia del calendario descargada: los cambios posteriores requieren una nueva exportación; este archivo no se sincroniza automáticamente.",
+        fr: "Copie du calendrier téléchargée : les modifications nécessitent un nouvel export ; ce fichier ne se synchronise pas automatiquement.",
+        ht: "Kopi kalandriye telechaje: chanjman yo mande yon nouvo ekspòtasyon; fichye sa a pa senkronize otomatikman.",
+        ru: "Скачанная копия календаря: для последующих изменений нужен новый экспорт; файл не синхронизируется автоматически.",
+      };
+      const description = resolved?.verdict === "ready" && language
+        ? manualWorkoutCalendarDescription(resolved, data.resolvedNutrition?.[session.id] ?? null, typeof session.startTime === "string" ? session.startTime : null, language) + `\n${language === "es" ? "Plan actual y gráfico (requiere iniciar sesión)" : "Current plan and workout graphic (sign-in required)"}: ${appUrl}`
+        : placeholder.description;
       const durationMin = resolved?.verdict === "ready" ? resolved.durationMin : session.durationMin;
       const end = new Date(start.getTime() + durationMin * 60000);
       lines.push(
@@ -100,19 +116,8 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
         `DTSTAMP:${utcStamp(new Date())}`,
         `DTSTART:${utcStamp(start)}`,
         `DTEND:${utcStamp(end)}`,
-        `SUMMARY:${icsText(resolved?.title ?? session.title)}`,
-        `DESCRIPTION:${icsText(
-          `${resolved?.verdict !== "ready" ? `PROVISIONAL / ON HOLD: ${resolved?.reason || data.resolutionErrors?.[session.id] || "Complete current check-in before training."}\n` : ""}${calendarDescription({
-            title: resolved?.title ?? String(session.title),
-            sport: resolved?.sport ?? String(session.sport),
-            revision: resolved?.revision,
-            durationMin,
-            intensity: data.resolvedNutrition?.[session.id]?.intensity ?? null,
-            steps: resolved?.verdict === "ready" ? resolved.steps.map(s => ({ ...s, targetLabel: s.target.label })) : [],
-            fuel: resolved?.verdict === "ready" ? data.resolvedNutrition?.[session.id]?.fuel ?? null : null,
-            post: resolved?.verdict === "ready" ? data.resolvedNutrition?.[session.id]?.post ?? null : null,
-          })}\n📈 Effort shape: ${shapeLink(String(session.id))}`,
-        )}`,
+        `SUMMARY:${icsText(resolved?.verdict === "ready" && language ? resolved.title : placeholder.summary)}`,
+        `DESCRIPTION:${icsText(`${description}\n${snapshotNotice[savedLanguage] || snapshotNotice.en}`)}`,
         "END:VEVENT",
       );
     }

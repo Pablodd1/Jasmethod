@@ -54,6 +54,7 @@ export async function GET(req: Request) {
         name: athlete.name,
         email: athlete.email,
         timezone: athlete.timezone,
+        language: athlete.language,
       },
       profile: athlete.profile,
       workouts,
