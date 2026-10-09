@@ -95,6 +95,9 @@ jobs:
           ENABLE_MOCK_COACHING: "true"
         run: npm run test:followup
 
+      - name: Durable mobile onboarding, import review and returning cycle acceptance
+        run: NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs" node --import tsx scripts/jmm-mobile-workflow-integration.ts
+
       - name: Persistent conversational coach acceptance
         run: npm run test:conversation
 
