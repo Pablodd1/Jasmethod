@@ -71,8 +71,9 @@ export const RESEARCH_SOURCES: ResearchSource[] = [
   { id: "betaalanineboxing", claim: "beta-alanine 3.2-6.4g/d improves high-intensity performance and punching power in the final seconds of rounds (4-10 wk trials)", ref: "Beta-alanine in combat sports review (PMC10490143); Korean national boxers study 2018", level: "A", population: "both" },
   { id: "bellar2015", claim: "alpha-GPC acutely enhances power output and reaction speed (cholinergic mechanism)", ref: "Bellar et al. 2015, J Int Soc Sports Nutr", level: "A", population: "both" },
 
-  // ---- plyometrics (mandatory 1-2x/week conditioning rule) ----
-  { id: "ramirezcampillo2022", claim: "plyometric jump training improves power, economy and injury resilience; 1-2 sessions/week effective", ref: "Ramírez-Campillo et al. 2022, plyometric jump training meta-analysis (Sports Med)", level: "A", population: "both" },
+  // ---- optional plyometrics: performance evidence, not universal eligibility ----
+  // Legacy ID retained; the former nonspecific 2022 reference is corrected below.
+  { id: "ramirezcampillo2022", claim: "Jump-training studies in endurance runners report physical-performance and running-economy improvements; they do not establish injury prevention, universal eligibility or mandatory dosing for JMM athletes", ref: "Ramírez-Campillo et al. 2021, Effects of jump training on physical fitness and athletic performance in endurance runners: A meta-analysis, J Sports Sci (PMID 33956587); corrected legacy citation", level: "B", population: "both" },
 
   // ---- female athlete / cycle / sex-specific ----
   { id: "niering2024", claim: "strength favors late follicular phase; early follicular unfavorable", ref: "Niering et al. 2024, Sports 12:31 (systematic review + meta)", level: "A", population: "recreational" },

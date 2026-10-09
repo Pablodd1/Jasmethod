@@ -46,24 +46,53 @@ export function PilotOnboarding(){
       await refresh();router.replace("/today");
     }catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
+  const intervals=providers.find(p=>p.id==="intervals"&&p.configured&&p.method==="oauth"&&p.connectUrl?.startsWith("/api/connectors/"));
+  const statusLabel=(status:string)=>status==="connected"?t("Connected","Conectado"):status==="disconnected"?t("Not connected","Sin conectar"):t("Connection needs attention","La conexión necesita revisión");
+  function providerCard(p:Provider){
+    return <article className="card space-y-2" key={p.id}>
+      <h3 className="font-semibold">{p.name}</h3>
+      <p className="text-sm">{p.description}</p>
+      <p className="text-sm">{statusLabel(p.status)} · {p.lastSyncAt?`${t("Last import","Última importación")}: ${new Date(p.lastSyncAt).toLocaleString()}`:t("No successful import recorded","Sin importación confirmada")}</p>
+      {p.lastError&&<p className="text-amber-800" role="status">{p.lastError}</p>}
+      {p.configured&&p.method==="oauth"&&p.connectUrl?.startsWith("/api/connectors/")?<a className="btn-secondary" href={`${p.connectUrl}?return=${encodeURIComponent("/onboard?redo=1&step=devices")}`}>{t("Connect / reconnect","Conectar / reconectar")}</a>:p.method==="upload"?<Link className="inline-flex min-h-11 items-center underline" href="/connectors?onboarding=1">{t("Import a file","Importar archivo")}</Link>:<span className="text-sm">{t("Unavailable","No disponible")}</span>}
+    </article>;
+  }
   return <ProtectedPage><div className="max-w-2xl mx-auto space-y-5">
     <p className="text-sm font-semibold">{t("Free pilot · no payment required","Piloto gratuito · sin pago")}</p>
-    <h1 className="font-display text-3xl">{t("Your athlete profile","Tu perfil de atleta")}</h1>
-    <nav aria-label={t("Onboarding steps","Pasos iniciales")} className="flex flex-wrap gap-3">{["devices","profile"].map((s,i)=><button key={s} disabled={busy} className="btn-secondary" aria-current={step===s?"step":undefined} onClick={()=>setStep(s)}>{i===0?t("1. Connections","1. Conexiones"):t("2. Review profile","2. Revisar perfil")}</button>)}</nav>
+    <h1 className="font-display text-3xl">{t("Welcome to JMM","Bienvenido a JMM")}</h1>
+    <nav aria-label={t("Onboarding steps","Pasos iniciales")} className="flex flex-wrap gap-3">{["devices","profile"].map((s,i)=><button key={s} disabled={busy} className="btn-secondary" aria-current={step===s?"step":undefined} onClick={()=>setStep(s)}>{i===0?t("1. Optional connections","1. Conexiones opcionales"):t("2. Review profile","2. Revisar perfil")}</button>)}</nav>
     {error&&<p role="alert" className="text-red-700">{error} <button className="underline" onClick={()=>window.location.reload()}>{t("Reload saved profile","Recargar perfil")}</button></p>}
     {step==="devices"?<section className="space-y-4">
-      <h2 className="font-bold text-xl">{t("First, connect your training account","Primero, conecta tu cuenta de entrenamiento")}</h2>
-      <p>{t("Import the information you authorize, or continue without a device. No connection or questionnaire is required to enter the app.","Importa los datos que autorices o continúa sin dispositivo. Puedes entrar sin conectar ni contestar un cuestionario.")}</p>
-      <p className="text-sm">{t("Strava imports completed activities. Garmin uses the configured Intervals.icu bridge or supported file uploads; this is not a direct Garmin login. Only available connections can be authorized below.","Strava importa actividades realizadas. Garmin utiliza Intervals.icu cuando está habilitado o archivos compatibles; no es un acceso directo a Garmin. Solo puedes autorizar las conexiones disponibles.")}</p>
-      {providers.map(p=><article className="card space-y-2" key={p.id}><h3 className="font-semibold">{p.name}</h3><p className="text-sm">{p.description}</p><p className="text-sm">{p.status} · {p.lastSyncAt?`${t("Last import","Última importación")}: ${new Date(p.lastSyncAt).toLocaleString()}`:t("No successful import recorded","Sin importación confirmada")}</p>{p.lastError&&<p className="text-amber-800" role="status">{p.lastError}</p>}
-        {p.configured&&p.method==="oauth"&&p.connectUrl?.startsWith("/api/connectors/")?<a className="btn-secondary" href={`${p.connectUrl}?return=${encodeURIComponent("/onboard?redo=1&step=devices")}`}>{t("Connect / reconnect","Conectar / reconectar")}</a>:p.method==="upload"?<Link className="underline" href="/connectors?onboarding=1">{t("Import a file","Importar archivo")}</Link>:<span className="text-sm">{t("Unavailable","No disponible")}</span>}
-      </article>)}
-      {importError&&<p role="alert">{importError}</p>}
-      <button disabled={busy} className="btn-secondary" onClick={()=>void refreshImports()}>{t("Refresh import status","Actualizar importación")}</button>
-      <p className="text-sm">{t("Imports run in the background after authorization. You can continue while they finish. Connected does not confirm a complete history, every metric or watch delivery.","Las importaciones se procesan en segundo plano. Puedes continuar mientras terminan. Conectado no confirma todo el historial, todas las métricas ni entrega al reloj.")}</p>
-      <button disabled={busy} className="btn-primary" onClick={()=>setStep("profile")}>{providers.some(p=>p.status==="connected")?t("Review imported profile","Revisar perfil importado"):t("Continue without a device","Continuar sin dispositivo")}</button>
+      <h2 className="font-bold text-xl">{t("Start with or without a watch","Empieza con o sin reloj")}</h2>
+      <p>{t("A watch is optional. You can tell JMM how you feel and add your training yourself. Connect accounts later when you are ready.","El reloj es opcional. Puedes decirle a JMM cómo te sientes y añadir tu entrenamiento. Conecta tus cuentas después, cuando quieras.")}</p>
+      <button disabled={busy} className="btn-primary w-full sm:w-auto" onClick={()=>setStep("profile")}>{providers.some(p=>p.status==="connected")?t("Continue to review my profile","Continuar y revisar mi perfil"):t("Continue without a watch","Continuar sin reloj")}</button>
+      {intervals&&<article className="card space-y-3 border-2 border-slate-600">
+        <h3 className="font-semibold text-lg">{t("Use Garmin? Optional setup through Intervals.icu","¿Usas Garmin? Conexión opcional con Intervals.icu")}</h3>
+        <p className="text-sm">{t("This connects your Intervals.icu account to JMM. It does not sign you in to Garmin directly.","Conecta tu cuenta de Intervals.icu con JMM. No es un acceso directo a Garmin.")}</p>
+        <ol className="list-decimal pl-5 space-y-2 text-sm">
+          <li>{t("In Intervals.icu, connect your Garmin account and check its workout forwarding settings.","En Intervals.icu, conecta Garmin y revisa la configuración de envío de entrenamientos.")}</li>
+          <li>{t("Authorize JMM below. Review the permissions before agreeing.","Autoriza JMM abajo. Revisa los permisos antes de aceptar.")}</li>
+          <li>{t("In JMM Connections, choose whether to enable automatic publication. Review and approve each workout revision before sending it.","En Conexiones de JMM, elige si deseas activar la publicación automática. Revisa y aprueba cada versión antes de enviarla.")}</li>
+        </ol>
+        <p className="text-sm">{t("Structured run and bike workouts are supported. A connection or an accepted workout does not confirm watch receipt. Check the workout on your watch before training.","Admite entrenamientos estructurados de carrera y ciclismo. Conectar o aceptar un entrenamiento no confirma su recepción en el reloj. Revísalo en tu reloj antes de entrenar.")}</p>
+        <p className="text-sm" role="status">{statusLabel(intervals.status)}</p>
+        {intervals.lastError&&<p role="status" className="text-amber-800">{intervals.lastError}</p>}
+        {intervals.status==="connected"?<Link className="btn-secondary" href="/connectors?onboarding=1">{t("Review workout delivery settings","Revisar opciones de envío")}</Link>:<a className="btn-secondary" href={`${intervals.connectUrl}?return=${encodeURIComponent("/onboard?redo=1&step=devices")}`}>{t("Connect Intervals.icu","Conectar Intervals.icu")}</a>}
+        <Link className="block underline text-sm min-h-11 content-center" href={`/help/pilot?lang=${es?"es":"en"}`}>{t("Help with watch setup","Ayuda para conectar el reloj")}</Link>
+      </article>}
+      <details className="space-y-3">
+        <summary className="cursor-pointer font-semibold min-h-11 content-center">{t("Other accounts and file imports (optional)","Otras cuentas e importación de archivos (opcional)")}</summary>
+        <div className="space-y-3">{providers.filter(p=>p!==intervals).map(providerCard)}</div>
+        <p className="text-sm">{t("Strava imports completed activities. Files may be used for supported sources. Only available connections can be authorized.","Strava importa actividades realizadas. Puedes usar archivos para las fuentes compatibles. Solo puedes autorizar las conexiones disponibles.")}</p>
+      </details>
+      {importError&&<p role="alert">{t("Could not load connections. You can continue without a watch and try again later.","No se pudieron cargar las conexiones. Puedes continuar sin reloj e intentarlo después.")}</p>}
+      <button disabled={busy} className="btn-secondary" onClick={()=>void refreshImports()}>{t("Refresh connection status","Actualizar conexiones")}</button>
+      <details>
+        <summary className="cursor-pointer underline text-sm min-h-11 content-center">{t("What happens after connecting?","¿Qué pasa después de conectar?")}</summary>
+        <p className="text-sm">{t("Imports run in the background after authorization. You can continue while they finish. Connected does not confirm a complete history, every metric or watch delivery.","Las importaciones se procesan en segundo plano. Puedes continuar mientras terminan. Conectado no confirma todo el historial, todas las métricas ni entrega al reloj.")}</p>
+      </details>
     </section>:<section className="space-y-4">
-      <h2 className="font-bold text-xl">{t("Review what we know; fill only what you want","Revisa lo conocido; completa solo lo que quieras")}</h2>
+      <h2 className="font-bold text-xl">{t("Review your profile","Revisa tu perfil")}</h2>
       <div className="card"><p className="font-semibold">{user?.name}</p><p className="break-words">{user?.email}</p><p className="text-sm">{t("Identity from your JMM sign-in. Device accounts do not replace it.","Identidad de tu acceso a JMM. Los dispositivos no la reemplazan.")}</p></div>
       <div className="card"><h3 className="font-semibold">{t("Imported training history","Historial importado")}</h3><p>{review.history?`${review.history.count} ${t("completed activities stored","actividades realizadas guardadas")}`:t("History has not been loaded yet.","Aún no se cargó el historial.")}</p>{review.history?.latestAt&&<p className="text-sm">{t("Latest recorded activity","Actividad más reciente")}: {new Date(review.history.latestAt).toLocaleDateString()}</p>}{review.history?.sports.map(s=><span className="inline-block rounded-full border px-3 py-1 mr-2 mt-2 text-sm" key={s.sport}>{s.sport}: {s.count}</span>)}<p className="text-sm mt-2">{t("Stored history is not proof of a complete provider history or your current capacity.","El historial guardado no confirma que esté completo ni tu capacidad actual.")}</p></div>
       {importError&&<p role="alert">{importError}</p>}<button disabled={busy} className="underline" onClick={()=>void refreshImports()}>{t("Refresh imported information","Actualizar datos importados")}</button>
@@ -75,7 +104,7 @@ export function PilotOnboarding(){
       <p className="text-sm">{t("Goals, available time, zones, travel and safety questions come later when you choose personalized planning. Without them, Today offers general guidance and conversation, not an invented personalized session.","Objetivos, tiempo, zonas, viajes y seguridad se revisan después al elegir un plan personalizado. Sin esos datos, Hoy ofrece orientación general y conversación, no una sesión personalizada inventada.")}</p>
       <button className="btn-primary" disabled={busy||loading||!revision} onClick={()=>void finish(true)}>{busy?"…":t("Save profile and open Today","Guardar perfil y abrir Hoy")}</button>
     </section>}
-    <button className="underline" disabled={busy} onClick={()=>void finish(false)}>{t("Skip remaining questions and open Today","Omitir preguntas restantes y abrir Hoy")}</button><p className="text-xs">{t("Skipping keeps only saved details. Finishing setup does not assign a workout.","Omitir conserva solo lo guardado. Finalizar no asigna entrenamiento.")}</p>
-    <Link className="block underline text-sm" href="/help/pilot">{t("Pilot workflow, next steps and links","Flujo del piloto, próximos pasos y enlaces")}</Link>
+    <button className="underline min-h-11" disabled={busy} onClick={()=>void finish(false)}>{t("Skip remaining questions and open Today","Omitir preguntas restantes y abrir Hoy")}</button><p className="text-xs">{t("Skipping keeps only saved details. Finishing setup does not assign a workout.","Omitir conserva solo lo guardado. Finalizar no asigna entrenamiento.")}</p>
+    <Link className="block underline text-sm" href={`/help/pilot?lang=${es?"es":"en"}`}>{t("Pilot workflow, next steps and links","Flujo del piloto, próximos pasos y enlaces")}</Link>
   </div></ProtectedPage>;
 }

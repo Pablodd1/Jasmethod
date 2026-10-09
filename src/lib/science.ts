@@ -574,23 +574,22 @@ export function generatePlan(opts: {
       }
     }
 
-    // ---- STRENGTH + PLYOMETRICS (product rule: plyo 1-2×/week is MANDATORY
-    // in every plan, alongside sport-specific lifting — Rønnestad & Mujika 2014;
-    // Ramírez-Campillo et al. 2022 plyometric jump training meta-analysis) ----
+    // Keep the scheduled strength/power slots. Movement review, not a blanket
+    // product rule, determines whether optional plyometrics are appropriate.
     if (strengthMin >= 30) {
       const phaseFocus = legacy === "base"
-        ? "Strength: Foundation — heavy compound lifts (squat, deadlift, bench, row) 3×5-8 + plyometric primer (box jumps 3×5, med-ball throws 3×8). Strength improves running economy and time-trial performance (Rønnestad & Mujika 2014); plyo 1-2×/week is mandatory in every plan (Ramírez-Campillo 2022)."
+        ? "Strength: Foundation — practice familiar squat, hinge, press and pull movements within the allocated time. Your coach should select loads, repetitions and recovery from movement technique, experience, equipment and current tolerance. Plyometrics are optional only after specific movement and experience review; no jump dose is prescribed automatically."
         : legacy === "build"
-          ? "Strength: Power — Olympic lifts / loaded jumps 3×5 + plyometric circuit (depth jumps, bounds, hopping drills) 2×/week. Converts strength into speed (Rønnestad 2014; Ramírez-Campillo 2022)."
-          : "Strength: Maintenance — light, explosive. 2×8 moderate load + 3×5 box jumps. Stop heavy lifting 7-10 days pre-race.";
-      sessions.push({ sport: "strength", title: legacy === "taper" ? "Strength: Maintenance" : `Strength: ${legacy === "base" ? "Foundation + Plyo" : legacy === "build" ? "Power + Plyo" : "Maintenance"}`, minutes: strengthMin, zone: "z1", type: "strength", description: phaseFocus });
-      // Dedicated plyometric session: 1×/week in base, 2nd in build/peak (the
-      // 2nd rides inside the strength day above). Never in taper.
+          ? "Strength: Power preparation — use familiar coach-reviewed strength movements with full recovery within the allocated time. Explosive lifting and plyometrics require specific technique, experience and tolerance review; no automatic Olympic-lift or jump dose is assigned."
+          : "Strength: Maintenance — use familiar coach-reviewed movements and tolerable loads within the allocated time. Avoid adding unfamiliar explosive work near the race; review the maintenance dose with your coach.";
+      sessions.push({ sport: "strength", title: legacy === "taper" ? "Strength: Maintenance" : `Strength: ${legacy === "base" ? "Foundation" : legacy === "build" ? "Power preparation" : "Maintenance"}`, minutes: strengthMin, zone: "z1", type: "strength", description: phaseFocus });
+      // Preserve the existing optional power slot and its allocation. The
+      // legacy type supports scheduling; it does not establish jump eligibility.
       if (legacy === "base") {
-        sessions.push({ sport: "strength", title: "Plyometrics: Jump Training", minutes: Math.max(25, Math.round(strengthMin * 0.5)), zone: "z3", type: "plyo", description: "Plyometrics (mandatory 1-2×/week): box jumps 4×5, standing long jumps 3×5, pogo hops 3×20s, single-leg bounds 2×6/leg. Full recovery between sets — quality of contact, not fatigue. Improves economy, power and injury resilience (Ramírez-Campillo 2022)." });
+        sessions.push({ sport: "strength", title: "Strength: Movement preparation", minutes: Math.max(25, Math.round(strengthMin * 0.5)), zone: "z3", type: "plyo", description: "Use familiar coach-reviewed strength or controlled movement practice within this time, with adequate recovery. Plyometrics are optional after review of movement technique, experience, equipment and current tolerance. Without that review, no jumps or explosive loads are prescribed. Performance research does not establish injury prevention or a mandatory dose for every athlete." });
       }
       if (legacy === "build" || legacy === "peak") {
-        sessions.push({ sport: "strength", title: "Plyometrics: Reactive Power", minutes: Math.max(25, Math.round(strengthMin * 0.5)), zone: "z3", type: "plyo", description: "Plyometrics (mandatory 2×/week in build): depth jumps 4×5 (drop height ≤40cm), lateral bounds 3×8/side, single-leg hops 3×10, sprint-specific bounding 4×20m. Full recoveries, land quiet — stiff ankles, quiet knees (Ramírez-Campillo 2022)." });
+        sessions.push({ sport: "strength", title: "Strength: Power preparation — review first", minutes: Math.max(25, Math.round(strengthMin * 0.5)), zone: "z3", type: "plyo", description: "Use familiar coach-reviewed strength movements and full recovery within this time. Optional power or plyometric work needs specific movement, experience, equipment and tolerance review. No depth jumps, bounds or explosive loads are assigned automatically; the reserved slot is not proof that these movements are suitable." });
       }
     }
 
@@ -739,7 +738,7 @@ function mainTemplate(sport: string, type: string, zone: string, minutes: number
   if (sport === "boxing") {
     if (type === "interval") return `Main: ${Math.max(4, Math.round(work / 4))}×3 min rounds (${z}), 1 min rest → ${t}. Each round a job: output burst → counter-boxing → pivot-and-exit footwork. Hands back to face after every punch.`;
     if (type === "skill") return `Main: ${Math.max(3, Math.round(work / 5))}×2 min technique rounds → ${t}. One pattern per round (jab range, slip-roll-counter, angle exit). 60% speed first — slow is smooth.`;
-    if (type === "strength") return `Main: power circuit ${Math.round(work)} min: 4 rounds of 20 max-speed bag punches, 8 explosive push-ups, 10 rotational throws, 30s plank, 60s rest → ${t}. Every rep FAST.`;
+    if (type === "strength") return `Main: familiar coach-reviewed strength and trunk movements within ${t}, with tolerable loads and adequate recovery. Optional explosive work requires specific technique, experience and tolerance review; no explosive push-up or throwing dose is assigned automatically.`;
     return `Main: ${Math.round(work)} min continuous ${z} in 3-min rounds (1 min rest) → ${t}. Long steady output, clean mechanics.`;
   }
   return `Main: ${Math.round(work)} min at ${z} → ${t}.`;
@@ -880,7 +879,7 @@ export function generateHyroxPlan(opts: {
     } else if (ph === "peak") {
       sessions.push({ sport: "strength", title: "Station: Reviewed Dress Rehearsal", minutes: Math.round(strengthMin * 0.6), zone: "z4", type: "strength", description: "Scaled station rehearsal within the allocated time using reviewed familiar loads. Full race loads and a complete race simulation require separate approval and sufficient time." });
     } else {
-      sessions.push({ sport: "strength", title: "Strength: Maintenance", minutes: Math.round(strengthMin * 0.5), zone: "z1", type: "strength", description: "Light, explosive: 2×8 moderate load. No heavy lifting within 7-10 days of race." });
+      sessions.push({ sport: "strength", title: "Strength: Maintenance", minutes: Math.round(strengthMin * 0.5), zone: "z1", type: "strength", description: "Use familiar controlled strength movements within the allocated time at coach-reviewed tolerable loads and repetitions. Do not add unfamiliar explosive work during taper; review the maintenance dose before the race." });
     }
 
     // COMPROMISED RUNNING (the defining HYROX skill)
@@ -980,7 +979,7 @@ export function generateBoxingCamp(opts: {
 
     // S&C (transfer to punching power / durability)
     if (ph !== "taper") {
-      sessions.push({ sport: "strength", title: "S&C: Punching Power + Neck/Core Armor", minutes: scMin, zone: "z3", type: "strength", description: "Mandatory plyometrics 1-2×/week: jump squat 3×5, depth jumps 3×5, plyo push-ups 3×8; landmine punch 4×6/side, rotational med-ball throw 4×6/side; armor: neck isometrics 3×30s, Pallof press 3×10, farmers carry 3×40m. Move the bar FAST — force = mass × acceleration (Suchomel 2016). Ground-up power transfer is what the punch rides on (Turner 2011); jump and throw power track punch impact in elite boxers (Loturco 2016)." });
+      sessions.push({ sport: "strength", title: "S&C: Strength practice — review first", minutes: scMin, zone: "z3", type: "strength", description: "Strength and conditioning: practice familiar coach-reviewed squat, hinge, press, pull and trunk movements within the allocated time. Select loads, repetitions and rests from current experience and tolerance. Plyometrics and explosive lifting are optional only after specific technique and experience review; no jump dose is prescribed automatically." });
     } else {
       sessions.push({ sport: "strength", title: "S&C: Activation Only", minutes: Math.round(scMin * 0.6), zone: "z1", type: "recovery", description: "Banded pull-aparts, hip 90/90s, light med-ball tosses. Keep the nervous system awake, the muscles asleep." });
     }
@@ -1003,7 +1002,7 @@ export function generateTrackSprint(opts: {
   startDate: Date;
 }): GeneratedWeek[] {
   const { level, event, weeks, startDate } = opts;
-  // This template has maximal sprints and loaded plyometrics. An experience
+  // This template has maximal sprints and reserved strength slots. An experience
   // label alone cannot establish readiness; do not expose it to novices.
   if (!["amateur", "advanced", "pro"].includes(level)) {
     return Array.from({ length: weeks }, (_, index) => ({
@@ -1053,10 +1052,10 @@ export function generateTrackSprint(opts: {
 
     // Speed Day 1
     if (phase === "general_prep") {
-      sessions.push({ sport: "run", title: "Acceleration + Mechanics", minutes: 90, zone: "z5", type: "speed", description: "10 min jog + dynamic drills (leg swings, hip openers, ankle circles ×10 each). A-skips, B-skips 2×20m. 6×20m block starts at 100% effort, rest 2-3 min between reps. 4×20m fly-in at 95% MV, rest 4-6 min. Plyo: box jumps 4×5, bounds 3×20m. Cool: 10 min walk + static stretch." });
+      sessions.push({ sport: "run", title: "Acceleration + Mechanics", minutes: 90, zone: "z5", type: "speed", description: "10 min jog + dynamic drills (leg swings, hip openers, ankle circles ×10 each). A-skips, B-skips 2×20m. 6×20m block starts at 100% effort, rest 2-3 min between reps. 4×20m fly-in at 95% MV, rest 4-6 min. Optional plyometrics require specific movement, experience and tolerance review; no jump dose is prescribed automatically. Cool: 10 min walk + static stretch." });
     } else if (phase === "specific_prep") {
       const protoDesc = describeRows(protoSession);
-      sessions.push({ sport: "run", title: "Speed Endurance (Hart / SET protocols)", minutes: 100, zone: "z5", type: "speed", description: protoDesc || (isShort ? "10 min jog + drills. 5×120m at 95% max velocity, rest 8-10 min between reps. Plyo: depth jumps 3×5, single-leg bounds 3×6/leg. Cool: 10 min walk + stretch." : "10 min jog + drills. 3×200m at 90-95% max velocity, rest 12-15 min. Plyo: depth jumps 3×5. Cool: 10 min walk + stretch.") });
+      sessions.push({ sport: "run", title: "Speed Endurance (Hart / SET protocols)", minutes: 100, zone: "z5", type: "speed", description: protoDesc || (isShort ? "10 min jog + drills. 5×120m at 95% max velocity, rest 8-10 min between reps. Optional plyometrics require specific movement, experience and tolerance review; no jump dose is assigned automatically. Cool: 10 min walk + stretch." : "10 min jog + drills. 3×200m at 90-95% max velocity, rest 12-15 min. Optional plyometrics require specific movement, experience and tolerance review; no jump dose is assigned automatically. Cool: 10 min walk + stretch.") });
     } else if (phase === "pre_comp") {
       const midDesc = describeRows(sprintSessionFor(PHASE_MAP["pre_comp" as keyof typeof PHASE_MAP] as any, w % 4));
       sessions.push({ sport: "run", title: "Race Pace Sharpening", minutes: 80, zone: "z5", type: "speed", description: `10 min jog + drills. ${isShort ? "4×60m at race pace, rest 6-8 min. 2×20m fly at 95-100% MV." : "2×150m at race pace, rest 10 min. 1×80m fly at 95% MV."} ${midDesc} Volume reduced 40% — sharpen, don't fatigue.` });
@@ -1064,18 +1063,18 @@ export function generateTrackSprint(opts: {
       sessions.push({ sport: "run", title: "Competition Week", minutes: 50, zone: "z5", type: "speed", description: "10 min jog + drills. 3×20m build + 1×40m at 95% MV, full recovery. Race in <7 days." });
     }
 
-    // Strength Day 1: Heavy lower + core
-    sessions.push({ sport: "strength", title: phase === "general_prep" ? "Strength: Heavy Lower + Core" : phase === "specific_prep" ? "Strength: Power Lower" : "Strength: Maintenance", minutes: 75, zone: "z1", type: "strength", description: phase === "general_prep" ? "Back Squat 4×5 @85% 1RM, RDL 3×6 @80%, Bulgarian Split Squat 3×5/leg, Calf Raise 3×8 loaded. Core: Pallof Press 3×10/side. Plyo primer: box jumps 3×5." : phase === "specific_prep" ? "Power Clean 4×3 @70% 1RM, Trap Bar Jump Squat 4×4 @30% 1RM, Sled Push 4×20m heavy. Core: hanging knee raises 3×10." : "Maintenance: 2×5 back squat @70%, 2×5 power clean @60%, core circuit. No failure." });
+    // Preserve the strength slot without assuming explosive-lifting eligibility.
+    sessions.push({ sport: "strength", title: phase === "general_prep" ? "Strength: Lower + Core" : phase === "specific_prep" ? "Strength: Power preparation" : "Strength: Maintenance", minutes: 75, zone: "z1", type: "strength", description: "Use familiar coach-reviewed lower-body and trunk movements within the allocated time. Select tolerable loads, repetitions and rest from movement technique and training history. Optional explosive lifting or plyometrics require specific experience and tolerance review; no Olympic-lift or jump dose is assigned automatically." });
 
     // Speed Day 2: Max Velocity or Speed Endurance
     if (phase !== "comp") {
       if (phase === "general_prep") {
-        sessions.push({ sport: "run", title: "Max Velocity Development", minutes: 90, zone: "z5", type: "speed", description: "10 min jog + drills. Fly-in sprints: 4×(20m build + 30m max velocity), rest 4-6 min. Plyo: single-leg bounds 3×6/leg, pogo hops 3×20s. Cool: 10 min walk + stretch." });
+        sessions.push({ sport: "run", title: "Max Velocity Development", minutes: 90, zone: "z5", type: "speed", description: "10 min jog + drills. Fly-in sprints: 4×(20m build + 30m max velocity), rest 4-6 min. Optional plyometrics require specific movement, experience and tolerance review; no jump dose is prescribed automatically. Cool: 10 min walk + stretch." });
       } else if (phase === "specific_prep") {
         if (event === "400m") {
-          sessions.push({ sport: "run", title: "Special Endurance I", minutes: 100, zone: "z5", type: "speed", description: "10 min jog + drills. 2×(300m @85% MV, rest 15 min + 150m @95% MV, rest 12 min). Plyo: depth jumps 3×5. Cool: 10 min walk + stretch." });
+          sessions.push({ sport: "run", title: "Special Endurance I", minutes: 100, zone: "z5", type: "speed", description: "10 min jog + drills. 2×(300m @85% MV, rest 15 min + 150m @95% MV, rest 12 min). Optional plyometrics require specific movement, experience and tolerance review; no jump dose is prescribed automatically. Cool: 10 min walk + stretch." });
         } else {
-          sessions.push({ sport: "run", title: "Speed Endurance I", minutes: 100, zone: "z5", type: "speed", description: "10 min jog + drills. 4×150m at 95% MV with 8-10 min rest. Plyo: depth jumps 3×5. Cool: 10 min walk + stretch." });
+          sessions.push({ sport: "run", title: "Speed Endurance I", minutes: 100, zone: "z5", type: "speed", description: "10 min jog + drills. 4×150m at 95% MV with 8-10 min rest. Optional plyometrics require specific movement, experience and tolerance review; no jump dose is prescribed automatically. Cool: 10 min walk + stretch." });
         }
       } else {
         sessions.push({ sport: "run", title: "Race Model + Speed", minutes: 90, zone: "z5", type: "speed", description: `10 min jog + drills. ${event === "400m" ? "350m time trial @95% + 2×150m at race pace" : "3×120m at race pace + 2×60m fly at 100% MV"}. Volume reduced 40% — sharpen, don't fatigue.` });
@@ -1085,9 +1084,9 @@ export function generateTrackSprint(opts: {
     // Tempo Day
     sessions.push({ sport: "run", title: "Tempo + Core", minutes: 45, zone: "z2", type: "tempo", description: "10 min jog. " + Math.floor(weeks * 0.3) + " × 100m @70% MV with 45s rest (extensive tempo — should feel conversational). Core: 3×(30s plank + 20 side plank/side + 10 dead bugs). Cool: 5 min walk + stretch." });
 
-    // Strength Day 2: Power + Plyo
+    // Strength Day 2: reviewed power preparation
     if (phase !== "comp") {
-      sessions.push({ sport: "strength", title: "Explosive Power + Plyo", minutes: 60, zone: "z3", type: "plyo", description: "Power Clean 4×3 @70% 1RM, Trap Bar Jump Squat 4×4 @30% 1RM, Depth Jumps 3×5 from 40cm, Single-Leg Bounds 3×6/leg, Sled Push 4×20m heavy. Full recovery between sets — this is neural training (Ramírez-Campillo 2022)." });
+      sessions.push({ sport: "strength", title: "Strength: Power preparation — review first", minutes: 60, zone: "z3", type: "plyo", description: "Power preparation: use familiar coach-reviewed strength movements and full recovery within this allocated time. Optional explosive lifts or plyometrics require specific movement, experience, equipment and tolerance review. No automatic Olympic-lift or jump dose is prescribed." });
     }
 
     // Rest Day
