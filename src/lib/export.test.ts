@@ -80,12 +80,13 @@ test("WHOOP OAuth state uses its required length and rejects altered responses",
   assert.equal(validOAuthState(whoop, whoop, "google-cal"), false);
 });
 
-test("CSV quotes unsafe cells and calendar emits a timed workout", () => {
+test("CSV quotes unsafe cells and calendar emits a timed provisional placeholder until canonical review", () => {
   assert.equal(toCsv([{ note: 'a,"b"' }], ["note"]), 'note\r\n"a,""b"""\r\n');
   const calendar = buildTrainingCalendar(sample);
   assert.match(calendar, /DTSTART:20260908T113000Z/);
   assert.match(calendar, /DTEND:20260908T123000Z/);
-  assert.match(calendar, /SUMMARY:Threshold bike/);
+  assert.match(calendar, /SUMMARY:JMM provisional session/);
+  assert.match(calendar, /PROVISIONAL \/ ON HOLD/);
 });
 
 test("complete training bundle contains analytics, calendar and valid FIT", () => {

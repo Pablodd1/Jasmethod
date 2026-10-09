@@ -22,7 +22,8 @@
       "dot/device-free-launch-20261002": false,
       "dot/device-free-followup-20261002": false,
       "dot/truthful-home-delivery-20261002": false,
-      "dot/conversational-coach-20261003": false
+      "dot/conversational-coach-20261003": false,
+      "feat/manual-garmin-email": false
     }
   }
 }

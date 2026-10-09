@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -81,6 +82,7 @@ export default function RemindersPage() {
   }
   return <ProtectedPage><div className="space-y-6 max-w-3xl">
     <h1 className="font-display text-2xl font-bold">{label("Coaching communications", "Comunicaciones de entrenamiento")}</h1>
+    <p><Link className="underline" href="/workout-email/settings">{label("Manual Garmin email preferences (separate opt-in)", "Preferencias de correo Garmin manual (consentimiento separado)")}</Link></p>
     <p className="rounded-xl border border-amber-300 bg-amber-50 p-4">{transport === "telegram" && enabled ? label("Telegram delivery is enabled only for your verified private chat and selected purposes. Provider acceptance does not establish reading. Email and other delivery channels remain disabled.", "Telegram solo está activo para tu chat privado verificado y los fines elegidos. La aceptación del proveedor no prueba lectura. El correo y los otros canales están desactivados.") : label("External delivery is disabled pending provider and privacy review. The isolated test mode below simulates acceptance only; it never sends Telegram or email, or claims a read receipt.", "El envío externo está desactivado hasta revisar proveedores y privacidad. El modo de prueba solo simula aceptación; no envía Telegram ni correo ni confirma lectura.")}</p>
     {error && <p role="alert" className="text-red-700">{error}</p>}{notice && <p role="status" className="text-emerald-800">{notice}</p>}
     {!loaded ? <p role="status">{label("Loading preferences…", "Cargando preferencias…")}</p> : <>

@@ -226,11 +226,11 @@ test('connections: plain FIT GET cannot approve or email even with email prefere
   assert.equal(r.status,200);assert.equal(log.approvals,0);assert.equal(log.emails,0);assert.equal(log.prefs,0);
   assert.equal(r.headers.get('X-Delivered-Email'),'0');
 });
-test('connections: explicit approval POST still approves and honors email preference',async()=>{
+test('connections: explicit approval POST approves but legacy email preference cannot authorize SMTP',async()=>{
   const {dependencies,log,revision}=exportFixture(); const route=load(original,'src/app/api/workout/approve/route.ts',dependencies);
   const r=await route.POST(new Request(`https://app.example/api/workout/approve?sessionId=w1&expectedRevision=${revision}`,{method:'POST'}));
-  assert.equal(r.status,200);assert.equal(log.approvals,1);assert.equal(log.emails,1);
-  assert.equal(r.headers.get('X-Delivered-Email'),'1');
+  assert.equal(r.status,200);assert.equal(log.approvals,1);assert.equal(log.emails,0);assert.equal(log.prefs,0);
+  assert.equal(r.headers.get('X-Delivered-Email'),'0');
   assert.equal(log.audits[0].action,'workout.approved'); assert.equal(JSON.parse(log.audits[0].after).revision,revision);
 });
 test('connections: approval rejects missing or stale revision without changes',async()=>{
@@ -241,11 +241,11 @@ test('connections: approval rejects missing or stale revision without changes',a
   }
 });
 
-test('connections: repeated approval does not duplicate email delivery',async()=>{
+test('connections: repeated approval does not bypass durable consent-verified email delivery',async()=>{
   const {dependencies,log,revision}=exportFixture(); const route=load(original,'src/app/api/workout/approve/route.ts',dependencies);
   const request=()=>new Request(`https://app.example/api/workout/approve?sessionId=w1&expectedRevision=${revision}`,{method:'POST'});
   const first=await route.POST(request()); const second=await route.POST(request());
-  assert.equal(first.status,200);assert.equal(second.status,200);assert.equal(log.approvals,1);assert.equal(log.emails,1);assert.equal(log.prefs,1);
+  assert.equal(first.status,200);assert.equal(second.status,200);assert.equal(log.approvals,1);assert.equal(log.emails,0);assert.equal(log.prefs,0);
 });
 test('connections: WHOOP event retries error-state connectors and does not hide processing exceptions',async()=>{
   let where,processed=0;

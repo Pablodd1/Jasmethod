@@ -14,6 +14,7 @@ Disallow: /dashboard
 Disallow: /checkin
 Disallow: /calendar
 Disallow: /training
+Disallow: /workout-email
 Disallow: /settings
 Disallow: /connectors
 Disallow: /races
