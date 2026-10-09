@@ -165,6 +165,6 @@ test("single-sport base substitutes encode easy intensity consistently", () => {
       assert.strictEqual(easy.type, "endurance");
       assert.ok(!week.sessions.some(s => s.title.startsWith("VO2max")));
     }
-    assert.ok(weeks[2].sessions.some(s => s.title.startsWith("VO2max") && s.zone === "z5"));
+    assert.ok(weeks[2].sessions.some(s => (sport === "swim" ? s.title === "Reviewed short swim efforts" : s.title.startsWith("VO2max")) && s.zone === "z5"));
   }
 });
