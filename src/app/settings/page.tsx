@@ -2,8 +2,11 @@
 import { NutritionContextEditor } from "@/components/nutrition-context-editor";
 import {BaselineTests} from "@/components/baseline-tests";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { settingsProfileForm, settingsProfilePatch } from "@/lib/settings-profile";
+import { saveReviewedProfile } from "@/lib/profile-client";
+import { PLANNABLE_GOALS, planningGoal } from "@/lib/planning-setup";
 import { fmtWeight, fmtHeight } from "@/lib/units";
 import { EstimateBanner } from "@/components/estimate-banner";
 import { PrsCard } from "@/components/prs-card";
@@ -20,7 +23,7 @@ import {
 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
-import { HR_ZONES, estimateVo2max } from "@/lib/science";
+import { HR_ZONES, estimateVo2max, buildZoneTable } from "@/lib/science";
 import { TRAINING_WINDOWS } from "@/lib/adaptive";
 import { t, fmtNum, type Lang } from "@/lib/i18n";
 
@@ -35,53 +38,36 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [nutritionDraft, setNutritionDraft] = useState<any>(null);
   const [nutritionDirty, setNutritionDirty] = useState(false);
-  const [form, setForm] = useState<any>({});
+  const [form, setForm] = useState(()=>settingsProfileForm(null));
+  const loadedForm = useRef(settingsProfileForm(null));
+  const loadRequest = useRef(0);
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
   const [vo2Estimate, setVo2Estimate] = useState<any>(null);
   const [vo2Source, setVo2Source] = useState<string | null>(null);
   const [modules, setModules] = useState<any>({});
 
-  async function load() {
-    const res = await fetch("/api/profile");
-    const d = await res.json();
-    if (!res.ok) { setError(d.error || "Could not load profile"); setLoading(false); return; }
-    setRevision(d.revision);
-    setProfile(d.profile);
-    try { setNutritionDraft(d.profile?.nutritionContext ? JSON.parse(d.profile.nutritionContext) : null); }
-    catch { setNutritionDraft(null); }
-    setNutritionDirty(false);
-    setZones(d.zones);
-    setVo2Source(d.vo2maxSource || null);
-    if (d.profile) {
-      setForm({
-        birthYear: d.profile.birthYear || "",
-        sex: d.profile.sex || "",
-        heightCm: d.profile.heightCm || "",
-        weightKg: d.profile.weightKg || "",
-        experience: d.profile.experience || "amateur",
-        goal: d.profile.goal || "olympic",
-        weeklyHours: d.profile.weeklyHours || 8,
-        vo2max: d.profile.vo2max || "",
-        lthr: d.profile.lthr || "",
-        maxHr: d.profile.maxHr || "",
-        ftp: d.profile.ftp || "",
-        cp: d.profile.cp ?? "",
-        restingHr: d.profile.restingHr ?? "",
-        hrvBaseline: d.profile.hrvBaseline ?? "",
-        sweatRateMlH: d.profile.sweatRateMlH ?? "",
-        sodiumMgPerL: d.profile.sodiumMgPerL ?? "",
-        injured: d.profile.injured ?? false,
-        runPaceBase: d.profile.runPaceBase || "",
-        swimPaceBase: d.profile.swimPaceBase || "",
-        trainingWindow: d.profile.trainingWindow || "any",
-        units: d.profile.units || "metric",
-        raceDate: d.profile.raceDate ? d.profile.raceDate.slice(0, 10) : "",
-      });
-    }
-    setLoading(false);
-  }
-  useEffect(() => {
-    if (user) load();
-  }, [user]);
+  const load = useCallback(async () => {
+    const requestId = ++loadRequest.current;
+    setLoading(true); setRevision(undefined); setError("");
+    try {
+      const response = await fetch("/api/profile", {cache:"no-store",signal:AbortSignal.timeout(15000)});
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || "Could not load your saved profile.");
+      if (typeof data.revision !== "string" || !data.revision) throw Error("Your saved profile could not be verified. Reload before editing.");
+      if (requestId !== loadRequest.current) return;
+      const current = settingsProfileForm(data.profile ?? null, user?.timezone);
+      loadedForm.current = current; setForm(current);
+      setRevision(data.revision); setProfile(data.profile);
+      try { setNutritionDraft(data.profile?.nutritionContext ? JSON.parse(data.profile.nutritionContext) : null); }
+      catch { setNutritionDraft(null); }
+      setNutritionDirty(false); setZones(data.zones); setVo2Source(data.vo2maxSource || null);
+    } catch (failure) { if (requestId === loadRequest.current) setError((failure as Error).message); }
+    finally { if (requestId === loadRequest.current) setLoading(false); }
+  }, [user?.timezone]);
+  const cancelLoad = useCallback(()=>{loadRequest.current++;},[]);
+  useEffect(() => { if (user?.id) void load(); return cancelLoad; }, [user?.id,load,cancelLoad]);
 
   async function loadModules() {
     try {
@@ -107,7 +93,7 @@ export default function SettingsPage() {
   }, [user]);
 
   function estimate() {
-    if (!form.birthYear || !form.sex || !form.weightKg || !form.heightCm)
+    if (!form.birthYear || (form.sex !== "male" && form.sex !== "female") || !form.weightKg || !form.heightCm)
       return;
     const age = new Date().getFullYear() - parseInt(form.birthYear, 10);
     const heightM = parseFloat(form.heightCm) / 100;
@@ -126,32 +112,25 @@ export default function SettingsPage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const body: any = {};
-    for (const k of Object.keys(form)) {
-      body[k] = form[k] === "" ? null : form[k];
-    }
-    if (body.birthYear) body.birthYear = parseInt(body.birthYear, 10);
-    if (body.heightCm) body.heightCm = parseFloat(body.heightCm);
-    if (body.weightKg) body.weightKg = parseFloat(body.weightKg);
-    if (body.weeklyHours) body.weeklyHours = parseFloat(body.weeklyHours);
-    if (body.vo2max) body.vo2max = parseFloat(body.vo2max);
-    if (body.lthr) body.lthr = parseInt(body.lthr, 10);
-    if (body.maxHr) body.maxHr = parseInt(body.maxHr, 10);
-    if (body.ftp) body.ftp = parseFloat(body.ftp);
-    if (body.runPaceBase) body.runPaceBase = parseFloat(body.runPaceBase);
-    if (body.swimPaceBase) body.swimPaceBase = parseFloat(body.swimPaceBase);
-    if (nutritionDirty) body.nutritionContext = nutritionDraft;
-    setError("");
-    const res = await fetch("/api/profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({...body, expectedRevision: revision}),
-    });
-    if (res.ok) {
-      setSaved(true);
-      load();
-      setTimeout(() => setSaved(false), 2500);
-    } else { const d = await res.json(); setError(d.error || "Could not save profile"); }
+    if (savingRef.current) return;
+    setSaved(false); setNotice(""); setError("");
+    try {
+      const body = settingsProfilePatch(form, loadedForm.current);
+      if (nutritionDirty) body.nutritionContext = nutritionDraft;
+      if (!Object.keys(body).length) { setNotice(lang === "es" ? "No hay cambios para guardar." : "No changes to save."); return; }
+      savingRef.current = true; setSaving(true);
+      const result = await saveReviewedProfile(body, revision ?? null);
+      if (!result.profile || typeof result.profile !== "object") throw Error("The saved profile could not be verified. Reload and review before trying again.");
+      // The acknowledged response is the new reviewed baseline; never fetch a fresh revision to retry stale edits.
+      const current = settingsProfileForm(result.profile ?? null,user?.timezone);
+      loadedForm.current = current; setForm(current); setProfile(result.profile);
+      setRevision(result.revision); setNutritionDirty(false); setSaved(true);
+      try { setNutritionDraft(result.profile?.nutritionContext ? JSON.parse(result.profile.nutritionContext) : null); } catch { setNutritionDraft(null); }
+      // Recompute display ranges only from the acknowledged saved references, never from unsaved input.
+      setZones(buildZoneTable({maxHr:result.profile.maxHr ?? undefined,lthr:result.profile.lthr ?? undefined,ftp:result.profile.ftp ?? undefined,thresholdPaceSecPerKm:result.profile.runPaceBase ?? undefined,thresholdPaceSecPer100m:result.profile.swimPaceBase ?? undefined,restingHr:result.profile.restingHr ?? undefined}));
+      setVo2Source(result.profile.vo2max ? "saved reference; provenance unverified" : null);
+    } catch (failure) { setError((failure as Error).message); }
+    finally { savingRef.current = false; setSaving(false); }
   }
 
   if (loading) {
@@ -200,14 +179,17 @@ export default function SettingsPage() {
           </h1>
           <p className="text-slate-500 text-sm">
             {lang === "es"
-              ? "Tu fisiología mueve cada sesión. Llena lo que sepas — nosotros estimamos el resto desde la investigación."
+              ? "Introduce solo lo que sepas. Los datos desconocidos siguen visibles; las estimaciones son provisionales."
               : "Your physiology drives every session. Enter what you know. Missing values remain visible; any estimates are provisional."}
           </p>
         </div>
 
+        <section className="card space-y-2"><h2 className="font-semibold">{lang === "es" ? "Objetivos y plan de entrenamiento" : "Goals and training plan"}</h2><p className="text-sm">{lang === "es" ? "Revisa objetivos, disponibilidad y seguridad. Guardar el perfil conserva tu historial y no reemplaza el plan actual." : "Review goals, availability and safety. Saving profile edits keeps your history and does not replace your current plan."}</p><div className="flex flex-wrap gap-4"><Link className="underline min-h-11 inline-flex items-center" href="/onboard?redo=1&step=race&return=training">{lang === "es" ? "Revisar configuración guiada" : "Review guided planning setup"}</Link><Link className="underline min-h-11 inline-flex items-center" href="/training">{lang === "es" ? "Ver mi plan guardado" : "View my saved plan"}</Link></div></section>
+        {error && <p role="alert" className="rounded-lg border border-red-300 p-3 text-red-700">{error} {!revision && <button type="button" className="underline" onClick={()=>void load()}>{lang === "es" ? "Recargar perfil" : "Reload profile"}</button>}</p>}
+        {notice && <p role="status" className="text-sm">{notice}</p>}
         {saved && (
-          <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-            ✓ Profile saved — zones updated
+          <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+            {lang === "es" ? "Perfil guardado. Tu plan e historial se conservan." : "Profile saved. Your existing plan and history are preserved."}
           </div>
         )}
 
@@ -224,11 +206,12 @@ export default function SettingsPage() {
             <h2 className="font-display font-bold text-lg mb-3">
               Athlete Profile
             </h2>
-            <form onSubmit={save} className="space-y-3">
+            <form onSubmit={save} onChangeCapture={()=>{setSaved(false);setNotice("");}} className="space-y-3"><fieldset disabled={!revision || saving} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Birth year</label>
+                  <label htmlFor="profile-birthYear" className="label">Birth year</label>
                   <input
+                    id="profile-birthYear"
                     className="input"
                     type="number"
                     value={form.birthYear}
@@ -239,8 +222,9 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="label">Sex</label>
+                  <label htmlFor="profile-sex" className="label">Sex</label>
                   <select
+                    id="profile-sex"
                     className="input"
                     value={form.sex}
                     onChange={(e) => setForm({ ...form, sex: e.target.value })}
@@ -251,8 +235,9 @@ export default function SettingsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="label">Height (cm)</label>
+                  <label htmlFor="profile-heightCm" className="label">Height (cm)</label>
                   <input
+                    id="profile-heightCm"
                     className="input"
                     type="number"
                     step="0.1"
@@ -264,8 +249,9 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="label">Weight (kg)</label>
+                  <label htmlFor="profile-weightKg" className="label">Weight (kg)</label>
                   <input
+                    id="profile-weightKg"
                     className="input"
                     type="number"
                     step="0.1"
@@ -277,14 +263,16 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="label">Experience</label>
+                  <label htmlFor="profile-experience" className="label">Experience</label>
                   <select
+                    id="profile-experience"
                     className="input"
                     value={form.experience}
                     onChange={(e) =>
                       setForm({ ...form, experience: e.target.value })
                     }
                   >
+                    <option value="">Not provided</option>
                     <option value="beginner">Beginner</option>
                     <option value="amateur">Amateur</option>
                     <option value="advanced">Advanced</option>
@@ -292,12 +280,15 @@ export default function SettingsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="label">Goal distance</label>
+                  <label htmlFor="profile-goal" className="label">Goal distance</label>
                   <select
+                    id="profile-goal"
                     className="input"
                     value={form.goal}
                     onChange={(e) => setForm({ ...form, goal: e.target.value })}
                   >
+                    <option value="">Not provided</option>
+                    {form.goal && !PLANNABLE_GOALS.includes(planningGoal(form.goal)!) && <option value={form.goal} disabled>Saved legacy goal: {form.goal}</option>}
                     <option value="sprint">Sprint</option>
                     <option value="olympic">Olympic</option>
                     <option value="half">Half Ironman</option>
@@ -306,11 +297,13 @@ export default function SettingsPage() {
                     <option value="cycle">Cycling (no triathlon)</option>
                     <option value="run-only">Running only</option>
                     <option value="swim-only">Swimming only</option>
+                    <option value="track-sprint">Track sprint</option><option value="5k">5K</option><option value="10k">10K</option><option value="half-marathon">Half marathon</option><option value="marathon">Marathon</option>
                   </select>
                 </div>
                 <div>
-                  <label className="label">Weekly hours</label>
+                  <label htmlFor="profile-weeklyHours" className="label">Weekly hours</label>
                   <input
+                    id="profile-weeklyHours"
                     className="input"
                     type="number"
                     step="0.5"
@@ -321,8 +314,9 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div>
-                  <label className="label">Race date</label>
+                  <label htmlFor="profile-raceDate" className="label">Race date</label>
                   <input
+                    id="profile-raceDate"
                     type="date"
                     className="input"
                     value={form.raceDate}
@@ -332,8 +326,9 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="label">Preferred training time</label>
+                  <label htmlFor="profile-trainingWindow" className="label">Preferred training time</label>
                   <select
+                    id="profile-trainingWindow"
                     className="input"
                     value={form.trainingWindow}
                     onChange={(e) =>
@@ -353,12 +348,14 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <div className="col-span-2">
-                  <label className="label">Units</label>
+                  <label htmlFor="profile-units" className="label">Units</label>
                   <select
+                    id="profile-units"
                     className="input"
-                    value={form.units || "metric"}
+                    value={form.units || "auto"}
                     onChange={(e) => setForm({ ...form, units: e.target.value })}
                   >
+                    <option value="auto">{lang === "es" ? "Automático por idioma (español: km; inglés: mi)" : "Automatic by language (English: mi; Spanish: km)"}</option>
                     <option value="metric">
                       Metric (kg · km · ml · °C)
                     </option>
@@ -367,8 +364,8 @@ export default function SettingsPage() {
                     </option>
                   </select>
                   <p className="text-[11px] text-slate-400 mt-1">
-                    Display only — your data is stored in metric and converted
-                    wherever you see it. {form.units === "imperial" && form.weightKg
+                    Saved choices override the language default. Training distance and pace use
+                    this preference; profile reference inputs keep their labeled storage units. {form.units === "imperial" && form.weightKg
                       ? `Your weight: ${fmtWeight(Number(form.weightKg), "imperial")} · height: ${fmtHeight(Number(form.heightCm), "imperial")}.`
                       : ""}
                   </p>
@@ -377,9 +374,9 @@ export default function SettingsPage() {
 
               <div className="border-t border-sand-200 pt-3">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="label mb-0">
+                  <h3 className="label mb-0">
                     Measured physiology (optional)
-                  </label>
+                  </h3>
                   <button
                     type="button"
                     onClick={estimate}
@@ -390,8 +387,9 @@ export default function SettingsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="label">VO2max (ml/kg/min)</label>
+                    <label htmlFor="profile-vo2max" className="label">VO2max (ml/kg/min)</label>
                     <input
+                      id="profile-vo2max"
                       className="input"
                       type="number"
                       step="0.1"
@@ -403,11 +401,12 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="label">
+                    <label htmlFor="profile-lthr" className="label">
                       LTHR (bpm) — from a 30-min all-out test
                     </label>
                     <input
-                      className="input"
+                      id="profile-lthr"
+                    className="input"
                       type="number"
                       value={form.lthr}
                       onChange={(e) =>
@@ -425,9 +424,10 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="label">Max HR</label>
+                    <label htmlFor="profile-maxHr" className="label">Max HR</label>
                     <input
-                      className="input"
+                      id="profile-maxHr"
+                    className="input"
                       type="number"
                       value={form.maxHr}
                       onChange={(e) =>
@@ -439,9 +439,10 @@ export default function SettingsPage() {
                   {([['cp','Critical power (watts)'],['restingHr','Resting heart rate (bpm)'],['hrvBaseline','Reviewed HRV baseline (ms)'],['sweatRateMlH','Reported sweat rate (mL/hour)'],['sodiumMgPerL','Reported sweat sodium (mg/L)']] as const).map(([field,label])=><label key={field} className="label">{label}<input className="input" type="number" step="any" value={form[field] ?? ''} onChange={e=>setForm({...form,[field]:e.target.value})}/></label>)}
                   <label className="label flex gap-2 items-center"><input type="checkbox" checked={!!form.injured} onChange={e=>setForm({...form,injured:e.target.checked})}/>Injury restriction active — pause training for review</label>
                   <div>
-                    <label className="label">FTP (watts)</label>
+                    <label htmlFor="profile-ftp" className="label">FTP (watts)</label>
                     <input
-                      className="input"
+                      id="profile-ftp"
+                    className="input"
                       type="number"
                       step="0.1"
                       value={form.ftp}
@@ -455,9 +456,10 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="label">Run T-pace (sec/km)</label>
+                    <label htmlFor="profile-runPaceBase" className="label">Run T-pace (sec/km)</label>
                     <input
-                      className="input"
+                      id="profile-runPaceBase"
+                    className="input"
                       type="number"
                       value={form.runPaceBase}
                       onChange={(e) =>
@@ -470,9 +472,10 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="label">Swim T-pace (sec/100m)</label>
+                    <label htmlFor="profile-swimPaceBase" className="label">Swim T-pace (sec/100m)</label>
                     <input
-                      className="input"
+                      id="profile-swimPaceBase"
+                    className="input"
                       type="number"
                       value={form.swimPaceBase}
                       onChange={(e) =>
@@ -497,9 +500,9 @@ export default function SettingsPage() {
                 type="submit"
                 className="btn-primary w-full justify-center"
               >
-                <Save className="w-4 h-4" /> Save Profile
+                <Save className="w-4 h-4" /> {saving ? (lang === "es" ? "Guardando…" : "Saving…") : (lang === "es" ? "Guardar perfil" : "Save Profile")}
               </button>
-            </form>
+            </fieldset></form>
             {vo2Estimate && (
               <div className="mt-3 text-sm bg-ocean-50 border border-ocean-200 rounded-xl p-3">
                 <strong>Estimated VO2max:</strong>{" "}

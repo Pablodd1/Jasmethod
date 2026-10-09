@@ -41,7 +41,7 @@ const options: Record<string, string[]> = {
     "marathon",
   ],
   trainingWindow: ["any", "morning", "midday", "evening"],
-  units: ["metric", "imperial"],
+  units: ["auto", "metric", "imperial"],
   bikeType: ["road", "tt", "tri", "gravel", "mountain"],
   draftSkill: ["none", "mixed", "good"],
   federation: ["USAT", "WORLD_TRIATHLON", "BRITISH_TRIATHLON", "IRONMAN"],

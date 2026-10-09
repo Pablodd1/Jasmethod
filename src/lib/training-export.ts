@@ -1,4 +1,4 @@
-import { dateKey, localDate } from "./dates";
+import { addDaysKey, dateKey, localDate } from "./dates";
 import { sessionFitEntries } from "./fit-export";
 import { fitFilename, type CanonicalSession } from "./canonical-session";
 import { buildZip, type ZipEntry } from "./zip";
@@ -64,9 +64,25 @@ export function toCsv(rows: Row[], columns: string[]): string {
 const icsText = (value: unknown) =>
   String(value ?? "")
     .replace(/\\/g, "\\\\")
-    .replace(/\r?\n/g, "\\n")
+    .replace(/\r\n|\r|\n/g, "\\n")
     .replace(/,/g, "\\,")
     .replace(/;/g, "\\;");
+
+/** RFC 5545 section 3.1: fold at 75 UTF-8 octets without splitting a code point. */
+function foldCalendarLine(value: string): string {
+  const lines: string[] = [];
+  let line = "", bytes = 0;
+  for (const character of value) {
+    const size = Buffer.byteLength(character, "utf8");
+    if (bytes + size > 75) {
+      lines.push(line);
+      line = " "; bytes = 1;
+    }
+    line += character; bytes += size;
+  }
+  lines.push(line);
+  return lines.join("\r\n");
+}
 
 const utcStamp = (date: Date) =>
   date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
@@ -83,17 +99,14 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
   for (const day of data.plan?.days || []) {
     if (day.dayOff) continue;
     for (const session of day.sessions) {
-      if (session.durationMin <= 0) continue;
+      if (session.durationMin <= 0 || session.feedbackStatus === "skipped") continue;
       const resolved = data.resolvedSessions?.[session.id];
       if (resolved && resolved.verdict === "rest") continue;
       const key = dateKey(session.date, data.athlete.timezone);
-      const start = localDate(
-        key,
-        data.athlete.timezone,
-        typeof session.startTime === "string" && /^\d{2}:\d{2}$/.test(session.startTime)
-          ? session.startTime
-          : "06:00",
-      );
+      const startTime = typeof session.startTime === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(session.startTime)
+        ? session.startTime : null;
+      // An unknown time is a date-only placeholder, never a fabricated 06:00 start.
+      const start = startTime ? localDate(key, data.athlete.timezone, startTime) : null;
       const savedLanguage = data.athlete.language ?? "en";
       const language = manualEmailLanguage(savedLanguage);
       const appUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit").replace(/\/$/, "")}/daily?sessionId=${encodeURIComponent(String(session.id))}`;
@@ -106,24 +119,32 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
         ru: "Скачанная копия календаря: для последующих изменений нужен новый экспорт; файл не синхронизируется автоматически.",
       };
       const description = resolved?.verdict === "ready" && language
-        ? manualWorkoutCalendarDescription(resolved, data.resolvedNutrition?.[session.id] ?? null, typeof session.startTime === "string" ? session.startTime : null, language) + `\n${language === "es" ? "Plan actual y gráfico (requiere iniciar sesión)" : "Current plan and workout graphic (sign-in required)"}: ${appUrl}`
+        ? manualWorkoutCalendarDescription(resolved, data.resolvedNutrition?.[session.id] ?? null, startTime, language) + `\n${language === "es" ? "Plan actual y gráfico (requiere iniciar sesión)" : "Current plan and workout graphic (sign-in required)"}: ${appUrl}`
         : placeholder.description;
       const durationMin = resolved?.verdict === "ready" ? resolved.durationMin : session.durationMin;
-      const end = new Date(start.getTime() + durationMin * 60000);
+      const timing = start
+        ? [`DTSTART:${utcStamp(start)}`, `DTEND:${utcStamp(new Date(start.getTime() + durationMin * 60000))}`]
+        : [`DTSTART;VALUE=DATE:${key.replace(/-/g, "")}`, `DTEND;VALUE=DATE:${addDaysKey(key, 1).replace(/-/g, "")}`];
+      const unscheduledNotice: Record<string, string> = {
+        en: "Start time is not set. This all-day entry is a scheduling placeholder, not an all-day workout.",
+        es: "No hay hora de inicio. Esta entrada de todo el día es un marcador de horario, no un entrenamiento de todo el día.",
+        fr: "L’heure de début n’est pas définie. Cette entrée sur la journée est un repère, pas une séance de toute la journée.",
+        ht: "Lè pou kòmanse a pa fikse. Antre pou tout jounen an se yon makè orè, se pa yon antrènman tout jounen.",
+        ru: "Время начала не задано. Запись на весь день обозначает дату, а не тренировку на весь день.",
+      };
       lines.push(
         "BEGIN:VEVENT",
         `UID:${icsText(session.id)}@jasmiamimethod`,
         `DTSTAMP:${utcStamp(new Date())}`,
-        `DTSTART:${utcStamp(start)}`,
-        `DTEND:${utcStamp(end)}`,
+        ...timing,
         `SUMMARY:${icsText(resolved?.verdict === "ready" && language ? resolved.title : placeholder.summary)}`,
-        `DESCRIPTION:${icsText(`${description}\n${snapshotNotice[savedLanguage] || snapshotNotice.en}`)}`,
+        `DESCRIPTION:${icsText(`${description}${start ? "" : `\n${unscheduledNotice[savedLanguage] || unscheduledNotice.en}`}\n${snapshotNotice[savedLanguage] || snapshotNotice.en}`)}`,
         "END:VEVENT",
       );
     }
   }
   lines.push("END:VCALENDAR");
-  return lines.join("\r\n") + "\r\n";
+  return lines.map(foldCalendarLine).join("\r\n") + "\r\n";
 }
 
 export function buildTrainingBundle(data: TrainingExportData, created = new Date()) {

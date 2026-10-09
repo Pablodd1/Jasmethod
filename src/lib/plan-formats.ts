@@ -1,3 +1,4 @@
+import { trustedCycleMovementGuidance } from "./cycle-movement-guidance";
 // JasMiamiMethod — Creative plan formats
 //
 // One training plan, three skins: Telegram text (emoji-dense, scannable in a
@@ -112,7 +113,7 @@ export function telegramPlan(
     const key = (s.steps || []).filter((x) => x.phase === "active").slice(0, 2);
     for (const st of key)
       lines.push(
-        `   • ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}`,
+        `   • ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}${trustedCycleMovementGuidance(st) ? ` · ${trustedCycleMovementGuidance(st)}` : ""}`,
       );
     if (s.fuel?.carbsPerHourG || s.fuel?.fluidMlPerHour)
       lines.push(
@@ -198,7 +199,7 @@ export function calendarDescription(
   const key = (s.steps || []).filter((x) => x.phase === "active").slice(0, 4);
   for (const st of key)
     lines.push(
-      `• ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}`,
+      `• ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}${trustedCycleMovementGuidance(st) ? ` · ${trustedCycleMovementGuidance(st)}` : ""}`,
     );
   if (s.fuel?.preSession?.carbsG)
     lines.push(`⛽ Pre: ${s.fuel.preSession.carbsG}g ${s.fuel.preSession.timingLabel}`);

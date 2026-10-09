@@ -48,7 +48,9 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, wee
     }
     const available = candidates.filter(session=>trainingSlots.has(session.daySlot))
       .filter(session=>{
-        if(Number(session.zone.slice(1))<4) return true;
+        // Cardiovascular zone labels do not establish low mechanical demand.
+        const demanding = Number(session.zone.slice(1)) >= 4 || session.sport === "strength" || session.sport === "hyrox" || ["speed", "plyo"].includes(session.type);
+        if (!demanding) return true;
         // At most one hard session on a day, never adjacent hard days (including
         // a week boundary in a repeated schedule). Missing work is not made up.
         if(hardDays.some(day=>Math.min(Math.abs(day-session.daySlot),7-Math.abs(day-session.daySlot))<=1)) return false;

@@ -1,6 +1,6 @@
-// JasMiamiMethod — Evidence base (ranked human studies, recreational + professional).
-// Every training/recommendation in the app is grounded in these peer-reviewed
-// sources. "AIS" = Australian Institute of Sport supplement framework (Group A/B).
+// Legacy reference catalog: trials, reviews, consensus and expert practice.
+// This catalog does not establish that every JMM workout or dose is validated.
+// Use reviewed-evidence.ts for curated claim lineage. Population tags describe applicability, not recruited cohorts.
 
 export interface ResearchSource {
   id: string;
@@ -11,11 +11,11 @@ export interface ResearchSource {
 }
 
 export const RESEARCH_SOURCES: ResearchSource[] = [
-  { id: "seiler2009", claim: "80/20 polarized intensity distribution", ref: "Seiler & Tønnessen 2009, Int J Sports Physiol Perform 4:417-429", level: "A", population: "professional" },
+  { id: "seiler2009", claim: "Endurance intensity-distribution synthesis; not a universal 80/20 requirement", ref: "Seiler & Tønnessen 2009, Sportscience 13:32–53; https://research.sportsci.org/2009/ss.htm", level: "B", population: "professional" },
   { id: "billat2001", claim: "vVO2max interval prescription", ref: "Billat et al. 2001, Med Sci Sports Exerc 33:1597-1602", level: "A", population: "both" },
   { id: "coggan", claim: "Historical TrainingPeaks terminology and threshold-power framework; not evidence validating JMetrics", ref: "Allen & Coggan, Training & Racing with a Power Meter", level: "B", population: "both" },
   { id: "friel", claim: "7-zone HR model on LTHR", ref: "Friel, The Triathlete's Training Bible", level: "B", population: "both" },
-  { id: "buchheit2014", claim: "HRV-guided training readiness", ref: "Buchheit 2014, Front Physiol 5:73", level: "A", population: "professional" },
+  { id: "buchheit2014", claim: "Review of heart-rate measures for training monitoring; not validation of a JMM readiness score or stand-alone HRV decision", ref: "Buchheit 2014, Front Physiol 5:73; https://doi.org/10.3389/fphys.2014.00073", level: "B", population: "professional" },
   { id: "plews2013", claim: "HRV RMSSD vs 7-day baseline", ref: "Plews et al. 2013, Sports Med 43:773-781", level: "A", population: "professional" },
   { id: "foster1998", claim: "session-RPE training load", ref: "Foster 1998, J Strength Cond Res 12:109-115", level: "A", population: "both" },
   { id: "tanaka2001", claim: "HRmax = 208 − 0.7×age", ref: "Tanaka, Monahan & Seals 2001, J Am Coll Cardiol 37:153-156", level: "A", population: "both" },
@@ -33,7 +33,7 @@ export const RESEARCH_SOURCES: ResearchSource[] = [
   { id: "goldstein2010", claim: "caffeine performance dose 3-6 mg/kg", ref: "Goldstein et al. 2010, J Int Soc Sports Nutr 7:5", level: "A", population: "both" },
   { id: "bartsaltin2008", claim: "altitude aerobic power loss", ref: "Bärtsch & Saltin 2008, Scand J Med Sci Sports 18(Suppl 1)", level: "B", population: "both" },
   { id: "banister1975", claim: "TRIMP / training impulse model", ref: "Banister et al. 1975, Aust J Sports Med 7:57-61", level: "B", population: "both" },
-  { id: "stoggl2016", claim: "polarized vs threshold distribution", ref: "Stöggl & Sperlich 2016, Front Physiol 7:399", level: "A", population: "professional" },
+  { id: "stoggl2016", claim: "Legacy intensity-distribution reference needs bibliographic reconciliation; not authority for an exact dose", ref: "Stöggl & Sperlich 2016, Front Physiol 7:399 (unverified legacy citation)", level: "C", population: "professional" },
   { id: "gollwitzer1999", claim: "implementation intentions (motivation)", ref: "Gollwitzer 1999, Am Psychol 54:493-503", level: "A", population: "recreational" },
 
   // ---- equipment / power / aerodynamics ----

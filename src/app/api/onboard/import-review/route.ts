@@ -33,7 +33,7 @@ export async function GET() {
       "History describes completed imported records currently stored in JMM, not all records a provider may hold. A connection alone does not confirm a completed import.",
       "Weight suggestions require your confirmation. Strava profile weight is reported, not a device measurement; its date is when JMM retrieved it, not when it was weighed.",
       "Name, sex, age and height are not automatically imported here. Missing values and training anchors are not inferred from activity history.",
-      "Only recent, usable weight observations from currently connected sources are suggested. Incomplete or suspect records are excluded.",
+      "Only recent, usable weight observations from currently connected sources or your uploaded Apple Health file are suggested. File values are not independently verified measurements. Incomplete or suspect records are excluded.",
     ],
   },{headers:{"Cache-Control":"private, no-store"}});
 }

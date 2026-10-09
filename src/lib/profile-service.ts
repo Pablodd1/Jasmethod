@@ -29,6 +29,7 @@ export async function saveProfile(actorId: string, athlete: {id: string; timezon
   if (setup?.doubleDay?.athleteAgreed && actorId !== athlete.id) throw new ApiError("Only the athlete can record their optional double-day agreement.",403);
   if (setup && actorId !== athlete.id) setup.source = "coach_set";
   const data = profilePatch(fields, athlete.timezone);
+  const recordsProfileAnswers = !setup && !travelOnly && (Object.hasOwn(data, "experience") || Object.hasOwn(data, "weeklyHours"));
   if (reviewedWeightObservationId !== undefined && (typeof reviewedWeightObservationId !== "string" || !reviewedWeightObservationId.trim() || reviewedWeightObservationId.length > 200 || typeof data.weightKg !== "number")) throw new ApiError("Select a valid imported weight and include its value");
   if (!Object.keys(data).length && !setup && !travelOnly) throw new ApiError("No profile changes supplied");
   try {
@@ -48,6 +49,18 @@ export async function saveProfile(actorId: string, athlete: {id: string; timezon
           if (!priorSetup.setup && actorId !== athlete.id) setup.source = "coach_set";
         }
       }
+      if (recordsProfileAnswers) {
+        const prior = await readPlanningSetup(athlete.id, tx);
+        if (!prior.setup && prior.revision) throw new ApiError("Review invalid saved setup before updating experience or weekly time.", 409);
+        const profileAnswers = {
+          experience: Object.hasOwn(data, "experience") || prior.setup?.profileAnswers?.experience === true,
+          weeklyHours: Object.hasOwn(data, "weeklyHours") || prior.setup?.profileAnswers?.weeklyHours === true,
+        };
+        // A narrow settings edit records which answers were supplied. It does not renew safety
+        // confirmation, reassign provenance, or accept a stale client copy of planning context.
+        setup = prior.setup ? { ...prior.setup, profileAnswers } : parsePlanningSetup({profileAnswers}, new Date(), athlete.timezone);
+        if (!prior.setup && actorId !== athlete.id) setup.source = "coach_set";
+      }
       if (reviewedWeightObservationId !== undefined) {
         const observation = await tx.metricObservation.findFirst({where:{id:reviewedWeightObservationId as string,userId:athlete.id,metricType:"weight_kg"},select:{id:true,value:true,unit:true,source:true,observedAt:true,qualityFlag:true,measurementMethod:true}});
         if (!observation) throw new ApiError("Imported weight is no longer available. Review your profile again.",409);
@@ -65,7 +78,7 @@ export async function saveProfile(actorId: string, athlete: {id: string; timezon
         before: JSON.stringify(before), after: JSON.stringify(profile), note: typeof reason === "string" ? reason.slice(0,1000) : null}});
       if (setup) await tx.auditLog.create({ data: {
         actorId, subjectId: athlete.id, action: "profile.setup", entityId: profile.id,
-        after: JSON.stringify(setup), note: travelOnly ? "Travel context only; existing planning confirmation and source preserved" : "Explicit setup with actor/source recorded; not device measurements or medical clearance",
+        after: JSON.stringify(setup), note: travelOnly ? "Travel context only; existing planning confirmation and source preserved" : recordsProfileAnswers ? "Explicit experience/time answer markers only; existing planning confirmation and source preserved" : "Explicit setup with actor/source recorded; not device measurements or medical clearance",
       } });
       return profile;
     };

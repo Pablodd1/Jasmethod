@@ -1088,6 +1088,7 @@ export function postWorkoutFuel(opts: {
 import { buildSessionDetail } from "./science";
 import {
   structuredSteps,
+  cycleMovementSteps,
   stepsText,
   zoneTargets,
   type WorkoutStep,
@@ -1125,6 +1126,7 @@ export function prescribeToday(opts: {
     description?: string | null;
     startTime?: string | null;
     variantSeed?: number;
+    cycleVersion?: string;
     protocol?: ProtocolSpec;
   };
   adaptation: { verdict: string; durationFactor: number; intensityCap: string };
@@ -1150,7 +1152,7 @@ export function prescribeToday(opts: {
   // verdict stays a rest verdict — the coach multiplier never overrides it.
   let { adaptation } = opts;
   const pct = profile?.intensityPct;
-  if (pct != null && pct !== 100 && adaptation.verdict !== "rest") {
+  if (pct != null && pct !== 100 && adaptation.verdict !== "rest" && (pct < 100 || session.cycleVersion !== "bounded-cycle-v1")) {
     const plannedZone = Number((session.intensity || "z2").slice(1)) || 2;
     const autoCap = Number(adaptation.intensityCap.slice(1)) || 2;
     if (pct < 100) {
@@ -1222,7 +1224,9 @@ export function prescribeToday(opts: {
         : Number(intensity.slice(1)) <= 2
           ? "endurance"
           : session.type;
-  const steps = structuredSteps(
+  const steps = session.cycleVersion === "bounded-cycle-v1" && ["strength", "hyrox", "mobility"].includes(session.sport)
+    ? cycleMovementSteps(durationMin, intensity, session.title)
+    : structuredSteps(
     durationMin,
     intensity,
     type,
@@ -1248,10 +1252,14 @@ export function prescribeToday(opts: {
     : "No warm-up needed.";
   detail.main = rest
     ? "Rest today. The planned hard session is paused."
-    : stepsText(steps);
+    : `${session.cycleVersion === "bounded-cycle-v1" && session.description ? `${session.description} ` : ""}${stepsText(steps)}`;
   detail.cd = steps.length
     ? `Cool down for ${steps[steps.length - 1].seconds / 60} min at Z1.`
     : "Resume training after reassessing readiness.";
+  if (session.cycleVersion === "bounded-cycle-v1") {
+    detail.breathing = "Optional: a brief comfortable breathing pause to focus. No breath holds, recovery-score bonus or guaranteed physiological effect.";
+    detail.study = "Conservative JMM planning template. Exact session dose and progression are coaching choices, not an individually validated result.";
+  }
   return {
     title: rest ? "Rest and recover" : session.title,
     sport: session.sport,
@@ -1268,7 +1276,7 @@ export function prescribeToday(opts: {
       factor: session.durationMin ? durationMin / session.durationMin : 0,
       reason: `Readiness: ${adaptation.verdict}${(opts.busyHrs || 0) >= 6 ? "; limited by calendar availability" : ""}`,
     },
-    sources: ["Seiler 2009", "Plews 2013"],
+    sources: session.cycleVersion === "bounded-cycle-v1" ? [] : ["Seiler 2009", "Plews 2013"],
   };
 }
 

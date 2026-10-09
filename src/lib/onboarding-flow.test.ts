@@ -2,14 +2,14 @@ import {test} from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {ONBOARDING_STEP as S,onboardingNext,onboardingResume} from "./onboarding-flow";
-test("onboarding progresses through every visible stage, blocking failed saves",()=>{
+test("onboarding takes the short connections-to-goals path and blocks failed saves",()=>{
  assert.equal(onboardingNext(S.welcome),S.devices);
  assert.equal(onboardingNext(S.profile,false),S.profile);
- assert.equal(onboardingNext(S.profile,true),S.zones);
+ assert.equal(onboardingNext(S.profile,true),S.race);
  assert.equal(onboardingNext(S.devices),S.profile);
  assert.equal(onboardingNext(S.zones),S.race);
  assert.equal(onboardingNext(S.race,false),S.race);
- assert.equal(onboardingNext(S.race,true),S.travel);
+ assert.equal(onboardingNext(S.race,true),S.done);
  assert.equal(onboardingNext(S.travel),S.done);
  assert.equal(onboardingNext(S.done),S.done);
 });

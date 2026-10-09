@@ -145,6 +145,11 @@ export default function TodayPage() {
             ? "No necesitas reloj ni pruebas para registrar tu entrenamiento. Si faltan referencias válidas, sigue los objetivos de esfuerzo del plan."
             : "No watch or benchmark test is required to report training. When usable benchmarks are missing, follow the plan's effort instructions."}</p>
         </div>
+        <section className="card space-y-2" aria-label={es ? "Tu ciclo guardado" : "Your saved cycle"}>
+          <h2 className="font-semibold">{data?.cycle ? (es ? "Ciclo guardado" : "Saved training cycle") : (es ? "Tu plan de entrenamiento" : "Your training plan")}</h2>
+          {data?.cycle && <p className="text-sm">{data.cycle.currentWeek ? `${es ? "Semana" : "Week"} ${data.cycle.currentWeek} / ${data.cycle.weeks} · ` : ""}{data.cycle.start} – {data.cycle.end}{data.cycle.status === "ended" ? (es ? " · Ciclo finalizado; revisa tu progreso antes del siguiente." : " · Cycle ended; review your progress before the next one.") : ""}</p>}
+          <div className="flex flex-wrap gap-3"><Link href="/training" className="btn-primary">{es ? "Ver ciclo y mes" : "View cycle and month"}</Link><Link href="/calendar" className="btn-secondary">{es ? "Calendario" : "Calendar"}</Link></div>
+        </section>
         {offline && (
           <div role="status" className="card bg-amber-50 text-amber-900">
             {es ? "Copia sin conexión" : "Offline copy"} · {data?.date} ·{" "}
@@ -168,90 +173,100 @@ export default function TodayPage() {
             {message}
           </p>
         )}
-        {/* Optional provider setup, hidden unless server capability is enabled. */}
-        {data?.capabilities?.intervalsConnector === true && data?.sessions?.some((s: any) => s.durationMin > 0) &&
-          !data?.connectors?.some((c: any) => c.provider === "intervals" && c.status === "connected") && (
-          <div className="card border-lime-300 bg-lime-50 flex flex-wrap items-center gap-3 p-4">
-            <Watch className="w-5 h-5 text-lime-700 shrink-0" />
-            <p className="text-sm flex-1 text-lime-900 font-medium">
-              {es
-                ? "Integración opcional: publica en el calendario de Intervals.icu. La recepción en el reloj no está verificada."
-                : "Optional integration: publish to the Intervals.icu calendar. Watch receipt is unverified."}
-            </p>
-            <Link href="/connectors" className="btn-primary text-sm shrink-0">
-              {es ? "Conectar" : "Connect"}
-            </Link>
-          </div>
-        )}
-        {/* Connect devices banner — only when 0 devices connected */}
-        {data?.deviceSummary && data.deviceSummary.connected === 0 && (
-          <div className="card border-ocean-300 bg-ocean-50 flex flex-wrap items-center gap-3 p-4">
-            <Watch className="w-5 h-5 text-ocean-600 shrink-0" />
-            <p className="text-sm flex-1 text-ocean-900 font-medium">
-              {es
-                ? "Conecta un proveedor disponible o registra los datos manualmente. La conexión directa con Garmin/COROS aún no está implementada."
-                : "Connect an available provider or enter data manually. Direct Garmin/COROS integration is not implemented yet."}
-            </p>
-            <Link href="/connectors" className="btn-primary text-sm shrink-0">
-              {es ? "Conectar ahora" : "Connect now"}
-            </Link>
-          </div>
-        )}
-
-
-
-        {/* KCoach Activity Reports — post-activity narrative from device sync */}
-        {!!data?.activityReports?.length && (
-          <div className="card p-4 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-              📊 {es ? "Reporte de actividad" : "Activity report"}
-            </h2>
-            {data.activityReports.map(
-              (rep: {
-                id: string;
-                date: string;
-                title: string;
-                sport: string;
-                headline: string;
-                body: string;
-              }) => (
-                <div key={rep.id}>
-                  <p className="text-base font-semibold text-slate-900">
-                    {rep.headline}
-                  </p>
-                  {rep.body && (
-                    <p className="text-sm text-slate-600 mt-1 leading-relaxed">
-                      {rep.body}
-                    </p>
-                  )}
-                  <p className="text-xs text-slate-400 mt-1">
-                    {rep.title} ·{" "}
-                    {new Date(rep.date).toLocaleDateString(es ? "es" : "en", {
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </p>
-                </div>
-              ),
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-2">
-          <Link href="/checkin" className="btn-primary">
+        <nav className="grid grid-cols-1 sm:grid-cols-3 gap-3" aria-label={es ? "Acciones de hoy" : "Today actions"}>
+          <Link href="/checkin" className="btn-primary min-h-12 justify-center">
             {es ? "Chequeo de hoy" : "Daily check-in"}
           </Link>
-          <Link href="/calendar" className="btn-secondary">
-            {es ? "Calendario" : "Calendar"}
-          </Link>
-          <button
-            className="btn-secondary"
-            disabled={busy || offline}
-            onClick={() => action("/api/connectors/sync", {})}
-          >
-            {es ? "Sincronizar dispositivos" : "Sync devices"}
-          </button>
-        </div>
+          <a href={session ? "#today-workout" : "/training"} className="btn-secondary min-h-12 justify-center">{es ? "Ver entrenamiento" : "View workout"}</a>
+          <button className="btn-secondary min-h-12 justify-center" disabled={!session || !!session.matchedPlanId || busy || offline} onClick={() => { setFeedback(true); requestAnimationFrame(() => document.getElementById("workout-feedback")?.scrollIntoView({ behavior:"smooth", block:"start" })); }}>{es ? "¿Cómo te sentiste?" : "Log how it felt"}</button>
+        </nav>
+            {session && feedback && !session.matchedPlanId && (
+              <form
+                id="workout-feedback"
+                className="card space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  action(
+                    "/api/plan",
+                    { sessionId: session.id, ...Object.fromEntries(f) },
+                    "PUT",
+                  );
+                }}
+              >
+                <h3 className="font-bold">
+                  {es ? "¿Cómo fue?" : "How did it go?"}
+                </h3>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <label>
+                    {es ? "Resultado" : "Outcome"}
+                    <select
+                      name="feedbackStatus"
+                      className="input"
+                      defaultValue={session.feedbackStatus || ""}
+                      required
+                    >
+                      <option value="">{es ? "Elige resultado" : "Choose outcome"}</option>
+                      <option value="substituted">{es ? "Sustituido" : "Substituted"}</option>
+                      <option value="unknown">{es ? "Desconocido" : "Unknown / not reported"}</option>
+                      <option value="completed">
+                        {es ? "Completado" : "Completed"}
+                      </option>
+                      <option value="partial">
+                        {es ? "Parcial" : "Partial"}
+                      </option>
+                      <option value="skipped">
+                        {es ? "Omitido" : "Skipped"}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    {es ? "Minutos reales" : "Actual minutes"}
+                    <input
+                      placeholder={es ? "Desconocido" : "Unknown"}
+                      name="actualDurationMin"
+                      className="input"
+                      type="number"
+                      min="0"
+                      max="1440"
+                      defaultValue={
+                        session.actualDurationMin ?? ""
+                      }
+                    />
+                  </label>
+                  <label>
+                    {es ? "Esfuerzo 0–10" : "Effort 0–10"}
+                    <input
+                      name="rpe"
+                      className="input"
+                      type="number"
+                      min="0"
+                      max="10"
+                      defaultValue={session.rpe ?? ""}
+                    />
+                  </label>
+                </div>
+                <label>{es ? "Deporte realizado (opcional)" : "Actual sport (optional)"}
+                  <select name="actualSport" className="input" defaultValue={session.actualSport || ""}>
+                    <option value="">{es ? "Desconocido / sin informar" : "Unknown / not reported"}</option>
+                    {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+                <textarea
+                  aria-label="Workout feedback"
+                  name="feedbackNote"
+                  className="input"
+                  placeholder={
+                    es
+                      ? "Deporte realizado si fue distinto, dificultad, molestias…"
+                      : "Actual sport if substituted, difficulty, discomfort…"
+                  }
+                />
+                <button disabled={busy} className="btn-primary">
+                  {es ? "Guardar resultado" : "Save result"}
+                </button>
+              </form>
+            )}
         {!data && !error && (
           <p role="status">{es ? "Cargando sesión…" : "Loading session…"}</p>
         )}
@@ -264,7 +279,7 @@ export default function TodayPage() {
             <p className="mt-2 text-sm">{es ? "Orientación general, no una sesión personalizada: registra cómo te sientes, revisa tu perfil y conversa con tu entrenador. No hemos asignado intensidad, volumen ni objetivos sin los datos necesarios." : "General guidance, not a personalized session: record how you feel, review your profile and talk with your coach. No intensity, volume or targets have been assigned without the necessary information."}</p>
             <div className="flex flex-wrap gap-3 mt-3"><Link className="underline" href="/coach">{es ? "Conversar con J Koach" : "Talk with J Koach"}</Link><Link className="underline" href="/onboard?redo=1&advanced=1">{es ? "Preparar plan personalizado" : "Prepare personalized planning"}</Link><Link className="underline" href="/help/pilot">{es ? "Próximos pasos" : "Next steps"}</Link></div>
             <Link className="btn-primary mt-3" href="/training">
-              {es ? "Crear plan" : "Create a plan"}
+              {data?.cycle ? (es ? "Ver mi ciclo guardado" : "View my saved cycle") : (es ? "Crear plan" : "Create a plan")}
             </Link>
           </div>
         )}
@@ -294,7 +309,7 @@ export default function TodayPage() {
         )}
         {session && (
           <>
-            <div className="card !p-0 overflow-hidden">
+            <div id="today-workout" className="card !p-0 overflow-hidden scroll-mt-4">
               <div className="bg-ocean-800 text-white p-5">
                 <p className="text-xs uppercase">
                   {session.feedbackStatus === "partial" ? (es ? "Parcial" : "Partially completed") : session.feedbackStatus === "skipped" ? (es ? "Omitido" : "Skipped") : session.completed
@@ -313,12 +328,7 @@ export default function TodayPage() {
                     ? ` · RPE ${session.prescription.targets.rpe}/10`
                     : ""}
                 </p>
-                <p className="text-sm opacity-90 mt-1">
-                  {Object.entries(session.prescription.targets)
-                    .filter(([k]) => k !== "rpe")
-                    .map(([, v]) => v)
-                    .join(" · ")}
-                </p>
+                <p className="text-sm opacity-90 mt-1">{es ? "Revisa los objetivos actuales en cada bloque del entrenamiento." : "Review current targets in each workout step."}</p>
               </div>
               <div className="p-5 space-y-4">
                 <p role="status">{session.resolutionReason}</p>
@@ -652,94 +662,77 @@ export default function TodayPage() {
                 </div>
               </div>
             </div>
-            {feedback && !session.matchedPlanId && (
-              <form
-                className="card space-y-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const f = new FormData(e.currentTarget);
-                  action(
-                    "/api/plan",
-                    { sessionId: session.id, ...Object.fromEntries(f) },
-                    "PUT",
-                  );
-                }}
-              >
-                <h3 className="font-bold">
-                  {es ? "¿Cómo fue?" : "How did it go?"}
-                </h3>
-                <div className="grid sm:grid-cols-3 gap-3">
-                  <label>
-                    {es ? "Resultado" : "Outcome"}
-                    <select
-                      name="feedbackStatus"
-                      className="input"
-                      defaultValue={session.feedbackStatus || ""}
-                      required
-                    >
-                      <option value="">{es ? "Elige resultado" : "Choose outcome"}</option>
-                      <option value="substituted">{es ? "Sustituido" : "Substituted"}</option>
-                      <option value="unknown">{es ? "Desconocido" : "Unknown / not reported"}</option>
-                      <option value="completed">
-                        {es ? "Completado" : "Completed"}
-                      </option>
-                      <option value="partial">
-                        {es ? "Parcial" : "Partial"}
-                      </option>
-                      <option value="skipped">
-                        {es ? "Omitido" : "Skipped"}
-                      </option>
-                    </select>
-                  </label>
-                  <label>
-                    {es ? "Minutos reales" : "Actual minutes"}
-                    <input
-                      placeholder={es ? "Desconocido" : "Unknown"}
-                      name="actualDurationMin"
-                      className="input"
-                      type="number"
-                      min="0"
-                      max="1440"
-                      defaultValue={
-                        session.actualDurationMin ?? ""
-                      }
-                    />
-                  </label>
-                  <label>
-                    {es ? "Esfuerzo 0–10" : "Effort 0–10"}
-                    <input
-                      name="rpe"
-                      className="input"
-                      type="number"
-                      min="0"
-                      max="10"
-                      defaultValue={session.rpe ?? ""}
-                    />
-                  </label>
-                </div>
-                <label>{es ? "Deporte realizado (opcional)" : "Actual sport (optional)"}
-                  <select name="actualSport" className="input" defaultValue={session.actualSport || ""}>
-                    <option value="">{es ? "Desconocido / sin informar" : "Unknown / not reported"}</option>
-                    {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </label>
-                <textarea
-                  aria-label="Workout feedback"
-                  name="feedbackNote"
-                  className="input"
-                  placeholder={
-                    es
-                      ? "Deporte realizado si fue distinto, dificultad, molestias…"
-                      : "Actual sport if substituted, difficulty, discomfort…"
-                  }
-                />
-                <button disabled={busy} className="btn-primary">
-                  {es ? "Guardar resultado" : "Save result"}
-                </button>
-              </form>
-            )}
           </>
         )}
+        {/* Optional provider setup, hidden unless server capability is enabled. */}
+        {data?.capabilities?.intervalsConnector === true && data?.sessions?.some((s: any) => s.durationMin > 0) &&
+          !data?.connectors?.some((c: any) => c.provider === "intervals" && c.status === "connected") && (
+          <div className="card border-lime-300 bg-lime-50 flex flex-wrap items-center gap-3 p-4">
+            <Watch className="w-5 h-5 text-lime-700 shrink-0" />
+            <p className="text-sm flex-1 text-lime-900 font-medium">
+              {es
+                ? "Integración opcional: publica en el calendario de Intervals.icu. La recepción en el reloj no está verificada."
+                : "Optional integration: publish to the Intervals.icu calendar. Watch receipt is unverified."}
+            </p>
+            <Link href="/connectors" className="btn-primary text-sm shrink-0">
+              {es ? "Conectar" : "Connect"}
+            </Link>
+          </div>
+        )}
+        {/* Connect devices banner — only when 0 devices connected */}
+        {data?.deviceSummary && data.deviceSummary.connected === 0 && (
+          <div className="card border-ocean-300 bg-ocean-50 flex flex-wrap items-center gap-3 p-4">
+            <Watch className="w-5 h-5 text-ocean-600 shrink-0" />
+            <p className="text-sm flex-1 text-ocean-900 font-medium">
+              {es
+                ? "Conecta un proveedor disponible o registra los datos manualmente. La conexión directa con Garmin/COROS aún no está implementada."
+                : "Connect an available provider or enter data manually. Direct Garmin/COROS integration is not implemented yet."}
+            </p>
+            <Link href="/connectors" className="btn-primary text-sm shrink-0">
+              {es ? "Conectar ahora" : "Connect now"}
+            </Link>
+          </div>
+        )}
+
+
+
+        {/* KCoach Activity Reports — post-activity narrative from device sync */}
+        {!!data?.activityReports?.length && (
+          <div className="card p-4 space-y-3">
+            <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              📊 {es ? "Reporte de actividad" : "Activity report"}
+            </h2>
+            {data.activityReports.map(
+              (rep: {
+                id: string;
+                date: string;
+                title: string;
+                sport: string;
+                headline: string;
+                body: string;
+              }) => (
+                <div key={rep.id}>
+                  <p className="text-base font-semibold text-slate-900">
+                    {rep.headline}
+                  </p>
+                  {rep.body && (
+                    <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+                      {rep.body}
+                    </p>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1">
+                    {rep.title} ·{" "}
+                    {new Date(rep.date).toLocaleDateString(es ? "es" : "en", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </p>
+                </div>
+              ),
+            )}
+          </div>
+        )}
+
         {data?.connectors.length > 0 && (
           <div className="card">
             <Link href="/connectors" className="font-semibold text-ocean-700">

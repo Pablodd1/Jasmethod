@@ -240,7 +240,7 @@ export async function generateAndDeliverActivityReport(
       await Promise.all([
         prisma.user.findUnique({
           where: { id: userId },
-          select: { timezone: true, profile: { select: { units: true, hrvBaseline: true } } },
+          select: { timezone: true, language: true, profile: { select: { units: true, hrvBaseline: true } } },
         }),
         prisma.workout.findMany({
           where: {
@@ -281,7 +281,7 @@ export async function generateAndDeliverActivityReport(
       activity,
       history,
       {
-        units: unitsOf(user?.profile?.units),
+        units: unitsOf(user?.profile?.units, user?.language),
         recovery: metric,
         hrvBaseline: user?.profile?.hrvBaseline,
         planned: plannedMatch,

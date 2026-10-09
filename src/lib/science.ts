@@ -3,8 +3,8 @@ import { buildSprintSession } from "./sprint-protocols";
 // Evidence-based training physiology per post-2000 research literature.
 //
 // Key references baked into the model:
-// - Seiler & Tønnessen 2009: polarized training intensity distribution (~80/20)
-//   for endurance athletes (Int J Sports Physiol Perform 4:417-429).
+// - Seiler & Tønnessen 2009: endurance intensity-distribution synthesis
+//   (Sportscience 13:32–53), not a universal split or validation of JMM dosing.
 // - Billat et al. 1999/2001: vVO2max and time-to-exhaustion at vVO2max
 //   (Med Sci Sports Exerc 31:1206-1211; Eur J Appl Physiol 85:299-305).
 // - Allen & Coggan (Training and Racing with a Power Meter): TSS, FTP, NP.
@@ -766,9 +766,9 @@ const CD_TEMPLATES: Record<string, string> = {
 
 const STUDY_BY_TYPE: Record<string, string> = {
   interval: "Billat et al. 2001 — vVO2max interval prescription (Med Sci Sports Exerc 33:1597-1602)",
-  threshold: "Friel 7-zone LT model (Triathlete's Training Bible); Seiler & Tønnessen 2009, Int J Sports Physiol Perform 4:417-429",
-  tempo: "Seiler & Tønnessen 2009 — polarized distribution (Int J Sports Physiol Perform 4:417-429)",
-  endurance: "Seiler & Tønnessen 2009 — 80/20 polarized model (Int J Sports Physiol Perform 4:417-429)",
+  threshold: "Friel 7-zone LT model (Triathlete's Training Bible); Seiler & Tønnessen 2009, Sportscience 13:32–53 (synthesis, not validation of JMM dosing)",
+  tempo: "Seiler & Tønnessen 2009 — intensity-distribution synthesis (Sportscience 13:32–53)",
+  endurance: "Seiler & Tønnessen 2009 — intensity-distribution synthesis (Sportscience 13:32–53); not validation of JMM dosing",
   strength: "Rønnestad & Mujika 2014 — strength improves endurance economy (Scand J Med Sci Sports)",
   brick: "Friel — transition practice (The Triathlete's Training Bible)",
   skill: "Motor learning: variability of practice improves skill retention (Wulf 2013, Int Rev Sport Exerc Psychol)",
@@ -1130,20 +1130,20 @@ export function generateSingleSport(opts: {
     const sessions: PlanSession[] = [];
 
     if (sport === "bike") {
-      sessions.push({ sport: "bike", title: "Endurance Ride (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Steady aerobic miles — cadence 85-95 rpm. The engine builder (Seiler 2009: 80/20)." });
-      sessions.push({ sport: "bike", title: "Sweet Spot Intervals", minutes: Math.round(totalMin * 0.25), zone: "z3", type: "interval", description: "3×12 min @ 88-94% FTP, 6 min spin between. Best fitness-per-minute of any bike workout (Seiler 2010)." });
-      sessions.push({ sport: "bike", title: ph === "base" ? "Easy Aerobic Session" : "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: ph === "base" ? "z2" : "z5", type: ph === "base" ? "endurance" : "interval", description: ph === "base" ? "Endurance spin, keep it easy today." : "5×4 min @ 106-120% FTP, 4 min easy. Raise the ceiling (Billat 2001)." });
+      sessions.push({ sport: "bike", title: "Endurance Ride (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Comfortable aerobic cycling within the available time. Use a comfortable cadence and current effort; research does not prescribe the same intensity split to every rider." });
+      sessions.push({ sport: "bike", title: "Sweet Spot Intervals", minutes: Math.round(totalMin * 0.25), zone: "z3", type: "interval", description: "Legacy sweet-spot coaching example: 3×12 min at 88–94% FTP with 6 min easy between. This exact dose is not established as optimal; use a reviewed cycling anchor and duration-matched steps." });
+      sessions.push({ sport: "bike", title: ph === "base" ? "Easy Aerobic Session" : "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: ph === "base" ? "z2" : "z5", type: ph === "base" ? "endurance" : "interval", description: ph === "base" ? "Endurance spin, keep it easy today." : "Legacy cycling interval example: 5×4 min at 106–120% FTP with 4 min easy. This is a coaching template, not a dose validated by a running trial; current cycling anchors, recovery and available time determine the executable session." });
       sessions.push({ sport: "strength", title: "Cyclist Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Familiar squat, hip-hinge and single-leg exercises at reviewed loads and repetitions within the session budget. Plyometrics are optional after movement and injury review; progress using recorded tolerance." });
       sessions.push({ sport: "mobility", title: "Recovery Spin + Hip Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ultra-light spin + hip flexor/hamstring flow. Keep effort light; cycling still contributes training load." });
     } else if (sport === "swim") {
       sessions.push({ sport: "swim", title: "Technique + Aerobic Swim", minutes: Math.round(totalMin * 0.3), zone: "z2", type: "endurance", description: "Drills (catch-up, fingertip drag) then steady swims. Technique first — speed follows form." });
-      sessions.push({ sport: "swim", title: "Threshold Swim Set", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "interval", description: "10×100 @ CSS pace, 15s rest. Threshold is the swim engine (Olbrecht 2015)." });
-      sessions.push({ sport: "swim", title: ph === "base" ? "Easy Aerobic Session" : "VO2max Sprints", minutes: Math.round(totalMin * 0.15), zone: ph === "base" ? "z2" : "z5", type: ph === "base" ? "endurance" : "interval", description: ph === "base" ? "Easy pull buoy set instead today." : "8×50m max effort, 60s full recovery. Race-speed Neuromuscular work." });
+      sessions.push({ sport: "swim", title: "Threshold Swim Set", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "interval", description: "CSS-based swimming practice requires a recent, same-stroke and same-pool field estimate. CSS is not a directly measured lactate threshold; use reviewed repetitions and recovery that fit the session." });
+      sessions.push({ sport: "swim", title: ph === "base" ? "Easy Aerobic Session" : "Reviewed short swim efforts", minutes: Math.round(totalMin * 0.15), zone: ph === "base" ? "z2" : "z5", type: ph === "base" ? "endurance" : "interval", description: ph === "base" ? "Easy pull buoy set instead today." : "Short, repeatable swimming efforts with reviewed recovery and safe technique. More maximal swimming is not proven better for every swimmer." });
       sessions.push({ sport: "strength", title: "Swimmer Strength", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "strength", description: "Reviewed pulling and shoulder-strength exercises within the session budget. Choose loads and repetitions for current ability; explosive exercises are optional after movement and injury review." });
       sessions.push({ sport: "mobility", title: "Ankle & Shoulder Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Ankle flexibility = better kick; thoracic mobility = longer catch." });
     } else if (sport === "run") {
       sessions.push({ sport: "run", title: "Long Aerobic Run (Z2)", minutes: Math.round(totalMin * 0.35), zone: "z2", type: "endurance", description: "Steady conversational running. Review recent load, recovery and available time before progressing; a fixed weekly percentage does not establish safe progression." });
-      sessions.push({ sport: "run", title: "Tempo / Threshold Run", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "threshold", description: "20-30 min @ lactate threshold (T-pace). The single best marathon/half predictor (Billat 2001)." });
+      sessions.push({ sport: "run", title: "Tempo / Threshold Run", minutes: Math.round(totalMin * 0.25), zone: "z4", type: "threshold", description: "Legacy controlled-running example: 20–30 min using a reviewed running threshold-pace anchor. This workout does not by itself predict half-marathon or marathon performance; fit work and recovery to available time." });
       sessions.push({ sport: "run", title: ph === "base" ? "Easy Aerobic Session" : "VO2max Intervals", minutes: Math.round(totalMin * 0.15), zone: ph === "base" ? "z2" : "z5", type: ph === "base" ? "endurance" : "interval", description: ph === "base" ? "Easy conversational running within the allocated time." : "6×800m or 5×1000m @ ~5k pace, equal-time jog recovery. Raise the ceiling." });
       sessions.push({ sport: "strength", title: "Runner Strength", minutes: Math.round(totalMin * 0.15), zone: "z1", type: "strength", description: "Reviewed single-leg strength, calf and hip exercises within the session budget. Plyometrics are optional after movement and injury review; strength work does not guarantee injury prevention." });
       sessions.push({ sport: "mobility", title: "Recovery Run + Mobility", minutes: Math.round(totalMin * 0.1), zone: "z1", type: "recovery", description: "Optional easy shakeout plus hip/ankle mobility. Running still adds impact and training load; use non-impact mobility when a recovery run is inappropriate." });
@@ -1151,7 +1151,7 @@ export function generateSingleSport(opts: {
       // lifting-only — progressive overload is the plan
       sessions.push({ sport: "strength", title: "Lower Body Heavy", minutes: Math.round(totalMin * 0.3), zone: "z1", type: "strength", description: "Familiar squat, hinge and lunge patterns at reviewed loads and repetitions within the session budget. Log effort, technique and symptoms before progressing; no automatic weekly weight increase. Plyometrics require a separate movement and injury review." });
       sessions.push({ sport: "strength", title: "Upper Body Heavy", minutes: Math.round(totalMin * 0.25), zone: "z1", type: "strength", description: "Bench 4×5, rows 4×8, overhead press 3×8. Log every set — beat the logbook." });
-      sessions.push({ sport: "strength", title: "Full Body Volume", minutes: Math.round(totalMin * 0.25), zone: "z1", type: "strength", description: "3×10 hypertrophy circuit @ 70% — the volume that grows muscle and work capacity." });
+      sessions.push({ sport: "strength", title: "Full Body Volume", minutes: Math.round(totalMin * 0.25), zone: "z1", type: "strength", description: "Familiar resistance exercises at reviewed sets, repetitions and loads that fit the available time. Track effort and technique; no single repetition scheme is optimal for every athlete." });
       sessions.push({ sport: "mobility", title: "Mobility + Core", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "recovery", description: "Hips, shoulders, spine + anti-rotation core. Mobility is what lets you keep loading heavy." });
     }
 

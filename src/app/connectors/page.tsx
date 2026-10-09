@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Plug,
   Upload,
@@ -14,7 +14,6 @@ import {
 import { NativeDeviceStatus } from "@/components/daily-training/NativeDeviceStatus";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
-import { useSearchParams } from "next/navigation";
 import { t, type Lang } from "@/lib/i18n";
 
 export default function ConnectorsPage() {
@@ -146,12 +145,16 @@ export default function ConnectorsPage() {
     load();
   }
 
-  async function load() {
-    const res = await fetch("/api/connectors");
-    const d = await res.json();
-    setProviders(d.providers || []);
-    setLoading(false);
-  }
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/connectors", { cache: "no-store", signal: AbortSignal.timeout(15000) });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not load connections");
+      setProviders(d.providers || []);
+    } catch {
+      setErr(lang === "es" ? "No se pudieron cargar las conexiones. Puedes volver a la configuración sin conectar un dispositivo." : "Could not load connections. You can return to setup without connecting a device.");
+    } finally { setLoading(false); }
+  }, [lang]);
   useEffect(() => {
     if (!user) return;
     load();
@@ -220,7 +223,7 @@ export default function ConnectorsPage() {
         load();
         window.history.replaceState({}, "", "/connectors");
       });
-  }, [user, lang]);
+  }, [user, lang, load]);
 
   async function uploadImport(source: string) {
     const input = document.getElementById(`file-${source}`) as HTMLInputElement;
@@ -228,6 +231,10 @@ export default function ConnectorsPage() {
     if (!file) {
       setErr(`Choose a file for ${source} first.`);
       setMsg("");
+      return;
+    }
+    if (file.size > 40 * 1024 * 1024) {
+      setErr(lang === "es" ? "El archivo supera 40 MB. Exporta un intervalo menor." : "The file exceeds 40 MB. Export a smaller date range.");
       return;
     }
     setImporting(source);
@@ -241,7 +248,9 @@ export default function ConnectorsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || t(lang, "conn.importFailed"));
       setMsg(
-        `${source}: ${data.workoutsImported ?? 0} workouts imported${data.metricsImported ? `, ${data.metricsImported} days of metrics` : ""}.`,
+        lang === "es"
+          ? `${source}: ${data.workoutsImported ?? 0} actividades importadas${data.metricsImported ? `, ${data.metricsImported} días de métricas` : ""}. Revisa los datos disponibles en la configuración; importar no completa los campos que faltan.`
+          : `${source}: ${data.workoutsImported ?? 0} workouts imported${data.metricsImported ? `, ${data.metricsImported} days of metrics` : ""}. Review available data in setup; importing does not fill missing fields.`,
       );
       input.value = "";
       load();
@@ -300,14 +309,18 @@ export default function ConnectorsPage() {
               ]
           : es
             ? [
-                "Entra en connect.garmin.com con tu cuenta.",
+                "Abre connect.garmin.com en Safari o en el navegador de un ordenador e inicia sesión. La exportación se hace en la web de Garmin Connect.",
+                "Para varias actividades: abre Actividades → Todas las actividades y elige Exportar CSV. El archivo contiene las actividades incluidas en esa exportación; no confirma todo tu historial.",
                 "Abre una actividad y elige «Exportar a TCX» en el menú de exportación. «Exportar original» puede generar un FIT, que este importador no acepta.",
-                "Sube el archivo .tcx aquí abajo.",
+                "Guarda el .tcx o Activities.csv en Archivos/Descargas. Vuelve aquí, elige el archivo y pulsa Importar. Límite: 40 MB; no subas ZIP ni FIT.",
+                "Revisa el resultado de la importación y vuelve a la configuración para revisar los datos disponibles. Un archivo de actividades no incluye necesariamente peso, zonas ni datos de recuperación.",
               ]
             : [
-                "Go to connect.garmin.com and log in.",
+                "Open connect.garmin.com in Safari or a computer browser and sign in. Export from the Garmin Connect website.",
+                "For several activities: open Activities → All Activities and choose Export CSV. This includes the activities in that export, not necessarily your complete history.",
                 'Open an activity and choose "Export to TCX" from its export menu. "Export Original" may produce a FIT file, which this importer does not accept.',
-                "Upload the .tcx file here.",
+                "Save the .tcx or Activities.csv in Files/Downloads. Return here, choose that file and press Import. Maximum 40 MB; ZIP and FIT are not accepted.",
+                "Check the import result, then return to setup to review available data. Activity files do not necessarily include weight, zones or recovery data.",
               ];
       case "google_cal":
         return es
@@ -325,12 +338,12 @@ export default function ConnectorsPage() {
         return es
           ? [
               "En el iPhone abre la app Salud → toca tu foto/nombre arriba → baja hasta «Exportar todos los datos de salud» → confirma.",
-              "Apple prepara un .zip y lo envía por correo (puede tardar de minutos a horas) — descarga ese zip.",
+              "Cuando termine la exportación, usa las opciones de compartir para guardar el .zip en Archivos.",
               "Descomprime el zip y sube el archivo export.xml aquí abajo.",
             ]
           : [
               'On iPhone open the Health app → tap your picture/name at top → scroll to "Export All Health Data" → confirm.',
-              "Apple builds a .zip and emails it to you (minutes to hours) — download that zip.",
+              "When the export is ready, use the share options to save the .zip in Files.",
               "Unzip it and upload the export.xml file below.",
             ];
       case "whoop":
@@ -461,6 +474,7 @@ export default function ConnectorsPage() {
         {msg && (
           <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
             ✓ {msg}
+            <a className="block underline min-h-11 content-center" href="/onboard?redo=1&step=profile">{lang === "es" ? "Revisar datos importados y continuar" : "Review imported data and continue"}</a>
           </div>
         )}
         {err && (
@@ -689,11 +703,13 @@ export default function ConnectorsPage() {
                   )}
                   {p.method === "upload" && (
                     <div className="space-y-2">
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <input
                           id={`file-${p.id}`}
                           type="file"
-                          className="input text-xs"
+                          className="input text-xs min-w-0"
+                          aria-label={lang === "es" ? `Archivo de ${p.name}` : `${p.name} file`}
+                          disabled={importing !== null}
                           accept={
                             p.id === "garmin"
                               ? ".tcx,.xml,.csv"
@@ -704,7 +720,7 @@ export default function ConnectorsPage() {
                         />
                         <button
                           onClick={() => uploadImport(p.id)}
-                          disabled={importing === p.id}
+                          disabled={importing !== null}
                           className="btn-secondary max-w-full whitespace-normal"
                         >
                           <Upload className="w-4 h-4" />{" "}
@@ -718,12 +734,12 @@ export default function ConnectorsPage() {
                       <div className="text-[10px] text-slate-400">
                         {lang === "es"
                           ? p.id === "garmin"
-                            ? "Acepta .tcx, .xml de Garmin Connect, o el Activities.csv (Actividades → Exportar CSV) para importar TODO tu historial de golpe."
+                            ? "Acepta TCX o Activities.csv de Garmin Connect (hasta 40 MB). Solo se importan las actividades válidas incluidas en el archivo; no confirma un historial completo."
                             : p.id === "apple"
                               ? "Acepta el export.xml de Apple Health."
                               : "Acepta el CSV exportado de Whoop."
                           : p.id === "garmin"
-                            ? "Accepts .tcx, .xml from Garmin Connect, or the Activities.csv (Activities → Export CSV) to import your WHOLE history at once."
+                            ? "Accepts TCX or Garmin Connect Activities.csv (up to 40 MB). Only valid activities included in the file are imported; this does not confirm a complete history."
                             : p.id === "apple"
                               ? "Accepts the Apple Health export.xml."
                               : "Accepts the CSV exported from Whoop."}
@@ -762,6 +778,7 @@ export default function ConnectorsPage() {
                           <li key={i}>{s}</li>
                         ))}
                       </ol>
+                      {p.id === "garmin" && <a href="https://support.garmin.com/en-US/?faq=W1TvTPW8JZ6LfJSfK512Q8" target="_blank" rel="noopener noreferrer" className="block min-h-11 content-center underline">{lang === "es" ? "Guía oficial de exportación de Garmin" : "Official Garmin export guide"}</a>}
                       {LINKS[p.id] && (
                         <a
                           href={LINKS[p.id].url}

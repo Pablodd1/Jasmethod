@@ -29,3 +29,7 @@ test("onboarding blank optional values become null without altering required val
 });
 
 test("blank onboarding goal stays absent and untouched capacity defaults are omitted",()=>{ assert.deepEqual(onboardingProfileFields({goal:"",experience:"",weeklyHours:""}),{goal:null}); });
+
+test("profile client rejects an unverifiable 200 response", async()=>{
+  await assert.rejects(()=>saveReviewedProfile({ftp:250},"v1",async()=>Response.json({ok:true})),/could not be verified/);
+});

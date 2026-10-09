@@ -76,8 +76,9 @@ test("unverified linking session never exposes provider controls", () => {
 test("mobile primary navigation has four distinct destinations and one coach", () => {
   const { MobileNav } = loadComponent("src/components/app-shell.tsx", { user: athlete });
   const html = renderToStaticMarkup(React.createElement(MobileNav));
-  assert.deepEqual([...html.matchAll(/href="([^"]+)"/g)].map(match => match[1]), ["/today", "/calendar", "/coach", "/settings"]);
+  assert.deepEqual([...html.matchAll(/href="([^"]+)"/g)].map(match => match[1]), ["/today", "/training", "/coach", "/settings"]);
   assert.doesNotMatch(html, /href="\/daily"/);
+  assert.match(html, /Training plan/);
 });
 
 test("administrator navigation stays role-specific and athlete setup remains accessible", () => {

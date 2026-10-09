@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { boundedTelegramMessage, parseTelegramUpdate } from "./telegram-coaching-transport";
-import { reconcileCoachingAttempts, finalizeTelegramAttempt } from "./coaching-service";
+import { reconcileCoachingAttempts, finalizeTelegramAttempt, startTelegramPairing } from "./coaching-service";
 import { prisma } from "./db";
 
 test("native replies require original private bot receipt, reject forwarding/wrong chat and keep technical IDs internal", () => {
@@ -44,4 +44,30 @@ test("finalization storage failure rejects instead of fabricating a persisted se
   (prisma as any).$transaction = async () => { throw Error("synthetic storage interruption"); };
   try { await assert.rejects(finalizeTelegramAttempt("prompt", "athlete", { status: "sent", receiptId: "telegram:123", error: null }), /storage interruption/); }
   finally { (prisma as any).$transaction = original; }
+});
+
+
+test("Telegram pairing rejects missing or invalid usernames before creating a challenge", async () => {
+  const keys = ["ENABLE_TELEGRAM_COACHING", "ENABLE_AUTOMATED_DELIVERY", "COACHING_TRANSPORT", "TELEGRAM_BOT_TOKEN", "TELEGRAM_COACHING_WEBHOOK_SECRET", "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME", "TELEGRAM_BOT_USERNAME"];
+  const saved = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  const original = prisma.communicationPreference.upsert;
+  let writes = 0;
+  (prisma.communicationPreference as any).upsert = async () => { writes++; return {}; };
+  Object.assign(process.env, { ENABLE_TELEGRAM_COACHING: "true", ENABLE_AUTOMATED_DELIVERY: "true", COACHING_TRANSPORT: "telegram", TELEGRAM_BOT_TOKEN: "synthetic-test-token", TELEGRAM_COACHING_WEBHOOK_SECRET: "synthetic-test-secret" });
+  delete process.env.TELEGRAM_BOT_USERNAME;
+  try {
+    for (const username of ["", "@invalid", "bad/path", "https://example.invalid", "tiny"]) {
+      process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME = username;
+      await assert.rejects(startTelegramPairing({ id: "athlete", email: "athlete@example.invalid", timezone: "UTC" }), (error: any) => error.status === 503 && /bot username/.test(error.message));
+    }
+    assert.equal(writes, 0);
+    process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME = "ExampleWorkoutBot";
+    const result = await startTelegramPairing({ id: "athlete", email: "athlete@example.invalid", timezone: "UTC" });
+    assert.equal(writes, 1);
+    assert.match(result.pairingUrl, /^https:\/\/t\.me\/ExampleWorkoutBot\?start=[A-Za-z0-9_-]{43}$/);
+    assert.equal(result.enabled, false, "linking alone never opts in");
+  } finally {
+    (prisma.communicationPreference as any).upsert = original;
+    for (const key of keys) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }
+  }
 });

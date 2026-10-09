@@ -1,3 +1,5 @@
+import { cycleActivityEvidence, shapeTrainingCycle, TRAINING_CYCLE_VERSION } from "@/lib/training-cycle";
+import { evidencedTargetProfile } from "@/lib/anchor-evidence";
 import { setupNumber } from "@/lib/planning-target";
 import { type BoundedPlanSession, boundPlanWeeks } from "@/lib/planning-bounds";
 import { DOUBLE_DAY_VERSION, doubleDayTiming } from "@/lib/double-day";
@@ -29,6 +31,7 @@ import {
   scheduleTests,
   venueAdjustment,
   defaultStartTime,
+  prescribeToday,
 } from "@/lib/adaptive";
 
 // POST /api/plan/generate — generate a periodized plan for the user
@@ -86,14 +89,26 @@ export async function POST(req: Request) {
     const start = startDate
       ? toLocalMidnight(String(startDate))
       : dayBounds(user.timezone).start;
+    const startKey = dateKey(start, user.timezone);
+    const todayKey = dayBounds(user.timezone).key;
+    if (startKey < todayKey) throw new ApiError("Choose today or a future start date. Completed training history cannot be restarted.", 422);
     const dist = String(planningGoal(distance || profile.goal) || "");
     if (dist !== planningGoal(profile.goal)) throw new ApiError("Update and confirm your saved goal before previewing a different sport.",422);
     // All future races feed planning: the A race anchors the taper; B races
     // get train-through sharpening weeks (extraRaces below).
-    const allRaces = await prisma.race.findMany({
-      where: { userId: user.id, date: { gte: start } },
+    const activityQuery = { where: { userId: user.id, date: { gte: localDate(addDaysKey(todayKey, -28), user.timezone), lt: localDate(addDaysKey(startKey, weeksCount * 7), user.timezone) }, OR: [{ completed: true }, { actualDurationMin: { not: null } }, { feedbackStatus: { not: null } }] }, orderBy: { id: "asc" as const }, select: { id: true, date: true, completed: true, actualDurationMin: true, feedbackStatus: true, rpe: true, matchedPlanId: true } };
+    const benchmarkQuery = { where: { userId: user.id, completed: true, skipped: false }, orderBy: { id: "asc" as const }, select: { id: true, date: true, type: true, result: true, completed: true, skipped: true } };
+    const anchorQuery = { where: { subjectId: user.id, action: "baseline.fromTest" }, orderBy: { id: "asc" as const }, select: { entityId: true } };
+    const [storedRaces, recentActivity, benchmarkTests, appliedAnchors] = await Promise.all([prisma.race.findMany({
+      where: { userId: user.id, date: { gte: new Date(`${startKey}T00:00:00Z`) } },
       orderBy: [{ priority: "asc" }, { date: "asc" }],
-    });
+    }), prisma.workout.findMany(activityQuery), prisma.benchmarkTest.findMany(benchmarkQuery), prisma.auditLog.findMany(anchorQuery)]);
+    // Race rows store the entered calendar day at UTC midnight, whereas profile
+    // dates and explicit request dates use athlete-local midnight. Normalize only race rows.
+    const allRaces = storedRaces.map(row => ({ ...row, date: toLocalMidnight(row.date.toISOString().slice(0,10)) }));
+    const activityEvidence = cycleActivityEvidence(recentActivity, todayKey, user.timezone);
+    const anchors = evidencedTargetProfile(profile, benchmarkTests, appliedAnchors.flatMap(row => row.entityId ? [row.entityId] : []));
+    const needsAssessment = dist === "cycle" ? !anchors.ftp : dist === "swim-only" ? !anchors.swimPaceBase : ["track-sprint", "hyrox"].includes(dist) ? true : dist === "run-only" ? !anchors.runPaceBase : !anchors.ftp || !anchors.runPaceBase || !anchors.swimPaceBase;
     const anchorRaceId = (
       allRaces.find((r) => r.priority === 1) || allRaces[0]
     )?.id;
@@ -176,7 +191,17 @@ export async function POST(req: Request) {
       const candidateDay=Date.parse(addDaysKey(dateKey(start,user.timezone),i*7+pairSlot));
       return raceDays.some(d=>Date.parse(d)-candidateDay>=0&&Date.parse(d)-candidateDay<=14*86400000)?[i]:[];
     });
-    const {weeks: generated, weeklyBudget, recoveryPolicy} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday, level, excludedDoubleWeeks);
+    const {weeks: bounded, weeklyBudget, recoveryPolicy} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday, level, excludedDoubleWeeks);
+    const structuredDraft = (session: BoundedPlanSession) => ({ ...prescribeToday({ session: { cycleVersion:TRAINING_CYCLE_VERSION, title:session.title, sport:session.sport, type:session.type, intensity:session.zone, durationMin:session.minutes, description:session.description, startTime:session.startTime ?? sessionStartTime }, adaptation: { verdict:"planned", durationFactor:1, intensityCap:session.zone } }), planningStatus: "provisional", planningNote:session.description });
+    const generated = shapeTrainingCycle(bounded, { startKey, raceKey: race ? dateKey(race, user.timezone) : null, needsAssessment, recoveryReview: activityEvidence.recoveryReview, protectedDays: activityEvidence.protectedDays }).map(week => ({ ...week, sessions: week.sessions.map(session => ({ ...session, steps: structuredDraft(session).steps })) }));
+    const baselineEvidence = [
+      { label:"Cycling power", value:profile.ftp, source:anchors.ftp ? "measured_test" : profile.ftp ? "unverified_profile_reference" : "unavailable" },
+      { label:"Running threshold pace", value:profile.runPaceBase, source:anchors.runPaceBase ? "estimated_from_5k_test" : profile.runPaceBase ? "unverified_profile_reference" : "unavailable" },
+      { label:"Swimming CSS reference", value:profile.swimPaceBase, source:anchors.swimPaceBase ? "swim_field_test_reference" : profile.swimPaceBase ? "unverified_profile_reference" : "unavailable" },
+    ];
+    const assessmentScheduled = generated.some(week => week.sessions.some(session => session.title.includes("Comfortable baseline observation")));
+    const assessmentNote = ["track-sprint", "hyrox"].includes(dist) ? " Sprint technique, maximal-speed ability and station competence are not established by a running threshold. Use only controlled familiar practice; sport-specific coaching review is required for maximal or loaded progression." : "";
+    const cycle = { version: TRAINING_CYCLE_VERSION, baselineEvidence, goal: setup.goalDescription, target: setup.targetGoal, baseline: { weeklyMinutes: setup.baselineWeeklyMinutes, observedAt: setup.baselineObservedAt, source: setup.source }, assessment: needsAssessment ? (assessmentScheduled ? "A comfortable non-maximal baseline observation is included; no threshold or performance value is invented. Record actual effort and recovery, then review before progressing." : "A baseline observation does not fit the available sessions. Review sport-specific availability and recent tolerated training with your coach before progressing; no threshold or performance value is invented.") + assessmentNote : "Recent applied sport-specific test evidence is available. A test result does not guarantee recovery or future performance.", activity: activityEvidence, weeks: generated.map(week => ({ week: week.week, theme: week.theme, totalMinutes: week.totalMinutes, reviewNote: week.reviewNote })), evidenceNote: "Goal values are aspirations. Reported training, measured test results and derived estimates retain their source records. Session zones are effort labels; no new physiological estimate is created." };
     if (!generated.some(week=>week.sessions.length)) throw new ApiError("The current template does not fit your available days/time. A coach should review the schedule; no sessions were assigned.", 422);
     for(const [index,week] of generated.entries()) {
       const pair=week.sessions.filter(s=>s.doubleDayRole);
@@ -187,8 +212,8 @@ export async function POST(req: Request) {
     }
     const doubleDayAgreementRequired=generated.some(w=>w.sessions.some(s=>s.doubleDayRole));
     const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true}});
-    const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated })).digest("hex");
-    if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated, recoveryPolicy}, previewToken,
+    const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated, recentActivity, benchmarkTests, appliedAnchors })).digest("hex");
+    if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated, recoveryPolicy, cycle}, previewToken,
       planningBasis: setup.baselinePlanOptIn ? "baseline_only" : "baseline", targetReview: readiness.targetReview ?? [],
       doubleDayAgreementRequired,
       warning: "Numeric targets remain aspirations: this plan is not optimized or promised to reach them. Future sessions are provisional and bounded by reported recent training. Existing prescriptions and completed activity will be preserved. A goal is not a guaranteed outcome; daily safety checks still apply."});
@@ -200,10 +225,12 @@ export async function POST(req: Request) {
     // Original prescriptions and completed history remain retrievable.
     const plan = await prisma.$transaction(
       async (tx) => {
-        const [latestProfile, latestSetup] = await Promise.all([
+        const [latestProfile, latestSetup, latestActivity, latestBenchmarks, latestAnchors] = await Promise.all([
           tx.athleteProfile.findUnique({where:{userId:user.id}}),
           readPlanningSetup(user.id, tx),
+          tx.workout.findMany(activityQuery), tx.benchmarkTest.findMany(benchmarkQuery), tx.auditLog.findMany(anchorQuery),
         ]);
+        if (JSON.stringify([latestActivity, latestBenchmarks, latestAnchors]) !== JSON.stringify([recentActivity, benchmarkTests, appliedAnchors])) throw new ApiError("Your training history or baseline evidence changed. Review a fresh preview before saving.", 409);
         if(latestSetup.setup?.doubleDay?.athleteAgreed && (actor.id!==user.id||latestSetup.setup.source!=="athlete_reported")) throw new ApiError("Athlete agreement must be confirmed by the athlete.",403);
         if (profileRevision(latestProfile) !== profileRevision(profile) || latestSetup.revision !== setupState.revision) throw new ApiError("Your profile or setup changed. Review a new preview.", 409);
         const oldPlans = await tx.trainingPlan.findMany({
@@ -275,7 +302,8 @@ export async function POST(req: Request) {
                           userId: user.id,
                           date,
                           startTime: s.startTime ?? sessionStartTime,
-                          ...(s.doubleDayRole && pair.length===2 ? {originalPlan:JSON.stringify({title:s.title,sport:s.sport,type:s.type,intensity:s.zone,durationMin:s.minutes,description:s.description,startTime:s.startTime,doubleDay:{version:DOUBLE_DAY_VERSION,setupRevision:setupState.revision,dateLocal:dateKey(date,user.timezone),purpose:setup.doubleDay!.purpose,role:s.doubleDayRole,pair}})} : {}),
+                          originalPlan: JSON.stringify({ cycleVersion:TRAINING_CYCLE_VERSION, title:s.title, sport:s.sport, type:s.type, intensity:s.zone, durationMin:s.minutes, description:s.description, startTime:s.startTime ?? sessionStartTime, ...(s.doubleDayRole && pair.length===2 ? {doubleDay:{version:DOUBLE_DAY_VERSION,setupRevision:setupState.revision,dateLocal:dateKey(date,user.timezone),purpose:setup.doubleDay!.purpose,role:s.doubleDayRole,pair}} : {}) }),
+                          prescription: JSON.stringify(structuredDraft(s)),
                           sport: s.sport,
                           title: s.title,
                           type: s.type,
@@ -306,6 +334,7 @@ export async function POST(req: Request) {
             entityId: plan.id,
             after: JSON.stringify({
               name: plan.name,
+              cycle,
               doubleDayAgreement: doubleDayAgreementRequired ? {version:DOUBLE_DAY_VERSION,confirmedBy:actor.id,setupRevision:setupState.revision,previewToken} : null,
               weeks: weeksCount,
               startDate: start, setupRule: readiness.ruleId, setupRevision: setupState.revision, previewToken, weeklyBudgetMin: weeklyBudget, recoveryPolicy, previousPlanIds: currentPlans.map(p => p.id),
@@ -353,7 +382,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      plannerVersion: "manual-setup-bounded-v1",
+      plannerVersion: TRAINING_CYCLE_VERSION,
+      cycle,
       recoveryPolicy,
       plan: {
         id: plan.id,

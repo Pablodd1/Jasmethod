@@ -1,3 +1,4 @@
+import { unitsOf } from "@/lib/units";
 import { SessionResolutionError } from "@/lib/canonical-session";
 // GET /api/v1/training/today — daily-training screen adapter.
 // Maps the athlete's REAL plan/profile/fueling data into the versioned
@@ -84,7 +85,7 @@ export async function GET(req: Request) {
       focusReady = !!(JSON.parse(checkin?.answers || "{}")?.focus || {})[workout.id];
     } catch {}
     const completed = workout.completed;
-    const metric = user.profile?.units === "imperial" ? "imperial" : "metric";
+    const metric = unitsOf(user.profile?.units, user.language);
 
     const plan: DailyTraining = {
       schemaVersion: 2,
