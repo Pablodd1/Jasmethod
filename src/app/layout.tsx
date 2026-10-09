@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Inter, Fraunces, IBM_Plex_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/auth";
 import "./globals.css";
@@ -57,6 +58,10 @@ export default function RootLayout({
           <WebApp />
           {children}
         </AuthProvider>
+        <Script
+          src="https://www.aidynamic.pro/ecosystem-widget.js"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
