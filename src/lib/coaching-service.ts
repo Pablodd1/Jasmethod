@@ -268,11 +268,15 @@ export async function runMockCoachingSchedule(now = new Date()) {
 
 export async function startTelegramPairing(actor: CoachingActor) {
   if (!telegramCoachingConfigured()) throw new ApiError("Telegram coaching disabled", 503);
+  const username = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || process.env.TELEGRAM_BOT_USERNAME || "";
+  // Existing verified chats can still receive opted-in messages, but a new link
+  // must never report success without a usable, configured pairing destination.
+  if (!/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username))
+    throw new ApiError("Telegram linking is not configured. Ask the administrator to configure the bot username; no pairing request was created.", 503);
   const token = newReplyToken();
   const expiresAt = new Date(Date.now() + 10 * 60_000);
   await prisma.communicationPreference.upsert({ where: { userId: actor.id }, create: { userId: actor.id, timezone: actor.timezone, challengeHash: token.hash, challengeExpiresAt: expiresAt }, update: { challengeHash: token.hash, challengeExpiresAt: expiresAt } });
-  const username = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || process.env.TELEGRAM_BOT_USERNAME || "";
-  return { transport: "telegram", token: token.token, expiresAt, pairingUrl: /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username) ? `https://t.me/${username}?start=${token.token}` : null, enabled: false };
+  return { transport: "telegram", token: token.token, expiresAt, pairingUrl: `https://t.me/${username}?start=${token.token}`, enabled: false };
 }
 export async function processTelegramWebhook(value: unknown, now = new Date()) {
   if (!telegramCoachingConfigured()) throw new ApiError("Telegram coaching disabled", 503);

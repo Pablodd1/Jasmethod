@@ -418,15 +418,16 @@ test("downloaded held calendar excludes private safety/step notes and links only
     plan: { name: "Training plan", days: [{ date: now, week: 1, dayOff: false, sessions: [{ ...workout, prescription: JSON.stringify(prescription) }] }] },
     resolvedSessions: { [workout.id]: held },
   });
-  assert.match(calendar, /BEGIN:VEVENT/);
-  assert.match(calendar, /SUMMARY:JMM provisional session/);
-  assert.match(calendar, /PROVISIONAL \/ ON HOLD/);
-  assert.match(calendar, /sign-in required/);
-  assert.match(calendar, /\/daily\?sessionId=session-a/);
-  assert.match(calendar, /Downloaded calendar snapshot/);
-  assert.match(calendar, /later changes require a fresh export/);
-  assert.match(calendar, /does not auto-sync/);
-  assert.doesNotMatch(calendar, /PRIVATE_SAFETY_REASON|PRIVATE_STEP_NOTE|PRIVATE_PRIOR_STEP_NAME|PRIVATE_WORKOUT_NOTES|[?&]token=|\/api\/workout-graphic/);
+  const calendarContent = calendar.replace(/\r\n[ \t]/g, "");
+  assert.match(calendarContent, /BEGIN:VEVENT/);
+  assert.match(calendarContent, /SUMMARY:JMM provisional session/);
+  assert.match(calendarContent, /PROVISIONAL \/ ON HOLD/);
+  assert.match(calendarContent, /sign-in required/);
+  assert.match(calendarContent, /\/daily\?sessionId=session-a/);
+  assert.match(calendarContent, /Downloaded calendar snapshot/);
+  assert.match(calendarContent, /later changes require a fresh export/);
+  assert.match(calendarContent, /does not auto-sync/);
+  assert.doesNotMatch(calendarContent, /PRIVATE_SAFETY_REASON|PRIVATE_STEP_NOTE|PRIVATE_PRIOR_STEP_NAME|PRIVATE_WORKOUT_NOTES|[?&]token=|\/api\/workout-graphic/);
 });
 
 test("Spanish canonical content keeps exact fuel/target quantities and safety qualifications without English or private context", () => {

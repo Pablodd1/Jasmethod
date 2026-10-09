@@ -134,3 +134,37 @@ test("bundle omits unresolved/raw, rest, malformed and unsupported sessions with
 test("CSV treats untrusted formula-like strings as text while preserving numeric values", () => {
   assert.equal(toCsv([{ note: "=HYPERLINK(1)", delta: -5 }], ["note", "delta"]), "note,delta\r\n'=HYPERLINK(1),-5\r\n");
 });
+
+
+test("calendar folding preserves Unicode and escaped content within 75 UTF-8 octets", () => {
+  const name = "Entrenamiento 🚴 séance ".repeat(12) + "one\rtwo\nthree;four,five\\six";
+  const output = buildTrainingCalendar({ ...sample, plan: { ...sample.plan, name } });
+  assert.ok(output.includes("\r\n "), "long lines are folded for calendar clients");
+  for (const line of output.split("\r\n")) assert.ok(Buffer.byteLength(line, "utf8") <= 75);
+  assert.doesNotMatch(output, /�/);
+  const unfolded = output.replace(/\r\n[ \t]/g, "");
+  assert.ok(unfolded.includes("X-WR-CALNAME:" + name.replace(/\\/g, "\\\\").replace(/\r\n|\r|\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;")));
+  assert.match(unfolded, /does not auto-sync/);
+});
+
+test("calendar omits skipped sessions and rest days", () => {
+  for (const variant of [
+    { ...sample.plan.days[0], dayOff: true },
+    { ...sample.plan.days[0], sessions: [{ ...sample.plan.days[0].sessions[0], feedbackStatus: "skipped" }] },
+  ]) {
+    const output = buildTrainingCalendar({ ...sample, plan: { ...sample.plan, days: [variant] } });
+    assert.doesNotMatch(output, /BEGIN:VEVENT/);
+  }
+});
+
+
+test("calendar preserves an unknown or invalid start as a dated placeholder instead of inventing a time", () => {
+  for (const startTime of [null, "", "99:99", "24:00"]) {
+    const output = buildTrainingCalendar({ ...sample, plan: { ...sample.plan, days: [{ ...sample.plan.days[0], sessions: [{ ...sample.plan.days[0].sessions[0], date: new Date("2026-09-09T02:00:00Z"), startTime }] }] } }).replace(/\r\n[ \t]/g, "");
+    assert.match(output, /DTSTART;VALUE=DATE:20260908/);
+    assert.match(output, /DTEND;VALUE=DATE:20260909/);
+    assert.doesNotMatch(output, /DTSTART:|DTEND:/);
+    assert.match(output, /Start time is not set/);
+    assert.match(output, /not an all-day workout/);
+  }
+});

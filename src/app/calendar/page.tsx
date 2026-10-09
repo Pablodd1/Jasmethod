@@ -53,7 +53,7 @@ function fmtMin(min: number) {
 export default function CalendarPage() {
   const { user } = useAuth();
   const es = user?.language === "es";
-  const [view, setView] = useState<"days" | "month">("days"); // 3-day default
+  const [view, setView] = useState<"days" | "month">("month");
   const [month, setMonth] = useState(new Date());
   const [events, setEvents] = useState<any[]>([]);
   const [races, setRaces] = useState<any[]>([]);
@@ -270,6 +270,12 @@ export default function CalendarPage() {
     <ProtectedPage>
       <div className="space-y-6">
         {mutationError && <p role="alert" className="text-red-700">{mutationError}</p>}
+        <nav className="flex flex-wrap gap-3" aria-label={es ? "Navegación de entrenamiento" : "Training navigation"}><a href="/today" className="btn-primary min-h-12">{es ? "Entrenamiento de hoy" : "Today’s workout"}</a><a href="/training" className="btn-secondary min-h-12">{es ? "Ciclo y meses guardados" : "Saved cycle and months"}</a></nav>
+        <details className="card space-y-2">
+          <summary className="cursor-pointer min-h-11 content-center font-semibold">{es ? "Usar mi calendario de Apple u otra app" : "Use Apple Calendar or another calendar app"}</summary>
+          <a className="btn-secondary min-h-11" href="/api/training/export?format=ics">{es ? "Descargar calendario (.ics)" : "Download calendar (.ics)"}</a>
+          <p className="text-sm text-slate-600">{es ? "Abre el archivo en una app que admita importar calendarios y revisa los eventos antes de añadirlos. Si el móvil solo muestra una vista previa, importa el archivo desde el ordenador. Es una copia del plan actual, no sincronización automática ni envío al reloj. Volver a importar puede duplicar eventos." : "Open the file in a calendar app that supports imports and review events before adding them. If your phone only previews it, import the file from a computer. This is a snapshot of your current plan, not automatic sync or watch delivery. Importing again may duplicate events."}</p>
+        </details>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold">
@@ -283,6 +289,7 @@ export default function CalendarPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setMonth(addMonths(month, -1))}
+              aria-label={es ? "Mes anterior" : "Previous month"}
               className="btn-secondary p-2"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -292,6 +299,7 @@ export default function CalendarPage() {
             </div>
             <button
               onClick={() => setMonth(addMonths(month, 1))}
+              aria-label={es ? "Mes siguiente" : "Next month"}
               className="btn-secondary p-2"
             >
               <ChevronRight className="w-4 h-4" />
