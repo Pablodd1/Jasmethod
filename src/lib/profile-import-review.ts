@@ -32,7 +32,8 @@ export function importedWeightSuggestions(rows:ReviewWeight[], connectedSources:
   const allowed = new Set(["strava","intervals","garmin","oura","whoop","apple_health","coros","withings"]);
   return [...rows].sort((a,b)=>b.observedAt.getTime()-a.observedAt.getTime()).filter(row=>{
     const age=now.getTime()-row.observedAt.getTime();
-    if(!allowed.has(row.source)||!row.id||!connectedSources.includes(row.source)||seen.has(row.source)||row.qualityFlag!=="ok"||row.unit!=="kg"||!Number.isFinite(row.value)||row.value<20||row.value>350||!Number.isFinite(age)||age<0||age>30*86400000)return false;
+    const uploadedFile = row.source === "apple_health" && row.measurementMethod === "uploaded_file";
+    if(!allowed.has(row.source)||!row.id||(!uploadedFile && !connectedSources.includes(row.source))||seen.has(row.source)||row.qualityFlag!=="ok"||row.unit!=="kg"||!Number.isFinite(row.value)||row.value<20||row.value>350||!Number.isFinite(age)||age<0||age>30*86400000)return false;
     seen.add(row.source);return true;
-  }).map(row=>({observationId:row.id,field:"weightKg" as const,value:row.value,unit:"kg",source:row.source,observedAt:row.observedAt.toISOString(),kind:row.measurementMethod==="provider_profile_reported"?"reported" as const:"observation" as const,requiresConfirmation:true as const}));
+  }).map(row=>({observationId:row.id,field:"weightKg" as const,value:row.value,unit:"kg",source:row.source,observedAt:row.observedAt.toISOString(),kind:row.measurementMethod==="uploaded_file"?"uploaded_file" as const:row.measurementMethod==="provider_profile_reported"?"reported" as const:"observation" as const,requiresConfirmation:true as const}));
 }

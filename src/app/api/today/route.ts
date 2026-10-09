@@ -1,3 +1,5 @@
+import { unitsOf } from "@/lib/units";
+import { savedCycleSummary } from "@/lib/training-cycle";
 import { dailyRecoveryContext } from "@/lib/daily-recovery";
 import { workoutJStress, hasPerformedTraining } from "@/lib/j-metrics";
 import { SessionResolutionError } from "@/lib/canonical-session";
@@ -19,7 +21,7 @@ export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
-  const [allWorkouts, race, connectors, checkin, restDay] = await Promise.all([
+  const [allWorkouts, race, connectors, checkin, restDay, activePlan] = await Promise.all([
     prisma.workout.findMany({
       where: {
         userId: user.id,
@@ -46,6 +48,7 @@ export async function GET(req: Request) {
       where: { userId_date: { userId: user.id, date: start } },
     }),
     prisma.planDay.findFirst({ where: { plan: { userId: user.id, status: "active" }, date: { gte: start, lt: end }, dayOff: true }, select: { id: true } }),
+    prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: { createdAt: "desc" }, select: { id:true, name:true, startDate:true, weeks:true, raceDate:true } }),
   ]);
 
   const workouts = allWorkouts.filter(w => w.planned);
@@ -151,11 +154,12 @@ export async function GET(req: Request) {
     const visibleConnectors = connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled());
     return Response.json({
       recovery,
+      cycle: activePlan ? savedCycleSummary(activePlan, user.timezone, key) : null,
       capabilities: trainingCapabilities(),
       motivation: personalizedDailyMotivation({date:key,name:user.name,goal:user.profile?.goal,sessionTitle:sessions[0]?.title,rest:plannedRest || !!user.profile?.injured || (!!sessions.length && sessions.every(s=>s.durationMin===0)) || (!!todaysWorkouts.length && todaysWorkouts.every(w=>w.planDay?.dayOff)),checkinComplete:!!checkin,enabled:user.motivation?.dailyQuote !== false,style:user.motivation?.style,lang:user.language}),
       date: key,
       timezone: user.timezone,
-      units: user.profile?.units === "imperial" ? "imperial" : "metric",
+      units: unitsOf(user.profile?.units, user.language),
       needsTesting: {
         vo2max: !user.profile?.vo2max,
         lthr: !user.profile?.lthr,

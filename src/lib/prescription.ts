@@ -1,3 +1,4 @@
+import { CYCLE_MOVEMENT_GUIDANCE, trustedCycleMovementGuidance } from "./cycle-movement-guidance";
 export interface WorkoutStep {
   name: string;
   seconds: number;
@@ -168,6 +169,19 @@ function finishStructuredSteps(steps: WorkoutStep[], total: number, capZone: num
   return result;
 }
 
+/** A cycle has no reviewed lift/station dose. Keep a time budget, never
+ * squeeze fixed sets or assumed race loads into a shortened session. */
+export function cycleMovementSteps(minutes: number, zone: string, title: string): WorkoutStep[] {
+  const total = Math.max(0, Math.round(minutes * 60));
+  if (!total) return [];
+  const warm = Math.floor(total * .2), cool = Math.floor(total * .15);
+  return [
+    { name: "Gentle preparation", seconds: warm, zone: "z1", phase: "warmup" as const, note: "Comfortable familiar movement. Check equipment, symptoms and technique before proceeding." },
+    { name: title, seconds: total - warm - cool, zone, phase: "active" as const, note: CYCLE_MOVEMENT_GUIDANCE },
+    { name: "Easy finish", seconds: cool, zone: "z1", phase: "cooldown" as const, note: "Ease off and record what you actually did, effort and any symptoms. This time allocation does not establish a strength dose." },
+  ].filter(step => step.seconds > 0);
+}
+
 export function structuredSteps(
   minutes: number,
   zone: string,
@@ -277,7 +291,7 @@ export function stepsText(steps: WorkoutStep[]) {
     .filter((s) => s.phase === "active" || s.phase === "recovery")
     .map(
       (s) =>
-        `${s.name}: ${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")} at ${s.zone.toUpperCase()}`,
+        `${s.name}: ${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")} at ${s.zone.toUpperCase()}${trustedCycleMovementGuidance(s) ? `. ${trustedCycleMovementGuidance(s)}` : ""}`,
     )
     .join("; ");
 }

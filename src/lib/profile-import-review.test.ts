@@ -56,11 +56,11 @@ function adoptionFixture(weightSource="manual") {
   const {helper}=fixture();
   class ApiError extends Error { constructor(message:string, public status=400){super(message)} }
   const patch=load("src/lib/profile-update.ts",{"./nutrition-context":{parseNutritionContext},"./access":{ApiError},"./dates":{parseDate:()=>{throw Error("unexpected date edit")}}});
-  const state={source:"strava",connected:true,quality:"ok",observedAt:new Date(),writes:[] as any[],audits:[] as any[]};
+  const state={source:"strava",method:"provider_profile_reported",connected:true,quality:"ok",observedAt:new Date(),writes:[] as any[],audits:[] as any[]};
   const before={id:"profile",userId:"owner",weightKg:70,weightSource};
   const tx={
     athleteProfile:{findUnique:async()=>before,upsert:async(q:any)=>{state.writes.push(q);return{...before,...q.update}}},
-    metricObservation:{findFirst:async(q:any)=>{assert.equal(q.where.userId,"owner");return q.where.id==="own-weight"?{id:"own-weight",value:75,unit:"kg",source:state.source,observedAt:state.observedAt,qualityFlag:state.quality,measurementMethod:"provider_profile_reported"}:null}},
+    metricObservation:{findFirst:async(q:any)=>{assert.equal(q.where.userId,"owner");return q.where.id==="own-weight"?{id:"own-weight",value:75,unit:"kg",source:state.source,observedAt:state.observedAt,qualityFlag:state.quality,measurementMethod:state.method}:null}},
     connector:{findFirst:async(q:any)=>{assert.equal(q.where.userId,"owner");return state.connected?{provider:state.source}:null}},
     auditLog:{create:async(q:any)=>{state.audits.push(q);return q}},
   };
@@ -90,4 +90,23 @@ test("foreign, stale, invalid, mismatched or spoofed weight adoption produces no
 
 test("saving an unchanged weight preserves its existing provider provenance",async()=>{
  const f=adoptionFixture("strava");const saved=await f.api.saveProfile("owner",{id:"owner",timezone:"UTC"},{expectedRevision:f.body.expectedRevision,weightKg:70,sex:"female"});assert.equal(saved.weightSource,"strava");
+});
+
+
+test("uploaded Apple weight can be reviewed without pretending a device is connected",()=>{
+  const {helper}=fixture(),now=new Date();
+  const row={id:"file-weight",value:72,unit:"kg",source:"apple_health",observedAt:now,qualityFlag:"ok",measurementMethod:"uploaded_file"};
+  assert.equal(helper.importedWeightSuggestions([row],[],now)[0].kind,"uploaded_file");
+  assert.equal(helper.importedWeightSuggestions([{...row,source:"strava"}],[],now).length,0);
+  assert.equal(helper.importedWeightSuggestions([{...row,measurementMethod:"optical_sensor"}],[],now).length,0);
+  assert.equal(helper.importedWeightSuggestions([{...row,observedAt:new Date(now.getTime()+1000)}],[],now).length,0);
+});
+
+test("adopting uploaded Apple weight keeps file source and rejects foreign record IDs", async()=>{
+  const f=adoptionFixture();f.state.source="apple_health";f.state.method="uploaded_file";f.state.connected=false;
+  const saved=await f.api.saveProfile("owner",{id:"owner",timezone:"UTC"},f.body);
+  assert.equal(saved.weightSource,"apple_health");assert.equal(saved.weightKg,75);
+  const foreign=adoptionFixture();foreign.state.source="apple_health";foreign.state.method="uploaded_file";foreign.state.connected=false;
+  await assert.rejects(()=>foreign.api.saveProfile("owner",{id:"owner",timezone:"UTC"},{...foreign.body,reviewedWeightObservationId:"other-athlete-weight"}));
+  assert.equal(foreign.state.writes.length,0);
 });

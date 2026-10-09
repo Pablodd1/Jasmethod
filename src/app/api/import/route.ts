@@ -154,6 +154,24 @@ export async function POST(req: Request) {
     for (const w of workouts)
       if (await storeActivity(user.id, user.timezone, w)) imported++;
     if (src === "applehealth") {
+      // The file is athlete-supplied: preserve its recorded date, never label it
+      // a device measurement or overwrite the canonical profile without review.
+      const now = new Date();
+      const latestWeight = (extra.weightLogs || [])
+        .filter((row: { date: Date; kg: number }) => Number.isFinite(row.kg) && row.kg >= 20 && row.kg <= 350 && Number.isFinite(row.date.getTime()) && row.date <= now && row.date.getTime() >= now.getTime() - 30 * 86400000)
+        .sort((a: { date: Date }, b: { date: Date }) => b.date.getTime() - a.date.getTime())[0];
+      if (latestWeight) await prisma.$transaction(async tx => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.id}))`;
+        const existing = await tx.metricObservation.findFirst({ where: {
+          userId: user.id, source: "apple_health", metricType: "weight_kg",
+          measurementMethod: "uploaded_file", observedAt: latestWeight.date, value: latestWeight.kg,
+        }, select: { id: true } });
+        if (!existing) await tx.metricObservation.create({ data: {
+          userId: user.id, source: "apple_health", metricType: "weight_kg",
+          measurementMethod: "uploaded_file", observedAt: latestWeight.date,
+          value: latestWeight.kg, unit: "kg", qualityFlag: "ok",
+        } });
+      });
       const daily = new Map<string, any>();
       for (const [logs, field, value] of [
         [extra.hrvLogs, "hrv", "ms"],

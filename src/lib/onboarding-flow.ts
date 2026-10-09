@@ -2,6 +2,9 @@ export const ONBOARDING_STEP = { welcome:0, devices:1, profile:2, zones:3, race:
 export type OnboardingStep = typeof ONBOARDING_STEP[keyof typeof ONBOARDING_STEP];
 export function onboardingNext(step: OnboardingStep, saved = true): OnboardingStep {
   if (!saved || step === ONBOARDING_STEP.done) return step;
+  // Keep the main journey short. Optional zones/travel remain directly reachable.
+  if (step === ONBOARDING_STEP.profile) return ONBOARDING_STEP.race;
+  if (step === ONBOARDING_STEP.race) return ONBOARDING_STEP.done;
   return (step + 1) as OnboardingStep;
 }
 export function onboardingResume(value: string | null): OnboardingStep {

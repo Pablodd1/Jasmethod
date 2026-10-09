@@ -1,3 +1,4 @@
+import { trustedCycleMovementGuidance } from "./cycle-movement-guidance";
 import { sportStepInstruction, type SportStepDetail, type SwimStroke } from "./sport-structure";
 import type { CanonicalSession, CanonicalStep, ResolvedTarget, SessionSport } from "./canonical-session";
 import type { SessionNutrition } from "./session-nutrition";
@@ -63,7 +64,7 @@ function stepEs(step: CanonicalStep, index: number): string {
   const endpoint = e.type === "time" ? `${numberEs(e.seconds)} s` : e.type === "distance" ? `${numberEs(e.meters)} m` : e.type === "reps" ? `${numberEs(e.reps)} repeticiones` : "vuelta manual (botón LAP)";
   const generatedIdentity = ["rest", "set", "transition"].includes(step.sportDetail?.kind || "");
   return [`Paso ${index + 1}: ${PHASES_ES[step.phase]}`, ...(generatedIdentity ? [] : [`Nombre original: ${step.name}`]), endpoint,
-    `Zona ${step.zone.toUpperCase()}`, targetEs(step.target), ...(step.componentSport ? [`Componente: ${SPORTS_ES[step.componentSport]}`] : []), sportDetailEs(step.sportDetail)].filter(Boolean).join(" · ");
+    `Zona ${step.zone.toUpperCase()}`, targetEs(step.target), ...(step.componentSport ? [`Componente: ${SPORTS_ES[step.componentSport]}`] : []), sportDetailEs(step.sportDetail), trustedCycleMovementGuidance(step, "es")].filter(Boolean).join(" · ");
 }
 
 // Nutrition is authored from known engine branches. These exact-template
@@ -153,7 +154,7 @@ export function manualWorkoutEmailContent(session: CanonicalSession, nutrition: 
     if (es) return stepEs(s, index);
     const e = s.endpoint;
     const end = e.type === "time" ? `${e.seconds} s` : e.type === "distance" ? `${e.meters} m` : e.type === "reps" ? `${e.reps} reps` : "manual lap";
-    return `${s.phase}: ${s.name} · ${end} · ${s.zone.toUpperCase()} · ${s.target.label} [${s.target.source}]${s.sportDetail ? ` · ${sportStepInstruction(s.sportDetail)}` : ""}`;
+    return `${s.phase}: ${s.name} · ${end} · ${s.zone.toUpperCase()} · ${s.target.label} [${s.target.source}]${s.sportDetail ? ` · ${sportStepInstruction(s.sportDetail)}` : ""}${trustedCycleMovementGuidance(s) ? ` · ${trustedCycleMovementGuidance(s)}` : ""}`;
   });
   const timed = session.steps.length > 0 && session.steps.every(s => s.endpoint.type === "time");
   const graphic = timed && includeGraphic ? renderDayPng([session.steps.map(s => ({ name: s.name, seconds: s.endpoint.type === "time" ? s.endpoint.seconds : 0, zone: s.zone, phase: s.phase }))]) : null;

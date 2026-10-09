@@ -34,14 +34,14 @@ import { LANGS, t, type Lang } from "@/lib/i18n";
 
 const NAV = [
   { href: "/today", key: "nav.today", icon: Play },
-  { href: "/calendar", key: "nav.calendar", icon: CalendarDays, en: "Plan & Calendar", es: "Plan y calendario" },
+  { href: "/training", key: "nav.training", icon: Dumbbell, en: "Training plan", es: "Plan de entrenamiento" },
   { href: "/coach", key: "nav.coach", icon: Sparkles },
   { href: "/settings", key: "nav.settings", icon: Settings, en: "Profile", es: "Perfil" },
 ];
 
 const TOOL_GROUPS = [
   { en: "Training & progress", es: "Entrenamiento y progreso", items: [
-  { href: "/training", key: "nav.training", icon: Dumbbell },
+  { href: "/calendar", key: "nav.calendar", icon: CalendarDays, en: "Calendar", es: "Calendario" },
   { href: "/checkin", key: "nav.checkin", icon: ClipboardCheck },
   { href: "/dashboard", key: "nav.dashboard", icon: Home },
   { href: "/hyrox", key: "nav.hyrox", icon: Layers },
@@ -280,7 +280,7 @@ export function MobileNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`flex flex-col items-center gap-0.5 px-2 py-1 text-xs ${active ? "text-ocean-700 font-semibold" : "text-slate-600"}`}
+            className={`flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1 text-center text-xs ${active ? "text-ocean-700 font-semibold" : "text-slate-600"}`}
           >
             <Icon className="w-5 h-5" />
             {navLabel(item, lang)}

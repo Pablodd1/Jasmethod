@@ -1,5 +1,7 @@
 "use client";
 
+import { trustedCycleMovementGuidance } from "@/lib/cycle-movement-guidance";
+import { TrainingCycleOverview } from "@/components/training-cycle-overview";
 import { TargetProgressPanel } from "@/components/target-progress-panel";
 import { planningGoal } from "@/lib/planning-setup";
 import { useEffect, useState } from "react";
@@ -25,7 +27,6 @@ import { addDaysKey, dateKey } from "@/lib/dates";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import {
-  dayOffProtocol,
   analyzeHydration,
   TRAINING_WINDOWS,
 } from "@/lib/adaptive";
@@ -50,7 +51,11 @@ function fmtMin(min: number) {
 
 export default function TrainingPage() {
   const { user } = useAuth();
+  const es = user?.language === "es";
   const [plans, setPlans] = useState<any[]>([]);
+  const [cycle, setCycle] = useState<any>(null);
+  const [selectedMonth, setSelectedMonth] = useState("");
+  const [savedMessage, setSavedMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -93,6 +98,7 @@ export default function TrainingPage() {
     if (!planResponse.ok || !profileResponse.ok) throw Error("Could not load your plan and planning setup. Retry to check your saved information.");
     const [p, z] = await Promise.all([planResponse.json(), profileResponse.json()]);
     setPlans(p.plans || []);
+    setCycle(p.cycle ?? null);
     setZones(z.zones);
     setProfile(z.profile);
     setPlanningReadiness(z.planningReadiness);
@@ -122,6 +128,7 @@ export default function TrainingPage() {
       if (!res.ok) throw new Error(data.error || "Failed");
       if (!confirmed) { setDoubleDayConfirmed(false); setPreview(data); return; }
       setPreview(null);
+      setSavedMessage(es ? "Tu ciclo estructurado está guardado. Abre Hoy para un nuevo chequeo o elige un mes. Se conserva tu historial completado." : "Your structured training cycle is saved. Open Today for a fresh check-in, or choose a month below. Completed history is retained.");
       await load();
     } catch (err: any) {
       setError(err.message);
@@ -208,6 +215,9 @@ export default function TrainingPage() {
 
   const plan = plans[0];
   const setupHref = `/onboard?redo=1&advanced=1&step=race&return=training&goal=${encodeURIComponent(form.distance)}&weeks=${encodeURIComponent(form.weeks)}`;
+  const months: string[] = Array.from(new Set<string>((plan?.days || []).map((day: any) => dateKey(new Date(day.date), user?.timezone).slice(0,7)))).sort();
+  const visibleMonth = months.includes(selectedMonth) ? selectedMonth : months.includes(dateKey(new Date(), user?.timezone).slice(0,7)) ? dateKey(new Date(), user?.timezone).slice(0,7) : months[0] || "";
+  const visibleDays = (plan?.days || []).filter((day: any) => dateKey(new Date(day.date), user?.timezone).startsWith(visibleMonth));
   const sessions = plan?.days?.flatMap((d: any) => d.sessions) || [];
   const completedCount = sessions.filter((s: any) => s.completed).length;
   const totalCount = sessions.length;
@@ -223,11 +233,9 @@ export default function TrainingPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="font-display text-2xl font-bold">Training Plan</h1>
+            <h1 className="font-display text-2xl font-bold">{es ? "Plan de entrenamiento" : "Training Plan"}</h1>
             <p className="text-slate-500 text-sm">
-              Periodized Base → Build → Peak → Taper. Default 70/30
-              easy-to-quality split — adjust the slider and fine-tune sessions
-              by hand.
+              {es ? "Tu ciclo guardado, calendario mensual y sesiones estructuradas. Revisa lo realizado y tu recuperación antes de progresar." : "Your saved cycle, monthly schedule and structured sessions. Review actual training and recovery before progressing."}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -248,13 +256,13 @@ export default function TrainingPage() {
           files for compatible Garmin/COROS workflows.
         </p>
 
+        {savedMessage && <p role="status" className="card border-emerald-300">{savedMessage}</p>}
+        {plan && <TrainingCycleOverview es={es} plan={plan} cycle={cycle} timezone={user?.timezone || "America/New_York"} selectedMonth={visibleMonth} onMonthChange={setSelectedMonth} />}
         <TargetProgressPanel key={user?.id} language={user?.language} />
 
-        {/* Generator */}
-        <div className="card">
-          <h2 className="font-display font-bold text-lg mb-1">
-            Generate a New Plan
-          </h2>
+        {/* A saved cycle remains primary; replacing it is an explicit review. */}
+        <details className="card" open={!plan}>
+          <summary className="font-display font-bold text-lg mb-3 cursor-pointer">{plan ? (es ? "Revisar cambios del entrenamiento futuro" : "Review changes to future training") : (es ? "Crear y guardar tu ciclo de entrenamiento" : "Create and save your training cycle")}</summary>
           <p className="text-sm text-slate-500 mb-4">
             {profile?.lthr
               ? "Saved physiological references remain reported values; dated, verified anchors are needed for exact targets."
@@ -304,7 +312,7 @@ export default function TrainingPage() {
                 <option value="">Choose horizon</option>
                 {[4, 6, 8, 12, 16, 20, 24, 30].map((w) => (
                   <option key={w} value={w}>
-                    {w} weeks
+                    {w} {es ? "semanas" : "weeks"}{w === 12 ? (es ? " · Unos 3 meses" : " · About 3 months") : w === 24 ? (es ? " · Unos 6 meses" : " · About 6 months") : ""}
                   </option>
                 ))}
               </select>
@@ -368,7 +376,7 @@ export default function TrainingPage() {
                 "Preparing preview…"
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" /> Preview Plan
+                  <Sparkles className="w-4 h-4" /> {es ? "Vista previa del plan" : "Preview Plan"}
                 </>
               )}
             </button>}
@@ -382,9 +390,10 @@ export default function TrainingPage() {
               <p className="text-sm"><strong>First week off-days:</strong> {preview.preview.weeksPreview[0]?.restDaySlots?.length ? preview.preview.weeksPreview[0].restDaySlots.map((slot:number)=>addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),slot)).join(", ") : "None fixed in this preview; add rest whenever needed."} No compulsory workout is assigned on these dates. Planned rest does not count as confirmed completed rest.</p>
             </div>}
             <p>{preview.warning}</p>
+            {preview.preview.cycle && <div className="my-3 space-y-2 text-sm"><p><strong>Assessment:</strong> {preview.preview.cycle.assessment}</p><p><strong>Recent training:</strong> {preview.preview.cycle.activity.reportedSessions} performed sessions recorded; missing reports are not counted as zero. {preview.preview.cycle.activity.recoveryReview ? "Recent effort or incomplete work calls for a reduced opening week." : "Daily recovery still needs review."}</p><p>Planned week totals: {preview.preview.cycle.weeks.map((week:any) => `W${week.week}: ${week.totalMinutes} min`).join(" · ")}</p></div>}
             <p>{preview.preview.existingPlans ? "Confirming will archive the current plan and supersede its uncompleted future sessions. History is retained." : "Confirming will assign this provisional plan."}</p>
             <details className="my-3"><summary className="cursor-pointer underline">Review every week, off-day and session</summary>{preview.preview.weeksPreview.map((week:any,weekIndex:number)=><div className="my-4" key={week.week}>
-              <h4 className="font-semibold">Week {week.week}: {week.totalMinutes} min</h4>
+              <h4 className="font-semibold">Week {week.week}: {week.theme} · {week.totalMinutes} min</h4>
               <p className="text-sm">{week.doubleDayNote}</p>
               <ul className="mt-2 space-y-2">{Array.from({length:7},(_,slot)=>{
                 const localDay=addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+slot);
@@ -392,19 +401,19 @@ export default function TrainingPage() {
                 const isOff=week.restDaySlots?.includes(slot) || sessions.length===0;
                 return <li key={slot} className="border-l-2 border-ink-200 pl-3">
                   <strong>{localDay}{isOff?" · Planned off-day":""}</strong>
-                  {isOff?<p className="text-sm">No compulsory workout. Optional recovery guidance remains separate; record only what you actually do.</p>:sessions.map((session:any,index:number)=><p key={index}>{session.startTime ? `${session.startTime} · ` : ""}{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.movedFromSlot!==undefined ? `Moved from ${addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+session.movedFromSlot)}. ` : ""}{session.description}</p>)}
+                  {isOff?<p className="text-sm">No compulsory workout. Optional recovery guidance remains separate; record only what you actually do.</p>:sessions.map((session:any,index:number)=><p key={index}>{session.startTime ? `${session.startTime} · ` : ""}{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.movedFromSlot!==undefined ? `Moved from ${addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+session.movedFromSlot)}. ` : ""}{session.description}{session.steps?.length > 0 && <span className="block mt-1 text-xs">{session.steps.map((step:any) => `${step.name}: ${step.reps ? `${step.reps} reps (time allocation estimated)` : `${Math.round(step.seconds / 6) / 10} min`} · ${step.zone}${trustedCycleMovementGuidance(step, es ? "es" : "en") ? `. ${trustedCycleMovementGuidance(step, es ? "es" : "en")}` : ""}`).join(" → ")}</span>}</p>)}
                 </li>;
               })}</ul>
             </div>)}</details>
             {preview.doubleDayAgreementRequired && <label className="flex gap-2 items-start text-sm my-3"><input type="checkbox" checked={doubleDayConfirmed} onChange={e=>setDoubleDayConfirmed(e.target.checked)}/>I reviewed both sessions, dates and times for the optional pairs. I agree to report the first and complete a fresh check-in before the second; I can decline or skip without catch-up work.</label>}
-            <div className="flex gap-3"><button type="button" className="btn-primary" disabled={generating||(preview.doubleDayAgreementRequired&&!doubleDayConfirmed)} onClick={()=>generate(undefined,true)}>Confirm this plan</button><button type="button" className="btn-secondary" onClick={()=>setPreview(null)}>Cancel preview</button></div>
+            <div className="flex gap-3"><button type="button" className="btn-primary" disabled={generating||(preview.doubleDayAgreementRequired&&!doubleDayConfirmed)} onClick={()=>generate(undefined,true)}>{es ? "Confirmar y guardar este plan" : "Confirm and save this plan"}</button><button type="button" className="btn-secondary" onClick={()=>setPreview(null)}>{es ? "Cancelar vista previa" : "Cancel preview"}</button></div>
           </section>}
           {error && (
             <div role="alert" className="text-sm text-coral-600 mt-3 bg-coral-50 rounded-lg px-3 py-2">
               {error}
             </div>
           )}
-        </div>
+        </details>
 
         {/* Zone table — compact. Full zone-by-zone descriptions live in Profile & Zones. */}
         {zones?.hr && (
@@ -495,9 +504,8 @@ export default function TrainingPage() {
         {/* Plan view */}
         {plan ? (
           <div className="space-y-4">
-            {plan.days.map((day: any) => {
+            {visibleDays.map((day: any) => {
               const off = day.dayOff;
-              const prot = dayOffProtocol(new Date(day.date));
               return (
                 <div
                   key={day.id}
@@ -510,6 +518,7 @@ export default function TrainingPage() {
                         weekday: "long",
                         month: "short",
                         day: "numeric",
+                        timeZone: user?.timezone,
                       })}
                     </div>
                     <div className="flex items-center gap-2">
@@ -526,15 +535,13 @@ export default function TrainingPage() {
                   {off ? (
                     <div className="rounded-xl border border-slate-200 bg-white p-4">
                       <div className="font-semibold text-sm text-slate-700">
-                        ☁️ {prot.title}
+                        ☁️ {es ? "Descanso planificado" : "Planned rest"}
                       </div>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        {prot.description}
+                        {es ? "Sin entrenamiento obligatorio. Revisa cómo te sientes antes de volver a entrenar." : "No compulsory workout. Review how you feel before returning to training."}
                       </p>
                       <p className="text-[11px] text-slate-400 mt-2 italic">
-                        A day off is NOT zero — 20 min Z1 keeps blood flow + the
-                        habit alive, breathing drives recovery. Planned sessions
-                        for this day are skipped.
+                        {es ? "El movimiento suave es opcional y se registra solo si se realiza. No se recuperan las sesiones omitidas." : "Comfortable movement is optional and should only be recorded if you do it. Missed sessions are not made up."}
                       </p>
                     </div>
                   ) : (
@@ -785,9 +792,9 @@ export default function TrainingPage() {
         ) : (
           <div className="card text-center py-16 text-slate-400">
             <Dumbbell className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-            <p className="font-medium text-slate-500">No training plan yet</p>
+            <p className="font-medium text-slate-500">{es ? "Aún no tienes un plan guardado" : "No training plan yet"}</p>
             <p className="text-sm">
-              {planningReadiness?.ready ? "Preview a plan above, review its sessions and confirm it to add training. Then choose protocols for compatible sessions." : "Complete planning setup using the button above. You can browse protocols now; applying one requires a confirmed plan and a compatible session."}
+              {planningReadiness?.ready ? "Preview a cycle above, review its weeks and confirm it to save structured training. Today and the calendar will use the saved plan." : "Complete planning setup using the button above. You can browse protocols now; applying one requires a confirmed plan and a compatible session."}
             </p>
           </div>
         )}

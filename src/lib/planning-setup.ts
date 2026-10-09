@@ -13,6 +13,7 @@ export interface PlanningSetup {
   confirmedAt: string;
   adultConfirmed: boolean;
   profileConfirmed: boolean;
+  profileAnswers?: { experience: boolean; weeklyHours: boolean };
   goalDescription: string;
   baselineWeeklyMinutes: number | null;
   baselineObservedAt: string | null;
@@ -49,6 +50,10 @@ export function parsePlanningSetup(value: unknown, now = new Date(), timezone = 
   return {
     version: PLANNING_SETUP_VERSION, source: "athlete_reported", confirmedAt: now.toISOString(),
     adultConfirmed: v.adultConfirmed === true, profileConfirmed: v.profileConfirmed === true,
+    profileAnswers: v.profileAnswers && typeof v.profileAnswers === "object" && !Array.isArray(v.profileAnswers) ? {
+      experience: (v.profileAnswers as Record<string, unknown>).experience === true,
+      weeklyHours: (v.profileAnswers as Record<string, unknown>).weeklyHours === true,
+    } : undefined,
     goalDescription: typeof v.goalDescription === "string" ? v.goalDescription.trim().slice(0,1000) : "",
     baselineWeeklyMinutes: number("baselineWeeklyMinutes", 0, 2400), baselineObservedAt: date,
     interruptions: option("interruptions", ["none", "yes", "unknown"], "unknown"),

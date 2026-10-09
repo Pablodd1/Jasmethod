@@ -1,3 +1,4 @@
+import { unitsOf } from "./units";
 import { reviewSecondaryDoubleDay, type DoubleDayPreference } from "./double-day";
 // Single athlete-scoped, date-scoped safety boundary for screen, messages and FIT.
 import { canonicalDemand, canonicalFuelIntensity } from "./session-demand";
@@ -74,6 +75,7 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
   if (safety.status === "clear" && changedExecution) safety = { ...safety, status: "unknown", reason: "Activity or feedback was recorded or corrected after this check-in, or its timing is unverified. Update today's check-in before the next workout so actual work and available time can be reassessed." };
   const revisionContext = { source: input.revisionContext, reportedActivity: activity, sameDaySessions: input.sameDaySessions ?? null, doubleDayContext:input.doubleDayContext??null, executionReviewedAt: Number.isFinite(reviewedAt) ? reviewedAt : null };
   const p = parsed(workout.prescription);
+  if (safety.status === "clear" && p?.planningStatus === "provisional") safety = { ...safety, status: "unknown", reason: "Your structured plan is saved. Complete a fresh session-day check-in to confirm today’s duration, effort and recovery before training or export." };
   if (safety.status === "clear" && p?.protocol) {
     const eligibility = reviewProtocolAthlete({ protocolId: p.protocol.id, ...profile, now });
     if (p.protocol.version !== PROTOCOL_VERSION || protocolEvidence(p.protocol.id).status !== "eligible")
@@ -138,7 +140,7 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
     }
   }
   const prescription = canonical.verdict === "ready"
-    ? { ...p, title: canonical.title, sport: canonical.sport, durationMin: canonical.durationMin, steps: canonical.steps, revision: canonical.revision }
+    ? { ...p, title: canonical.title, sport: canonical.sport, durationMin: canonical.durationMin, steps: canonical.steps, targets: {}, revision: canonical.revision }
     : { ...p, title: canonical.verdict === "rest" ? "Rest and recover" : workout.title, sport: workout.sport, type: "recovery", intensity: "z1", verdict: "rest", durationMin: 0, steps: [], targets: { rpe: 0 }, why: canonical.reason, safetyStatus: canonical.verdict, revision: canonical.revision, detail: { wu: "No warm-up prescribed.", main: canonical.reason, cd: "Reassess before training.", breathing: "", study: "" }, scaled: { originalMin: workout.durationMin, factor: 0, reason: canonical.reason }, sources: [] };
   const nutrition = buildSessionNutrition(profile, { id: canonical.id, dateLocal: key, timezone, sport: canonical.sport,
     durationMin: canonical.durationMin, intensity: canonicalFuelIntensity(canonical, prescription.intensity, profile), startTime: workout.startTime, verdict: canonical.verdict }, now);
@@ -149,7 +151,7 @@ export async function effectivePrescription(userId: string, workoutId: string, d
   const [workout, profile, user, setup, applied, supplement] = await Promise.all([
     db.workout.findFirst({ where: { id: workoutId, userId }, include: { planDay: { select: { dayOff: true } } } }),
     db.athleteProfile.findUnique({ where: { userId } }),
-    db.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
+    db.user.findUnique({ where: { id: userId }, select: { timezone: true, language: true } }),
     readPlanningSetup(userId, db),
     db.auditLog.findMany({ where: { subjectId: userId, action: "baseline.fromTest" }, orderBy: { createdAt: "desc" }, take: 100, select: { entityId: true } }),
     db.supplementProfile.findUnique({ where: { userId } }),
@@ -170,5 +172,5 @@ export async function effectivePrescription(userId: string, workoutId: string, d
     }),
     db.workout.findMany({ where: { userId, date: { gte: sessionDate, lt: localDate(addDaysKey(dateKey(workout.date, timezone), 1), timezone) }, OR: [{completed:true},{actualDurationMin:{gt:0}},{feedbackStatus:{in:["partial","substituted","unknown"]}},{planned:true,AND:[{OR:[{feedbackStatus:null},{feedbackStatus:{not:"skipped"}}]},{OR:[{planDay:null},{planDay:{dayOff:false,plan:{status:"active"}}}]}]}] }, select: { id:true,userId:true,date:true,sport:true,durationMin:true,intensity:true,type:true,rpe:true,completed:true,actualDurationMin:true,actualSport:true,prescription:true,originalPlan:true,startTime:true,feedbackAt:true,feedbackStatus:true,matchedPlanId:true },orderBy:[{startTime:"asc"},{id:"asc"}] }),
   ]);
-  return effectiveSessionFromRecords({ userId, timezone, workout, profile: evidencedTargetProfile(profile, tests, appliedIds), checkin, currentCheckin, reportedActivity, sameDaySessions, doubleDayContext:{preference:setup.setup?.doubleDay,setupRevision:setup.revision,source:setup.setup?.source}, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
+  return effectiveSessionFromRecords({ userId, timezone, workout, profile: evidencedTargetProfile(profile ? {...profile, units: unitsOf(profile.units, user.language)} : null, tests, appliedIds), checkin, currentCheckin, reportedActivity, sameDaySessions, doubleDayContext:{preference:setup.setup?.doubleDay,setupRevision:setup.revision,source:setup.setup?.source}, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
 }

@@ -55,3 +55,10 @@ test("units: pace min/km ↔ min/mi", () => {
   // 5:00/km → 8:03/mi (300 × 1.609 = 482.8s)
   assert.strictEqual(fmtPace(300, "imperial"), "8:03/mi");
 });
+
+test("automatic display units follow language while explicit choices survive language changes",()=>{
+  assert.equal(unitsOf("auto","en"),"imperial");assert.equal(unitsOf("auto","en-US"),"imperial");
+  assert.equal(unitsOf("auto","es"),"metric");assert.equal(unitsOf(null,"en"),"imperial");
+  assert.equal(unitsOf("metric","en"),"metric");assert.equal(unitsOf("imperial","es"),"imperial");
+  assert.equal(fmtPace(359.8,"metric"),"6:00/km");
+});

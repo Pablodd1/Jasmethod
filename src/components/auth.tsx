@@ -7,6 +7,7 @@ import {
   useState,
   useCallback,
 } from "react";
+import { clearOnboardingDrafts } from "@/lib/onboarding-form";
 import { LANGS, type Lang } from "@/lib/i18n";
 
 interface User {
@@ -85,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         if (data.user) localStorage.setItem("jmm_last_user", data.user.id);
         else {
+          try { clearOnboardingDrafts(sessionStorage); } catch {}
           localStorage.removeItem("jmm_last_user");
           Object.keys(localStorage)
             .filter((k) => k.startsWith("jmm_today_"))
@@ -127,6 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
+    try { clearOnboardingDrafts(sessionStorage); } catch {}
     try {
       Object.keys(localStorage)
         .filter(

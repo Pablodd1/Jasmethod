@@ -2,12 +2,13 @@
 //
 // ALL storage stays metric (kg, km, ml, °C). These helpers convert ONLY at
 // the display layer so nothing in the science/fuel engines ever branches on
-// units. Unknown/missing preference defaults to metric.
+// units. Explicit choices win; automatic English uses miles, Spanish uses km.
 
 export type UnitSystem = "metric" | "imperial";
 
-export function unitsOf(v: string | null | undefined): UnitSystem {
-  return v === "imperial" ? "imperial" : "metric";
+export function unitsOf(v: string | null | undefined, language?: string | null): UnitSystem {
+  if (v === "imperial" || v === "metric") return v;
+  return language?.toLowerCase().split("-")[0] === "en" ? "imperial" : "metric";
 }
 
 const LB_PER_KG = 2.20462;
@@ -73,7 +74,8 @@ export function fmtPace(
 ): string {
   if (secPerKm == null || !Number.isFinite(secPerKm)) return "—";
   const s = units === "imperial" ? secPerKm * KM_PER_MI : secPerKm;
-  const m = Math.floor(s / 60);
-  const sec = Math.round(s - m * 60);
+  const rounded = Math.round(s);
+  const m = Math.floor(rounded / 60);
+  const sec = rounded % 60;
   return `${m}:${String(sec).padStart(2, "0")}/${units === "imperial" ? "mi" : "km"}`;
 }
