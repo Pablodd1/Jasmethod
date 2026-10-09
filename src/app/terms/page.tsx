@@ -1,3 +1,4 @@
+import { PUBLIC_CONTACT_EMAIL, PUBLIC_CONTACT_MAILTO } from "@/lib/public-contact";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteHeader, SiteFooter } from "@/components/site-shell";
@@ -96,7 +97,7 @@ export default function TermsPage() {
 
           <h2>8. Contact</h2>
           <p>
-            Questions about these terms: <strong>coach@jasmiamimethod.com</strong>
+            Questions about these terms: <a href={PUBLIC_CONTACT_MAILTO} className="underline">{PUBLIC_CONTACT_EMAIL}</a>
           </p>
         </div>
       </div>

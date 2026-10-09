@@ -54,3 +54,14 @@ were imported.
 `CRON_SECRET` (protects the 5 AM sync + hourly reminder crons),
 `STRAVA_VERIFY_TOKEN` (when Strava webhook is subscribed),
 `GEMINI_API_KEY` (AI coach/briefings).
+
+## Public contact email
+
+The website privacy, data export/deletion, terms, and coaching inquiry contact is
+`jasmel@jasmiamimethod.fit`, defined in `src/lib/public-contact.ts`. Help and the
+support API use that same mailbox without deployment configuration. Legacy
+`SUPPORT_EMAIL` values no longer override it, preventing stale deployment settings
+from publishing an old or uncreated address. Update the shared constant if the
+verified public mailbox changes.
+This contact setting does not configure SMTP delivery, sender identity, account
+sign-in, administrator access, or notification recipients.

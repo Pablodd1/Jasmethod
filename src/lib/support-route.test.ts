@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import vm from "node:vm";
 import { parseSupportMessage } from "./support-delivery";
+import { PUBLIC_CONTACT_EMAIL } from "./public-contact";
 import { supportContacts } from "./support-contact";
 
 const require = createRequire(import.meta.url);
@@ -68,5 +69,5 @@ test("support route reserves with a user lock, rejects quota, and stores no mess
 
 test("public support config returns only allowed destinations and capability", async () => {
   const { api } = fixture();
-  assert.deepEqual(await api.GET().json(), { email: null, telegramUsername: null, telegramSupportAvailable: true });
+  assert.deepEqual(await api.GET().json(), { email: PUBLIC_CONTACT_EMAIL, telegramUsername: null, telegramSupportAvailable: true });
 });

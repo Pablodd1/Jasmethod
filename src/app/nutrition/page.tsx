@@ -1,5 +1,6 @@
 "use client";
 
+import { PUBLIC_CONTACT_EMAIL, PUBLIC_CONTACT_MAILTO } from "@/lib/public-contact";
 import { useEffect, useState } from "react";
 import { Apple, Droplets, UtensilsCrossed, Calculator, Info, Camera, Loader2 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
@@ -268,7 +269,8 @@ export default function NutritionPage() {
             ))}
           </div>
           <p className="text-[11px] text-slate-400 mt-3">
-            {lang === "es" ? "Contacta a Jasmel Acosta para precios y programación: jasmelacosta@gmail.com" : "Contact Jasmel Acosta for pricing and scheduling: jasmelacosta@gmail.com"}
+            {lang === "es" ? "Contacta a Jasmel Acosta para precios y programación: " : "Contact Jasmel Acosta for pricing and scheduling: "}
+            <a href={PUBLIC_CONTACT_MAILTO} className="underline">{PUBLIC_CONTACT_EMAIL}</a>
           </p>
         </div>
 
