@@ -1,5 +1,5 @@
-// Add this file to an iOS 17+ SwiftUI app target, linking both package products.
-// This is source for a native host; no signed app, entitlement or deployment is created here.
+// Host target and local package products are defined in ../project.yml.
+// See docs/apple-host-build.md. This source is not a signed or verified app.
 import SwiftUI
 import UniformTypeIdentifiers
 import JMMWorkoutCore

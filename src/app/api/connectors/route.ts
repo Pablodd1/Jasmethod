@@ -123,6 +123,9 @@ export async function DELETE(req: Request) {
   const body = await req.json().catch(() => null);
   if (!body || typeof body.provider !== "string") return Response.json({ error: "Provider is required" }, { status: 400 });
   const provider = body.provider;
+  if (provider === "coros") return Response.json({
+    error: "Use the COROS authorization controls to disconnect safely.", code: "dedicated_disconnect_required",
+  }, { status: 409, headers: { "Cache-Control": "private, no-store" } });
   if (provider === "intervals") {
     const targetAthlete = body.athleteId || new URL(req.url).searchParams.get("athleteId");
     if (targetAthlete && targetAthlete !== user.id) return Response.json({ error: "Disconnect your own account." }, { status: 403 });

@@ -516,3 +516,12 @@ test('Intervals publication route: disabled capability rejects before parsing or
   const r=await route.POST({json:async()=>{parsed++;return{};}});
   assert.equal(r.status,503);assert.equal(parsed,0);assert.equal(published,0);
 });
+
+
+test('connectors DELETE: cannot bypass COROS revocation lifecycle',async()=>{
+  const f=connectorsDeleteFixture();
+  const response=await f.route.DELETE(new Request('https://app.example/api/connectors',{method:'DELETE',body:JSON.stringify({provider:'coros'})}));
+  assert.equal(response.status,409);
+  assert.equal((await response.json()).code,'dedicated_disconnect_required');
+  assert.equal(f.calls.length,0);
+});

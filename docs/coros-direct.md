@@ -1,7 +1,7 @@
 # Direct COROS integration: verified boundary and remaining gates
 
 Status: **not enabled for production delivery or automatic import**. The local
-code is a preparation layer and an injected-token read-only transport. It does
+code includes a preparation layer, an injected-token read-only transport, and a gated per-athlete OAuth lifecycle. It does
 not claim a connected account, a saved workout, a synced watch, or imported
 health data. No credentials or client registrations were created for this work.
 
@@ -70,14 +70,12 @@ no webhook fiction, guesses no units or HRV type, and provides no watch-delivery
 evidence. Actual normalization, deduplication and database ingestion remain
 gated on authenticated response fixtures and account ownership checks.
 
-## Why OAuth does not yet make the app connection usable
+## OAuth authorization versus workout delivery
 
 COROS supports ordinary application OAuth and publishes a dynamic registration
 endpoint. Partner approval is **not** the blocker for this MCP route. This
 implementation did not register an application, create credentials, grant
-access, or obtain an authorized token. A supported consent flow and securely
-owned per-user connection must be completed by the application owner/user under
-appropriate authorization. Do not reuse an AI client's private token cache.
+access, or obtain an authorized token. The secure per-user authorize/callback/refresh/disconnect flow is implemented, but remains unconfigured. See `coros-oauth.md` for setup, threat boundaries, and the manual provider-revocation requirement. The owner must separately approve client registration/configuration and each athlete must authorize their account. Do not reuse an AI client's private token cache.
 
 The public documentation intentionally directs clients to the connected
 server's `tools/list` definitions for nested course and result schemas. Those
@@ -89,9 +87,7 @@ an environment flag cannot bypass these gates.
 
 ## Acceptance work needed before enabling
 
-1. Establish an authorized application connection with regional issuer,
-   state/PKCE validation, encrypted per-user token storage, refresh/revocation,
-   CSRF protection and account-binding checks. Do not log tokens.
+1. Review and run the implemented gated OAuth lifecycle against an approved registered public client and consenting test account. Verify regional issuer, state/PKCE, encrypted per-user storage, refresh, account binding, and provider-side manual revocation. No real authorization has been tested; do not log tokens.
 2. Capture live `tools/list` and read-result fixtures for that region. Implement
    and test exact wire encoding and saved-result parsing, preserving targets,
    repeated steps and free/unset intensity fields. A lossless internal draft is

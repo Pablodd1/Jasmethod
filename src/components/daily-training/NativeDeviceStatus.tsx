@@ -1,11 +1,38 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { CorosConnectActions } from "./CorosConnectActions";
+import type { CorosConnectionStatus } from "./coros-connection-ui";
 
 /** No link to an OAuth grant or export is shown based on a browser-side flag. */
 export function NativeDeviceStatus({ es = false, sessionId, revision, disabled = false }: {
   es?: boolean; sessionId?: string; revision?: string; disabled?: boolean;
 }) {
   const [exportEnabled, setExportEnabled] = useState(false);
+  const [coros, setCoros] = useState<CorosConnectionStatus | null>(null);
+  const [statusError, setStatusError] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [returnedFromCoros, setReturnedFromCoros] = useState(false);
+  const statusPending = useRef<AbortController | null>(null);
+  const loadStatus = useCallback(async () => {
+    statusPending.current?.abort();
+    const controller = new AbortController(); statusPending.current = controller;
+    try {
+      const response = await fetch("/api/connectors/native", { cache: "no-store", signal: controller.signal });
+      const data = response.ok ? await response.json() : null;
+      if (controller.signal.aborted) return;
+      if (!data || typeof data.apple?.exportEnabled !== "boolean" || typeof data.coros?.connectionStatus !== "string") throw new Error("Unavailable status");
+      setExportEnabled(data.apple.exportEnabled === true);
+      setCoros({
+        configured: data.coros.configured === true, authorizationAvailable: data.coros.authorizationAvailable === true,
+        connectionStatus: data.coros.connectionStatus, reconnectRequired: data.coros.reconnectRequired === true,
+        localAccessStopped: data.coros.localAccessStopped === true, requiresProviderRevocation: data.coros.requiresProviderRevocation === true,
+        lastError: typeof data.coros.lastError === "string" ? data.coros.lastError : null,
+      });
+      setStatusError(false);
+    } catch {
+      if (!controller.signal.aborted) { setExportEnabled(false); setCoros(null); setStatusError(true); }
+    }
+  }, []);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -40,17 +67,19 @@ export function NativeDeviceStatus({ es = false, sessionId, revision, disabled =
     }
   }
   useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/connectors/native", { cache: "no-store", signal: controller.signal })
-      .then(async response => response.ok ? response.json() : null)
-      .then(data => { if (!controller.signal.aborted) setExportEnabled(data?.apple?.exportEnabled === true); })
-      .catch(() => { /* Unavailable status never enables a pilot action. */ });
-    return () => controller.abort();
-  }, []);
-  return <details className="rounded-lg border border-slate-200 p-3 text-sm">
+    void loadStatus();
+    if (window.location.hash === "#coros-pilot") setOpen(true);
+    if (new URLSearchParams(window.location.search).has("coros")) { setOpen(true); setReturnedFromCoros(true); }
+    return () => statusPending.current?.abort();
+  }, [loadStatus]);
+  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className="rounded-lg border border-slate-200 p-3 text-sm">
     <summary className="cursor-pointer font-medium focus-visible:outline focus-visible:outline-2">{es ? "COROS y Apple Watch: estado del piloto" : "COROS and Apple Watch: pilot status"}</summary>
     <div className="space-y-2 mt-2">
-      <p>{es ? "COROS directo: en desarrollo. Falta autorizar la cuenta y validar los formatos reales. La publicación y la importación automáticas están desactivadas." : "Direct COROS: in development. Account authorization and real provider-format validation are pending. Automatic publication and activity imports are disabled."}</p>
+      <p>{es ? "COROS directo: la autorización de cuenta está disponible solo tras configurar OAuth. La publicación y la importación automáticas siguen desactivadas hasta validar los formatos reales del proveedor." : "Direct COROS: account authorization is available only after OAuth setup. Automatic publication and activity imports remain disabled until real provider formats are validated."}</p>
+      {statusError && <p role="status">{es ? "No se pudo comprobar la configuración. Actualiza la página antes de conectar o exportar." : "Could not check setup. Refresh the page before connecting or exporting."}</p>}
+      {returnedFromCoros && <p role="status">{es ? "Has vuelto del flujo COROS. Comprueba el estado de autorización a continuación; volver aquí no confirma conexión ni sincronización." : "You returned from the COROS flow. Check the authorization status below; returning here does not confirm connection or sync."}</p>}
+      {!sessionId && coros && <CorosConnectActions state={coros} es={es} onChange={loadStatus} />}
+      {sessionId && <a href="/connectors#coros-pilot" className="underline">{es ? "Ver autorización COROS" : "Manage COROS authorization"}</a>}
       <p>{es ? "Apple Watch: requiere instalar el compañero nativo en un iPhone con reloj enlazado. El navegador no puede programar entrenamientos. La lectura de Apple Health necesita permiso independiente. Aún no se ha validado en un reloj real." : "Apple Watch: requires the native companion installed on an iPhone with a paired watch. The browser cannot schedule workouts. Apple Health reading needs separate permission. Real-watch validation is still pending."}</p>
       {exportEnabled && sessionId && revision && !disabled && <>
         <button type="button" className="underline font-medium focus-visible:outline focus-visible:outline-2" disabled={busy} onClick={() => void exportWorkout()}>

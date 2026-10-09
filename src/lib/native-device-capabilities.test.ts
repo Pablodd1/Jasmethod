@@ -16,3 +16,13 @@ test("native device publication and receipt never become live from an environmen
     assert.equal(capabilities.coros.watchReceiptVerified, false);
   }
 });
+
+
+test("valid OAuth setup only enables authorization, never data sync or device receipt", () => {
+  const { coros } = nativeDeviceCapabilities({ ENABLE_COROS_CONNECTOR: "true", APP_URL: "https://example.test", COROS_ISSUER: "https://mcpus.coros.com", COROS_CLIENT_ID: "synthetic-public-client", TOKEN_ENCRYPTION_KEY: "synthetic-test-key-never-configured" });
+  assert.equal(coros.configured, true);
+  assert.equal(coros.authorizationAvailable, true);
+  assert.equal(coros.publishesStructuredWorkouts, false);
+  assert.equal(coros.importsActivities, false);
+  assert.equal(coros.watchReceiptVerified, false);
+});

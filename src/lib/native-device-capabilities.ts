@@ -1,10 +1,11 @@
+import { corosOAuthConfigured } from "./coros-oauth-config";
 /** These stages describe implemented boundaries, never on-watch verification. */
 export function nativeDeviceCapabilities(env: Record<string, string | undefined> = process.env) {
   return {
     coros: {
       stage: "protocol_review" as const,
-      configured: false,
-      authorizationAvailable: false,
+      configured: corosOAuthConfigured(env),
+      authorizationAvailable: corosOAuthConfigured(env),
       publishesStructuredWorkouts: false,
       importsActivities: false,
       watchReceiptVerified: false,
