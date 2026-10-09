@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Medal,
 } from "lucide-react";
+import { NativeDeviceStatus } from "@/components/daily-training/NativeDeviceStatus";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { useSearchParams } from "next/navigation";
@@ -344,16 +345,8 @@ export default function ConnectorsPage() {
               ];
       case "coros":
         return es
-          ? [
-              "COROS sincronizará solo vía API cuando esté configurado.",
-              "Para acceso oficial a la API: api@coros.com.",
-              "Mientras tanto, sube un archivo .fit o .tcx aquí.",
-            ]
-          : [
-              "COROS syncs via Terra API (auto) when configured.",
-              "For official API access, email api@coros.com.",
-              "Otherwise upload a .fit/.tcx file here.",
-            ];
+          ? ["El puente directo COROS está en desarrollo. La publicación y la importación automáticas siguen desactivadas.", "La autorización personal y las pruebas reales del reloj aún están pendientes."]
+          : ["The direct COROS bridge is in development. Automatic publication and imports remain disabled.", "Personal authorization and real watch validation are still pending."];
       case "oura":
         // Honest state: without server keys the auto flow cannot start — the
         // old wording promised a connection that doesn't exist yet and left
@@ -401,6 +394,8 @@ export default function ConnectorsPage() {
               : "Connect your devices or import your history. Two paths: authorize once and data flows in automatically — or upload a file anytime."}
           </p>
         </div>
+
+        <NativeDeviceStatus es={lang === "es"} />
 
         {/* How it works — 3 steps, always visible */}
         <div className="grid sm:grid-cols-3 gap-3">

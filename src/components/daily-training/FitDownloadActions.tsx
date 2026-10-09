@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fitDownloadUrl, shareOrDownloadFit } from "./fit-transfer";
 export { fitDownloadUrl } from "./fit-transfer";
+import { NativeDeviceStatus } from "./NativeDeviceStatus";
 import { deliveryGuideFor } from "@/lib/device-delivery";
 
 export type FitCapability = { available: boolean; mode: string; reason: string; deviceTested: false };
@@ -78,6 +79,7 @@ export function FitDownloadActions({ sessionId, revision, title, capability, dis
     <p className="text-sm">{capability.reason} {capability.available && (es ? "Compatibilidad del dispositivo sin verificar." : "Device compatibility unverified.")}</p>
     {error && <p role="alert" className="jmm-alert text-red-700">{error} {es ? "Actualiza el plan si ha cambiado y vuelve a intentarlo." : "Refresh the plan if it changed, then try again."}</p>}
     <p role="status" aria-live="polite" aria-atomic="true">{status}</p>
+    <NativeDeviceStatus es={es} sessionId={sessionId} revision={revision} disabled={disabled || !capability.available} />
     <details>
       <summary className="cursor-pointer font-medium">{es ? "Ayuda: transferencia manual a Garmin por USB" : "Help: manual Garmin USB transfer"}</summary>
       <ol className="list-decimal pl-5 space-y-1">{guide.steps.map(step => <li key={step}>{step}</li>)}</ol>
