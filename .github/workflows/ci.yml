@@ -120,6 +120,7 @@ jobs:
           done
           export ENABLE_MOCK_COACHING=false ENABLE_TELEGRAM_COACHING=true ENABLE_AUTOMATED_DELIVERY=true COACHING_TRANSPORT=telegram
           export TELEGRAM_BOT_TOKEN=SYNTHETIC_NOT_A_VALID_BOT_TOKEN TELEGRAM_COACHING_WEBHOOK_SECRET=SYNTHETIC_LOCAL_WEBHOOK_SECRET
+          export TELEGRAM_BOT_USERNAME=SyntheticJmmFixtureBot
           export NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs"
           ./node_modules/.bin/next start --hostname 127.0.0.1 --port 3220 > /tmp/jmm-telegram-server.log 2>&1 &
           echo $! > /tmp/jmm-ci-server.pid
@@ -140,6 +141,7 @@ jobs:
             .local/jmm-followup-integration/*.zip
             .local/jmm-followup-integration/*-decoded.json
             .local/jmm-telegram-webhook-integration/report.json
+            .local/jmm-mobile-workflow/report.json
             .local/jmm-conversation-integration/report.json
             .local/jmm-metrics-integration/report.json
             .local/jmm-recovery-integration/report.json
