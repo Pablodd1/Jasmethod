@@ -1,0 +1,15 @@
+.build/
+.swiftpm/
+DerivedData/
+**/xcuserdata/
+JMMCompanion.xcodeproj/
+*.xcuserstate
+*.mobileprovision
+*.provisionprofile
+*.p12
+*.cer
+*.xcarchive
+*.ipa
+*.dSYM/
+*.xcresult/
+Config/*.local.xcconfig

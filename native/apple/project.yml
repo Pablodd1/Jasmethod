@@ -1,0 +1,71 @@
+# Generate with the pinned XcodeGen version via scripts/generate-host.sh.
+# This is an unsigned local pilot. No account, App ID or profile is registered.
+name: JMMCompanion
+options:
+  minimumXcodeGenVersion: "2.44.1"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "17.0"
+configs:
+  Debug: debug
+  Release: release
+packages:
+  JMMAppleCompanion:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  JMMCompanion:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ExampleApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.jmm.companion.pilot
+        GENERATE_INFOPLIST_FILE: "NO"
+        INFOPLIST_FILE: Config/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/JMMCompanion.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: "NO"
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO"
+    dependencies:
+      - package: JMMAppleCompanion
+        product: JMMWorkoutCore
+      - package: JMMAppleCompanion
+        product: JMMWorkoutKit
+      - sdk: HealthKit.framework
+      - sdk: WorkoutKit.framework
+    attributes:
+      SystemCapabilities:
+        com.apple.HealthKit:
+          enabled: 1
+fileGroups:
+  - Config
+schemes:
+  JMMCompanion:
+    build:
+      targets:
+        JMMCompanion: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - package: JMMAppleCompanion/JMMWorkoutCoreTests
+        - package: JMMAppleCompanion/JMMWorkoutKitTests
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+    management:
+      shared: true

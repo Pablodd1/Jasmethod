@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "kind": "jmm.apple.workout",
+  "planId": "47cdd30c-9182-8d89-bdbc-edf4d82e5b77",
+  "sessionId": "fixture-run",
+  "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "revisionNumber": 187649984473770,
+  "exportedAt": "2026-10-09T12:00:00.000Z",
+  "dateLocal": "2026-10-10",
+  "timezone": "America/New_York",
+  "title": "Fixture intervals",
+  "sport": "run",
+  "steps": [
+    {
+      "name": "Warm up",
+      "phase": "warmup",
+      "endpoint": {
+        "type": "time",
+        "seconds": 300
+      },
+      "target": {
+        "type": "open",
+        "source": "explicit",
+        "label": "Open effort"
+      }
+    },
+    {
+      "name": "One kilometer",
+      "phase": "active",
+      "endpoint": {
+        "type": "distance",
+        "meters": 1000
+      },
+      "target": {
+        "type": "pace",
+        "source": "explicit",
+        "low": 300,
+        "high": 330,
+        "label": "5:00–5:30/km"
+      },
+      "group": "Repeat 1/2",
+      "note": "Keep the complete instruction in the companion preview."
+    },
+    {
+      "name": "Manual recovery",
+      "phase": "recovery",
+      "endpoint": {
+        "type": "lap"
+      },
+      "target": {
+        "type": "heartRate",
+        "source": "explicit",
+        "low": 110,
+        "high": 135,
+        "label": "110–135 bpm"
+      }
+    },
+    {
+      "name": "Second kilometer",
+      "phase": "active",
+      "endpoint": {
+        "type": "distance",
+        "meters": 1000
+      },
+      "target": {
+        "type": "speed",
+        "source": "explicit",
+        "low": 3,
+        "high": 3.5,
+        "label": "3–3.5 m/s"
+      },
+      "group": "Repeat 2/2"
+    },
+    {
+      "name": "Cool down",
+      "phase": "cooldown",
+      "endpoint": {
+        "type": "time",
+        "seconds": 180
+      },
+      "target": {
+        "type": "open",
+        "source": "effort",
+        "label": "Open effort",
+        "missingReason": "No numerical target requested."
+      }
+    }
+  ],
+  "hardwareVerified": false,
+  "localSchedulerOnly": true
+}
