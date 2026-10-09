@@ -19,8 +19,8 @@ export interface WorkoutStep {
 
 const STRENGTH_BLOCKS = [
   { pattern: "Squat", lifts: ["Back Squat", "Front Squat", "Goblet Squat", "Split Squat"] },
-  { pattern: "Hinge", lifts: ["Romanian Deadlift", "Deadlift", "Single-leg RDL", "Kettlebell Swing"] },
-  { pattern: "Press", lifts: ["Bench Press", "Overhead Press", "Incline DB Press", "Push Press"] },
+  { pattern: "Hinge", lifts: ["Romanian Deadlift", "Deadlift", "Single-leg RDL", "Supported Hip Hinge"] },
+  { pattern: "Press", lifts: ["Bench Press", "Overhead Press", "Incline DB Press", "Incline Push-up"] },
   { pattern: "Pull", lifts: ["Pull-up", "Bent-over Row", "Single-arm Row", "Lat Pulldown"] },
 ];
 
@@ -45,15 +45,14 @@ function strengthSteps(minutes: number, zone: string, type: string, variant: num
     seconds: Math.round(main * 0.3), zone: "z2", phase: "active",
     reps: 30, note: "3 sets × 10 reps each, 60-90 s rest — controlled tempo, full range",
   });
-  // Plyometrics stay in strength weeks (economy + injury resilience,
-  // Ramírez-Campillo 2022) whenever time AND intensity allow — a z1/z2-capped
-  // day skips them entirely (review finding: Z3 plyo inside an easy session).
+  // Generic strength has no reviewed movement/experience eligibility record.
+  // Keep this allocation as controlled movement, without automatically dosing jumps.
   const capZ = Number(zone.slice(1)) || 2;
   if (main > 15 * 60 && type !== "recovery" && capZ >= 3) {
     steps.push({
-      name: "Plyometrics — jumps",
+      name: "Movement practice — review first",
       seconds: Math.round(main * 0.15), zone: "z3", phase: "active",
-      reps: 15, note: "3 sets × 5: box jumps or broad jumps, FULL recovery between sets — quality of contact, not fatigue",
+      note: "Use familiar coach-reviewed controlled strength movements and adequate recovery within this block. Optional plyometrics need specific technique, experience, equipment and tolerance review; no jumps are assigned automatically.",
     });
   }
   // Core circuit fills whatever remains of the main block.

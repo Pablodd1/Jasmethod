@@ -175,14 +175,28 @@ export default function ConnectorsPage() {
         authorization_storage_failed: "The authorization request could not be stored. Please retry connecting.",
         denied: "Authorization was cancelled or declined.",
       };
-      setErr(messages[error] || "The provider connection failed.");
+      const spanishMessages: Record<string, string> = {
+        session_expired: "Tu sesión caducó durante la autorización. Inicia sesión y vuelve a conectar.",
+        invalid_state: "No se pudo verificar la autorización. Vuelve a conectar.",
+        authorization_declined: "La autorización fue cancelada o rechazada.",
+        denied: "La autorización fue cancelada o rechazada.",
+        connection_failed: "La autorización volvió, pero no se pudo guardar la conexión. Vuelve a conectar.",
+        provider_account_already_linked: "Esta cuenta de Intervals.icu está vinculada a otro atleta de JMM. Usa tu propia cuenta o contacta con soporte.",
+        disconnect_previous_account: "Desconecta tu cuenta anterior de Intervals.icu antes de vincular otra.",
+        insufficient_scope: "Permite actividades, bienestar y calendario para terminar la conexión con Intervals.icu.",
+        invalid_token_response: "Intervals.icu no devolvió una autorización válida. Vuelve a conectar.",
+        token_exchange_failed: "No se pudo completar la autorización de Intervals.icu. Vuelve a conectar.",
+        state_unavailable: "La solicitud de autorización caducó o ya se usó. Vuelve a conectar.",
+        authorization_storage_failed: "No se pudo guardar la solicitud. Intenta conectar de nuevo.",
+      };
+      setErr(lang === "es" ? spanishMessages[error] || "La conexión con el proveedor falló." : messages[error] || "The provider connection failed.");
       window.history.replaceState({}, "", "/connectors");
       return;
     }
     if (!ok) return;
     const provider = ok === "google-cal" ? "google_cal" : ok;
     const name = provider === "google_cal" ? "Google Calendar" : provider === "whoop" ? "WHOOP" : provider;
-    setMsg(`${name} authorized. Verifying the connection and importing data…`);
+    setMsg(lang === "es" ? `${name} autorizado. Verificando la conexión e importando datos…` : `${name} authorized. Verifying the connection and importing data…`);
     setSyncing(true);
     fetch("/api/connectors/sync", {
       method: "POST",
@@ -193,20 +207,20 @@ export default function ConnectorsPage() {
         const body = await res.json();
         const result = body.synced?.[0];
         if (!res.ok || !result?.ok)
-          throw new Error(result?.error || body.error || "Verification failed");
+          throw new Error(result?.error || body.error || (lang === "es" ? "No se pudo verificar" : "Verification failed"));
         setErr("");
-        setMsg(`${name} connected and verified. ${result.imported || 0} records imported.`);
+        setMsg(lang === "es" ? `${name}: conexión verificada. ${result.imported || 0} registros importados. Esto no confirma entrega al reloj.` : `${name}: connection verified. ${result.imported || 0} records imported. This does not confirm watch delivery.`);
       })
       .catch((e) => {
-        setMsg(`${name} authorization was saved.`);
-        setErr(`${name} data check failed: ${e.message}`);
+        setMsg(lang === "es" ? `Se guardó la autorización de ${name}.` : `${name} authorization was saved.`);
+        setErr(lang === "es" ? `${name}: falló la comprobación de datos: ${e.message}` : `${name} data check failed: ${e.message}`);
       })
       .finally(() => {
         setSyncing(false);
         load();
         window.history.replaceState({}, "", "/connectors");
       });
-  }, [user]);
+  }, [user, lang]);
 
   async function uploadImport(source: string) {
     const input = document.getElementById(`file-${source}`) as HTMLInputElement;
@@ -396,6 +410,23 @@ export default function ConnectorsPage() {
         </div>
 
         <NativeDeviceStatus es={lang === "es"} />
+        <section className="card border-ocean-200 space-y-3" aria-labelledby="watch-setup-heading">
+          <h2 id="watch-setup-heading" className="font-display text-lg font-bold">
+            {lang === "es" ? "¿Quieres el entrenamiento en tu Garmin?" : "Want your workout on Garmin?"}
+          </h2>
+          <p className="text-sm text-slate-700">{lang === "es"
+            ? "Usa tus propias cuentas de Intervals.icu y Garmin Connect. Conecta Garmin dentro de Intervals.icu; después conecta Intervals.icu aquí. Revisa y aprueba tu sesión en Hoy antes de publicarla."
+            : "Use your own Intervals.icu and Garmin Connect accounts. Connect Garmin inside Intervals.icu, then connect Intervals.icu here. Review and approve your workout in Today before publishing it."}</p>
+          <p className="text-sm text-slate-700">{lang === "es"
+            ? "JMM puede publicar carrera y bicicleta cuando esta conexión está habilitada. Comprueba el entrenamiento en Garmin Connect y en el reloj antes de empezar. La confirmación de Intervals.icu no confirma recepción en el reloj."
+            : "JMM can publish run and bike workouts when this connection is enabled. Check the workout in Garmin Connect and on your watch before starting. Confirmation from Intervals.icu does not confirm watch receipt."}</p>
+          <div className="flex flex-wrap gap-3">
+            {providers.some(p => p.id === "intervals") && <a href="#intervals-connection" className="btn-primary">{lang === "es" ? "Configurar Intervals.icu" : "Set up Intervals.icu"}</a>}
+            <a href="/today" className="btn-secondary">{lang === "es" ? "Ver mi entrenamiento" : "See my workout"}</a>
+            <a href={`/help/pilot?lang=${lang === "es" ? "es" : "en"}`} className="self-center underline text-sm">{lang === "es" ? "Guía paso a paso" : "Step-by-step guide"}</a>
+          </div>
+          {!loading && !providers.some(p => p.id === "intervals") && <p className="text-sm text-amber-800">{lang === "es" ? "Intervals.icu aún no está disponible aquí. Puedes seguir el entrenamiento en Hoy y revisar las opciones de descarga FIT allí." : "Intervals.icu is not available here yet. Follow your workout in Today and review its FIT download options there."}</p>}
+        </section>
 
         {/* How it works — 3 steps, always visible */}
         <div className="grid sm:grid-cols-3 gap-3">
@@ -407,13 +438,13 @@ export default function ConnectorsPage() {
             },
             {
               n: "2",
-              es: "Los datos entran solos, cada día",
-              en: "Data flows in by itself, daily",
+              es: "Revisa la última importación y sus errores",
+              en: "Check the last import and any errors",
             },
             {
               n: "3",
-              es: "¿Sin API? Sube un archivo (.tcx / .csv / .xml)",
-              en: "No API? Upload a file (.tcx / .csv / .xml)",
+              es: "Sin conexión: sube tu historial o usa Hoy",
+              en: "No connection: upload history or use Today",
             },
           ].map((s) => (
             <div key={s.n} className="card flex items-center gap-3 !py-3">
@@ -438,11 +469,11 @@ export default function ConnectorsPage() {
           </div>
         )}
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <button
             onClick={syncAll}
             disabled={syncing}
-            className="btn-secondary shrink-0"
+            className="btn-secondary max-w-full whitespace-normal"
           >
             <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />{" "}
             {syncing
@@ -455,8 +486,8 @@ export default function ConnectorsPage() {
           </button>
           <span className="text-xs text-slate-400">
             {lang === "es"
-              ? "Auto-sincroniza cada día a las 5:00 AM"
-              : "Auto-syncs daily at 5:00 AM"}
+              ? "Revisa aquí cuándo llegaron los últimos datos"
+              : "Check here when your latest data arrived"}
           </span>
         </div>
 
@@ -545,17 +576,18 @@ export default function ConnectorsPage() {
             return (
               <div
                 key={p.id}
+                id={p.id === "intervals" ? "intervals-connection" : undefined}
                 className={`card ${connected ? "border-emerald-300" : ""}`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <div
-                      className={`w-11 h-11 rounded-xl flex items-center justify-center ${connected ? "bg-emerald-100 text-emerald-600" : "bg-ocean-100 text-ocean-600"}`}
+                      className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ${connected ? "bg-emerald-100 text-emerald-600" : "bg-ocean-100 text-ocean-600"}`}
                     >
                       <Cloud className="w-5 h-5" />
                     </div>
                     <div>
-                      <div className="font-display font-bold capitalize flex items-center gap-1.5">
+                      <div className="font-display font-bold capitalize flex flex-wrap items-center gap-1.5">
                         {p.name}
                         <span
                           className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${p.method === "oauth" && p.configured ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
@@ -576,10 +608,10 @@ export default function ConnectorsPage() {
                       <div className="text-xs text-slate-500 max-w-[240px]">
                         {p.description}
                         <span className="block mt-2">
-                          Last successful sync:{" "}
+                          {lang === "es" ? "Última importación correcta:" : "Last successful import:"}{" "}
                           {p.lastSyncAt
                             ? new Date(p.lastSyncAt).toLocaleString()
-                            : "not yet synced"}
+                            : lang === "es" ? "sin importar todavía" : "not imported yet"}
                         </span>
                         {p.lastError && (
                           <span className="block text-red-700 mt-1">
@@ -599,7 +631,7 @@ export default function ConnectorsPage() {
                               else { const d = await r.json().catch(() => ({})); setErr(d.error || "Could not disconnect"); await load(); }
                             }}
                           >
-                            Disconnect
+                            {lang === "es" ? "Desconectar" : "Disconnect"}
                           </button>
                         )}
                       </div>
@@ -673,7 +705,7 @@ export default function ConnectorsPage() {
                         <button
                           onClick={() => uploadImport(p.id)}
                           disabled={importing === p.id}
-                          className="btn-secondary shrink-0"
+                          className="btn-secondary max-w-full whitespace-normal"
                         >
                           <Upload className="w-4 h-4" />{" "}
                           {importing === p.id
@@ -885,7 +917,7 @@ function AthlinksCard({
     <div className={`card ${linked ? "border-emerald-300" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${linked ? "bg-emerald-100 text-emerald-600" : "bg-ocean-100 text-ocean-600"}`}>
+          <div className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ${linked ? "bg-emerald-100 text-emerald-600" : "bg-ocean-100 text-ocean-600"}`}>
             <Medal className="w-5 h-5" />
           </div>
           <div>
@@ -948,7 +980,7 @@ function AthlinksCard({
                 placeholder={lang === "es" ? "Tu nombre en Athlinks" : "Your name on Athlinks"}
                 onKeyDown={(e) => e.key === "Enter" && query.trim().length >= 3 && search()}
               />
-              <button onClick={search} disabled={busy || query.trim().length < 3} className="btn-secondary shrink-0">
+              <button onClick={search} disabled={busy || query.trim().length < 3} className="btn-secondary max-w-full whitespace-normal">
                 {lang === "es" ? "Buscar" : "Search"}
               </button>
             </div>
@@ -1073,27 +1105,31 @@ function IntervalsPreferences({ lang }: { lang: Lang }) {
   const [value, setValue] = useState<{ enabled: boolean; available: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const es = lang === "es";
   useEffect(() => {
+    setError("");
     fetch("/api/connectors/intervals/preferences").then(async r => {
-      if (!r.ok) throw new Error("Could not load publication settings.");
+      if (!r.ok) throw new Error(es ? "No se pudo cargar la opción de envío automático." : "Could not load the automatic publication setting.");
       setValue(await r.json());
     }).catch(e => setError(e.message));
-  }, []);
+  }, [es]);
   return <div className="rounded-lg border p-3 mb-3 text-sm">
     <label className="flex gap-2 items-start">
       <input type="checkbox" checked={value?.enabled ?? false} disabled={busy || !value || (!value.available && !value.enabled)}
         onChange={async e => {
-          setBusy(true); setError("");
+          setBusy(true); setError(""); setSaved(false);
           try {
             const r = await fetch("/api/connectors/intervals/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: e.target.checked }) });
-            const d = await r.json(); if (!r.ok) throw new Error(d.error || "Could not save preference.");
-            setValue(v => v ? { ...v, enabled: d.enabled } : v);
+            const d = await r.json(); if (!r.ok) throw new Error(d.error || (es ? "No se pudo guardar la opción." : "Could not save the setting."));
+            setValue(v => v ? { ...v, enabled: d.enabled } : v); setSaved(true);
           } catch (e: any) { setError(e.message); } finally { setBusy(false); }
         }} />
       {lang === "es" ? "Publicar automáticamente mis sesiones aprobadas de carrera y bicicleta" : "Automatically publish my approved run and bike workouts"}
     </label>
     <p className="text-xs text-slate-500 mt-2">{lang === "es" ? "Al desactivar se detienen las publicaciones nuevas. Las sesiones publicadas siguen programadas y reciben actualizaciones o cancelaciones de seguridad. La recepción en el reloj no está confirmada." : "Turning this off stops new publications. Published sessions stay scheduled and receive safety updates or cancellations. Watch receipt is not confirmed."}</p>
     {value && !value.available && <p className="text-xs text-amber-700 mt-2">{lang === "es" ? "La publicación automática aún no está activada en este servidor." : "Automatic publication is not enabled on this server yet."}</p>}
+    <p role="status" className="text-xs text-slate-700 mt-2">{busy ? (es ? "Guardando…" : "Saving…") : saved ? (es ? "Opción guardada. Revisa y aprueba cada nueva versión en Hoy." : "Setting saved. Review and approve each new version in Today.") : !value && !error ? (es ? "Cargando opción…" : "Loading setting…") : null}</p>
     {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
   </div>;
 }

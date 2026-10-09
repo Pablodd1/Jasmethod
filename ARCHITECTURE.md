@@ -14,10 +14,10 @@ plan via email/Telegram.
 
 | Module | Owns |
 |---|---|
-| `science.ts` | Zones (HR/power/pace), VO2max/HRmax math, periodized plan generators (tri/single/HYROX/boxing), plyo rule. Re-exports `reference.ts`. |
+| `science.ts` | Zones (HR/power/pace), VO2max/HRmax math, periodized plan generators (tri/single/HYROX/boxing), review-dependent optional power slots. Re-exports `reference.ts`. |
 | `reference.ts` | DATA, not logic: blood ranges, DNA traits, nutrition consensus, motivation library. |
 | `adaptive.ts` | Daily adaptation (check-in → verdict), fuel/ergogenics, temperature/venue adjustments, prescribeToday, progression. |
-| `regen.ts` | Workout regeneration: same-goal variants + cross-modality alternates (3 max). |
+| `regen.ts` | Workout regeneration: same-sport variants + cross-modality options with a different stimulus (3 max). |
 | `hyrox.ts` | 16-segment split planner + weak-station analysis. |
 | `raceforecast.ts` | AdvanzedRacing engine (thresholds + PMC + course). |
 | `weather.ts` | Open-Meteo race-day forecast + geocoding + heat/wind factors (no API key). |
@@ -54,7 +54,7 @@ plan via email/Telegram.
 | `import-garmin-csv.cjs` | Bulk-load a Garmin Activities.csv for one athlete |
 | `geocode-races.ts` | Backfill venue lat/lng for weather |
 | `fix-duplicate-plan-days.cjs` | One-time repair for pre-fix plans (dry-run default) |
-| `plyo-check.ts` | Verifies the mandatory plyo rule in all generators |
+| `plyo-check.ts` | Legacy schedule diagnostic; slot/keyword counts do not verify movement eligibility |
 | `setup-supabase.ts` | One-shot DB wiring |
 
 ## Known deferred debts (documented, deliberate)

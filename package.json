@@ -20,7 +20,9 @@
     "test:followup": "node --import tsx scripts/jmm-followup-integration.ts",
     "test:followup:boundaries": "node --import tsx --test scripts/jmm-followup-boundaries.test.ts scripts/jmm-telegram-transport.test.ts",
     "test:telegram": "node --import tsx scripts/jmm-telegram-webhook-integration.ts",
-    "test:conversation": "node --import tsx scripts/jmm-conversation-integration.ts"
+    "test:conversation": "node --import tsx scripts/jmm-conversation-integration.ts",
+    "race:evaluate": "node --import tsx scripts/race-evaluate.ts",
+    "test:race-evaluate": "node --import tsx --test scripts/race-evaluate.test.ts src/lib/race-evaluation.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

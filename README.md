@@ -1,12 +1,20 @@
 # Reliability and coaching update
 
+## Athlete clarity and evaluation work — 8 October 2026
+
+The current source includes an optional Intervals.icu connection and revision-approved native run/bike publication. Provider acceptance is not evidence of watch receipt. The athlete must authorize the connection, approve the current workout, and check it on the actual device. Manual training and FIT download remain available. See `/help/pilot` for the short athlete guide.
+
+Race tools remain selected-target scenario planning. Personalized numeric forecasts are disabled until the evaluation protocol is satisfied. An illustrative range is not a calibrated prediction interval. See [the evaluation protocol](docs/research/race-scenarios/evaluation-protocol.md) and [the offline evaluation command](docs/race-evaluation-cli.md). Synthetic software tests do not establish real-athlete accuracy.
+
+Token encryption, authentication rate limiting, signed OAuth state and provider-specific webhook checks are implemented in the current source. Older “deferred” security notes below describe historical status; they are not evidence of current deployment or a comprehensive security certification. Provider credentials, deployment settings, physical device delivery and external scientific review still need their own acceptance evidence.
+
 The implementation and deployment steps are documented in [docs/coaching-release.md](docs/coaching-release.md). The historical checklist below is not current verification evidence. External provider connections still require configured accounts and live acceptance testing.
 
 # JasMiamiMethod — Project Master Readme
 
 **The go-to app for Miami athletes: peer-reviewed baselines, race goals, endurance training, recovery, fuel, and natural enhancement — individualized per athlete.**
 
-- Stack: Next.js 14 (App Router) · TypeScript · Prisma · PostgreSQL (Supabase) · Gemini AI coach
+- Stack: Next.js 15.5 (App Router) · TypeScript · Prisma · PostgreSQL (Supabase) · Gemini AI coach
 - Repo: `github.com/Pablodd1/Jasmethod` (private frontend build, SSH remote `github_jasme`)
 - Local: `~/JasMiamiMethod` — `npx prisma db push && npx prisma db seed && npm run dev`
 
@@ -257,14 +265,14 @@ Reviewed against the official industry terminology (TrainingPeaks glossary: TSS/
   - Check-in verdict card links to `/onboarding#evaluation` (anchor added) instead of re-explaining Full/Trim/Easy/Rest.
 - **Nav**: Labs, HRV & Recovery (metrics), Sleep, Brain, Gear, DNA, Science Guides added to a "More" sidebar group — previously orphan pages reachable only through scattered links.
 - **Code health**: dead `tssFromHr()` removed from science.ts (never called; mis-applied Banister constants — the tested `estimateTss()` in fitness.ts is the real path). Stale adaptive.test assertion fixed for the 6-week mesocycle (week 6 = taper). i18n test fallback expectation corrected to shipped behavior (es before en). French re-added to the language selector (LANGS order now en/es/ht/fr/ru, matching the dictionary).
-- Security items (plaintext OAuth tokens, no auth rate limiting) are **known and deferred** — acceptable for the closed MVP tester phase, must be fixed before any public launch.
+- Historical security note: plaintext OAuth tokens and missing auth rate limiting were deferred at this point. Later changes implemented encryption and rate limiting; inspect current code and deployment evidence before assessing release readiness.
 
 ### Sep 1, 2026 — product restructuring (consolidated modules + mandatory plyometrics)
 
 - **Login flow**: every login (form + one-tap) now lands on the **Daily Check-in** before anything else.
 - **Daily Check-in is the consolidated module**: HRV readiness hero (formerly the standalone VFC & Recovery page) and the **Cognitive Check** (Stroop) now live inside the check-in. `/metrics` and `/brain` routes remain for full history but are OUT of the main navigation.
 - **Race Prediction absorbs Performance**: the "Rendimiento" tab is out of the navigation; the Fitness/Fatigue/Form (PMC) view is linked from the AdvanzedRacing page (the AI prediction engine consumes that same load data).
-- **Mandatory conditioning rule (hardcoded)**: every plan generator (triathlon, single-sport, HYROX, boxing) now includes **plyometrics 1-2×/week** alongside sport-specific lifting — a dedicated plyo session (1× base, 2nd added in build/peak), explicit plyo prescriptions in every strength description, protected from the easy/quality split demotion. Evidence: Rønnestad & Mujika 2014 + Ramírez-Campillo 2022 plyo meta (added to research.ts).
+- **Historical conditioning rule**: this revision introduced scheduled strength/power slots and described plyometrics as mandatory. The October athlete audit removes blanket jump prescriptions and injury-prevention claims: movements and loads require individual review; optional plyometrics depend on experience and movement tolerance. Scheduling alone does not establish suitability. See [the scoped correction](docs/plyometric-review-exception.md).
 
 ### Same day — live beta-test fix pass (QA as athlete, full click-through)
 

@@ -41,11 +41,12 @@ test("hyrox blocks follow the capped zone", () => {
   );
 });
 
-test("strength skips plyometrics when the session is capped below z3", () => {
+test("generic strength does not prescribe jumps at easy or normal intensity", () => {
   const easy = structuredSteps(50, "z2", "strength", 0, "strength");
   assert.ok(easy.every((s) => !/Plyometrics/i.test(s.name)), "no plyo on an easy day");
   const hard = structuredSteps(50, "z4", "strength", 0, "strength");
-  assert.ok(hard.some((s) => /Plyometrics/i.test(s.name)), "plyo kept on a normal day");
+  assert.ok(hard.every((s) => !/Plyometrics|jumps/i.test(s.name)), "no automatic jumps on a normal day");
+  assert.ok(hard.some((s) => /Movement practice — review first/.test(s.name)), "reserved block remains as controlled practice");
 });
 
 // ---- Follow-up review: time budget enforced last ----

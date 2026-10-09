@@ -22,19 +22,17 @@ for (const seed of [0, 1, 2]) {
 const alt = alternateFor("run", "endurance", "z2", 60, "olympic");
 assert.ok(["bike", "swim"].includes(alt.sport), "aerobic alternates to another endurance sport");
 
-// Alternate: quality day -> sport-specific plyometrics (the mandatory rule)
-const speedAlt = alternateFor("run", "interval", "z5", 60, "olympic");
-assert.equal(speedAlt.sport, "strength");
-assert.equal(speedAlt.type, "plyo");
-assert.ok(speedAlt.description.includes("Ramírez-Campillo"), "plyo cited");
-
-// Swimmer quality day -> upper-body plyo + pull strength (sport-specific)
-const swimAlt = alternateFor("swim", "threshold", "z4", 60, "olympic");
-assert.ok(swimAlt.description.includes("pull") || swimAlt.description.includes("pull-ups"), "swim-specific");
-
-// Cyclist quality day -> cyclist-specific plyo
-const bikeAlt = alternateFor("bike", "interval", "z5", 60, "cycle");
-assert.ok(bikeAlt.description.includes("jump squat") || bikeAlt.description.includes("hip thrust"), "cyclist-specific");
+// A cross-modality quality substitute needs reviewed familiar movement;
+// it is not an automatic plyometric dose or equivalent sport-specific stimulus.
+for (const [sport, type, zone, goal] of [["run", "interval", "z5", "olympic"], ["swim", "threshold", "z4", "olympic"], ["bike", "interval", "z5", "cycle"], ["strength", "strength", "z3", "olympic"]]) {
+  const alternative = alternateFor(sport, type, zone, 60, goal);
+  assert.equal(alternative.sport, "strength");
+  assert.equal(alternative.type, "strength");
+  assert.equal(alternative.intensity, "z3");
+  assert.match(alternative.description, /familiar coach-reviewed/);
+  assert.match(alternative.description, /not an equivalent/);
+  assert.doesNotMatch(alternative.description, /(?:depth jumps|box jumps|jump squats|clap push-ups)\s*\d/i);
+}
 
 // Recovery stays recovery
 const recAlt = alternateFor("run", "recovery", "z1", 30, "olympic");
