@@ -1,7 +1,6 @@
 import {profileRevision} from "@/lib/profile-service";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
-import { scheduleTests } from "@/lib/adaptive";
 import { benchmarkResult } from "@/lib/benchmark-result";
 import { parseDate } from "@/lib/dates";
 export const dynamic="force-dynamic";
@@ -14,17 +13,9 @@ export async function POST(req:Request) {
   let body;try{body=await req.json();}catch{throw new ApiError("Invalid JSON");}
   if(!body||!["record","schedule"].includes(body.action))throw new ApiError("Choose record or schedule");
   if(body.action==="record") return await record(actor.id,athlete,body);
-  const plan=await prisma.trainingPlan.findFirst({where:{userId:athlete.id,status:"active"},orderBy:{createdAt:"desc"}});
-  if(!plan)throw new ApiError("No active plan — generate one first");
-  const races=await prisma.race.findMany({where:{userId:athlete.id,date:{gte:plan.startDate}}});
-  const scheduled=scheduleTests(plan.startDate,plan.weeks,races.map(r=>({date:r.date})));
-  const created=await prisma.$transaction(async tx=>{
-   await tx.benchmarkTest.deleteMany({where:{userId:athlete.id,completed:false}});
-   const result=await tx.benchmarkTest.createMany({data:scheduled.map(t=>({userId:athlete.id,date:t.date,type:t.type,name:t.name,skipped:t.skipped,reason:t.reason||null}))});
-   await tx.auditLog.create({data:{actorId:actor.id,subjectId:athlete.id,action:"benchmarks.schedule",after:JSON.stringify({planId:plan.id,count:result.count})}});
-   return result;
-  });
-  return Response.json({ok:true,count:created.count,tests:scheduled});
+  // A calendar battery cannot establish suitability, recovery, or available
+  // session budget. Reviews belong inside the bounded plan, not extra tests.
+  throw new ApiError("Automatic maximal-test scheduling is unavailable. Review the sport-specific comfortable observations in your plan, or record a completed test you chose with appropriate guidance. No tests were added or removed.", 422);
  }catch(e){return errorResponse(e);}
 }
 async function record(actorId:string,athlete:{id:string;timezone:string},body:any) {

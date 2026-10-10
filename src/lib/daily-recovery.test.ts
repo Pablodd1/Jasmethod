@@ -18,3 +18,10 @@ test("illness, injury, safety holds and poor recovery override optional movement
   }
   assert.equal(dailyRecoveryContext({ ...rest, plannedRest: false, sessions: [{ durationMin: 0, verdict: "rest" }] }).mode, "hold");
 });
+
+test("protected event day is neither planned rest nor optional extra movement; symptoms still win",()=>{
+  const event=dailyRecoveryContext({...rest,eventDay:true});
+  assert.equal(dailyRecoveryContext({...rest,eventDay:true,sessions:[{durationMin:0,verdict:"blocked"}]}).mode,"event-day");
+  assert.equal(event.mode,"event-day");assert.equal(event.allowMovement,false);assert.equal(event.optionalMovementMinutes,null);
+  assert.equal(dailyRecoveryContext({...rest,eventDay:true,answers:{...answers,urgentSymptoms:true}}).mode,"hold");
+});

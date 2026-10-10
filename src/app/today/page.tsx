@@ -1,4 +1,5 @@
 "use client";
+import { DailyEnvironmentCard } from "@/components/daily-training/DailyEnvironmentCard";
 import { JMetricsCard } from "@/components/j-metrics-card";
 import { StructuredSportEditor } from "@/components/StructuredSportEditor";
 import { CoachingConversation } from "@/components/coaching-conversation";
@@ -334,6 +335,7 @@ export default function TodayPage() {
                 <p role="status">{session.resolutionReason}</p>
                 {session.verdict === "blocked" && <Link className="btn-secondary" href="/checkin">{es ? "Revisar check-in" : "Review check-in"}</Link>}
                 {session.capability && <FitDownloadActions key={`${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} title={session.title} capability={session.capability} disabled={offline || busy} es={es} />}
+                <DailyEnvironmentCard key={`environment-${user?.id}-${session.id}-${session.revision}`} sessionId={session.id} dateLocal={data.date} timezone={data.timezone} startTime={session.startTime} environment={session.environment} es={es} disabled={offline || busy} offline={offline} onSaved={load} />
                 <StructuredSportEditor key={`structure-${session.id}-${session.revision}`} sessionId={session.id} sport={session.sport} disabled={offline || busy} es={es} onSaved={load} />
                 {/* Reported load is separate from planned intensity and distance. */}
                 <div className="grid grid-cols-3 gap-2">

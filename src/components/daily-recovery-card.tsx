@@ -4,7 +4,7 @@ import { dayOffProtocol } from "@/lib/day-off";
 import { resolveCheckinSafety } from "@/lib/checkin-safety";
 
 export interface DailyRecoveryView {
-  mode: "hold" | "planned-rest" | "easy-day" | "training" | "unplanned";
+  mode: "event-day" | "hold" | "planned-rest" | "easy-day" | "training" | "unplanned";
   allowMovement: boolean;
   safetyStatus: "clear" | "unknown" | "hold" | "urgent";
   recoveryNeedsReview: boolean;
@@ -21,6 +21,7 @@ export function DailyRecoveryCard({ recovery, es = false, offline = false }: { r
   const allowMovement = !unknown && !held && mode === "planned-rest" && recovery?.allowMovement === true && recovery.safetyStatus === "clear" && !recovery.recoveryNeedsReview && recovery.optionalMovementMinutes === 20;
   const protocol = dayOffProtocol(es ? "es" : "en", { allowMovement });
   const title = held ? (es ? "Recuperación diaria · entrenamiento en pausa" : "Daily recovery · training on hold")
+    : mode === "event-day" ? (es ? "Día de evento · sin entrenamiento añadido" : "Event day · no added workout")
     : mode === "planned-rest" ? (es ? "Día de recuperación" : "Recovery day")
     : mode === "easy-day" ? (es ? "Recuperación diaria · día suave" : "Daily recovery · easy day")
     : (es ? "Tu recuperación diaria" : "Your daily recovery");
@@ -29,6 +30,7 @@ export function DailyRecoveryCard({ recovery, es = false, offline = false }: { r
     <p className="text-sm">{es ? "La recuperación forma parte de todos los días, incluso sin una sesión. El descanso completo es válido; no necesitas compensar entrenamientos perdidos." : "Recovery belongs in every day, including days without a workout. Complete rest is valid; you do not need to make up missed training."}</p>
     {urgent && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">{es ? "Detén el ejercicio. El malestar actual en el pecho, desmayo, falta de aire intensa sin explicación, confusión o colapso requieren evaluación médica urgente. Si los síntomas son intensos o continúan, contacta ahora con los servicios de emergencia locales. No se prescribe entrenamiento; esto no es un diagnóstico ni autorización para volver a entrenar." : resolveCheckinSafety({ urgentSymptoms: true }).message}</p>}
     {held ? <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{es ? "No se ofrece ejercicio. Sigue las indicaciones de seguridad de tu check-in y las restricciones de tu profesional; estas prácticas no autorizan volver a entrenar." : "No exercise is offered. Follow your check-in safety guidance and professional restrictions; these practices do not clear you to resume training."}</p>
+      : mode === "event-day" ? <p className="text-sm">{es ? "Este día está reservado para un evento. No se presume participación ni descanso completado y no se añade movimiento opcional. Revisa síntomas y condiciones; registra solo lo que realices." : "This date is reserved for an event. Participation and completed rest are not assumed, and no optional movement is added. Review symptoms and conditions; record only what you do."}</p>
       : mode === "training" || mode === "easy-day" ? <p className="text-sm font-medium">{es ? "Estas opciones no añaden ejercicio al entrenamiento revisado. No añadas otra sesión para mejorar una puntuación." : "These choices add no exercise to your reviewed training. Do not add another session to improve a score."}</p>
       : mode === "unplanned" ? <p className="text-sm">{es ? "No se prescribe ejercicio adicional aquí. Revisa tu plan y tu check-in antes de entrenar." : "No additional exercise is prescribed here. Review your plan and check-in before training."}</p> : null}
     {(unknown || recovery?.recoveryNeedsReview) && <p role="status" className="text-sm">{offline ? (es ? "Los datos guardados no confirman tu estado actual. Reconecta y actualiza el check-in." : "Saved data does not confirm your current condition. Reconnect and update your check-in.") : es ? "Revisa sueño, energía, molestias y estrés. No se ofrece movimiento opcional mientras falte información de seguridad o necesites revisar tu recuperación." : "Review sleep, energy, soreness and stress. Optional movement is not offered while safety information is missing or recovery needs review."} <Link href="/checkin" className="underline text-ocean-700">{es ? "Abrir check-in" : "Open check-in"}</Link></p>}

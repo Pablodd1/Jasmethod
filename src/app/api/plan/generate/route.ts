@@ -1,3 +1,5 @@
+import { normalizeCycleEvents, assessCycleEvents } from "@/lib/cycle-events";
+import { buildCycleBaselineReviews, requiredCycleSports } from "@/lib/cycle-review";
 import { cycleActivityEvidence, shapeTrainingCycle, TRAINING_CYCLE_VERSION } from "@/lib/training-cycle";
 import { evidencedTargetProfile } from "@/lib/anchor-evidence";
 import { setupNumber } from "@/lib/planning-target";
@@ -94,30 +96,32 @@ export async function POST(req: Request) {
     if (startKey < todayKey) throw new ApiError("Choose today or a future start date. Completed training history cannot be restarted.", 422);
     const dist = String(planningGoal(distance || profile.goal) || "");
     if (dist !== planningGoal(profile.goal)) throw new ApiError("Update and confirm your saved goal before previewing a different sport.",422);
-    // All future races feed planning: the A race anchors the taper; B races
-    // get train-through sharpening weeks (extraRaces below).
+    // Keep recent events as recovery context, and protect every planned event day.
     const activityQuery = { where: { userId: user.id, date: { gte: localDate(addDaysKey(todayKey, -28), user.timezone), lt: localDate(addDaysKey(startKey, weeksCount * 7), user.timezone) }, OR: [{ completed: true }, { actualDurationMin: { not: null } }, { feedbackStatus: { not: null } }] }, orderBy: { id: "asc" as const }, select: { id: true, date: true, completed: true, actualDurationMin: true, feedbackStatus: true, rpe: true, matchedPlanId: true } };
     const benchmarkQuery = { where: { userId: user.id, completed: true, skipped: false }, orderBy: { id: "asc" as const }, select: { id: true, date: true, type: true, result: true, completed: true, skipped: true } };
     const anchorQuery = { where: { subjectId: user.id, action: "baseline.fromTest" }, orderBy: { id: "asc" as const }, select: { entityId: true } };
-    const [storedRaces, recentActivity, benchmarkTests, appliedAnchors] = await Promise.all([prisma.race.findMany({
-      where: { userId: user.id, date: { gte: new Date(`${startKey}T00:00:00Z`) } },
-      orderBy: [{ priority: "asc" }, { date: "asc" }],
-    }), prisma.workout.findMany(activityQuery), prisma.benchmarkTest.findMany(benchmarkQuery), prisma.auditLog.findMany(anchorQuery)]);
+    const raceQuery = {
+      where: { userId: user.id, date: { gte: new Date(`${addDaysKey(startKey, -28)}T00:00:00Z`), lt: new Date(`${addDaysKey(startKey, weeksCount * 7 + 28)}T00:00:00Z`) } },
+      orderBy: [{ date: "asc" as const }, { id: "asc" as const }],
+    };
+    const [storedRaces, recentActivity, benchmarkTests, appliedAnchors] = await Promise.all([
+      prisma.race.findMany(raceQuery), prisma.workout.findMany(activityQuery), prisma.benchmarkTest.findMany(benchmarkQuery), prisma.auditLog.findMany(anchorQuery),
+    ]);
     // Race rows store the entered calendar day at UTC midnight, whereas profile
     // dates and explicit request dates use athlete-local midnight. Normalize only race rows.
     const allRaces = storedRaces.map(row => ({ ...row, date: toLocalMidnight(row.date.toISOString().slice(0,10)) }));
     const activityEvidence = cycleActivityEvidence(recentActivity, todayKey, user.timezone);
     const anchors = evidencedTargetProfile(profile, benchmarkTests, appliedAnchors.flatMap(row => row.entityId ? [row.entityId] : []));
     const needsAssessment = dist === "cycle" ? !anchors.ftp : dist === "swim-only" ? !anchors.swimPaceBase : ["track-sprint", "hyrox"].includes(dist) ? true : dist === "run-only" ? !anchors.runPaceBase : !anchors.ftp || !anchors.runPaceBase || !anchors.swimPaceBase;
-    const anchorRaceId = (
-      allRaces.find((r) => r.priority === 1) || allRaces[0]
-    )?.id;
+    const upcomingRaces = allRaces.filter(r => dateKey(r.date, user.timezone) >= startKey);
+    const anchorRaceId = (upcomingRaces.find(r => r.priority === 1) || upcomingRaces[0])?.id;
     // Taper anchor: explicit raceDate wins; else the athlete's A race; else
     // a supplied profile date. Missing dates remain absent.
     const race = raceDate
       ? toLocalMidnight(String(raceDate))
       : allRaces.find((r) => r.id === anchorRaceId)?.date ??
-        profile.raceDate ?? null;
+        (profile.raceDate && dateKey(profile.raceDate,user.timezone) >= startKey ? profile.raceDate : null);
+    if (raceDate && race && dateKey(race,user.timezone) < startKey) throw new ApiError("An explicit upcoming event cannot precede the plan start. Recent saved races remain recovery context.",422);
     if (
       ![
         "sprint",
@@ -154,7 +158,7 @@ export async function POST(req: Request) {
           weeks: weeksCount,
           startDate: start,
           weeklyHours: profile.weeklyHours || undefined,
-          hasRace: Boolean(race),
+          hasRace: false, // One normalized event controller below owns reductions.
         })
       : isHyrox
           ? generateHyroxPlan({
@@ -170,30 +174,31 @@ export async function POST(req: Request) {
               startDate: start,
               weeklyHours: profile.weeklyHours || undefined,
               easyPct: splitTarget,
-              // `race` already prefers the explicit date, then the athlete's
-              // A race. Never synthesize a plan-end event date.
-              raceDate: race ?? undefined,
-              // B/C races: B races get train-through sharpening in their week;
-              // the A race (raceDate above) anchors the taper. Excludes the
-              // anchor itself to avoid double-counting the same date.
-              extraRaces: allRaces
-                .filter((r) => r.id !== anchorRaceId && r.date > start)
-                .map((r) => ({ date: r.date, priority: r.priority })),
+              // Template only. The normalized bounded-cycle controller below
+              // applies all event reductions once across every supported sport.
+
             });
 
-    if (race && race <= start) throw new ApiError("Race date must follow the plan start; update your actual event details.");
-    if (race && race.getTime() - start.getTime() < 28 * 86400000) throw new ApiError("This short event horizon needs a reviewed preparation plan; automatic progression cannot promise the requested result.");
+    const storedEventInputs = allRaces.map(r => ({ id:r.id, name:r.name, dateKey:dateKey(r.date,user.timezone), priority:r.priority as 1|2|3, distance:r.distance, source:"stored" as const }));
+    const profileEventKey = profile.raceDate ? dateKey(profile.raceDate,user.timezone) : null;
+    const explicitEventKey = raceDate && race ? dateKey(race,user.timezone) : null;
+    const events = normalizeCycleEvents({events:[...storedEventInputs,
+      ...(profileEventKey && profileEventKey >= addDaysKey(startKey,-28) && !storedEventInputs.some(event=>event.dateKey===profileEventKey) ? [{id:"profile-event",name:"Profile event",dateKey:profileEventKey,priority:"A" as const,source:"profile" as const}] : []),
+      ...(explicitEventKey && explicitEventKey!==profileEventKey && !storedEventInputs.some(event=>event.dateKey===explicitEventKey) ? [{id:"requested-event",name:"Requested event",dateKey:explicitEventKey,priority:"A" as const,source:"request" as const}] : []),
+    ], raceKey:race ? dateKey(race,user.timezone) : null});
+    const eventReview = assessCycleEvents(events, startKey, weeksCount);
+    const baselineReviews = buildCycleBaselineReviews({profile, tests:benchmarkTests, appliedIds:appliedAnchors.flatMap(row=>row.entityId?[row.entityId]:[]), sports:requiredCycleSports(dist), now:new Date(), timezone:user.timezone});
     // Preserve actual day placement, reducing rather than making up omitted work.
     const startWeekday = new Date(dateKey(start,user.timezone)+"T12:00Z").getUTCDay();
     const pairSlot=setup.doubleDay ? (setup.doubleDay.weekday-startWeekday+7)%7 : 0;
-    const raceDays=[...allRaces.map(r=>dateKey(r.date,user.timezone)),...(race?[dateKey(race,user.timezone)]:[])];
+    const raceDays=events.map(event=>event.dateKey);
     const excludedDoubleWeeks=rawGenerated.flatMap((_,i)=>{
       const candidateDay=Date.parse(addDaysKey(dateKey(start,user.timezone),i*7+pairSlot));
       return raceDays.some(d=>Date.parse(d)-candidateDay>=0&&Date.parse(d)-candidateDay<=14*86400000)?[i]:[];
     });
     const {weeks: bounded, weeklyBudget, recoveryPolicy} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday, level, excludedDoubleWeeks);
     const structuredDraft = (session: BoundedPlanSession) => ({ ...prescribeToday({ session: { cycleVersion:TRAINING_CYCLE_VERSION, title:session.title, sport:session.sport, type:session.type, intensity:session.zone, durationMin:session.minutes, description:session.description, startTime:session.startTime ?? sessionStartTime }, adaptation: { verdict:"planned", durationFactor:1, intensityCap:session.zone } }), planningStatus: "provisional", planningNote:session.description });
-    const generated = shapeTrainingCycle(bounded, { startKey, raceKey: race ? dateKey(race, user.timezone) : null, needsAssessment, recoveryReview: activityEvidence.recoveryReview, protectedDays: activityEvidence.protectedDays }).map(week => ({ ...week, sessions: week.sessions.map(session => ({ ...session, steps: structuredDraft(session).steps })) }));
+    const generated = shapeTrainingCycle(bounded, { startKey, raceKey: race ? dateKey(race, user.timezone) : null, events, baselineReviews, needsAssessment, recoveryReview: activityEvidence.recoveryReview, protectedDays: activityEvidence.protectedDays }).map(week => ({ ...week, sessions: week.sessions.map(session => ({ ...session, steps: structuredDraft(session).steps })) }));
     const baselineEvidence = [
       { label:"Cycling power", value:profile.ftp, source:anchors.ftp ? "measured_test" : profile.ftp ? "unverified_profile_reference" : "unavailable" },
       { label:"Running threshold pace", value:profile.runPaceBase, source:anchors.runPaceBase ? "estimated_from_5k_test" : profile.runPaceBase ? "unverified_profile_reference" : "unavailable" },
@@ -201,7 +206,7 @@ export async function POST(req: Request) {
     ];
     const assessmentScheduled = generated.some(week => week.sessions.some(session => session.title.includes("Comfortable baseline observation")));
     const assessmentNote = ["track-sprint", "hyrox"].includes(dist) ? " Sprint technique, maximal-speed ability and station competence are not established by a running threshold. Use only controlled familiar practice; sport-specific coaching review is required for maximal or loaded progression." : "";
-    const cycle = { version: TRAINING_CYCLE_VERSION, baselineEvidence, goal: setup.goalDescription, target: setup.targetGoal, baseline: { weeklyMinutes: setup.baselineWeeklyMinutes, observedAt: setup.baselineObservedAt, source: setup.source }, assessment: needsAssessment ? (assessmentScheduled ? "A comfortable non-maximal baseline observation is included; no threshold or performance value is invented. Record actual effort and recovery, then review before progressing." : "A baseline observation does not fit the available sessions. Review sport-specific availability and recent tolerated training with your coach before progressing; no threshold or performance value is invented.") + assessmentNote : "Recent applied sport-specific test evidence is available. A test result does not guarantee recovery or future performance.", activity: activityEvidence, weeks: generated.map(week => ({ week: week.week, theme: week.theme, totalMinutes: week.totalMinutes, reviewNote: week.reviewNote })), evidenceNote: "Goal values are aspirations. Reported training, measured test results and derived estimates retain their source records. Session zones are effort labels; no new physiological estimate is created." };
+    const cycle = { version: TRAINING_CYCLE_VERSION, events:eventReview, baselineReviews, baselineEvidence, goal: setup.goalDescription, target: setup.targetGoal, baseline: { weeklyMinutes: setup.baselineWeeklyMinutes, observedAt: setup.baselineObservedAt, source: setup.source }, assessment: needsAssessment ? (assessmentScheduled ? "A comfortable non-maximal baseline observation is included; no threshold or performance value is invented. Record actual effort and recovery, then review before progressing." : "A baseline observation does not fit the available sessions. Review sport-specific availability and recent tolerated training with your coach before progressing; no threshold or performance value is invented.") + assessmentNote : "Recent applied sport-specific test evidence is available. A test result does not guarantee recovery or future performance.", activity: activityEvidence, weeks: generated.map(week => ({ week: week.week, theme: week.theme, totalMinutes: week.totalMinutes, reviewNote: week.reviewNote, observations:week.observations, eventDays:week.eventDays })), evidenceNote: "Goal values are aspirations. Reported training, measured test results and derived estimates retain their source records. Session zones are effort labels; no new physiological estimate is created." };
     if (!generated.some(week=>week.sessions.length)) throw new ApiError("The current template does not fit your available days/time. A coach should review the schedule; no sessions were assigned.", 422);
     for(const [index,week] of generated.entries()) {
       const pair=week.sessions.filter(s=>s.doubleDayRole);
@@ -212,12 +217,13 @@ export async function POST(req: Request) {
     }
     const doubleDayAgreementRequired=generated.some(w=>w.sessions.some(s=>s.doubleDayRole));
     const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true}});
-    const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated, recentActivity, benchmarkTests, appliedAnchors })).digest("hex");
+    const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated, storedRaces, recentActivity, benchmarkTests, appliedAnchors })).digest("hex");
     if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated, recoveryPolicy, cycle}, previewToken,
       planningBasis: setup.baselinePlanOptIn ? "baseline_only" : "baseline", targetReview: readiness.targetReview ?? [],
-      doubleDayAgreementRequired,
+      doubleDayAgreementRequired, eventTradeoffAgreementRequired:eventReview.requiresChoice,
       warning: "Numeric targets remain aspirations: this plan is not optimized or promised to reach them. Future sessions are provisional and bounded by reported recent training. Existing prescriptions and completed activity will be preserved. A goal is not a guaranteed outcome; daily safety checks still apply."});
     if(doubleDayAgreementRequired && (body.confirmDoubleDay!==true||actor.id!==user.id)) throw new ApiError("Review both sessions and times, then explicitly confirm the optional pairs as the athlete.",422);
+    if (eventReview.requiresChoice && (body.confirmEventTradeoffs !== true || actor.id !== user.id)) throw new ApiError("Review the event conflicts and explicitly accept the conservative event-limited plan, or update your event priorities and preview again.",422);
     if (body.previewToken !== previewToken) throw new ApiError("Preview the current plan and confirm it before replacing future training.", 409);
 
     // Persist plan + plan days + planned workouts
@@ -225,11 +231,12 @@ export async function POST(req: Request) {
     // Original prescriptions and completed history remain retrievable.
     const plan = await prisma.$transaction(
       async (tx) => {
-        const [latestProfile, latestSetup, latestActivity, latestBenchmarks, latestAnchors] = await Promise.all([
+        const [latestProfile, latestSetup, latestActivity, latestBenchmarks, latestAnchors, latestRaces] = await Promise.all([
           tx.athleteProfile.findUnique({where:{userId:user.id}}),
           readPlanningSetup(user.id, tx),
-          tx.workout.findMany(activityQuery), tx.benchmarkTest.findMany(benchmarkQuery), tx.auditLog.findMany(anchorQuery),
+          tx.workout.findMany(activityQuery), tx.benchmarkTest.findMany(benchmarkQuery), tx.auditLog.findMany(anchorQuery), tx.race.findMany(raceQuery),
         ]);
+        if (JSON.stringify(latestRaces) !== JSON.stringify(storedRaces)) throw new ApiError("Your events changed. Review a fresh preview before saving.",409);
         if (JSON.stringify([latestActivity, latestBenchmarks, latestAnchors]) !== JSON.stringify([recentActivity, benchmarkTests, appliedAnchors])) throw new ApiError("Your training history or baseline evidence changed. Review a fresh preview before saving.", 409);
         if(latestSetup.setup?.doubleDay?.athleteAgreed && (actor.id!==user.id||latestSetup.setup.source!=="athlete_reported")) throw new ApiError("Athlete agreement must be confirmed by the athlete.",403);
         if (profileRevision(latestProfile) !== profileRevision(profile) || latestSetup.revision !== setupState.revision) throw new ApiError("Your profile or setup changed. Review a new preview.", 409);
@@ -293,9 +300,9 @@ export async function POST(req: Request) {
                       dayOfWeek: new Date(
                         dateKey(date, user.timezone) + "T12:00Z",
                       ).getUTCDay(),
-                      dayOff: slotSessions.length === 0,
-                      focus: slotSessions[0]?.sport ?? "recovery",
-                      notes: slotSessions[0]?.description ?? "Planned rest: no compulsory workout. Optional recovery is offered separately when appropriate; this does not confirm completed rest.",
+                      dayOff: slotSessions.length === 0 && !events.some(event=>event.dateKey===dateKey(date,user.timezone)),
+                      focus: slotSessions[0]?.sport ?? (events.some(event=>event.dateKey===dateKey(date,user.timezone)) ? "event" : "recovery"),
+                      notes: slotSessions[0]?.description ?? (events.some(event=>event.dateKey===dateKey(date,user.timezone)) ? "Protected event day: no added workout. Participation and recovery are not assumed; record only actual work." : "Planned rest: no compulsory workout. Optional recovery is offered separately when appropriate; this does not confirm completed rest."),
                       sessions: {
                         create: rows.map((s) => ({
                           id:s.id,
@@ -335,6 +342,7 @@ export async function POST(req: Request) {
             after: JSON.stringify({
               name: plan.name,
               cycle,
+              eventTradeoffAgreement:eventReview.requiresChoice ? {confirmedBy:actor.id,previewToken,events} : null,
               doubleDayAgreement: doubleDayAgreementRequired ? {version:DOUBLE_DAY_VERSION,confirmedBy:actor.id,setupRevision:setupState.revision,previewToken} : null,
               weeks: weeksCount,
               startDate: start, setupRule: readiness.ruleId, setupRevision: setupState.revision, previewToken, weeklyBudgetMin: weeklyBudget, recoveryPolicy, previousPlanIds: currentPlans.map(p => p.id),
@@ -360,7 +368,7 @@ export async function POST(req: Request) {
 
     // Race venue adjustment (temperature + elevation + terrain + water) from the A-race
     let venuePlan = null;
-    const anchorRace = allRaces.find((r) => r.priority === 1) || allRaces[0];
+    const anchorRace = upcomingRaces.find((r) => r.priority === 1) || upcomingRaces[0];
     const temp =
       targetTempC !== undefined
         ? parseFloat(targetTempC)
@@ -401,6 +409,7 @@ export async function POST(req: Request) {
       venuePlan,
     });
   } catch (e: any) {
+    if (e?.code === "P2034") return errorResponse(new ApiError("Your plan or events changed while saving. Review a fresh preview before confirming again.",409));
     console.error("plan generate error:", e);
     return errorResponse(e);
   }

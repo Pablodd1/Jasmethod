@@ -1,3 +1,4 @@
+import { environmentRevisionContext, type DailyEnvironmentAssessment } from "./daily-environment";
 // Server-side canonical workout boundary. Consumers must not infer steps from prose.
 import { createHash } from "node:crypto";
 import type { WorkoutStep } from "./prescription";
@@ -46,6 +47,7 @@ export interface CanonicalSession {
   exactTimeSeconds: number | null; capability: ExportCapability;
   sportStructure?: SportStructure;
   components?: CanonicalSession[];
+  environment?: DailyEnvironmentAssessment;
 }
 export class SessionResolutionError extends Error {
   constructor(message: string, public status = 422) { super(message); }
@@ -186,6 +188,7 @@ export interface CanonicalSessionInput {
   athleteId: string; workout: Record<string, any>; prescription: unknown; profile?: TargetProfile | null;
   dateLocal: string; timezone: string;
   revisionContext?: unknown;
+  environment?: DailyEnvironmentAssessment;
   safety?: { status: "clear" | "unknown" | "hold" | "urgent"; reason: string; [key: string]: unknown };
 }
 export function canonicalSession(input: CanonicalSessionInput): CanonicalSession {
@@ -256,8 +259,8 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
     } catch (error) { steps = []; sportStructure = undefined; components = undefined; verdict = "blocked"; reason = error instanceof SessionResolutionError || error instanceof SportStructureError ? error.message : "The saved prescription is malformed. Review it before training or export."; }
   }
   const core = { schemaVersion: SESSION_SCHEMA_VERSION as 2, id: String(w.id || ""), athleteId: input.athleteId, dateLocal: input.dateLocal, timezone: input.timezone, title: typeof p?.title === "string" ? p.title : w.title, sport, durationMin: verdict === "ready" ? (p?.durationMin ?? w.durationMin) : 0, verdict, reason, steps, exactTimeSeconds: steps.length && steps.every(s => s.endpoint.type === "time") ? steps.reduce((sum, s) => sum + (s.endpoint.type === "time" ? s.endpoint.seconds : 0), 0) : null, capability: exportCapability(sport, steps, verdict, sportStructure, components), ...(sportStructure ? { sportStructure } : {}), ...(components ? { components } : {}) };
-  const revision = createHash("sha256").update(JSON.stringify({ core, source: [w.prescription, w.originalPlan, w.intensity, w.notes, w.startTime], actuals: [w.feedbackStatus, w.feedbackAt, w.feedbackNote, w.actualDurationMin, w.actualSport, w.actualDetails, w.rpe, w.completed, w.distanceKm, w.avgHr, w.avgPower], profile: [profile?.ftp, profile?.lthr, profile?.runPaceBase, profile?.swimPaceBase, profile?.intensityPct, profile?.injured, profile?.units, profile?.weightKg, profile?.sweatRateMlH, profile?.sodiumMgPerL, profile?.gutTrained, profile?.nutritionContext], safety, context: input.revisionContext })).digest("hex");
-  return { ...core, revision, revisionNumber: parseInt(revision.slice(0, 12), 16) };
+  const revision = createHash("sha256").update(JSON.stringify({ core, environment: input.environment ? environmentRevisionContext(input.environment) : null, source: [w.prescription, w.originalPlan, w.intensity, w.notes, w.startTime], actuals: [w.feedbackStatus, w.feedbackAt, w.feedbackNote, w.actualDurationMin, w.actualSport, w.actualDetails, w.rpe, w.completed, w.distanceKm, w.avgHr, w.avgPower], profile: [profile?.ftp, profile?.lthr, profile?.runPaceBase, profile?.swimPaceBase, profile?.intensityPct, profile?.injured, profile?.units, profile?.weightKg, profile?.sweatRateMlH, profile?.sodiumMgPerL, profile?.gutTrained, profile?.nutritionContext], safety, context: input.revisionContext })).digest("hex");
+  return { ...core, ...(input.environment ? { environment: input.environment } : {}), revision, revisionNumber: parseInt(revision.slice(0, 12), 16) };
 }
 export function requireSessionRevision(session: CanonicalSession, expected: unknown) {
   if (expected != null && expected !== session.revision) throw new SessionResolutionError("This session or its safety/targets changed. Reload the workout before downloading.", 409);

@@ -43,8 +43,9 @@ test("HYROX sessions alternate run and station blocks", () => {
 
 test("default sports keep the interval/steady structure (no regression)", () => {
   const intervals = structuredSteps(45, "z5", "interval", 0, "run");
-  // Research-based naming: VO2max 1:1 repeats instead of generic "Effort N"
-  assert.ok(intervals.some((s) => /VO₂max/.test(s.name) || /VO₂max/.test(s.group || "")));
+  // The legacy option is labeled as a coaching adaptation, not a proven winner.
+  assert.ok(intervals.some((s) => /Rønnestad 30\/15/.test(s.group || "")));
+  assert.ok(intervals.some((s) => /JMM adaptation/.test(s.group || "")));
   assert.ok(intervals.some((s) => s.phase === "recovery"));
   assert.ok(intervals.some((s) => s.group), "interval steps carry their repeat group");
   const steady = structuredSteps(60, "z2", "endurance", 0, "bike");

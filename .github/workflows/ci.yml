@@ -60,6 +60,9 @@ jobs:
       - name: Unit and provider contract tests
         run: npm test
 
+      - name: Verify reviewed cycle example pack
+        run: node --import tsx scripts/render-reviewed-cycle-samples.ts --check
+
       - name: Follow-up boundaries and injected Telegram transport
         run: npm run test:followup:boundaries
 
@@ -97,6 +100,9 @@ jobs:
 
       - name: Durable mobile onboarding, import review and returning cycle acceptance
         run: NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs" node --import tsx scripts/jmm-mobile-workflow-integration.ts
+
+      - name: Adaptive cycle, multi-event and baseline expiry acceptance
+        run: NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs" node --import tsx scripts/jmm-adaptive-cycle-integration.ts
 
       - name: Persistent conversational coach acceptance
         run: npm run test:conversation
@@ -146,4 +152,5 @@ jobs:
             .local/jmm-metrics-integration/report.json
             .local/jmm-recovery-integration/report.json
             .local/jmm-race-scenario-integration/report.json
+            .local/jmm-adaptive-cycle-integration/report.json
           if-no-files-found: ignore

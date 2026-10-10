@@ -23,6 +23,7 @@ function fixture() {
     supplementProfile: { findUnique: async () => null },
     dailyCheckin: { findUnique: async () => null },
     benchmarkTest: { findMany: async () => [] },
+    race: { findMany: async ({where}:any) => {scopes.push(where.userId); return [];} },
   };
   return { tx, scopes, audit, row: () => row, set: (data: any) => { row = { ...row, ...data }; }, writes: () => writes, conflict: () => { conflict = true; } };
 }

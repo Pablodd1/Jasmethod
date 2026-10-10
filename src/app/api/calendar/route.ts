@@ -59,10 +59,10 @@ export async function GET(req: Request) {
       orderBy: { startDate: "desc" },
       take: 1,
     }),
-    // Races (A/B/C) belong on the training calendar — they drive taper,
-    // testing and prediction. Priority: 1 = A, 2 = B, 3 = C.
+    // Race rows store entered UTC calendar days; query by those day keys.
+    // They inform reviewed preparation/recovery, never compulsory testing.
     prisma.race.findMany({
-      where: { userId: user.id, date: { gte: start, lt: end } },
+      where: { userId: user.id, date: { gte: new Date(`${dateKey(start,user.timezone)}T00:00:00Z`), lt: new Date(`${dateKey(end,user.timezone)}T00:00:00Z`) } },
       orderBy: [{ date: "asc" }],
       select: {
         id: true,
@@ -78,7 +78,9 @@ export async function GET(req: Request) {
   return NextResponse.json({
     events,
     workouts: workouts.map(w => ({...w, revision: workoutRevision(w)})),
-    races,
+    // Calendar consumers group timestamps in the athlete timezone. Preserve
+    // the entered day while adapting to that display contract (no DB write).
+    races: races.map(race=>({...race,dateKey:race.date.toISOString().slice(0,10),date:localDate(race.date.toISOString().slice(0,10),user.timezone)})),
     plan: plans[0] ? {...plans[0], days: plans[0].days.map(day => ({...day, sessions: day.sessions.map(w => ({...w,revision:workoutRevision(w)}))}))} : null,
   });
 }

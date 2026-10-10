@@ -124,8 +124,12 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
     await p.getByLabel('Recent interruption or return after time off?').selectOption('none');
     await p.getByLabel('Current symptoms, injury or restrictions?').selectOption('none');
     await p.getByLabel('Pregnancy/postpartum, significant medical restrictions or another circumstance needing professional guidance?').selectOption('none_needed');
-    for (const label of ['Mon', 'Wed', 'Fri'])
-        await p.getByLabel(label, { exact: true }).check();
+    // Keep the feedback journey valid on every CI weekday while preserving the
+    // same three-day availability and all duration/budget assertions.
+    const weekday = new Date(new Date().toISOString().slice(0, 10) + 'T12:00:00Z').getUTCDay();
+    const available = [weekday, (weekday + 2) % 7, (weekday + 4) % 7];
+    for (const [index, label] of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].entries())
+        await p.getByLabel(label, { exact: true }).setChecked(available.includes(index));
     await p.getByLabel('Maximum total training minutes per day', { exact: true }).fill(maximum);
     await p.getByLabel('Equipment and venue access (including none)').fill('Running shoes and outdoor path');
     await p.getByLabel('Planning horizon in weeks (no event date is invented)', { exact: true }).fill(weeks);
