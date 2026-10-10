@@ -213,8 +213,8 @@ export function structuredSteps(
       (variant > 0 && type !== "strength")) &&
     minutes >= 20
   ) {
-    // Research-based set design (Seiler's polarized model; Billat 1:1 VO2max;
-    // standard threshold cruise intervals) — pattern picked by the capped
+    // Legacy JMM coaching templates, not exact trial protocols or validated
+    // individual doses. Pattern picked by the capped
     // zone, sized to the real main-set budget, and grouped under a
     // "Repeat N ×" header the athlete (and the .FIT export) can follow.
     const z = Math.min(7, Number(zone.slice(1)) || 2);
@@ -230,16 +230,17 @@ export function structuredSteps(
     };
     const patterns: Pattern[] = [
       { label: "Speed endurance", workSec: 30, restSec: 90, workZone: "z7", restZone: "z1", workName: "All-out surge", restName: "Float recovery", cite: "neural power + stride mechanics" },
-      { label: "Rønnestad 30/15 short intervals", workSec: 30, restSec: 15, workZone: "z5", restZone: "z3", workName: "Hard — 30 s", restName: "Float — 15 s at ~50% work intensity", cite: "VO₂max, effort-matched head-to-head — ~2× the gain of long intervals, more time >90% VO₂max (Rønnestad 2015; Almquist 2020)" },
+      { label: "Rønnestad 30/15 short intervals", workSec: 30, restSec: 15, workZone: "z5", restZone: "z3", workName: "Hard — 30 s", restName: "Float — 15 s at ~50% work intensity", cite: "JMM adaptation; a small 3-week elite-cyclist study supports this option in that context (Rønnestad 2020, PMID 31977120), not a universal advantage or a validated running dose" },
       { label: "80/160 VO₂max repeats", workSec: 80, restSec: 160, workZone: "z5", restZone: "z2", workName: "Hard — 80 s", restName: "Easy — 160 s", cite: "VO₂max domain (Zone 3) intervals (Trube, citing Ronnestad lineage)" },
       { label: "VO₂max repeats · 1:1", workSec: 180, restSec: 180, workZone: "z5", restZone: "z2", workName: "Hard — VO₂max", restName: "Easy — float at Z2", cite: "aerobic power (Seiler 2010)" },
       { label: "Sweet spot", workSec: 720, restSec: 180, workZone: "z3", restZone: "z1", workName: "Sweet-spot block", restName: "Easy spin", cite: "sustainable power" },
       { label: "Threshold cruise intervals · 2×", workSec: 1200, restSec: 180, workZone: "z4", restZone: "z2", workName: "Threshold block", restName: "Easy recovery", cite: "lactate threshold (Stepto 1999)" },
     ];
     // Pick by intended zone (interval z5-7 → VO2/speed; z4 → threshold; z3 → sweet spot).
-    // Default z5-6 VO2max work is the Rønnestad 30/15 — the effort-matched
-    // head-to-head winner. The regeneration variant rotates to 80/160 and the
-    // classic 1:1 repeats so athletes get variety across the block.
+    // Legacy z5-6 selection starts with 30/15. Its cross-sport use and
+    // duration-based sizing are coaching choices, not the studied full dose
+    // or evidence of superiority. Reviewed cycle work does not select this
+    // recipe automatically; variants remain for existing explicit workouts.
     const vo2Variant = [1, 2, 3]; // Rønnestad, 80/160, 1:1
     const idx = z <= 2 ? 4 : z === 3 ? 4 : z === 4 ? 5 : z <= 6 ? vo2Variant[variant % vo2Variant.length] : 0;
     const pat = z <= 2

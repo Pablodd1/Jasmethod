@@ -296,7 +296,7 @@ export function temperatureAdjustment(tempC: number): TempAdjustment {
   return { tempC, category, paceFactor, volumeFactor, hydrationFactor, advice };
 }
 
-// ---------- 3. SCHEDULED TESTING (every ~2 months, race-aware) ----------
+// ---------- 3. LEGACY TEST SCHEDULING (disabled; reviews live in the cycle) ----------
 export interface ScheduledTest {
   date: Date;
   type:
@@ -316,111 +316,17 @@ export interface ScheduledTest {
   reason?: string;
 }
 
-const TRIATHLON_TEST_TYPES: {
-  type: ScheduledTest["type"];
-  name: string;
-  cadenceDays: number;
-}[] = [
-  { type: "ftp", name: "FTP Test (20-min)", cadenceDays: 56 },
-  { type: "lthr", name: "LTHR Test (30-min TT)", cadenceDays: 56 },
-  { type: "cp", name: "Critical Power (3+12-min)", cadenceDays: 56 },
-  { type: "run5k", name: "Run Benchmark (5k TT)", cadenceDays: 56 },
-  { type: "swim", name: "Swim CSS Test (400/200)", cadenceDays: 56 },
-];
-
-const HYROX_TEST_TYPES: {
-  type: ScheduledTest["type"];
-  name: string;
-  cadenceDays: number;
-}[] = [
-  { type: "run1k", name: "1km Run TT (race pace)", cadenceDays: 56 },
-  { type: "erg", name: "Erg Benchmark (Ski 1km + Row 1km)", cadenceDays: 56 },
-  {
-    type: "strengthBench",
-    name: "Sled + Wall Ball Benchmark",
-    cadenceDays: 56,
-  },
-];
-
-const BOXING_TEST_TYPES: {
-  type: ScheduledTest["type"];
-  name: string;
-  cadenceDays: number;
-}[] = [
-  {
-    type: "boxing",
-    name: "Punch Output Test (3-min bag: punch count + film review)",
-    cadenceDays: 56,
-  },
-  { type: "run5k", name: "Roadwork Benchmark (5k TT)", cadenceDays: 56 },
-  {
-    type: "strengthBench",
-    name: "Neuromuscular Bench (CMJ + med-ball throw + push-up AMRAP)",
-    cadenceDays: 56,
-  },
-];
-
-// SPRINT_TEST_TYPES — 200/400 m benchmark battery (the DB's app_gaps ask:
-// "personal_best_and_split_history" — the athlete's own 200/400 m times).
-const SPRINT_TEST_TYPES: {
-  type: ScheduledTest["type"];
-  name: string;
-  cadenceDays: number;
-}[] = [
-  { type: "run200m", name: "200 m TT (electronic or gated — log wind if known)", cadenceDays: 56 },
-  { type: "run400m", name: "400 m TT (log 200 m split at the mark)", cadenceDays: 56 },
-  { type: "run5k", name: "Aerobic support benchmark (5k TT)", cadenceDays: 56 },
-];
-
+/** @deprecated Automatic test batteries are intentionally disabled. A sport-
+ * appropriate test needs explicit review of suitability, recovery and the
+ * existing session budget. Comfortable observations are handled by the cycle.
+ * Retained as a no-op for old callers; never deletes existing test records. */
 export function scheduleTests(
-  startDate: Date,
-  weeks: number,
-  races: { date: Date }[],
-  opts: { hyrox?: boolean; boxing?: boolean; trackSprint?: boolean } = {},
+  _startDate: Date,
+  _weeks: number,
+  _races: { date: Date }[],
+  _opts: { hyrox?: boolean; boxing?: boolean; trackSprint?: boolean } = {},
 ): ScheduledTest[] {
-  const testTypes = opts.trackSprint
-    ? SPRINT_TEST_TYPES
-    : opts.boxing
-      ? BOXING_TEST_TYPES
-      : opts.hyrox
-        ? HYROX_TEST_TYPES
-        : TRIATHLON_TEST_TYPES;
-  const out: ScheduledTest[] = [];
-  const RACE_GUARD_DAYS = 14; // skip any test within 2 weeks of a race
-  const raceDates = races.map((r) => new Date(r.date).getTime());
-  // stagger test types across the 6-week block so no single week is overloaded
-  const stagger = [0, 14, 28, 35, 7];
-  for (let i = 0; i < weeks * 7; i += 42) {
-    // every 6 weeks — matches the mesocycle taper week
-    testTypes.forEach((tt, j) => {
-      const d = new Date(
-        startDate.getTime() + (i + stagger[j % stagger.length]) * 86400000,
-      );
-      const end = new Date(startDate.getTime() + weeks * 7 * 86400000);
-      if (d.getTime() > end.getTime()) return;
-      const nearRace = raceDates.some(
-        (r) => Math.abs(r - d.getTime()) < RACE_GUARD_DAYS * 86400000,
-      );
-      const nearestRace = raceDates.reduce<number | null>((acc, r) => {
-        const gap = r - d.getTime();
-        if (gap < 0) return acc; // past race, ignore
-        return acc === null || gap < acc ? gap : acc;
-      }, null);
-      out.push({
-        date: d,
-        type: tt.type,
-        name: tt.name,
-        skipped: nearRace,
-        reason: nearRace ? "skipped — within 2 weeks of a race" : undefined,
-      });
-      if (!nearRace && nearestRace !== null && nearestRace < 56 * 86400000) {
-        // leave a note when a test lands close to (but outside) the guard window
-        out[out.length - 1].reason =
-          `note — ${Math.round(nearestRace / 86400000)} days before a race; consider moving if fatigued`;
-      }
-    });
-  }
-  return out.sort((a, b) => a.date.getTime() - b.date.getTime());
+  return [];
 }
 
 // ---------- 4. DAILY QUESTIONNAIRE → TRAINING ADAPTATION ----------

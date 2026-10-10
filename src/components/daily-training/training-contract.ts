@@ -1,3 +1,4 @@
+import { isDailyEnvironmentAssessment, type DailyEnvironmentAssessment } from "@/lib/daily-environment";
 import type { CanonicalStep } from "@/lib/canonical-session";
 
 export type Endpoint = { type: "time"; seconds: number } | { type: "distance"; meters: number } | { type: "reps"; reps: number } | { type: "lap" };
@@ -9,6 +10,8 @@ export type Block = { id: string; title: string; repeat: number; segments: Segme
 export type Guidance = { title: string; items: string[]; note?: string; sourceIds?: string[] };
 export type DailyTraining = {
   schemaVersion: 1 | 2;
+  environment?: DailyEnvironmentAssessment;
+  language?: string;
   session: { id: string; revision: number; sourceRevision?: string; verdict?: "ready" | "rest" | "blocked"; capability?: { available: boolean; mode: string; reason: string; deviceTested: false }; durationIsEstimate?: boolean; dateLocal: string; timezone: string; sport: string; title: string; subtitle: string; planStatus: 'planned' | 'in_progress' | 'completed'; totalMinutes: number; density: { score: number | null; label: string; method: 'coach_planning'; missingReason?: string }; calories: { kcal: number | null; method: 'wearable' | 'estimate' | 'none'; asOf: string | null; missingReason: string | null } };
   sessions?: { id: string; title: string; sport: string; startTime: string | null }[];
   profile: { paces: Record<PaceKey, PaceRef>; thresholdHeartRate: { bpm: number | null; status: 'measured' | 'coach_set' | 'missing'; measuredAt: string | null }; unitSystem: 'imperial' | 'metric'; updatedAt: string };
@@ -28,6 +31,7 @@ const finite = (v: unknown): v is number => typeof v === "number" && Number.isFi
 const optionalNumber = (v: unknown) => v == null || finite(v);
 export function isDailyTraining(v: unknown): v is DailyTraining {
   if (!record(v) || ![1, 2].includes(v.schemaVersion)) return false;
+  if (v.environment !== undefined && !isDailyEnvironmentAssessment(v.environment)) return false;
   const { session: s, profile: p, guidance: g, completion: c, links: l, blocks } = v;
   if (![s, p, g, c, l].every(record) || !Array.isArray(blocks)) return false;
   if (!["id", "title", "subtitle", "sport", "dateLocal", "timezone"].every(k => typeof s[k] === "string") ||

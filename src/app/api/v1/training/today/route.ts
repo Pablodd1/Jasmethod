@@ -58,7 +58,7 @@ export async function GET(req: Request) {
         include: { planDay: { select: { dayOff: true } } },
       }),
       prisma.race.findFirst({
-        where: { userId: user.id, date: { gte: start } },
+        where: { userId: user.id, date: { gte: new Date(`${dateKey(start,user.timezone)}T00:00:00Z`) } },
         orderBy: [{ priority: "asc" }, { date: "asc" }],
       }),
     ]);
@@ -89,6 +89,8 @@ export async function GET(req: Request) {
 
     const plan: DailyTraining = {
       schemaVersion: 2,
+      environment: canonical.environment,
+      language: user.language,
       sessions: workouts.map(w => ({ id: w.id, title: w.title, sport: w.sport, startTime: w.startTime })),
       session: {
         id: workout.id,
@@ -128,7 +130,7 @@ export async function GET(req: Request) {
             canonical.verdict === "ready" ? "Check today's endpoints, targets and equipment before warming up." : canonical.reason,
             sportPreparation(canonical.sport),
             race
-              ? `Next race: ${race.name} — ${Math.max(0, Math.round((Date.parse(dateKey(race.date, user.timezone)) - Date.parse(dateKey(workout.date, user.timezone))) / 86400000))} days out.`
+              ? `Next race: ${race.name} — ${Math.max(0, Math.round((Date.parse(race.date.toISOString().slice(0,10)) - Date.parse(dateKey(workout.date, user.timezone))) / 86400000))} days out.`
               : "Hydrate through the day; sleep is part of the session.",
             "Phone away during the warm-up — the first minutes set the rhythm.",
           ],

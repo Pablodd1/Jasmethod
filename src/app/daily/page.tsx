@@ -5,6 +5,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { StructuredSportEditor } from "@/components/StructuredSportEditor";
+import { DailyEnvironmentCard } from "@/components/daily-training/DailyEnvironmentCard";
 import { DailyTrainingScreen } from "@/components/daily-training/DailyTrainingScreen";
 import { isDailyTraining } from "@/components/daily-training/training-contract";
 import type { DailyTraining } from "@/components/daily-training/training-contract";
@@ -114,6 +115,7 @@ export default function DailyTrainingPage() {
     {displayNavigation}
     {state.plan.sessions && state.plan.sessions.length > 1 && <nav aria-label="Today's sessions" className="jmm-screen jmm-session-switcher"><label>Select today&apos;s session <select value={session.id} onChange={e => selectSession(e.target.value)}>{state.plan.sessions.map(s => <option key={s.id} value={s.id}>{s.startTime ? `${s.startTime} · ` : ""}{s.title} · {s.sport}</option>)}</select></label></nav>}
     <div className="mx-auto max-w-[540px] px-4 py-3"><StructuredSportEditor key={`structure-${session.id}-${session.sourceRevision}`} sessionId={session.id} sport={session.sport} onSaved={() => load()} /></div>
+    <div className="mx-auto max-w-[540px] px-4 py-3"><DailyEnvironmentCard key={`environment-${session.id}-${session.sourceRevision}`} sessionId={session.id} dateLocal={session.dateLocal} timezone={session.timezone} startTime={state.plan.sessions?.find(s => s.id === session.id)?.startTime} environment={state.plan.environment} es={state.plan.language === "es"} onSaved={() => load()} /></div>
     <DailyTrainingScreen
       key={`${session.id}-${session.revision}`}
       plan={state.plan}

@@ -423,10 +423,12 @@ test("taper bonus applies only in the tapered sweet spot with real fitness", () 
 // ---- Max Trube MD protocol enrichment ----
 import { structuredSteps as ss } from "./prescription";
 
-test("z5 interval work defaults to Rønnestad 30/15 — the effort-matched winner", () => {
+test("legacy z5 interval variant retains 30/15 with its coaching-adaptation label", () => {
   const steps = ss(60, "z5", "interval", 0, "run");
   const groups = steps.map((s) => s.group || "").filter(Boolean);
   assert.ok(groups.some((g) => /Rønnestad 30\/15/.test(g)), `group: ${groups.join("; ")}`);
+  assert.ok(groups.every((g) => /JMM adaptation/.test(g)));
+  assert.doesNotMatch(groups.join(" "), /~2×|head-to-head winner/);
   const work = steps.find((s) => /Hard — 30 s/.test(s.name));
   assert.ok(work, "30 s work steps present");
   const rest = steps.find((s) => /Float — 15 s/.test(s.name));

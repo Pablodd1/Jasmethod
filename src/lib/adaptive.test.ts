@@ -33,22 +33,10 @@ assert.ok(hot.paceFactor > mild.paceFactor, "hot should slow pace");
 assert.ok(hot.volumeFactor < mild.volumeFactor, "hot should cut volume");
 assert.ok(extreme.hydrationFactor > hot.hydrationFactor);
 
-// --- test scheduling: ~every 2 months, skip near race, stop at block end ---
-const races = [{ date: new Date("2026-10-04T08:00:00Z") }]; // race ~5.5 weeks out
-const tests = scheduleTests(new Date("2026-08-26T00:00:00Z"), 12, races);
-assert.ok(tests.length > 0, "should schedule some tests");
-const ftp = tests.filter((t) => t.type === "ftp");
-assert.ok(ftp.length >= 1 && ftp.length <= 3, `expected 1-3 FTP tests, got ${ftp.length}`);
-assert.ok(tests.every((t) => !t.skipped || t.reason), "skipped tests carry a reason");
-const nearRace = tests.find((t) => Math.abs(t.date.getTime() - races[0].date.getTime()) < 14 * 86400000);
-if (nearRace) {
-  assert.ok(nearRace.skipped, "test within 2 weeks of race must be skipped");
-  assert.ok((nearRace.reason || "").startsWith("skipped"), "skipped tests carry the 'skipped' reason, not a note");
+// Legacy callers cannot inject unreviewed maximal testing or extra load.
+for (const opts of [{}, {hyrox:true}, {boxing:true}, {trackSprint:true}]) {
+  assert.deepEqual(scheduleTests(new Date("2026-08-26T00:00:00Z"), 12, [], opts), []);
 }
-// no tests before start or after block end
-const start = new Date("2026-08-26T00:00:00Z").getTime();
-const end = start + 12 * 7 * 86400000;
-assert.ok(tests.every((t) => t.date.getTime() >= start && t.date.getTime() <= end));
 
 // --- questionnaire adaptation ---
 const green = adaptSession({ sleep: 5, soreness: 1, motivation: 5, energy: 5, stress: 1, sick: false, newPain: false, urgentSymptoms: false, availableMin: 60 });
@@ -119,8 +107,4 @@ assert.ok(hy[5].sessions.length >= 4, "week 6 taper is lighter but complete");
 assert.ok(hy.some((w) => w.sessions.some((s) => s.sport === "hyrox")), "compromised running / race sim present");
 assert.ok(hy.some((w) => w.sessions.some((s) => s.sport === "run")), "run sessions present");
 assert.ok(hy.some((w) => w.sessions.some((s) => s.sport === "strength")), "station strength present");
-// hyrox test scheduling: 1km TT + erg + strength, not triathlon ftp/swim
-const ht = scheduleTests(new Date("2026-08-26T00:00:00Z"), 12, [{ date: new Date("2026-10-04T00:00:00Z") }], { hyrox: true });
-assert.ok(ht.length > 0 && ht.every((t) => ["run1k", "erg", "strengthBench"].includes(t.type)), "hyrox tests use hyrox types");
-
 console.log("✓ adaptive.test.ts — all assertions passed");

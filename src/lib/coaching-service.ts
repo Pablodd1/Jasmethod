@@ -1,3 +1,4 @@
+import { dailyEnvironmentSummary } from "./daily-environment";
 import { sendTelegramCoaching, telegramCoachingConfigured, parseTelegramUpdate, boundedTelegramMessage } from "./telegram-coaching-transport";
 import type { CommunicationPreference, CoachingPrompt, Prisma } from "@prisma/client";
 import { prisma } from "./db";
@@ -114,6 +115,7 @@ function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effective
     if (c.verdict !== "ready") lines.push("No cleared workout is available. Review your current plan and check-in in the app.");
     else lines.push("Before: review equipment, venue and full preparation/fueling guidance in the app.",
       "During: follow the selected session's exact blocks; stop if unwell or in pain.",
+      ...(c.environment ? [dailyEnvironmentSummary(c.environment)] : []),
       ...c.steps.slice(0, 12).map((s, i) => `${i + 1}. ${s.phase}: ${stepEndpointLabel(s)} · ${s.target.label}`),
       ...(c.steps.length > 12 ? [`${c.steps.length - 12} further blocks are shown in the app; this is a concise summary, not the complete workout.`] : []),
       "After: cool down as prescribed, choose familiar food/fluid according to need, and report actual minutes and effort. Avoid overdrinking.");

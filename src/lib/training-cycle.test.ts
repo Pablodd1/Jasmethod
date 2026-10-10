@@ -88,3 +88,131 @@ test("strength and station mechanical demand is not hidden by a z1 label",()=>{
   const result=boundPlanWeeks([week],setup,6,1,"pro").weeks[0];
   assert.equal(result.sessions.length,1);assert.equal(result.sessions[0].sport,"strength");
 });
+
+test("all A/B/C event days are protected and recent-event recovery is reduction-only", () => {
+  const events = [
+    { id: "recent", dateKey: "2026-10-04", priority: "C" as const, distance: "marathon" },
+    { id: "a", dateKey: "2026-11-16", priority: "A" as const },
+    { id: "b", dateKey: "2026-11-20", priority: "B" as const },
+    { id: "c", dateKey: "2026-11-23", priority: "C" as const },
+  ];
+  const cycle = shapeTrainingCycle(bounded, { ...options, events });
+  assert.match(cycle[0].theme, /Post-event/);
+  assert.ok(cycle[0].totalMinutes < shapeTrainingCycle(bounded, options)[0].totalMinutes);
+  for (const [index, week] of cycle.entries()) {
+    assert.ok(week.totalMinutes <= bounded[index].totalMinutes);
+    for (const session of week.sessions) assert.ok(!events.some(event => event.dateKey === addDaysKey(options.startKey, index * 7 + session.daySlot)));
+  }
+  assert.deepEqual(cycle.flatMap(week => week.eventDays), events.slice(1).map(event => event.dateKey));
+});
+
+test("comfortable review observations recur per sport within existing sessions without renewing evidence", async () => {
+  const { buildCycleBaselineReviews } = await import("./cycle-review");
+  const sports = ["run", "bike", "swim", "strength", "hyrox", "mobility", "boxing"] as const;
+  const weeks = Array.from({ length: 24 }, (_, index) => ({ week: index + 1, theme: "Build", totalMinutes: 280,
+    sessions: sports.map((sport, daySlot) => ({ sport, daySlot, minutes: 40, zone: "z4" as const, type: sport === "run" ? "speed" : "endurance", title: `${sport} template`, description: "Template" })), restDaySlots: [], doubleDayNote: "None" }));
+  const baselineReviews = buildCycleBaselineReviews({ profile: {}, tests: [], appliedIds: [], sports, now: new Date("2026-10-12T12:00Z") });
+  const before = JSON.stringify({ weeks, baselineReviews });
+  const cycle = shapeTrainingCycle(weeks, { ...options, baselineReviews });
+  assert.equal(JSON.stringify({ weeks, baselineReviews }), before);
+  for (const sport of sports) {
+    const observations = cycle.flatMap(week => week.observations).filter(observation => observation.sport === sport);
+    assert.equal(observations.length, 6);
+    assert.equal(observations[0].status, "missing");
+    for (const [index, observation] of observations.entries()) {
+      if (index) assert.equal(observation.dateKey, addDaysKey(observations[index - 1].dateKey, 28));
+      assert.ok(observation.minutes <= 40);
+    }
+  }
+  for (const [index, week] of cycle.entries()) {
+    assert.equal(week.sessions.length, weeks[index].sessions.length);
+    assert.ok(week.totalMinutes <= weeks[index].totalMinutes);
+    for (const session of week.sessions.filter(session => /observation/.test(session.title))) {
+      assert.equal(session.zone, "z2"); assert.match(session.description, /does not renew/);
+    }
+  }
+});
+
+test("valid cycling evidence is not downgraded for missing swimming evidence, but expiry reduces later sessions", async () => {
+  const { buildCycleBaselineReviews } = await import("./cycle-review");
+  const baselineReviews = buildCycleBaselineReviews({ profile: { ftp: 200 }, tests: [{ id: "ftp", date: new Date("2026-10-10T12:00Z"), type: "ftp", result: 200, completed: true, skipped: false }], appliedIds: ["ftp"], sports: ["bike", "swim"], now: new Date("2026-10-12T12:00Z") });
+  const weeks = Array.from({ length: 24 }, (_, index) => ({ week: index + 1, theme: "Build", totalMinutes: 80, sessions: [
+    { sport: "bike" as const, daySlot: 0, minutes: 40, zone: "z4" as const, type: "threshold", title: "Bike", description: "Template" },
+    { sport: "swim" as const, daySlot: 2, minutes: 40, zone: "z4" as const, type: "threshold", title: "Swim", description: "Template" },
+  ], restDaySlots: [1, 3, 4, 5, 6], doubleDayNote: "None" }));
+  const cycle = shapeTrainingCycle(weeks, { ...options, baselineReviews });
+  assert.equal(cycle[0].sessions[0].zone, "z4");
+  assert.equal(cycle[0].sessions[1].zone, "z2");
+  assert.ok(cycle.slice(13).every(week => week.sessions.filter(session => session.sport === "bike").every(session => session.zone === "z2")));
+  assert.ok(cycle.flatMap(week => week.observations).filter(observation => observation.sport === "bike").length > 1);
+  assert.equal(baselineReviews[0].observedAt, "2026-10-10");
+});
+
+test("event/rebuild weeks defer observations and optional pairs without catching up or changing original rest slots", () => {
+  const pairWeek = { week: 1, theme: "Build", totalMinutes: 80, sessions: [
+    { sport: "run" as const, daySlot: 0, minutes: 40, zone: "z2" as const, type: "endurance", title: "Run", description: "Template", doubleDayRole: "primary" as const, startTime: "07:00" },
+    { sport: "bike" as const, daySlot: 0, movedFromSlot: 2, minutes: 40, zone: "z2" as const, type: "endurance", title: "Bike", description: "Template", doubleDayRole: "secondary" as const, startTime: "18:00" },
+  ], restDaySlots: [1, 2, 3, 4, 5, 6], doubleDayNote: "Optional pair" };
+  const cycle = shapeTrainingCycle([pairWeek], { ...options, events: [{ dateKey: "2026-10-16", priority: "C" }] });
+  assert.equal(cycle[0].sessions.length, 1); assert.equal(cycle[0].sessions[0].doubleDayRole, undefined);
+  assert.equal(cycle[0].observations.length, 0); assert.equal(cycle[0].sessions[0].daySlot, 0);
+  assert.deepEqual(cycle[0].restDaySlots, pairWeek.restDaySlots);
+  assert.match(cycle[0].doubleDayNote, /omitted/);
+  assert.equal(shapeTrainingCycle(bounded, { ...options, recoveryReview: true })[0].observations.length, 0);
+});
+
+test("template maximal-speed and test labels become controlled practice even with valid endurance anchors", async () => {
+  const { buildCycleBaselineReviews } = await import("./cycle-review");
+  const baselineReviews = buildCycleBaselineReviews({ profile: { runPaceBase: 318 }, tests: [{ id: "run", date: new Date("2026-10-10T12:00Z"), type: "run5k", result: 1500, completed: true, skipped: false }], appliedIds: ["run"], sports: ["run"], now: new Date("2026-10-12T12:00Z") });
+  const week = { week: 1, theme: "Build", totalMinutes: 80, sessions: ["speed", "test"].map((type, daySlot) => ({ sport: "run" as const, type, daySlot, minutes: 40, zone: "z7" as const, title: "Maximal trial", description: "All-out effort" })), restDaySlots: [2, 3, 4, 5, 6], doubleDayNote: "None" };
+  const cycle = shapeTrainingCycle([week], { ...options, needsAssessment: false, baselineReviews });
+  for (const session of cycle[0].sessions) { assert.equal(session.zone, "z2"); assert.equal(session.type, "endurance"); assert.doesNotMatch(session.title, /Maximal/); assert.doesNotMatch(session.description, /All-out/); }
+});
+
+test("saved calendar-only cycle dates remain calendar days in western timezones", () => {
+  const summary = savedCycleSummary({ id: "date-only", name: "Calendar", startDate: "2026-11-01", raceDate: "2026-11-15", weeks: 4 }, "America/New_York", "2026-11-01");
+  assert.equal(summary.start, "2026-11-01"); assert.equal(summary.raceDate, "2026-11-15");
+  assert.equal(summary.currentWeek, 1); assert.equal(summary.end, "2026-11-28");
+});
+
+test("an unperformed planned match never hides a completed imported session", () => {
+  const date = localDate(options.startKey, "UTC");
+  const rows = [
+    { id: "plan", date, completed: false, actualDurationMin: null, feedbackStatus: "unknown", rpe: null },
+    { id: "import", matchedPlanId: "plan", date, completed: true, actualDurationMin: 45, feedbackStatus: "completed", rpe: 9 },
+  ];
+  const evidence = cycleActivityEvidence(rows, options.startKey, "UTC");
+  assert.equal(evidence.reportedSessions, 1); assert.equal(evidence.reportedMinutes, 45);
+  assert.equal(evidence.unknownDurationSessions, 0); assert.deepEqual(evidence.protectedDays, [options.startKey]);
+  assert.equal(evidence.recoveryReview, true);
+  assert.ok(!shapeTrainingCycle(bounded, { ...options, protectedDays: evidence.protectedDays })[0].sessions.some(session => session.daySlot === 0));
+  assert.deepEqual(cycleActivityEvidence([...rows].reverse(), options.startKey, "UTC"), evidence);
+});
+
+test("matched partial and completed reports merge known duration without duplicate sessions and retain all actual dates", () => {
+  const previous = addDaysKey(options.startKey, -1);
+  const rows = [
+    { id: "plan", date: localDate(previous, "UTC"), completed: false, actualDurationMin: null, feedbackStatus: "partial", rpe: 9 },
+    { id: "import", matchedPlanId: "plan", date: localDate(options.startKey, "UTC"), completed: true, actualDurationMin: 45, feedbackStatus: "completed", rpe: 3 },
+    { id: "duplicate", matchedPlanId: "plan", date: localDate(options.startKey, "UTC"), completed: true, actualDurationMin: 40, feedbackStatus: "completed", rpe: 4 },
+  ];
+  const evidence = cycleActivityEvidence(rows, options.startKey, "UTC");
+  assert.equal(evidence.reportedSessions, 1); assert.equal(evidence.reportedMinutes, 45);
+  assert.equal(evidence.unknownDurationSessions, 0); assert.equal(evidence.recoveryReview, true);
+  assert.deepEqual(evidence.protectedDays, [previous, options.startKey]);
+  const unknown = cycleActivityEvidence(rows.map(row => ({ ...row, actualDurationMin: null })), options.startKey, "UTC");
+  assert.equal(unknown.reportedSessions, 1); assert.equal(unknown.reportedMinutes, null); assert.equal(unknown.unknownDurationSessions, 1);
+});
+
+test("matching chains and missing planned rows still count one actual session and keep unrelated work separate", () => {
+  const date = localDate(options.startKey, "UTC");
+  const rows = [
+    { id: "a", matchedPlanId: "missing-plan", date, completed: true, actualDurationMin: 30, feedbackStatus: "completed", rpe: 3 },
+    { id: "b", matchedPlanId: "a", date, completed: true, actualDurationMin: 30, feedbackStatus: "completed", rpe: 3 },
+    { id: "c", date, completed: false, actualDurationMin: null, feedbackStatus: "substituted", rpe: 8 },
+  ];
+  const evidence = cycleActivityEvidence(rows, options.startKey, "UTC");
+  assert.equal(evidence.reportedSessions, 2); assert.equal(evidence.reportedMinutes, 30);
+  assert.equal(evidence.unknownDurationSessions, 1); assert.equal(evidence.recoveryReview, true);
+  assert.deepEqual(cycleActivityEvidence([...rows].reverse(), options.startKey, "UTC"), evidence);
+});

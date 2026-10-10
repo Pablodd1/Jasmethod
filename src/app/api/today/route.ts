@@ -7,7 +7,7 @@ import { readIntervalsReceipt } from "@/lib/intervals-delivery";
 import {personalizedDailyMotivation} from "@/lib/reference";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
-import { dayBounds, dateKey } from "@/lib/dates";
+import { dayBounds, dateKey, addDaysKey } from "@/lib/dates";
 import { estimateIf, estimateDistanceKm } from "@/lib/prescription";
 import { estimateTss } from "@/lib/fitness";
 import {
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
-  const [allWorkouts, race, connectors, checkin, restDay, activePlan] = await Promise.all([
+  const [allWorkouts, race, connectors, checkin, restDay, activePlan, eventToday] = await Promise.all([
     prisma.workout.findMany({
       where: {
         userId: user.id,
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
       orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
     }),
     prisma.race.findFirst({
-      where: { userId: user.id, date: { gte: start } },
+      where: { userId: user.id, date: { gte: new Date(`${dateKey(start,user.timezone)}T00:00:00Z`) } },
       orderBy: [{ priority: "asc" }, { date: "asc" }],
     }),
     prisma.connector.findMany({
@@ -47,8 +47,9 @@ export async function GET(req: Request) {
     prisma.dailyCheckin.findUnique({
       where: { userId_date: { userId: user.id, date: start } },
     }),
-    prisma.planDay.findFirst({ where: { plan: { userId: user.id, status: "active" }, date: { gte: start, lt: end }, dayOff: true }, select: { id: true } }),
+    prisma.planDay.findFirst({ where: { plan: { userId: user.id, status: "active" }, date: { gte: start, lt: end }, OR:[{dayOff:true},{focus:"event"}] }, select: { id: true, dayOff:true, focus:true } }),
     prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: { createdAt: "desc" }, select: { id:true, name:true, startDate:true, weeks:true, raceDate:true } }),
+    prisma.race.findFirst({where:{userId:user.id,date:{gte:new Date(`${key}T00:00:00Z`),lt:new Date(`${addDaysKey(key,1)}T00:00:00Z`)}},select:{id:true}}),
   ]);
 
   const workouts = allWorkouts.filter(w => w.planned);
@@ -112,6 +113,7 @@ export async function GET(req: Request) {
       return {
         id: w.id,
         revision: canonical.revision,
+        environment: canonical.environment,
         intervalsPublication: w.deliveryProvider === "intervals" ? (() => {
           const receipt = readIntervalsReceipt(w.deliveryId);
           return receipt ? { status: receipt.status, revisionMatches: receipt.revision === canonical.revision, deviceReceived: false } : { status: "legacy", revisionMatches: false, deviceReceived: false };
@@ -149,8 +151,9 @@ export async function GET(req: Request) {
     });
     let recoveryAnswers = null;
     try { const parsed = checkin ? JSON.parse(checkin.answers || "null") : null; if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) recoveryAnswers = parsed; } catch { /* Missing safety remains unknown. */ }
-    const plannedRest = !!restDay || (!!workouts.length && workouts.every(w => w.planDay?.dayOff));
-    const recovery = dailyRecoveryContext({ plannedRest, sessions, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
+    const eventDay = !!eventToday || restDay?.focus === "event" || !!(user.profile?.raceDate && dateKey(user.profile.raceDate,user.timezone)===key);
+    const plannedRest = !eventDay && (!!restDay?.dayOff || (!!workouts.length && workouts.every(w => w.planDay?.dayOff)));
+    const recovery = dailyRecoveryContext({ plannedRest, eventDay, sessions, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     const visibleConnectors = connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled());
     return Response.json({
       recovery,
@@ -196,7 +199,7 @@ export async function GET(req: Request) {
         ? {
             name: race.name,
             daysAway: Math.round(
-              (Date.parse(dateKey(race.date, user.timezone)) -
+              (Date.parse(race.date.toISOString().slice(0,10)) -
                 Date.parse(key)) /
                 86400000,
             ),

@@ -13,22 +13,25 @@ import * as science from "./science";
 import * as adaptive from "./adaptive";
 import * as doubleDay from "./double-day";
 import * as anchors from "./anchor-evidence";
+import * as cycleEvents from "./cycle-events";
+import * as cycleReview from "./cycle-review";
 function fixture(timezone="UTC") {
   const today=dates.dateKey(new Date(),timezone);
   const profile={goal:"run-only",experience:"beginner",weeklyHours:3,trainingWindow:"any"};
   const setup=setupHelpers.parsePlanningSetup({adultConfirmed:true,profileConfirmed:true,goalDescription:"Comfortable running",baselineWeeklyMinutes:120,baselineObservedAt:today,interruptions:"none",restrictions:"none",qualifiedReview:"none_needed",trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:45,equipmentAccess:"Running shoes and a path",planWeeks:12},new Date(),timezone);
-  const state:any={plans:[],activity:[],races:[],created:[],superseded:[],audits:[],txActivity:null};
+  const state:any={plans:[],activity:[],races:[],created:[],superseded:[],audits:[],txActivity:null,txRaces:null,transactionConflict:false};
   class ApiError extends Error {constructor(message:string,public status=400){super(message)}}
   const tx={
+    race:{findMany:async()=>state.txRaces??state.races},
     athleteProfile:{findUnique:async()=>profile},
     workout:{findMany:async()=>state.txActivity??state.activity,updateMany:async(query:any)=>{state.superseded.push(query);return{count:0}}},
     benchmarkTest:{findMany:async()=>[]},
     auditLog:{findMany:async()=>[],create:async({data}:any)=>{state.audits.push(data);return data}},
     trainingPlan:{findMany:async()=>state.plans,updateMany:async()=>({count:state.plans.length}),create:async({data}:any)=>{state.created.push(data);state.plans=[{id:"saved-cycle"}];return {...data,id:"saved-cycle",days:data.days.create.map((day:any)=>({...day,sessions:day.sessions.create}))}}}};
-  const deps:Record<string,any>={"@/lib/training-cycle":cycle,"@/lib/planning-bounds":bounds,"@/lib/planning-setup":setupHelpers,"@/lib/planning-target":target,"@/lib/dates":dates,"@/lib/science":science,"@/lib/adaptive":adaptive,"@/lib/double-day":doubleDay,"@/lib/anchor-evidence":anchors,"node:crypto":crypto,
+  const deps:Record<string,any>={"@/lib/training-cycle":cycle,"@/lib/cycle-events":cycleEvents,"@/lib/cycle-review":cycleReview,"@/lib/planning-bounds":bounds,"@/lib/planning-setup":setupHelpers,"@/lib/planning-target":target,"@/lib/dates":dates,"@/lib/science":science,"@/lib/adaptive":adaptive,"@/lib/double-day":doubleDay,"@/lib/anchor-evidence":anchors,"node:crypto":crypto,
     "next/server":{NextResponse:Response},"@/lib/profile-service":{profileRevision:(p:any)=>JSON.stringify(p)},"@/lib/planning-setup-store":{readPlanningSetup:async()=>({setup,revision:"setup-v1"})},
     "@/lib/access":{ApiError,trainingAccess:async()=>({athlete:{id:"athlete",timezone,profile},actor:{id:"athlete"}}),errorResponse:(error:any)=>Response.json({error:error.message},{status:error.status??500})},
-    "@/lib/db":{prisma:{...tx,race:{findMany:async()=>state.races},workout:{...tx.workout,findMany:async()=>state.activity},$transaction:async(fn:any)=>fn(tx)}}};
+    "@/lib/db":{prisma:{...tx,race:{findMany:async()=>state.races},workout:{...tx.workout,findMany:async()=>state.activity},$transaction:async(fn:any)=>{if(state.transactionConflict)throw {code:"P2034"};return fn(tx)}}}};
   const source=ts.transpileModule(fs.readFileSync("src/app/api/plan/generate/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const output:any={exports:{}};
   vm.runInNewContext(source,{module:output,exports:output.exports,require:(name:string)=>{if(name in deps)return deps[name];throw Error(`Unmocked ${name}`)},Response,Request,console:{error:()=>{}}});
@@ -61,4 +64,45 @@ test("stored UTC calendar-day race and explicitly entered race keep the intended
 test("swimming cycle provenance is a field-test reference, not measured lactate threshold",()=>{
   const source=fs.readFileSync("src/app/api/plan/generate/route.ts","utf8");
   assert.match(source,/label:"Swimming CSS reference", value:profile.swimPaceBase, source:anchors.swimPaceBase \? "swim_field_test_reference"/);
+});
+
+test("event edits invalidate preview and transactional event changes cannot commit",async()=>{
+  for (const duringTransaction of [false,true]) {
+    const {state,run,today}=fixture();
+    state.races=[{id:"race",name:"A event",priority:1,date:new Date(`${dates.addDaysKey(today,42)}T00:00:00Z`)}];
+    const draft=await(await run()).json();
+    const changed=[{...state.races[0],name:"Changed event",priority:2}];
+    if(duringTransaction) state.txRaces=changed; else state.races=changed;
+    const response=await run({preview:false,previewToken:draft.previewToken});
+    assert.equal(response.status,409);assert.equal(state.created.length,0);
+  }
+});
+test("all event days protected, recent race retained, close event tradeoff needs athlete agreement",async()=>{
+  const {state,run,today}=fixture("America/New_York");
+  state.races=[[-2,3],[35,1],[39,2],[65,3]].map(([offset,priority],i)=>({id:`event-${i}`,name:`Event ${i}`,priority,date:new Date(`${dates.addDaysKey(today,offset)}T00:00:00Z`)}));
+  const response=await run();assert.equal(response.status,200);const draft=await response.json();
+  assert.equal(draft.preview.cycle.events.events.length,4);
+  assert.equal(draft.eventTradeoffAgreementRequired,true);
+  for(const row of state.races.filter((r:any)=>r.date.toISOString().slice(0,10)>=today)) {
+    const key=row.date.toISOString().slice(0,10);
+    assert.ok(!draft.preview.weeksPreview.some((week:any,index:number)=>week.sessions.some((s:any)=>dates.addDaysKey(today,index*7+s.daySlot)===key)));
+  }
+  assert.equal((await run({preview:false,previewToken:draft.previewToken})).status,422);
+  assert.equal(state.created.length,0);
+  assert.equal((await run({preview:false,previewToken:draft.previewToken,confirmEventTradeoffs:true})).status,200);
+  for(const day of state.created[0].days.create.filter((day:any)=>day.focus==="event")) { assert.equal(day.dayOff,false);assert.equal(day.sessions.create.length,0);assert.match(day.notes,/Participation and recovery are not assumed/); }
+});
+
+test("distinct profile, saved and explicit event dates all remain protected",async()=>{
+ const {state,run,today,profile}=fixture();
+ (profile as any).raceDate=dates.localDate(dates.addDaysKey(today,60),"UTC");
+ state.races=[{id:"stored",name:"Saved race",priority:3,date:new Date(`${dates.addDaysKey(today,35)}T00:00:00Z`)}];
+ const response=await run({raceDate:dates.addDaysKey(today,80)});assert.equal(response.status,200);const draft=await response.json();
+ assert.deepEqual(draft.preview.cycle.events.events.map((event:any)=>event.dateKey),[35,60,80].map(n=>dates.addDaysKey(today,n)));
+ assert.equal(draft.preview.cycle.events.events[0].priority,"C");
+});
+
+test("serialization conflict reports actionable preview conflict without retrying or fabricated success",async()=>{
+ const {state,run}=fixture();const draft=await(await run()).json();state.transactionConflict=true;
+ const response=await run({preview:false,previewToken:draft.previewToken});assert.equal(response.status,409);assert.match((await response.json()).error,/fresh preview/);assert.equal(state.created.length,0);
 });

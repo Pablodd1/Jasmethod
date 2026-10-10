@@ -47,13 +47,26 @@ export default function RacesPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          date: form.date ? new Date(form.date + "T00:00:00").toISOString() : undefined,
+          date: form.date ? `${form.date}T00:00:00.000Z` : undefined,
         }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed");
       setForm(empty); await load();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+
+  async function saveTiming(event: React.FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    setBusy(true); setErr("");
+    try {
+      const response = await fetch("/api/races", {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,date:values.get("date"),priority:Number(values.get("priority"))})});
+      const result = await response.json();
+      if(!response.ok) throw Error(result.error || "Could not save event details");
+      await load();
+    } catch(error) {setErr(error instanceof Error ? error.message : "Could not save event details");}
+    finally {setBusy(false);}
   }
 
   async function saveResult(id: string, value: string) {
@@ -100,7 +113,9 @@ export default function RacesPage() {
           <Gauge className="w-4 h-4" aria-hidden="true" /> {lang === "es" ? "AdvanzedRacing · Escenarios" : "AdvanzedRacing · Scenarios"}
         </Link>
 
-        {err && <div className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
+        {err && <div role="alert" className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
+
+        <p role="status" className="text-sm rounded-lg border p-3">{lang === "es" ? "Después de cambiar una fecha o prioridad, revisa y confirma una nueva vista previa del ciclo. El plan guardado no se reemplaza automáticamente y no se añade entrenamiento en el día del evento." : "After changing an event date or priority, review and confirm a fresh cycle preview. Your saved plan is not automatically replaced, and no added workout is allowed on the event day."} <Link href="/training" className="underline">{lang === "es" ? "Revisar ciclo actualizado" : "Review updated cycle"}</Link></p>
 
         {/* Races list */}
         {!loading && races.length > 0 && (
@@ -111,13 +126,18 @@ export default function RacesPage() {
                   <div>
                     <div className="font-display font-bold flex items-center gap-2"><Flag className="w-4 h-4 text-coral-500" /> {r.name}</div>
                     <div className="text-xs text-slate-500">
-                      {r.distance} · {new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                      {r.distance} · {new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone:"UTC" })}
                       {r.startTime ? ` · ${r.startTime}` : ""}
                       {r.priority === 1 ? " · A-race" : ""}
                     </div>
                   </div>
                   <button onClick={() => del(r.id)} className="text-slate-400 hover:text-coral-600"><Trash2 className="w-4 h-4" /></button>
                 </div>
+                <form key={`${r.id}-${r.date}-${r.priority}`} onSubmit={event=>saveTiming(event,r.id)} className="mt-3 flex flex-wrap items-end gap-2">
+                  <label className="text-sm">{lang === "es" ? "Fecha del evento" : "Event date"}<input name="date" type="date" className="input" defaultValue={String(r.date).slice(0,10)} required/></label>
+                  <label className="text-sm">{lang === "es" ? "Prioridad" : "Priority"}<select name="priority" className="input" defaultValue={String(r.priority)}><option value="1">A</option><option value="2">B</option><option value="3">C</option></select></label>
+                  <button className="btn-secondary min-h-11" disabled={busy}>{lang === "es" ? "Guardar fecha y prioridad" : "Save date and priority"}</button>
+                </form>
                 <div className="mt-2 flex flex-wrap items-end gap-2">
                   <div>
                     <label className="label !text-[10px] !mb-0.5">{lang === "es" ? "Resultado real (min)" : "Actual result (min)"}</label>

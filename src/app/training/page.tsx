@@ -5,6 +5,7 @@ import { TrainingCycleOverview } from "@/components/training-cycle-overview";
 import { TargetProgressPanel } from "@/components/target-progress-panel";
 import { planningGoal } from "@/lib/planning-setup";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Dumbbell,
   Waves,
@@ -69,6 +70,7 @@ export default function TrainingPage() {
   const [error, setError] = useState("");
   const [planningReadiness, setPlanningReadiness] = useState<any>(null);
   const [doubleDayConfirmed,setDoubleDayConfirmed]=useState(false);
+  const [eventTradeoffsConfirmed,setEventTradeoffsConfirmed]=useState(false);
   const [preview, setPreview] = useState<any>(null);
   const [zones, setZones] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
@@ -113,20 +115,27 @@ export default function TrainingPage() {
     if (user) load();
   }, [user]);
 
+  function updatePlanForm(next: typeof form) {
+    setForm(next);
+    setPreview(null);
+    setDoubleDayConfirmed(false);
+    setEventTradeoffsConfirmed(false);
+  }
+
   async function generate(e?: React.FormEvent, confirmed = false) {
     e?.preventDefault();
-    if (!planningReadiness?.ready) return;
+    if (!planningReadiness?.ready || generating) return;
     setGenerating(true);
     setError("");
     try {
       const res = await fetch("/api/plan/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({...form, confirmDoubleDay:confirmed&&doubleDayConfirmed, preview: !confirmed, previewToken: confirmed ? preview?.previewToken : undefined}),
+        body: JSON.stringify({...form, confirmDoubleDay:confirmed&&doubleDayConfirmed, confirmEventTradeoffs:confirmed&&eventTradeoffsConfirmed, preview: !confirmed, previewToken: confirmed ? preview?.previewToken : undefined}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      if (!confirmed) { setDoubleDayConfirmed(false); setPreview(data); return; }
+      if (!confirmed) { setEventTradeoffsConfirmed(false); setDoubleDayConfirmed(false); setPreview(data); return; }
       setPreview(null);
       setSavedMessage(es ? "Tu ciclo estructurado está guardado. Abre Hoy para un nuevo chequeo o elige un mes. Se conserva tu historial completado." : "Your structured training cycle is saved. Open Today for a fresh check-in, or choose a month below. Completed history is retained.");
       await load();
@@ -287,7 +296,7 @@ export default function TrainingPage() {
                 id="plan-goal"
                 className="input"
                 value={form.distance}
-                onChange={(e) => setForm({ ...form, distance: e.target.value })}
+                onChange={(e) => updatePlanForm({ ...form, distance: e.target.value })}
               >
                 <option value="">Choose your actual goal</option>
                 <option value="sprint">Sprint (750m / 20km / 5km)</option>
@@ -307,7 +316,7 @@ export default function TrainingPage() {
                 id="plan-weeks"
                 className="input"
                 value={form.weeks}
-                onChange={(e) => setForm({ ...form, weeks: e.target.value })}
+                onChange={(e) => updatePlanForm({ ...form, weeks: e.target.value })}
               >
                 <option value="">Choose horizon</option>
                 {[4, 6, 8, 12, 16, 20, 24, 30].map((w) => (
@@ -325,7 +334,7 @@ export default function TrainingPage() {
                 className="input"
                 value={form.startDate}
                 onChange={(e) =>
-                  setForm({ ...form, startDate: e.target.value })
+                  updatePlanForm({ ...form, startDate: e.target.value })
                 }
               />
             </div>
@@ -336,7 +345,7 @@ export default function TrainingPage() {
                 className="input"
                 value={form.trainingWindow}
                 onChange={(e) =>
-                  setForm({ ...form, trainingWindow: e.target.value })
+                  updatePlanForm({ ...form, trainingWindow: e.target.value })
                 }
               >
                 <option value="">Auto (use profile)</option>
@@ -361,7 +370,7 @@ export default function TrainingPage() {
                 step={5}
                 className="w-full accent-cyan-600"
                 value={form.easyPct}
-                onChange={(e) => setForm({ ...form, easyPct: e.target.value })}
+                onChange={(e) => updatePlanForm({ ...form, easyPct: e.target.value })}
               />
               <div className="text-[10px] text-slate-400 mt-0.5">
                 % of weekly minutes in Z1-Z2 (easy). 70 = 70/30.
@@ -387,7 +396,7 @@ export default function TrainingPage() {
             {preview.preview.recoveryPolicy && <div className="my-3 rounded-lg border border-ink-200 bg-paper p-3 space-y-2">
               <p><strong>Recovery planning:</strong> {preview.preview.recoveryPolicy.minimumRestDays === 0 ? "No fixed minimum off-days for a professional profile. This does not require seven training days." : `At least ${preview.preview.recoveryPolicy.minimumRestDays} planned off-day${preview.preview.recoveryPolicy.minimumRestDays === 1 ? "" : "s"} per seven-day plan block for your current experience level.`}</p>
               <p className="text-sm">These are coaching defaults, not universal research-established off-day counts. Your unavailable days, symptoms, fatigue and coach review can require more rest. Review the dates below before confirming.</p>
-              <p className="text-sm"><strong>First week off-days:</strong> {preview.preview.weeksPreview[0]?.restDaySlots?.length ? preview.preview.weeksPreview[0].restDaySlots.map((slot:number)=>addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),slot)).join(", ") : "None fixed in this preview; add rest whenever needed."} No compulsory workout is assigned on these dates. Planned rest does not count as confirmed completed rest.</p>
+              <p className="text-sm"><strong>First week off-days:</strong> {preview.preview.weeksPreview[0]?.restDaySlots?.length ? preview.preview.weeksPreview[0].restDaySlots.map((slot:number)=>addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),slot)).filter((key:string)=>!preview.preview.weeksPreview[0].eventDays?.includes(key)).join(", ") || (es ? "Solo fechas de evento protegidas" : "Protected event dates only") : "None fixed in this preview; add rest whenever needed."} No compulsory workout is assigned on these dates. Planned rest does not count as confirmed completed rest.</p>
             </div>}
             <p>{preview.warning}</p>
             {preview.preview.cycle && <div className="my-3 space-y-2 text-sm"><p><strong>Assessment:</strong> {preview.preview.cycle.assessment}</p><p><strong>Recent training:</strong> {preview.preview.cycle.activity.reportedSessions} performed sessions recorded; missing reports are not counted as zero. {preview.preview.cycle.activity.recoveryReview ? "Recent effort or incomplete work calls for a reduced opening week." : "Daily recovery still needs review."}</p><p>Planned week totals: {preview.preview.cycle.weeks.map((week:any) => `W${week.week}: ${week.totalMinutes} min`).join(" · ")}</p></div>}
@@ -398,15 +407,26 @@ export default function TrainingPage() {
               <ul className="mt-2 space-y-2">{Array.from({length:7},(_,slot)=>{
                 const localDay=addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+slot);
                 const sessions=week.sessions.filter((session:any)=>session.daySlot===slot);
+                const isEvent=week.eventDays?.includes(localDay);
                 const isOff=week.restDaySlots?.includes(slot) || sessions.length===0;
                 return <li key={slot} className="border-l-2 border-ink-200 pl-3">
-                  <strong>{localDay}{isOff?" · Planned off-day":""}</strong>
-                  {isOff?<p className="text-sm">No compulsory workout. Optional recovery guidance remains separate; record only what you actually do.</p>:sessions.map((session:any,index:number)=><p key={index}>{session.startTime ? `${session.startTime} · ` : ""}{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.movedFromSlot!==undefined ? `Moved from ${addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+session.movedFromSlot)}. ` : ""}{session.description}{session.steps?.length > 0 && <span className="block mt-1 text-xs">{session.steps.map((step:any) => `${step.name}: ${step.reps ? `${step.reps} reps (time allocation estimated)` : `${Math.round(step.seconds / 6) / 10} min`} · ${step.zone}${trustedCycleMovementGuidance(step, es ? "es" : "en") ? `. ${trustedCycleMovementGuidance(step, es ? "es" : "en")}` : ""}`).join(" → ")}</span>}</p>)}
+                  <strong>{localDay}{isEvent ? (es ? " · Evento" : " · Event") : isOff?" · Planned off-day":""}</strong>
+                  {isOff?<p className="text-sm">{isEvent ? (es ? "Día protegido: no se añade entrenamiento. Registra solo lo que realices; no se presume descanso ni participación." : "Protected event day: no added workout. Record only what you do; neither rest nor participation is assumed.") : "No compulsory workout. Optional recovery guidance remains separate; record only what you actually do."}</p>:sessions.map((session:any,index:number)=><p key={index}>{session.startTime ? `${session.startTime} · ` : ""}{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.movedFromSlot!==undefined ? `Moved from ${addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+session.movedFromSlot)}. ` : ""}{session.description}{session.steps?.length > 0 && <span className="block mt-1 text-xs">{session.steps.map((step:any) => `${step.name}: ${step.reps ? `${step.reps} reps (time allocation estimated)` : `${Math.round(step.seconds / 6) / 10} min`} · ${step.zone}${trustedCycleMovementGuidance(step, es ? "es" : "en") ? `. ${trustedCycleMovementGuidance(step, es ? "es" : "en")}` : ""}`).join(" → ")}</span>}</p>)}
                 </li>;
               })}</ul>
             </div>)}</details>
+            {preview.preview.cycle?.events?.events?.length > 0 && <div className="my-3 text-sm space-y-2">
+              <p className="font-semibold">{es ? "Eventos y recuperación" : "Events and recovery"}</p>
+              <Link href="/races" className="underline">{es ? "Revisar eventos y prioridades" : "Review events and priorities"}</Link>
+              <ul>{preview.preview.cycle.events.events.map((event:any)=><li key={event.id}>{event.dateKey} · {event.name || (es ? "Evento" : "Event")} · {event.priority}</li>)}</ul>
+              <p>{es ? "A prioriza la preparación; B y C usan reducciones más breves (14/7/3 días de preparación; recuperación inicial de 7–14 días según el evento). Son criterios de entrenamiento, no garantías de recuperación. Cada día de evento queda libre de entrenamiento añadido." : "A prioritizes preparation; B and C use shorter reductions (14/7/3 preparation days; initial recovery of 7–14 days by event). These are coaching policies, not recovery guarantees. Every event day is protected from added training."}</p>
+              {preview.preview.cycle.events.warnings?.length > 0 && <ul role="status" className="space-y-1">{preview.preview.cycle.events.warnings.map((warning:any,index:number)=><li key={index}>{es ? `${warning.eventIds.map((id:string)=>preview.preview.cycle.events.events.find((event:any)=>event.id===id)?.name || id).join(" / ")}: ${warning.code === "recent_event" ? "evento reciente; revisar recuperación antes de retomar" : warning.code === "short_preparation" ? "menos de cuatro semanas de preparación; no se garantiza estar listo" : "preparación y recuperación se superponen; revisar prioridades sin prometer varios picos de forma"}.` : warning.message}</li>)}</ul>}
+
+            </div>}
+            {preview.preview.cycle?.baselineReviews?.length > 0 && <details className="my-3 text-sm"><summary className="cursor-pointer underline">{es ? "Referencias y revisión por deporte" : "Sport-specific references and reviews"}</summary><ul className="mt-2 space-y-2">{preview.preview.cycle.baselineReviews.map((review:any)=><li key={review.sport}><strong>{review.sport}</strong>: {review.observedAt || "—"} · {es ? "Revisión" : "Review"}: {review.reviewDueAt || (es ? "pendiente" : "due")} · {es ? "Caduca" : "Expires"}: {review.expiresAt || "—"}. {es ? "Observaciones cómodas dentro del tiempo previsto; no renuevan referencias ni requieren pruebas máximas." : "Comfortable observations stay within planned minutes; they never renew anchors or require maximal tests."}</li>)}</ul></details>}
+            {preview.eventTradeoffAgreementRequired && <label className="flex gap-2 items-start text-sm my-3"><input type="checkbox" checked={eventTradeoffsConfirmed} onChange={e=>setEventTradeoffsConfirmed(e.target.checked)}/>{es ? "He revisado mis eventos y acepto este plan conservador con preparación y recuperación limitadas, o puedo cancelar y cambiar las prioridades." : "I reviewed my events and accept this conservative plan with limited preparation and recovery, or I can cancel and change priorities."}</label>}
             {preview.doubleDayAgreementRequired && <label className="flex gap-2 items-start text-sm my-3"><input type="checkbox" checked={doubleDayConfirmed} onChange={e=>setDoubleDayConfirmed(e.target.checked)}/>I reviewed both sessions, dates and times for the optional pairs. I agree to report the first and complete a fresh check-in before the second; I can decline or skip without catch-up work.</label>}
-            <div className="flex gap-3"><button type="button" className="btn-primary" disabled={generating||(preview.doubleDayAgreementRequired&&!doubleDayConfirmed)} onClick={()=>generate(undefined,true)}>{es ? "Confirmar y guardar este plan" : "Confirm and save this plan"}</button><button type="button" className="btn-secondary" onClick={()=>setPreview(null)}>{es ? "Cancelar vista previa" : "Cancel preview"}</button></div>
+            <div className="flex gap-3"><button type="button" className="btn-primary" disabled={generating||(preview.doubleDayAgreementRequired&&!doubleDayConfirmed)||(preview.eventTradeoffAgreementRequired&&!eventTradeoffsConfirmed)} onClick={()=>generate(undefined,true)}>{es ? "Confirmar y guardar este plan" : "Confirm and save this plan"}</button><button type="button" className="btn-secondary" onClick={()=>setPreview(null)}>{es ? "Cancelar vista previa" : "Cancel preview"}</button></div>
           </section>}
           {error && (
             <div role="alert" className="text-sm text-coral-600 mt-3 bg-coral-50 rounded-lg px-3 py-2">

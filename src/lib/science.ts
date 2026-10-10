@@ -55,7 +55,13 @@ export const POWER_ZONES: Zone[] = [
   { key: "z7", name: "Neuromuscular", pctLow: 1.51, pctHigh: 2.0, description: "Max sprints" },
 ];
 
-// ---- Pace zones anchored on threshold pace (sec/km or sec/100m) ----
+// ---- Running pace reference bands anchored on threshold pace (sec/km) ----
+// pctLow/pctHigh are multipliers of TIME per distance, not speed percentages.
+// Larger seconds mean slower running; easy zones therefore multiply by >1.
+// These are JMM coaching reference bands, not individually measured domains.
+// Canonical-session resolves an executable representative target within each
+// band (1.4, 1.2, 1.08, 1, .95, .9, .85). The table is explanatory only:
+// an existing explicit target always wins and absent/stale anchors stay open.
 export const PACE_ZONES: Zone[] = [
   { key: "z1", name: "Recovery", pctLow: 1.25, pctHigh: 1.6, description: "Much slower than T-pace" },
   { key: "z2", name: "Endurance", pctLow: 1.1, pctHigh: 1.25, description: "Aerobic base" },
@@ -125,7 +131,8 @@ export function estimateVo2maxFromHr(maxHr: number, restingHr: number): number {
 }
 
 // ---- Critical Swim Speed (CSS) — MyProCoach 400m + 200m test ----
-// CSS = (D400 - D200) / (T400 - T200) in m/s; ≈ pace for a maximal 1500m TT.
+// CSS = (D400 - D200) / (T400 - T200) in m/s. This is a stroke/test-specific
+// field estimate, not a directly measured threshold or guaranteed 1500m pace.
 export function cssFromTestTimes(t400sec: number, t200sec: number): number {
   if (t400sec <= t200sec) return 0;
   const speedMs = 200 / (t400sec - t200sec);
@@ -190,7 +197,7 @@ export function buildZoneTable(opts: {
   if (thresholdPaceSecPerKm) {
     pace = {} as Record<ZoneKey, { low: number; high: number }>;
     for (const z of PACE_ZONES) {
-      pace[z.key] = { high: Math.round(thresholdPaceSecPerKm / z.pctLow), low: Math.round(thresholdPaceSecPerKm / z.pctHigh) };
+      pace[z.key] = { low: Math.round(thresholdPaceSecPerKm * z.pctLow), high: Math.round(thresholdPaceSecPerKm * z.pctHigh) };
     }
   }
 

@@ -14,7 +14,7 @@ const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "
 
 // Each delivery resolves the same current athlete-scoped object as the screen
 // and FIT. A future or unsafe session cannot fall back to the original plan.
-export async function trainingReminder(user: { id: string; name: string; timezone: string; profile?: any }, key: string) {
+export async function trainingReminder(user: { id: string; name: string; timezone: string; language?: string; profile?: any }, key: string) {
   const sessions = await prisma.workout.findMany({
     where: { userId: user.id, planned: true, completed: false,
       date: { gte: localDate(key, user.timezone), lt: localDate(addDaysKey(key, 1), user.timezone) } },
@@ -40,7 +40,7 @@ export async function trainingReminder(user: { id: string; name: string; timezon
       startTime: w.startTime, appUrl: `${base}/daily?sessionId=${encodeURIComponent(c.id)}`,
       steps: c.steps.map(st => ({ name: st.name, seconds: st.seconds, reps: st.reps,
         endpoint: st.endpoint, targetLabel: st.target.label, zone: st.zone, phase: st.phase, note: st.note })),
-      fuel, post };
+      fuel, post, environment: c.environment, language: user.language };
     fmt.push(s);
     details.push([`${c.title} · revision ${c.revision.slice(0, 12)}`,
       ...(s.steps || []).map(st => `${st.phase}: ${st.name} · ${stepEndpointLabel(st)} · ${st.targetLabel}${st.note ? `\n${st.note}` : ""}`),
