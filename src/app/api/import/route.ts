@@ -5,14 +5,12 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseOuraExport } from "@/lib/oura-import";
 import {
-  parseTcx,
   parseAppleHealth,
   parseWhoopCsv,
-  parseGarminActivitiesCsv,
 } from "@/lib/importers";
 
-// POST /api/import — multipart upload. source: tcx | garmin | coros (all parsed
-// as TCX), apple | applehealth (Apple Health export.xml), whoop (cycle CSV).
+// Legacy multipart imports for Apple/WHOOP/Oura. Garmin/TCX files require
+// the reviewed preview/commit endpoints; direct writes are deliberately blocked.
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user)
@@ -42,25 +40,7 @@ export async function POST(req: Request) {
     let extra: Record<string, any> = {};
 
     if (src === "tcx") {
-      // Garmin uploads can be .tcx (single activity) OR the Activities.csv
-      // bulk export — detect by content so either file just works.
-      workouts = text.trimStart().startsWith("<")
-        ? parseTcx(text)
-        : parseGarminActivitiesCsv(text).map((a) => ({
-            date: a.date,
-            sport: a.sport,
-            title: a.title,
-            durationMin: a.durationMin,
-            distanceKm: a.distanceKm ?? undefined,
-            avgHr: a.avgHr ?? undefined,
-            maxHr: a.maxHr ?? undefined,
-            avgPower: a.avgPower ?? undefined,
-            np: a.np ?? undefined,
-            tss: a.tss ?? undefined,
-            calories: a.calories ?? undefined,
-            source: "garmin",
-            externalId: a.externalId,
-          }));
+      return NextResponse.json({ error: "Review Garmin CSV or TCX files before saving. Open Connections and use Preview activities.", reviewRequired: true, previewPath: "/api/import/garmin/preview" }, { status: 409 });
     } else if (src === "applehealth") {
       const ah = parseAppleHealth(text);
       workouts = ah.workouts;

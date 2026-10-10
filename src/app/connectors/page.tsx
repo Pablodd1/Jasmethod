@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Medal,
 } from "lucide-react";
+import { GarminImportPanel } from "@/components/garmin-import-panel";
 import { NativeDeviceStatus } from "@/components/daily-training/NativeDeviceStatus";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -310,16 +311,16 @@ export default function ConnectorsPage() {
           : es
             ? [
                 "Abre connect.garmin.com en Safari o en el navegador de un ordenador e inicia sesión. La exportación se hace en la web de Garmin Connect.",
-                "Para varias actividades: abre Actividades → Todas las actividades y elige Exportar CSV. El archivo contiene las actividades incluidas en esa exportación; no confirma todo tu historial.",
+                "Para varias actividades: abre Actividades → Todas las actividades y elige Exportar CSV. No uses el CSV de Informes ni la exportación de todos los datos de la cuenta. El archivo no confirma todo tu historial.",
                 "Abre una actividad y elige «Exportar a TCX» en el menú de exportación. «Exportar original» puede generar un FIT, que este importador no acepta.",
-                "Guarda el .tcx o Activities.csv en Archivos/Descargas. Vuelve aquí, elige el archivo y pulsa Importar. Límite: 40 MB; no subas ZIP ni FIT.",
+                "Guarda el .tcx o Activities.csv en Archivos/Descargas. Vuelve aquí y elige el archivo. Para CSV, confirma sus unidades y zona horaria; luego previsualiza y confirma antes de guardar. Límite: 10 MB y 1000 actividades por revisión; no subas ZIP ni FIT.",
                 "Revisa el resultado de la importación y vuelve a la configuración para revisar los datos disponibles. Un archivo de actividades no incluye necesariamente peso, zonas ni datos de recuperación.",
               ]
             : [
                 "Open connect.garmin.com in Safari or a computer browser and sign in. Export from the Garmin Connect website.",
-                "For several activities: open Activities → All Activities and choose Export CSV. This includes the activities in that export, not necessarily your complete history.",
+                "For several activities: open Activities → All Activities and choose Export CSV. Do not use Reports CSV or the all-data account export. The file does not confirm your complete history.",
                 'Open an activity and choose "Export to TCX" from its export menu. "Export Original" may produce a FIT file, which this importer does not accept.',
-                "Save the .tcx or Activities.csv in Files/Downloads. Return here, choose that file and press Import. Maximum 40 MB; ZIP and FIT are not accepted.",
+                "Save the .tcx or Activities.csv in Files/Downloads. Return here and choose the file. For CSV, confirm its units and time zone; then preview and confirm before saving. Maximum 10 MB and 1,000 activities per review; ZIP and FIT are not accepted.",
                 "Check the import result, then return to setup to review available data. Activity files do not necessarily include weight, zones or recovery data.",
               ];
       case "google_cal":
@@ -701,7 +702,8 @@ export default function ConnectorsPage() {
                       <RequestButton provider={p.id} label={p.name} lang={lang} />
                     </div>
                   )}
-                  {p.method === "upload" && (
+                  {p.method === "upload" && p.id === "garmin" && <GarminImportPanel lang={lang} onDone={load} />}
+                  {p.method === "upload" && p.id !== "garmin" && (
                     <div className="space-y-2">
                       <div className="flex flex-col sm:flex-row gap-2">
                         <input
@@ -711,11 +713,7 @@ export default function ConnectorsPage() {
                           aria-label={lang === "es" ? `Archivo de ${p.name}` : `${p.name} file`}
                           disabled={importing !== null}
                           accept={
-                            p.id === "garmin"
-                              ? ".tcx,.xml,.csv"
-                              : p.id === "apple"
-                                ? ".xml"
-                                : ".csv,.txt"
+                            p.id === "apple" ? ".xml" : ".csv,.txt"
                           }
                         />
                         <button
@@ -733,16 +731,12 @@ export default function ConnectorsPage() {
                       </div>
                       <div className="text-[10px] text-slate-400">
                         {lang === "es"
-                          ? p.id === "garmin"
-                            ? "Acepta TCX o Activities.csv de Garmin Connect (hasta 40 MB). Solo se importan las actividades válidas incluidas en el archivo; no confirma un historial completo."
-                            : p.id === "apple"
-                              ? "Acepta el export.xml de Apple Health."
-                              : "Acepta el CSV exportado de Whoop."
-                          : p.id === "garmin"
-                            ? "Accepts TCX or Garmin Connect Activities.csv (up to 40 MB). Only valid activities included in the file are imported; this does not confirm a complete history."
-                            : p.id === "apple"
-                              ? "Accepts the Apple Health export.xml."
-                              : "Accepts the CSV exported from Whoop."}
+                          ? p.id === "apple"
+                            ? "Acepta el export.xml de Apple Health."
+                            : "Acepta el CSV exportado de Whoop."
+                          : p.id === "apple"
+                            ? "Accepts the Apple Health export.xml."
+                            : "Accepts the CSV exported from Whoop."}
                       </div>
                     </div>
                   )}

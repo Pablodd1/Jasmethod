@@ -104,6 +104,9 @@ jobs:
       - name: Adaptive cycle, multi-event and baseline expiry acceptance
         run: NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs" node --import tsx scripts/jmm-adaptive-cycle-integration.ts
 
+      - name: Reviewed Garmin file import acceptance
+        run: NODE_OPTIONS="--require ./scripts/jmm-test-egress-guard.cjs" node --import tsx scripts/jmm-garmin-import-integration.ts
+
       - name: Persistent conversational coach acceptance
         run: npm run test:conversation
 
@@ -148,6 +151,7 @@ jobs:
             .local/jmm-followup-integration/*-decoded.json
             .local/jmm-telegram-webhook-integration/report.json
             .local/jmm-mobile-workflow/report.json
+            .local/jmm-garmin-import/api-report.json
             .local/jmm-conversation-integration/report.json
             .local/jmm-metrics-integration/report.json
             .local/jmm-recovery-integration/report.json
