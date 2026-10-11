@@ -1,3 +1,4 @@
+import { evidenceWorkout } from "./evidence-workouts";
 import { dayOffProtocolText } from "./day-off";
 import { postFuelPersonalized } from "./fueling";
 import { supplementAllowed } from "./supplement-db";
@@ -1085,7 +1086,7 @@ export function prescribeToday(opts: {
   if (session.protocol && !rest) {
     const budget = Math.min(session.durationMin * Math.min(1, adaptation.durationFactor), (opts.busyHrs || 0) >= 6 ? 25 : Infinity, opts.timeBudgetMin == null ? Infinity : Math.max(0, Math.floor(opts.timeBudgetMin)));
     const capped = Number(adaptation.intensityCap.slice(1)) < Number((session.intensity || "z2").slice(1));
-    const pausePower = ["speed", "power", "anaerobic-capacity"].includes(session.protocol.id) && adaptation.verdict !== "full";
+    const pausePower = (["speed", "power", "anaerobic-capacity"].includes(session.protocol.id) || !!evidenceWorkout(session.protocol.id)) && adaptation.verdict !== "full";
     if (!capped && !pausePower && adaptation.verdict !== "easy") {
       try {
         const p = buildProtocol(session.protocol, budget);

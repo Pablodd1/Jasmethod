@@ -1,3 +1,4 @@
+import { evidenceWorkout } from "./evidence-workouts";
 import { addDaysKey, dateKey } from "./dates";
 import { isDemanding, type ProtocolId } from "./protocols";
 
@@ -31,6 +32,7 @@ export function reviewProtocolSchedule(opts: {
   );
   const warnings: string[] = [],
     blocks: string[] = [];
+  if (evidenceWorkout(opts.protocolId) && !isDemanding(selected)) blocks.push("Reviewed interval recipes replace a familiar demanding session; they cannot upgrade an easy session into new intensity.");
   const hardEndurance = (w: Session) =>
     w.sport !== "strength" && isDemanding(w);
   const cap = opts.level === "beginner" ? 1 : 2;
@@ -71,6 +73,7 @@ export function reviewProtocolSchedule(opts: {
       (Date.parse(dateKey(opts.nextRace, timezone)) - Date.parse(key)) /
         86400000,
     );
+    if (days >= 0 && days <= 14 && evidenceWorkout(opts.protocolId)) blocks.push("Do not introduce this full-dose interval template within 14 days of a saved race. Retain familiar taper work reviewed in your existing plan; this is a conservative app rule, not a universal biological cutoff.");
     if (days >= 0 && days <= 14 && opts.protocolId !== "aerobic-base")
       warnings.push(
         `A race is ${days} days away. Use only familiar work at a reduced dose; avoid introducing a new stimulus in the taper.`,

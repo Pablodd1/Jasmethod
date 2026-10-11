@@ -50,7 +50,15 @@ function paceRefs(runPaceBase: number | null | undefined): Record<PaceKey, PaceR
 export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
-    const { start, end } = dayBounds(user.timezone);
+    const selected = new URL(req.url).searchParams.get("sessionId");
+    // Links may refer to another day or a rescheduled session. Resolve its date
+    // from an athlete-owned record, never from an untrusted date parameter.
+    if (selected !== null && (!selected || selected.length > 200)) return NextResponse.json({ error: "Invalid session ID" }, { status: 400 });
+    const selectedWorkout = selected ? await prisma.workout.findFirst({
+      where: { id: selected, userId: user.id, planned: true }, select: { date: true },
+    }) : null;
+    if (selected && !selectedWorkout) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    const { start, end } = dayBounds(user.timezone, selectedWorkout?.date);
     const [workouts, race] = await Promise.all([
       prisma.workout.findMany({
         where: { userId: user.id, date: { gte: start, lt: end }, planned: true },
@@ -62,10 +70,9 @@ export async function GET(req: Request) {
         orderBy: [{ priority: "asc" }, { date: "asc" }],
       }),
     ]);
-    const selected = new URL(req.url).searchParams.get("sessionId");
     const workout = selected ? workouts.find(w => w.id === selected) : workouts[0];
     if (!workout) return selected
-      ? NextResponse.json({ error: "Session not found for today" }, { status: 404 })
+      ? NextResponse.json({ error: "Session not found for this date" }, { status: 404 })
       : new NextResponse(null, { status: 204 });
     const resolved = await effectivePrescription(user.id, workout.id);
     if (!resolved) return NextResponse.json({ error: "Session is no longer available" }, { status: 404 });
@@ -127,7 +134,7 @@ export async function GET(req: Request) {
         focus: {
           title: "Arrive ready",
           items: [
-            canonical.verdict === "ready" ? "Check today's endpoints, targets and equipment before warming up." : canonical.reason,
+            canonical.verdict === "ready" ? "Check the session's endpoints, targets and equipment before warming up." : canonical.reason,
             sportPreparation(canonical.sport),
             race
               ? `Next race: ${race.name} — ${Math.max(0, Math.round((Date.parse(race.date.toISOString().slice(0,10)) - Date.parse(dateKey(workout.date, user.timezone))) / 86400000))} days out.`

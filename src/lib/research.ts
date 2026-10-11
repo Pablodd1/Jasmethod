@@ -1,3 +1,4 @@
+import { EVIDENCE_WORKOUTS } from "./evidence-workouts";
 // Legacy reference catalog: trials, reviews, consensus and expert practice.
 // This catalog does not establish that every JMM workout or dose is validated.
 // Use reviewed-evidence.ts for curated claim lineage. Population tags describe applicability, not recruited cohorts.
@@ -84,6 +85,17 @@ export const RESEARCH_SOURCES: ResearchSource[] = [
   { id: "aossm2023", claim: "youth strength training safe ~7-8+, supervised", ref: "AOSSM 2023, Youth Strength Training (position)", level: "B", population: "recreational" },
   { id: "nsca2022", claim: "youth RT: readiness-based, no max lifts to failure", ref: "NSCA Youth Performance & Fitness 2022 (position)", level: "B", population: "recreational" },
 ];
+
+// Reviewed additions remain traceable in the general research lookup as well
+// as the executable protocol workspace. Level A denotes human outcomes, not
+// individual efficacy or exact-dose validation of the JMM adaptation.
+RESEARCH_SOURCES.push(...EVIDENCE_WORKOUTS.map(workout => ({
+  id: `reviewed-${workout.id}`,
+  claim: `${workout.source.finding} ${workout.source.limitation} JMM execution uses disclosed effort adaptations.`,
+  ref: `${workout.source.title}; ${workout.source.url}`,
+  level: "A" as const,
+  population: "recreational" as const,
+})));
 
 export function sourcesFor(ids: string[]): ResearchSource[] {
   return RESEARCH_SOURCES.filter((s) => ids.includes(s.id));

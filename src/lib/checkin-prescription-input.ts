@@ -1,4 +1,5 @@
-import { TRAINING_PROTOCOLS, PROTOCOL_VERSION } from "./protocols";
+import { evidenceWorkout } from "./evidence-workouts";
+import { TRAINING_PROTOCOLS, currentProtocolVersion } from "./protocols";
 const sports = ["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing"];
 /** Reject corrupt source plans before a generator can normalize them into a workout. */
 export function checkinPrescriptionInputError(workout: { originalPlan?: string | null; [key: string]: unknown }): string | null {
@@ -13,7 +14,8 @@ export function checkinPrescriptionInputError(workout: { originalPlan?: string |
   if (source.protocol != null) {
     const p = source.protocol;
     const protocol = TRAINING_PROTOCOLS.find((candidate) => candidate.id === p.id);
-    if (!protocol || p.version !== PROTOCOL_VERSION || p.sport !== source.sport || !protocol.sports.includes(p.sport) || !Number.isInteger(p.minutes) || p.minutes <= 0 || p.minutes > 1440) return "Saved protocol structure or version is invalid.";
+    if (evidenceWorkout(p.id) && p.familiarityReviewed !== true) return "Reviewed interval familiarity must be confirmed before generating a prescription.";
+    if (!protocol || !currentProtocolVersion(p) || p.sport !== source.sport || !protocol.sports.includes(p.sport) || !Number.isInteger(p.minutes) || p.minutes <= 0 || p.minutes > 1440) return "Saved protocol structure or version is invalid.";
   }
   return null;
 }

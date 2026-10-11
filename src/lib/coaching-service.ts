@@ -1,3 +1,4 @@
+import { telegramWorkoutActionable, telegramWorkoutAttachments } from "./telegram-workout-attachments";
 import { dailyEnvironmentSummary } from "./daily-environment";
 import { sendTelegramCoaching, telegramCoachingConfigured, parseTelegramUpdate, boundedTelegramMessage } from "./telegram-coaching-transport";
 import type { CommunicationPreference, CoachingPrompt, Prisma } from "@prisma/client";
@@ -47,14 +48,14 @@ function assertConsent(pref: CommunicationPreference | null, purpose: Purpose, t
 export async function saveCommunicationSettings(actor: CoachingActor, value: unknown) {
   let settings: CommunicationSettings;
   try { settings = parseCommunicationSettings(value); } catch (e) { throw new ApiError((e as Error).message); }
-  if (PURPOSES.some(k => settings[k]) && (value as Record<string, unknown>).consentVersion !== currentConsentVersion()) throw new ApiError("Review the purposes for the current transport before opting in");
+  if (!settings.paused && PURPOSES.some(k => settings[k]) && (value as Record<string, unknown>).consentVersion !== currentConsentVersion()) throw new ApiError("Review the purposes for the current transport before opting in");
   return prisma.$transaction(async tx => {
     const old = await tx.communicationPreference.findUnique({ where: { userId: actor.id } });
     // Verification is checked when opting in, not when merely selecting a paused channel.
     if (!settings.paused && PURPOSES.some(k => settings[k])) assertConsent({ ...old, ...settings,
       verifiedEmail: old?.verifiedEmail === actor.email ? old.verifiedEmail : null,
       declinedOptional: JSON.stringify(settings.declinedOptional), consentVersion: currentConsentVersion() } as CommunicationPreference, PURPOSES.find(k => settings[k])!, telegramCoachingConfigured() ? "telegram" : "mock");
-    const data = { ...settings, declinedOptional: JSON.stringify(settings.declinedOptional), consentVersion: currentConsentVersion(), consentAt: new Date() };
+    const data = { ...settings, declinedOptional: JSON.stringify(settings.declinedOptional), consentVersion: settings.paused ? old?.consentVersion ?? null : currentConsentVersion(), consentAt: settings.paused ? old?.consentAt ?? null : new Date() };
     const pref = await tx.communicationPreference.upsert({ where: { userId: actor.id }, create: { userId: actor.id, ...data }, update: data });
     // New consent choices invalidate old capabilities. Confirmed audit/history remains.
     await tx.coachingPrompt.updateMany({ where: { userId: actor.id, replyStatus: { in: ["none", "pending"] } },
@@ -90,7 +91,7 @@ export async function finishMockPairing(actor: CoachingActor, input: Record<stri
 }
 function publicPrompt(prompt: CoachingPrompt) {
   const { tokenHash: _tokenHash, candidate, questions, ...rest } = prompt;
-  return { ...rest, candidate: parseStored(candidate, null), questions: parseStored<MissingQuestion[]>(questions, []), readAt: null, externallySent: prompt.transport === "telegram" && prompt.status === "sent" };
+  return { ...rest, candidate: parseStored(candidate, null), questions: parseStored<MissingQuestion[]>(questions, []), readAt: null, externallySent: prompt.transport === "telegram" && Boolean(prompt.receiptId?.startsWith("telegram:")) };
 }
 async function promptQuestions(tx: Prisma.TransactionClient, actor: CoachingActor, resolved: NonNullable<Awaited<ReturnType<typeof effectivePrescription>>>, pref: CommunicationPreference) {
   const [checkin, setup, profile] = await Promise.all([
@@ -104,7 +105,7 @@ async function promptQuestions(tx: Prisma.TransactionClient, actor: CoachingActo
   return missingDataQuestions({ ...resolved.workout, sport: resolved.canonical.sport, hasAnchor,
     missingSafety: safety.missingFields, planningMissing: planning.missing, declinedOptional: parseStored(pref.declinedOptional, []) });
 }
-function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effectivePrescription>>>, purpose: Purpose, questions: MissingQuestion[], transport: "mock" | "telegram") {
+function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effectivePrescription>>>, purpose: Purpose, questions: MissingQuestion[], transport: "mock" | "telegram", workoutCleared = false) {
   const c = resolved.canonical;
   const origin = new URL(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit");
   if (origin.protocol !== "https:" && !(origin.protocol === "http:" && ["localhost", "127.0.0.1"].includes(origin.hostname))) throw new ApiError("Invalid application origin");
@@ -112,7 +113,7 @@ function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effective
   // Exclude health/restriction reasons, free-form notes, name and body measurements.
   const lines = [`JMM ${c.sport} · ${c.dateLocal}`];
   if (purpose === "dailyPlan") {
-    if (c.verdict !== "ready") lines.push("No cleared workout is available. Review your current plan and check-in in the app.");
+    if (c.verdict !== "ready" || !workoutCleared) lines.push("No cleared workout is available. Review your current plan and check-in in the app.");
     else lines.push("Before: review equipment, venue and full preparation/fueling guidance in the app.",
       "During: follow the selected session's exact blocks; stop if unwell or in pain.",
       ...(c.environment ? [dailyEnvironmentSummary(c.environment)] : []),
@@ -127,7 +128,7 @@ function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effective
   lines.push(`Open authenticated app: ${path}`, `Pause or unsubscribe: ${origin.origin}/reminders`, transport === "mock" ? "MOCK ONLY: no external message sent, no read receipt." : "Provider acceptance does not establish reading or completion.");
   return lines.join("\n");
 }
-export async function createCoachingPrompt(actor: CoachingActor, input: { sessionId: string; purpose: Purpose; mockOutcome?: MockOutcome }, now = new Date(), dependencies: { sendTelegram?: typeof sendTelegramCoaching } = {}) {
+export async function createCoachingPrompt(actor: CoachingActor, input: { sessionId: string; purpose: Purpose; mockOutcome?: MockOutcome }, now = new Date(), dependencies: { sendTelegram?: typeof sendTelegramCoaching; resolve?: typeof effectivePrescription; clock?: () => Date } = {}) {
   const transport = coachingMode();
   if (transport !== "mock" && input.mockOutcome !== undefined) throw new ApiError("Mock outcomes cannot be supplied to the real transport");
   if (!PURPOSES.includes(input.purpose) || typeof input.sessionId !== "string" || !input.sessionId || input.sessionId.length > 120) throw new ApiError("Select a session and communication purpose");
@@ -137,7 +138,7 @@ export async function createCoachingPrompt(actor: CoachingActor, input: { sessio
     if (transport === "telegram" && pref.primaryChannel !== "telegram") throw new ApiError("Real email and app push are not enabled; select verified Telegram or use the app directly", 409);
     if (pref.primaryChannel === "email" && pref.verifiedEmail !== actor.email) throw new ApiError("Email changed; verify again", 409);
     if (inQuietHours(localMinute(now, pref.timezone), pref.quietStart, pref.quietEnd)) throw new ApiError("Quiet hours are active; this prompt was not delivered", 409);
-    const resolved = await effectivePrescription(actor.id, input.sessionId, tx);
+    const resolved = await (dependencies.resolve || effectivePrescription)(actor.id, input.sessionId, tx);
     if (!resolved) throw new ApiError("Session not found", 404);
     const observationDate = dateKey(resolved.workout.date, actor.timezone);
     if (input.purpose === "sessionFeedback" && observationDate > dateKey(now, actor.timezone)) throw new ApiError("A future session cannot have an execution report yet", 422);
@@ -154,34 +155,62 @@ export async function createCoachingPrompt(actor: CoachingActor, input: { sessio
     if (input.purpose === "sessionFeedback") questions = questions.filter(q => ["status", "minutes", "rpe"].includes(q.key));
     if (input.purpose !== "dailyPlan" && !questions.length) throw new ApiError("No missing decision inputs need a question for this session", 422);
     const token = input.purpose === "dailyPlan" || !questions.some(q => ["status", "minutes", "rpe"].includes(q.key)) ? null : newReplyToken(now);
+    const approval = transport === "telegram" && input.purpose === "dailyPlan"
+      ? await tx.auditLog.findFirst({ where: { subjectId: actor.id, entityId: input.sessionId, action: "workout.approved" }, orderBy: { createdAt: "desc" } }) : null;
+    const approvedRevision = parseStored<{ revision?: string }>(approval?.after, {}).revision || null;
+    // Text is an executable prescription too. The same approval/timing gate
+    // applies before snapshotting its instructions, not just before FIT export.
+    const workoutCleared = transport === "mock" ? resolved.canonical.verdict === "ready"
+      : input.purpose === "dailyPlan" && telegramWorkoutActionable(resolved.canonical, resolved.workout, approvedRevision, now);
     const result = transport === "mock" ? mockTransport(input.mockOutcome) : { status: "pending", receiptId: null, error: null };
     const attempts = (existing?.attempts || 0) + 1;
     const data = { userId: actor.id, sessionId: input.sessionId, purpose: input.purpose, channel: pref.primaryChannel,
       transport, observationDate, timezone: actor.timezone, sourceRevision: resolved.canonical.revision, sourceWorkoutRevision: workoutRevision(resolved.workout),
-      idempotencyKey: key, questions: JSON.stringify(questions), message: promptMessage(resolved, input.purpose, questions, transport),
+      idempotencyKey: key, questions: JSON.stringify(questions), message: promptMessage(resolved, input.purpose, questions, transport, workoutCleared),
       ...result, attempts, lastAttemptAt: now, nextAttemptAt: result.status === "failed" && attempts < 3 ? new Date(now.getTime() + 60_000 * 2 ** (attempts - 1)) : null,
       tokenHash: ["simulated", "pending"].includes(result.status) ? token?.hash : null, tokenExpiresAt: ["simulated", "pending"].includes(result.status) ? token?.expiresAt : null };
     const prompt = existing ? await tx.coachingPrompt.update({ where: { id: existing.id }, data }) : await tx.coachingPrompt.create({ data });
     await tx.auditLog.create({ data: { actorId: actor.id, subjectId: actor.id, action: transport === "mock" ? "communication.mock-attempt" : "communication.telegram-attempt", entityId: prompt.id,
       after: JSON.stringify({ purpose: input.purpose, channel: pref.primaryChannel, status: result.status, attempts, receiptId: result.receiptId, sourceRevision: prompt.sourceRevision }) } });
-    return { prompt: publicPrompt(prompt), duplicate: false, replyToken: ["simulated", "pending"].includes(result.status) ? token?.token ?? null : null, privateRecipient: pref.verifiedChatId };
+    return { prompt: publicPrompt(prompt), duplicate: false, replyToken: ["simulated", "pending"].includes(result.status) ? token?.token ?? null : null, privateRecipient: pref.verifiedChatId, workoutCleared };
   }, { isolationLevel: "Serializable", timeout: 15000 });
   if (transport === "mock" || created.duplicate) {
     const { privateRecipient: _recipient, ...result } = created as typeof created & { privateRecipient?: string | null };
     return result;
   }
-  // Recheck consent and the canonical source immediately before the network
-  // boundary. A revoked/changed pending claim must never be sent as old work.
-  await prisma.$transaction(async tx => {
-    const [pending, pref, fresh] = await Promise.all([
+  // Recheck before building artifacts and again before EACH provider request.
+  // A text receipt must not authorize a stale FIT if approval/consent changes.
+  const currentDelivery = async (requireWorkout = false) => prisma.$transaction(async tx => {
+    const [pending, pref, fresh, approval] = await Promise.all([
       tx.coachingPrompt.findUnique({ where: { id: created.prompt.id } }),
       tx.communicationPreference.findUnique({ where: { userId: actor.id } }),
-      effectivePrescription(actor.id, created.prompt.sessionId, tx),
+      (dependencies.resolve || effectivePrescription)(actor.id, created.prompt.sessionId, tx),
+      input.purpose === "dailyPlan" ? tx.auditLog.findFirst({ where: { subjectId: actor.id, entityId: created.prompt.sessionId, action: "workout.approved" }, orderBy: { createdAt: "desc" } }) : Promise.resolve(null),
     ]);
     assertConsent(pref, input.purpose, "telegram");
-    if (!pending || pending.status !== "pending" || pref!.verifiedChatId !== created.privateRecipient || !fresh || fresh.canonical.revision !== created.prompt.sourceRevision || inQuietHours(localMinute(new Date(), pref!.timezone), pref!.quietStart, pref!.quietEnd)) throw new ApiError("Pending delivery changed or quiet hours started. No external request was sent.", 409);
+    if (!pending || pending.status !== "pending" || pref!.primaryChannel !== "telegram" || pref!.verifiedChatId !== created.privateRecipient || pref!.verifiedActorId !== created.privateRecipient || !fresh || fresh.canonical.revision !== created.prompt.sourceRevision || pref!.timezone !== fresh.canonical.timezone || inQuietHours(localMinute((dependencies.clock || (() => new Date()))(), pref!.timezone), pref!.quietStart, pref!.quietEnd)) throw new ApiError("Pending delivery changed or quiet hours started. No further external request was sent.", 409);
+    const approvedRevision = parseStored<{ revision?: string }>(approval?.after, {}).revision || null;
+    const actionable = input.purpose === "dailyPlan" && telegramWorkoutActionable(fresh.canonical, fresh.workout, approvedRevision, (dependencies.clock || (() => new Date()))());
+    if (requireWorkout && !actionable) throw new ApiError("Workout approval, timing or readiness changed. No workout attachment was sent.", 409);
+    return { fresh, actionable };
   }, { isolationLevel: "Serializable", timeout: 15000 });
-  const result = await (dependencies.sendTelegram || sendTelegramCoaching)(created.privateRecipient!, boundedTelegramMessage(created.prompt.message), { expectsReply: Boolean(created.replyToken) });
+  let attachments: ReturnType<typeof telegramWorkoutAttachments>;
+  try {
+    const checked = await currentDelivery(created.workoutCleared);
+    attachments = created.workoutCleared && checked.actionable ? telegramWorkoutAttachments(checked.fresh.canonical) : [];
+  } catch {
+    // No provider request has begun: record a definitive cancellation rather
+    // than leaving a pending claim that reconciliation would call uncertain.
+    await prisma.coachingPrompt.updateMany({ where: { id: created.prompt.id, userId: actor.id, status: "pending" }, data: {
+      status: "cancelled", tokenHash: null, tokenExpiresAt: null, nextAttemptAt: null,
+      error: "Workout or consent changed, or safe attachments could not be prepared. No external request was sent.",
+    } });
+    throw new ApiError("Delivery cancelled before sending. Review your current workout and communication preferences.", 409);
+  }
+  const result = await (dependencies.sendTelegram || sendTelegramCoaching)(created.privateRecipient!, boundedTelegramMessage(created.prompt.message), {
+    expectsReply: Boolean(created.replyToken), attachments,
+    beforeSend: async () => { await currentDelivery(created.workoutCleared); },
+  });
   const prompt = await finalizeTelegramAttempt(created.prompt.id, actor.id, result);
   return { prompt: publicPrompt(prompt), duplicate: false, replyToken: null };
 }
@@ -254,6 +283,8 @@ export async function runMockCoachingSchedule(now = new Date()) {
   // raw incoming text and audio are never stored by this flow.
   await prisma.coachingPrompt.updateMany({ where: { replyStatus: "pending", repliedAt: { lt: new Date(now.getTime() - 7 * 86400_000) } }, data: { candidate: null, replyStatus: "expired", tokenHash: null } });
   for (const pref of prefs) {
+    // Old consent must not halt other athletes or silently opt into new files.
+    if (pref.consentVersion !== (transport === "telegram" ? TELEGRAM_CONSENT_VERSION : CONSENT_VERSION)) { results.push({ userId: pref.userId, status: "blocked", error: "Review and renew communication consent before delivery resumes." }); continue; }
     const schedule = dueSchedule(settingsFor(pref), now); if (!schedule) continue;
     const workouts = await prisma.workout.findMany({ where: { userId: pref.userId, date: {
       gte: localDate(addDaysKey(schedule.day, -1), pref.user.timezone), lt: localDate(addDaysKey(schedule.day, 1), pref.user.timezone) } }, orderBy: [{ date: "asc" }, { id: "asc" }] });
@@ -353,7 +384,8 @@ export async function finalizeTelegramAttempt(id: string, userId: string, result
   return prisma.$transaction(async tx => {
     const prompt = await tx.coachingPrompt.findFirst({ where: { id, userId } });
     if (!prompt) throw new ApiError("Delivery record unavailable; do not resend", 409);
-    const data = { ...result, nextAttemptAt: result.status === "failed" && prompt.attempts < 3 ? new Date(Date.now() + 60_000 * 2 ** (prompt.attempts - 1)) : null,
+    const { parts, ...outcome } = result;
+    const data = { ...outcome, nextAttemptAt: result.status === "failed" && prompt.attempts < 3 ? new Date(Date.now() + 60_000 * 2 ** (prompt.attempts - 1)) : null,
       ...(result.status !== "sent" ? { tokenHash: null, tokenExpiresAt: null } : {}) };
     const updated = await tx.coachingPrompt.updateMany({ where: { id, userId, status: "pending" }, data });
     if (!updated.count) {
@@ -366,7 +398,7 @@ export async function finalizeTelegramAttempt(id: string, userId: string, result
       } });
     }
     await tx.auditLog.create({ data: { actorId: userId, subjectId: userId, action: "communication.telegram-outcome", entityId: id,
-      after: JSON.stringify({ providerStatus: result.status, receiptId: result.receiptId, claimFinalized: Boolean(updated.count), read: false }) } });
+      after: JSON.stringify({ providerStatus: result.status, receiptId: result.receiptId, claimFinalized: Boolean(updated.count), parts: parts || [], read: false, deviceTransferVerified: false }) } });
     return tx.coachingPrompt.findUniqueOrThrow({ where: { id } });
   }, { isolationLevel: "Serializable" });
 }

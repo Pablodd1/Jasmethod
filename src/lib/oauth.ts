@@ -5,6 +5,7 @@ import { prisma } from "./db";
 import { encryptSecret } from "./crypto";
 import * as api from "./importers";
 import { createOAuthState } from "./oauth-state";
+import { appMutationOriginAllowed } from "./request-origin";
 import { intervalsAuthUrl, intervalsExchangeToken, intervalsOAuthConfigured, IntervalsOAuthError } from "./intervals-oauth";
 
 const providers = {
@@ -34,7 +35,7 @@ const providers = {
     exchange: api.whoopExchangeToken,
   },
 };
-function config(provider: string) {
+function config(provider: string, smoke = false) {
   const route = provider === "google_cal" ? "google-cal" : provider;
   const p = providers[route as keyof typeof providers];
   if (!p) throw new Error("unsupported_provider");
@@ -42,7 +43,7 @@ function config(provider: string) {
   const clientId = process.env[`${p.env}_CLIENT_ID`],
     clientSecret = process.env[`${p.env}_CLIENT_SECRET`];
   if (!clientId || !clientSecret) throw new Error("not_configured");
-  const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const base = (smoke ? process.env.APP_URL : undefined) || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   // Redirect URIs are pinned by the PROVIDER's dashboard registration — when
   // the canonical domain changes (vercel.app → jasmiamimethod.fit), a
   // recomputed URI stops matching and OAuth dies with
@@ -61,19 +62,81 @@ function config(provider: string) {
     },
   };
 }
-export async function authorize(req: Request, provider: string) {
+const SMOKE_CALENDAR_PROVIDER = "google_cal_smoke";
+const SMOKE_CALENDAR_CONSENT = "calendar-smoke-v1";
+function smokeAccountAllowed(userId: string): boolean {
+  return process.env.ENABLE_ACCOUNT_SMOKE_TEST === "true"
+    && !!process.env.JMM_SMOKE_TEST_USER_ID
+    && process.env.JMM_SMOKE_TEST_USER_ID === userId;
+}
+
+// Dedicated POST boundary: GET/query parameters alone can never opt into this mode.
+export async function authorizeSmokeCalendar(req: Request) {
+  if (req.method !== "POST") return Response.json({ error: "POST required" }, { status: 405 });
+  if (!appMutationOriginAllowed(req))
+    return Response.json({ error: "Same-origin request required" }, { status: 403 });
+  const contentType = req.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
+  if (contentType !== "application/json" && contentType !== "application/x-www-form-urlencoded")
+    return Response.json({ error: "JSON or URL-encoded consent required" }, { status: 400 });
+  if (Number(req.headers.get("content-length") || 0) > 1024)
+    return Response.json({ error: "Consent request too large" }, { status: 413 });
+  const reader = req.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  let body: Record<string, unknown>;
+  try {
+    if (reader) while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 1024) {
+        await reader.cancel();
+        return Response.json({ error: "Consent request too large" }, { status: 413 });
+      }
+      chunks.push(value);
+    }
+    const text = Buffer.concat(chunks).toString("utf8");
+    if (contentType === "application/json") body = JSON.parse(text);
+    else {
+      const fields = new URLSearchParams(text);
+      if ([...fields.keys()].some(key => fields.getAll(key).length !== 1))
+        return Response.json({ error: "Duplicate consent fields" }, { status: 400 });
+      body = Object.fromEntries(fields);
+    }
+  } catch { return Response.json({ error: "Invalid consent request" }, { status: 400 }); }
+  finally { reader?.releaseLock(); }
+  if (!body || typeof body !== "object" || Array.isArray(body)
+      || body.mode !== "smoke" || body.consent !== SMOKE_CALENDAR_CONSENT
+      || Object.keys(body).some(key => !["mode", "consent"].includes(key)))
+    return Response.json({ error: "Explicit calendar smoke-test consent required" }, { status: 400 });
+  return authorize(req, "google-cal", { mode: "smoke" });
+}
+
+export async function authorize(req: Request, provider: string, options?: { mode: "smoke" }) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
-  const targetAthlete = new URL(req.url).searchParams.get("athleteId");
+  const params = new URL(req.url).searchParams;
+  const smoke = options?.mode === "smoke";
+  if (smoke) {
+    if (provider !== "google-cal" || !smokeAccountAllowed(user.id))
+      return Response.json({ error: "Smoke test unavailable for this account" }, { status: 403 });
+    // No alternate account, return path, calendar or destination can be supplied.
+    if (req.method !== "POST" || [...params.keys()].some(key => key !== "mode")
+        || params.getAll("mode").length !== 1 || params.get("mode") !== "smoke")
+      return Response.json({ error: "Invalid smoke authorization request" }, { status: 400 });
+  } else if (params.has("mode")) {
+    return Response.json({ error: "Use the explicit smoke-test connection flow" }, { status: 400 });
+  }
+  const targetAthlete = params.get("athleteId");
   if (provider === "intervals" && targetAthlete && targetAthlete !== user.id)
     return Response.json({ error: "Each athlete must authorize their own Intervals.icu account." }, { status: 403 });
   try {
-    const { p, cfg } = config(provider),
+    const { p, cfg } = config(provider, smoke),
       state = createOAuthState(provider);
     // Only return to a configured app origin; never trust a query-string host.
     const explicitReturn = new URL(req.url).searchParams.get("return");
-    const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    let returnUrl: string | null = null;
+    const base = (smoke ? process.env.APP_URL : undefined) || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    let returnUrl: string | null = smoke ? `${base}/account/smoke-test` : null;
     if (explicitReturn) {
       try {
         const target = new URL(explicitReturn, base);
@@ -86,7 +149,7 @@ export async function authorize(req: Request, provider: string) {
       data: {
         state,
         userId: user.id,
-        provider: p.key,
+        provider: smoke ? SMOKE_CALENDAR_PROVIDER : p.key,
         returnUrl,
         expiresAt: new Date(Date.now() + 15 * 60000),
       },
@@ -104,7 +167,12 @@ export async function authorize(req: Request, provider: string) {
     );
     const url = new URL(p.auth(cfg, state));
     url.searchParams.set("state", state);
-    return NextResponse.redirect(url);
+    // Smoke runs need only the short-lived access token; never request offline access.
+    if (smoke) {
+      url.searchParams.set("access_type", "online");
+      url.searchParams.set("scope", "https://www.googleapis.com/auth/calendar.events.owned");
+    }
+    return NextResponse.redirect(url, smoke ? 303 : 307);
   } catch (error) {
     const configurationError = error instanceof Error && ["not_configured", "unsupported_provider"].includes(error.message);
     return Response.json(
@@ -121,7 +189,7 @@ export async function authorize(req: Request, provider: string) {
 export async function callback(req: Request, provider: string) {
   const route = provider === "google_cal" ? "google-cal" : provider;
   const canonical = route === "google-cal" ? "google_cal" : route;
-  const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  let base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const redirect = (error: string) =>
     NextResponse.redirect(`${base}/connectors?error=${error}`);
   const u = new URL(req.url), state = u.searchParams.get("state") || "";
@@ -133,12 +201,17 @@ export async function callback(req: Request, provider: string) {
     txn = await prisma.oAuthTransaction.findUnique({ where: { state } });
   } catch { return redirect("authorization_storage_failed"); }
   const now = new Date();
-  if (!txn || txn.provider !== canonical || txn.usedAt || txn.expiresAt <= now)
+  // Smoke intent is solely server-persisted. Callback query strings cannot switch it.
+  const smoke = canonical === "google_cal" && txn?.provider === SMOKE_CALENDAR_PROVIDER;
+  const storedProvider = smoke ? SMOKE_CALENDAR_PROVIDER : canonical;
+  if (smoke) base = process.env.APP_URL || base;
+  if (smoke && !smokeAccountAllowed(txn!.userId)) return redirect("smoke_test_unavailable");
+  if (!txn || txn.provider !== storedProvider || txn.usedAt || txn.expiresAt <= now)
     return redirect("invalid_state");
   let claim;
   try {
     claim = await prisma.oAuthTransaction.updateMany({
-      where: { state, provider: canonical, userId: txn.userId, usedAt: null, expiresAt: { gt: now } },
+      where: { state, provider: storedProvider, userId: txn.userId, usedAt: null, expiresAt: { gt: now } },
       data: { usedAt: now },
     });
   } catch { return redirect("authorization_storage_failed"); }
@@ -157,9 +230,16 @@ export async function callback(req: Request, provider: string) {
   if (u.searchParams.has("error") || !code)
     return redirect("authorization_declined");
   try {
-    const { p, cfg } = config(provider);
+    const { p, cfg } = config(provider, smoke);
     const token: any = await p.exchange(cfg, code);
     if (!token.access_token) throw new Error("No access token returned");
+    if (smoke) {
+      const scopes = typeof token.scope === "string" ? token.scope.split(/\s+/) : [];
+      if (!scopes.some((scope: string) => ["https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/calendar.events.owned"].includes(scope)))
+        throw new Error("Required calendar scope missing");
+      const expiry = token.expires_at ? token.expires_at * 1000 : Date.now() + token.expires_in * 1000;
+      if (!Number.isFinite(expiry) || expiry <= Date.now()) throw new Error("Calendar authorization expiry missing");
+    }
     let externalRef =
       token.athlete?.id != null ? String(token.athlete.id) : undefined;
     if (provider === "whoop") {
@@ -189,6 +269,7 @@ export async function callback(req: Request, provider: string) {
           ? token.expires_at * 1000
           : Date.now() + (token.expires_in || 3600) * 1000,
       ),
+      ...(smoke ? { refreshEnc: null, lastSyncAt: null, lastSyncCount: null, syncStartedAt: null } : {}),
       lastError: null,
       ...(externalRef ? { externalRef } : {}),
     };
@@ -202,19 +283,20 @@ export async function callback(req: Request, provider: string) {
         throw new IntervalsOAuthError("disconnect_previous_account", "Disconnect the previous Intervals.icu account before connecting a different one.", 409);
     }
     await tx.connector.upsert({
-      where: { userId_provider: { userId, provider: p.key } },
-      create: { userId, provider: p.key, ...data },
+      where: { userId_provider: { userId, provider: storedProvider } },
+      create: { userId, provider: storedProvider, ...data },
       update: data,
     });
 
-    await tx.syncJob.create({data:{userId,kind:"sync",dedupeKey:`initial:${p.key}:${userId}:${state}`,payload:JSON.stringify({provider:p.key})}});
+    if (!smoke) await tx.syncJob.create({data:{userId,kind:"sync",dedupeKey:`initial:${p.key}:${userId}:${state}`,payload:JSON.stringify({provider:p.key})}});
     }, p.key === "intervals" ? { isolationLevel: "Serializable" } : undefined);
 
-    const okUrl = new URL(returnUrl || `${base}/connectors`);
-    okUrl.searchParams.set("ok", p.key);
-    okUrl.searchParams.set("sync", "queued");
+    const okUrl = new URL(smoke ? `${base}/account/smoke-test` : returnUrl || `${base}/connectors`);
+    okUrl.searchParams.set("ok", storedProvider);
+    if (!smoke) okUrl.searchParams.set("sync", "queued");
     return NextResponse.redirect(okUrl.toString());
   } catch (e) {
+    if (smoke) return redirect("connection_failed");
     if (canonical === "intervals") {
       // Error codes are application constants. Do not log provider/DB messages.
       return redirect(e instanceof IntervalsOAuthError ? e.code : "connection_failed");

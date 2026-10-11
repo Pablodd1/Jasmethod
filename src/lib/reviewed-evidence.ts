@@ -1,3 +1,4 @@
+import { EVIDENCE_WORKOUTS, evidenceWorkout, WORKOUT_EVIDENCE_VERSION } from "./evidence-workouts";
 // Curated claim-to-source lineage. A verified source is not an executable dose.
 export const EVIDENCE_REVIEW_VERSION = '2026-10-07';
 export interface ReviewedClaim {
@@ -6,7 +7,7 @@ export interface ReviewedClaim {
   status: 'active' | 'needs_review' | 'superseded' | 'withdrawn';
   verification: 'reviewed' | 'unverified'; reviewedOn: string;
   claim: string; applicability: string; limitation: string;
-  numericAuthority: 'principle_only';
+  numericAuthority: 'principle_only' | 'reviewed_work_rest_only';
 }
 const claim = (entry: Omit<ReviewedClaim, 'status' | 'verification' | 'reviewedOn' | 'numericAuthority'>): ReviewedClaim => ({ ...entry, status: 'active', verification: 'reviewed', reviewedOn: EVIDENCE_REVIEW_VERSION, numericAuthority: 'principle_only' });
 export const REVIEWED_CLAIMS: ReviewedClaim[] = [
@@ -21,6 +22,12 @@ export const REVIEWED_CLAIMS: ReviewedClaim[] = [
   claim({ id: 'galpin-endurance-framework', sourceId: 'galpinEndurance', sourceUrl: 'https://www.hubermanlab.com/episode/dr-andy-galpin-how-to-build-physical-endurance-and-lose-fat', classification: 'expert_education', claim: 'Separate local muscular endurance, anaerobic capacity and aerobic adaptations when choosing a goal.', applicability: 'Andy Galpin teaching in the Andrew Huberman-hosted 2023 expert series.', limitation: 'No universal all-sport dose. All-out efforts with very short recovery are not automatic novice or endurance prescriptions.' }),
   claim({ id: 'huberman-galpin-recovery', sourceId: 'galpinRecovery', sourceUrl: 'https://www.hubermanlab.com/episode/guest-series-dr-andy-galpin-maximize-recovery-to-achieve-fitness-and-performance-goals', classification: 'expert_education', claim: 'Consider sleep, fatigue and recovery alongside performance and the training plan.', applicability: 'Public educational discussion; specific tools need their own evidence and athlete context.', limitation: 'No recovery-score bonus from breathing, no sleep replacement by NSDR, and no biological guarantee from an arbitrary separation interval.' }),
 
+  ...EVIDENCE_WORKOUTS.map(workout => ({
+    ...claim({ id: workout.id, sourceId: workout.id, sourceUrl: workout.source.url,
+      classification: 'trial', claim: workout.source.finding, applicability: workout.source.population,
+      limitation: workout.source.limitation }),
+    reviewedOn: WORKOUT_EVIDENCE_VERSION, numericAuthority: 'reviewed_work_rest_only' as const,
+  })),
 ];
 export function reviewClaimIds(ids: readonly string[], registry: readonly ReviewedClaim[] = REVIEWED_CLAIMS) {
   const reasons: string[] = [];
@@ -40,6 +47,14 @@ export const PROTOCOL_CLAIMS: Record<string, readonly string[]> = {
   'aerobic-power': ['running-aerobic-intervals'], 'aerobic-base': ['talk-test-effort', 'endurance-distribution-context'],
 };
 export function protocolEvidence(id: string, registry: readonly ReviewedClaim[] = REVIEWED_CLAIMS) {
+  const workout = evidenceWorkout(id);
+  if (workout) return {
+    ...reviewClaimIds([workout.id], registry), version: WORKOUT_EVIDENCE_VERSION,
+    claimIds: [workout.id], doseOrigin: 'reviewed_main_set_jmm_effort_adaptation' as const,
+    limitation: `${workout.adaptation} ${workout.source.limitation}`,
+    claims: registry.filter(row => row.id === workout.id && row.status === 'active' && row.verification === 'reviewed'),
+  };
+
   const ids = Object.prototype.hasOwnProperty.call(PROTOCOL_CLAIMS, id) ? PROTOCOL_CLAIMS[id] : [];
   const eligibility = reviewClaimIds(ids, registry);
   return { ...eligibility, version: EVIDENCE_REVIEW_VERSION, claimIds: [...ids],

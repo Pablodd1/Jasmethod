@@ -1,8 +1,9 @@
 "use client";
 
+import { EVIDENCE_WORKOUTS, evidenceWorkout } from "@/lib/evidence-workouts";
 import { protocolEvidence, REVIEWED_CLAIMS } from "@/lib/reviewed-evidence";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./auth";
 import { ProtectedPage } from "./gate";
 import {
@@ -22,31 +23,40 @@ export default function ProtocolWorkspace({
   const [protocolId, setProtocolId] = useState("aerobic-base");
   const [sessionId, setSessionId] = useState("");
   const [preview, setPreview] = useState<any>(null);
+  const [familiarityReviewed, setFamiliarityReviewed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const path = `/api/protocols${athleteId ? `?athleteId=${encodeURIComponent(athleteId)}` : ""}`;
+  const activePath = useRef(path);
+  activePath.current = path;
   const protocol = TRAINING_PROTOCOLS.find((p) => p.id === protocolId)!;
   const evidence = protocolEvidence(protocolId);
+  const reviewedWorkout = evidenceWorkout(protocolId);
   const compatible = (data?.sessions || []).filter((s: any) =>
     protocol.sports.includes(s.sport),
   );
 
-  async function load() {
-    const r = await fetch(path, { cache: "no-store" });
+  async function load(requestedPath = path, signal?: AbortSignal) {
+    const r = await fetch(requestedPath, { cache: "no-store", signal });
     const d = await r.json();
     if (!r.ok) throw Error(d.error || "Could not load training protocols.");
-    setData(d);
+    if (activePath.current === requestedPath) setData(d);
   }
   useEffect(() => {
+    const controller = new AbortController();
     setData(null);
     setPreview(null);
+    setFamiliarityReviewed(false);
+    setMessage("");
     setSessionId("");
     setError("");
-    if (user) load().catch((e) => setError(e.message));
+    if (user) load(path, controller.signal).catch((e) => { if (!controller.signal.aborted && activePath.current === path) setError(e.message); });
+    return () => controller.abort();
   }, [user, path]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function submit(mode: "preview" | "apply") {
+    const requestedPath = path;
     setBusy(true);
     setError("");
     setMessage("");
@@ -59,9 +69,11 @@ export default function ProtocolWorkspace({
           protocolId,
           sessionId,
           previewToken: preview?.previewToken,
+          familiarityReviewed,
         }),
       });
       const d = await r.json();
+      if (activePath.current !== requestedPath) return;
       if (!r.ok) throw Error(d.error || "Could not prepare this protocol.");
       if (mode === "preview") setPreview(d);
       else {
@@ -70,8 +82,10 @@ export default function ProtocolWorkspace({
         await load();
       }
     } catch (e: any) {
-      setError(e.message);
-      if (mode === "apply") setPreview(null);
+      if (activePath.current === requestedPath) {
+        setError(e.message);
+        if (mode === "apply") setPreview(null);
+      }
     } finally {
       setBusy(false);
     }
@@ -84,6 +98,8 @@ export default function ProtocolWorkspace({
         "JMM starting prescriptions for healthy adults. Research-informed coaching rules; not individual medical care or a model fine-tuning dataset.",
       protocols: TRAINING_PROTOCOLS,
       claims: REVIEWED_CLAIMS,
+      reviewedWorkouts: EVIDENCE_WORKOUTS,
+      audit: data?.audit ?? null,
       rules: PROTOCOL_RULES,
       sources: PROTOCOL_SOURCES,
     };
@@ -182,6 +198,7 @@ export default function ProtocolWorkspace({
                 disabled={busy}
                 onClick={() => {
                   setProtocolId(p.id);
+                  setFamiliarityReviewed(false);
                   setPreview(null);
                   setSessionId("");
                   setError("");
@@ -200,8 +217,16 @@ export default function ProtocolWorkspace({
                 <p className="text-slate-600 mt-1">{protocol.purpose}</p>
               </div>
               <p className="rounded-xl bg-ocean-50 p-4 font-medium">
-                {protocol.dose}
+                {reviewedWorkout ? `Studied main set: ${protocol.dose}` : protocol.dose}
               </p>
+              {reviewedWorkout && <div className="rounded-xl border border-amber-300 p-4 text-sm space-y-2">
+                <p className="font-semibold">Reviewed main set · JMM effort adaptation · limited trial evidence</p>
+                <p>{reviewedWorkout.adaptation}</p>
+                <p>Why this may fit: {reviewedWorkout.purpose} Advanced experience, comparable-work tolerance, recovery, sport and time budget are checked separately; a source does not prove individual suitability.</p>
+                <p>Targets: effort-based. No verified trial-specific maximum-speed or ramp-test power anchor is available, so no numeric pace, heart-rate or watt target is invented. Zone labels are coaching effort labels.</p>
+                <a className="underline text-ocean-700" href={reviewedWorkout.source.url} target="_blank" rel="noreferrer">{reviewedWorkout.source.title}</a>
+                <p>{reviewedWorkout.source.population} {reviewedWorkout.source.limitation}</p>
+              </div>}
               <dl className="grid sm:grid-cols-2 gap-4 text-sm">
                 {[
                   ["Frequency", protocol.frequency],
@@ -297,9 +322,13 @@ export default function ProtocolWorkspace({
                   <Link className="btn-primary" href={athleteId ? `/admin/athletes/${encodeURIComponent(athleteId)}` : "/training"}>{athleteId ? "Review athlete plan" : "Open training plan"}</Link>
                 </div>
               )}
+              {reviewedWorkout && <label className="flex gap-3 text-sm items-start">
+                <input type="checkbox" className="mt-1" disabled={busy} checked={familiarityReviewed} onChange={e => { setFamiliarityReviewed(e.target.checked); setPreview(null); }} />
+                <span>I confirm that the selected athlete has already tolerated comparable work in this sport and can execute these efforts with control. If this is unfamiliar, choose an easier session and review it with a coach first.</span>
+              </label>}
               <button
                 className="btn-primary"
-                disabled={busy || !sessionId || data?.athlete.injured}
+                disabled={busy || !sessionId || data?.athlete.injured || (!!reviewedWorkout && !familiarityReviewed)}
                 onClick={() => submit("preview")}
               >
                 {busy ? "Preparing…" : "Preview protocol"}
@@ -326,6 +355,7 @@ export default function ProtocolWorkspace({
                       >
                         <span>
                           {i + 1}. {s.name}
+                          <span className="block text-xs text-slate-600">{s.zone?.toUpperCase()} · {s.note}</span>
                         </span>
                         <strong className="shrink-0">
                           {s.reps
@@ -360,6 +390,25 @@ export default function ProtocolWorkspace({
             </section>
           </div>
         </div>
+        {data?.audit && <details className="card">
+          <summary className="cursor-pointer font-semibold">Evidence audit · {data.audit.counts.source_verified_main_sets} studied session protocols</summary>
+          <p className="text-sm text-slate-600 mt-3">{data.audit.scope} {data.audit.counts.audited_rows} total entries include {data.audit.counts.source_verified_main_sets} distinct primary-study session protocols across {data.audit.counts.primary_study_families} study families, plus separately labeled coaching examples and frameworks. Verified main sets are not automatically effective, safe or individually eligible. These are not 30 Sisu workouts.</p>
+          <p className="text-sm text-slate-600 mt-2">Reviewed {data.audit.reviewDate}. Selectable adaptations remain subject to athlete and session review. Research-only examples cannot be applied from this list.</p>
+          <div className="space-y-3 mt-4">
+            {data.audit.rows.map((row: any) => <details key={row.id} className="border border-slate-200 rounded-xl p-3">
+              <summary className="cursor-pointer font-medium">{row.name} · {row.protocolId ? "Adapted template available" : "Not selectable"}</summary>
+              <p className="text-sm mt-2">{row.runtimeReason}</p>
+              <p className="text-sm mt-2"><strong>Evidence:</strong> {row.evidence}. {row.population}</p>
+              <p className="text-sm mt-2"><strong>Source status:</strong> {row.has_source_verified_main_set ? "Primary main-set details verified; full-session and individual prescription remain separate." : "Principle, example or incomplete main-set verification; not trial-dose authority."}</p>
+              <p className="text-sm mt-2"><strong>Study dose or labeled example:</strong> {row.verified_dose_or_labeled_example}</p>
+              <p className="text-sm mt-2"><strong>Limits:</strong> {row.validated_scope_and_limit}</p>
+              <p className="text-sm mt-2"><strong>Eligibility and recovery:</strong> {row.eligibility_and_recovery}</p>
+              <p className="text-sm mt-2"><strong>Progression:</strong> {row.progression}</p>
+              <div className="flex flex-wrap gap-3 mt-2">{row.source_urls.map((url: string, i: number) => <a key={url} className="underline text-sm text-ocean-700" href={url} target="_blank" rel="noreferrer">Source {i + 1}</a>)}</div>
+              {row.protocolId && <button className="btn-secondary mt-3" disabled={busy} onClick={() => { setProtocolId(row.protocolId); setPreview(null); setSessionId(""); setFamiliarityReviewed(false); setError(""); }}>Review the adapted template</button>}
+            </details>)}
+          </div>
+        </details>}
         <details className="card">
           <summary className="cursor-pointer font-semibold">
             How to combine the protocols
