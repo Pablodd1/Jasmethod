@@ -51,4 +51,4 @@ async function main() {
  const injury=await api("/api/plan/starter",{});assert.equal(injury.created,false);
  console.log("DAY_ZERO_ACCEPTANCE_PASSED",JSON.stringify({authenticated:true,noInventedProfile:true,idempotent:true,checkinRequired:true,availableTimeBounded:true,illnessHold:true,readOnlyGet:true,eventProtected:true,starterRestProtected:true,injuryHold:true}));
 }
-try {await main();} finally {if(userId) await db.user.delete({where:{id:userId}});await db.$disconnect();}
+main().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{if(userId) await db.user.delete({where:{id:userId}});await db.$disconnect();});
