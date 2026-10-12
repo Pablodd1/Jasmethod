@@ -1,8 +1,9 @@
+import { trustedCycleMovementGuidance } from "./cycle-movement-guidance";
 import { Encoder, Profile } from "@garmin/fitsdk";
 import { createHash } from "node:crypto";
 import { buildZip, type ZipEntry } from "./zip";
 import { poolLengthMeters, SWIM_STROKES } from "./sport-structure";
-import { canonicalSession, requireExportable, fitFilename, companionInstruction, SessionResolutionError, type CanonicalSession, type TargetProfile } from "./canonical-session";
+import { canonicalSession, exportCapability, requireExportable, fitFilename, companionInstruction, SessionResolutionError, type CanonicalSession, type TargetProfile } from "./canonical-session";
 
 // Compatibility adapter for already-resolved saved prescriptions. No generation,
 // protocol reconstruction or generic fallback is allowed in an exporter.
@@ -71,4 +72,32 @@ export function buildSessionDownload(spec: CanonicalSession, created = new Date(
   return spec.capability.mode === "split"
     ? { bytes: buildZip(entries, created), filename: fitFilename(spec).replace(/\.fit$/, "-components.zip"), contentType: "application/zip" }
     : { bytes: entries[0].data as Uint8Array, filename: entries[0].name, contentType: "application/octet-stream" };
+}
+
+/** Provider attachments expose only execution fields covered by explicit
+ * workout-delivery consent. Private free-text notes/group labels stay in the app. This is
+ * a presentation copy: retain the approved source revision and never mutate it.
+ * Split manifests contain additional prose and require a separate privacy review.
+ */
+export function buildPrivateSafeSessionDownload(spec: CanonicalSession, created = new Date()): ReturnType<typeof buildSessionDownload> {
+  requireExportable(spec);
+  if (spec.capability.mode === "split" || spec.capability.downloadFormat === "zip") {
+    throw new SessionResolutionError("Private-safe delivery supports single FIT workouts only.");
+  }
+  const safe: CanonicalSession = {
+    ...spec,
+    title: `JMM ${spec.sport} workout`,
+    steps: spec.steps.map((step, index) => ({
+      ...step,
+      // Explicit structured exercise identity is needed to execute safely;
+      // arbitrary saved titles and step labels are not provider delivery data.
+      name: step.sportDetail?.kind === "set" ? step.sportDetail.exerciseName
+        : `${step.phase} ${index + 1}`,
+      group: undefined, note: trustedCycleMovementGuidance(step) || undefined,
+    })),
+  };
+  // Relabeling changes companion byte lengths. Never reuse a capability
+  // validated against the original labels: truncation must not erase reps/LAP.
+  safe.capability = exportCapability(safe.sport, safe.steps, safe.verdict, safe.sportStructure, safe.components);
+  return buildSessionDownload(safe, created);
 }

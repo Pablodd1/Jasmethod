@@ -1,3 +1,4 @@
+import { evidenceWorkout, reviewedWorkoutStructureCurrent } from "./evidence-workouts";
 import { assessDailyEnvironment } from "./daily-environment";
 import { readDailyEnvironment } from "./daily-environment-store";
 import { unitsOf } from "./units";
@@ -5,7 +6,7 @@ import { reviewSecondaryDoubleDay, type DoubleDayPreference } from "./double-day
 // Single athlete-scoped, date-scoped safety boundary for screen, messages and FIT.
 import { canonicalDemand, canonicalFuelIntensity } from "./session-demand";
 import { protocolEvidence } from "./reviewed-evidence";
-import { isDemanding, PROTOCOL_VERSION } from "./protocols";
+import { isDemanding, currentProtocolVersion } from "./protocols";
 import { reviewProtocolAthlete } from "./protocol-eligibility";
 import { buildSessionNutrition, type SessionNutrition } from "./session-nutrition";
 import { prisma } from "./db";
@@ -84,7 +85,7 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
   if (safety.status === "clear" && p?.planningStatus === "provisional") safety = { ...safety, status: "unknown", reason: "Your structured plan is saved. Complete a fresh session-day check-in to confirm today’s duration, effort and recovery before training or export." };
   if (safety.status === "clear" && p?.protocol) {
     const eligibility = reviewProtocolAthlete({ protocolId: p.protocol.id, ...profile, now });
-    if (p.protocol.version !== PROTOCOL_VERSION || protocolEvidence(p.protocol.id).status !== "eligible")
+    if (!currentProtocolVersion(p.protocol) || protocolEvidence(p.protocol.id).status !== "eligible" || (evidenceWorkout(p.protocol.id) && (p.protocol.familiarityReviewed !== true || !reviewedWorkoutStructureCurrent(p))))
       safety = { ...safety, status: "unknown", reason: "The saved protocol or its evidence is no longer current. Preview the reviewed template again before training or export." };
     else if (eligibility.status !== "eligible") safety = { ...safety, status: "unknown", reason: eligibility.reasons.map(r => r.message).join(" ") };
   }

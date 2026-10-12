@@ -4,7 +4,7 @@ import { SessionResolutionError } from "./canonical-session";
 import { workoutRevision } from "./workout-update";
 import { dayBounds, dateKey } from "./dates";
 import { effectivePrescription } from "./effective-prescription";
-import { buildSessionDownload } from "./fit-export";
+import { buildPrivateSafeSessionDownload } from "./fit-export";
 import { manualWorkoutEmail } from "./manual-workout-email-template";
 import { manualWorkoutEmailContent } from "./manual-workout-email-content";
 import { eligibleManualEmail, manualEmailActionable, manualEmailChanged, manualEmailConfigured, manualEmailDue, manualEmailKey, manualEmailOrigin } from "./manual-workout-email";
@@ -104,7 +104,7 @@ export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?
         const actionable = (kind === "ready" || kind === "revised") && fresh.resolved;
         const content = actionable ? manualWorkoutEmailContent(actionable.canonical, actionable.nutrition, fresh.workout?.startTime || null, true, language) : null;
         const email = manualWorkoutEmail({ language, kind, dateLabel: fresh.resolved?.canonical.dateLocal || bounds.key, revision: row.revision.slice(0, 8), workoutUrl: `${origin}/daily?sessionId=${encodeURIComponent(sessionId)}`, settingsUrl: `${origin}/workout-email/settings`, ...(content ? { readyPlan: content.plan } : {}) });
-        const download = actionable ? buildSessionDownload(actionable.canonical) : null;
+        const download = actionable ? buildPrivateSafeSessionDownload(actionable.canonical) : null;
         const attachments = download ? [{ filename: download.filename, content: Buffer.from(download.bytes) }, ...(content?.graphic ? [{ filename: "workout-profile.png", content: content.graphic, cid: "workout-profile@jmm" }] : [])] : [];
         // Last-moment source/consent/time check after potentially expensive FIT/PNG work.
         const [lastPref, lastUser, last] = await Promise.all([

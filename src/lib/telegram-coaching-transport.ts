@@ -1,5 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
-export type TelegramTransportResult = { status: "sent" | "failed" | "unknown"; receiptId: string | null; error: string | null };
+export type TelegramPartReceipt = { kind: "text" | "fit" | "graphic"; status: "sent" | "failed" | "unknown"; receiptId: string | null };
+export type TelegramTransportResult = { status: "sent" | "partial" | "failed" | "unknown"; receiptId: string | null; error: string | null; parts?: TelegramPartReceipt[] };
+export type TelegramWorkoutAttachment = { kind: "fit" | "graphic"; bytes: Uint8Array; filename: string; caption: string };
+type TelegramOptions = { fetcher?: typeof fetch; env?: Record<string, string | undefined>; expectsReply?: boolean; attachments?: TelegramWorkoutAttachment[]; beforeSend?: () => Promise<void> };
 export function telegramCoachingEnabled(env: Record<string, string | undefined> = process.env) {
   return env.ENABLE_TELEGRAM_COACHING === "true" && env.ENABLE_AUTOMATED_DELIVERY === "true" && env.COACHING_TRANSPORT === "telegram";
 }
@@ -13,14 +16,25 @@ export function verifyTelegramWebhookSecret(header: string | null, env: Record<s
 }
 /** Fixed official endpoint. Injection exists only as a server-side function
  * argument for tests; no route/setting accepts an endpoint or HTTP client. */
-export async function sendTelegramCoaching(chatId: string, text: string, options: { fetcher?: typeof fetch; env?: Record<string, string | undefined>; expectsReply?: boolean } = {}): Promise<TelegramTransportResult> {
+async function sendTelegramPart(chatId: string, text: string, options: TelegramOptions, attachment?: TelegramWorkoutAttachment): Promise<TelegramTransportResult> {
   const env = options.env || process.env;
   if (!telegramCoachingConfigured(env)) return { status: "failed", receiptId: null, error: "Telegram coaching is disabled or unconfigured; no request was sent." };
   if (!/^\d{1,20}$/.test(chatId) || text.length > 4096 || !text.trim()) return { status: "failed", receiptId: null, error: "Invalid private recipient or oversized message; no request was sent." };
   try {
-    const response = await (options.fetcher || fetch)(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, redirect: "error", signal: AbortSignal.timeout(15_000),
-      body: JSON.stringify({ chat_id: chatId, text, link_preview_options: { is_disabled: true }, ...(options.expectsReply ? { reply_markup: { force_reply: true, selective: true, input_field_placeholder: "status=completed; minutes=30; rpe=5" } } : {}) }),
+    await options.beforeSend?.();
+  } catch {
+    return { status: "failed", receiptId: null, error: "Delivery authorization or current workout changed; no request was sent." };
+  }
+  const multipart = attachment ? new FormData() : null;
+  if (multipart && attachment) {
+    multipart.append("chat_id", chatId);
+    multipart.append("caption", attachment.caption);
+    multipart.append(attachment.kind === "fit" ? "document" : "photo", new Blob([new Uint8Array(attachment.bytes)], { type: attachment.kind === "fit" ? "application/octet-stream" : "image/png" }), attachment.filename);
+  }
+  try {
+    const response = await (options.fetcher || fetch)(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${attachment ? attachment.kind === "fit" ? "sendDocument" : "sendPhoto" : "sendMessage"}`, {
+      method: "POST", headers: multipart ? undefined : { "Content-Type": "application/json" }, redirect: "error", signal: AbortSignal.timeout(15_000),
+      body: multipart || JSON.stringify({ chat_id: chatId, text, link_preview_options: { is_disabled: true }, ...(options.expectsReply ? { reply_markup: { force_reply: true, selective: true, input_field_placeholder: "status=completed; minutes=30; rpe=5" } } : {}) }),
     });
     let result: unknown; try { result = await response.json(); } catch { return { status: "unknown", receiptId: null, error: "Telegram returned an unreadable response; acceptance is unknown. Do not automatically resend." }; }
     const data = result as { ok?: unknown; result?: { message_id?: unknown; chat?: { id?: unknown } }; error_code?: unknown };
@@ -32,6 +46,26 @@ export async function sendTelegramCoaching(chatId: string, text: string, options
     // the bot credential, private message or provider request body.
     return { status: "unknown", receiptId: null, error: "Telegram request was interrupted; acceptance is unknown. Check receipts before any retry." };
   }
+}
+/** Each accepted part has its own receipt. A partial or ambiguous attempt is
+ * terminal: retrying the bundle would duplicate an already accepted message. */
+export async function sendTelegramCoaching(chatId: string, text: string, options: TelegramOptions = {}): Promise<TelegramTransportResult> {
+  const attachments = options.attachments || [];
+  if (attachments.length > 2 || new Set(attachments.map(a => a.kind)).size !== attachments.length || attachments.some(a =>
+    !["fit", "graphic"].includes(a.kind) || !a.bytes?.length || a.bytes.length > 5_000_000 ||
+    !/^[A-Za-z0-9._-]{1,180}$/.test(a.filename) || !a.filename.endsWith(a.kind === "fit" ? ".fit" : ".png") || a.caption.length > 1024)) {
+    return { status: "failed", receiptId: null, error: "Invalid workout attachment; no request was sent." };
+  }
+  const first = await sendTelegramPart(chatId, text, options);
+  if (!attachments.length || first.status !== "sent") return first;
+  const parts: TelegramPartReceipt[] = [{ kind: "text", status: "sent", receiptId: first.receiptId }];
+  for (const attachment of attachments) {
+    const result = await sendTelegramPart(chatId, text, options, attachment);
+    parts.push({ kind: attachment.kind, status: result.status as TelegramPartReceipt["status"], receiptId: result.receiptId });
+    if (result.status !== "sent") return { status: result.status === "unknown" ? "unknown" : "partial", receiptId: first.receiptId,
+      error: "Some parts were accepted; remaining workout delivery is incomplete or uncertain. Do not automatically resend. Device transfer and reading are unverified.", parts };
+  }
+  return { ...first, parts };
 }
 export function parseTelegramUpdate(value: unknown, now = new Date()) {
   const b = value as { update_id?: unknown; message?: { forward_origin?: unknown; forward_from?: unknown; forward_date?: unknown; is_automatic_forward?: unknown; reply_to_message?: { message_id?: unknown; from?: { is_bot?: unknown }; chat?: { id?: unknown }; forward_origin?: unknown; forward_from?: unknown; forward_date?: unknown }; text?: unknown; date?: unknown; from?: { id?: unknown; is_bot?: unknown }; chat?: { id?: unknown; type?: unknown } } } | null;

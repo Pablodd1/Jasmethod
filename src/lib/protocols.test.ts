@@ -1,3 +1,4 @@
+import { evidenceWorkout } from "./evidence-workouts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Decoder, Stream } from "@garmin/fitsdk";
@@ -20,7 +21,7 @@ const spec = (
   sport: ProtocolSport = "bike",
   minutes = 60,
   level = "advanced",
-) => ({ id, sport, minutes, level, version: PROTOCOL_VERSION });
+) => ({ id, sport, minutes, level, version: PROTOCOL_VERSION, familiarityReviewed: true });
 const full = { verdict: "full", durationFactor: 1, intensityCap: "z7" };
 
 test("each protocol preserves whole sets, recoveries and its time budget across supported sports", () => {
@@ -43,7 +44,7 @@ test("each protocol preserves whole sets, recoveries and its time budget across 
         assert.ok(
           p.steps.every((s) => s.seconds > 0 && s.target?.type === "open"),
         );
-        if (protocol.id !== "aerobic-base")
+        if (protocol.id !== "aerobic-base" && !evidenceWorkout(protocol.id))
           assert.equal(
             p.steps.filter((s) => s.phase === "active").length - 1,
             p.steps.filter((s) => s.phase === "recovery").length,

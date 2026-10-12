@@ -1,3 +1,5 @@
+import { PROTOCOL_AUDIT } from "@/lib/protocol-audit";
+import { EVIDENCE_WORKOUTS, evidenceWorkout } from "@/lib/evidence-workouts";
 import { doubleDayPlan, hasDoubleDayMetadata } from "@/lib/double-day";
 import { createHash } from "node:crypto";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
@@ -50,14 +52,16 @@ export async function GET(req: Request) {
       version: PROTOCOL_VERSION,
       protocols: TRAINING_PROTOCOLS,
       sources: PROTOCOL_SOURCES,
+      reviewedWorkouts: EVIDENCE_WORKOUTS,
+      audit: PROTOCOL_AUDIT,
       rules: PROTOCOL_RULES,
       athlete: {
         id: athlete.id,
         name: athlete.name,
         timezone: athlete.timezone,
-        experience: athlete.profile?.experience || "beginner",
+        experience: athlete.profile?.experience ?? null,
         goal: athlete.profile?.goal,
-        injured: athlete.profile?.injured || false,
+        injured: athlete.profile?.injured ?? null,
       },
       sessions: sessions.map((s) => ({
         ...s,
@@ -115,12 +119,14 @@ export async function POST(req: Request) {
           throw new ApiError(
             `This protocol supports ${protocol.sports.join(", ")}. Select a matching session.`,
           );
+        if (evidenceWorkout(protocol.id) && body.familiarityReviewed !== true) throw new ApiError("Confirm that you have already tolerated comparable interval work; otherwise choose an easier familiar session and review with your coach.");
         const spec = {
           id: protocol.id,
           sport: w.sport as any,
           level: profile?.experience || "beginner",
           minutes: w.durationMin,
           version: PROTOCOL_VERSION,
+          ...(evidenceWorkout(protocol.id) ? { familiarityReviewed: true } : {}),
         };
         let raw;
         try {

@@ -1,3 +1,6 @@
+-- Keep table creation and deny-by-default client access atomic.
+BEGIN;
+
 -- CreateTable
 CREATE TABLE "ManualWorkoutEmailPreference" (
     "userId" TEXT NOT NULL,
@@ -65,3 +68,12 @@ ALTER TABLE "ManualWorkoutEmailPreference" ADD CONSTRAINT "ManualWorkoutEmailPre
 
 -- AddForeignKey
 ALTER TABLE "ManualWorkoutEmailOutbox" ADD CONSTRAINT "ManualWorkoutEmailOutbox_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- These tables are used only by the authenticated server-side Prisma paths.
+-- No anon/authenticated policies are granted. Verify the deployed Prisma role
+-- can access these tables before applying this migration to a live database.
+ALTER TABLE "ManualWorkoutEmailPreference" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ManualWorkoutEmailOutbox" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ManualWorkoutEmailDispatch" ENABLE ROW LEVEL SECURITY;
+
+COMMIT;

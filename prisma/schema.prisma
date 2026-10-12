@@ -14,6 +14,8 @@ datasource db {
 // ---------- IDENTITY ----------
 
 model User {
+  accountSmokeReceipts AccountSmokeReceipt[]
+  accountSmokeTelegram AccountSmokeTelegram?
   manualWorkoutEmail ManualWorkoutEmailPreference?
   manualWorkoutEmails ManualWorkoutEmailOutbox[]
   passwordReset PasswordReset?
@@ -915,4 +917,35 @@ model ManualWorkoutEmailDispatch {
   key String @id
   outboxId String?
   leasedUntil DateTime
+}
+
+// One durable claim per account/channel. Ambiguous attempts are never retried.
+model AccountSmokeReceipt {
+  id String @id
+  userId String
+  channel String
+  consentVersion String
+  destinationRevision String
+  verificationHash String?
+  verificationExpiresAt DateTime?
+  verificationAttempts Int @default(0)
+  verifiedEmailHash String?
+  verifiedAt DateTime?
+  status String @default("processing")
+  receiptId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, channel, consentVersion])
+}
+
+model AccountSmokeTelegram {
+  userId String @id
+  challengeHash String? @unique
+  challengeExpiresAt DateTime?
+  verifiedChatId String? @unique
+  verifiedActorId String?
+  verifiedAt DateTime?
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

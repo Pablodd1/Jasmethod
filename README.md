@@ -181,7 +181,7 @@ Current state: a webapp with locally tested core workflows. See the release guid
 
 **To activate each OAuth:** create the dev app (free), add redirect URI `https://<domain>/api/connectors/<provider>/callback`, put credentials in `.env`, restart.
 
-> **Database wiring (Supabase):** `DATABASE_URL` must be the **pooled** connection (PgBouncer, port `6543`, `?pgbouncer=true`) and `DIRECT_URL` the **direct/Session** connection (port `5432`). Prisma requires a **non-empty `DIRECT_URL`** to run migrations — without it, `npm run build` fails with `P1012` and the deploy stops. The build now auto-applies the schema via `prisma migrate deploy`, so no manual `db push` is needed in production. If `DATABASE_URL` is already a plain direct connection (no pooler), set `DIRECT_URL` to the same value.
+> **Database wiring (Supabase):** `DATABASE_URL` uses the **pooled** connection (PgBouncer, port `6543`, `?pgbouncer=true`) and `DIRECT_URL` the **direct/Session** connection (port `5432`). Prisma requires a non-empty `DIRECT_URL` for migrations. `npm run build` only generates the Prisma client and builds Next.js; it does not apply migrations. Production migrations are a separately authorized operator step using `npm run db:migrate-production` with `VERCEL_ENV=production` and `JMM_PRODUCTION_MIGRATIONS_APPROVED=true`. Before that step, review pending SQL, migration history and deployed Prisma-role access, including RLS-protected server-only tables. Do not use `db push` in production. If `DATABASE_URL` is already a plain direct connection (no pooler), set `DIRECT_URL` to the same value.
 
 ---
 
@@ -233,7 +233,7 @@ cp .env.example .env.local   # add DATABASE_URL (pooled) + DIRECT_URL (direct), 
 # 3. Database (local dev)
 npx prisma migrate deploy   # or `db push` for quick local iteration
 npx prisma db seed
-# Production: `npm run build` runs `prisma migrate deploy` automatically.
+# Production: build never migrates. Use the separately authorized operator flow above.
 
 # 4. Run
 npm run dev                  # http://localhost:3000

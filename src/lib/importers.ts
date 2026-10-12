@@ -1,6 +1,6 @@
 import { providerFetch } from "./provider-fetch";
 import { createHash } from "crypto";
-import { dateKey, DEFAULT_TIMEZONE } from "./dates";
+import { addDaysKey, dateKey, DEFAULT_TIMEZONE } from "./dates";
 import { XMLParser } from "fast-xml-parser";
 // Data importers: Garmin TCX, Apple Health XML (export.xml), Whoop CSV,
 // Strava API (OAuth), and 23andMe/Ancestry DNA raw files.
@@ -1199,9 +1199,12 @@ const GCAL_API =
 export interface GcalEventInput {
   summary: string;
   description?: string;
-  start: Date;
+  /** A known start instant, or an all-day date when no time was provided. */
+  start: Date | { date: string };
   durationMin: number;
   workoutId: string;
+  revision?: string;
+  provisional?: boolean;
   existingGoogleId?: string | null; // when set, update instead of create
 }
 
@@ -1215,13 +1218,19 @@ export async function googleCalUpsertEvent(
   const body = {
     summary: ev.summary,
     description: ev.description || "",
-    start: { dateTime: ev.start.toISOString() },
-    end: {
-      dateTime: new Date(
-        ev.start.getTime() + ev.durationMin * 60000,
-      ).toISOString(),
-    },
-    extendedProperties: { private: { jmmWorkoutId: ev.workoutId } },
+    // Explicit nulls clear the opposite representation on PATCH (timed ↔ all-day).
+    start: ev.start instanceof Date
+      ? { dateTime: ev.start.toISOString(), date: null }
+      : { date: ev.start.date, dateTime: null, timeZone: null },
+    end: ev.start instanceof Date
+      ? { dateTime: new Date(ev.start.getTime() + ev.durationMin * 60000).toISOString(), date: null }
+      : { date: addDaysKey(ev.start.date, 1), dateTime: null, timeZone: null },
+    status: ev.provisional !== false ? "tentative" : "confirmed",
+    extendedProperties: { private: {
+      jmmWorkoutId: ev.workoutId,
+      ...(ev.revision ? { jmmRevision: ev.revision } : {}),
+      jmmPlanStatus: ev.provisional !== false ? "provisional" : "approved",
+    } },
   };
   const headers = {
     Authorization: `Bearer ${accessToken}`,
@@ -1246,7 +1255,10 @@ export async function googleCalUpsertEvent(
       });
   }
   if (!r.ok) throw new Error(`Google Calendar publish failed: ${r.status}`);
-  return (await r.json()).id || id;
+  const published = await r.json();
+  if (published.id !== id || published.status === "cancelled")
+    throw new Error("Google Calendar did not acknowledge the published event; sync status is unconfirmed.");
+  return published.id;
 }
 export async function googleCalDeleteEvent(accessToken: string, id: string) {
   const r = await providerFetch(`${GCAL_API}/${encodeURIComponent(id)}`, {

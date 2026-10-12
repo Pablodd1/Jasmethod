@@ -1,4 +1,4 @@
-import { manualWorkoutCalendarPlaceholder } from "./manual-workout-calendar";
+import { calendarUnscheduledCopy, manualWorkoutCalendarPlaceholder, manualWorkoutCalendarRevision, retireWorkoutCalendarLink } from "./manual-workout-calendar";
 import { manualEmailLanguage } from "./manual-workout-email-locale";
 import { eligibleManualEmail, manualEmailConfigured } from "./manual-workout-email";
 import { manualWorkoutCalendarDescription } from "./manual-workout-email-content";
@@ -209,6 +209,17 @@ export async function syncUserConnectors(
             notes: { startsWith: "gcalPush:" },
           },
         });
+        // Retract stale actionable copies before publishing other sessions.
+        for (const l of links.filter((l) => l.workoutId)) {
+          const w = await prisma.workout.findFirst({
+            where: { id: l.workoutId!, userId },
+            include: { planDay: { select: { dayOff: true } } },
+          });
+          if (retireWorkoutCalendarLink(w, l.date, start, end)) {
+            await api.googleCalDeleteEvent(access, l.notes!.slice(9));
+            await prisma.calendarEvent.delete({ where: { id: l.id } });
+          }
+        }
         for (const w of planned.filter(
           (w) =>
             w.durationMin > 0 &&
@@ -238,14 +249,23 @@ export async function syncUserConnectors(
           const language = manualEmailLanguage(deliveryUser.language);
           const shareGuidance = !!language && !!emailPref?.calendarGuidance && eligibleManualEmail(emailPref, deliveryUser.email) && emailPref.timezone === deliveryUser.timezone;
           const session = ready ? resolved!.canonical : null;
-          const appUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit").replace(/\/$/, "")}/daily?sessionId=${encodeURIComponent(w.id)}`;
+          const workoutDate = dateKey(w.date, user.timezone);
+          const appUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit").replace(/\/$/, "")}/daily?sessionId=${encodeURIComponent(w.id)}&date=${workoutDate}`;
           const placeholder = manualWorkoutCalendarPlaceholder(deliveryUser.language, !!ready, appUrl);
+          const description = (ready && shareGuidance
+              ? manualWorkoutCalendarDescription(session!, resolved!.nutrition, w.startTime, language!) + `\n${language === "es" ? "Plan actual y gráfico" : "Current plan and workout graphic"}: ${appUrl}\n${language === "es" ? "Revisión" : "Plan revision"}: ${session!.revision}`
+              : placeholder.description) + (w.startTime ? "" : `\n${calendarUnscheduledCopy(deliveryUser.language)}`);
+          const revision = manualWorkoutCalendarRevision({
+            workoutId: w.id, date: workoutDate, startTime: w.startTime,
+            durationMin: session?.durationMin ?? w.durationMin,
+            canonicalRevision: resolved?.canonical.revision ?? null, ready: !!ready, description,
+          });
           const gid = await api.googleCalUpsertEvent(access, {
             summary: placeholder.summary,
-            description: ready && shareGuidance
-              ? manualWorkoutCalendarDescription(session!, resolved!.nutrition, w.startTime, language!) + `\n${language === "es" ? "Plan actual y gráfico" : "Current plan and workout graphic"}: ${appUrl}\n${language === "es" ? "Revisión" : "Plan revision"}: ${session!.revision}`
-              : placeholder.description,
-            start: localDate(dateKey(w.date, user.timezone), user.timezone, w.startTime || "07:00"),
+            description,
+            revision,
+            provisional: !ready,
+            start: w.startTime ? localDate(workoutDate, user.timezone, w.startTime) : { date: workoutDate },
             durationMin: session?.durationMin ?? w.durationMin,
             workoutId: w.id,
             existingGoogleId: link?.notes?.slice(9) || legacyRemote?.id,
@@ -265,21 +285,6 @@ export async function syncUserConnectors(
               create: { userId, ...data },
               update: data,
             });
-        }
-        for (const l of links.filter((l) => l.workoutId)) {
-          const w = await prisma.workout.findFirst({
-            where: { id: l.workoutId!, userId },
-            include: { planDay: { select: { dayOff: true } } },
-          });
-          if (
-            !w ||
-            w.durationMin === 0 ||
-            w.planDay?.dayOff ||
-            w.feedbackStatus === "skipped"
-          ) {
-            await api.googleCalDeleteEvent(access, l.notes!.slice(9));
-            await prisma.calendarEvent.delete({ where: { id: l.id } });
-          }
         }
       } else {
         // Biometrics backfill: up to 180 days on first connect (Both APIs

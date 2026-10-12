@@ -3,7 +3,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { dateKey, localDate, addDaysKey } from "./dates";
 
 export const CONSENT_VERSION = "mock-coaching-v1";
-export const TELEGRAM_CONSENT_VERSION = "telegram-coaching-v1";
+export const TELEGRAM_CONSENT_VERSION = "telegram-coaching-workout-files-v2";
 export const REPLY_TTL_MS = 30 * 60_000;
 export const PURPOSES = ["dailyPlan", "sessionFeedback", "missingData"] as const;
 export type Purpose = typeof PURPOSES[number];
@@ -36,7 +36,7 @@ export function parseCommunicationSettings(value: unknown): CommunicationSetting
   for (const k of ["minuteOfDay", "quietStart", "quietEnd"]) if (!Number.isInteger(b[k]) || Number(b[k]) < 0 || Number(b[k]) > 1439) throw Error(`Invalid ${k}`);
   if (b.quietStart === b.quietEnd) throw Error("Quiet hours must have different start and end times");
   if (!Array.isArray(b.declinedOptional) || b.declinedOptional.some(k => !OPTIONAL_INPUTS.includes(k)) || new Set(b.declinedOptional).size !== b.declinedOptional.length) throw Error("Invalid optional-input choices");
-  if (PURPOSES.some(k => b[k]) && (typeof b.consentVersion !== "string" || ![CONSENT_VERSION, TELEGRAM_CONSENT_VERSION].includes(b.consentVersion))) throw Error("Review and accept the specific communication purposes");
+  if (!b.paused && PURPOSES.some(k => b[k]) && (typeof b.consentVersion !== "string" || ![CONSENT_VERSION, TELEGRAM_CONSENT_VERSION].includes(b.consentVersion))) throw Error("Review and accept the specific communication purposes");
   return { primaryChannel: b.primaryChannel, paused: b.paused, dailyPlan: b.dailyPlan, sessionFeedback: b.sessionFeedback,
     missingData: b.missingData, timezone: b.timezone, minuteOfDay: b.minuteOfDay, quietStart: b.quietStart,
     quietEnd: b.quietEnd, declinedOptional: b.declinedOptional } as CommunicationSettings;

@@ -10,7 +10,7 @@ const {test} = require('node:test');
 const ts = require(path.join(original, 'node_modules/typescript'));
 class NextResponse extends Response {
   static json(body, init) { return new NextResponse(JSON.stringify(body), {...init, headers: {"Content-Type":"application/json", ...init?.headers}}); }
-  static redirect(url) { return new NextResponse(null, {status:307, headers:{location:String(url)}}); }
+  static redirect(url, status=307) { return new NextResponse(null, {status, headers:{location:String(url)}}); }
 }
 function load(root, rel, dependencies, extra={}) {
   const source=fs.readFileSync(path.join(root,rel),'utf8');
@@ -30,7 +30,7 @@ function fixture(root,options={}) {
   let txn=null, sessionUser='athlete-A'; const jar=new Map();
   const log={tokenRequests:[],tokenCalls:[],profileRequests:[],writes:[],claims:[],queued:[],errors:[],transactionOptions:[]};
   const fakeToken={access_token:'fake-token',refresh_token:'fake-refresh',expires_in:3600,
-    scope:partialScope?'read:profile':'read:profile read:recovery read:sleep read:cycles read:workout offline',athlete:{id:123}};
+    scope:options.tokenScope ?? (partialScope?'read:profile':'read:profile read:recovery read:sleep read:cycles read:workout offline'),athlete:{id:123}, ...options.tokenOverrides};
   const importers=load(root,'src/lib/importers.ts',{
     './provider-fetch':{providerFetch:async(url,opts)=> {log.tokenRequests.push(String(url)); return Response.json(fakeToken);}},
     'crypto':require('node:crypto'),'./dates':{dateKey:()=> '2026-09-26',DEFAULT_TIMEZONE:'UTC'},
@@ -74,11 +74,12 @@ function fixture(root,options={}) {
     './auth':{getCurrentUser:async()=>sessionUser?{id:sessionUser}:null},'./db':{prisma:db},
     './crypto':{encryptSecret:value=>'enc:v1:fixture:'+value},'./importers':importers,'./oauth-state':state,
     './intervals-oauth':intervals,
+    './request-origin':load(root,'src/lib/request-origin.ts',{}, {process:{env}}),
     './sync':{syncUserConnectors:async()=>({total:0,results:[]})},
     './background-jobs':{enqueue:async(...args)=>log.queued.push(args)},
   },{process:{env},fetch:async url=> {log.profileRequests.push(String(url));return Response.json({user_id:123});},
     console:{error:(...args)=>log.errors.push(args),warn:()=>{}}});
-  return {...oauth,log,intervals,getTxn:()=>txn,setTxn:value=>{txn=value;},clearBrowser:()=>{jar.clear();sessionUser=null;},setSession:value=>{sessionUser=value;}};
+  return {...oauth,log,intervals,env,getTxn:()=>txn,setTxn:value=>{txn=value;},clearBrowser:()=>{jar.clear();sessionUser=null;},setSession:value=>{sessionUser=value;}};
 }
 async function roundTrip(root,provider,options={}) {
   const f=fixture(root,options);
@@ -524,4 +525,127 @@ test('connectors DELETE: cannot bypass COROS revocation lifecycle',async()=>{
   assert.equal(response.status,409);
   assert.equal((await response.json()).code,'dedicated_disconnect_required');
   assert.equal(f.calls.length,0);
+});
+
+const smokeEnv = {ENABLE_ACCOUNT_SMOKE_TEST:'true', JMM_SMOKE_TEST_USER_ID:'athlete-A'};
+const smokeScope = 'https://www.googleapis.com/auth/calendar.events';
+function smokeRequest({origin='https://app.example', mode='smoke', consent='calendar-smoke-v1', query='?mode=smoke', extra={}, method='POST'}={}) {
+  return new Request(`https://app.example/api/account/smoke-test/calendar/connect${query}`, {
+    method, headers:{origin,'content-type':'application/json'},
+    ...(method === 'POST' ? {body:JSON.stringify({mode,consent,...extra})} : {}),
+  });
+}
+test('smoke calendar: explicit consent stores separate durable mode, no refresh or normal sync', async () => {
+  const f=fixture(original,{env:smokeEnv,tokenScope:smokeScope});
+  const response=await f.authorizeSmokeCalendar(smokeRequest());
+  assert.equal(response.status,303);
+  const auth=new URL(response.headers.get('location'));
+  assert.equal(auth.searchParams.get('scope'),'https://www.googleapis.com/auth/calendar.events.owned');
+  assert.equal(auth.searchParams.get('access_type'),'online');
+  assert.equal(f.getTxn().provider,'google_cal_smoke');
+  assert.ok(f.getTxn().expiresAt > new Date());
+  f.clearBrowser();
+  const result=await f.callback(new Request(`https://app.example/api/connectors/google-cal/callback?code=fake&state=${f.getTxn().state}`),'google-cal');
+  assert.equal(f.log.writes.length,1);
+  assert.equal(f.log.writes[0].where.userId_provider.provider,'google_cal_smoke');
+  assert.equal(f.log.writes[0].create.provider,'google_cal_smoke');
+  assert.equal(f.log.writes[0].create.refreshEnc,null);
+  assert.equal(f.log.queued.length,0);
+  assert.equal(result.headers.get('location'),'https://app.example/account/smoke-test?ok=google_cal_smoke');
+});
+for (const [name, request, env, session] of [
+  ['feature disabled',{}, {},'athlete-A'],
+  ['wrong athlete',{},smokeEnv,'athlete-B'],
+  ['signed out',{},smokeEnv,null],
+  ['cross origin',{origin:'https://evil.example'},smokeEnv,'athlete-A'],
+  ['GET',{method:'GET'},smokeEnv,'athlete-A'],
+  ['missing consent',{consent:''},smokeEnv,'athlete-A'],
+  ['missing mode',{mode:''},smokeEnv,'athlete-A'],
+  ['target athlete query',{query:'?mode=smoke&athleteId=athlete-B'},smokeEnv,'athlete-A'],
+  ['same athlete query',{query:'?mode=smoke&athleteId=athlete-A'},smokeEnv,'athlete-A'],
+  ['target athlete body',{extra:{athleteId:'athlete-B'}},smokeEnv,'athlete-A'],
+  ['return override',{query:'?mode=smoke&return=/connectors'},smokeEnv,'athlete-A'],
+  ['duplicate mode',{query:'?mode=smoke&mode=smoke'},smokeEnv,'athlete-A'],
+]) test(`smoke calendar: ${name} cannot start authorization`,async()=>{
+  const f=fixture(original,{env,tokenScope:smokeScope}); f.setSession(session);
+  const response=await f.authorizeSmokeCalendar(smokeRequest(request));
+  assert.ok(response.status>=400);
+  assert.equal(f.getTxn(),null); assert.equal(f.log.tokenRequests.length,0);
+});
+test('smoke calendar: GET query cannot opt ordinary authorize into smoke flow',async()=>{
+  const f=fixture(original,{env:smokeEnv});
+  const result=await f.authorize(new Request('https://app.example/api/connectors/google-cal/authorize?mode=smoke'),'google-cal');
+  assert.equal(result.status,400); assert.equal(f.getTxn(),null);
+});
+test('smoke calendar: callback query cannot change ordinary transaction mode',async()=>{
+  const f=fixture(original,{env:smokeEnv});
+  await f.authorize(new Request('https://app.example/api/connectors/google-cal/authorize'),'google-cal');
+  await f.callback(new Request(`https://app.example/api/connectors/google-cal/callback?code=fake&mode=smoke&state=${f.getTxn().state}`),'google-cal');
+  assert.equal(f.log.writes[0].create.provider,'google_cal'); assert.equal(f.log.queued.length,1);
+});
+for (const kind of ['revoked-feature','owner-changed','missing-scope','missing-expiry','expired-state','wrong-provider']) {
+  test(`smoke calendar: ${kind} cannot persist smoke credentials`,async()=>{
+    const f=fixture(original,{env:smokeEnv,tokenScope:kind==='missing-scope'?'':smokeScope,
+      tokenOverrides:kind==='missing-expiry'?{expires_in:undefined}:undefined});
+    await f.authorizeSmokeCalendar(smokeRequest());
+    if(kind==='revoked-feature')f.env.ENABLE_ACCOUNT_SMOKE_TEST='false';
+    if(kind==='owner-changed')f.env.JMM_SMOKE_TEST_USER_ID='athlete-B';
+    if(kind==='expired-state') f.setTxn({...f.getTxn(),expiresAt:new Date(0)});
+    await f.callback(new Request(`https://app.example/api/connectors/google-cal/callback?code=fake&state=${f.getTxn().state}`),kind==='wrong-provider'?'oura':'google-cal');
+    assert.equal(f.log.writes.length,0);assert.equal(f.log.queued.length,0);
+  });
+}
+test('smoke calendar: ordinary background and manual sync reject isolated credentials',()=>{
+  const read=rel=>fs.readFileSync(path.join(original,rel),'utf8');
+  assert.match(read('src/app/api/connectors/sync/route.ts'),/onlyProvider === "google_cal_smoke"[\s\S]*?status: 400/);
+  const sync=read('src/lib/sync.ts');
+  const configs=sync.slice(sync.indexOf('const configs ='),sync.indexOf('export async function syncUserConnectors'));
+  assert.doesNotMatch(configs,/google_cal_smoke/);
+  assert.match(sync,/if \(!cfg\) continue/);
+  assert.match(read('src/lib/background-jobs.ts'),/\['oura','whoop','strava','google_cal','intervals'\]\.includes\(payload.provider\)/);
+});
+test('smoke calendar: native form consent redirects and callback replay cannot exchange twice',async()=>{
+  const f=fixture(original,{env:smokeEnv,tokenScope:smokeScope});
+  const response=await f.authorizeSmokeCalendar(new Request('https://app.example/api/account/smoke-test/calendar/connect?mode=smoke',{
+    method:'POST',headers:{origin:'https://app.example','content-type':'application/x-www-form-urlencoded'},
+    body:'mode=smoke&consent=calendar-smoke-v1',
+  }));
+  assert.equal(response.status,303);
+  const callback=new Request(`https://app.example/api/connectors/google-cal/callback?code=fake&state=${f.getTxn().state}`);
+  await f.callback(callback,'google-cal'); await f.callback(callback,'google-cal');
+  assert.equal(f.log.tokenRequests.length,1);assert.equal(f.log.writes.length,1);assert.equal(f.log.queued.length,0);
+});
+for (const [name, body, headers, status] of [
+  ['cross-site browser header','{"mode":"smoke","consent":"calendar-smoke-v1"}',{'sec-fetch-site':'cross-site'},403],
+  ['missing origin','{}',{origin:''},403],
+  ['invalid JSON','{',{},400],
+  ['null JSON','null',{},400],
+  ['array JSON','[]',{},400],
+  ['JSON primitive','"smoke"',{},400],
+  ['oversized body',' '.repeat(1025),{},413],
+  ['oversized declared body','{}',{'content-length':'1025'},413],
+  ['multibyte oversized body','é'.repeat(513),{},413],
+  ['unsupported type','{}',{'content-type':'text/plain'},400],
+  ['multipart type','{}',{'content-type':'multipart/form-data; boundary=fixture'},400],
+  ['duplicate form mode','mode=smoke&mode=smoke&consent=calendar-smoke-v1',{'content-type':'application/x-www-form-urlencoded'},400],
+  ['duplicate form consent','mode=smoke&consent=no&consent=calendar-smoke-v1',{'content-type':'application/x-www-form-urlencoded'},400],
+]) test(`smoke calendar: ${name} rejected before state creation`,async()=>{
+  const f=fixture(original,{env:smokeEnv,tokenScope:smokeScope});
+  const response=await f.authorizeSmokeCalendar(new Request('https://app.example/api/account/smoke-test/calendar/connect?mode=smoke',{
+    method:'POST',headers:{origin:'https://app.example','content-type':'application/json',...headers},body,
+  }));
+  assert.equal(response.status,status);assert.equal(f.getTxn(),null);assert.equal(f.log.tokenRequests.length,0);
+});
+test('smoke calendar: APP_URL origin overrides NEXT_PUBLIC_APP_URL',async()=>{
+  const f=fixture(original,{env:{...smokeEnv,APP_URL:'https://canonical.example'},tokenScope:smokeScope});
+  assert.equal((await f.authorizeSmokeCalendar(smokeRequest())).status,403);
+  const response=await f.authorizeSmokeCalendar(smokeRequest({origin:'https://canonical.example'}));
+  assert.equal(response.status,303);
+  assert.equal(new URL(response.headers.get('location')).searchParams.get('redirect_uri'),'https://canonical.example/api/connectors/google-cal/callback');
+  const result=await f.callback(new Request(`https://canonical.example/api/connectors/google-cal/callback?code=fake&state=${f.getTxn().state}`),'google-cal');
+  assert.equal(result.headers.get('location'),'https://canonical.example/account/smoke-test?ok=google_cal_smoke');
+});
+test('smoke calendar: unconfigured production origin fails closed',async()=>{
+  const f=fixture(original,{env:{...smokeEnv,NODE_ENV:'production',NEXT_PUBLIC_APP_URL:undefined},tokenScope:smokeScope});
+  assert.equal((await f.authorizeSmokeCalendar(smokeRequest())).status,403);assert.equal(f.getTxn(),null);
 });

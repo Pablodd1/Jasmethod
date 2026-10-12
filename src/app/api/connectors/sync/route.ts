@@ -20,6 +20,9 @@ export async function POST(req: Request) {
     /* no body = sync everything */
   }
 
+  if (onlyProvider === "google_cal_smoke")
+    return NextResponse.json({ error: "Smoke calendar credentials cannot be used for normal sync" }, { status: 400 });
+
   if (onlyProvider === "intervals" && !intervalsConnectorEnabled())
     return NextResponse.json({ error: INTERVALS_DISABLED_MESSAGE }, { status: 503 });
 

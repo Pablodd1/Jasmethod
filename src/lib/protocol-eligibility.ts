@@ -1,3 +1,4 @@
+import { evidenceWorkout } from "./evidence-workouts";
 // Product review gates, not a validated medical clearance algorithm.
 import type { ProtocolId } from './protocols';
 export type Eligibility = { status: 'eligible' | 'blocked' | 'insufficient-data'; reasons: { code: string; message: string }[] };
@@ -18,5 +19,6 @@ export function reviewProtocolAthlete(input: {
   if (!['beginner', 'amateur', 'advanced', 'pro'].includes(input.experience || '')) missing.push({ code: 'history_missing', message: 'Add your training experience before choosing a protocol dose.' });
   if (!input.goal) missing.push({ code: 'goal_missing', message: 'Choose the sport/event goal this protocol supports.' });
   if (['speed', 'anaerobic-capacity'].includes(input.protocolId) && input.experience === 'beginner') blocked.push({ code: 'advanced_work_review', message: 'Build a training base and review prior tolerance with a coach before maximal speed or anaerobic-capacity work.' });
+  if (evidenceWorkout(input.protocolId) && !['advanced', 'pro'].includes(input.experience || '')) blocked.push({ code: 'advanced_interval_review', message: 'This interval template requires established advanced training experience and prior tolerance of comparable work.' });
   return { status: blocked.length ? 'blocked' : missing.length ? 'insufficient-data' : 'eligible', reasons: [...blocked, ...missing] };
 }

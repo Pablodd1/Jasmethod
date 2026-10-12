@@ -6,6 +6,7 @@ import { writeFileSync } from "node:fs";
 import { Decoder, Stream } from "@garmin/fitsdk";
 import { dayBounds, addDaysKey, localDate } from "../src/lib/dates";
 import { workoutRevision } from "../src/lib/workout-update";
+import { TRAINING_PROTOCOLS } from "../src/lib/protocols";
 const db = new PrismaClient(),
   base = process.env.TEST_BASE_URL || "http://localhost:3000";
 const database = new URL(process.env.DATABASE_URL || "");
@@ -469,7 +470,11 @@ async function main() {
   await request(protocolPath, b.cookie, "GET", undefined, 403);
   await request("/api/protocols", b.cookie, "POST", protocolRequest, 404);
   const catalog = (await request(protocolPath, admin.cookie)).data;
-  assert.equal(catalog.protocols.length, 8);
+  assert.deepEqual(
+    catalog.protocols.map((protocol: { id: string }) => protocol.id),
+    TRAINING_PROTOCOLS.map((protocol) => protocol.id),
+    "authenticated catalog exposes every reviewed protocol exactly once and in order",
+  );
   assert.equal(catalog.athlete.id, c.id);
   assert.equal(catalog.sessions.length, 1);
   const preview = (
