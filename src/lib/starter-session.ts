@@ -19,11 +19,11 @@ export function starterSession(goal:string|null|undefined, recentSport?:string|n
     description:`${guidance} Up to 20 minutes, not a compulsory minimum. This is a conservative starter suggestion, not a fully individualized plan or a fitness test. Check in first; stop if symptoms develop. Record actual minutes and overall effort afterward so the next session can use your history. Update Profile for sport, equipment, restrictions and goals.`, startTime:null };
 }
 /** Never grant an incomplete-setup exception to a changed protocol or numeric target. */
-export function isStarterSession(workout:{source?:string|null;originalPlan?:string|null}) {
+export function isStarterSession(workout:{source?:string|null;originalPlan?:string|null;sport?:string;type?:string}) {
   if (workout.source !== "starter" || !workout.originalPlan) return false;
   try {
     const p=JSON.parse(workout.originalPlan);
-    return p.starterVersion===STARTER_SESSION_VERSION && ["run","bike","swim","mobility"].includes(p.sport)
+    return (workout.sport == null || workout.sport===p.sport) && (workout.type == null || workout.type===p.type) && p.starterVersion===STARTER_SESSION_VERSION && ["run","bike","swim","mobility"].includes(p.sport)
       && p.type==="recovery" && p.intensity==="z1" && p.durationMin===20 && !p.protocol && !p.sportStructure;
   } catch { return false; }
 }

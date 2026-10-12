@@ -32,6 +32,7 @@ test("incomplete profile permits only a bounded starter after current check-in; 
    {...input,checkin:{...input.checkin,answers:JSON.stringify({...answers,sick:true})}},
    {...input,currentEvents:[{id:"race",userId:"athlete",date}]},
    {...input,workout:{...input.workout,source:"manual"}},
+   {...input,workout:{...input.workout,sport:"hyrox"}},
    {...input,workout:{...input.workout,originalPlan:JSON.stringify({...starterSession("run-only"),durationMin:60})}},
  ]) assert.notEqual(effectiveSessionFromRecords(changed).canonical.verdict,"ready");
  const limited={...input,checkin:{...input.checkin,answers:JSON.stringify({...answers,availableMin:10})}};
