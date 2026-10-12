@@ -110,7 +110,7 @@ export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?
           content.plan.graphicCid="workout-profile@jmm";
           content.plan.graphicAlt=content.plan.steps.join("; ");
         }
-        const email = manualWorkoutEmail({ language, kind, dateLabel: fresh.resolved?.canonical.dateLocal || bounds.key, revision: row.revision.slice(0, 8), workoutUrl: `${origin}/daily?sessionId=${encodeURIComponent(sessionId)}`, settingsUrl: `${origin}/workout-email/settings`, ...(content ? { readyPlan: content.plan } : {}) });
+        const email = manualWorkoutEmail({ language, kind, workoutSport: actionable ? actionable.canonical.sport : undefined, dateLabel: fresh.resolved?.canonical.dateLocal || bounds.key, revision: row.revision.slice(0, 8), workoutUrl: `${origin}/daily?sessionId=${encodeURIComponent(sessionId)}`, settingsUrl: `${origin}/workout-email/settings`, ...(content ? { readyPlan: content.plan } : {}) });
         const download = actionable ? buildPrivateSafeSessionDownload(actionable.canonical) : null;
         const attachments = download ? [{ filename: download.filename, content: Buffer.from(download.bytes) }, ...(content?.graphic ? [{ filename: "workout-profile.png", content: content.graphic, cid: "workout-profile@jmm" }] : [])] : [];
         // Last-moment source/consent/time check after potentially expensive FIT/PNG work.

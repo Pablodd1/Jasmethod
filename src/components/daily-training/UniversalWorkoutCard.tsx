@@ -31,7 +31,7 @@ export function WorkoutHeader({ card }: { card: Card }) {
           {s.sport.toUpperCase()} · {s.dateLocal} · {s.timezone}
         </p>
         <h1>{s.title}</h1>
-        <p>{s.reason}</p>
+        <p>{s.verdict === "ready" ? card.content.summary : s.reason}</p>
       </div>
       <div className="uwc-stats">
         <b>

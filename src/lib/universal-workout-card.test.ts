@@ -171,3 +171,14 @@ test("edited endurance steps survive check-in and are held when the time or inte
   assert.ok(JSON.parse(holdStructuredPlanEdit(workout.prescription,"run","Changed")!).sportStructure);
   assert.equal(holdStructuredPlanEdit(workout.prescription,"bike","Changed"),null);
 });
+
+
+test("delivery subject identifies the actual sport and sanitizes date headers",async()=>{
+  const { manualWorkoutEmail } = await import("./manual-workout-email-template");
+  const input={language:"en" as const,kind:"ready" as const,dateLabel:"2026-10-14\r\nInjected",revision:"synthetic",workoutUrl:"https://example.invalid/daily",settingsUrl:"https://example.invalid/settings"};
+  const mail=manualWorkoutEmail({...input,workoutSport:"run"});
+  assert.equal(mail.subject,"Run Training — 2026-10-14 Injected");
+  assert.doesNotMatch(mail.subject,/[\r\n]/);
+  assert.match(manualWorkoutEmail({...input,language:"es",workoutSport:"bike"}).subject,/Ciclismo entrenamiento/);
+  assert.match(manualWorkoutEmail({...input,kind:"held",workoutSport:"run"}).subject,/on hold/);
+});
