@@ -351,8 +351,13 @@ async function main() {
         where: { userId_date: { userId: a.id, date: day.start } },
       })
     ).hrvType,
-    "sdnn",
+    "rmssd",
   );
+  const manualAfterUpload=await db.dailyMetrics.findUniqueOrThrow({where:{userId_date:{userId:a.id,date:day.start}}});
+  assert.equal(manualAfterUpload.hrv,48,"an uploaded device file cannot overwrite an athlete's manual HRV");
+  const sdnnObservations=await db.metricObservation.findMany({where:{userId:a.id,source:"apple",metricType:"hrv_sdnn",measurementMethod:"uploaded_file",observedAt:{gte:day.start,lt:day.end}}});
+  assert.equal(sdnnObservations.length,1,"repeated upload replaces the same source snapshot rather than duplicating it");
+  assert.equal(sdnnObservations[0].value,41);assert.equal(sdnnObservations[0].qualityFlag,"ok");
   await db.connector.create({
     data: {
       userId: a.id,
