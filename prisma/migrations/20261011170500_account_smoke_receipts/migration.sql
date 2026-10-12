@@ -1,3 +1,6 @@
+-- Keep table creation and deny-by-default client access atomic.
+BEGIN;
+
 CREATE TABLE "AccountSmokeReceipt" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "userId" TEXT NOT NULL,
@@ -31,3 +34,5 @@ CREATE TABLE "AccountSmokeTelegram" (
 CREATE UNIQUE INDEX "AccountSmokeTelegram_challengeHash_key" ON "AccountSmokeTelegram"("challengeHash");
 CREATE UNIQUE INDEX "AccountSmokeTelegram_verifiedChatId_key" ON "AccountSmokeTelegram"("verifiedChatId");
 ALTER TABLE "AccountSmokeTelegram" ENABLE ROW LEVEL SECURITY;
+
+COMMIT;
