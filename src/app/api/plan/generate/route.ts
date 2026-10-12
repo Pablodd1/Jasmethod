@@ -4,7 +4,7 @@ import { cycleActivityEvidence, shapeTrainingCycle, TRAINING_CYCLE_VERSION } fro
 import { evidencedTargetProfile } from "@/lib/anchor-evidence";
 import { setupNumber } from "@/lib/planning-target";
 import { type BoundedPlanSession, boundPlanWeeks } from "@/lib/planning-bounds";
-import { DOUBLE_DAY_VERSION, doubleDayTiming } from "@/lib/double-day";
+import { DOUBLE_DAY_VERSION, doubleDayTiming, doubleDayWeekdays } from "@/lib/double-day";
 import { createHash, randomUUID } from "node:crypto";
 import { assessPlanningSetup, planningGoal } from "@/lib/planning-setup";
 import { readPlanningSetup } from "@/lib/planning-setup-store";
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
           level,
           weeks: weeksCount,
           startDate: start,
-          weeklyHours: profile.weeklyHours || undefined,
+          weeklyHours: setup.baselineWeeklyMinutes! / 60,
           hasRace: false, // One normalized event controller below owns reductions.
         })
       : isHyrox
@@ -165,14 +165,14 @@ export async function POST(req: Request) {
               level,
               weeks: weeksCount,
               startDate: start,
-              weeklyHours: profile.weeklyHours || undefined,
+              weeklyHours: setup.baselineWeeklyMinutes! / 60,
             })
           : generatePlan({
               level,
               distance: dist,
               weeks: weeksCount,
               startDate: start,
-              weeklyHours: profile.weeklyHours || undefined,
+              weeklyHours: setup.baselineWeeklyMinutes! / 60,
               easyPct: splitTarget,
               // Template only. The normalized bounded-cycle controller below
               // applies all event reductions once across every supported sport.
@@ -190,11 +190,10 @@ export async function POST(req: Request) {
     const baselineReviews = buildCycleBaselineReviews({profile, tests:benchmarkTests, appliedIds:appliedAnchors.flatMap(row=>row.entityId?[row.entityId]:[]), sports:requiredCycleSports(dist), now:new Date(), timezone:user.timezone});
     // Preserve actual day placement, reducing rather than making up omitted work.
     const startWeekday = new Date(dateKey(start,user.timezone)+"T12:00Z").getUTCDay();
-    const pairSlot=setup.doubleDay ? (setup.doubleDay.weekday-startWeekday+7)%7 : 0;
+    const pairSlots=doubleDayWeekdays(setup.doubleDay).map(day=>(day-startWeekday+7)%7);
     const raceDays=events.map(event=>event.dateKey);
     const excludedDoubleWeeks=rawGenerated.flatMap((_,i)=>{
-      const candidateDay=Date.parse(addDaysKey(dateKey(start,user.timezone),i*7+pairSlot));
-      return raceDays.some(d=>Date.parse(d)-candidateDay>=0&&Date.parse(d)-candidateDay<=14*86400000)?[i]:[];
+      return pairSlots.some(slot=>raceDays.some(d=>{const candidateDay=Date.parse(addDaysKey(dateKey(start,user.timezone),i*7+slot));return Date.parse(d)-candidateDay>=0&&Date.parse(d)-candidateDay<=14*86400000;}))?[i]:[];
     });
     const {weeks: bounded, weeklyBudget, recoveryPolicy} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday, level, excludedDoubleWeeks);
     const structuredDraft = (session: BoundedPlanSession) => ({ ...prescribeToday({ session: { cycleVersion:TRAINING_CYCLE_VERSION, title:session.title, sport:session.sport, type:session.type, intensity:session.zone, durationMin:session.minutes, description:session.description, startTime:session.startTime ?? sessionStartTime }, adaptation: { verdict:"planned", durationFactor:1, intensityCap:session.zone } }), planningStatus: "provisional", planningNote:session.description });
@@ -209,8 +208,8 @@ export async function POST(req: Request) {
     const cycle = { version: TRAINING_CYCLE_VERSION, events:eventReview, baselineReviews, baselineEvidence, goal: setup.goalDescription, target: setup.targetGoal, baseline: { weeklyMinutes: setup.baselineWeeklyMinutes, observedAt: setup.baselineObservedAt, source: setup.source }, assessment: needsAssessment ? (assessmentScheduled ? "A comfortable non-maximal baseline observation is included; no threshold or performance value is invented. Record actual effort and recovery, then review before progressing." : "A baseline observation does not fit the available sessions. Review sport-specific availability and recent tolerated training with your coach before progressing; no threshold or performance value is invented.") + assessmentNote : "Recent applied sport-specific test evidence is available. A test result does not guarantee recovery or future performance.", activity: activityEvidence, weeks: generated.map(week => ({ week: week.week, theme: week.theme, totalMinutes: week.totalMinutes, reviewNote: week.reviewNote, observations:week.observations, eventDays:week.eventDays })), evidenceNote: "Goal values are aspirations. Reported training, measured test results and derived estimates retain their source records. Session zones are effort labels; no new physiological estimate is created." };
     if (!generated.some(week=>week.sessions.length)) throw new ApiError("The current template does not fit your available days/time. A coach should review the schedule; no sessions were assigned.", 422);
     for(const [index,week] of generated.entries()) {
-      const pair=week.sessions.filter(s=>s.doubleDayRole);
-      if(pair.length) {
+      for(const slot of new Set(week.sessions.filter(s=>s.doubleDayRole).map(s=>s.daySlot))) {
+        const pair=week.sessions.filter(s=>s.doubleDayRole && s.daySlot===slot);
         try{doubleDayTiming(addDaysKey(dateKey(start,user.timezone),index*7+pair[0].daySlot),user.timezone,pair.map(s=>({startTime:s.startTime!,durationMin:s.minutes})));}
         catch(error){throw new ApiError((error as Error).message,422);}
       }

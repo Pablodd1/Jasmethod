@@ -87,6 +87,9 @@ jobs:
       - name: Authenticated race scenario boundaries
         run: npx tsx scripts/jmm-race-scenario-integration.ts
 
+      - name: Day-zero incomplete-profile and recovery acceptance
+        run: npx tsx scripts/jmm-starter-integration.ts
+
       - name: Optional double-day agreement and recovery acceptance
         run: npx tsx scripts/jmm-double-day-integration.ts
 

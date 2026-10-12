@@ -96,3 +96,23 @@ test('an existing shorter easy donor is selected if the first eligible one excee
  assert.equal(pair.length,2);assert.equal(pair[1].minutes,30);assert.equal(pair[1].movedFromSlot,2);
  assert.equal(result.totalMinutes,220);
 });
+
+
+test('professional second double day uses separate pairs and existing different-sport bouts without extra minutes',()=>{
+ const raw={week:1,theme:'Base',sessions:Array.from({length:7},(_,i)=>({...exercise(),sport:(i===0?'swim':i===1?'bike':'run') as PlanSession['sport']})),totalMinutes:280};
+ const two={...preference,secondWeekday:5};
+ const parsed=parseDoubleDay(two)!;
+ assert.equal(parsed.secondWeekday,5);
+ const setup=parsePlanningSetup({trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:120,baselineWeeklyMinutes:600,doubleDay:two});
+ const result=boundPlanWeeks([raw],setup,undefined,0,'pro').weeks[0];
+ assert.equal(result.sessions.filter(s=>s.doubleDayRole).length,4);
+ for(const slot of [3,5]) {
+   const pair=result.sessions.filter(s=>s.daySlot===slot);
+   assert.equal(pair.length,2);assert.notEqual(pair[0].sport,pair[1].sport);
+ }
+ assert.equal(result.totalMinutes,raw.sessions.reduce((n,s)=>n+s.minutes,0));
+ const intermediate=boundPlanWeeks([raw],setup,undefined,0,'amateur').weeks[0];
+ assert.ok(intermediate.sessions.filter(s=>s.doubleDayRole).length<=2);
+ assert.throws(()=>parseDoubleDay({...two,secondWeekday:3}),/distinct/);
+ assert.equal(doubleDayReadiness(parsed,[3]).ready,false);
+});

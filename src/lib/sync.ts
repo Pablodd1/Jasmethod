@@ -1,3 +1,4 @@
+import { deviceMetricSnapshot } from "./device-metric-snapshot";
 import { calendarUnscheduledCopy, manualWorkoutCalendarPlaceholder, manualWorkoutCalendarRevision, retireWorkoutCalendarLink } from "./manual-workout-calendar";
 import { manualEmailLanguage } from "./manual-workout-email-locale";
 import { eligibleManualEmail, manualEmailConfigured } from "./manual-workout-email";
@@ -327,22 +328,9 @@ export async function syncUserConnectors(
           };
           // Retain the latest daily snapshot per provider, separately from
           // the legacy summary row used by existing coaching screens.
-          const obs: {
-            userId: string; observedAt: Date; metricType: string;
-            value: number; unit: string; source: string;
-            measurementMethod: string;
-          }[] = [];
-          const push = (type: string, v: number | null | undefined, unit: string) => {
-            if (v != null && Number.isFinite(v))
-              obs.push({ userId, observedAt: date, metricType: type, value: v, unit, source: conn.provider, measurementMethod: "device_sync" });
-          };
-          push("hrv_rmssd", values.hrv, "ms");
-          push("resting_hr", values.restingHr, "bpm");
-          push("sleep_hours", values.sleepHours, "h");
-          push("sleep_score", values.sleepScore, "score");
-          push("recovery_score", values.recoveryScore, "score");
-          await prisma.$transaction(async tx => {
-            await persistDeviceDay(tx, userId, date, conn.provider, data, obs);
+          const snapshot=deviceMetricSnapshot(userId,date,conn.provider,data);
+          if(snapshot.observations.length) await prisma.$transaction(async tx => {
+            await persistDeviceDay(tx, userId, date, conn.provider, snapshot.data, snapshot.observations);
           });
           imported++;
         }
@@ -423,10 +411,10 @@ export async function syncUserConnectors(
 }
 
 // Shared snapshot writer; lock serializes device providers for this athlete.
-export async function persistDeviceDay(tx: any, userId: string, date: Date, provider: string, data: any, observations: any[]) {
+export async function persistDeviceDay(tx: any, userId: string, date: Date, provider: string, data: any, observations: any[], method="device_sync") {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
   await tx.metricObservation.deleteMany({ where: {
-    userId, observedAt: date, source: provider, measurementMethod: "device_sync",
+    userId, observedAt: date, source: provider, measurementMethod: method,
   }});
   if (observations.length) await tx.metricObservation.createMany({ data: observations });
   const previous = await tx.dailyMetrics.findUnique({ where: { userId_date: { userId, date } } });

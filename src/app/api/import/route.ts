@@ -1,3 +1,5 @@
+import { deviceMetricSnapshot } from "@/lib/device-metric-snapshot";
+import { persistDeviceDay } from "@/lib/sync";
 import { storeActivity } from "@/lib/activity-store";
 import { dayBounds, parseDate } from "@/lib/dates";
 import { NextResponse } from "next/server";
@@ -83,9 +85,6 @@ export async function POST(req: Request) {
           user.timezone,
           parseDate(c.day, user.timezone),
         ).start;
-        const existing = await prisma.dailyMetrics.findUnique({
-          where: { userId_date: { userId: user.id, date: dayStart } },
-        });
         const data = {
           hrv: c.hrv ?? undefined,
           restingHr: c.restingHr ?? undefined,
@@ -97,16 +96,9 @@ export async function POST(req: Request) {
           source: "whoop",
           hrvType: "rmssd",
         };
-        if (existing) {
-          await prisma.dailyMetrics.update({
-            where: { id: existing.id },
-            data,
-          });
-        } else {
-          await prisma.dailyMetrics.create({
-            data: { userId: user.id, date: dayStart, ...data },
-          });
-        }
+        const snapshot=deviceMetricSnapshot(user.id,dayStart,"whoop",data,"uploaded_file");
+        if(!snapshot.observations.length) continue;
+        await prisma.$transaction(tx=>persistDeviceDay(tx,user.id,dayStart,"whoop",snapshot.data,snapshot.observations,"uploaded_file"));
         created++;
       }
       return NextResponse.json({
@@ -121,8 +113,7 @@ export async function POST(req: Request) {
       for (const m of oura.metrics) {
         const d = new Date(m.date);
         if (isNaN(d.getTime())) continue;
-        const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
-        const existing = await prisma.dailyMetrics.findUnique({ where: { userId_date: { userId: user.id, date: dayStart } } });
+        const dayStart = parseDate(m.date.slice(0,10),user.timezone);
         const data = {
           hrv: m.hrv ?? undefined,
           restingHr: m.restingHr ?? undefined,
@@ -131,11 +122,9 @@ export async function POST(req: Request) {
           recoveryScore: m.recoveryScore ?? undefined,
           source: "oura",
         };
-        if (existing) {
-          await prisma.dailyMetrics.update({ where: { id: existing.id }, data });
-        } else {
-          await prisma.dailyMetrics.create({ data: { userId: user.id, date: dayStart, ...data } });
-        }
+        const snapshot=deviceMetricSnapshot(user.id,dayStart,"oura",data,"uploaded_file");
+        if(!snapshot.observations.length) continue;
+        await prisma.$transaction(tx=>persistDeviceDay(tx,user.id,dayStart,"oura",snapshot.data,snapshot.observations,"uploaded_file"));
         created++;
       }
       return NextResponse.json({ ok: true, source: "oura", metricsImported: created, workoutsImported: 0 });
@@ -190,11 +179,9 @@ export async function POST(req: Request) {
         }
       }
       for (const d of Array.from(daily.values())) {
-        await prisma.dailyMetrics.upsert({
-          where: { userId_date: { userId: user.id, date: d.date } },
-          create: { userId: user.id, ...d },
-          update: d,
-        });
+        const snapshot=deviceMetricSnapshot(user.id,d.date,"apple",d,"uploaded_file");
+        if(!snapshot.observations.length) continue;
+        await prisma.$transaction(tx=>persistDeviceDay(tx,user.id,d.date,"apple",snapshot.data,snapshot.observations,"uploaded_file"));
         metricsImported++;
       }
     }

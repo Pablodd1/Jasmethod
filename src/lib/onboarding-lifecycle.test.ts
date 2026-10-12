@@ -71,7 +71,7 @@ function fixture() {
       "@/lib/profile-client":{saveReviewedProfile:(fields:Record<string,unknown>,revision:string|null)=>saveReviewedProfile(fields,revision,request)},
       "next/link":{__esModule:true,default:({children}:any)=>children},
     };
-    vm.runInNewContext(code,{module:loadedModule,exports:loadedModule.exports,URLSearchParams,AbortSignal,fetch:request,sessionStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)},window:{location:{reload:()=>{}}},require:(name:string)=>name in dependencies?dependencies[name]:requireModule(name.startsWith("@/")?`${process.cwd()}/src/${name.slice(2)}`:name)});
+    vm.runInNewContext(code,{module:loadedModule,exports:loadedModule.exports,URLSearchParams,AbortSignal,fetch:request,sessionStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)},document:{visibilityState:"visible"},window:{location:{reload:()=>{}},setInterval:()=>1,clearInterval:()=>{},addEventListener:()=>{},removeEventListener:()=>{}},require:(name:string)=>name in dependencies?dependencies[name]:requireModule(name.startsWith("@/")?`${process.cwd()}/src/${name.slice(2)}`:name)});
     async function flush(){for(let attempts=0;attempts<20;attempts++){if(dirty){dirty=false;cursor=0;tree=loadedModule.exports.DetailedAthleteSetup();}while(pending.length)pending.shift()!();await new Promise(resolve=>setImmediate(resolve));if(!dirty&&!pending.length)return;}throw Error("Unstable fixture render");}
     const find=(predicate:(node:Node)=>boolean)=>{const node=nodes(tree).find(predicate);assert.ok(node,"Expected control not found");return node;};
     return {flush,destination,text:()=>content(tree),input:(id:string)=>find(node=>node.props.id===id),button:(label:string)=>find(node=>node.type==="button"&&content(node.props.children).includes(label)),async click(label:string){await this.button(label).props.onClick();await flush();},async edit(id:string,value:string){this.input(id).props.onChange({target:{value}});await flush();},unmount(){for(const cell of cells)if(cell&&typeof cell.cleanup==="function")cell.cleanup();}};
@@ -93,9 +93,9 @@ test("conflicting saves stay on the section without replacing a revision or clai
   await ui.click("Save profile");assert.match(ui.text(),/Nothing was resubmitted/);assert.equal(f.writes.length,1);assert.equal(f.server.profile.weightKg,null);assert.equal(ui.input("onboard-field-4").props.value,"61");
 });
 test("saved optional goals hydrate in a new tab without requiring adult/safety confirmation", async()=>{
-  const f=fixture();let ui=f.mount("redo=1&step=race");await ui.flush();await ui.edit("onboard-field-5","advanced");await ui.edit("onboard-field-6","5");await ui.edit("onboard-field-7","run-only");await ui.click("6 months");await ui.click("Save goals and race");
-  assert.equal(f.server.setup?.profileConfirmed,false);assert.deepEqual(f.server.setup?.profileAnswers,{experience:true,weeklyHours:true});
-  ui.unmount();f.storage.clear();ui=f.mount("redo=1&step=race");await ui.flush();assert.equal(ui.input("onboard-field-5").props.value,"advanced");assert.equal(ui.input("onboard-field-6").props.value,"5");assert.equal(ui.button("6 months").props["aria-pressed"],true);
+  const f=fixture();let ui=f.mount("redo=1&step=race");await ui.flush();await ui.edit("onboard-field-5","advanced");await ui.edit("onboard-field-7","run-only");await ui.click("6 months");await ui.click("Save goals and race");
+  assert.equal(f.server.setup?.profileConfirmed,false);assert.deepEqual(f.server.setup?.profileAnswers,{experience:true,weeklyHours:false});
+  ui.unmount();f.storage.clear();ui=f.mount("redo=1&step=race");await ui.flush();assert.equal(ui.input("onboard-field-5").props.value,"advanced");assert.equal(ui.button("6 months").props["aria-pressed"],true);
 });
 test("returning race edits update its saved id after reload instead of creating another race", async()=>{
   const f=fixture();f.server.races=[{id:"race-existing",name:"Existing race",distance:"10k",date:"2099-04-02T00:00:00.000Z",location:"Miami",priority:1}];

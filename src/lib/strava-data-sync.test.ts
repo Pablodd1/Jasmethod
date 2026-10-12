@@ -1,3 +1,4 @@
+import * as deviceMetricSnapshot from "./device-metric-snapshot";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -35,6 +36,7 @@ function fixture(records:any[], failAt?:number) {
   const writes:any[] = [], updates:any[] = [];
   const deps:Record<string,any> = {
     "./dates":dates,
+    "./device-metric-snapshot":deviceMetricSnapshot,
     "./db":{prisma:{
       user:{findUniqueOrThrow:async()=>({timezone:"UTC",profile:null})},
       connector:{findMany:async()=>[{id:"connector",provider:"strava",tokenEnc:"synthetic",lastSyncAt:new Date("2026-10-01")}],updateMany:async(arg:any)=>{updates.push(arg);return{count:1};}},

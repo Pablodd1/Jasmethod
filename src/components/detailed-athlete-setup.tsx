@@ -147,6 +147,17 @@ export function DetailedAthleteSetup() {
   const cancelImportRefresh = useCallback(() => { importRequest.current++; }, []);
   useEffect(() => { setProviders([]); setImportReview({}); if (user?.id) void reviewImports(); return cancelImportRefresh; }, [user?.id, reviewImports, cancelImportRefresh]);
 
+  // Refresh imported evidence after a queued sync and when returning from authorization.
+  // Only evidence cards change; unsaved athlete answers are never overwritten.
+  useEffect(() => {
+    if (!user?.id || ![ONBOARDING_STEP.devices,ONBOARDING_STEP.profile].includes(step as 1 | 2)) return;
+    const timer = window.setInterval(()=>{if(document.visibilityState === "visible") void reviewImports();},15000);
+    const focus = ()=>void reviewImports();
+    window.addEventListener("focus",focus);
+    void reviewImports();
+    return ()=>{window.clearInterval(timer);window.removeEventListener("focus",focus);cancelImportRefresh();};
+  },[user?.id,step,reviewImports,cancelImportRefresh]);
+
   async function changeLang(language: string) {
     setError("");
     try {
@@ -201,7 +212,7 @@ export function DetailedAthleteSetup() {
     finally { savingRef.current = false; setSaving(false); }
   }
 
-  async function finishOnboarding(destination: "/today" | "/training" = "/training") {
+  async function finishOnboarding(destination: "/today" | "/training" = "/today") {
     if (savingRef.current) return;
     savingRef.current = true; setSaving(true); setError("");
     try {
@@ -358,7 +369,7 @@ export function DetailedAthleteSetup() {
                     <option value="pro">Pro</option>
                   </select>
                 </div>
-                <div><label htmlFor="onboard-field-6" className="label">{lang === "es" ? "Horas/semana" : "Weekly hours"}</label><input id="onboard-field-6" className="input" type="number" value={profile.weeklyHours} onChange={(e) => setProfile({ ...profile, weeklyHours: e.target.value })} /></div>
+                <p className="text-sm self-center">{t("Your coach calculates weekly volume from your history, recovery and available days. You do not need to choose weekly hours.", "Tu entrenador calcula el volumen según historial, recuperación y días disponibles. No necesitas elegir horas semanales.")}</p>
               </div>
               <div><label htmlFor="onboard-field-7" className="label">{lang === "es" ? "Objetivo" : "Goal"}</label><select id="onboard-field-7" className="input" value={profile.goal} onChange={(e) => setProfile({ ...profile, goal: e.target.value })}>
                   <option value="">{t("Choose a goal", "Elige un objetivo")}</option>
@@ -375,11 +386,11 @@ export function DetailedAthleteSetup() {
                 </select>
               </div>
             </div>
-            <details className="mt-5" open><summary className="cursor-pointer font-semibold min-h-11 content-center">{t("Details needed for a personalized plan", "Datos necesarios para un plan personalizado")}</summary><fieldset className="mt-6 space-y-3 border rounded-xl p-4">
+            <details className="mt-5"><summary className="cursor-pointer font-semibold min-h-11 content-center">{t("Optional details for your future cycle", "Datos opcionales para tu ciclo futuro")}</summary><fieldset className="mt-6 space-y-3 border rounded-xl p-4">
               <legend className="font-semibold">{t("Training context and pilot eligibility", "Contexto y elegibilidad del piloto")}</legend>
-              <p className="text-sm text-slate-600">{t("Unknown answers stay unknown. A device and performance tests are optional. Individual planning waits for relevant setup and a confirmed preview.", "Las respuestas desconocidas siguen sin conocerse. Dispositivos y pruebas son opcionales. El plan espera los datos relevantes y una vista previa confirmada.")}</p>
+              <p className="text-sm text-slate-600">{t("Unknown answers stay unknown. A device and performance tests are optional. You can start with a conservative day-zero suggestion and add these details later in Profile. Your complete cycle needs reviewed context and a confirmed preview.", "Las respuestas desconocidas siguen sin conocerse. Dispositivos y pruebas son opcionales. Puedes empezar con una propuesta conservadora del día cero y añadir datos en Perfil. El ciclo completo necesita contexto revisado y una vista previa confirmada.")}</p>
               <label className="flex gap-2"><input type="checkbox" checked={setup.adultConfirmed} onChange={e => setSetup({...setup, adultConfirmed:e.target.checked})}/>{t("I confirm I am 18 or older", "Confirmo que tengo 18 años o más")}</label>
-              <label className="flex gap-2"><input type="checkbox" checked={setup.profileConfirmed} onChange={e => setSetup({...setup, profileConfirmed:e.target.checked})}/>{t("I confirm my experience and available weekly time above", "Confirmo mi experiencia y el tiempo semanal disponible indicado")}</label>
+              <label className="flex gap-2"><input type="checkbox" checked={setup.profileConfirmed} onChange={e => setSetup({...setup, profileConfirmed:e.target.checked})}/>{t("I confirm my training experience above", "Confirmo mi experiencia indicada")}</label>
               <label className="block">{t("Goal in your words: fitness, completion or performance", "Objetivo: bienestar, terminar o rendimiento")}<textarea className="input" value={setup.goalDescription} onChange={e => setSetup({...setup,goalDescription:e.target.value})}/></label>
               <details><summary className="min-h-11 cursor-pointer content-center font-semibold">{t("Add a performance target (optional)", "Añadir objetivo de rendimiento (opcional)")}</summary>
               <label className="block">{t("Optional structured target (a goal, not current ability)", "Objetivo estructurado opcional (meta, no capacidad actual)")}<select className="input" value={setup.targetGoal?.metric ?? ""} onChange={e=>setSetup({...setup,baselinePlanOptIn:false,targetGoal:e.target.value?{metric:e.target.value,sport:""}:null})}><option value="">{t("No structured target yet", "Sin objetivo estructurado todavía")}</option><option value="fitness">{t("General fitness", "Bienestar físico general")}</option><option value="completion">{t("Completion", "Terminar")}</option><option value="pace">{t("Target pace", "Ritmo objetivo")}</option><option value="power">{t("Target power / FTP", "Potencia / FTP objetivo")}</option><option value="speed">{t("Target speed", "Velocidad objetivo")}</option></select></label>
@@ -419,7 +430,7 @@ export function DetailedAthleteSetup() {
             </fieldset>
             </details>
             <details className="mt-4"><summary className="min-h-11 cursor-pointer content-center font-semibold">{t("Double sessions and coach details (optional)", "Sesiones dobles y entrenador (opcional)")}</summary>
-            <DoubleDayFields value={setup.doubleDay} onChange={doubleDay=>setSetup({...setup,doubleDay})}/>
+            <DoubleDayFields professional={profile.experience === "pro"} value={setup.doubleDay} onChange={doubleDay=>setSetup({...setup,doubleDay})}/>
             <label className="block mt-4">{t("Your coach, if any (optional)", "Tu entrenador, si tienes (opcional)")}<input className="input" value={setup.coachPreference ?? ""} maxLength={200} onChange={e=>setSetup({...setup,coachPreference:e.target.value})}/></label><p className="text-xs">{t("This is a preference, not an access grant. Coach access requires an administrator assignment.", "Es una preferencia, no concede acceso. Un administrador debe asignar al entrenador.")}</p>
             </details>
             <h3 className="font-semibold mt-5">{t("Optional race", "Carrera opcional")}</h3>{raceId && <p role="status">{t("Race saved; further edits update this same event.", "Carrera guardada; los cambios actualizan este evento.")}</p>}
@@ -459,11 +470,11 @@ export function DetailedAthleteSetup() {
             <h2 className="font-display text-3xl font-bold mb-2">{lang === "es" ? "Tu espacio está listo" : "Your workspace is ready"}</h2>
             <p className="text-lg text-slate-600 mb-6">
               {lang === "es"
-                ? "Puedes guardar datos incompletos. Antes de asignar entrenamiento, completa lo necesario y confirma la vista previa del plan."
-                : "You can save incomplete setup. Before training is assigned, complete the needed inputs and confirm a plan preview."}
+                ? "Puedes continuar con datos incompletos. Hoy ofrece una propuesta conservadora del día cero cuando no hay plan, evento o actividad previa. Revisa cómo te sientes antes de entrenar; completa tu ciclo más adelante."
+                : "You can continue with incomplete answers. Today offers a conservative day-zero suggestion when there is no plan, event or existing activity. Check in before training; build your full cycle later."}
             </p>
-            <button onClick={()=>void finishOnboarding("/training")} disabled={saving} className="btn-primary w-full justify-center text-lg">
-              {lang === "es" ? "Revisar y crear mi plan" : "Review and build my plan"} <ArrowRight className="w-4 h-4 ml-2" />
+            <button onClick={()=>void finishOnboarding("/today")} disabled={saving} className="btn-primary w-full justify-center text-lg">
+              {lang === "es" ? "Abrir el entrenamiento de hoy" : "Open today’s training"} <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>
         )}

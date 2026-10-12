@@ -3,6 +3,7 @@ import { readPlanningSetup } from "@/lib/planning-setup-store";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ensureStarterWorkout } from "@/lib/starter-session-store";
 import { autoGenerateStarterPlan } from "@/lib/plan-auto";
 
 // Completing the wizard records progress; a plan needs complete setup and a confirmed preview.
@@ -20,6 +21,7 @@ export async function POST(req: Request) {
     });
     let plan: Awaited<ReturnType<typeof autoGenerateStarterPlan>> | null = null;
     try {
+      await ensureStarterWorkout(user.id);
       plan = await autoGenerateStarterPlan(user.id);
     } catch (e) {
       // Plan generation failure must not block onboarding completion.

@@ -10,12 +10,12 @@ export function onboardingSectionPayload(section: OnboardingSection, profile: Re
   if (section === "profile") return onboardingProfileFields(pick(["birthYear", "sex", "heightCm", "weightKg"]));
   if (section === "zones") return pick(["lthr", "maxHr", "ftp", "runPaceBase", "swimPaceBase"]);
   if (section === "goals") {
-    const answers = onboardingProfileFields(pick(["experience", "goal", "weeklyHours"]));
+    const answers = onboardingProfileFields(pick(["experience", "goal"]));
     // Preserve historical goals on an unrelated edit, but never offer them as a new planning choice.
     if (typeof answers.goal === "string" && answers.goal === saved.profile.goal && !PLANNABLE_GOALS.includes(planningGoal(answers.goal)!)) delete answers.goal;
     return {
       ...answers,
-      setup: { ...setup, profileAnswers: { experience: !!profile.experience, weeklyHours: profile.weeklyHours != null && profile.weeklyHours !== "" }, travel: saved.setup?.travel ?? null }, expectedSetupRevision: setupRevision,
+      setup: { ...setup, profileAnswers: { experience: !!profile.experience, weeklyHours: (saved.setup?.profileAnswers as {weeklyHours?:boolean}|undefined)?.weeklyHours === true }, travel: saved.setup?.travel ?? null }, expectedSetupRevision: setupRevision,
     };
   }
   return {

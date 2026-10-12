@@ -291,3 +291,10 @@ test("daily recovery coaching distinguishes training and empty schedules from pl
   const held = dailyRecoveryContext({ plannedRest: true, sessions: [], injured: true, answers: ready.checkin });
   assert.doesNotMatch(buildCoachReply("Explain recovery", { ...ready, recovery: held }).answer, /20 min very easy/);
 });
+
+
+test('personal context preserves missing biomarkers and actual-history coverage without inventing a race prediction',()=>{
+ const result=buildCoachReply('Analyze my profile and training history',{localToday:'2026-10-12',language:'en',profile:{goal:'hyrox'},athleteOverview:{historyDays:90,metrics:{date:'2026-10-11',source:'oura',hrv:44,hrvType:'rmssd',restingHr:null,sleepHours:7},race:{name:'Test race',date:'2026-11-01',distance:'hyrox'}},recentFeedback:[{date:'2026-10-10',actualDurationMin:30},{date:'2026-10-09',actualDurationMin:null}]});
+ assert.equal(result.ruleId,'coach-conversation-v1:athlete-context-summary');
+ assert.match(result.answer,/1\/2/);assert.match(result.answer,/resting HR unknown/);assert.match(result.answer,/rmssd/);assert.match(result.answer,/do not predict a finish time/);assert.match(result.answer,/\/profile/);
+});
