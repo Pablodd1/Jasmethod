@@ -81,6 +81,7 @@ export async function syncUserConnectors(
       });
       continue;
     }
+    let imported = 0;
     try {
       let access = decryptSecret(conn.tokenEnc);
       if (conn.expiresAt && conn.expiresAt <= new Date()) {
@@ -120,20 +121,23 @@ export async function syncUserConnectors(
       const since = conn.lastSyncAt
         ? new Date(conn.lastSyncAt.getTime() - 86400000)
         : new Date(Date.now() - (conn.provider === "strava" ? 365 : 180) * 86400000);
-      let imported = 0;
+      let rejectedActivities = 0;
       if (conn.provider === "intervals") {
         const { ingestIntervals } = await import("./intervals-ingest");
         imported = await ingestIntervals(userId, user.timezone, conn);
       } else if (conn.provider === "strava") {
         const activities = await api.stravaGetActivities(access, since, 100);
-        for (const a of activities)
-          if (
-            await storeActivity(userId, user.timezone, {
-              ...api.stravaActivityToWorkout(a),
-              source: "strava",
-            })
-          )
-            imported++;
+        for (const a of activities) {
+          let activity: api.ImportedWorkout;
+          try { activity = api.stravaActivityToWorkout(a); }
+          catch (error) {
+            if (!(error instanceof api.StravaActivityDataError)) throw error;
+            rejectedActivities++;
+            continue;
+          }
+          // Database/transport failures remain failures, never skipped as bad data.
+          if (await storeActivity(userId, user.timezone, activity)) imported++;
+        }
         const { importStravaProfileWeight } = await import("./profile-import-review");
         await importStravaProfileWeight(userId, conn.id, conn.externalRef, access);
       } else if (conn.provider === "google_cal") {
@@ -370,13 +374,16 @@ export async function syncUserConnectors(
         }
       }
 
+      const activityWarning = rejectedActivities
+        ? `Strava activity data needs review: ${rejectedActivities} record(s) have invalid ID, date or duration. Valid records imported; sync window retained for retry. No reconnect required for this data error.`
+        : null;
       const saved = await prisma.connector.updateMany({
         where: { id: conn.id, ...(conn.provider === "intervals" ? { tokenEnc: conn.tokenEnc, syncStartedAt, status: { in: ["connected", "error"] } } : {}) },
         data: {
-          lastSyncAt: new Date(),
+          ...(activityWarning ? {} : { lastSyncAt: new Date() }),
           lastSyncCount: imported,
-          status: "connected",
-          lastError: null,
+          status: activityWarning ? "error" : "connected",
+          lastError: activityWarning,
           syncStartedAt: null,
         },
       });
@@ -386,7 +393,7 @@ export async function syncUserConnectors(
         const { meterUsage } = await import("./telemetry");
         await meterUsage(userId, "db_rows_synced", imported);
       }
-      results.push({ provider: conn.provider, ok: true, imported });
+      results.push({ provider: conn.provider, ok: !activityWarning, imported, ...(activityWarning ? {error:activityWarning} : {}) });
     } catch (e: any) {
       const error = String(e?.message || "Provider sync failed")
         .replace(/Bearer\s+\S+/gi, "[redacted]")
@@ -395,7 +402,7 @@ export async function syncUserConnectors(
         where: { id: conn.id, ...(conn.provider === "intervals" ? { tokenEnc: conn.tokenEnc, syncStartedAt, status: { in: ["connected", "error"] } } : {}) },
         data: { status: "error", lastError: error, syncStartedAt: null },
       });
-      results.push({ provider: conn.provider, ok: false, imported: 0, error });
+      results.push({ provider: conn.provider, ok: false, imported, error });
     }
   }
   // Reference physiology is filled only from quality-gated observations.
