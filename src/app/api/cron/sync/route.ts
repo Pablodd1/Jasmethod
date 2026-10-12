@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { syncUserConnectors } from "@/lib/sync";
 import { syncAthlinksForAllUsers } from "@/lib/athlinks";
 import { alertOwner, logEvent } from "@/lib/telemetry";
+import { isSyncAuthFailure } from "@/lib/sync-errors";
 
 // GET|POST /api/cron/sync — reconcile every athlete's connected providers.
 // Runs HOURLY via vercel.json ("0 * * * *" UTC) — the normal user experience
@@ -89,7 +90,7 @@ async function run(req: Request) {
   // athlete stopped getting data). Rate-limited 12h per kind.
   for (const u of failedUsers) {
     for (const f of u.failures) {
-      if (/reconnect|expired|authorization|unauthorized|invalid/i.test(f.error)) {
+      if (isSyncAuthFailure(f.error)) {
         await alertOwner(
           "sync_auth",
           `${u.name} — ${f.provider}: ${f.error}`,

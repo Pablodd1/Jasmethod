@@ -19,6 +19,7 @@ export interface ImportedWorkout {
   title: string;
   source: string;
   raw?: unknown;
+  notes?: string;
 }
 
 // ---------- Garmin TCX (Training Center XML) ----------
@@ -387,8 +388,21 @@ export async function stravaGetActivities(
   throw new Error("Activity history too large. Import a smaller date range.");
 }
 
+export class StravaActivityDataError extends Error {}
+
 export function stravaActivityToWorkout(a: any): ImportedWorkout {
-  const type = (a.type || "").toLowerCase();
+  if (!a || !/^[1-9]\d*$/.test(String(a.id ?? "")) ||
+      typeof a.start_date !== "string" || !a.start_date.trim() ||
+      !Number.isFinite(Date.parse(a.start_date))) {
+    throw new StravaActivityDataError("Strava activity has an invalid ID or date");
+  }
+  const positiveSeconds = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
+  const moving = positiveSeconds(a.moving_time);
+  const seconds = moving ? a.moving_time : a.elapsed_time;
+  if (!positiveSeconds(seconds) || seconds / 60 > 2147483647) {
+    throw new StravaActivityDataError("Strava activity has no valid positive duration");
+  }
+  const type = typeof a.type === "string" ? a.type.toLowerCase() : "";
   const sport: ImportedWorkout["sport"] = type.includes("swim")
     ? "swim"
     : type.includes("ride") || type.includes("bike")
@@ -402,7 +416,9 @@ export function stravaActivityToWorkout(a: any): ImportedWorkout {
     externalId: `strava:${a.id}`,
     sport,
     date: new Date(a.start_date),
-    durationMin: Math.round((a.moving_time || 0) / 60),
+    // Legacy storage is integer minutes. Preserve source precision and basis.
+    durationMin: Math.max(1, Math.round(seconds / 60)),
+    notes: `Strava ${moving ? "moving" : "elapsed"} duration: ${seconds} seconds. Stored in whole minutes (minimum 1); elapsed duration is not moving time.`,
     distanceKm: a.distance ? Math.round(a.distance / 10) / 100 : undefined,
     avgHr: a.average_heartrate || undefined,
     maxHr: a.max_heartrate || undefined,
