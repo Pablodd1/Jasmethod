@@ -65,13 +65,15 @@ async function main() {
     await json("/api/onboard",a,{body:{}});
     assert.equal((await json("/api/auth/login",undefined,{body:{email:a.email,password}})).user.onboarded,true);
   });
-  await scenario("Optional onboarding finishes without a plan and imported observations remain owner-scoped",async()=>{
+  await scenario("Optional onboarding offers a held starter without a full plan and imported observations remain owner-scoped",async()=>{
     await request("/api/onboard/import-review",undefined,{status:401});
     const a=await actor("onboarding-a"),b=await actor("onboarding-b");
     const p=await json("/api/profile",a);
     await json("/api/profile",a,{method:"PUT",body:{expectedRevision:p.revision,expectedSetupRevision:p.setupRevision,setup:{travel:{destinationTimezone:"Asia/Tokyo",equipmentNotes:"Hotel gym",maxSessionMinutes:30},coachPreference:"Optional coach"}}});
     const saved=await json("/api/profile",a);assert.equal(saved.setup.travel.destinationTimezone,"Asia/Tokyo");assert.equal(saved.setup.coachPreference,"Optional coach");assert.equal(saved.planningReadiness.ready,false);
-    const completed=await json("/api/onboard",a,{body:{}});assert.equal(completed.ok,true);assert.equal(completed.next,"/today");assert.equal(await db.workout.count({where:{userId:a.id}}),0);
+    const completed=await json("/api/onboard",a,{body:{}});assert.equal(completed.ok,true);assert.equal(completed.next,"/today");assert.equal(await db.workout.count({where:{userId:a.id,source:"starter"}}),1);
+    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),0,"optional setup does not invent a full cycle");
+    const dayZero=await json("/api/today",a);assert.notEqual(dayZero.sessions[0].verdict,"ready","onboarding cannot replace today's safety check-in");
     assert.equal((await db.user.findUniqueOrThrow({where:{id:a.id}})).onboarded,true);
     const own=await db.metricObservation.create({data:{userId:a.id,observedAt:new Date(),metricType:"weight_kg",value:71,unit:"kg",source:"synthetic-test",qualityFlag:"ok"}});
     const other=await db.metricObservation.create({data:{userId:b.id,observedAt:new Date(),metricType:"weight_kg",value:92,unit:"kg",source:"synthetic-test",qualityFlag:"ok"}});
