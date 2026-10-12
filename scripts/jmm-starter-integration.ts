@@ -30,6 +30,13 @@ async function main() {
  today=await api("/api/today");assert.equal(today.sessions[0].verdict,"ready");assert.equal(today.sessions[0].durationMin,20);assert.equal(today.sessions[0].sport,"mobility");
  await api("/api/checkin",{...checkin,availableMinutes:10});today=await api("/api/today");assert.ok(today.sessions[0].durationMin<=10);
  await api("/api/checkin",{...checkin,sick:true});today=await api("/api/today");assert.notEqual(today.sessions[0].verdict,"ready");assert.equal(today.sessions[0].durationMin,0);
+ await db.dailyMetrics.upsert({where:{userId_date:{userId,date:day.start}},create:{userId,date:day.start,source:"manual",hrv:80,hrvType:"rmssd"},update:{source:"manual",hrv:80,hrvType:"rmssd"}});
+ const form=new FormData();form.set("source","oura");form.set("file",new Blob([JSON.stringify([{day:day.key,total_sleep_duration:25200,average_hrv:44,lowest_heart_rate:52},{day:day.key,score:80,contributors:{hrv_balance:90,resting_heart_rate:95}}])],{type:"application/json"}),"synthetic.json");
+ const upload=await fetch(base+"/api/import",{method:"POST",headers:{cookie:`jmm_session=${token}`},body:form});assert.equal(upload.status,200,await upload.text());
+ const reviewed=await api("/api/onboard/import-review");
+ assert.equal(reviewed.observations.find((row:any)=>row.metricType==="hrv_rmssd").value,44);
+ assert.equal(reviewed.observations.find((row:any)=>row.metricType==="resting_hr").value,52);
+ assert.equal((await db.dailyMetrics.findUniqueOrThrow({where:{userId_date:{userId,date:day.start}}})).hrv,80,"file does not overwrite manual readings");
  await db.workout.deleteMany({where:{userId}});
  const count=await db.workout.count({where:{userId}});await api("/api/today");assert.equal(await db.workout.count({where:{userId}}),count,"GET remains read-only");
  await db.race.create({data:{userId,name:"Synthetic event",date:day.start,distance:"5k"}});

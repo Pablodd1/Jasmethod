@@ -1,3 +1,4 @@
+import { parseOuraExport } from "./oura-import";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { starterSession, isStarterSession, starterRestriction } from "./starter-session";
@@ -45,4 +46,15 @@ test("usable device and uploaded values reach onboarding with separate HRV metho
  const bad=deviceMetricSnapshot("athlete",date,"oura",{hrv:NaN,restingHr:500,sleepHours:25,recoveryScore:101},"device_sync",now);
  assert.equal(bad.observations.length,0);assert.equal(bad.data.hrv,undefined);
  assert.equal(deviceMetricSnapshot("athlete",new Date("2026-10-13"),"oura",{hrv:55},"device_sync",now).observations.length,0);
+});
+
+
+test('Oura readiness contributor scores cannot become HRV milliseconds or resting HR beats',()=>{
+ const readings=[{day:'2026-10-12',total_sleep_duration:25200,average_hrv:44,lowest_heart_rate:52},{day:'2026-10-12',score:80,contributors:{hrv_balance:90,resting_heart_rate:95}}];
+ for(const value of [readings,{data:readings}]) {
+   const parsed=parseOuraExport(JSON.stringify(value));
+   assert.equal(parsed.metrics[0].hrv,44);assert.equal(parsed.metrics[0].restingHr,52);assert.equal(parsed.metrics[0].sleepHours,7);assert.equal(parsed.metrics[0].recoveryScore,80);
+ }
+ const scoresOnly=parseOuraExport(JSON.stringify([readings[1]])).metrics[0];
+ assert.equal(scoresOnly.hrv,undefined);assert.equal(scoresOnly.restingHr,undefined);
 });
