@@ -3,7 +3,7 @@ import { canonicalSession } from "./canonical-session";
 import { normalizeSportStructure } from "./sport-structure";
 
 export const MAX_STRUCTURE_REQUEST_BYTES = 64 * 1024;
-export const STRUCTURED_SPORTS = ["swim", "strength", "hyrox", "brick"] as const;
+export const STRUCTURED_SPORTS = ["run", "bike", "swim", "strength", "hyrox", "brick"] as const;
 
 export class StructureEditError extends Error {
   constructor(message: string, public status = 422) { super(message); }
@@ -57,7 +57,7 @@ export interface StructureEditableWorkout {
   planDay?: { dayOff: boolean } | null;
 }
 export function structureEditBlockReason(workout: StructureEditableWorkout, timezone: string, now = new Date()): string | null {
-  if (!STRUCTURED_SPORTS.includes(workout.sport as typeof STRUCTURED_SPORTS[number])) return "Structured sport editing is available for pool swim, strength, HYROX and brick sessions.";
+  if (!STRUCTURED_SPORTS.includes(workout.sport as typeof STRUCTURED_SPORTS[number])) return "Structured sport editing is available for run, bike, pool swim, strength, HYROX and brick sessions.";
   if (!workout.planned) return "Recorded activities cannot be changed into a planned workout.";
   if (dateKey(new Date(workout.date), timezone) < dateKey(now, timezone)) return "Past sessions are read-only. Edit a current or future planned workout instead.";
   if (workout.completed || workout.feedbackAt != null || workout.feedbackStatus != null || workout.feedbackNote != null || workout.actualDurationMin != null || workout.actualSport != null || workout.actualDetails != null || workout.rpe != null || workout.avgHr != null || workout.maxHr != null || workout.avgPower != null || workout.np != null || workout.preWeightKg != null || workout.postWeightKg != null || workout.externalId != null || workout.matchedPlanId != null) return "Sessions with recorded activity or feedback are read-only. Their training history is preserved.";

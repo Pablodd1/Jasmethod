@@ -1,4 +1,5 @@
 import { unitsOf } from "@/lib/units";
+import { buildUniversalWorkoutCard } from "@/lib/universal-workout-card-server";
 import { SessionResolutionError } from "@/lib/canonical-session";
 // GET /api/v1/training/today — daily-training screen adapter.
 // Maps the athlete's REAL plan/profile/fueling data into the versioned
@@ -95,6 +96,7 @@ export async function GET(req: Request) {
     const metric = unitsOf(user.profile?.units, user.language);
 
     const plan: DailyTraining = {
+      workoutCard: buildUniversalWorkoutCard(canonical,resolved.nutrition,user.language==="es"?"es":"en",workout.startTime),
       schemaVersion: 2,
       environment: canonical.environment,
       language: user.language,

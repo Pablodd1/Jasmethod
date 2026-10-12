@@ -1,3 +1,4 @@
+import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -17,6 +18,7 @@ function fixture(dateLocal: string, timezone = "America/New_York") {
   class ApiError extends Error { constructor(public status: number) { super("Unavailable"); } }
   class NextResponse extends Response { static json(data: unknown, init?: ResponseInit) { return new Response(JSON.stringify(data), { ...init, headers: { "Content-Type": "application/json", ...init?.headers } }); } }
   const deps: Record<string, any> = {
+    "@/lib/universal-workout-card-server": {buildUniversalWorkoutCard},
     "next/server": { NextResponse }, "@/lib/units": { unitsOf },
     "@/lib/canonical-session": { SessionResolutionError },
     "@/lib/dates": { dayBounds, dateKey },

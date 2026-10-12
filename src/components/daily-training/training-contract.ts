@@ -1,5 +1,7 @@
 import { isDailyEnvironmentAssessment, type DailyEnvironmentAssessment } from "@/lib/daily-environment";
 import type { CanonicalStep } from "@/lib/canonical-session";
+import type { UniversalWorkoutCard } from "@/lib/universal-workout-card";
+import { isUniversalWorkoutCard } from "@/lib/universal-workout-card";
 
 export type Endpoint = { type: "time"; seconds: number } | { type: "distance"; meters: number } | { type: "reps"; reps: number } | { type: "lap" };
 export type PaceRef = { secondsPerMile: number | null; measuredAt: string | null; status: 'measured' | 'coach_set' | 'missing'; missingReason?: string | null };
@@ -9,6 +11,7 @@ export type Segment = { id: string; seconds: number | null; endpoint?: Endpoint;
 export type Block = { id: string; title: string; repeat: number; segments: Segment[] };
 export type Guidance = { title: string; items: string[]; note?: string; sourceIds?: string[] };
 export type DailyTraining = {
+  workoutCard?: UniversalWorkoutCard;
   schemaVersion: 1 | 2;
   environment?: DailyEnvironmentAssessment;
   language?: string;
@@ -33,6 +36,7 @@ export function isDailyTraining(v: unknown): v is DailyTraining {
   if (!record(v) || ![1, 2].includes(v.schemaVersion)) return false;
   if (v.environment !== undefined && !isDailyEnvironmentAssessment(v.environment)) return false;
   const { session: s, profile: p, guidance: g, completion: c, links: l, blocks } = v;
+  if(v.workoutCard!==undefined&&(!isUniversalWorkoutCard(v.workoutCard)||v.workoutCard.session.id!==s?.id||v.workoutCard.session.revision!==s?.sourceRevision))return false;
   if (![s, p, g, c, l].every(record) || !Array.isArray(blocks)) return false;
   if (!["id", "title", "subtitle", "sport", "dateLocal", "timezone"].every(k => typeof s[k] === "string") ||
       !Number.isSafeInteger(s.revision) || s.revision < 1 || !finite(s.totalMinutes) || s.totalMinutes < 0 || s.totalMinutes > 1440) return false;

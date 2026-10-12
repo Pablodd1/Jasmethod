@@ -14,7 +14,7 @@ export type HyroxStep = { kind: "run" | "station"; name: string; stationId?: str
 export type HyroxStructure = { schemaVersion: 1; kind: "hyrox"; steps: (HyroxStep | RestStep | PreparationStep)[] };
 export type BrickComponent = { id: string; title: string; sport: "run" | "bike" | "swim"; durationMin: number; steps?: WorkoutStep[]; sportStructure?: PoolStructure };
 export type BrickStructure = { schemaVersion: 1; kind: "brick"; components: BrickComponent[]; transitions: { afterComponentId: string; instruction: string; endpoint: StructureEndpoint }[] };
-export type SportStructure = PoolStructure | StrengthStructure | HyroxStructure | BrickStructure | { schemaVersion: 1; kind: "openWater"; steps: WorkoutStep[] };
+export type SportStructure = PoolStructure | StrengthStructure | HyroxStructure | BrickStructure | { schemaVersion: 1; kind: "openWater"; steps: WorkoutStep[] } | { schemaVersion: 1; kind: "endurance"; steps: WorkoutStep[] };
 export type SportStepDetail =
   | { kind: "pool"; lengths: number; stroke: SwimStroke; poolLengthMeters: number; displayLength: number; displayUnit: "m" | "yd"; sendOffSeconds?: number }
   | { kind: "set"; exerciseId: string; exerciseName: string; setNumber: number; load?: Load }
@@ -80,9 +80,9 @@ export function normalizeSportStructure(input: unknown, sport: string): SportStr
     if (!steps.some(step => step.kind === "lengths")) fail("Pool structure needs at least one swimming step.");
     return { schemaVersion: 1, kind: "pool", poolLength, steps };
   }
-  if (s.kind === "openWater" && sport === "swim") {
+  if ((s.kind === "openWater" && sport === "swim") || (s.kind === "endurance" && ["run", "bike"].includes(sport))) {
     keys(s, ["schemaVersion", "kind", "steps"], "open-water structure");
-    return { schemaVersion: 1, kind: "openWater", steps: list(s.steps, "open-water steps") };
+    return { schemaVersion: 1, kind: s.kind, steps: list(s.steps, "explicit workout steps") };
   }
   if (s.kind === "strength" && sport === "strength") {
     keys(s, ["schemaVersion", "kind", "steps"], "strength structure"); const sets = new Map<string, { name: string; last: number }>();
@@ -139,7 +139,7 @@ export function normalizeSportStructure(input: unknown, sport: string): SportStr
   fail("Sport structure kind does not match the session sport.");
 }
 export function sportStructureSteps(structure: Exclude<SportStructure, BrickStructure>): { step: WorkoutStep; detail?: SportStepDetail }[] {
-  if (structure.kind === "openWater") return structure.steps.map(step => ({ step }));
+  if (structure.kind === "openWater" || structure.kind === "endurance") return structure.steps.map(step => ({ step }));
   return structure.steps.map(item => {
     if (item.kind === "rest") return { step: { name: "Rest", phase: "recovery", zone: "z1", seconds: item.seconds, endpoint: { type: "time", seconds: item.seconds }, target: { type: "open" }, note: item.note }, detail: { kind: "rest" } };
     if (item.kind === "step") return { step: { ...item, seconds: item.endpoint.type === "time" ? item.endpoint.seconds : 0, target: { type: "open" } } };

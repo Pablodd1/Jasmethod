@@ -18,6 +18,7 @@ export interface ManualWorkoutEmailInput {
   kind: ManualWorkoutEmailKind;
   dateLabel: string;
   revision: string;
+  workoutSport?: string;
   /** Caller must validate both links against the configured, trusted app origin. */
   workoutUrl: string;
   settingsUrl: string;
@@ -180,5 +181,8 @@ export function manualWorkoutEmail(input: ManualWorkoutEmailInput): ManualWorkou
       `${helpLabel}: ${MANUAL_GARMIN_FILE_HELP}\n${macLabel}: ${MANUAL_GARMIN_MAC_HELP}`] : []),
     `${settingsLabel}: ${links.settings}`, "JasMiamiMethod",
   ].join("\n\n");
-  return { subject: `${subjects[kind]} · ${date}`, html, text };
+  const sports: Record<string,string> = es ? {run:"Carrera",bike:"Ciclismo",swim:"Natación",hyrox:"HYROX",brick:"Sesión combinada",strength:"Fuerza",mobility:"Movilidad",recovery:"Recuperación"} : {run:"Run",bike:"Bike",swim:"Swim",hyrox:"HYROX",brick:"Brick",strength:"Strength",mobility:"Mobility",recovery:"Recovery"};
+  const sport = input.workoutSport ? sports[input.workoutSport] : undefined;
+  const subject = actionable && typeof sport === "string" ? `${sport} ${es ? "entrenamiento" : "Training"} — ${date}${kind === "revised" ? es ? " (actualizado)" : " (updated)" : ""}` : `${subjects[kind]} · ${date}`;
+  return { subject, html, text };
 }

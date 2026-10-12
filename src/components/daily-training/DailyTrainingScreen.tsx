@@ -3,12 +3,14 @@ import type { FormEvent, ReactNode } from "react";
 import type { DailyTraining, Guidance, PaceKey, Segment } from "./training-contract";
 import { endpointLabel, plannedSeconds } from "./training-contract";
 import { FitDownloadActions } from "./FitDownloadActions";
+import { UniversalWorkoutCard } from "./UniversalWorkoutCard";
 
 export type CompletionActual = { durationMinutes: number | null; actualSport: string | null; sessionRpe: number | null; comments: string | null; status: "completed" | "partial" | "substituted" | "skipped" | "unknown" };
 type Props = {
   plan: DailyTraining;
   onFocusReady: (ready: boolean) => Promise<void>;
   onCompletion: (actual: CompletionActual) => Promise<void>;
+  onSaved?: () => void | Promise<void>;
 };
 const paceNames: Record<PaceKey, string> = { mile: "Mile", "5k": "5K", "10k": "10K", half: "Half marathon", marathon: "Marathon", easy: "Easy" };
 const paceKeys: PaceKey[] = ["mile", "5k", "10k", "half", "marathon", "easy"];
@@ -22,7 +24,7 @@ function GuidanceCard({ number, title, guide, children }: { number: string; titl
 }
 function segmentEndpoint(s: Segment) { return s.endpoint || (s.seconds == null ? undefined : { type: "time" as const, seconds: s.seconds }); }
 
-export function DailyTrainingScreen({ plan, onFocusReady, onCompletion }: Props) {
+export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved }: Props) {
   const { session, profile, blocks, guidance } = plan;
   const [focus, setFocus] = useState(plan.completion.focusReady);
   const [busy, setBusy] = useState(false);
@@ -66,6 +68,9 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion }: Props)
     finally { pending.current = false; setBusy(false); }
   }
   return <main className="jmm-screen">
+    {plan.workoutCard && <UniversalWorkoutCard key={plan.workoutCard.session.revision} card={plan.workoutCard} onSaved={onSaved}/>}
+    {plan.workoutCard && <div className="jmm-panel-body"><button type="button" className="jmm-button" disabled={busy||!ready} aria-pressed={focus} onClick={toggleFocus}>{focus?(plan.language==="es"?"Preparación lista ✓":"Focus ready ✓"):(plan.language==="es"?"Marcar preparación lista":"Mark focus ready")}</button>{error&&<p role="alert">{error}</p>}</div>}
+    {!plan.workoutCard && <>
     <header className="jmm-brand"><span className="jmm-monogram">j.</span><div><b>JAS MIAMI METHOD</b><small>DAILY TRAINING</small></div><span className="jmm-kicker">{session.sport.toUpperCase()}</span></header>
     <section className="jmm-hero"><small>YOUR SESSION · {session.dateLocal} · {session.timezone}</small><h1>{session.title}</h1><p>{session.subtitle}</p><span className="jmm-pill">{session.verdict === "blocked" ? "Needs information" : session.verdict === "rest" ? "Rest" : session.planStatus.replace("_", " ")}</span><span className="jmm-pill">{session.sport}</span></section>
     {session.capability && session.sourceRevision && <FitDownloadActions key={`${session.id}-${session.sourceRevision}`} sessionId={session.id} revision={session.sourceRevision} title={session.title} capability={session.capability} />}
@@ -80,7 +85,8 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion }: Props)
     {blocks.length > 0 && <section className="jmm-workout"><small className="jmm-kicker">03 / STRUCTURED TRAINING</small><h2>Follow each endpoint in order.</h2>{blocks.map(block => <article key={block.id} className={`jmm-workout-block jmm-border-${block.segments[0]?.kind || "other"}`}><h3>{block.title}{block.repeat > 1 ? ` · ${block.repeat} rounds` : ""}</h3>{block.segments.map(s => <div className="jmm-segment" key={s.id}><strong>{endpointLabel(segmentEndpoint(s), metric, session.sport)} · {s.title}</strong><p>{s.instruction}</p><span>{s.target.label}</span>{s.target.note && <small>{s.target.note}</small>}{s.estimatedSeconds != null && s.estimatedSeconds > 0 && <small>Planning estimate only: {Number((s.estimatedSeconds / 60).toFixed(1))} min. End this step by its prescribed distance, reps or manual endpoint.</small>}</div>)}</article>)}</section>}
     <GuidanceCard number="04" title="After training · Recovery food" guide={guidance.postFuel} />
     <GuidanceCard number="05" title="Downshift · Optional breathing" guide={guidance.downshift}><button type="button" className="jmm-button" onClick={() => setRemaining(remaining == null || remaining === 0 ? guidance.downshift.timerSeconds : null)} disabled={!guidance.downshift.timerSeconds}>{remaining == null || remaining === 0 ? "Start optional timer" : "Stop timer"}</button><p role="status">{remaining == null ? "Wait until breathing is comfortable." : remaining === 0 ? "Done. Resume natural breathing." : `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")} left`}</p></GuidanceCard>
+    </>}
     <details className="jmm-panel"><summary><span className="jmm-num">06</span><b>Close the loop</b><span className="jmm-plus" aria-hidden="true">+</span></summary><div className="jmm-panel-body"><p>{guidance.checkIn.items.join(" ")}</p><form onSubmit={submit}><label>What happened?<select required value={outcome} onChange={e => setOutcome(e.target.value as CompletionActual["status"])}><option value="">Choose an outcome</option><option value="completed">Completed</option><option value="partial">Partly completed</option><option value="substituted">Substituted (describe actual sport below)</option><option value="skipped">Skipped</option><option value="unknown">Unknown / not reported</option></select></label><label>Actual sport (optional)<select value={actualSport} onChange={e => setActualSport(e.target.value)}><option value="">Unknown / not reported</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}</select></label><label>Actual minutes (leave blank if unknown)<input type="number" min="0" max="1440" value={minutes} onChange={e => setMinutes(e.target.value === "" ? "" : Number(e.target.value))} /></label><label>Session effort · 1 easy, 10 maximal (optional)<input type="number" min="1" max="10" value={rpe} onChange={e => setRpe(e.target.value === "" ? "" : Number(e.target.value))} /></label><label>How did it go?<textarea maxLength={1000} value={comments} onChange={e => setComments(e.target.value)} /></label><button className="jmm-button" type="submit" disabled={busy}>{busy ? "Saving…" : "Save workout feedback"}</button>{saved && <p role="status">Workout feedback saved.</p>}</form></div></details>
-    <footer className="jmm-foot">Session revision {session.revision}. Full web instructions remain available without a watch.</footer>
+    {!plan.workoutCard && <footer className="jmm-foot">Session revision {session.revision}. Full web instructions remain available without a watch.</footer>}
   </main>;
 }

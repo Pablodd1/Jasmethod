@@ -312,7 +312,7 @@ test("saved Spanish athlete language selects Spanish email regardless of the ser
   await withHarness(async h => {
     h.user.language = "es";
     assert.equal((await h.run()).accepted, 1);
-    assert.match(h.sends[0].subject, /^Tu archivo de entrenamiento está listo/);
+    assert.match(h.sends[0].subject, /^Ciclismo entrenamiento — /);
     assert.match(h.sends[0].html, /<html lang="es">/);
     assert.match(h.sends[0].text, /Entrenamiento y objetivos/);
     assert.match(h.sends[0].text, /transferencia a tu Garmin no está verificada/);
@@ -324,7 +324,7 @@ test("saved English athlete language selects English email", async () => {
   await withHarness(async h => {
     h.user.language = "en";
     assert.equal((await h.run()).accepted, 1);
-    assert.match(h.sends[0].subject, /^Your workout file is ready/);
+    assert.match(h.sends[0].subject, /^Bike Training — /);
     assert.match(h.sends[0].html, /<html lang="en">/);
     assert.match(h.sends[0].text, /Workout and targets/);
   });

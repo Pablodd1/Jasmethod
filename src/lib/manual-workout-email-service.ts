@@ -7,6 +7,8 @@ import { effectivePrescription } from "./effective-prescription";
 import { buildPrivateSafeSessionDownload } from "./fit-export";
 import { manualWorkoutEmail } from "./manual-workout-email-template";
 import { manualWorkoutEmailContent } from "./manual-workout-email-content";
+import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
+import { renderUniversalWorkoutPng } from "./universal-workout-render";
 import { eligibleManualEmail, manualEmailActionable, manualEmailChanged, manualEmailConfigured, manualEmailDue, manualEmailKey, manualEmailOrigin } from "./manual-workout-email";
 import { sendManualEmail } from "./manual-workout-email-transport";
 
@@ -102,8 +104,13 @@ export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?
           continue;
         }
         const actionable = (kind === "ready" || kind === "revised") && fresh.resolved;
-        const content = actionable ? manualWorkoutEmailContent(actionable.canonical, actionable.nutrition, fresh.workout?.startTime || null, true, language) : null;
-        const email = manualWorkoutEmail({ language, kind, dateLabel: fresh.resolved?.canonical.dateLocal || bounds.key, revision: row.revision.slice(0, 8), workoutUrl: `${origin}/daily?sessionId=${encodeURIComponent(sessionId)}`, settingsUrl: `${origin}/workout-email/settings`, ...(content ? { readyPlan: content.plan } : {}) });
+        const content = actionable ? manualWorkoutEmailContent(actionable.canonical, actionable.nutrition, fresh.workout?.startTime || null, false, language) : null;
+        if(content && actionable){
+          content.graphic=renderUniversalWorkoutPng(buildUniversalWorkoutCard(actionable.canonical,actionable.nutrition,language,fresh.workout?.startTime||null));
+          content.plan.graphicCid="workout-profile@jmm";
+          content.plan.graphicAlt=content.plan.steps.join("; ");
+        }
+        const email = manualWorkoutEmail({ language, kind, workoutSport: actionable ? actionable.canonical.sport : undefined, dateLabel: fresh.resolved?.canonical.dateLocal || bounds.key, revision: row.revision.slice(0, 8), workoutUrl: `${origin}/daily?sessionId=${encodeURIComponent(sessionId)}`, settingsUrl: `${origin}/workout-email/settings`, ...(content ? { readyPlan: content.plan } : {}) });
         const download = actionable ? buildPrivateSafeSessionDownload(actionable.canonical) : null;
         const attachments = download ? [{ filename: download.filename, content: Buffer.from(download.bytes) }, ...(content?.graphic ? [{ filename: "workout-profile.png", content: content.graphic, cid: "workout-profile@jmm" }] : [])] : [];
         // Last-moment source/consent/time check after potentially expensive FIT/PNG work.

@@ -1,6 +1,8 @@
 // Schema examples only. These are never saved until an athlete explicitly applies
 // their edited JSON. Numbers are illustrative, not individualized prescriptions.
 export const SPORT_STRUCTURE_EXAMPLES: Record<string, { label: string; structure: Record<string, unknown> }> = {
+  run: { label: "Run", structure: {schemaVersion:1,kind:"endurance",steps:[{name:"Illustrative easy run",phase:"active",zone:"z1",seconds:300,endpoint:{type:"time",seconds:300}}]} },
+  bike: { label: "Bike", structure: {schemaVersion:1,kind:"endurance",steps:[{name:"Illustrative easy ride",phase:"active",zone:"z1",seconds:300,endpoint:{type:"time",seconds:300}}]} },
   swim: {
     label: "Pool swim",
     structure: {

@@ -42,7 +42,7 @@ test("every UI example is valid explicit schema, never an automatically saved de
   for (const [sport, example] of Object.entries(SPORT_STRUCTURE_EXAMPLES)) {
     const normalized = normalizeSportStructure(example.structure, sport);
     assert.equal(normalized.schemaVersion, 1);
-    assert.equal(normalized.kind, sport === "swim" ? "pool" : sport);
+    assert.equal(normalized.kind, sport === "swim" ? "pool" : ["run", "bike"].includes(sport) ? "endurance" : sport);
   }
 });
 
