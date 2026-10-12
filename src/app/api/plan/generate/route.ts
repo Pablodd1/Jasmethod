@@ -261,6 +261,9 @@ export async function POST(req: Request) {
             data: { status: "archived" },
           });
         }
+        // An explicitly confirmed cycle replaces pending starter suggestions in
+        // its date range. Preserve every performed/reported starter as history.
+        await tx.workout.updateMany({where:{userId:user.id,planned:true,source:{in:["starter","starter-rest"]},completed:false,feedbackAt:null,feedbackStatus:null,actualDurationMin:null,actualSport:null,actualDetails:null,rpe:null,date:{gte:start}},data:{planned:false,approved:false,source:"superseded-starter"}});
         const plan = await tx.trainingPlan.create({
           data: {
             userId: user.id,
