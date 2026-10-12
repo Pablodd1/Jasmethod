@@ -15,7 +15,7 @@ import { CONSENT_VERSION, TELEGRAM_CONSENT_VERSION, PURPOSES, mockCoachingEnable
   hashToken, promptKey, missingDataQuestions, parseCoachingReply, validateCandidate, verifyReplyBinding, mockTransport,
   inQuietHours, localMinute, dueSchedule, type Purpose, type CommunicationSettings, type MockOutcome, type MissingQuestion } from "./coaching-communication";
 
-export type CoachingActor = { id: string; timezone: string; email: string };
+export type CoachingActor = { id: string; timezone: string; email: string; language?: string };
 export function requireMockCoaching() {
   if (!mockCoachingEnabled()) throw new ApiError("Optional coaching delivery is disabled. Real Telegram/email transport needs privacy and provider review. Manual check-in remains available.", 503);
 }
@@ -197,7 +197,8 @@ export async function createCoachingPrompt(actor: CoachingActor, input: { sessio
   let attachments: ReturnType<typeof telegramWorkoutAttachments>;
   try {
     const checked = await currentDelivery(created.workoutCleared);
-    attachments = created.workoutCleared && checked.actionable ? telegramWorkoutAttachments(checked.fresh.canonical) : [];
+    const language = actor.language === "es" ? "es" : "en";
+    attachments = created.workoutCleared && checked.actionable ? telegramWorkoutAttachments(checked.fresh.canonical,checked.fresh.nutrition,language) : [];
   } catch {
     // No provider request has begun: record a definitive cancellation rather
     // than leaving a pending claim that reconciliation would call uncertain.

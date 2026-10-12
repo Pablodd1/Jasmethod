@@ -1,3 +1,6 @@
+import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
+import { renderUniversalWorkoutPng } from "./universal-workout-render";
+import { manualWorkoutEmailContent } from "./manual-workout-email-content";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -79,7 +82,9 @@ test("email reconciliation sends sanitized FIT through injected transport and ab
       "./dates": { dayBounds: () => ({ key: "2026-10-11", start: new Date("2026-10-11"), end: new Date("2026-10-12") }) },
       "./effective-prescription": {}, "./fit-export": { buildPrivateSafeSessionDownload },
       "./manual-workout-email-template": { manualWorkoutEmail: () => ({ subject: "Synthetic", text: "Synthetic", html: "Synthetic" }) },
-      "./manual-workout-email-content": { manualWorkoutEmailContent: () => ({ plan: {}, graphic: null }) },
+      "./manual-workout-email-content": { manualWorkoutEmailContent },
+      "./universal-workout-card-server":{buildUniversalWorkoutCard},
+      "./universal-workout-render":{renderUniversalWorkoutPng},
       "./manual-workout-email": { manualEmailConfigured: () => true, manualEmailOrigin: () => "https://example.invalid", eligibleManualEmail: () => true, manualEmailChanged: () => false, manualEmailDue: () => true, manualEmailKey: () => "synthetic-key" },
       "./manual-workout-email-transport": {},
     };

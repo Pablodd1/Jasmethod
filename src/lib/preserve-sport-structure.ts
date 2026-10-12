@@ -25,7 +25,7 @@ export function holdStructuredPlanEdit(raw: string | null, sport: string, title:
   let prior: Record<string, any>;
   try { prior = JSON.parse(raw || "null"); } catch { return null; }
   if (!prior?.sportStructure || (prior.sport !== undefined && prior.sport !== sport)) return null;
-  const structureSport = prior.sportStructure.kind === "pool" || prior.sportStructure.kind === "openWater" ? "swim" : prior.sportStructure.kind;
+  const structureSport = prior.sportStructure.kind === "pool" || prior.sportStructure.kind === "openWater" ? "swim" : prior.sportStructure.kind === "endurance" ? sport : prior.sportStructure.kind;
   if (structureSport !== sport) return null;
   return JSON.stringify({ ...prior, title, verdict: "rest", durationMin: 0, steps: [], sportStructureBudgetMin: prior.sportStructureBudgetMin ?? prior.durationMin, structureReviewRequired: "The plan changed. Complete check-in and review the retained explicit sport structure before training." });
 }

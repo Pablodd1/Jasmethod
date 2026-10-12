@@ -188,6 +188,36 @@ async function main() {
   const f = await fixture(a), other = await fixture(b);
   await savedClearCheckin(a); await savedClearCheckin(b);
 
+  await scenario("Universal card scopes exports and edits, preserves history and rejects stale revisions",async()=>{
+    const owner=await actor("card-editor"),sample=await fixture(owner);
+    await savedClearCheckin(owner);
+    const path=`/api/workout/card?id=${sample.run.id}`;
+    await request(path,undefined,{status:401});await request(path,b,{status:404});
+    const card=await json(path,owner);
+    assert.equal(card.schemaVersion,"jmm-workout-card-v1");assert.equal(card.session.id,sample.run.id);assert.equal(card.session.verdict,"ready");
+    const image=await request(`${path}&format=png&revision=${card.session.revision}`,owner,{status:200});
+    const bytes=Buffer.from(await image.arrayBuffer());assert.equal(bytes.toString("hex",0,8),"89504e470d0a1a0a");assert.equal(image.headers.get("x-workout-revision"),card.session.revision);
+    const steps=card.session.steps.map((step:any)=>({name:step.name,phase:step.phase,zone:step.zone,seconds:step.seconds,target:{type:"open"}}));
+    steps[1].seconds-=60;
+    const body={id:sample.run.id,expectedRevision:card.session.revision,steps};
+    await request("/api/workout/card",b,{method:"PATCH",body,status:404});
+    const edited=await json("/api/workout/card",owner,{method:"PATCH",body});
+    assert.notEqual(edited.session.revision,card.session.revision);assert.equal(edited.session.exactTimeSeconds,1140);
+    assert.equal((await db.workout.findUniqueOrThrow({where:{id:sample.run.id}})).approved,false);
+    assert.equal(await db.auditLog.count({where:{subjectId:owner.id,entityId:sample.run.id,action:"workout.cardSteps"}}),1);
+    await request("/api/workout/card",owner,{method:"PATCH",body,status:409});
+    await request(`${path}&format=png&revision=${card.session.revision}`,owner,{status:409});
+    const restored=await json("/api/workout/card",owner,{method:"PATCH",body:{id:sample.run.id,expectedRevision:edited.session.revision,action:"restore"}});
+    assert.equal(restored.session.exactTimeSeconds,1200);assert.notEqual(restored.session.revision,edited.session.revision);
+    assert.equal(await db.auditLog.count({where:{subjectId:owner.id,entityId:sample.run.id,action:"workout.cardRestore"}}),1);
+
+    await savedClearCheckin(owner);
+    const retained=await json(path,owner);
+    assert.equal(retained.session.exactTimeSeconds,1200);
+    assert.equal(JSON.parse((await db.workout.findUniqueOrThrow({where:{id:sample.run.id}})).prescription!).sportStructure.kind,"endurance");
+    await request("/api/workout/card",owner,{method:"PATCH",body:{...body,id:sample.historical.id,expectedRevision:(await json(`/api/workout/card?id=${sample.historical.id}`,owner)).session.revision},status:409});
+  });
+
   await scenario("Unauthenticated and cross-athlete reads/export are denied", async () => {
     await request("/api/today", undefined, { status: 401 });
     await request(`/api/workout/approve?sessionId=${f.run.id}`, undefined, { status: 401 });

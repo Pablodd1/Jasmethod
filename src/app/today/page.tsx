@@ -1,7 +1,8 @@
 "use client";
+import "@/components/daily-training/universal-workout-card.css";
 import { DailyEnvironmentCard } from "@/components/daily-training/DailyEnvironmentCard";
+import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
 import { JMetricsCard } from "@/components/j-metrics-card";
-import { StructuredSportEditor } from "@/components/StructuredSportEditor";
 import { CoachingConversation } from "@/components/coaching-conversation";
 import { CoachConversation } from "@/components/daily-training/coach-conversation";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
@@ -310,6 +311,8 @@ export default function TodayPage() {
         )}
         {session && (
           <>
+            <UniversalWorkoutCardLoader key={`${session.id}-${session.revision}`} sessionId={session.id} es={es} onSaved={() => load()}/>
+            <details><summary className="my-4 cursor-pointer underline">{es ? "Herramientas de la sesión y seguimiento" : "Session tools & feedback"}</summary>
             <div id="today-workout" className="card !p-0 overflow-hidden scroll-mt-4">
               <div className="bg-ocean-800 text-white p-5">
                 <p className="text-xs uppercase">
@@ -336,7 +339,6 @@ export default function TodayPage() {
                 {session.verdict === "blocked" && <Link className="btn-secondary" href="/checkin">{es ? "Revisar check-in" : "Review check-in"}</Link>}
                 {session.capability && <FitDownloadActions key={`${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} title={session.title} capability={session.capability} disabled={offline || busy} es={es} />}
                 <DailyEnvironmentCard key={`environment-${user?.id}-${session.id}-${session.revision}`} sessionId={session.id} dateLocal={data.date} timezone={data.timezone} startTime={session.startTime} environment={session.environment} es={es} disabled={offline || busy} offline={offline} onSaved={load} />
-                <StructuredSportEditor key={`structure-${session.id}-${session.revision}`} sessionId={session.id} sport={session.sport} disabled={offline || busy} es={es} onSaved={load} />
                 {/* Reported load is separate from planned intensity and distance. */}
                 <div className="grid grid-cols-3 gap-2">
                   {[
@@ -664,6 +666,7 @@ export default function TodayPage() {
                 </div>
               </div>
             </div>
+            </details>
           </>
         )}
         {/* Optional provider setup, hidden unless server capability is enabled. */}
