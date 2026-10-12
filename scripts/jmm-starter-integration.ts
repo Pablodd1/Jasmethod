@@ -44,7 +44,8 @@ async function main() {
  await db.race.deleteMany({where:{userId}});
  const first=await api("/api/plan/starter",{});
  await db.workout.update({where:{id:first.workoutId},data:{date:localDate(addDaysKey(day.key,-2),"UTC")}});
- await api("/api/plan/starter",{});today=await api("/api/today");assert.equal(today.recovery.mode,"planned-rest");
+ await api("/api/plan/starter",{});today=await api("/api/today");assert.equal(today.recovery.mode,"hold","earlier illness remains authoritative even on a planned recovery day");
+ await api("/api/checkin",checkin);today=await api("/api/today");assert.equal(today.recovery.mode,"planned-rest");
  assert.equal(await db.metricObservation.count({where:{userId,metricType:"jmm_rest_day"}}),0,"planned recovery never fabricates completed rest");
  await db.workout.deleteMany({where:{userId}});
  await db.athleteProfile.create({data:{userId,injured:true}});
