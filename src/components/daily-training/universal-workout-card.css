@@ -321,3 +321,42 @@
   .uwc-selected { display: none; }
   .uwc a { color: #111 !important; }
 }
+
+/* Compact defaults; print still expands all workout instructions. */
+.uwc .uwc-extra > summary, .uwc .uwc-share > summary { font-weight: 500; }
+.uwc .uwc-chart-options { padding: 8px 12px; margin: 8px 0; }
+@media screen and (max-width: 650px) {
+  .uwc { padding: 12px; }
+  .uwc-header { display: flex; align-items: flex-start; gap: 10px; }
+  .uwc-header h1 { font-size: 30px; margin: 6px 0; }
+  .uwc-header p { font-size: 11px; margin: 4px 0; }
+  .uwc-header > div:first-child { flex: 1; min-width: 0; }
+  .uwc-stats { display: block; margin: 0; flex-shrink: 0; }
+  .uwc-stats b { display: block; font-size: 24px; }
+  .uwc-stats b + b { font: 11px Arial; margin-top: 6px; }
+  .uwc-stats b + b small { display: none; }
+  .uwc-section { margin: 12px 0; }
+  .uwc h2 { font-size: 20px; gap: 10px; margin-bottom: 10px; padding: 4px 8px 4px 0; }
+  .uwc h2 span { padding: 6px 10px; }
+  .uwc .uwc-muted, .uwc > section > small { font-size: 11px; }
+  .uwc-controls { gap: 8px; margin: 8px 0; }
+  .uwc-selected { padding: 8px; font-size: 12px; }
+  .uwc-selected p { margin: 3px 0; }
+  .uwc-step-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .uwc-step-grid article { padding: 8px; }
+  .uwc-step-grid article > small { display: none; }
+  .uwc-step-grid h3 { font-size: 19px; margin: 4px 0; }
+  .uwc-step-grid article > b { font-size: 18px; }
+  .uwc-step-grid article p { font-size: 11px; margin: 4px 0; }
+  .uwc-step-grid article details { margin: 6px 0 0; padding: 6px; font-size: 11px; }
+  .uwc details { padding: 10px; margin: 8px 0; font-size: 13px; }
+  .uwc footer { padding-top: 8px; font-size: 10px; }
+}
+
+@media screen and (max-width: 650px) {
+  .uwc-header-ready > div:first-child > p:last-child { display: none; }
+}
+
+@media screen and (max-width: 650px) {
+  .uwc-step-grid article details p { font-size: 13px; }
+}

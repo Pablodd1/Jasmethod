@@ -25,7 +25,7 @@ export function WorkoutHeader({ card }: { card: Card }) {
   const s = card.session,
     es = card.language === "es";
   return (
-    <header className="uwc-header">
+    <header className={`uwc-header ${s.verdict === "ready" ? "uwc-header-ready" : ""}`}>
       <div>
         <p>
           {s.sport.toUpperCase()} · {s.dateLocal} · {s.timezone}
@@ -67,7 +67,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
   const { session: s } = card,
     es = card.language === "es";
   const [mode, setMode] = useState<Mode>("zone"),
-    [selected, setSelected] = useState(0),
+    [selected, setSelected] = useState<number | null>(null),
     [zoom, setZoom] = useState(1);
   const [elapsed, setElapsed] = useState(0),
     [running, setRunning] = useState(false);
@@ -97,7 +97,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
         cursor += st.seconds;
         return elapsed >= from && elapsed < cursor;
       })
-    : selected;
+    : selected ?? 0;
   const values = s.steps.map((st) => n(st, mode)),
     max = Math.max(1, ...values.filter((v): v is number => v !== null));
   const width = 900,
@@ -117,7 +117,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
     x += w;
     return { st, i, x: left, w, h, value };
   });
-  const step = s.steps[selected];
+  const step = selected === null ? undefined : s.steps[selected];
   if (!s.steps.length) return <p role="status">{s.reason}</p>;
   return (
     <section className="uwc-section">
@@ -125,58 +125,22 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
         <span>01</span>
         {es ? "LA SECUENCIA" : "THE FLOW"}
       </h2>
-      <div
-        className="uwc-controls"
-        role="group"
-        aria-label={es ? "Vista de intensidad" : "Intensity view"}
-      >
-        {(["zone", "RPE", "heartRate", "pace", "power"] as Mode[]).map((v) => (
-          <button
-            key={v}
-            disabled={v !== "zone" && !s.steps.some((st) => n(st, v) !== null)}
-            aria-pressed={mode === v}
-            onClick={() => setMode(v)}
-          >
-            {
-              {
-                zone: es ? "Zona" : "Zone",
-                heartRate: es ? "FC" : "HR",
-                pace: es ? "Ritmo" : "Pace",
-                power: es ? "Potencia" : "Power",
-                RPE: "RPE",
-              }[v]
-            }
-          </button>
-        ))}
-        <label>
-          {es ? "Ampliar" : "Zoom"}
-          <input
-            aria-label={es ? "Ampliar gráfico" : "Chart zoom"}
-            type="range"
-            min="1"
-            max="4"
-            step=".5"
-            value={zoom}
-            onChange={(e) => setZoom(Number(e.target.value))}
-          />
-        </label>
-      </div>
       <p className="uwc-muted">
         {timed
           ? es
-            ? "Anchura proporcional al tiempo real prescrito."
-            : "Widths proportional to actual prescribed duration."
+            ? "Anchura = tiempo prescrito."
+            : "Width = prescribed time."
           : es
             ? "Pasos de anchura igual: no representan tiempo estimado."
             : "Equal-width steps: no estimated time is presented as exact."}{" "}
         {es
-          ? "Altura: objetivo del plan, no medición en vivo."
-          : "Height: planning target, not a live measurement."}
+          ? "Altura = objetivo; no medición."
+          : "Height = target; not measured."}
       </p>
       <div className="uwc-chart-scroll">
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          style={{ width: `${zoom * 100}%`, minWidth: 550 }}
+          style={{ width: `${zoom * 100}%`, minWidth: 280 }}
           role="group"
           aria-label={es ? "Pasos del entrenamiento" : "Workout steps"}
         >
@@ -226,10 +190,11 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
       {step && (
         <div className="uwc-selected" aria-live="polite">
           <b>
-            {selected + 1}. {step.name} · {endpointText(step)}
+            {(selected ?? 0) + 1}. {step.name} · {endpointText(step)}
           </b>
-          <p>{card.content.steps[selected] || step.target.label}</p>
-          {values[selected] === null && (
+          <p>{step.target.label}</p>
+          <details><summary>{es ? "Instrucciones completas" : "Full instructions"}</summary><p>{card.content.steps[selected ?? 0]}</p>{step.note && <p>{step.note}</p>}</details>
+          {values[selected ?? 0] === null && (
             <p>
               {es
                 ? "Este paso no tiene ese objetivo."
@@ -238,6 +203,46 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
           )}
         </div>
       )}
+      <details className="uwc-guide uwc-no-print"><summary>{es ? "Seguir entrenamiento · guía local" : "Follow workout · local guide"}</summary>
+      <details className="uwc-chart-options"><summary>{es ? "Objetivos y ampliar" : "Targets & zoom"}</summary>
+      <div
+        className="uwc-controls"
+        role="group"
+        aria-label={es ? "Vista de intensidad" : "Intensity view"}
+      >
+        {(["zone", "RPE", "heartRate", "pace", "power"] as Mode[]).map((v) => (
+          <button
+            key={v}
+            disabled={v !== "zone" && !s.steps.some((st) => n(st, v) !== null)}
+            aria-pressed={mode === v}
+            onClick={() => setMode(v)}
+          >
+            {
+              {
+                zone: es ? "Zona" : "Zone",
+                heartRate: es ? "FC" : "HR",
+                pace: es ? "Ritmo" : "Pace",
+                power: es ? "Potencia" : "Power",
+                RPE: "RPE",
+              }[v]
+            }
+          </button>
+        ))}
+        <label>
+          {es ? "Ampliar" : "Zoom"}
+          <input
+            aria-label={es ? "Ampliar gráfico" : "Chart zoom"}
+            type="range"
+            min="1"
+            max="4"
+            step=".5"
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+          />
+        </label>
+      </div>
+      </details>
+
       <div className="uwc-controls">
         <button
           disabled={s.verdict !== "ready"}
@@ -281,7 +286,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
         {!timed && (
           <button
             onClick={() =>
-              setSelected((i) => Math.min(s.steps.length - 1, i + 1))
+              setSelected((i) => Math.min(s.steps.length - 1, (i ?? -1) + 1))
             }
           >
             {es ? "Siguiente paso" : "Next step"}
@@ -293,6 +298,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
           ? "Guía local solamente; no registra ejecución ni confirma recepción en el reloj."
           : "Local guide only; does not log execution or confirm watch receipt."}
       </small>
+      </details>
     </section>
   );
 }
@@ -315,10 +321,11 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
       <div className="uwc-step-grid">
         {groups.map((group, i) => {
           const timed = group.steps.every((st) => st.endpoint.type === "time");
-          const work = group.steps.filter((st) => st.phase === "active").length;
-          const recovery = group.steps.filter(
-            (st) => st.phase === "recovery",
-          ).length;
+          const workSteps = group.steps.filter(st => st.phase === "active");
+          const recoverySteps = group.steps.filter(st => st.phase === "recovery");
+          const repeatLabel = (steps: CanonicalStep[], fallback: string) => steps.length && steps.every(st => endpointText(st) === endpointText(steps[0]) && st.zone === steps[0].zone)
+            ? `${steps.length} × ${endpointText(steps[0])} · ${steps[0].zone.toUpperCase()}`
+            : `${steps.length} ${fallback}`;
           const detail = group.steps.map((step, index) => (
             <div key={index}>
               <b>
@@ -345,8 +352,8 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
               {group.steps.length > 1 ? (
                 <>
                   <p>
-                    {work} {es ? "esfuerzos" : "efforts"} · {recovery}{" "}
-                    {es ? "recuperaciones" : "recoveries"}
+                    {repeatLabel(workSteps, es ? "esfuerzos" : "efforts")}<br />
+                    {repeatLabel(recoverySteps, es ? "recuperaciones" : "recoveries")} {es ? "recuperación" : "recovery"}
                   </p>
                   <details>
                     <summary>
@@ -356,7 +363,7 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
                   </details>
                 </>
               ) : (
-                detail
+                <details><summary>{es ? "Instrucciones" : "Instructions"}</summary>{detail}</details>
               )}
             </article>
           );
@@ -676,10 +683,10 @@ export function UniversalWorkoutCard({
           </a>
         </div>
       )}
-      <ShareWorkout card={card} />
       <WorkoutIntensityTimeline card={card} />
       <WorkoutIntervalDetails card={card} />
-      <TrainingTargetSelector card={card} />
+      <details className="uwc-extra"><summary>{es ? "Ritmo, potencia y frecuencia cardíaca" : "Pace, power & heart rate"}</summary><TrainingTargetSelector card={card} /></details>
+      <details className="uwc-extra"><summary>{es ? "Alimentación antes, durante y después" : "Fuel before, during & after"}</summary>
       <section className="uwc-section">
         <h2>
           <span>04</span>
@@ -692,9 +699,12 @@ export function UniversalWorkoutCard({
         </div>
         <ErgogenicAidDetails card={card} />
       </section>
-      <BreathingRecovery card={card} />
+      </details>
+      <details className="uwc-extra"><summary>{es ? "Respiración y recuperación" : "Breathing & recovery"}</summary><BreathingRecovery card={card} /></details>
       <CoachNotes card={card} />
-      <div className="uwc-no-print">
+      <details className="uwc-no-print"><summary>{es ? "Compartir, dispositivo y editar" : "Share, device & edit"}</summary>
+      <div>
+        <ShareWorkout card={card} />
         <DeviceExportMenu card={card} />
         {onSaved && <WorkoutEditor card={card} onSaved={onSaved} />}
         {onSaved && (card.session.verdict !== "ready" || !["run", "bike"].includes(card.session.sport)) && (
@@ -706,9 +716,10 @@ export function UniversalWorkoutCard({
           />
         )}
       </div>
+      </details>
       <footer>
         {es ? "Revisión" : "Revision"}: {card.session.revision.slice(0, 12)} ·{" "}
-        {card.schemaVersion} · {card.session.capability.reason}
+        {card.schemaVersion}
       </footer>
     </div>
   );
