@@ -79,6 +79,8 @@ function fixture(candidates = [candidate()]) {
       workout: { findMany: async ({ where, select }: any) => { if (select?.matchedPlanId === true) { assert.equal(where.userId, actor.id); assert.equal(where.matchedPlanId, null); assert.equal(select.tss, undefined); draft.loadQuery = where; return (draft.loadWorkouts || []).filter((row: any) => matches(row, where)); } return select?.planDay ? draft.todayRecoverySessions || [] : []; }, findFirst: async ({ where }: any) => matches(draft.workout, where) ? draft.workout : null, update: async ({ where, data }: any) => { assert.equal(where.id, draft.workout.id); draft.writes.push("workout"); return update(draft.workout, data); } },
       metricObservation: { findMany: async ({ where }: any) => { assert.equal(where.userId, actor.id); draft.restQuery = where; return (draft.restObservations || []).filter((row: any) => matches(row, where)); } },
       planDay: { findFirst: async ({ where }: any) => { assert.equal(where.plan.userId, actor.id); assert.equal(where.plan.status, "active"); assert.equal(where.dayOff, true); return draft.plannedRestDay ?? null; } },
+      dailyMetrics:{findFirst:async()=>null},
+      race:{findFirst:async()=>null},
       dailyCheckin: { findUnique: async () => draft.checkin ?? null },
       auditLog: { findFirst: async () => null, create: async ({ data }: any) => { draft.audits.push(data); return data; } },
     };

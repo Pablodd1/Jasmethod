@@ -38,49 +38,19 @@ export function parseOuraExport(json: string): OuraParsed {
   const sleep: OuraSleepEntry[] = [];
   const readiness: OuraReadinessEntry[] = [];
 
-  // Oura cloud export format: array of sleep entries
-  if (Array.isArray(data)) {
-    for (const entry of data) {
-      const day = entry.day || entry.date || "";
-      if (!day) continue;
-      if (entry.score != null && entry.contributors != null) {
-        // Readiness entry (has contributors object)
-        readiness.push({
-          day,
-          score: entry.score,
-          hrv: entry.contributors?.hrv_balance ?? entry.contributors?.hrv ?? null,
-          restingHeartRate: entry.contributors?.resting_heart_rate ?? null,
-        });
-      }
-      if (entry.total_sleep_duration != null) {
-        // Sleep entry
-        sleep.push({
-          date: day,
-          score: entry.score ?? 0,
-          totalSleepDuration: entry.total_sleep_duration ?? 0,
-          deepSleepDuration: entry.deep_sleep_duration ?? 0,
-          remSleepDuration: entry.rem_sleep_duration ?? 0,
-          hrv: entry.rmssd ?? entry.hrv ?? null,
-          restingHeartRate: entry.resting_heart_rate ?? null,
-        });
-      }
-    }
-  }
-
-  // Oura API v2 format: { data: [...] }
-  if (data?.data && Array.isArray(data.data)) {
-    for (const entry of data.data) {
-      const day = entry.day || "";
-      if (!day) continue;
-      if (entry.score != null && entry.contributors != null) {
-        readiness.push({
-          day,
-          score: entry.score,
-          hrv: entry.contributors?.hrv_balance ?? null,
-          restingHeartRate: entry.contributors?.resting_heart_rate ?? null,
-        });
-      }
-    }
+  // Readiness contributors are scores, never milliseconds or beats/minute.
+  // Accept actual sleep readings from both export arrays and V2 data envelopes.
+  const entries = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+  for (const entry of entries) {
+    const day=entry.day || entry.date || "";
+    if(!day) continue;
+    if(entry.score != null && entry.contributors != null) readiness.push({day,score:entry.score});
+    if(entry.total_sleep_duration != null) sleep.push({
+      date:day,score:entry.score ?? 0,totalSleepDuration:entry.total_sleep_duration,
+      deepSleepDuration:entry.deep_sleep_duration ?? 0,remSleepDuration:entry.rem_sleep_duration ?? 0,
+      hrv:entry.average_hrv ?? entry.rmssd ?? entry.hrv ?? null,
+      restingHeartRate:entry.lowest_heart_rate ?? entry.resting_heart_rate ?? null,
+    });
   }
 
   // Merge sleep + readiness into daily metrics
@@ -90,7 +60,7 @@ export function parseOuraExport(json: string): OuraParsed {
   for (const s of sleep) {
     const existing = byDate.get(s.date) || {};
     existing.date = s.date;
-    existing.sleepHours = s.totalSleepDuration ? Math.round(s.totalSleepDuration / 3600 * 10) / 10 : null;
+    existing.sleepHours = typeof s.totalSleepDuration === "number" && Number.isFinite(s.totalSleepDuration) && s.totalSleepDuration >= 0 ? Math.round(s.totalSleepDuration / 3600 * 10) / 10 : null;
     existing.sleepScore = s.score || null;
     existing.hrv = s.hrv ?? null;
     existing.restingHr = s.restingHeartRate ?? null;
@@ -100,12 +70,10 @@ export function parseOuraExport(json: string): OuraParsed {
     const existing = byDate.get(r.day) || {};
     existing.date = r.day;
     existing.recoveryScore = r.score ?? null;
-    if (r.hrv) existing.hrv = r.hrv;
-    if (r.restingHeartRate) existing.restingHr = r.restingHeartRate;
     byDate.set(r.day, existing);
   }
 
-  for (const [, v] of Array.from(byDate.values())) metrics.push(v);
+  for (const v of Array.from(byDate.values())) metrics.push(v);
   metrics.sort((a, b) => (a.date < b.date ? -1 : 1));
 
   return { sleep, readiness, metrics };

@@ -1,7 +1,7 @@
 type Observation = { id:string; metricType:string; value:number; unit:string|null; source:string; observedAt:Date; qualityFlag:string|null };
 const metrics: Record<string, {unit:string; min:number; max:number}> = {
   weight_kg:{unit:"kg",min:20,max:350}, resting_hr:{unit:"bpm",min:25,max:150},
-  hrv_rmssd:{unit:"ms",min:1,max:300}, sleep_hours:{unit:"h",min:0,max:24},
+  hrv_rmssd:{unit:"ms",min:1,max:300}, hrv_sdnn:{unit:"ms",min:1,max:300}, sleep_hours:{unit:"h",min:0,max:24},
 };
 export const ONBOARDING_METRICS = Object.keys(metrics);
 /** Show recent usable observations, never convert a single observation into a training baseline. */

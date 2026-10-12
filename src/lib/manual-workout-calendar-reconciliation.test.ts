@@ -1,3 +1,4 @@
+import * as deviceMetricSnapshot from "./device-metric-snapshot";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -22,7 +23,8 @@ function syntheticSync(options: { moved?: boolean; failDelete?: boolean; approve
     $transaction: async (fn: any) => fn({ $executeRaw: async () => 1, athleteProfile: { findUnique: async () => null } }),
   };
   const deps: Record<string, unknown> = {
-    "./manual-workout-calendar": calendar, "./dates": dates, "./db": { prisma },
+    "./manual-workout-calendar": calendar, "./dates": dates, "./device-metric-snapshot":deviceMetricSnapshot,
+    "./db": { prisma },
     "./manual-workout-email-locale": { manualEmailLanguage: () => "en" },
     "./manual-workout-email": { eligibleManualEmail: () => false, manualEmailConfigured: () => false },
     "./manual-workout-email-content": { manualWorkoutCalendarDescription: () => { throw Error("Private guidance must not be shared without opt-in"); } },

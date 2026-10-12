@@ -1,6 +1,11 @@
-import { clockMinutes, doubleDayReadiness } from "./double-day";
+import { clockMinutes, doubleDayReadiness, doubleDayWeekdays } from "./double-day";
 import type {GeneratedWeek,PlanSession} from "./science";
 import type {PlanningSetup} from "./planning-setup";
+function pairSportPriority(primary:string|undefined,secondary:string) {
+  if(primary === "run") return secondary === "swim" ? 0 : secondary === "bike" ? 1 : 3;
+  if(primary === "bike" || primary === "swim") return secondary === "run" ? 0 : secondary === primary ? 3 : 2;
+  return secondary === primary ? 3 : 1;
+}
 export type BoundedPlanSession = PlanSession & {daySlot:number; startTime?:string; doubleDayRole?:"primary"|"secondary"; movedFromSlot?:number};
 /** Product planning defaults, not scientifically validated recovery thresholds.
  * Intermediate is stored as amateur. Advanced retains a conservative day off;
@@ -13,9 +18,9 @@ export function levelRecoveryPolicy(level?: string | null) {
 /** Reduction-only pilot constraints. Preserve generator day order; unavailable
  * days are omitted, never made up or stacked onto an available day. These are
  * implementation limits for review, not a claimed validated coaching model. */
-export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, weeklyHours: number, startWeekday: number, level?: string | null, doubleDayExcludedWeeks: number[] = []) {
+export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _legacyWeeklyHours: number | null | undefined, startWeekday: number, level?: string | null, doubleDayExcludedWeeks: number[] = []) {
   const recoveryPolicy = levelRecoveryPolicy(level);
-  const weeklyBudget = Math.min(weeklyHours*60, setup.baselineWeeklyMinutes ?? 0, (setup.maxSessionMinutes ?? 0)*setup.trainingDays.length);
+  const weeklyBudget = Math.min(setup.baselineWeeklyMinutes ?? 0, (setup.maxSessionMinutes ?? 0)*setup.trainingDays.length);
   const hardAbsoluteDays: number[] = [];
   return {weeklyBudget, recoveryPolicy, weeks:weeks.map((week, weekIndex)=>{
     const hardDays:number[]=[];
@@ -65,22 +70,24 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, wee
       const remaining=(setup.maxSessionMinutes ?? 0)-(dayTotals.get(session.daySlot)??0);
       const minutes=Math.max(0,Math.min(remaining,Math.floor(session.minutes*factor)));
       dayTotals.set(session.daySlot,(dayTotals.get(session.daySlot)??0)+minutes);
-      return {...session,minutes,description:`${session.description} Duration is bounded by your reported recent tolerated training and available time. Use the confirmed daily instructions. Omitted work is not made up.`};
+      return {...session,minutes,description:`${session.description} Duration is bounded by your recent tolerated training and available time. Use the confirmed daily instructions. Omitted work is not made up.`};
     }).filter(session=>session.minutes>0);
     let doubleDayNote="No optional double day selected; single-session scheduling retained.";
     const preference=setup.doubleDay;
+    const pairDays=doubleDayWeekdays(preference).slice(0,level === "pro" ? 2 : 1);
+    const pairSlots=pairDays.map(day=>(day-startWeekday+7)%7);
     const consent=doubleDayReadiness(preference,setup.trainingDays);
     if(preference) {
       doubleDayNote=consent.reasons.join(" ");
-      if(consent.ready) {
-        const slot=(preference.weekday-startWeekday+7)%7;
+      if(consent.ready) for (const weekday of pairDays) {
+        const slot=(weekday-startWeekday+7)%7;
         const primary=sessions.find(s=>s.daySlot===slot);
-        const donors=sessions.filter(s=>s.daySlot!==slot && ['run','bike','swim','mobility'].includes(s.sport) && /^z[12]$/.test(s.zone) && !['race','test','speed','interval','threshold','plyo'].includes(s.type));
+        const donors=sessions.filter(s=>!s.doubleDayRole && !pairSlots.includes(s.daySlot) && s.daySlot!==slot && ['run','bike','swim','mobility'].includes(s.sport) && /^z[12]$/.test(s.zone) && !['race','test','speed','interval','threshold','plyo'].includes(s.type)).sort((a,b)=>pairSportPriority(primary?.sport,a.sport)-pairSportPriority(primary?.sport,b.sport));
         // Try another already-planned easy bout when the first does not fit;
         // never shorten its dose or invent extra work merely to fill a quota.
         const donor=donors.find(s=>primary && primary.minutes+s.minutes<=(setup.maxSessionMinutes??0) && clockMinutes(preference.firstStart)+primary.minutes<clockMinutes(preference.secondStart) && clockMinutes(preference.secondStart)+s.minutes<=1440) ?? donors[0];
         if(doubleDayExcludedWeeks.includes(weekIndex) || /taper|race|test|freshness|sharpening|deload/i.test(week.theme) || sessions.some(s=>['race','test'].includes(s.type))) doubleDayNote="Optional pair omitted in this race/test/taper week; keep the single-session schedule.";
-        else if(!primary||!donor) doubleDayNote="No suitable existing priority/easy pair fits this weekday. No extra session was invented.";
+        else if(!primary||primary.doubleDayRole||!donor) doubleDayNote="No suitable existing priority/easy pair fits this weekday. No extra session was invented.";
         else if(primary.minutes+donor.minutes>(setup.maxSessionMinutes??0)) doubleDayNote="The pair exceeds your daily time limit; the single-session schedule is retained.";
         else if(clockMinutes(preference.firstStart)+primary.minutes>=clockMinutes(preference.secondStart)||clockMinutes(preference.secondStart)+donor.minutes>1440) doubleDayNote="The selected times do not leave separation or finish within the day. The single-session schedule is retained.";
         else {

@@ -152,7 +152,7 @@ export async function GET(req: Request) {
     let recoveryAnswers = null;
     try { const parsed = checkin ? JSON.parse(checkin.answers || "null") : null; if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) recoveryAnswers = parsed; } catch { /* Missing safety remains unknown. */ }
     const eventDay = !!eventToday || restDay?.focus === "event" || !!(user.profile?.raceDate && dateKey(user.profile.raceDate,user.timezone)===key);
-    const plannedRest = !eventDay && (!!restDay?.dayOff || (!!workouts.length && workouts.every(w => w.planDay?.dayOff)));
+    const plannedRest = !eventDay && (allWorkouts.some(w=>w.source==="starter-rest") || !!restDay?.dayOff || (!!workouts.length && workouts.every(w => w.planDay?.dayOff)));
     const recovery = dailyRecoveryContext({ plannedRest, eventDay, sessions, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     const visibleConnectors = connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled());
     return Response.json({
