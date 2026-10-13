@@ -59,3 +59,10 @@ test('Oura readiness contributor scores cannot become HRV milliseconds or restin
  const scoresOnly=parseOuraExport(JSON.stringify([readings[1]])).metrics[0];
  assert.equal(scoresOnly.hrv,undefined);assert.equal(scoresOnly.restingHr,undefined);
 });
+
+
+test('confirmed shorter starter stays eligible without inventing a full-profile baseline; increased dose needs review',()=>{
+ const base=starterSession('run-only');
+ assert.equal(isStarterSession({source:'starter',sport:base.sport,type:base.type,originalPlan:JSON.stringify({...base,durationMin:15})}),true);
+ for(const durationMin of [0,21,NaN,1.5]) assert.equal(isStarterSession({source:'starter',originalPlan:JSON.stringify({...base,durationMin})}),false);
+});

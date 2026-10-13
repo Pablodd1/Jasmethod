@@ -24,6 +24,6 @@ export function isStarterSession(workout:{source?:string|null;originalPlan?:stri
   try {
     const p=JSON.parse(workout.originalPlan);
     return (workout.sport == null || workout.sport===p.sport) && (workout.type == null || workout.type===p.type) && p.starterVersion===STARTER_SESSION_VERSION && ["run","bike","swim","mobility"].includes(p.sport)
-      && p.type==="recovery" && p.intensity==="z1" && p.durationMin===20 && !p.protocol && !p.sportStructure;
+      && p.type==="recovery" && p.intensity==="z1" && Number.isInteger(p.durationMin) && p.durationMin>=1 && p.durationMin<=20 && !p.protocol && !p.sportStructure;
   } catch { return false; }
 }

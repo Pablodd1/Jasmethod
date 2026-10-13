@@ -1,4 +1,5 @@
 "use client";
+import { COACH_REFERRALS } from "@/lib/coach-referrals";
 
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
@@ -26,11 +27,13 @@ const primaryClass = `btn-primary ${focus}`;
 const secondaryClass = `btn-secondary ${focus}`;
 
 const FIELD_LABELS: Record<string, [string, string]> = {
+  heightCm:["Height","Altura"], birthYear:["Birth year","Año de nacimiento"],experience:["Training experience","Experiencia"],ftp:["Reported cycling FTP","FTP de ciclismo reportado"],
   goal: ["Training goal", "Objetivo de entrenamiento"], weeklyHours: ["Weekly training hours", "Horas de entrenamiento semanales"], weightKg: ["Body weight", "Peso corporal"],
   feedbackStatus: ["Workout result", "Resultado de la sesión"], actualDurationMin: ["Actual duration", "Duración realizada"], rpe: ["Perceived effort", "Esfuerzo percibido"], actualSport: ["Sport completed", "Deporte realizado"],
   durationMin: ["Planned duration", "Duración planificada"], sport: ["Planned sport", "Deporte planificado"], sleep: ["Sleep quality", "Calidad del sueño"], soreness: ["Soreness", "Dolor muscular"], motivation: ["Motivation", "Motivación"], energy: ["Energy", "Energía"], stress: ["Stress", "Estrés"], sick: ["Feeling sick", "Síntomas de enfermedad"], newPain: ["New pain", "Dolor nuevo"], urgentSymptoms: ["Urgent symptoms", "Síntomas urgentes"], painAffectsMovement: ["Pain affects movement", "El dolor afecta el movimiento"], availableMinutes: ["Available training time", "Tiempo disponible"], painLocation: ["Pain location", "Ubicación del dolor"],
 };
 const VALUE_CHOICES: Record<string, Array<[string, string, string]>> = {
+  experience:[["beginner","Beginner","Principiante"],["amateur","Intermediate","Intermedio"],["advanced","Advanced","Avanzado"],["pro","Professional","Profesional"]],
   goal: [["sprint", "Sprint triathlon", "Triatlón sprint"], ["olympic", "Olympic triathlon", "Triatlón olímpico"], ["half", "Half-distance triathlon", "Triatlón de media distancia"], ["full", "Full-distance triathlon", "Triatlón de larga distancia"], ["hyrox", "HYROX", "HYROX"], ["run-only", "Running", "Carrera"], ["track-sprint", "Track sprint", "Velocidad en pista"], ["cycle", "Cycling", "Ciclismo"], ["swim-only", "Swimming", "Natación"], ["5k", "5 km", "5 km"], ["10k", "10 km", "10 km"], ["half-marathon", "Half marathon", "Media maratón"], ["marathon", "Marathon", "Maratón"]],
   feedbackStatus: [["completed", "Completed", "Completada"], ["partial", "Partially completed", "Parcialmente completada"], ["substituted", "Substituted", "Sustituida"], ["skipped", "Skipped", "Omitida"]],
   actualSport: [["run", "Run", "Carrera"], ["bike", "Bike", "Ciclismo"], ["swim", "Swim", "Natación"], ["strength", "Strength", "Fuerza"], ["mobility", "Mobility", "Movilidad"], ["recovery", "Recovery", "Recuperación"], ["brick", "Brick", "Sesión combinada"], ["hyrox", "HYROX", "HYROX"], ["other", "Other", "Otro"]],
@@ -38,7 +41,7 @@ const VALUE_CHOICES: Record<string, Array<[string, string, string]>> = {
 VALUE_CHOICES.sport = VALUE_CHOICES.actualSport;
 const sourceLabel = (source: string, es: boolean) => source === "gemini" ? "Google Gemini" : source === "voice" ? (es ? "Voz revisada" : "Reviewed voice") : source === "image" ? (es ? "Captura" : "Screenshot") : (es ? "Texto" : "Text");
 const fieldLabel = (field: string, es: boolean) => FIELD_LABELS[field]?.[es ? 1 : 0] || field;
-const isSaveable = (candidate: CoachCandidate) => candidate.kind === "profile" || candidate.kind === "workout_feedback";
+const isSaveable = (candidate: CoachCandidate) => candidate.kind === "profile" || candidate.kind === "workout_feedback" || (candidate.kind === "workout_plan" && !!candidate.sessionId);
 
 export function CoachConversation({ es, athleteId, offline = false, sessions: todaySessions = NO_SESSIONS, onConfirmed }: Props) {
   const id = useId();
@@ -383,10 +386,10 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     {(imageStatus === "unavailable" || imageStatus === "not_configured") && <p className="text-xs text-amber-900">{es ? "No se pudo analizar la captura. Escribe los datos visibles para revisarlos; no se han inventado valores." : "The screenshot could not be analyzed. Type its visible details for review; no values were guessed."}</p>}
     {activeProposal && <details key={activeProposal.id} className="rounded-xl border border-ocean-300 p-4 space-y-3">
       <summary className={`cursor-pointer font-semibold ${focus}`}>{es ? `Revisar ${activeProposal.candidates.length} datos propuestos · Sin guardar` : `Review ${activeProposal.candidates.length} proposed facts · Not saved`}</summary>
-      <p className="text-sm text-slate-700">{es ? "Selecciona solo los datos correctos. Puedes editar el valor o dejarlo sin seleccionar. El perfil y los resultados se guardan al confirmar; el check-in y el plan requieren revisión en su pantalla." : "Select only correct facts. Edit a value or leave it unselected. Profile facts and workout results save on confirmation; check-in and plan changes need review in their own screen."}</p>
+      <p className="text-sm text-slate-700">{es ? "Selecciona solo los datos correctos. Puedes editar el valor o dejarlo sin seleccionar. El perfil, los resultados y los cambios de una sesión seleccionada se guardan al confirmar. El check-in mantiene su revisión; editar retira la aprobación anterior." : "Select only correct facts. Edit a value or leave it unselected. Profile facts, workout results and selected unfinished workout edits save on confirmation. Check-in keeps its own review; an edit removes previous approval."}</p>
       {activeProposal.candidates.map(candidate => {
         const target = allSessions.find(session => session.id === candidate.sessionId);
-        const ambiguous = candidate.kind === "workout_feedback" && !candidate.sessionId;
+        const ambiguous = (candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") && !candidate.sessionId;
         const candidateId = `${id}-${candidate.id}`;
         return <fieldset key={candidate.id} disabled={blocked || ambiguous} className="rounded-lg border p-3 space-y-2 min-w-0">
           <legend className="px-1 font-semibold">{fieldLabel(candidate.field, es)}</legend>
@@ -400,7 +403,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
             <div><dt className="inline font-medium">{es ? "Fuente: " : "Source: "}</dt><dd className="inline">{sourceLabel(candidate.source, es)}</dd></div>
           </dl>
           <p className="text-sm break-words"><span className="font-medium">{es ? "Evidencia: " : "Evidence: "}</span>{candidate.evidence}</p>
-          {candidate.kind === "workout_feedback" && <p className="text-sm font-medium">{es ? "Sesión: " : "Workout: "}{target ? `${target.date} · ${target.title} · ${target.sport}` : candidate.sessionId || (es ? "Sin seleccionar. Elige una sesión en Herramientas opcionales y vuelve a enviar los detalles." : "Not selected. Choose a workout in Optional tools and send the details again.")}</p>}
+          {(candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") && <p className="text-sm font-medium">{es ? "Sesión: " : "Workout: "}{target ? `${target.date} · ${target.title} · ${target.sport}` : candidate.sessionId || (es ? "Sin seleccionar. Elige una sesión en Herramientas opcionales y vuelve a enviar los detalles." : "Not selected. Choose a workout in Optional tools and send the details again.")}</p>}
           {candidate.kind === "profile" && candidate.field === "goal" && <p className="text-sm text-slate-700">{es ? "Este es tu objetivo aspiracional. No demuestra tu capacidad actual ni cambia el plan por sí solo." : "This is your aspirational goal. It does not establish current ability or change the plan by itself."}</p>}
           {!isSaveable(candidate) && <p className="text-sm font-medium text-amber-900">{es ? "Pendiente: confirmar aquí no aplica este cambio." : "Pending: confirming here does not apply this change."}</p>}
           {candidate.warnings?.map((warning, index) => <p key={index} className="text-sm text-amber-900">{warning}</p>)}
@@ -409,6 +412,13 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
       <div className="flex flex-wrap gap-2"><button type="button" className={primaryClass} disabled={blocked || selectedCount === 0} onClick={() => void confirm()}>{es ? `Confirmar ${selectedCount} datos seleccionados` : `Confirm ${selectedCount} selected facts`}</button><button type="button" className={secondaryClass} disabled={blocked} onClick={() => void dismissProposal()}>{es ? "Descartar propuesta" : "Dismiss proposal"}</button></div>
       <p className="text-xs text-slate-700">{es ? "Si la fecha, unidad o sesión no es correcta, descarta la propuesta y aclárala en un mensaje nuevo." : "If the date, unit or workout is wrong, dismiss the proposal and clarify it in a new message."}</p>
     </details>}
+    <details className="rounded-lg border p-3 space-y-2">
+      <summary className={`cursor-pointer font-semibold ${focus}`}>{es ? "Pruebas y orientación personal" : "Testing and personal coaching"}</summary>
+      <p className="text-sm">{es ? "RMR y VO₂max, bicicleta, carrera o ambas: llama a Eric y dile que Jasmel te envió. Confirma disponibilidad, precio y preparación." : "RMR and VO₂max, bike, run or both: call Eric and say Jasmel sent you. Confirm availability, price and preparation."}</p>
+      <a className={secondaryClass} href={COACH_REFERRALS.testing.href}>{es ? "Llamar a Eric" : "Call Eric"} · {COACH_REFERRALS.testing.phone}</a>
+      <p className="text-sm">{es ? "Para orientación o entrenamiento personal, contacta con Jasmel." : "For guidance or personal coaching, contact Jasmel."}</p>
+      <a className={secondaryClass} href={COACH_REFERRALS.coaching.href}>{es ? "Llamar a Jasmel" : "Call Jasmel"} · {COACH_REFERRALS.coaching.phone}</a>
+    </details>
     {receipt && <details className="rounded-lg border border-green-700 bg-green-50 p-3 space-y-2">
       <summary className={`cursor-pointer font-semibold ${focus}`}>{receipt.applied.length ? (es ? "Cambios guardados con comprobante" : "Saved changes with receipt") : (es ? "Revisión registrada; cambios pendientes" : "Review recorded; changes pending")}</summary>
       {receipt.applied.length > 0 && <ul className="text-sm list-disc pl-5">{receipt.applied.map(entry => <li key={entry.candidateId}>{fieldLabel(entry.field, es)}: {typeof entry.value === "boolean" ? (entry.value ? (es ? "Sí" : "Yes") : "No") : String(entry.value ?? "—")}{entry.observedDate ? ` · ${entry.observedDate}` : ""}</li>)}</ul>}
@@ -416,7 +426,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     </details>}
     {!!pendingActions.length && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2">
       <h3 className="font-semibold">{es ? "Siguiente paso pendiente" : "Pending next step"}</h3>
-      <p className="text-sm">{es ? "Estos cambios todavía no se han aplicado. Completa la revisión en la pantalla correspondiente." : "These changes have not been applied. Complete the review in the relevant screen."}</p>
+      <p className="text-sm">{es ? "Los valores del check-in aún requieren revisión. Después de guardar cambios de entrenamiento, revisa el check-in y la estructura antes de entrenar o publicar." : "Check-in values still need review. After saving workout changes, review your check-in and the structure before training or publishing."}</p>
       {pendingDrafts.length > 0 && <><p className="text-sm">{es ? "Valores revisados para introducir en esa pantalla:" : "Reviewed values to enter in that screen:"}</p><ul className="list-disc pl-5 text-sm">{pendingDrafts.map(candidate => <li key={candidate.id}>{fieldLabel(candidate.field, es)}: {typeof candidate.value === "boolean" ? (candidate.value ? (es ? "Sí" : "Yes") : "No") : String(candidate.value ?? "—")}{candidate.unit ? ` ${candidate.unit}` : ""} · {candidate.observedDate || "—"} · {sourceLabel(candidate.source, es)}</li>)}</ul></>}
       <div className="flex flex-wrap gap-2">{pendingActions.includes("review_checkin") && <Link className={secondaryClass} href="/checkin">{es ? "Completar check-in actual" : "Complete current check-in"}</Link>}{pendingActions.includes("review_plan") && <Link className={secondaryClass} href="/training">{es ? "Revisar plan" : "Review plan"}</Link>}</div>
     </div>}

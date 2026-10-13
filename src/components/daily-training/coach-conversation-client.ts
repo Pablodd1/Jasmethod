@@ -110,9 +110,9 @@ export function verifiedCoachReceipt(payload: CoachPayload, proposalId?: string,
   if (proposalId && receipt.proposalId !== proposalId) return null;
   if (payload.applied !== undefined && payload.applied !== (receipt.applied.length > 0)) return null;
   if (new Set(receipt.applied.map(entry => entry.candidateId)).size !== receipt.applied.length) return null;
-  if (selected && receipt.applied.length !== selected.filter(candidate => ["profile", "workout_feedback"].includes(candidate.kind)).length) return null;
+  if (selected && receipt.applied.length !== selected.filter(candidate => ["profile", "workout_feedback", "workout_plan"].includes(candidate.kind)).length) return null;
   if (!receipt.applied.every(entry =>
-    !!entry.candidateId && ["profile", "workout_feedback"].includes(entry.kind) && typeof entry.field === "string" && ["text", "voice", "image"].includes(entry.source) &&
+    !!entry.candidateId && ["profile", "workout_feedback", "workout_plan"].includes(entry.kind) && typeof entry.field === "string" && ["text", "voice", "image"].includes(entry.source) &&
     (!selected || selected.some(candidate => candidate.id === entry.candidateId && candidate.kind === entry.kind && candidate.field === entry.field && candidate.value === entry.value && candidate.source === entry.source && candidate.observedDate === entry.observedDate && (candidate.sessionId ?? null) === (entry.sessionId ?? null))))) return null;
   return receipt;
 }

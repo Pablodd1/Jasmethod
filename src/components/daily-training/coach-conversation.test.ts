@@ -175,7 +175,9 @@ for (const es of [false, true]) test(`chat composer precedes closed optional too
   const workout = markup.indexOf(es ? "Sesión sobre la que hablas" : "Workout you are discussing");
   const privacy = markup.indexOf(es ? "Privacidad y detalles" : "Privacy &amp; conversation");
   assert.ok(composer >= 0 && composer < send && send < tools && tools < workout && workout < privacy);
-  assert.equal((markup.match(/<details/g) || []).length, 2);
+  assert.equal((markup.match(/<details/g) || []).length, 3);
+  assert.match(markup,/tel:\+17862317906/);
+  assert.match(markup,/tel:\+17869708366/);
   assert.doesNotMatch(markup, /<details[^>]*\bopen(?:=|>|\s)/);
   assert.ok(markup.includes("Google Gemini") && markup.includes("OpenAI"));
   assert.ok(markup.includes(es ? "revisión y confirmación" : "review and confirmation"));

@@ -617,3 +617,31 @@ test("JMetrics definitions skip saved-load history; personal JMetrics read the c
     assert.equal(f.state.raceRead, undefined);
   } finally { f.restore(); }
 });
+
+
+test('confirmed selected workout edits save once, revoke approval and hold the prescription; recorded history stays immutable',async()=>{
+ const plan=candidate({kind:'workout_plan',field:'durationMin',value:25,unit:'min',sessionId:'session-a'});
+ const f=fixture([plan]);
+ try {
+   Object.assign(f.state.workout,{completed:false,feedbackStatus:null,feedbackAt:null,actualDurationMin:null,rpe:null});
+   f.state.proposal.baseRevisions=JSON.stringify({profile:profileRevision(f.state.profile),workouts:{'session-a':{date:today,revision:workoutRevision(f.state.workout)}}});
+   const result=await confirmConversation(actor,f.input);
+   assert.equal(result.trainingModified,true);assert.equal(result.receipt.applied[0].kind,'workout_plan');
+   assert.equal(f.state.workout.durationMin,25);assert.equal(f.state.workout.approved,false);assert.match(result.receipt.message,/Nothing was sent to a watch/);
+   assert.deepEqual(result.receipt.planDraft,[]);assert.ok(result.pendingActions.includes('review_checkin'));
+   const count=f.state.writes.length;const replay=await confirmConversation(actor,f.input);assert.ok("replayed" in replay && replay.replayed);assert.equal(f.state.writes.length,count);
+ } finally {f.restore();}
+ const historical=fixture([plan]);try {await assert.rejects(confirmConversation(actor,historical.input),/Recorded/);assert.deepEqual(historical.state.writes,[]);}finally{historical.restore();}
+});
+
+
+test('chat workout confirmation protects recovery, event sessions and stale revisions',async()=>{
+ for(const change of [{type:'race'},{planDay:{dayOff:true}},{durationMin:0}]) {
+   const plan=candidate({kind:'workout_plan',field:'durationMin',value:25,unit:'min',sessionId:'session-a'});const f=fixture([plan]);
+   try {
+     Object.assign(f.state.workout,{completed:false,feedbackStatus:null,feedbackAt:null,actualDurationMin:null,rpe:null},change);
+     f.state.proposal.baseRevisions=JSON.stringify({profile:profileRevision(f.state.profile),workouts:{'session-a':{date:today,revision:workoutRevision(f.state.workout)}}});
+     await assert.rejects(confirmConversation(actor,f.input),/separate cycle review/);assert.deepEqual(f.state.writes,[]);
+   } finally {f.restore();}
+ }
+});
