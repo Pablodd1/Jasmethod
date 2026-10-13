@@ -4,10 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import type { ReplyCandidate, MissingQuestion } from "@/lib/coaching-communication";
+import { reminderBlockers } from "@/lib/reminder-readiness";
 
 type Preferences = { primaryChannel: string; paused: boolean; dailyPlan: boolean; sessionFeedback: boolean; missingData: boolean;
   timezone: string; minuteOfDay: number; quietStart: number; quietEnd: number; declinedOptional: string[]; consentVersion?: string | null;
-  verifiedChatId?: string | null; verifiedActorId?: string | null; verifiedEmail?: string | null; verificationTransport?: string | null };
+  verifiedChatId?: string | null; verifiedActorId?: string | null; verifiedEmail?: string | null; verifiedAt?: string | null; verificationTransport?: string | null };
 type Prompt = { transport: string; id: string; sessionId: string; purpose: string; observationDate: string; timezone: string; sourceRevision: string;
   status: string; replyStatus: string; error?: string | null; attempts: number; nextAttemptAt?: string | null; message: string;
   candidate: ReplyCandidate | null; questions: MissingQuestion[] };
@@ -82,12 +83,32 @@ export default function RemindersPage() {
     const result = await api("/api/coaching/replies", "PUT", { promptId: prompt.id, action: type, expectedRevision: prompt.sourceRevision, candidate });
     await load(); setNotice(result.applied ? label("Confirmed. Update today's check-in to reassess training.", "Confirmado. Actualiza el chequeo de hoy para reevaluar el entrenamiento.") : label("Draft dismissed.", "Borrador descartado."));
   }
+  const blockers = reminderBlockers(prefs, enabled && transport === "telegram",
+    !!prefs.verifiedAt && !!prefs.verifiedChatId && prefs.verifiedChatId === prefs.verifiedActorId && prefs.verificationTransport === "telegram");
+  if (prefs.consentVersion !== consentVersion) blockers.push("consent_required");
+  const blockerCopy: Record<string, string> = {
+    transport_disabled: label("Telegram delivery is disabled or unconfigured on the server. The administrator must complete transport setup.", "El envío Telegram está desactivado o sin configurar en el servidor. El administrador debe completar la configuración."),
+    paused: label("Reminders are paused.", "Los avisos están pausados."),
+    consent_required: label("Review and accept the selected communication contents before unpausing delivery.", "Revisa y acepta el contenido de las comunicaciones elegidas antes de activar el envío."),
+    no_purposes: label("No communication purposes are selected.", "No se seleccionó ningún fin de comunicación."),
+    unsupported_channel: label("This communication flow supports verified Telegram only. Workout email has separate verification, consent and server configuration at the email preferences link above.", "Este flujo de comunicación solo admite Telegram verificado. El correo de entrenamientos tiene verificación, consentimiento y configuración del servidor separados en el enlace de correo de arriba."),
+    telegram_unverified: label("Link and verify your own private Telegram chat.", "Vincula y verifica tu chat privado Telegram."),
+    quiet_hours: label("Your daily time falls within quiet hours. Delivery will be postponed until quiet hours end.", "La hora diaria cae dentro del horario de silencio. El envío se pospondrá hasta que termine."),
+  };
   return <ProtectedPage><div className="space-y-6 max-w-3xl">
     <h1 className="font-display text-2xl font-bold">{label("Coaching communications", "Comunicaciones de entrenamiento")}</h1>
     <p><Link className="underline" href="/workout-email/settings">{label("Manual Garmin email preferences (separate opt-in)", "Preferencias de correo Garmin manual (consentimiento separado)")}</Link></p>
     <p className="rounded-xl border border-amber-300 bg-amber-50 p-4">{transport === "telegram" && enabled ? label("Telegram delivery is enabled only for your verified private chat and selected purposes. Provider acceptance does not establish reading. Email and other delivery channels remain disabled.", "Telegram solo está activo para tu chat privado verificado y los fines elegidos. La aceptación del proveedor no prueba lectura. El correo y los otros canales están desactivados.") : label("External delivery is disabled pending provider and privacy review. The isolated test mode below simulates acceptance only; it never sends Telegram or email, or claims a read receipt.", "El envío externo está desactivado hasta revisar proveedores y privacidad. El modo de prueba solo simula aceptación; no envía Telegram ni correo ni confirma lectura.")}</p>
     {error && <p role="alert" className="text-red-700">{error}</p>}{notice && <p role="status" className="text-emerald-800">{notice}</p>}
     {!loaded ? <p role="status">{label("Loading preferences…", "Cargando preferencias…")}</p> : <>
+    <section className="card space-y-2" aria-label={label("Morning delivery readiness", "Estado del envío matutino")}>
+      <h2 className="font-bold">{label("Will my morning reminder arrive?", "¿Llegará mi aviso matutino?")}</h2>
+      <p>{clockText(prefs.minuteOfDay)} · {prefs.timezone}</p>
+      {blockers.length ? <ul className="list-disc pl-5">{blockers.map(k => <li key={k}>{blockerCopy[k]}</li>)}</ul> : <p>{label("Settings allow an attempt. Check the receipts below; this does not confirm delivery.", "La configuración permite un intento. Revisa los recibos abajo; esto no confirma la entrega.")}</p>}
+      <button className="btn-secondary" disabled={busy} onClick={() => setPrefs({ ...prefs, minuteOfDay: 300, quietStart: 1260, quietEnd: 300 })}>{label("Use 5 a.m. with quiet hours ending at 5 a.m.", "Usar las 5 a. m. y terminar el silencio a esa hora")}</button>
+      <p className="text-sm">{label("Save these choices below. This changes the schedule only; it does not link a chat or enable consent. The hourly scheduler attempts delivery after refreshing connected data; provider delays can move the attempt beyond the chosen time.", "Guarda estas preferencias abajo. Esto solo cambia el horario; no vincula un chat ni activa consentimiento. El programador horario intenta enviar después de actualizar los datos conectados; retrasos del proveedor pueden posponer el intento.")}</p>
+      <Link className="underline" href="/checkin">{label("Quick private check-in: sleep, energy, soreness, stress, symptoms and time today", "Chequeo privado: sueño, energía, dolor muscular, estrés, síntomas y tiempo hoy")}</Link>
+    </section>
     <section className="card space-y-4"><h2 className="font-bold text-lg">{label("Your choices", "Tus preferencias")}</h2>
       <label className="block">{label("One primary channel", "Un canal principal")}<select className="input" value={prefs.primaryChannel} onChange={e => setPrefs({ ...prefs, primaryChannel: e.target.value, paused: true })}>
         <option value="app">{label("App", "Aplicación")}</option><option value="telegram">Telegram ({transport === "telegram" ? label("verified chat", "chat verificado") : label("available, disabled / mock only", "disponible, desactivado / solo prueba")})</option><option value="email">{label("Email (mock only)", "Correo (solo prueba)")}</option>
