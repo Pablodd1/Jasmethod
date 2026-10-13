@@ -80,3 +80,12 @@ test("race priority never invents availability or relocates an unavailable event
  assert.ok(result.sessions.every(s=>s.type!=="race"));
  assert.ok(result.restDaySlots.includes(6));
 });
+
+
+test('weekly volume comes from reviewed baseline and daily availability, not legacy weekly-hour defaults',()=>{
+ const setup=parsePlanningSetup({trainingDays:[1,3,5],maxSessionMinutes:60,baselineWeeklyMinutes:150});
+ const raw=week(Array.from({length:7},()=>session()));
+ const results=[undefined,1,40].map(hours=>boundPlanWeeks([raw],setup,hours,0,'amateur'));
+ assert.deepEqual(results.map(result=>result.weeklyBudget),[150,150,150]);
+ assert.deepEqual(results.map(result=>result.weeks[0].totalMinutes),[150,150,150]);
+});

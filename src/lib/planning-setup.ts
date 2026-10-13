@@ -82,8 +82,7 @@ export function assessPlanningSetup(profile: {goal?: string|null; experience?: s
   const review: string[] = [];
   if (!profile?.goal || !PLANNABLE_GOALS.includes(planningGoal(profile.goal)!)) missing.push("Choose a supported training goal");
   if (!profile?.experience || !["beginner","amateur","advanced","pro"].includes(profile.experience)) missing.push("Confirm training experience");
-  if (!profile?.weeklyHours || !Number.isFinite(profile.weeklyHours)) missing.push("Confirm available weekly training time");
-  if (!setup?.profileConfirmed) missing.push("Explicitly confirm experience and available weekly time");
+  if (!setup?.profileConfirmed) missing.push("Explicitly confirm training experience");
   if (!setup?.adultConfirmed) missing.push("Confirm adult pilot eligibility");
   if (profile?.birthYear && now.getUTCFullYear() - profile.birthYear < 18) review.push("Under-18 athletes need qualified review outside this adult pilot");
   if (!setup?.goalDescription) missing.push("Describe your goal (fitness, completion or performance)");
@@ -100,6 +99,7 @@ export function assessPlanningSetup(profile: {goal?: string|null; experience?: s
   if (!setup?.maxSessionMinutes) missing.push("Confirm the maximum time per training day");
   if (!setup?.equipmentAccess) missing.push("Describe equipment and venue access");
   if (profile?.goal === "track-sprint" && !setup?.trackEvent) missing.push("Choose the actual track event; no event distance is assumed");
+  if (setup?.doubleDay?.secondWeekday != null && profile?.experience !== "pro") review.push("A second double-session day is available only for a confirmed professional profile");
   const numericGoal = setup?.targetGoal && ["pace","power","speed"].includes(setup.targetGoal.metric);
   const targetReview = numericGoal ? ["Your numeric performance target is a goal, not a benchmark. Target-driven progression requires coaching review and is unavailable in this pilot. A baseline-only plan is bounded by recent tolerated training; it is not optimized or promised to achieve your target."] : [];
   if (numericGoal && !setup?.baselinePlanOptIn) review.push(...targetReview, "Explicitly choose baseline-only conservative planning in setup to keep this aspiration alongside a plan based on current tolerated training.");

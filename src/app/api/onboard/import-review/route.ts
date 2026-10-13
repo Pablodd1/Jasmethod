@@ -1,3 +1,4 @@
+import { onboardingRaceResults } from "@/lib/onboarding-evidence";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { ONBOARDING_METRICS, onboardingObservations } from "@/lib/onboarding-imports";
@@ -9,10 +10,10 @@ export async function GET() {
   const now = new Date();
   const recent = {gte:new Date(now.getTime()-30*86400000),lte:now};
   const historyWhere = {userId:user.id,planned:false,completed:true,externalId:{not:null},source:{notIn:["manual","plan"]}};
-  const [rows, weights, connectors, totals, sports] = await Promise.all([
+  const [rows, weights, connectors, totals, sports, raceResults] = await Promise.all([
     prisma.metricObservation.findMany({
       where:{userId:user.id,metricType:{in:ONBOARDING_METRICS},observedAt:recent,qualityFlag:"ok"},
-      select:{id:true,metricType:true,value:true,unit:true,source:true,observedAt:true,qualityFlag:true},
+      select:{id:true,metricType:true,value:true,unit:true,source:true,observedAt:true,qualityFlag:true,measurementMethod:true},
       orderBy:{observedAt:"desc"},take:500,
     }),
     prisma.metricObservation.findMany({
@@ -23,11 +24,13 @@ export async function GET() {
     prisma.connector.findMany({where:{userId:user.id},select:{provider:true,status:true,lastSyncAt:true,lastSyncCount:true}}),
     prisma.workout.aggregate({where:historyWhere,_count:{_all:true},_min:{date:true},_max:{date:true}}),
     prisma.workout.groupBy({by:["sport"],where:historyWhere,_count:{_all:true},orderBy:{sport:"asc"}}),
+    prisma.race.findMany({where:{userId:user.id,resultMin:{gt:0},date:{lte:now}},select:{id:true,name:true,distance:true,resultMin:true,date:true,source:true},orderBy:{date:"desc"},take:50}),
   ]);
   return Response.json({
     observations:onboardingObservations(rows,now),
     suggestions:importedWeightSuggestions(weights,connectors.filter(c=>c.status==="connected"||c.status==="error").map(c=>c.provider),now),
     history:{count:totals._count._all,earliestAt:totals._min.date?.toISOString()??null,latestAt:totals._max.date?.toISOString()??null,sports:sports.map(s=>({sport:s.sport,count:s._count._all}))},
+    raceResults:onboardingRaceResults(raceResults,now),
     connectors,
     limitations:[
       "History describes completed imported records currently stored in JMM, not all records a provider may hold. A connection alone does not confirm a completed import.",

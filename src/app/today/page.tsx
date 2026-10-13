@@ -70,6 +70,18 @@ export default function TodayPage() {
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+  const starterAttempt = useRef<string|null>(null);
+  useEffect(()=>{
+    if(!user?.id || user.onboarded === false || !data || offline || data.sessions.length || data.cycle) return;
+    const key=`${user.id}:${data.date}`;
+    if(starterAttempt.current===key) return;
+    starterAttempt.current=key;
+    // Explicit mutation; the read endpoint never creates training. The server
+    // refuses to overlay existing work, a plan, events or restrictions.
+    fetch("/api/plan/starter",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"})
+      .then(async response=>{const result=await response.json();if(!response.ok) throw Error(result.error||"Could not prepare starter training");if(result.created) await load();})
+      .catch(error=>setError(error instanceof Error?error.message:"Could not prepare starter training"));
+  },[user,data,offline,load]);
   // Background auto-sync: if devices are connected and data is stale (>12h),
   // silently sync on page load. The athlete never has to press anything.
   const [autoSynced, setAutoSynced] = useState(false);

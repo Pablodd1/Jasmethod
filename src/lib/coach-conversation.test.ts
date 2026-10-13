@@ -2,7 +2,7 @@ import { dailyRecoveryContext } from "./daily-recovery";
 import { computeJMetrics } from "./j-metrics";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildCoachReply, conversationClarifications, extractLocalCandidates, parseConversationInput, validateCoachCandidates, type CoachCandidate, type CoachReplyContext } from "./coach-conversation";
+import { buildCoachReply, coachContextNeeds, conversationClarifications, extractLocalCandidates, parseConversationInput, validateCoachCandidates, type CoachCandidate, type CoachReplyContext } from "./coach-conversation";
 const context = { localToday: "2026-10-03" };
 const value = (text: string, field: string, extra = {}) => extractLocalCandidates(text, { ...context, ...extra }).find(c => c.field === field)?.value;
 const sample: CoachCandidate = { id: "proposal_1", kind: "profile", field: "weightKg", value: 72, unit: "kg", observedDate: null, evidence: "I weigh 72 kg", source: "text", status: "proposed" };
@@ -215,7 +215,7 @@ test("personal coaching uses saved goal/session and never invents a warm-up", ()
   const reply = buildCoachReply("I can't be bothered", { ...ready, profile: { goal: "marathon" }, approvedSession: { ...ready.approvedSession!, title: "Controlled easy run", hasWarmup: false } });
   assert.match(reply.answer, /Controlled easy run/); assert.match(reply.answer, /saved marathon goal/);
   assert.match(reply.answer, /first step already/); assert.doesNotMatch(reply.answer, /warm-up already/);
-  assert.match(reply.answer, /starting, timing/);
+  assert.doesNotMatch(reply.answer, /[?¿]/);
 });
 test("last recorded workout question uses reported actual minutes", () => {
   const reply = buildCoachReply("What was my last recorded workout?", { ...ready, recentFeedback: [{ date: ready.localToday, feedbackStatus: "completed", actualDurationMin: 25, rpe: 4 }] });
@@ -290,4 +290,136 @@ test("daily recovery coaching distinguishes training and empty schedules from pl
   }
   const held = dailyRecoveryContext({ plannedRest: true, sessions: [], injured: true, answers: ready.checkin });
   assert.doesNotMatch(buildCoachReply("Explain recovery", { ...ready, recovery: held }).answer, /20 min very easy/);
+});
+
+
+test('personal context preserves missing biomarkers and actual-history coverage without inventing a race prediction',()=>{
+ const result=buildCoachReply('Analyze my profile and training history',{localToday:'2026-10-12',language:'en',profile:{goal:'hyrox'},athleteOverview:{historyDays:90,metrics:{date:'2026-10-11',source:'oura',hrv:44,hrvType:'rmssd',restingHr:null,sleepHours:7},race:{name:'Test race',date:'2026-11-01',distance:'hyrox'}},recentFeedback:[{date:'2026-10-10',actualDurationMin:30},{date:'2026-10-09',actualDurationMin:null}]});
+ assert.equal(result.ruleId,'coach-conversation-v1:athlete-context-summary');
+ assert.match(result.answer,/1\/2/);assert.match(result.answer,/resting HR unknown/);assert.match(result.answer,/rmssd/);assert.match(result.answer,/do not predict a finish time/);assert.match(result.answer,/\/profile/);
+});
+
+test("ordinary bilingual coaching questions get direct local answers without intake prompts", () => {
+  const fixtures = [
+    ["What is RPE?", "en", "education-rpe", /rating of perceived exertion/],
+    ["Explain periodization", "en", "education-periodization", /planned variation/],
+    ["Why is easy endurance useful?", "en", "education-endurance", /Aerobic energy/],
+    ["¿Qué es el esfuerzo percibido?", "es", "education-rpe", /valoración del esfuerzo percibido/],
+    ["Explica el entrenamiento polarizado", "es", "education-polarized", /distribución de intensidad/],
+    ["What is VO2max?", "en", "education-vo2", /maximum rate/],
+  ] as const;
+  for (const [question, language, rule, expected] of fixtures) {
+    const result = buildCoachReply(question, { ...context, language });
+    assert.equal(result.ruleId, `coach-conversation-v1:${rule}`, question);
+    assert.match(result.answer, expected);
+    assert.doesNotMatch(result.answer, /[?¿]|Tell me what|Include a date/);
+    assert.deepEqual(conversationClarifications(question, context), []);
+  }
+});
+
+test("elaboration follows the latest topic only when requested", () => {
+  const initial = buildCoachReply("What is RPE?", context);
+  const expanded = buildCoachReply("Tell me more", { ...context, recentMessages: [{ role: "user", content: "What is RPE?" }, { role: "assistant", content: initial.answer }] });
+  assert.equal(expanded.ruleId, initial.ruleId);
+  assert.ok(expanded.answer.length > initial.answer.length);
+  assert.match(expanded.answer, /direct measurement/);
+  const changedTopic = buildCoachReply("Explain periodization", { ...context, recentMessages: [{ role: "user", content: "What is RPE?" }] });
+  assert.match(changedTopic.ruleId, /education-periodization$/);
+  const vo2 = buildCoachReply("Tell me more", { ...context, recentMessages: [{ role: "user", content: "What is VO2max?" }] });
+  assert.match(vo2.ruleId, /education-vo2$/);
+  assert.match(vo2.answer, /device estimate/);
+  assert.doesNotMatch(vo2.answer, /4 × 4/);
+});
+
+test("one-hour VO2 request answers with a bounded general track example, never a saved prescription", () => {
+  for (const question of ["I have 1 hour and I want to develop vO2 Max", "Give me a VO2max workout for the track", "Tengo una hora para trabajar el VO2max en pista"]) {
+    const result = buildCoachReply(question, { ...context, language: question.startsWith("Tengo") ? "es" : "en" });
+    assert.match(result.ruleId, /vo2-track-example$/);
+    assert.match(result.answer, /4 × 4/);
+    assert.match(result.answer, /50 min/);
+    assert.match(result.answer, /example|ejemplo/i);
+    assert.match(result.answer, /not a saved or approved|no una sesión guardada ni aprobada/);
+    assert.doesNotMatch(result.answer, /[?¿]|Tell me what/);
+    assert.deepEqual(extractLocalCandidates(question, context), []);
+    assert.deepEqual(conversationClarifications(question, context), []);
+  }
+  const shorter = buildCoachReply("I have 30 minutes", { ...context, recentMessages: [{ role: "user", content: "Give me a VO2max track workout" }] });
+  assert.match(shorter.ruleId, /vo2-time-limit$/);
+  assert.match(shorter.answer, /30 minutes available/);
+  assert.doesNotMatch(shorter.answer, /[?¿]/);
+});
+
+test("direct education and track examples retain safety, current-context and recovery boundaries", () => {
+  const question = "Give me a VO2max track workout";
+  for (const patch of [
+    { checkin: { ...ready.checkin!, sick: true } },
+    { unresolvedSafetyConcernAt: "2026-10-03T08:00:00Z" },
+    { approvedSession: { ...ready.approvedSession!, isRestDay: true } },
+    { approvedSession: null, recovery: dailyRecoveryContext({ plannedRest: true, sessions: [], injured: false, answers: null }) },
+    { approvedSession: null, recovery: dailyRecoveryContext({ plannedRest: false, sessions: [], injured: true, answers: null }) },
+    { unreviewedImageConcern: "urgent" as const },
+  ]) assert.doesNotMatch(buildCoachReply(question, { ...ready, ...patch }).ruleId, /vo2-track-example$/);
+  assert.match(buildCoachReply(`${question}. I have chest pain`, ready).ruleId, /urgent-symptoms$/);
+  assert.match(buildCoachReply("What is RPE?", { ...ready, approvedSession: { ...ready.approvedSession!, isRestDay: true } }).ruleId, /education-rpe$/);
+});
+
+test("logging clarification never intercepts hypothetical or ordinary questions", () => {
+  for (const question of ["What if I only have 20 or 30 minutes?", "How does a training plan work?", "If I ran yesterday, how does recovery work?", "Explain the phrase \"periodization\"", "What is RPE?", "How should I train if I ran 30 minutes yesterday?"]) {
+    assert.deepEqual(conversationClarifications(question, context), [], question);
+  }
+  assert.equal(conversationClarifications("I completed my run", context).length, 1);
+  assert.ok(conversationClarifications("Log my run: I completed 20 or 30 minutes today", context).length);
+  assert.equal(buildCoachReply("I ran for 20 minutes", { ...context, candidateContext: { sessionId: "selected", sessionDate: "2026-10-02" } }).ruleId, "coach-conversation-v1:review-proposals");
+});
+
+test("an unresolved earlier concern does not force another safety question for pure concepts", () => {
+  for (const safetyContext of [
+    { unresolvedSafetyConcernAt: "2026-10-03T08:00:00Z" },
+    { recentMessages: [{ role: "user" as const, content: "I have a headache", createdAt: "2026-10-03T08:00:00Z" }] },
+  ]) {
+    const pending = { ...ready, ...safetyContext };
+    for (const [question, rule] of [["What is RPE?", "education-rpe"], ["What is VO2max?", "education-vo2"], ["Why is easy endurance useful?", "education-endurance"], ["¿Qué es el esfuerzo percibido?", "education-rpe"]]) {
+      const result = buildCoachReply(question, pending);
+      assert.equal(result.ruleId, `coach-conversation-v1:${rule}`, question);
+      assert.doesNotMatch(result.answer, /[?¿]|check-in been updated/);
+    }
+    for (const question of ["Can I start today's workout?", "Give me a VO2max track workout", "What is RPE? Can I run?", "What is VO2max? Can I exercise?", "Explain RPE and prescribe intervals", "¿Qué es VO2max? ¿Puedo correr?", "Tell me more and can I run?"]) {
+      assert.match(buildCoachReply(question, pending).ruleId, /clarify-prior-safety$/, question);
+    }
+    assert.match(buildCoachReply("What is RPE? I have chest pain now", pending).ruleId, /urgent-symptoms$/);
+    assert.match(buildCoachReply("What is VO2max? I have new pain", pending).ruleId, /illness-or-pain$/);
+    assert.match(buildCoachReply("What is RPE?", { ...pending, checkin: { ...ready.checkin!, sick: true } }).ruleId, /illness-or-pain$/);
+    assert.match(buildCoachReply("Tell me more", { ...pending, recentMessages: [...(pending.recentMessages || []), { role: "user", content: "What is RPE?" }] }).ruleId, /education-rpe$/);
+  }
+});
+
+test("saved-context scope separates ordinary concepts, profile facts, latest reports and complete load history", () => {
+  for (const question of ["What is RPE?", "Explain RPE to me", "Explain the history of periodization to me", "Explain periodization", "What is JStress?", "¿Qué son JMetrics?", "Tell me more", "What is my goal?", "I have 1 hour and I want to develop vO2 Max"]) {
+    assert.deepEqual(coachContextNeeds(question), { overview: false, history: "none", load: false }, question);
+  }
+  for (const question of ["How was my last workout?", "What was my latest recorded session?", "Cómo fue mi última sesión"]) {
+    assert.deepEqual(coachContextNeeds(question), { overview: false, history: "latest", load: false }, question);
+  }
+  for (const question of ["Analyze my profile, goal, training history and upcoming race", "What is my HRV?", "What is my next race?", "Analiza mi perfil, historial y mi próxima carrera", "What do you know about me?", "Analyze my progress", "Give me a personal summary", "Analiza mis entrenamientos", "Dame un resumen personal"]) {
+    assert.deepEqual(coachContextNeeds(question), { overview: true, history: "overview", load: false }, question);
+  }
+  assert.deepEqual(coachContextNeeds("What are my JMetrics?"), { overview: false, history: "none", load: true });
+});
+
+test("personal-summary aliases use saved context before educational topics and retain safety precedence", () => {
+  const personal: CoachReplyContext = { ...ready, profile: { goal: "5k" }, athleteOverview: { historyDays: 90, metrics: null, race: null } };
+  for (const question of ["What do you know about me?", "Analyze my progress", "Give me a personal summary", "Analiza mis entrenamientos", "What do you know about me and endurance?"]) {
+    assert.match(buildCoachReply(question, personal).ruleId, /athlete-context-summary$/, question);
+    assert.match(buildCoachReply(`${question} I have chest pain now`, personal).ruleId, /urgent-symptoms$/, question);
+    assert.match(buildCoachReply(`${question} Can I exercise?`, { ...personal, unresolvedSafetyConcernAt: "2026-10-03T08:00:00Z" }).ruleId, /clarify-prior-safety$/, question);
+  }
+  assert.match(buildCoachReply("Explain RPE to me", personal).ruleId, /education-rpe$/);
+});
+
+test("personal summaries retain safety precedence for current and unresolved concerns", () => {
+  const personal: CoachReplyContext = { ...ready, profile: { goal: "5k" }, athleteOverview: { historyDays: 90, metrics: null, race: null } };
+  const question = "Analyze my profile and upcoming race";
+  assert.match(buildCoachReply(`${question}. I have chest pain now`, personal).ruleId, /urgent-symptoms$/);
+  assert.match(buildCoachReply(question, { ...personal, checkin: { ...ready.checkin!, sick: true } }).ruleId, /illness-or-pain$/);
+  assert.match(buildCoachReply(`${question}. Can I start training?`, { ...personal, unresolvedSafetyConcernAt: "2026-10-03T08:00:00Z" }).ruleId, /clarify-prior-safety$/);
 });

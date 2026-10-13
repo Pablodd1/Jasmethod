@@ -7,6 +7,7 @@ import { profileRevision } from "./profile-service";
 import { workoutRevision } from "./workout-update";
 import { confirmConversation, cancelConversationProposal, clearConversation, readConversationBody, validateSelectedCandidates, parseAssistantInput, appendConversation } from "./coach-conversation-service";
 import type { CoachCandidate } from "./coach-conversation";
+import { addDaysKey, dayBounds, localDate } from "./dates";
 
 const today = new Date().toISOString().slice(0, 10);
 const actor = { id: "athlete-a", timezone: "UTC", language: "en" };
@@ -42,6 +43,7 @@ function fixture(candidates = [candidate()]) {
     if (key === "OR") return value.some((condition: any) => matches(row, condition));
     if (value && typeof value === "object" && !(value instanceof Date)) {
       if (value.in) return value.in.includes(row[key]);
+      if (Object.hasOwn(value, "not")) return row[key] !== value.not && row[key] !== undefined;
       if (value.contains !== undefined) return typeof row[key] === "string" && row[key].includes(value.contains);
       if (value.gte !== undefined && !(row[key] >= value.gte)) return false;
       if (value.lt !== undefined && !(row[key] < value.lt)) return false;
@@ -76,9 +78,33 @@ function fixture(candidates = [candidate()]) {
         deleteMany: async ({ where }: any) => { draft.messages = draft.messages.filter((row: any) => !matches(row, where)); },
       },
       athleteProfile: { findUnique: async ({ where }: any) => matches(draft.profile, where) ? draft.profile : null, upsert: async ({ where, update: data }: any) => { assert.equal(where.userId, actor.id); draft.writes.push("profile"); return update(draft.profile, data); } },
-      workout: { findMany: async ({ where, select }: any) => { if (select?.matchedPlanId === true) { assert.equal(where.userId, actor.id); assert.equal(where.matchedPlanId, null); assert.equal(select.tss, undefined); draft.loadQuery = where; return (draft.loadWorkouts || []).filter((row: any) => matches(row, where)); } return select?.planDay ? draft.todayRecoverySessions || [] : []; }, findFirst: async ({ where }: any) => matches(draft.workout, where) ? draft.workout : null, update: async ({ where, data }: any) => { assert.equal(where.id, draft.workout.id); draft.writes.push("workout"); return update(draft.workout, data); } },
+      workout: {
+        findMany: async (query: any) => {
+          const { where, select, take } = query;
+          assert.equal(where.userId, actor.id);
+          if (select?.matchedPlanId === true) {
+            assert.equal(where.matchedPlanId, null); assert.equal(select.tss, undefined);
+            draft.loadQuery = where; draft.loadRead = query;
+            return (draft.loadWorkouts || []).filter((row: any) => matches(row, where));
+          }
+          if (select?.planDay) return draft.todayRecoverySessions || [];
+          draft.feedbackRead = query;
+          return (draft.recentFeedback || []).filter((row: any) => matches(row, where))
+            .sort((a: any, b: any) => b.date.getTime() - a.date.getTime() || b.id.localeCompare(a.id)).slice(0, take);
+        },
+        findFirst: async ({ where }: any) => matches(draft.workout, where) ? draft.workout : null,
+        update: async ({ where, data }: any) => { assert.equal(where.id, draft.workout.id); draft.writes.push("workout"); return update(draft.workout, data); },
+      },
       metricObservation: { findMany: async ({ where }: any) => { assert.equal(where.userId, actor.id); draft.restQuery = where; return (draft.restObservations || []).filter((row: any) => matches(row, where)); } },
       planDay: { findFirst: async ({ where }: any) => { assert.equal(where.plan.userId, actor.id); assert.equal(where.plan.status, "active"); assert.equal(where.dayOff, true); return draft.plannedRestDay ?? null; } },
+      dailyMetrics: { findFirst: async (query: any) => {
+        assert.equal(query.where.userId, actor.id); draft.metricsRead = query;
+        return (draft.metrics || []).filter((row: any) => matches(row, query.where)).sort((a: any, b: any) => b.date.getTime() - a.date.getTime())[0] ?? null;
+      } },
+      race: { findFirst: async (query: any) => {
+        assert.equal(query.where.userId, actor.id); draft.raceRead = query;
+        return (draft.races || []).filter((row: any) => matches(row, query.where)).sort((a: any, b: any) => a.priority.localeCompare(b.priority) || a.date.getTime() - b.date.getTime())[0] ?? null;
+      } },
       dailyCheckin: { findUnique: async () => draft.checkin ?? null },
       auditLog: { findFirst: async () => null, create: async ({ data }: any) => { draft.audits.push(data); return data; } },
     };
@@ -209,7 +235,7 @@ test("late provider output cannot resurrect a cleared chat or replace a newer co
     process.env.GEMINI_API_KEY = "synthetic-test-only";
     process.env.GEMINI_MODEL = "synthetic-model";
     try {
-      const pending = appendConversation(actor, { message: "Why is easy endurance useful?", clientRequestId: "pending-text-request", source: "text", externalConsent: true, textProviderConsent: "gemini" });
+      const pending = appendConversation(actor, { message: "Explain RPE and easy endurance", clientRequestId: "pending-text-request", source: "text", externalConsent: true, textProviderConsent: "gemini" });
       await started;
       if (action === "clear") await clearConversation(actor, { confirmed: true });
       else await appendConversation(actor, { message: "A newer message", source: "text", externalConsent: false });
@@ -370,7 +396,10 @@ test("unreviewed available-time updates persist a safety review marker until cle
       const marker = f.state.messages.find((m: any) => m.role === "assistant" && JSON.parse(m.metadata || "{}").requiresCheckinReview);
       assert.ok(marker);
       marker.createdAt = new Date(Date.now() - 3000);
-      const held = await appendConversation(actor, { message: "Why is easy endurance useful?", clientRequestId: "followup-held" });
+      const definition = await appendConversation(actor, { message: "What is RPE?", clientRequestId: "followup-definition" });
+      assert.match(definition.answer, /rating of perceived exertion/);
+      assert.doesNotMatch(definition.answer, /[?¿]/);
+      const held = await appendConversation(actor, { message: "Can I start today's workout?", clientRequestId: "followup-held" });
       assert.ok(held.pendingActions.includes("review_checkin"));
       assert.match(held.answer, /recently|check-in/);
       if (resolution === "clear") await clearConversation(actor, { confirmed: true });
@@ -378,7 +407,7 @@ test("unreviewed available-time updates persist a safety review marker until cle
         for (const m of f.state.messages) if (m.role === "assistant") m.createdAt = new Date(Date.now() - 3000);
         f.state.checkin = { answers: JSON.stringify({ sleep: 4, soreness: 1, motivation: 4, energy: 4, stress: 1, sick: false, newPain: false, urgentSymptoms: false, availableMin: 15, inputMetadata: { recordedAt: new Date(Date.now() - 1000).toISOString() } }) };
       }
-      const resolved = await appendConversation(actor, { message: "Why is easy endurance useful?", clientRequestId: "followup-resolved" });
+      const resolved = await appendConversation(actor, { message: "Can I start today's workout?", clientRequestId: "followup-resolved" });
       assert.ok(!resolved.answer.includes("You recently mentioned"));
       const latest = f.state.messages.at(-1);
       assert.notEqual(JSON.parse(latest.metadata).ruleId, "coach-conversation-v1:clarify-prior-safety");
@@ -438,4 +467,153 @@ test("coach ignores superseded plans on an active rest day but suppresses moveme
     assert.match(response.answer, /do not have a confirmed planned rest day/);
     assert.doesNotMatch(response.answer, /20 min very easy Z1/);
   } finally { unknown.restore(); }
+});
+
+test("direct questions use local answers without a paid provider round-trip or athlete writes", async () => {
+  const f = fixture([]);
+  const previousFetch = globalThis.fetch;
+  const prior = { enabled: process.env.EXTERNAL_AI_ENABLED, key: process.env.GEMINI_API_KEY };
+  process.env.EXTERNAL_AI_ENABLED = "true"; process.env.GEMINI_API_KEY = "synthetic-text-test";
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw Error("Ordinary answers must not need an external provider"); };
+  const before = structuredClone({ profile: f.state.profile, workout: f.state.workout });
+  try {
+    for (const [index, message] of ["What is RPE?", "Explain periodization", "I have 1 hour and I want to develop vO2 Max"].entries()) {
+      const result = await appendConversation(actor, { message, clientRequestId: `direct-question-${index}`, externalConsent: true, textProviderConsent: "gemini" });
+      assert.equal(result.mode, "coach_local");
+      assert.equal(result.externalStatus, "policy_local");
+      assert.doesNotMatch(result.answer, /Tell me what|Include a date|[?¿]/);
+      assert.equal(result.trainingModified, false);
+    }
+    assert.equal(calls, 0);
+    assert.equal(f.state.restQuery, undefined, "Ordinary chat must not read the 90-day rest-observation series");
+    assert.equal(f.state.feedbackRead, undefined, "Ordinary chat must not fetch 200 session reports");
+    assert.equal(f.state.metricsRead, undefined, "Ordinary chat must not fetch biometrics");
+    assert.equal(f.state.raceRead, undefined, "Ordinary chat must not fetch races");
+    assert.equal(f.state.loadQuery.date.gte.toISOString(), `${today}T00:00:00.000Z`);
+    assert.deepEqual(f.state.writes, []);
+    assert.deepEqual({ profile: f.state.profile, workout: f.state.workout }, before);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (prior.enabled === undefined) delete process.env.EXTERNAL_AI_ENABLED; else process.env.EXTERNAL_AI_ENABLED = prior.enabled;
+    if (prior.key === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = prior.key;
+    f.restore();
+  }
+});
+
+test("logging clarification is stated once, and a selected session does not ask for its date again", async () => {
+  const f = fixture([]);
+  try {
+    const missing = await appendConversation(actor, { message: "I completed my run", clientRequestId: "missing-date" });
+    assert.equal((missing.answer.match(/What date was/g) || []).length, 1);
+    const selected = await appendConversation(actor, { message: "I ran for 20 minutes", sessionId: "session-a", clientRequestId: "selected-date" });
+    assert.doesNotMatch(selected.answer, /What date was/);
+    assert.ok(selected.proposal?.candidates.every(candidate => candidate.sessionId === "session-a" && candidate.observedDate === today));
+    assert.deepEqual(f.state.writes, []);
+  } finally { f.restore(); }
+});
+
+test("personal overview combines owner-only actual history, biometrics and race context with bounded exact queries", async () => {
+  const f = fixture([]);
+  const bounds = dayBounds(actor.timezone);
+  const yesterday = localDate(addDaysKey(today, -1), actor.timezone);
+  const reported = { id: "reported", userId: actor.id, date: yesterday, matchedPlanId: null, planned: true, completed: true, durationMin: 90, sport: "run", feedbackStatus: "completed", actualDurationMin: 30, actualSport: "run", rpe: 4 };
+  const metric = { userId: actor.id, date: yesterday, source: "oura", hrv: 44, hrvType: "rmssd", restingHr: null, sleepHours: 7 };
+  const race = { userId: actor.id, name: "Saved test race", date: new Date(`${addDaysKey(today, 20)}T00:00:00Z`), distance: "5k", priority: "A" };
+  try {
+    f.state.recentFeedback = [reported, { ...reported, id: "missing-actual", actualDurationMin: null },
+      { ...reported, id: "recorded-device", planned: false, durationMin: 20, actualDurationMin: null },
+      { ...reported, id: "unperformed-plan", completed: false, feedbackStatus: null, actualDurationMin: null, actualSport: null, rpe: null },
+      { ...reported, id: "other-athlete", userId: "athlete-b", actualDurationMin: 999 },
+      { ...reported, id: "matched-plan", matchedPlanId: "recorded-device", actualDurationMin: 888 },
+      { ...reported, id: "outside-window", date: localDate(addDaysKey(today, -90), actor.timezone), actualDurationMin: 777 }];
+    f.state.metrics = [metric, { ...metric, userId: "athlete-b", date: bounds.start, hrv: 999 }];
+    f.state.races = [race, { ...race, userId: "athlete-b", name: "Other athlete race", date: bounds.start }];
+    const result = await appendConversation(actor, { message: "Analyze my profile, goal, training history, sleep and upcoming race" });
+    assert.match(result.answer, /sport\/goal: 5k/);
+    assert.match(result.answer, /2\/3 returned session reports.*50 min total/);
+    assert.match(result.answer, /oura.*sleep 7 h, resting HR unknown bpm, HRV 44 ms \(rmssd\)/);
+    assert.match(result.answer, /Saved test race/);
+    assert.match(result.answer, /do not predict a finish time/);
+    assert.doesNotMatch(result.answer, /999|888|777|Other athlete race/);
+    assert.equal(result.proposal?.id, "proposal-a", "A read-only summary must not create a new proposal");
+    assert.deepEqual(result.proposal?.candidates, []);
+    assert.equal(result.trainingModified, false);
+    assert.deepEqual(f.state.writes, []);
+    assert.deepEqual(f.state.feedbackRead.where, {
+      userId: actor.id, matchedPlanId: null,
+      date: { gte: localDate(addDaysKey(today, -89), actor.timezone), lt: bounds.end },
+      OR: [{ completed: true }, { feedbackStatus: { not: null } }, { actualDurationMin: { not: null } }, { actualSport: { not: null } }, { rpe: { not: null } }],
+    });
+    assert.equal(f.state.feedbackRead.take, 200);
+    assert.deepEqual(f.state.feedbackRead.orderBy, [{ date: "desc" }, { id: "desc" }]);
+    assert.deepEqual(f.state.metricsRead.where, { userId: actor.id, date: { gte: localDate(addDaysKey(today, -7), actor.timezone), lt: bounds.end } });
+    assert.deepEqual(f.state.raceRead.where, { userId: actor.id, date: { gte: new Date(`${today}T00:00:00Z`) } });
+    assert.deepEqual(f.state.raceRead.orderBy, [{ priority: "asc" }, { date: "asc" }]);
+    assert.equal(f.state.loadQuery.date.gte.toISOString(), bounds.start.toISOString());
+    assert.equal(f.state.restQuery, undefined);
+  } finally { f.restore(); }
+});
+
+test("latest-session questions request one actual report without unrelated biometric or race queries", async () => {
+  const f = fixture([]);
+  try {
+    const report = { id: "latest", userId: actor.id, date: new Date(`${today}T00:00:00Z`), matchedPlanId: null, planned: true, completed: true, durationMin: 80, sport: "run", feedbackStatus: "completed", actualDurationMin: 25, actualSport: "run", rpe: 3 };
+    f.state.recentFeedback = [report, { ...report, id: "older", date: localDate(addDaysKey(today, -2), actor.timezone), actualDurationMin: 40 }];
+    const result = await appendConversation(actor, { message: "How was my last workout?" });
+    assert.match(result.answer, /actual duration 25 min/);
+    assert.equal(f.state.feedbackRead.take, 1);
+    assert.equal(f.state.metricsRead, undefined);
+    assert.equal(f.state.raceRead, undefined);
+    assert.equal(f.state.restQuery, undefined);
+  } finally { f.restore(); }
+});
+
+test("explicit personal-summary aliases fetch bounded saved context while conversational definitions stay cheap", async () => {
+  for (const message of ["What do you know about me?", "Analyze my progress", "Give me a personal summary", "Analiza mis entrenamientos"]) {
+    const f = fixture([]);
+    try {
+      const result = await appendConversation(actor, { message });
+      assert.match(result.answer, /Your saved sport\/goal: 5k/, message);
+      assert.equal(f.state.feedbackRead.take, 200);
+      assert.equal(f.state.feedbackRead.where.userId, actor.id);
+      assert.equal(f.state.metricsRead.where.userId, actor.id);
+      assert.equal(f.state.raceRead.where.userId, actor.id);
+      assert.equal(f.state.restQuery, undefined);
+      assert.deepEqual(f.state.writes, []);
+    } finally { f.restore(); }
+  }
+  const f = fixture([]);
+  try {
+    const result = await appendConversation(actor, { message: "Explain RPE to me" });
+    assert.match(result.answer, /rating of perceived exertion/);
+    assert.equal(f.state.feedbackRead, undefined);
+    assert.equal(f.state.metricsRead, undefined);
+    assert.equal(f.state.raceRead, undefined);
+    assert.equal(f.state.restQuery, undefined);
+  } finally { f.restore(); }
+});
+
+test("JMetrics definitions skip saved-load history; personal JMetrics read the complete owner-scoped 90-day series", async () => {
+  const f = fixture([]);
+  const bounds = dayBounds(actor.timezone);
+  try {
+    const definition = await appendConversation(actor, { message: "What is JStress?" });
+    assert.match(definition.answer, /completed session minutes/);
+    assert.equal(f.state.loadRead.where.date.gte.toISOString(), bounds.start.toISOString());
+    assert.equal(f.state.restQuery, undefined);
+    await appendConversation(actor, { message: "What are my JMetrics?" });
+    assert.deepEqual(f.state.loadRead.where, {
+      userId: actor.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null,
+      date: { gte: localDate(addDaysKey(today, -89), actor.timezone), lt: bounds.end },
+    });
+    assert.equal(f.state.loadRead.take, undefined, "Full load coverage cannot be truncated to the overview's 200-row cap");
+    assert.deepEqual(f.state.restQuery, {
+      userId: actor.id, metricType: "jmm_rest_day", value: 1, source: "manual", qualityFlag: "ok", measurementMethod: "athlete_reported_rest",
+      observedAt: { gte: localDate(addDaysKey(today, -89), actor.timezone), lt: bounds.end },
+    });
+    assert.equal(f.state.feedbackRead, undefined);
+    assert.equal(f.state.metricsRead, undefined);
+    assert.equal(f.state.raceRead, undefined);
+  } finally { f.restore(); }
 });

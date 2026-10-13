@@ -11,3 +11,10 @@ test("single HRV observation is reported as observation without a derived baseli
   const now=new Date();const result=onboardingObservations([{id:"h",metricType:"hrv_rmssd",value:60,unit:"ms",source:"oura",observedAt:now,qualityFlag:"ok"}],now);
   assert.equal(result[0].metricType,"hrv_rmssd"); assert.equal("hrvBaseline" in result[0],false);
 });
+
+
+test("RMSSD and SDNN are independent observations and neither fills the other's gap",()=>{
+  const now=new Date("2026-10-13T12:00:00Z"),base={value:50,unit:"ms",source:"apple_health",observedAt:now,qualityFlag:"ok"};
+  const result=onboardingObservations([{...base,id:"rmssd",metricType:"hrv_rmssd"},{...base,id:"sdnn",metricType:"hrv_sdnn",value:35}],now);
+  assert.deepEqual(result.map(row=>[row.metricType,row.value]),[["hrv_rmssd",50],["hrv_sdnn",35]]);
+});

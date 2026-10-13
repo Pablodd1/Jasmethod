@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { syncUserConnectors } from "@/lib/sync";
 import { syncAthlinksForAllUsers } from "@/lib/athlinks";
+import { ATHLINKS_DEFERRED } from "@/lib/athlinks-availability";
 import { alertOwner, logEvent } from "@/lib/telemetry";
 import { isSyncAuthFailure } from "@/lib/sync-errors";
 
@@ -74,7 +75,7 @@ async function run(req: Request) {
 
   // Athlinks race-history reconciliation — stale >20h only (daily cadence).
   let athlinks: Awaited<ReturnType<typeof syncAthlinksForAllUsers>> | null = null;
-  const staleAthlinks = await prisma.connector.findMany({
+  const staleAthlinks = ATHLINKS_DEFERRED ? [] : await prisma.connector.findMany({
     where: {
       provider: "athlinks",
       status: { in: ["connected", "error"] },
@@ -107,7 +108,7 @@ async function run(req: Request) {
     failedAthletes: failedUsers.length,
     athlinks: athlinks
       ? { users: athlinks.users, imported: athlinks.imported, merged: athlinks.merged, errors: athlinks.errors }
-      : { skipped: true },
+      : { skipped: true, ...(ATHLINKS_DEFERRED ? { reason: "provider_deferred" } : {}) },
     perUser,
   };
   console.log("[cron/sync]", JSON.stringify(summary));

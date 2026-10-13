@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { rateLimit } from "@/lib/ratelimit";
 import { athlinksConfigured, searchAthletes } from "@/lib/athlinks";
+import { ATHLINKS_DEFERRED, ATHLINKS_DEFERRED_MESSAGE } from "@/lib/athlinks-availability";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (ATHLINKS_DEFERRED) return NextResponse.json({ error: ATHLINKS_DEFERRED_MESSAGE, code: "provider_deferred" }, { status: 503 });
   if (!rateLimit(`athlinks-search:${user.id}`, 10, 60000).ok)
     return NextResponse.json({ error: "Please wait a moment." }, { status: 429 });
   if (!athlinksConfigured())

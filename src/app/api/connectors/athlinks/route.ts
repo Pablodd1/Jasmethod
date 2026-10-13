@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { rateLimit } from "@/lib/ratelimit";
+import { ATHLINKS_DEFERRED, ATHLINKS_DEFERRED_MESSAGE } from "@/lib/athlinks-availability";
 import {
   athlinksConfigured,
   getAthleteResults,
@@ -22,6 +23,7 @@ export async function GET() {
     : 0;
   return NextResponse.json({
     ok: true,
+    deferred: ATHLINKS_DEFERRED,
     configured: athlinksConfigured(),
     linked: !!conn?.externalRef,
     status: conn?.status ?? "disconnected",
@@ -48,6 +50,7 @@ export async function DELETE() {
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (ATHLINKS_DEFERRED) return NextResponse.json({ error: ATHLINKS_DEFERRED_MESSAGE, code: "provider_deferred" }, { status: 503 });
   if (!rateLimit(`athlinks:${user.id}`, 5, 60000).ok)
     return NextResponse.json({ error: "Please wait a moment." }, { status: 429 });
   if (!athlinksConfigured())
@@ -100,6 +103,7 @@ export async function POST(req: Request) {
 export async function PATCH() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (ATHLINKS_DEFERRED) return NextResponse.json({ error: ATHLINKS_DEFERRED_MESSAGE, code: "provider_deferred" }, { status: 503 });
   const conn = await prisma.connector.findUnique({
     where: { userId_provider: { userId: user.id, provider: "athlinks" } },
   });

@@ -43,7 +43,7 @@ function fixture(file: string, total: number, role = "admin") {
 
 test("password and admin-coach enrollment reject a full pilot before creation", async () => {
   for (const file of ["src/app/api/auth/signup/route.ts", "src/app/api/admin/coaches/route.ts"]) {
-    const f = fixture(file, 50), response = await f.post();
+    const f = fixture(file, pilot.PILOT_USER_LIMIT), response = await f.post();
     assert.equal(response.status, 409);
     assert.equal((await response.json()).code, "pilot_full");
     assert.equal(f.state.created + f.state.sessions + f.state.audit, 0);
@@ -53,7 +53,7 @@ test("password and admin-coach enrollment reject a full pilot before creation", 
 
 test("last seat allows password and coach creation and keeps coach audit transactional", async () => {
   for (const file of ["src/app/api/auth/signup/route.ts", "src/app/api/admin/coaches/route.ts"]) {
-    const f = fixture(file, 49), response = await f.post();
+    const f = fixture(file, pilot.PILOT_USER_LIMIT - 1), response = await f.post();
     assert.equal(response.status, 200); assert.equal(f.state.created, 1);
     assert.equal(f.state.audit, file.includes("/coaches/") ? 1 : 0);
     if (file.includes("/signup/")) assert.equal((await response.json()).user.onboarded, false);
@@ -61,7 +61,7 @@ test("last seat allows password and coach creation and keeps coach audit transac
 });
 
 test("password sign-in remains available at capacity and returns onboarding state", async () => {
-  const f = fixture("src/app/api/auth/login/route.ts", 50), response = await f.post();
+  const f = fixture("src/app/api/auth/login/route.ts", pilot.PILOT_USER_LIMIT), response = await f.post();
   assert.equal(response.status, 200); assert.equal((await response.json()).user.onboarded, false);
   assert.equal(f.state.sessions, 1); assert.equal(f.state.counts + f.state.created, 0);
 });

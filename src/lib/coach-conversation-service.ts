@@ -10,7 +10,7 @@ import { updateWorkout, workoutRevision } from "./workout-update";
 import { readPlanningSetup } from "./planning-setup-store";
 import { assessPlanningSetup } from "./planning-setup";
 import { effectivePrescription } from "./effective-prescription";
-import { parseConversationInput, extractLocalCandidates, validateCoachCandidates, buildCoachReply, conversationClarifications, type CoachCandidate, type CoachReplyContext } from "./coach-conversation";
+import { parseConversationInput, extractLocalCandidates, validateCoachCandidates, buildCoachReply, coachContextNeeds, conversationClarifications, type CoachCandidate, type CoachReplyContext } from "./coach-conversation";
 import { extractImageCandidates } from "./coach-image";
 import { coachTextAnswer, coachTextConfigured } from "./coach-text-provider";
 import { coachVisionConfiguration, createCoachVisionProvider } from "./coach-vision-provider";
@@ -201,6 +201,11 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
   const input = parseAssistantInput(body);
   const sessionId = body.sessionId == null || body.sessionId === "" ? undefined : identifier(body.sessionId, "session");
   const today = dayBounds(actor.timezone);
+  // Most chat turns do not need a 90-day load series. Keep today's performed
+  // activity for recovery safeguards, and read the full history only for a
+  // JMetrics question. Missing metrics are never replaced with partial totals.
+  const contextNeeds = coachContextNeeds(input.message);
+  const needsLoadHistory = contextNeeds.load;
   let image: Awaited<ReturnType<typeof extractImageCandidates>> | null = null;
   try { if (input.image) image = await extractImageCandidates(input.image, { localToday: today.key, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent, sessionId }, createCoachVisionProvider()); }
   catch (error) { throw new ApiError((error as Error).message); }
@@ -209,19 +214,32 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const current = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
       if (!current || current.id !== guard.conversationId || current.generation !== guard.generation || current.revision !== guard.revision) throw new ApiError("The conversation changed while this message was processing. Review the current conversation before sending again.", 409);
       const conversation = await tx.coachConversation.update({ where: { id: current.id, userId: actor.id }, data: { revision: { increment: 1 } } });
-      const [messages, profile, setup, checkin, selected, planned, recentFeedback, safetyConcern, loadWorkouts, restObservations, plannedRestDay, todayRecoverySessions] = await Promise.all([
+      const [messages, profile, setup, checkin, selected, planned, recentFeedback, safetyConcern, loadWorkouts, restObservations, plannedRestDay, todayRecoverySessions, latestMetrics, nextRace] = await Promise.all([
         tx.coachConversationMessage.findMany({ where: { userId: actor.id, conversationId: conversation.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: CONTEXT_MESSAGE_LIMIT, select: { role: true, content: true, createdAt: true } }),
         tx.athleteProfile.findUnique({ where: { userId: actor.id } }),
         readPlanningSetup(actor.id, tx),
         tx.dailyCheckin.findUnique({ where: { userId_date: { userId: actor.id, date: today.start } } }),
         sessionId ? tx.workout.findFirst({ where: { id: sessionId, userId: actor.id } }) : Promise.resolve(null),
         tx.workout.findFirst({ where: { userId: actor.id, date: { gte: today.start, lt: today.end }, planned: true, completed: false, approved: true }, orderBy: [{ startTime: "asc" }, { id: "asc" }], include: { planDay: { select: { dayOff: true } } } }),
-        tx.workout.findMany({ where: { userId: actor.id, date: { gte: localDate(addDaysKey(today.key, -30), actor.timezone), lt: today.end }, OR: [{ feedbackStatus: { not: null } }, { actualDurationMin: { not: null } }, { actualSport: { not: null } }, { rpe: { not: null } }] }, orderBy: [{ date: "desc" }, { id: "desc" }], take: 10, select: { date: true, feedbackStatus: true, actualDurationMin: true, actualSport: true, rpe: true } }),
+        contextNeeds.history !== "none" ? tx.workout.findMany({
+          where: { userId: actor.id, matchedPlanId: null, date: { gte: localDate(addDaysKey(today.key, -89), actor.timezone), lt: today.end },
+            OR: [{ completed: true }, { feedbackStatus: { not: null } }, { actualDurationMin: { not: null } }, { actualSport: { not: null } }, { rpe: { not: null } }] },
+          orderBy: [{ date: "desc" }, { id: "desc" }], take: contextNeeds.history === "overview" ? 200 : 1,
+          select: { date: true, planned: true, completed: true, durationMin: true, sport: true, feedbackStatus: true, actualDurationMin: true, actualSport: true, rpe: true },
+        }) : Promise.resolve([]),
         tx.coachConversationMessage.findFirst({ where: { userId: actor.id, conversationId: conversation.id, role: "assistant", OR: [...SAFETY_RULES.map(rule => ({ metadata: { contains: `\"ruleId\":\"coach-conversation-v1:${rule}\"` } })), { metadata: { contains: '"requiresCheckinReview":true' } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { createdAt: true } }),
-        tx.workout.findMany({ where: { userId: actor.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null, date: { gte: localDate(addDaysKey(today.key, -89), actor.timezone), lt: today.end } }, select: { id: true, date: true, completed: true, feedbackStatus: true, planned: true, durationMin: true, actualDurationMin: true, rpe: true, matchedPlanId: true } }),
-        tx.metricObservation.findMany({ where: { userId: actor.id, metricType: "jmm_rest_day", value: 1, source: "manual", qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: { gte: localDate(addDaysKey(today.key, -89), actor.timezone), lt: today.end } }, select: { observedAt: true } }),
+        tx.workout.findMany({ where: { userId: actor.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null, date: { gte: needsLoadHistory ? localDate(addDaysKey(today.key, -89), actor.timezone) : today.start, lt: today.end } }, select: { id: true, date: true, completed: true, feedbackStatus: true, planned: true, durationMin: true, actualDurationMin: true, rpe: true, matchedPlanId: true } }),
+        needsLoadHistory ? tx.metricObservation.findMany({ where: { userId: actor.id, metricType: "jmm_rest_day", value: 1, source: "manual", qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: { gte: localDate(addDaysKey(today.key, -89), actor.timezone), lt: today.end } }, select: { observedAt: true } }) : Promise.resolve([]),
         tx.planDay.findFirst({ where: { plan: { userId: actor.id, status: "active" }, date: { gte: today.start, lt: today.end }, dayOff: true }, select: { id: true } }),
         tx.workout.findMany({ where: { userId: actor.id, date: { gte: today.start, lt: today.end } }, select: { id: true, durationMin: true, intensity: true, planned: true, approved: true, completed: true, planDay: { select: { dayOff: true } } } }),
+        contextNeeds.overview ? tx.dailyMetrics.findFirst({
+          where: { userId: actor.id, date: { gte: localDate(addDaysKey(today.key, -7), actor.timezone), lt: today.end } },
+          orderBy: { date: "desc" }, select: { date: true, source: true, hrv: true, hrvType: true, restingHr: true, sleepHours: true },
+        }) : Promise.resolve(null),
+        contextNeeds.overview ? tx.race.findFirst({
+          where: { userId: actor.id, date: { gte: new Date(`${today.key}T00:00:00Z`) } },
+          orderBy: [{ priority: "asc" }, { date: "asc" }], select: { name: true, date: true, distance: true },
+        }) : Promise.resolve(null),
       ]);
       if (sessionId && !selected) throw new ApiError("Session not found", 404);
       if (selected && guard.sessionRevision !== workoutRevision(selected)) throw new ApiError("The selected session changed while this message was processing. Review it before sending again.", 409);
@@ -238,7 +256,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
         if (candidate.kind === "workout_feedback" && candidate.sessionId && (candidate.observedDate !== sessionDate || sessionDate! > today.key)) throw new ApiError("Feedback must match the selected session's date and cannot describe the future");
       }
       const planning = assessPlanningSetup(profile, setup.setup, new Date(), "daily");
-      const effective = planned && planning.ready ? await effectivePrescription(actor.id, planned.id, tx) : null;
+      const effective = planned ? await effectivePrescription(actor.id, planned.id, tx) : null;
       let answers: Record<string, unknown> = {};
       if (checkin) { try { answers = object(JSON.parse(checkin.answers || "{}")); } catch { /* Fail closed without valid current safety answers. */ } }
       const unreviewedCurrentCheckin = candidates.some(candidate => candidate.kind === "checkin" && candidate.observedDate === today.key);
@@ -246,6 +264,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const plannedRecoverySessions = todayRecoverySessions.filter(row => row.planned);
       const context: CoachReplyContext = {
         localToday: today.key, language: actor.language, setupReady: planning.ready,
+        candidateContext: { sessionId, sessionDate },
         recovery: dailyRecoveryContext({
           plannedRest: !!plannedRestDay || (!!plannedRecoverySessions.length && plannedRecoverySessions.every(row => row.planDay?.dayOff)),
           sessions: plannedRecoverySessions.map(row => ({ durationMin: row.id === planned?.id && effective ? effective.canonical.durationMin : row.durationMin, intensity: row.intensity,
@@ -253,18 +272,23 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           performedToday: loadWorkouts.some(row => row.date <= new Date() && dateKey(row.date, actor.timezone) === today.key),
           injured: !!profile?.injured, answers: checkin && !unreviewedCurrentCheckin ? answers : null,
         }),
-        jMetrics: computeJMetrics(loadWorkouts, new Date(), actor.timezone, restObservations.map(row => dateKey(row.observedAt, actor.timezone))),
+        jMetrics: needsLoadHistory ? computeJMetrics(loadWorkouts, new Date(), actor.timezone, restObservations.map(row => dateKey(row.observedAt, actor.timezone))) : null,
         unreviewedImageConcern: candidates.some(c => c.source === "image" && c.kind === "checkin" && c.field === "urgentSymptoms" && c.value === true) ? "urgent" : candidates.some(c => c.source === "image" && c.kind === "checkin" && ["sick", "newPain", "painAffectsMovement"].includes(c.field) && c.value === true) ? "symptom" : undefined,
         unresolvedSafetyConcernAt: possibleCurrentSymptom ? new Date().toISOString() : safetyConcern?.createdAt.toISOString() ?? null,
+        athleteOverview: contextNeeds.overview ? {
+          metrics: latestMetrics ? { date: dateKey(latestMetrics.date, actor.timezone), source: latestMetrics.source, hrv: latestMetrics.hrv, hrvType: latestMetrics.hrvType, restingHr: latestMetrics.restingHr, sleepHours: latestMetrics.sleepHours } : null,
+          race: nextRace ? { name: nextRace.name, date: nextRace.date.toISOString().slice(0, 10), distance: nextRace.distance } : null,
+          historyDays: 90,
+        } : undefined,
         profile: profile ? { goal: profile.goal, experience: profile.experience, weeklyHours: profile.weeklyHours, weightKg: profile.weightKg } : null,
-        recentFeedback: recentFeedback.map(row => ({ ...row, date: dateKey(row.date, actor.timezone) })),
+        recentFeedback: recentFeedback.map(row => ({ ...row, actualDurationMin:row.actualDurationMin ?? (!row.planned && row.completed ? row.durationMin : null), actualSport:row.actualSport ?? (!row.planned && row.completed ? row.sport : null), feedbackStatus:row.feedbackStatus ?? (row.completed ? "completed" : null), date: dateKey(row.date, actor.timezone) })),
         recentMessages: messages.reverse().flatMap(message => message.role === "user" || message.role === "assistant" ? [{ role: message.role, content: message.content, createdAt: message.createdAt.toISOString() }] : []),
         checkin: checkin ? { ...answers, ...(profile?.injured ? { newPain: true } : {}), observedDate: today.key, recordedAt: (() => { const meta = answers.inputMetadata; if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null; const value = (meta as Record<string, unknown>).recordedAt; return typeof value === "string" && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.now() ? value : null; })() } : undefined,
         approvedSession: !unreviewedCurrentCheckin && effective?.canonical.verdict === "ready" && planned ? { id: planned.id, title: planned.title, sport: planned.sport, durationMin: effective.canonical.durationMin, date: today.key, isRestDay: planned.planDay?.dayOff ?? false, hasWarmup: effective.canonical.steps.some(step => step.phase === "warmup"), approved: true } : undefined,
       };
       const reply = buildCoachReply(input.message, context);
       const suggestedActions: PendingAction[] = SAFETY_RULES.some(rule => reply.ruleId === `coach-conversation-v1:${rule}`) ? ["review_checkin"] : [];
-      const clarifications = conversationClarifications(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate });
+      const clarifications = reply.ruleId === "coach-conversation-v1:clarify-data" ? [] : conversationClarifications(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate });
       const answer = [reply.answer, candidates.length ? actor.language === "es" ? "Revisa los valores propuestos abajo. Aún no se ha guardado nada en tu perfil ni en tu entrenamiento." : "Review the proposed values below. Nothing has been saved to your profile or training yet." : "", ...clarifications, ...(image?.warnings ?? [])].filter(Boolean).join("\n\n");
       const userMessage = await tx.coachConversationMessage.create({ data: { conversationId: conversation.id, userId: actor.id, role: "user", content: input.message || "Image attached for review", source: input.image ? "image" : input.source,
         metadata: JSON.stringify({ clientRequestId: typeof body.clientRequestId === "string" ? body.clientRequestId : null, localDate: today.key, timezone: actor.timezone, sessionId: sessionId ?? null, externalConsent: input.externalConsent, textProviderConsent: input.textProviderConsent ?? null, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent ?? null, imageStatus: image?.status ?? null }) } });

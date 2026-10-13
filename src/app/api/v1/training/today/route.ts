@@ -28,7 +28,7 @@ function secPerKmToPerMi(s: number | null): number | null {
 }
 
 // Pace references derived from the athlete's threshold pace. Derived values
-// are labeled coach_set (multipliers are coaching conventions, not tests).
+// are labeled estimated (multipliers are coaching conventions, not tests).
 function paceRefs(runPaceBase: number | null | undefined): Record<PaceKey, PaceRef> {
   if (!runPaceBase) {
     const missing: PaceRef = {
@@ -43,7 +43,7 @@ function paceRefs(runPaceBase: number | null | undefined): Record<PaceKey, PaceR
   return Object.fromEntries(
     (Object.keys(mul) as PaceKey[]).map((k) => [
       k,
-      { secondsPerMile: secPerKmToPerMi(runPaceBase * mul[k]), measuredAt: null, status: "coach_set" as const },
+      { secondsPerMile: secPerKmToPerMi(runPaceBase * mul[k]), measuredAt: null, status: "estimated" as const, note: "Formula-derived planning reference, not a measured personal best or a race prediction." },
     ]),
   ) as Record<PaceKey, PaceRef>;
 }

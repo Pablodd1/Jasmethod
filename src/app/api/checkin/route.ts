@@ -1,3 +1,5 @@
+import { isStarterSession, starterRestriction } from "@/lib/starter-session";
+import { ensureStarterWorkout } from "@/lib/starter-session-store";
 import { preserveSportStructure } from "@/lib/preserve-sport-structure";
 import { intervalsConnectorEnabled } from "@/lib/capabilities";
 export const dynamic = "force-dynamic";
@@ -75,6 +77,8 @@ export async function GET(req: Request) {
       prisma.athleteProfile.findUnique({ where: { userId: user.id } }),
       readPlanningSetup(user.id),
     ]);
+    const starter = await prisma.workout.findFirst({where:{userId:user.id,date:{gte:start,lt:end},source:"starter"},select:{source:true,originalPlan:true}});
+    const starterReady = !!starter && isStarterSession(starter) && !starterRestriction(profile,planning.setup);
     const sameType = metrics.filter(
       (m) => Number.isFinite(m.hrv) && m.hrv! > 0 && m.hrv! <= 300 && (m.hrvType || "rmssd") === (metrics[0]?.hrvType || "rmssd"),
     );
@@ -98,14 +102,14 @@ export async function GET(req: Request) {
       try { const parsed = JSON.parse(checkin.answers || "{}"); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) answers = parsed; } catch { /* Fail closed below. */ }
       const safety = resolveCheckinSafety(profile?.injured ? { ...answers, newPain: true } : answers);
       const setup = assessPlanningSetup(profile, planning.setup, new Date(), "daily");
-      currentSafetyClear = safety.status === "clear" && setup.ready;
+      currentSafetyClear = safety.status === "clear" && (setup.ready || starterReady);
       let savedAdaptation: any = null;
       try { savedAdaptation = JSON.parse(checkin.adaptation || "null"); } catch { /* Invalid stored output is not clearance. */ }
       const validSaved = savedAdaptation && typeof savedAdaptation.ruleId === "string" && ["full", "trim", "easy", "rest"].includes(savedAdaptation.verdict) && Number.isFinite(savedAdaptation.score) && savedAdaptation.score >= 0 && savedAdaptation.score <= 100 && typeof savedAdaptation.scoreAvailable === "boolean" && Number.isFinite(savedAdaptation.durationFactor) && savedAdaptation.durationFactor >= 0 && savedAdaptation.durationFactor <= 1 && /^z[1-7]$/.test(savedAdaptation.intensityCap);
       if (safety.status !== "clear") displayedCheckin = { ...checkin, adaptation: JSON.stringify(adaptSession(profile?.injured ? { ...answers, newPain: true } : answers)) };
       else if (!validSaved) displayedCheckin = { ...checkin, adaptation: JSON.stringify({ score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "unknown", ruleId: "checkin-safety-v1:refresh-required", message: "The saved adaptation cannot be verified. Review and submit today's check-in to refresh it before training." }) };
       currentSafetyClear = currentSafetyClear && Boolean(validSaved);
-      if (safety.status === "clear" && !setup.ready) displayedCheckin = { ...checkin, adaptation: JSON.stringify({ score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "unknown", ruleId: setup.ruleId, message: `Complete or review athlete setup before individualized training. ${[...setup.missing, ...setup.review].join("; ")}` }) };
+      if (safety.status === "clear" && !setup.ready && !starterReady) displayedCheckin = { ...checkin, adaptation: JSON.stringify({ score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "unknown", ruleId: setup.ruleId, message: `Complete or review athlete setup before individualized training. ${[...setup.missing, ...setup.review].join("; ")}` }) };
     }
     return NextResponse.json({
       checkin: displayedCheckin,
@@ -162,6 +166,7 @@ export async function POST(req: Request) {
       finally { if (timer) clearTimeout(timer); }
       deviceProviders = await prisma.connector.findMany({ where: providerQuery, select: { provider: true, status: true, lastSyncAt: true } });
     }
+    await ensureStarterWorkout(user.id,actor.id);
     const syncFreshness = checkinSyncFreshness(deviceProviders, syncResults, syncAttempted);
     const { start, end, key } = dayBounds(user.timezone);
     const [metrics, profile, appointments, prefs, feedback, planning, sameDayReports] = await Promise.all(
@@ -214,16 +219,19 @@ export async function POST(req: Request) {
     const hrvMean =
       hrvs.length >= 3 ? hrvs.reduce((a, v) => a + v, 0) / hrvs.length : null;
     const hrvLow = hrv != null && hrvMean != null && hrv < hrvMean * 0.9;
+    const starter = await prisma.workout.findFirst({where:{userId:user.id,date:{gte:start,lt:end},source:"starter"},select:{source:true,originalPlan:true}});
+    const starterReady = !!starter && isStarterSession(starter) && !starterRestriction(profile,planning.setup);
     const setupGate = assessPlanningSetup(profile, planning.setup, new Date(), "daily");
-    if (!setupGate.ready && adaptation.safetyStatus === "clear") adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", scoreAvailable: false, safetyStatus: "unknown", ruleId: setupGate.ruleId, missingFields: setupGate.missing, message: `Individual training is on hold until setup is complete or reviewed. ${[...setupGate.missing, ...setupGate.review].join("; ")}. Update athlete setup; no device benchmark is required.` };
+    if (!setupGate.ready && !starterReady && adaptation.safetyStatus === "clear") adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", scoreAvailable: false, safetyStatus: "unknown", ruleId: setupGate.ruleId, missingFields: setupGate.missing, message: `Individual training is on hold until setup is complete or reviewed. ${[...setupGate.missing, ...setupGate.review].join("; ")}. Update athlete setup; no device benchmark is required.` };
     if (hrvLow && adaptation.verdict === "full") adaptation = { ...adaptation, verdict: "trim", durationFactor: 0.85, intensityCap: "z4", ruleId: "checkin-safety-v1:low-hrv", message: "HRV is below your recent baseline; today's plan is conservative. Review how you feel before training." };
     const execution = applyExecutionFeedback(adaptation, feedback);
     adaptation = execution.adaptation;
     const uniqueSameDayReports = sameDayReports.filter((w) => !w.matchedPlanId || !sameDayReports.some((actual) => actual.id === w.matchedPlanId));
     const uncertainSameDay = uniqueSameDayReports.some((w) => w.feedbackStatus !== "skipped" && w.actualDurationMin == null);
     const usedDailyMinutes = uniqueSameDayReports.reduce((sum, w) => sum + (w.actualDurationMin ?? 0), 0);
-    const dailyBudgetRemaining = Math.max(0, (planning.setup?.maxSessionMinutes ?? 0) - usedDailyMinutes);
+    const dailyBudgetRemaining = Math.max(0, (planning.setup?.maxSessionMinutes ?? (starterReady ? 20 : 0)) - usedDailyMinutes);
     if (adaptation.safetyStatus === "clear" && (uncertainSameDay || dailyBudgetRemaining === 0)) adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", ruleId: "checkin-safety-v1:daily-budget", message: uncertainSameDay ? "Confirm actual duration for today's reported activity before adding a workout. Unknown duration is not zero." : "Today's reviewed training-time budget is already used. No further workout is prescribed." };
+    if(starterReady && adaptation.safetyStatus === "clear" && adaptation.verdict !== "rest") adaptation = {...adaptation,intensityCap:"z1",durationFactor:Math.min(1,adaptation.durationFactor),message:"Your starter session stays comfortable and within today's available time. Report actual minutes and effort afterward; no pace, power or performance baseline is inferred."};
     const busyHrs = busyHours(appointments, key, user.timezone);
     const busyNote = `${appointments.length} calendar commitments, ${busyHrs.toFixed(1)} hours busy.`;
     const saved = await prisma.$transaction(async (tx) => {
@@ -249,7 +257,7 @@ export async function POST(req: Request) {
         const invalidBase = checkinPrescriptionInputError(w);
         if (invalidBase) { rejectedSessions.push({ sessionId: w.id, reason: invalidBase }); await tx.workout.update({ where: { id: w.id }, data: { approved: false } }); continue; }
         const base = baseWorkout(w);
-        const effective = w.planDay?.dayOff
+        const effective = (!setupGate.ready && !isStarterSession(w)) || w.planDay?.dayOff
           ? {
               ...adaptation,
               verdict: "rest",

@@ -584,7 +584,7 @@ export default function ConnectorsPage() {
                     : { cls: "chip chip-z2", dot: "bg-emerald-500", label: t(lang, "conn.connected") };
             if (p.method === "athlinks") {
               return (
-                <AthlinksCard key={p.id} lang={lang} onDone={load} configured={p.configured} status={p.status} lastError={p.lastError} lastSyncAt={p.lastSyncAt} />
+                <AthlinksCard key={p.id} lang={lang} onDone={load} status={p.status} lastSyncAt={p.lastSyncAt} />
               );
             }
             return (
@@ -835,203 +835,66 @@ export default function ConnectorsPage() {
   );
 }
 
-// ---- Athlinks card: search → confirm identity → race history flows in ----
-function AthlinksCard({
-  lang,
-  onDone,
-  configured,
-  status,
-  lastError,
-  lastSyncAt,
-}: {
+// ---- Deferred race history: preserve saved records and explicit unlink. ----
+function AthlinksCard({ lang, onDone, status, lastSyncAt }: {
   lang: Lang;
   onDone: () => void;
-  configured: boolean;
   status: string;
-  lastError?: string | null;
   lastSyncAt?: string | null;
 }) {
-  const [linked, setLinked] = useState(status === "connected");
-  const [query, setQuery] = useState("");
-  const [candidates, setCandidates] = useState<any[]>([]);
+  const es = lang === "es";
+  const [linked, setLinked] = useState(status === "connected" || status === "error");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [raceCount, setRaceCount] = useState<number | null>(null);
-
-  async function search() {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const r = await fetch(`/api/connectors/athlinks/search?q=${encodeURIComponent(query)}`);
-      const d = await r.json();
-      if (!r.ok) setMsg({ ok: false, text: d.error || "Search failed" });
-      else {
-        setCandidates(d.athletes || []);
-        if (!d.athletes?.length)
-          setMsg({ ok: false, text: lang === "es" ? "Sin resultados — prueba otro nombre." : "No matches — try another name." });
-      }
-    } catch {
-      setMsg({ ok: false, text: "Network error" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function confirm(athlete: any) {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const r = await fetch("/api/connectors/athlinks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ racerId: athlete.racerId, name: athlete.name }),
-      });
-      const d = await r.json();
-      if (r.ok) {
-        setLinked(true);
-        setRaceCount(d.racesImported ?? 0);
-        setMsg({
-          ok: true,
-          text:
-            lang === "es"
-              ? `Conectado: ${d.racesImported} resultados importados${d.racesMerged ? `, ${d.racesMerged} combinados con tus carreras` : ""}.`
-              : `Connected: ${d.racesImported} race results imported${d.racesMerged ? `, ${d.racesMerged} merged with your existing races` : ""}.`,
-        });
-        setCandidates([]);
-        onDone();
-      } else setMsg({ ok: false, text: d.error || "Link failed" });
-    } catch {
-      setMsg({ ok: false, text: "Network error" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function refresh() {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const r = await fetch("/api/connectors/athlinks", { method: "PATCH" });
-      const d = await r.json();
-      if (r.ok) {
-        setRaceCount((d.racesImported || 0) + (d.racesMerged || 0));
-        setMsg({ ok: true, text: lang === "es" ? "Historial actualizado." : "Race history refreshed." });
-        onDone();
-      } else setMsg({ ok: false, text: d.error || "Refresh failed" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
+  const [error, setError] = useState("");
+  const unlinking = useRef(false);
+  const statusRead = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    statusRead.current = controller;
+    void fetch("/api/connectors/athlinks", { signal: controller.signal, cache: "no-store" })
+      .then(async response => { if (response.ok) { const data = await response.json(); if (!controller.signal.aborted) setLinked(data.linked === true); } })
+      .catch(() => { /* Keep the known status; failed reads must not imply unlink. */ });
+    return () => controller.abort();
+  }, [status]);
   async function unlink() {
-    await fetch("/api/connectors/athlinks", { method: "DELETE" });
-    setLinked(false);
-    setRaceCount(null);
-    onDone();
+    if (unlinking.current) return;
+    unlinking.current = true;
+    statusRead.current?.abort();
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/connectors/athlinks", { method: "DELETE" });
+      if (!response.ok) throw Error(es ? "No se pudo desvincular. Intenta de nuevo." : "Could not unlink. Please retry.");
+      setLinked(false);
+      onDone();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : (es ? "No se pudo desvincular." : "Could not unlink."));
+    } finally { unlinking.current = false; setBusy(false); }
   }
-
-  return (
-    <div className={`card ${linked ? "border-emerald-300" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ${linked ? "bg-emerald-100 text-emerald-600" : "bg-ocean-100 text-ocean-600"}`}>
-            <Medal className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="font-display font-bold">
-              Athlinks{" "}
-              <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${configured ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                {lang === "es" ? "Carreras" : "Races"}
-              </span>
-            </div>
-            <div className="text-xs text-slate-500 max-w-[240px]">
-              {lang === "es"
-                ? "Tu historial oficial de carreras: resultados, puestos y récords — se concilia a diario."
-                : "Your official race history: results, places and PRs — reconciled daily."}
-              {linked && (
-                <span className="block mt-2">
-                  {lang === "es" ? "Última sincronización" : "Last sync"}:{" "}
-                  {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : (lang === "es" ? "aún sin sincronizar" : "not yet synced")}
-                </span>
-              )}
-              {linked && raceCount != null && raceCount > 0 && (
-                <span className="block mt-1 font-semibold text-emerald-700">
-                  {raceCount} {lang === "es" ? "resultados nuevos" : "new results"}
-                </span>
-              )}
-              {lastError && <span className="block text-red-700 mt-1">{lastError}</span>}
-            </div>
-          </div>
-        </div>
-        {linked ? (
-          <span className="chip chip-z2">
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" /> {t(lang, "conn.connected")}
-          </span>
-        ) : (
-          <span className="chip chip-z1">
-            <span className="inline-block w-2 h-2 rounded-full bg-slate-400" /> {t(lang, "conn.disconnected")}
-          </span>
-        )}
-      </div>
-
-      <div className="mt-4">
-        {!configured ? (
-          <div className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
-            {lang === "es"
-              ? "Athlinks aún no está activada en el servidor (se necesita la clave de API de Athlinks)."
-              : "Athlinks isn't enabled on the server yet (the Athlinks API key is needed)."}
-            <div className="text-[10px] text-amber-500 mt-1">(Server setting: ATHLINKS_API_KEY)</div>
-          </div>
-        ) : !linked ? (
-          <div className="space-y-2">
-            <div className="text-xs text-slate-600">
-              {lang === "es"
-                ? "1. Busca tu perfil de atleta. 2. Confirma que eres tú — solo entonces vinculamos tu historial."
-                : "1. Search your athlete profile. 2. Confirm it's you — only then do we link your history."}
-            </div>
-            <div className="flex gap-2">
-              <input
-                className="input flex-1"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={lang === "es" ? "Tu nombre en Athlinks" : "Your name on Athlinks"}
-                onKeyDown={(e) => e.key === "Enter" && query.trim().length >= 3 && search()}
-              />
-              <button onClick={search} disabled={busy || query.trim().length < 3} className="btn-secondary max-w-full whitespace-normal">
-                {lang === "es" ? "Buscar" : "Search"}
-              </button>
-            </div>
-            {candidates.map((c) => (
-              <button
-                key={String(c.racerId)}
-                onClick={() => confirm(c)}
-                disabled={busy}
-                className="w-full text-left rounded-xl border border-sand-200 px-3 py-2 text-sm hover:bg-ocean-50"
-              >
-                <span className="font-semibold">{c.name}</span>
-                {c.location && <span className="text-slate-400"> · {c.location}</span>}
-                <span className="block text-[10px] text-slate-400">Athlinks ID: {c.racerId}</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <button onClick={refresh} disabled={busy} className="btn-secondary flex-1 justify-center">
-              <RefreshCw className="w-4 h-4" /> {lang === "es" ? "Actualizar historial" : "Refresh race history"}
-            </button>
-            <button onClick={unlink} className="underline text-sm self-center">
-              {lang === "es" ? "Desvincular" : "Unlink"}
-            </button>
-          </div>
-        )}
-        {msg && (
-          <div className={`text-xs rounded-lg px-2 py-1.5 mt-2 ${msg.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-            {msg.text}
-          </div>
-        )}
-      </div>
+  return <section className="card space-y-3" aria-labelledby="athlinks-title">
+    <div className="flex flex-wrap items-center gap-2">
+      <Medal className="w-5 h-5 text-ocean-600" aria-hidden="true" />
+      <h2 id="athlinks-title" className="font-display font-bold">Athlinks</h2>
+      <span className="chip chip-z1">{es ? "Pospuesto" : "Deferred"}</span>
     </div>
-  );
+    <p className="text-sm">{es
+      ? "La importación opcional del historial de carreras está pospuesta. Athlinks no es necesario para el entrenamiento diario ni para enviar sesiones al reloj."
+      : "Optional race-history imports are deferred. Athlinks is not needed for daily training or sending workouts to a watch."}</p>
+    <p className="text-sm">{es
+      ? "Puedes añadir carreras y marcas personales manualmente. Se conservan los resultados ya importados; no se buscan perfiles ni se sincronizan resultados nuevos."
+      : "You can add races and personal bests manually. Previously imported results are preserved; profile search and new result sync are paused."}</p>
+    <div className="flex flex-wrap gap-3 text-sm">
+      <a className="underline py-2" href="/races">{es ? "Añadir una carrera" : "Add a race"}</a>
+      <a className="underline py-2" href="/onboard?redo=1">{es ? "Revisar marcas personales" : "Review personal bests"}</a>
+    </div>
+    {linked && <div className="text-xs text-slate-600">
+      <p>{es ? "Vínculo guardado; sincronización pausada." : "Saved link; synchronization paused."}</p>
+      {lastSyncAt && <p>{es ? "Última sincronización:" : "Last sync:"} {new Date(lastSyncAt).toLocaleString()}</p>}
+      <button type="button" className="underline py-2 disabled:opacity-50" disabled={busy} onClick={unlink}>
+        {busy ? (es ? "Desvinculando…" : "Unlinking…") : (es ? "Desvincular Athlinks" : "Unlink Athlinks")}
+      </button>
+    </div>}
+    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+  </section>;
 }
 
 // ---- Request-a-connector button: one tap pings the owner's Telegram ----

@@ -1,10 +1,11 @@
 "use client";
+import "@/components/daily-training/universal-workout-card.css";
 
 import { trustedCycleMovementGuidance } from "@/lib/cycle-movement-guidance";
 import { TrainingCycleOverview } from "@/components/training-cycle-overview";
 import { TargetProgressPanel } from "@/components/target-progress-panel";
 import { planningGoal } from "@/lib/planning-setup";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Dumbbell,
@@ -23,7 +24,8 @@ import {
   Swords,
   Download,
 } from "lucide-react";
-import { workoutDetail } from "@/lib/workout-view";
+import { SavedWorkoutPreviewCard } from "@/components/daily-training/SavedWorkoutPreviewCard";
+import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
 import { addDaysKey, dateKey } from "@/lib/dates";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -75,6 +77,7 @@ export default function TrainingPage() {
   const [zones, setZones] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const initialPreviewFor = useRef<string | null>(null);
   const [editing, setEditing] = useState<
     Record<
       string,
@@ -89,7 +92,7 @@ export default function TrainingPage() {
     >
   >({});
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setLoadError("");
     try {
@@ -100,6 +103,15 @@ export default function TrainingPage() {
     if (!planResponse.ok || !profileResponse.ok) throw Error("Could not load your plan and planning setup. Retry to check your saved information.");
     const [p, z] = await Promise.all([planResponse.json(), profileResponse.json()]);
     setPlans(p.plans || []);
+    if (user && initialPreviewFor.current !== user.id) {
+      const todayKey = dateKey(new Date(), user.timezone);
+      const pendingSession = (session: any) => !session.completed && session.feedbackStatus !== "skipped";
+      const nextDay = (p.plans?.[0]?.days || []).find((day: any) => !day.dayOff && dateKey(new Date(day.date), user.timezone) >= todayKey && day.sessions?.some(pendingSession));
+      const nextSession = nextDay?.sessions.find(pendingSession);
+      setExpanded(new Set(nextSession ? [nextSession.id] : []));
+      if (nextDay) setSelectedMonth(dateKey(new Date(nextDay.date), user.timezone).slice(0, 7));
+      initialPreviewFor.current = user.id;
+    }
     setCycle(p.cycle ?? null);
     setZones(z.zones);
     setProfile(z.profile);
@@ -109,11 +121,11 @@ export default function TrainingPage() {
       setPlanningReadiness(null);
       setLoadError(err instanceof Error ? err.message : "Could not load training.");
     } finally { setLoading(false); }
-  }
+  }, [user]);
 
   useEffect(() => {
     if (user) load();
-  }, [user]);
+  }, [user, load]);
 
   function updatePlanForm(next: typeof form) {
     setForm(next);
@@ -184,7 +196,7 @@ export default function TrainingPage() {
         expectedRevision: f.revision,
         title: f.title,
         durationMin: Number(f.durationMin),
-        intensity: f.intensity,
+        ...(f.intensity ? { intensity: f.intensity } : {}),
         ...(f.preWeightKg ? { preWeightKg: f.preWeightKg } : {}),
         ...(f.postWeightKg ? { postWeightKg: f.postWeightKg } : {}),
       });
@@ -215,7 +227,7 @@ export default function TrainingPage() {
         revision: s.revision,
         title: s.title,
         durationMin: String(s.durationMin),
-        intensity: s.intensity || "z2",
+        intensity: s.intensity || "",
         preWeightKg: s.preWeightKg ? String(s.preWeightKg) : "",
         postWeightKg: s.postWeightKg ? String(s.postWeightKg) : "",
       },
@@ -595,9 +607,9 @@ export default function TrainingPage() {
                                 </div>
                               </div>
                               <span
-                                className={`chip ${`chip-${s.intensity || "z2"}`} hidden sm:inline-flex`}
+                                className={`chip ${`chip-${s.intensity || "unknown"}`} hidden sm:inline-flex`}
                               >
-                                {s.intensity || "Z2"}
+                                {s.intensity || "—"}
                               </span>
                               <button
                                 onClick={() => startEdit(s)}
@@ -609,9 +621,11 @@ export default function TrainingPage() {
                               <button
                                 onClick={() => toggleExpand(s.id)}
                                 className="text-xs p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"
-                                title="Details"
+                                title={es ? "Detalles del entrenamiento" : "Workout details"}
+                                aria-label={`${es ? "Detalles del entrenamiento" : "Workout details"}: ${s.title}`}
+                                aria-expanded={isExpanded}
                               >
-                                {isExpanded ? (
+                                <span className="mr-1">{es ? "Detalles" : "Details"}</span>{isExpanded ? (
                                   <ChevronUp className="w-3.5 h-3.5" />
                                 ) : (
                                   <ChevronDown className="w-3.5 h-3.5" />
@@ -627,37 +641,8 @@ export default function TrainingPage() {
 
                             {isExpanded && (
                               <div className="px-3 pb-3 -mt-1 space-y-2">
-                                {(() => {
-                                  const d = workoutDetail(s, user?.profile);
-                                  return (
-                                    <div className="rounded-xl border border-ocean-100 bg-ocean-50/50 p-3 space-y-1.5 text-xs">
-                                      <p className="text-slate-700">
-                                        <span className="font-bold text-ocean-700">
-                                          WARM-UP
-                                        </span>{" "}
-                                        — {d.wu}
-                                      </p>
-                                      <p className="text-slate-700">
-                                        <span className="font-bold text-ocean-700">
-                                          MAIN SET
-                                        </span>{" "}
-                                        — {d.main}
-                                      </p>
-                                      <p className="text-slate-700">
-                                        <span className="font-bold text-ocean-700">
-                                          COOL-DOWN
-                                        </span>{" "}
-                                        — {d.cd}
-                                      </p>
-                                      <p className="text-slate-500">
-                                        🧘 {d.breathing}
-                                      </p>
-                                      <p className="text-slate-400">
-                                        📚 Study: {d.study}
-                                      </p>
-                                    </div>
-                                  );
-                                })()}
+                                {dateKey(new Date(day.date), user?.timezone) === dateKey(new Date(), user?.timezone) ? <UniversalWorkoutCardLoader key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} onSaved={() => load()} /> : <SavedWorkoutPreviewCard key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} />}
+                                <Link className="btn-secondary inline-flex" href={`/daily?sessionId=${encodeURIComponent(s.id)}`}>{es ? "Abrir entrenamiento actual" : "Open current workout"}</Link>
                                 {s.preWeightKg &&
                                   s.postWeightKg &&
                                   (() => {
@@ -726,6 +711,7 @@ export default function TrainingPage() {
                                       }))
                                     }
                                   >
+                                    <option value="">{es ? "Sin cambiar / desconocida" : "Unchanged / unknown"}</option>
                                     {[
                                       "z1",
                                       "z2",

@@ -20,7 +20,7 @@ test("skip edited profile and goals then save travel sends only scoped travel co
 });
 
 test("goal save preserves stored travel while excluding skipped profile/zone drafts", () => {
-  assert.deepEqual(payload("goals", draft, draftSetup, saved, "s1"), { experience: "pro", goal: "hyrox", weeklyHours: "20", setup: { ...draftSetup, profileAnswers: { experience: true, weeklyHours: true }, travel: saved.setup.travel }, expectedSetupRevision: "s1" });
+  assert.deepEqual(payload("goals", draft, draftSetup, saved, "s1"), { experience: "pro", goal: "hyrox", setup: { ...draftSetup, profileAnswers: { experience: true, weeklyHours: false }, travel: saved.setup.travel }, expectedSetupRevision: "s1" });
 });
 
 test("first travel save does not promote unsaved planning answers or profile defaults", () => {
@@ -31,7 +31,7 @@ test("first travel save does not promote unsaved planning answers or profile def
 
 test("saved unconfirmed answers have explicit presence and untouched defaults stay unconfirmed", () => {
   const result = payload("goals", {experience:"advanced",weeklyHours:"5",goal:"cycle"}, {profileConfirmed:false}, {profile:{},setup:null}, null);
-  assert.deepEqual((result.setup as Record<string,unknown>).profileAnswers,{experience:true,weeklyHours:true});
+  assert.deepEqual((result.setup as Record<string,unknown>).profileAnswers,{experience:true,weeklyHours:false});
   const blank = payload("goals", {experience:"",weeklyHours:"",goal:""}, {}, {profile:{},setup:null}, null);
   assert.deepEqual((blank.setup as Record<string,unknown>).profileAnswers,{experience:false,weeklyHours:false});
   assert.equal("experience" in blank,false);
@@ -43,4 +43,14 @@ test("an unchanged legacy goal is not erased or resubmitted as a new unsupported
   assert.equal("goal" in result,false);
   const changed = payload("goals", {experience:"advanced",weeklyHours:"5",goal:"run-only"}, {}, {profile:{goal:"boxing"},setup:null}, null);
   assert.equal(changed.goal,"run-only");
+});
+
+test("missing-only basics never submit edits from the separate saved-threshold editor", () => {
+  const result=payload("essentials",{ftp:"300",maxHr:"189",manualPrs:""},{},{profile:{ftp:220},setup:null},null);
+  assert.deepEqual(result,{maxHr:"189"});
+});
+
+test("short goals submit only actual goal, description and horizon, never drafts of safety or availability", () => {
+  const result=payload("intent",draft,{...draftSetup,goalDescription:"Ride consistently",planWeeks:"24",adultConfirmed:true},saved,"s1");
+  assert.deepEqual(result,{goal:"hyrox",setupSection:"intent",setup:{goalDescription:"Ride consistently",planWeeks:"24"},expectedSetupRevision:"s1"});
 });

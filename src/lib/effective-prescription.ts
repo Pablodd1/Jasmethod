@@ -1,3 +1,4 @@
+import { isStarterSession, starterRestriction } from "./starter-session";
 import { evidenceWorkout, reviewedWorkoutStructureCurrent } from "./evidence-workouts";
 import { assessDailyEnvironment } from "./daily-environment";
 import { readDailyEnvironment } from "./daily-environment-store";
@@ -97,7 +98,7 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
   // Missing and malformed prescriptions are both held, with distinct reasons.
   // Only the budget-aware check-in transaction may regenerate a session; a
   // read/export must not independently spend the full day budget a second time.
-  if (safety.status === "clear" && !input.planning?.ready) safety = { ...safety, status: "unknown", reason: `Complete or review your athlete setup before individualized training. ${[...(input.planning?.missing || []), ...(input.planning?.review || [])].join(". ")}` };
+  if (safety.status === "clear" && !input.planning?.ready && !isStarterSession(workout)) safety = { ...safety, status: "unknown", reason: `Complete or review your athlete setup before individualized training. ${[...(input.planning?.missing || []), ...(input.planning?.review || [])].join(". ")}` };
   if (currentEvents.length && !["hold","urgent"].includes(safety.status)) safety = { ...safety, status:"unknown", reason:"This calendar day now contains a saved event. No added workout is prescribed. Review your events and preview an updated cycle; event participation and recovery are not assumed." };
   let canonical = canonicalSession({ athleteId: userId, workout, prescription: p ?? workout.prescription, profile, dateLocal: key, timezone, safety, revisionContext, environment });
   if (safety.status === "clear" && canonical.verdict === "ready" && (isDemanding({...workout,...p}) || canonicalDemand(canonical, profile) !== "easy")) {
@@ -183,5 +184,6 @@ export async function effectivePrescription(userId: string, workoutId: string, d
     db.race.findMany({where:{userId,date:{gte:new Date(`${dateKey(workout.date,timezone)}T00:00:00Z`),lt:new Date(`${addDaysKey(dateKey(workout.date,timezone),1)}T00:00:00Z`)}},select:{id:true,userId:true,date:true},orderBy:{id:"asc"}}),
   ]);
   if(profile?.raceDate && dateKey(profile.raceDate,timezone)===dateKey(workout.date,timezone)) currentEvents.push({id:"profile-event",userId,date:new Date(`${dateKey(profile.raceDate,timezone)}T00:00:00Z`)});
-  return effectiveSessionFromRecords({ userId, timezone, workout, environment, currentEvents, profile: evidencedTargetProfile(profile ? {...profile, units: unitsOf(profile.units, user.language)} : null, tests, appliedIds), checkin, currentCheckin, reportedActivity, sameDaySessions, doubleDayContext:{preference:setup.setup?.doubleDay,setupRevision:setup.revision,source:setup.setup?.source}, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
+  const restrictedStarter = isStarterSession(workout) && starterRestriction(profile,setup.setup);
+  return effectiveSessionFromRecords({ userId, timezone, workout: restrictedStarter ? {...workout, source:"restricted-starter"} : workout, environment, currentEvents, profile: evidencedTargetProfile(profile ? {...profile, units: unitsOf(profile.units, user.language)} : null, tests, appliedIds), checkin, currentCheckin, reportedActivity, sameDaySessions, doubleDayContext:{preference:setup.setup?.doubleDay,setupRevision:setup.revision,source:setup.setup?.source}, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
 }

@@ -16,9 +16,9 @@ const account = (suffix: string, role = "athlete") => ({ email: `${prefix}${suff
 
 async function main() {
   before = await db.user.count();
-  assert.ok(before < PILOT_USER_LIMIT, "Disposable test database must have fewer than 50 existing fixture accounts");
+  assert.ok(before < PILOT_USER_LIMIT, "Disposable test database must have fewer existing fixture accounts than the configured cap");
   await db.user.createMany({ data: Array.from({ length: PILOT_USER_LIMIT - 1 - before }, (_, index) => account(`seed-${index}`, index % 2 ? "coach" : "athlete")) });
-  assert.equal(await db.user.count(), 49);
+  assert.equal(await db.user.count(), PILOT_USER_LIMIT - 1);
 
   // Rollback must not consume a seat or leave a session-level lock behind.
   await assert.rejects(db.$transaction(async tx => {
@@ -26,7 +26,7 @@ async function main() {
     await tx.user.create({ data: account("rollback") });
     throw new Error("deliberate synthetic rollback");
   }, { isolationLevel: "ReadCommitted" }), /deliberate synthetic rollback/);
-  assert.equal(await db.user.count(), 49);
+  assert.equal(await db.user.count(), PILOT_USER_LIMIT - 1);
 
   const attempts = await Promise.allSettled(Array.from({ length: 8 }, (_, index) => db.$transaction(async tx => {
     await assertPilotCapacity(tx);
@@ -34,7 +34,7 @@ async function main() {
   }, { isolationLevel: "ReadCommitted", maxWait: 20000, timeout: 20000 })));
   assert.equal(attempts.filter(result => result.status === "fulfilled").length, 1, "Exactly one request takes the final seat");
   for (const result of attempts) if (result.status === "rejected") assert.ok(result.reason instanceof PilotFullError, "Other requests must return pilot_full, not leak through or time out");
-  assert.equal(await db.user.count(), 50);
+  assert.equal(await db.user.count(), PILOT_USER_LIMIT);
   console.log("PILOT_CONCURRENCY_PASSED: total-role cap, rollback, eight requests for one remaining seat");
 }
 

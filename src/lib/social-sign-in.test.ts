@@ -77,7 +77,7 @@ async function fixture(overrides: Record<string, string | undefined> = {}) {
     "./admin": { syncAdminRole: async (user: any) => state.admins.push(user.id) },
     "./ratelimit": { clientIp: () => "synthetic-ip", rateLimit: () => ({ ok: true }) },
     "./sign-in-config": config,
-    "./pilot-limit": load("src/lib/pilot-limit.ts", {}),
+    "./pilot-limit": load("src/lib/pilot-limit.ts", {}, { process: { env } }),
   }, { process: { env }, fetch: async (url: string, init: any) => {
     state.tokenFetches.push({ url, init });
     const c = config.signInConfig(state.provider);
@@ -139,6 +139,18 @@ test("full pilot blocks only new OAuth enrollment and preserves existing sign-in
   assert.equal((await linking.finish(link.state)).headers.get("location"), `${linking.env.APP_URL}/today`);
   assert.equal(linking.state.mappings.length, 1);
   assert.equal(linking.state.creates.length, 0);
+});
+
+test("invalid capacity blocks new OAuth enrollment without disabling returning sign-in", async () => {
+  const full = await fixture({ PILOT_USER_LIMIT: "unlimited" }); full.state.totalUsers = 0;
+  const started = await full.start();
+  assert.match((await full.finish(started.state)).headers.get("location")!, /error=pilot_full/);
+  assert.equal(full.state.creates.length + full.state.sessions.length, 0);
+  const returning = await fixture({ PILOT_USER_LIMIT: "unlimited" });
+  returning.state.account = { userId: "existing", user: { id: "existing", email: "old@example.invalid", onboarded: true } };
+  const again = await returning.start();
+  assert.equal((await returning.finish(again.state)).headers.get("location"), `${returning.env.APP_URL}/today`);
+  assert.deepEqual(returning.state.sessions, ["existing"]);
 });
 
 test("social provider configuration requires credentials and a production canonical HTTPS origin", async () => {

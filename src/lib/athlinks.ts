@@ -14,6 +14,7 @@
 // changes, only this file moves.
 
 import { prisma } from "./db";
+import { ATHLINKS_DEFERRED, ATHLINKS_DEFERRED_MESSAGE } from "./athlinks-availability";
 
 const BASE = "https://api.athlinks.com";
 
@@ -26,6 +27,7 @@ export function athlinksConfigured(): boolean {
 }
 
 async function athlinksGet<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+  if (ATHLINKS_DEFERRED) throw new Error(ATHLINKS_DEFERRED_MESSAGE);
   const apiKey = key();
   if (!apiKey) throw new Error("ATHLINKS_API_KEY not configured");
   const qs = new URLSearchParams({ apiKey, ...params });
@@ -247,8 +249,9 @@ export async function importAthlinksResults(
 
 // ---- Daily reconciliation (called by the daily sync cron, not hourly) ----
 export async function syncAthlinksForAllUsers(): Promise<{
-  users: number; imported: number; merged: number; errors: string[];
+  users: number; imported: number; merged: number; errors: string[]; deferred?: boolean;
 }> {
+  if (ATHLINKS_DEFERRED) return { users: 0, imported: 0, merged: 0, errors: [], deferred: true };
   const conns = await prisma.connector.findMany({
     where: { provider: "athlinks", status: "connected", externalRef: { not: null } },
   });

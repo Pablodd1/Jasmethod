@@ -2,6 +2,7 @@ import { dayOffProtocol, dayOffProtocolText } from "./day-off";
 import type { dailyRecoveryContext } from "./daily-recovery";
 import type { JMetrics } from "./j-metrics";
 import { resolveCheckinSafety, type CheckinSafetyInput } from "./checkin-safety";
+import { isGeneralCoachEducationQuestion, localCoachEducation, wantsCoachDetail } from "./coach-conversation-education";
 
 /** Proposals only. The authenticated review service owns binding and all writes. */
 export interface CoachCandidate {
@@ -32,6 +33,28 @@ export function isCoachDate(x: unknown): x is string {
   return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === x;
 }
 function shiftDate(day: string, offset: number): string { const d = new Date(`${day}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + offset); return d.toISOString().slice(0, 10); }
+
+const recentSessionQuestion = /\b(?:how (?:was|did) my (?:last|latest|recent) (?:workout|session|run)|what (?:was|did i do (?:in|for)) my (?:last|latest) (?:(?:recorded|reported) )?(?:workout|session)|my recent training|como (?:fue|me fue en) mi ultima (?:sesion|carrera)|mi entrenamiento reciente)\b/;
+
+/** Query scope, not permission to train. Plain definitions need no saved
+ * history; personal overviews retain the bounded, owner-only PR48 context. */
+export function coachContextNeeds(message: string): { overview: boolean; history: "none" | "latest" | "overview"; load: boolean } {
+  const text = normalize(message);
+  // "Me" also occurs in ordinary requests such as "explain RPE to me".
+  // Recognize explicit self-summary intent before the cheap education path,
+  // rather than making every occurrence of that pronoun a personal-data read.
+  const explicitSummary = /\b(?:what (?:do you know|can you (?:tell|say)) about me|tell me (?:what you know )?about me|que sabes (?:de|sobre) mi|(?:give me|show me|dame|muestrame) (?:a |an |un )?(?:personal (?:summary|overview|analysis)|resumen personal))\b/.test(text);
+  if (!explicitSummary && isGeneralCoachEducationQuestion(message, wantsCoachDetail(message))) return { overview: false, history: "none", load: false };
+  const latest = recentSessionQuestion.test(text);
+  const personal = /\b(?:my|mine|me|mi|mis)\b/.test(text);
+  const overview = explicitSummary || (personal && /\b(?:profile|about me|personal (?:summary|overview|analysis)|my (?:training|progress|performance)|training history|history|biometrics|readings|hrv|resting (?:hr|heart rate)|sleep|next race|upcoming race|my race|perfil|sobre mi|resumen personal|mi (?:entrenamiento|progreso|rendimiento)|mis entrenamientos|historial|datos|lecturas|vfc|sueno|proxima carrera|mi carrera|frecuencia cardiaca)\b/.test(text)
+    && (!latest || /\b(?:profile|biometrics|readings|hrv|resting|sleep|next race|upcoming race|perfil|datos|lecturas|vfc|sueno|proxima carrera|frecuencia)\b/.test(text)));
+  return {
+    overview,
+    history: overview ? "overview" : latest ? "latest" : "none",
+    load: /\b(?:j ?metrics|jstress|j ?base|j ?recent|j ?balance)\b/.test(text),
+  };
+}
 
 /** Envelope validation only; coach-image performs actual byte decoding server-side. */
 export function parseConversationInput(raw: unknown): ConversationInput {
@@ -214,6 +237,14 @@ export function extractLocalCandidates(message: string, context: CandidateContex
 
 export function conversationClarifications(message: string, context: CandidateContext): string[] {
   const t = normalize(message);
+  // Logging needs exact dates and units. Ordinary questions and hypothetical
+  // examples do not: never turn every conversation into a data-entry interview.
+  const explicitLogging = /\b(?:log|record|save|register|registra|registrar|guarda|guardar)\b/.test(t);
+  if (!explicitLogging && (/[?¿]/.test(t) || /\b(?:what|why|how|should|could|would|can i|tell me|explain|que|como|deberia|puedo)\b/.test(t))) return [];
+  const logging = explicitLogging
+    || /\b(?:i (?:ran|swam|rode|cycled|biked|jogged|completed|finished|skipped|missed|weigh)|my weight is|my (?:goal|target) is|my (?:weekly )?availability|i can train|corri|nade|pedalee|complete|termine|me salte|mi peso|mi objetivo|mi meta|puedo entrenar)\b/.test(t)
+    || /\b(?:i (?:plan|am planning|will|am going) to|i'm (?:planning|going) to|planeo|voy a)\b/.test(t);
+  if (!logging) return [];
   const es = /\b(hoy|ayer|manana|peso|quiero|entrenar|corri|minutos|horas|cansad[oa])\b/.test(t);
   const result: string[] = [];
   if (uncertain.test(t) || injected.test(t) || /[“”"]/.test(message)) result.push(es ? "Aclara qué datos son tuyos y confirmados, fuera de ejemplos, citas o posibilidades." : "Clarify which facts are yours and confirmed, rather than examples, quotations or possibilities.");
@@ -236,7 +267,13 @@ export interface CoachReplyContext {
   unresolvedSafetyConcernAt?: string | null;
   unreviewedImageConcern?: "urgent" | "symptom";
   recentMessages?: { role: "user" | "assistant"; content: string; createdAt?: string }[];
+  candidateContext?: Pick<CandidateContext, "sessionId" | "sessionDate">;
   profile?: { goal?: string | null; experience?: string | null; weeklyHours?: number | null; weightKg?: number | null } | null;
+  athleteOverview?: {
+    historyDays: number;
+    metrics: { date: string; source: string | null; hrv: number | null; hrvType: string | null; restingHr: number | null; sleepHours: number | null } | null;
+    race: { name: string; date: string; distance: string | null } | null;
+  };
   recentFeedback?: { date: string; feedbackStatus?: string | null; actualDurationMin?: number | null; rpe?: number | null; actualSport?: string | null }[];
 }
 export interface CoachReply { answer: string; ruleId: string; sourceIds?: string[] }
@@ -291,6 +328,20 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
   if (/\b(catch up|make up|double|twice|extra intervals|all[ -]?out|maximum effort|compensar|recuperar lo perdido|doblar|doble|a tope|esfuerzo maximo)\b/.test(t)) return reply("no-escalation", "Do not add missed work, double the session or turn it into an all-out effort. Keep the approved plan's limits and recovery days. A change needs a separate plan review with current recovery and safety information; feeling motivated alone does not justify extra load.", "No añadas lo pendiente, dobles la sesión ni la conviertas en un esfuerzo máximo. Respeta los límites y los días de recuperación del plan aprobado. Un cambio requiere revisar el plan con información actual de recuperación y seguridad; la motivación por sí sola no justifica más carga.");
   if (context.unreviewedImageConcern === "symptom") return reply("unreviewed-image-symptoms", "The image may contain a current safety or recovery concern. Verify whether those details describe you today and review the check-in before considering exercise. I won't replace confirmed facts or clear you to train from an unreviewed image.", "La imagen podría contener un problema actual de seguridad o recuperación. Verifica si esos datos te describen hoy y revisa el check-in antes de considerar ejercicio. No sustituiré datos confirmados ni autorizaré entrenar a partir de una imagen sin revisar.");
   if (concern.test(symptomText(t))) return reply("clarify-current-symptoms", "You mentioned a possible physical symptom. What is happening, and is it current? Pause exercise while the concern is unclear; don't push through it. Seek appropriate medical advice for persistent or worsening symptoms, and urgent help for severe symptoms.", "Mencionaste un posible síntoma físico. ¿Qué ocurre y está pasando ahora? Pausa el ejercicio mientras no esté claro; no lo fuerces. Busca asesoramiento médico si persiste o empeora, y ayuda urgente si los síntomas son intensos.");
+  const detail = wantsCoachDetail(message);
+  const followupDetail = detail && /^(?:tell me more|more details?|elaborate|expand|explain more|go (?:deeper|on)|mas detalles?|explica mas|amplia|profundiza)[.!?\s]*$/.test(t.trim());
+  const previousTopic = [...priorMessages].reverse().find(entry => !wantsCoachDetail(entry.content))?.content ?? "";
+  const overviewRequested = coachContextNeeds(message).overview;
+  const educational = !overviewRequested && (localCoachEducation(message, es ? "es" : "en", detail)
+    || (followupDetail
+      ? localCoachEducation(previousTopic, es ? "es" : "en", true) : null));
+  if (educational) return { answer: educational.answer, ruleId: `coach-conversation-v1:education-${educational.topic}` };
+  const vo2 = /\b(?:v[ -]?o[₂2][ -]?max|vo2|oxygen uptake|consumo maximo de oxigeno)\b/i;
+  const vo2Context = vo2.test(t) ? t : followupDetail ? normalize(previousTopic) : "";
+  if (!overviewRequested && isGeneralCoachEducationQuestion(vo2Context, detail) && vo2.test(vo2Context) && /\b(?:what (?:is|does)|define|explain|que (?:es|significa)|explica)\b/.test(vo2Context) && !/\b(?:session|workout|track|sesion|entrenamiento|pista)\b/.test(vo2Context)) return reply("education-vo2",
+    `VO₂max is the maximum rate at which your body can use oxygen during intense exercise. It describes aerobic capacity; it does not by itself give your training pace or predict a race result.${detail ? "\n\nIt reflects oxygen delivery and use across the cardiovascular and muscular systems. Relative values are usually expressed in mL/kg/min. A device estimate is different from a laboratory measurement; changes in the estimate alone do not establish a change in fitness or readiness. Training decisions also need current performance references and recovery context." : ""}`,
+    `El VO₂max es la tasa máxima a la que tu cuerpo puede utilizar oxígeno durante ejercicio intenso. Describe la capacidad aeróbica; por sí solo no determina tu ritmo de entrenamiento ni predice un resultado de carrera.${detail ? "\n\nRefleja el transporte y uso de oxígeno en los sistemas cardiovascular y muscular. Los valores relativos suelen expresarse en mL/kg/min. Una estimación del dispositivo es distinta de una medición de laboratorio; sus cambios por sí solos no demuestran un cambio de forma física o disposición. Las decisiones de entrenamiento también necesitan referencias actuales de rendimiento y contexto de recuperación." : ""}`);
+  // General explanations above do not authorize exercise or resolve a concern.
   if (pendingSafety) return reply("clarify-prior-safety", "You shared new safety, recovery or available-time information. Before discussing a training start, does that information still apply, and has today's check-in been updated since then? An earlier check-in does not resolve newer information.", "Compartiste información nueva de seguridad, recuperación o tiempo disponible. Antes de hablar de empezar a entrenar, ¿sigue siendo válida y has actualizado el check-in de hoy desde entonces? Un check-in anterior no resuelve información posterior.");
   if (/\b(?:j ?metrics|jstress|j ?base|j ?recent|j ?balance)\b/.test(t)) {
     const metrics = context.jMetrics;
@@ -303,6 +354,15 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
     return reply("jmetrics-recorded-summary",
       `${definition}\n${line}\nLast ${metrics.windowDays} days: ${metrics.eligibleSessions}/${metrics.totalSessions} performed sessions have scoreable inputs; ${metrics.missingDays} days are unknown. Recorded-session total: ${shown(metrics.totalJStress)} (partial when inputs are missing). J Recent/J Base use 7/42-day exponential averages and require 7/42 consecutive known days; gaps restart them. J Balance = J Base − J Recent. A planned rest day is not confirmed rest. These values do not diagnose recovery or establish a safe training dose. Details: /metrics.`,
       `${definitionEs}\n${line}\nÚltimos ${metrics.windowDays} días: ${metrics.eligibleSessions}/${metrics.totalSessions} sesiones realizadas tienen datos suficientes; ${metrics.missingDays} días son desconocidos. Total de sesiones registradas: ${shown(metrics.totalJStress)} (parcial si faltan datos). J Recent/J Base usan promedios exponenciales de 7/42 días y requieren 7/42 días conocidos consecutivos; los vacíos los reinician. J Balance = J Base − J Recent. Un descanso planeado no es un descanso confirmado. Estos valores no diagnostican recuperación ni establecen una dosis segura de entrenamiento. Detalles: /metrics.`);
+  }
+  if (context.athleteOverview && overviewRequested) {
+    const overview = context.athleteOverview, metric = overview.metrics, race = overview.race;
+    const reports = (context.recentFeedback ?? []).filter(row => isCoachDate(row.date) && row.date <= context.localToday);
+    const known = reports.filter(row => typeof row.actualDurationMin === "number" && Number.isFinite(row.actualDurationMin) && row.actualDurationMin >= 0);
+    const minutes = known.reduce((sum, row) => sum + row.actualDurationMin!, 0);
+    return reply("athlete-context-summary",
+      `Your saved sport/goal: ${context.profile?.goal??"unknown"}; experience: ${context.profile?.experience??"unknown"}. In the last ${overview.historyDays} days, ${known.length}/${reports.length} returned session reports have recorded actual minutes (${minutes} min total; incomplete when reports are missing). ${metric?`Latest readings (${metric.date}, ${metric.source??"unknown source"}): sleep ${metric.sleepHours??"unknown"} h, resting HR ${metric.restingHr??"unknown"} bpm, HRV ${metric.hrv??"unknown"} ms (${metric.hrvType??"unknown method"}).`:"No recent biometric readings are available."} ${race?`Upcoming saved race: ${race.name}, ${race.date}, ${race.distance??"distance unknown"}. A race prediction needs comparable performance and venue evidence; these readings alone do not predict a finish time.`:"No upcoming race is saved."} Review today's check-in and record session outcomes to inform daily coaching. Change persistent details in /profile; chat does not silently change your training or invent a benchmark.`,
+      `Deporte/objetivo guardado: ${context.profile?.goal??"desconocido"}; experiencia: ${context.profile?.experience??"desconocida"}. En ${overview.historyDays} días, ${known.length}/${reports.length} informes devueltos tienen minutos reales (${minutes} min; incompleto si faltan informes). ${metric?`Últimas lecturas (${metric.date}, ${metric.source??"fuente desconocida"}): sueño ${metric.sleepHours??"desconocido"} h, FC en reposo ${metric.restingHr??"desconocida"} lpm, VFC ${metric.hrv??"desconocida"} ms (${metric.hrvType??"método desconocido"}).`:"No hay biometría reciente disponible."} ${race?`Próxima carrera guardada: ${race.name}, ${race.date}, ${race.distance??"distancia desconocida"}. Un pronóstico necesita rendimiento comparable y datos del recorrido; estas lecturas no predicen un tiempo final.`:"No hay carrera próxima guardada."} Revisa el chequeo de hoy y registra resultados reales. Cambia los datos permanentes en /profile; el chat no cambia el entrenamiento ni inventa referencias.`);
   }
   if (/\b(?:recovery|rest day|day off|meditation|visualization|visualisation|recuperacion|dia de descanso|dia libre|meditacion|visualizacion)\b/.test(t)) {
     const recovery = context.recovery;
@@ -323,6 +383,21 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
   }
   const session = context.approvedSession?.approved === true && context.approvedSession.date === context.localToday ? context.approvedSession : null;
   if (session?.isRestDay || session?.sport === "rest" || session?.durationMin === 0) return reply("preserve-rest-day", "Today is an approved recovery/rest day. Protect it rather than replacing it with a workout. Recovery is part of the plan; any change should be reviewed separately, and no missed work is added.", "Hoy hay descanso o recuperación aprobados. Respétalos en lugar de sustituirlos por un entrenamiento. La recuperación forma parte del plan; cualquier cambio se revisa por separado y no se añade trabajo pendiente.");
+
+  const timeFollowup = /^(?:i (?:only )?have|i can spare|tengo|dispongo de)\s+(?:\d+(?:[.,]\d+)?|one|an?|una?)\s*(?:hours?|horas?|h|minutes?|minutos?|mins?)(?:\s+(?:available|to train|for training|disponibles|para entrenar))?[.!?\s]*$/;
+  const vo2Workout = (text: string) => vo2.test(text) && /\b(?:train|training|workout|session|track|develop|improve|increase|entrenar|entrenamiento|sesion|pista|trabajar|desarrollar|mejorar|aumentar)\b/.test(text);
+  const vo2Topic = vo2Workout(t) || ((timeFollowup.test(t) || detail) && vo2Workout(normalize(previousTopic)));
+  if (vo2Topic) {
+    if (context.recovery?.mode === "planned-rest") return reply("preserve-rest-day", "Today is a planned recovery/rest day. Keep the hard track session for a separate plan review; do not replace rest with intervals or add catch-up work.", "Hoy hay descanso o recuperación planificados. Deja la sesión intensa de pista para una revisión aparte del plan; no sustituyas el descanso por intervalos ni añadas trabajo pendiente.");
+    if (context.recovery?.mode === "hold") return reply("recovery-hold-guide", "Training is on hold. Review the restriction with your coach or an appropriate professional before considering intervals; this chat does not clear you to train.", "El entrenamiento está en pausa. Revisa la restricción con tu entrenador o un profesional adecuado antes de considerar intervalos; este chat no autoriza entrenar.");
+    const minutes = t.match(/\b(\d+(?:[.,]\d+)?)\s*(minutes?|mins?|minutos?)\b/);
+    const hours = t.match(/\b(\d+(?:[.,]\d+)?|one|an?|una?)\s*(hours?|horas?)\b/);
+    const limit = minutes ? Number(minutes[1].replace(",", ".")) : hours ? (/^\d/.test(hours[1]) ? Number(hours[1].replace(",", ".")) : 1) * 60 : null;
+    if (limit !== null && limit < 50) return reply("vo2-time-limit", `The 4 × 4-minute VO₂max example needs about 50 minutes including a full warm-up, recoveries and cool-down. With ${limit} minutes available, don't squeeze the same hard work into less time or cut the preparation. Keep today's approved session within your time limit; a shorter interval session needs a separate plan review.`, `El ejemplo de VO₂max de 4 × 4 minutos necesita unos 50 minutos, con calentamiento, recuperaciones y vuelta a la calma. Con ${limit} minutos disponibles, no comprimas el mismo trabajo intenso ni recortes la preparación. Mantén la sesión aprobada de hoy dentro de tu tiempo disponible; una sesión de intervalos más corta necesita una revisión aparte.`);
+    const example = "General track example for review, for a runner already accustomed to intervals whose current plan and safety check-in permit hard training:\n• 15 min easy warm-up\n• 4 × 4 min hard but controlled running, with 3 min easy jogging between repetitions (3 recoveries)\n• 10 min easy cool-down\nTotal: 50 min. Run repeatable efforts, not sprints; stop for pain, dizziness or unusual breathlessness. Your pace must come from current running references, not an invented VO₂max target. This is an example, not a saved or approved session.";
+    const exampleEs = "Ejemplo general de pista para revisar, para alguien habituado a los intervalos cuyo plan y check-in de seguridad permitan trabajo intenso:\n• 15 min de calentamiento suave\n• 4 × 4 min de carrera intensa pero controlada, con 3 min de trote suave entre repeticiones (3 recuperaciones)\n• 10 min de vuelta a la calma suave\nTotal: 50 min. Mantén esfuerzos repetibles, sin esprintar; detente ante dolor, mareo o falta de aire inusual. El ritmo debe partir de referencias actuales de carrera, no de un objetivo de VO₂max inventado. Es un ejemplo, no una sesión guardada ni aprobada.";
+    return reply("vo2-track-example", `${example}${detail ? "\n\nThe repeated work periods accumulate demanding aerobic running while the easy recoveries help keep the later repetitions controlled. If the early reps make the remaining ones unsustainable, the effort is too high for this example. Do not add this on top of another hard workout or replace a planned recovery day. Method: https://www.ntnu.edu/cerg/advice" : ""}`, `${exampleEs}${detail ? "\n\nLas repeticiones acumulan carrera aeróbica exigente y las recuperaciones suaves ayudan a mantener el control en las últimas. Si las primeras hacen imposible sostener las restantes, el esfuerzo es demasiado alto para este ejemplo. No lo añadas a otro entrenamiento intenso ni sustituyas un descanso planificado. Método: https://www.ntnu.edu/cerg/advice" : ""}`, ["ntnu-cerg-4x4"]);
+  }
   const avoidance = /\b(don't feel like|do not feel like|no motivation|low motivation|unmotivated|can't be bothered|lazy|skip|avoid|no tengo ganas|poca motivacion|sin motivacion|pereza|saltarme|evitar)\b/.test(t);
   if (priorRestChoice && avoidance && !/\b(changed my mind|ready to train|he cambiado de opinion|quiero entrenar ahora)\b/.test(t)) return reply("respect-prior-rest-choice", "You already chose rest, and I respect that. We can review what made today difficult without turning it into pressure to train. No catch-up work is owed.", "Ya elegiste descansar y lo respeto. Podemos revisar qué lo dificultó hoy sin presionarte para entrenar. No debes compensar trabajo pendiente.");
 
@@ -335,15 +410,15 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
     const purposeEs = goal ? `Tu objetivo guardado ${goal} da el contexto; hoy se busca una ejecución controlada dentro de los límites aprobados, sin prometer un resultado. ` : "El objetivo es realizar el trabajo aprobado de forma controlada, sin añadir carga. ";
     const first = session.hasWarmup === true ? "the warm-up already in today's approved session" : "the first step already in today's approved session";
     const firstEs = session.hasWarmup === true ? "el calentamiento ya previsto en la sesión aprobada de hoy" : "el primer paso ya previsto en la sesión aprobada de hoy";
-    return reply("support-planned-start", `${basis}${purpose}If this is low motivation rather than illness, pain or physical fatigue, I recommend starting only ${first}, then reassessing how you feel. Keep the existing limits; stop for symptoms. You can choose to continue within the plan or stop. Is the main barrier starting, timing, or something else?`, `${basisEs}${purposeEs}Si es poca motivación y no enfermedad, dolor o fatiga física, te recomiendo empezar solo ${firstEs} y después valorar cómo te sientes. Mantén los límites existentes y detente si aparecen síntomas. Puedes seguir dentro del plan o parar. ¿La principal dificultad es empezar, el horario o algo más?`);
+    return reply("support-planned-start", `${basis}${purpose}If this is low motivation rather than illness, pain or physical fatigue, I recommend starting only ${first}, then reassessing how you feel. Keep the existing limits; stop for symptoms. You can choose to continue within the plan or stop.`, `${basisEs}${purposeEs}Si es poca motivación y no enfermedad, dolor o fatiga física, te recomiendo empezar solo ${firstEs} y después valorar cómo te sientes. Mantén los límites existentes y detente si aparecen síntomas. Puedes seguir dentro del plan o parar.`);
   }
   if (avoidance) return reply("clarify-barrier", "What's behind wanting to skip: time, low motivation, physical fatigue, illness or pain? A small planned start can help with reluctance, but I need today's safety check-in and an approved session before recommending activity. Your decision remains yours; there is no catch-up requirement.", "¿Qué hay detrás de querer saltártelo: tiempo, poca motivación, fatiga física, enfermedad o dolor? Un inicio pequeño y planificado puede ayudar con la resistencia a empezar, pero necesito el check-in de hoy y una sesión aprobada antes de recomendar actividad. Tú decides y no hay obligación de compensar.");
   if (/\b(?:what (?:is|are) my (?:weekly (?:hours|availability)|available (?:time|hours))|how (?:many hours|much time) (?:do i have|can i train)|cual es mi disponibilidad|cuantas horas tengo)\b/.test(t)) {
     const hours = context.profile?.weeklyHours;
     if (typeof hours === "number" && Number.isFinite(hours) && hours >= 0.5 && hours <= 40) return reply("remember-confirmed-availability", `Your saved weekly availability is ${hours} hours. This is a scheduling limit, not a requirement to fill every hour or make up missed training.`, `Tu disponibilidad semanal guardada es de ${hours} horas. Es un límite de agenda, no una obligación de completar todas las horas ni compensar entrenamientos perdidos.`);
-    return reply("missing-confirmed-availability", "I don't have confirmed weekly availability in this context. Tell me how many hours per week are realistically available, and review the proposed update before saving it.", "No tengo una disponibilidad semanal confirmada en este contexto. Dime cuántas horas por semana tienes realmente disponibles y revisa la propuesta antes de guardarla.");
+    return reply("missing-confirmed-availability", "I don't have confirmed weekly availability in this context. Weekly volume is calculated from recent tolerated training, available days and recovery. You can add or change those details in /profile; weekly hours are optional.", "No tengo una disponibilidad semanal confirmada en este contexto. El volumen se calcula según entrenamiento reciente tolerado, días disponibles y recuperación. Puedes cambiar esos datos en /profile; las horas semanales son opcionales.");
   }
-  if (/\b(?:how (?:was|did) my (?:last|latest|recent) (?:workout|session|run)|what (?:was|did i do (?:in|for)) my (?:last|latest) (?:(?:recorded|reported) )?(?:workout|session)|my recent training|como (?:fue|me fue en) mi ultima (?:sesion|carrera)|mi entrenamiento reciente)\b/.test(t)) {
+  if (recentSessionQuestion.test(t)) {
     const latest = (context.recentFeedback || []).filter(f => isCoachDate(f.date) && f.date <= context.localToday).sort((a, b) => b.date.localeCompare(a.date))[0];
     if (!latest) return reply("missing-reported-history", "I don't have a confirmed recent session report in this context. Tell me the session date, actual outcome, minutes and overall RPE; planned minutes are not proof of what happened.", "No tengo un informe confirmado de una sesión reciente en este contexto. Dime fecha, resultado real, minutos y RPE global; los minutos previstos no demuestran lo realizado.");
     const outcome = ["completed", "partial", "substituted", "skipped"].includes(latest.feedbackStatus || "") ? latest.feedbackStatus : null;
@@ -358,8 +433,11 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
     if (mentioned) return reply("remember-proposed-goal", `You mentioned ${mentioned.value} in this conversation. That was a proposed goal; I cannot assume it was saved. Review the goal before planning around it.`, `Mencionaste ${mentioned.value} en esta conversación. Era una propuesta de objetivo; no puedo asumir que se guardó. Revísalo antes de planificar en torno a él.`);
   }
   if (/\b(goal|target|motivation|consistent|consistency|habit|objetivo|meta|motivacion|constancia|habito)\b/.test(t)) return reply("process-goal", "Choose a realistic outcome goal and a controllable process goal, such as preparing for and following approved sessions, then review what helped or got in the way. Specific goals and feedback can support adherence, but they do not guarantee performance. A goal time is not a measured training reference, and missed sessions are not a debt.", "Elige una meta realista de resultado y una de proceso que puedas controlar, como prepararte para las sesiones aprobadas y seguirlas; después revisa qué ayudó y qué lo dificultó. Las metas concretas y la información de seguimiento pueden apoyar la constancia, pero no garantizan rendimiento. Un tiempo objetivo no es una referencia medida de entrenamiento y las sesiones perdidas no son una deuda.");
-  const clarifications = conversationClarifications(message, { localToday: context.localToday });
+  const candidateContext = { localToday: context.localToday, ...context.candidateContext };
+  const clarifications = conversationClarifications(message, candidateContext);
   if (clarifications.length) return { answer: clarifications.join(" "), ruleId: "coach-conversation-v1:clarify-data" };
-  if (extractLocalCandidates(message, { localToday: context.localToday }).length) return reply("review-proposals", "I found possible updates in what you shared. Review each value, date and session before confirming anything. Planned work stays separate from what you actually completed; nothing has been saved from this message alone.", "Encontré posibles actualizaciones en lo que compartiste. Revisa cada valor, fecha y sesión antes de confirmar. Lo planeado queda separado de lo realizado; este mensaje por sí solo no ha guardado ningún cambio.");
-  return reply("ask-next-detail", "Tell me what you want to work on: your goal or available training time, how a session actually went, or what's making training difficult today. Include a date and units for any numbers. I can help you review the next step without inventing missing data.", "Cuéntame qué quieres trabajar: tu objetivo o tiempo disponible, cómo fue realmente una sesión, o qué dificulta entrenar hoy. Incluye fecha y unidades en los datos numéricos. Puedo ayudarte a revisar el siguiente paso sin inventar lo que falta.");
+  if (extractLocalCandidates(message, candidateContext).length) return reply("review-proposals", "I found possible updates in what you shared. Review each value, date and session before confirming anything. Planned work stays separate from what you actually completed; nothing has been saved from this message alone.", "Encontré posibles actualizaciones en lo que compartiste. Revisa cada valor, fecha y sesión antes de confirmar. Lo planeado queda separado de lo realizado; este mensaje por sí solo no ha guardado ningún cambio.");
+  if (/^(?:hi|hello|hey|hola|buenas)[!.\s]*$/.test(t)) return reply("greeting", "Hi! I’m here to help with your training.", "¡Hola! Estoy aquí para ayudarte con tu entrenamiento.");
+  if (/^(?:thanks|thank you|ok|okay|gracias|vale)[!.\s]*$/.test(t)) return reply("acknowledgment", "You’re welcome.", "De nada.");
+  return reply("ask-next-detail", "I don't have a reliable answer for that specific question in local mode. I can explain training concepts such as RPE, endurance, VO₂max and periodization, or summarize confirmed facts from your profile and sessions.", "No tengo una respuesta fiable para esa pregunta concreta en el modo local. Puedo explicar conceptos como RPE, resistencia, VO₂max y periodización, o resumir datos confirmados de tu perfil y tus sesiones.");
 }

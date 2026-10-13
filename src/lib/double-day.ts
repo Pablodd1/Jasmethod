@@ -3,6 +3,7 @@ export const DOUBLE_DAY_VERSION = 'optional-double-day-v1';
 export interface DoubleDayPreference {
   version: typeof DOUBLE_DAY_VERSION;
   weekday: number;
+  secondWeekday?: number | null;
   purpose: string;
   firstStart: string;
   secondStart: string;
@@ -30,14 +31,16 @@ export function parseDoubleDay(value: unknown): DoubleDayPreference|null {
   if(value==null) return null;
   if(typeof value!=='object'||Array.isArray(value)) throw Error('Invalid optional double-day setup.');
   const p=value as Record<string,unknown>;
-  const keys=['version','weekday','purpose','firstStart','secondStart','athleteAgreed','priorTolerance','foodFluidsAvailable','recheckBetween'];
+  const keys=['version','weekday','secondWeekday','purpose','firstStart','secondStart','athleteAgreed','priorTolerance','foodFluidsAvailable','recheckBetween'];
   if(Object.keys(p).some(k=>!keys.includes(k)) || p.version!==DOUBLE_DAY_VERSION) throw Error('Invalid optional double-day version or field.');
   if(!Number.isInteger(p.weekday)||Number(p.weekday)<0||Number(p.weekday)>6) throw Error('Choose the optional double-day weekday.');
+  if(p.secondWeekday != null && (!Number.isInteger(p.secondWeekday)||Number(p.secondWeekday)<0||Number(p.secondWeekday)>6||p.secondWeekday===p.weekday)) throw Error('Choose a distinct second weekday.');
   if(typeof p.purpose!=='string'||!p.purpose.trim()||p.purpose.length>500) throw Error('Describe why this optional pair supports your goal.');
   if(clockMinutes(p.secondStart)<=clockMinutes(p.firstStart)) throw Error('The second session must start after the first.');
   for(const key of ['athleteAgreed','priorTolerance','foodFluidsAvailable','recheckBetween']) if(typeof p[key]!=='boolean') throw Error(`Confirm double-day ${key}; missing is not yes.`);
   return {...p,purpose:p.purpose.trim()} as unknown as DoubleDayPreference;
 }
+export function doubleDayWeekdays(p:DoubleDayPreference|null|undefined):number[] { return p ? [p.weekday,...(p.secondWeekday == null ? [] : [p.secondWeekday])] : []; }
 export function doubleDayReadiness(p:DoubleDayPreference|null|undefined,trainingDays:number[]) {
   const reasons:string[]=[];
   if(!p) return {ready:false,reasons:['No optional double day selected.']};
@@ -45,7 +48,7 @@ export function doubleDayReadiness(p:DoubleDayPreference|null|undefined,training
   if(!p.priorTolerance) reasons.push('Comparable double-session tolerance needs review before automatic pairing.');
   if(!p.foodFluidsAvailable) reasons.push('Confirm access to food and fluids between the sessions.');
   if(!p.recheckBetween) reasons.push('Agree to report the first session and complete a new check-in before the second.');
-  if(!trainingDays.includes(p.weekday)) reasons.push('The selected weekday is not an available training day.');
+  if(doubleDayWeekdays(p).some(day=>!trainingDays.includes(day))) reasons.push('The selected weekday is not an available training day.');
   return {ready:!reasons.length,reasons};
 }
 export interface DoubleDaySlot { id?:string; sport:string; type:string; intensity:string; durationMin:number; startTime:string; }
@@ -83,10 +86,10 @@ export function reviewSecondaryDoubleDay(input:{workout:any;sameDay:any[];prefer
   if(plan.role==='primary') return null;
   if(plan.invalidated) return reason('the agreed session was edited. Review a new paired plan.');
   const pref=input.preference;
-  if(!pref||input.setupSource!=='athlete_reported'||!doubleDayReadiness(pref,[pref.weekday]).ready||input.setupRevision!==plan.setupRevision)
+  if(!pref||input.setupSource!=='athlete_reported'||!doubleDayReadiness(pref,doubleDayWeekdays(pref)).ready||input.setupRevision!==plan.setupRevision)
     return reason('athlete agreement or setup changed. Review a new plan preview; keep the single-session plan.');
   const day=dateKey(input.workout.date,input.timezone);
-  if(day!==plan.dateLocal||new Date(`${day}T12:00Z`).getUTCDay()!==pref.weekday||pref.firstStart!==plan.pair[0].startTime||pref.secondStart!==plan.pair[1].startTime||pref.purpose!==plan.purpose)
+  if(day!==plan.dateLocal||!doubleDayWeekdays(pref).includes(new Date(`${day}T12:00Z`).getUTCDay())||pref.firstStart!==plan.pair[0].startTime||pref.secondStart!==plan.pair[1].startTime||pref.purpose!==plan.purpose)
     return reason('the agreed date, purpose or timing changed. Review the pair again.');
   const first=input.sameDay.find(w=>{const p=doubleDayPlan(w);return w.userId===input.workout.userId&&w.id===plan.pair[0].id&&w.id!==input.workout.id&&p?.role==='primary'&&p.purpose===plan.purpose&&p.setupRevision===plan.setupRevision&&p.dateLocal===plan.dateLocal&&JSON.stringify(p.pair)===JSON.stringify(plan.pair);});
   if(!first||doubleDayPlan(first)?.invalidated||!doubleDaySnapshotMatches(first,plan.pair[0])||!doubleDaySnapshotMatches(input.workout,plan.pair[1])) return reason('one of the agreed sessions changed or is unavailable.');

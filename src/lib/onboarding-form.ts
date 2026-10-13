@@ -4,7 +4,7 @@ import { ONBOARDING_STEP, onboardingResume, type OnboardingStep } from "./onboar
 
 export const EMPTY_PROFILE = {
   birthYear: "", sex: "", heightCm: "", weightKg: "", experience: "", goal: "",
-  weeklyHours: "", lthr: "", maxHr: "", ftp: "", runPaceBase: "", swimPaceBase: "",
+  manualPrs: "", weeklyHours: "", lthr: "", maxHr: "", ftp: "", runPaceBase: "", swimPaceBase: "",
 };
 export type ProfileForm = typeof EMPTY_PROFILE;
 export const EMPTY_SETUP = {
@@ -18,6 +18,8 @@ export const EMPTY_SETUP = {
 export type SetupForm = typeof EMPTY_SETUP;
 export const EMPTY_RACE = { name: "", distance: "", date: "", location: "" };
 export type RaceForm = typeof EMPTY_RACE;
+export const EMPTY_PERSONAL_BEST = {label:"",value:"",unit:"",date:""};
+export type PersonalBestForm = typeof EMPTY_PERSONAL_BEST;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
 /** Database defaults are not athlete answers. Saved explicit answers are independent of eligibility confirmation. */
@@ -51,24 +53,30 @@ export const onboardingDraftKey = (userId: string) => `jmm_setup_draft_v1_${user
 export type OnboardingDraft = {
   version: 1; userId: string; revision: string; setupRevision: string | null;
   profile: ProfileForm; setup: SetupForm; step: OnboardingStep;
-  race: RaceForm; raceId: string | null; reviewedWeightId: string | null;
+  race: RaceForm; raceId: string | null; reviewedWeightId: string | null; personalBest?: PersonalBestForm;
 };
 
 /** Tab-scoped drafts never masquerade as server saves or overwrite a newer server revision. */
-export function restoreOnboardingDraft(raw: string | null, userId: string, revision: string, setupRevision: string | null): OnboardingDraft | null {
+export function restoreOnboardingDraft(raw: string | null, userId: string, revision: string, setupRevision: string | null, savedProfile?: Record<string, unknown> | null): OnboardingDraft | null {
   if (!raw || raw.length > 100_000) return null;
   try {
     const draft: unknown = JSON.parse(raw);
     if (!record(draft) || draft.version !== 1 || draft.userId !== userId || draft.revision !== revision || draft.setupRevision !== setupRevision) return null;
     if (!record(draft.profile) || !record(draft.setup) || !record(draft.race)) return null;
-    if (Object.keys(EMPTY_PROFILE).some(key => typeof (draft.profile as Record<string, unknown>)[key] !== "string")) return null;
+    if (Object.keys(EMPTY_PROFILE).filter(key => key !== "manualPrs").some(key => typeof (draft.profile as Record<string, unknown>)[key] !== "string")) return null;
+    if (!Object.hasOwn(draft.profile,"manualPrs") && savedProfile === undefined) return null;
+    if (Object.hasOwn(draft.profile,"manualPrs") && typeof draft.profile.manualPrs !== "string") return null;
     if (Object.keys(EMPTY_RACE).some(key => typeof (draft.race as Record<string, unknown>)[key] !== "string")) return null;
-    const hydrated = hydrateOnboarding(draft.profile, { ...draft.setup, profileAnswers: { experience: true, weeklyHours: true } });
+    // v1 drafts created before PB onboarding do not contain this new field.
+    // Inherit it from the same verified server revision, never hydrate it as an empty replacement.
+    const draftProfile = {...draft.profile,manualPrs:Object.hasOwn(draft.profile,"manualPrs") ? draft.profile.manualPrs : savedProfile?.manualPrs ?? ""};
+    const hydrated = hydrateOnboarding(draftProfile, { ...draft.setup, profileAnswers: { experience: true, weeklyHours: true } });
     return {
       version: 1, userId, revision, setupRevision, ...hydrated,
       step: onboardingResume(String(draft.step ?? ONBOARDING_STEP.devices)),
       race: Object.fromEntries(Object.keys(EMPTY_RACE).map(key => [key, (draft.race as Record<string, unknown>)[key]])) as RaceForm,
       raceId: typeof draft.raceId === "string" ? draft.raceId : null,
+      ...(record(draft.personalBest) && Object.keys(EMPTY_PERSONAL_BEST).every(key => typeof (draft.personalBest as Record<string,unknown>)[key] === "string") ? {personalBest:draft.personalBest as PersonalBestForm} : {}),
       reviewedWeightId: typeof draft.reviewedWeightId === "string" ? draft.reviewedWeightId : null,
     };
   } catch { return null; }

@@ -24,6 +24,24 @@ function GuidanceCard({ number, title, guide, children }: { number: string; titl
 }
 function segmentEndpoint(s: Segment) { return s.endpoint || (s.seconds == null ? undefined : { type: "time" as const, seconds: s.seconds }); }
 
+
+/** Optional evidence details supplement the universal card without a second workout UI. */
+export function TrainingReferenceDetails({ plan }: { plan: DailyTraining }) {
+  const {session, profile} = plan;
+  const metric = profile.unitSystem === "metric";
+  const ready = session.verdict == null || session.verdict === "ready";
+  const es = plan.language === "es";
+  const missingTargets = [...new Set(plan.workoutCard
+    ? plan.workoutCard.session.steps.flatMap(step => step.target.missingReason ? [step.target.missingReason] : [])
+    : plan.blocks.flatMap(block => block.segments.flatMap(step => step.target.type === "open" && step.target.note ? [step.target.note] : [])))];
+  return <details className="jmm-panel" data-training-references="true"><summary><b>{es ? "Referencias de entrenamiento, densidad y energía" : "Training references, density & energy"}</b><span className="jmm-plus" aria-hidden="true">+</span></summary>
+    <section className="jmm-metrics" aria-label="Workout overview"><div><small>{session.durationIsEstimate ? "ESTIMATED TIME" : "TIME"}</small><b>{session.totalMinutes} min</b><span>{session.durationIsEstimate ? "Endpoints below control execution" : "including timed recovery"}</span></div><div><small>DENSITY</small><b>{ready && session.density.score != null ? `${session.density.score} / 10` : "—"}</b><span>{session.density.missingReason || session.density.label}</span></div><div><small>ENERGY</small><b>{session.calories.kcal == null ? "—" : `${session.calories.method === "estimate" ? "~" : ""}${Math.round(session.calories.kcal)} kcal`}</b><span>{session.calories.kcal == null ? session.calories.missingReason : session.calories.method}</span></div></section>
+    {!ready && <p>{es ? "La duración indica que no hay una prescripción ejecutable; no es una medición de un entrenamiento realizado." : "The duration reflects no executable prescription; it is not a measurement of a completed workout."}</p>}
+    {!!missingTargets.length && <div className="jmm-panel-body"><b>{es ? "Por qué faltan objetivos" : "Why targets are unavailable"}</b><ul>{missingTargets.map(reason => <li key={reason}>{reason}</li>)}</ul></div>}
+<div className="jmm-panel-body"><p>Targets shown with each step are plan references, not live measurements. Missing benchmarks do not require a device.</p>{session.sport === "run" ? <div className="jmm-pace-grid">{paceKeys.map(key => <div key={key}><small>{paceNames[key]}</small><b>{pace(profile.paces[key].secondsPerMile, metric)}</b><span>{profile.paces[key].missingReason || profile.paces[key].status.replace("_", " ")}</span>{profile.paces[key].note && <span>{profile.paces[key].note}</span>}</div>)}</div> : <p>Use the {session.sport} instructions and targets below. Running race-pace references do not apply to this session.</p>}{["run", "bike"].includes(session.sport) && <p>Threshold HR: <b>{profile.thresholdHeartRate.bpm == null ? "— (not recorded)" : `${profile.thresholdHeartRate.bpm} bpm`}</b> · {profile.thresholdHeartRate.status.replace("_", " ")}</p>}<a href={plan.links.editProfile}>Edit training profile</a></div>
+  </details>;
+}
+
 export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved }: Props) {
   const { session, profile, blocks, guidance } = plan;
   const [focus, setFocus] = useState(plan.completion.focusReady);
@@ -70,15 +88,16 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved 
   return <main className="jmm-screen">
     {plan.workoutCard && <UniversalWorkoutCard key={plan.workoutCard.session.revision} card={plan.workoutCard} onSaved={onSaved}/>}
     {plan.workoutCard && <div className="jmm-panel-body"><button type="button" className="jmm-button" disabled={busy||!ready} aria-pressed={focus} onClick={toggleFocus}>{focus?(plan.language==="es"?"Preparación lista ✓":"Focus ready ✓"):(plan.language==="es"?"Marcar preparación lista":"Mark focus ready")}</button>{error&&<p role="alert">{error}</p>}</div>}
+    {plan.workoutCard && <TrainingReferenceDetails plan={plan} />}
     {!plan.workoutCard && <>
     <header className="jmm-brand"><span className="jmm-monogram">j.</span><div><b>JAS MIAMI METHOD</b><small>DAILY TRAINING</small></div><span className="jmm-kicker">{session.sport.toUpperCase()}</span></header>
     <section className="jmm-hero"><small>YOUR SESSION · {session.dateLocal} · {session.timezone}</small><h1>{session.title}</h1><p>{session.subtitle}</p><span className="jmm-pill">{session.verdict === "blocked" ? "Needs information" : session.verdict === "rest" ? "Rest" : session.planStatus.replace("_", " ")}</span><span className="jmm-pill">{session.sport}</span></section>
     {session.capability && session.sourceRevision && <FitDownloadActions key={`${session.id}-${session.sourceRevision}`} sessionId={session.id} revision={session.sourceRevision} title={session.title} capability={session.capability} />}
     {!ready && <p role="status" className="jmm-alert">{session.subtitle} {session.verdict === "blocked" && <a href="/checkin">Review today&apos;s check-in</a>}</p>}
-    <section className="jmm-metrics" aria-label="Workout overview"><div><small>{session.durationIsEstimate ? "ESTIMATED TIME" : "TIME"}</small><b>{session.totalMinutes} min</b><span>{session.durationIsEstimate ? "Endpoints below control execution" : "including timed recovery"}</span></div><div><small>DENSITY</small><b>{ready && session.density.score != null ? `${session.density.score} / 10` : "—"}</b><span>{session.density.missingReason || session.density.label}</span></div><div><small>ENERGY</small><b>{session.calories.kcal == null ? "—" : `~${Math.round(session.calories.kcal)} kcal`}</b><span>{session.calories.kcal == null ? session.calories.missingReason : session.calories.method}</span></div></section>
+    <TrainingReferenceDetails plan={plan} />
     {mismatch && <p className="jmm-alert" role="alert">Plan needs review: timed blocks total {Number((seconds / 60).toFixed(2))} min; the header says {session.totalMinutes} min.</p>}
     {error && <p className="jmm-alert" role="alert">{error}</p>}
-    <details className="jmm-panel"><summary><span className="jmm-num">00</span><b>Your training references</b><span className="jmm-plus" aria-hidden="true">+</span></summary><div className="jmm-panel-body"><p>Targets shown with each step are plan references, not live measurements. Missing benchmarks do not require a device.</p>{session.sport === "run" ? <div className="jmm-pace-grid">{paceKeys.map(key => <div key={key}><small>{paceNames[key]}</small><b>{pace(profile.paces[key].secondsPerMile, metric)}</b><span>{profile.paces[key].missingReason || profile.paces[key].status.replace("_", " ")}</span></div>)}</div> : <p>Use the {session.sport} instructions and targets below. Running race-pace references do not apply to this session.</p>}{["run", "bike"].includes(session.sport) && <p>Threshold HR: <b>{profile.thresholdHeartRate.bpm == null ? "— (not recorded)" : `${profile.thresholdHeartRate.bpm} bpm`}</b> · {profile.thresholdHeartRate.status.replace("_", " ")}</p>}<a href={plan.links.editProfile}>Edit training profile</a></div></details>
+
     <GuidanceCard number="01" title="Before you begin · Preparation" guide={guidance.focus}><button type="button" className="jmm-button" disabled={busy || !ready} aria-pressed={focus} onClick={toggleFocus}>{focus ? "Focus ready ✓" : "Mark focus ready"}</button></GuidanceCard>
     <GuidanceCard number="02" title="Before training · Fuel" guide={guidance.preFuel} />
     {allTimed && <section className="jmm-chart-card" aria-label="Workout sequence"><div className="jmm-row"><b>Session map</b><small>timed step sequence</small></div><div className="jmm-chart" role="img" aria-label={chart.map(s => `${s.title}: ${endpointLabel(segmentEndpoint(s), metric, session.sport)}`).join("; ")}>{chart.map(s => <div key={s.chartKey} className={`jmm-bar jmm-${s.kind}`} style={{ flexGrow: (s.seconds || 0) / (seconds || 1), flexBasis: 0 }} title={`${s.title} · ${endpointLabel(segmentEndpoint(s), metric, session.sport)}`} />)}</div></section>}

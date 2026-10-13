@@ -77,6 +77,7 @@ export function isUniversalWorkoutCard(v: unknown): v is UniversalWorkoutCard {
         ["time", "distance", "reps", "lap"].includes(st.endpoint.type) &&
         object(st.target) &&
         typeof st.target.label === "string" &&
+        (st.target.missingReason === undefined || typeof st.target.missingReason === "string") &&
         ["explicit","profile_reference","effort"].includes(st.target.source) &&
         ["open","power","heartRate","pace","speed","swimStroke"].includes(st.target.type) &&
         (st.endpoint.type === "lap" || (Number.isFinite(st.endpoint[st.endpoint.type === "time" ? "seconds" : st.endpoint.type === "distance" ? "meters" : "reps"]) && st.endpoint[st.endpoint.type === "time" ? "seconds" : st.endpoint.type === "distance" ? "meters" : "reps"] > 0)) &&
