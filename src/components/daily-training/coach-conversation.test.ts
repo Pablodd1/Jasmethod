@@ -166,3 +166,18 @@ test("safety next-step links do not need a proposal or saved receipt", () => {
   assert.deepEqual(coachPendingActions({ ok: true, pendingActions: ["review_checkin", "unexpected", "review_checkin"] }), ["review_checkin"]);
   assert.deepEqual(coachPendingActions({ ok: true }), []);
 });
+
+for (const es of [false, true]) test(`chat composer precedes closed optional tools and privacy (${es ? "ES" : "EN"})`, () => {
+  const markup = renderToStaticMarkup(React.createElement(CoachConversation, { es, athleteId: "test-athlete", onConfirmed: () => undefined }));
+  const composer = markup.indexOf("<textarea");
+  const send = markup.indexOf('type="submit"');
+  const tools = markup.indexOf(es ? "Herramientas opcionales" : "Optional tools");
+  const workout = markup.indexOf(es ? "Sesión sobre la que hablas" : "Workout you are discussing");
+  const privacy = markup.indexOf(es ? "Privacidad y detalles" : "Privacy &amp; conversation");
+  assert.ok(composer >= 0 && composer < send && send < tools && tools < workout && workout < privacy);
+  assert.equal((markup.match(/<details/g) || []).length, 2);
+  assert.doesNotMatch(markup, /<details[^>]*\bopen(?:=|>|\s)/);
+  assert.ok(markup.includes("Google Gemini") && markup.includes("OpenAI"));
+  assert.ok(markup.includes(es ? "revisión y confirmación" : "review and confirmation"));
+  assert.ok(markup.includes(es ? "Sí, borrar conversación" : "Yes, clear conversation") === false);
+});

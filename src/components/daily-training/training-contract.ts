@@ -4,7 +4,7 @@ import type { UniversalWorkoutCard } from "@/lib/universal-workout-card";
 import { isUniversalWorkoutCard } from "@/lib/universal-workout-card";
 
 export type Endpoint = { type: "time"; seconds: number } | { type: "distance"; meters: number } | { type: "reps"; reps: number } | { type: "lap" };
-export type PaceRef = { secondsPerMile: number | null; measuredAt: string | null; status: 'measured' | 'coach_set' | 'missing'; missingReason?: string | null };
+export type PaceRef = { secondsPerMile: number | null; measuredAt: string | null; status: 'measured' | 'coach_set' | 'estimated' | 'missing'; note?: string; missingReason?: string | null };
 export type PaceKey = 'mile' | '5k' | '10k' | 'half' | 'marathon' | 'easy';
 export type Target = { label: string; paceLowSecondsPerMile: number | null; paceHighSecondsPerMile: number | null; rpeLow: number | null; rpeHigh: number | null; heartRateBpm: number | null; note?: string; type?: string; low?: number; high?: number; source?: string; stroke?: string };
 export type Segment = { id: string; seconds: number | null; endpoint?: Endpoint; estimatedSeconds?: number | null; kind: 'easy' | 'prep' | 'work' | 'recover' | 'cool' | 'other'; title: string; instruction: string; target: Target };
@@ -40,9 +40,14 @@ export function isDailyTraining(v: unknown): v is DailyTraining {
   if (![s, p, g, c, l].every(record) || !Array.isArray(blocks)) return false;
   if (!["id", "title", "subtitle", "sport", "dateLocal", "timezone"].every(k => typeof s[k] === "string") ||
       !Number.isSafeInteger(s.revision) || s.revision < 1 || !finite(s.totalMinutes) || s.totalMinutes < 0 || s.totalMinutes > 1440) return false;
-  if (!["planned", "in_progress", "completed"].includes(s.planStatus) || !record(s.density) || (s.density.score == null ? v.schemaVersion !== 2 || typeof s.density.missingReason !== "string" || !s.density.missingReason : !Number.isInteger(s.density.score) || s.density.score < 1 || s.density.score > 10) || typeof s.density.label !== "string") return false;
-  if (!record(s.calories) || !optionalNumber(s.calories.kcal) || !record(p.paces) || !record(p.thresholdHeartRate) || !optionalNumber(p.thresholdHeartRate.bpm)) return false;
-  if (!["mile", "5k", "10k", "half", "marathon", "easy"].every(k => record(p.paces[k]) && optionalNumber(p.paces[k].secondsPerMile) && ["measured", "coach_set", "missing"].includes(p.paces[k].status))) return false;
+  if (!["planned", "in_progress", "completed"].includes(s.planStatus) || !record(s.density) || (s.density.score == null ? v.schemaVersion !== 2 || typeof s.density.missingReason !== "string" || !s.density.missingReason : !Number.isInteger(s.density.score) || s.density.score < 1 || s.density.score > 10) || typeof s.density.label !== "string" || s.density.method !== "coach_planning" || (s.density.missingReason !== undefined && typeof s.density.missingReason !== "string")) return false;
+  if (!record(s.calories) || !optionalNumber(s.calories.kcal) || !["wearable", "estimate", "none"].includes(s.calories.method) ||
+      (s.calories.missingReason !== null && typeof s.calories.missingReason !== "string") ||
+      (s.calories.asOf !== null && typeof s.calories.asOf !== "string") || !record(p.paces) ||
+      !record(p.thresholdHeartRate) || !optionalNumber(p.thresholdHeartRate.bpm) ||
+      !["measured", "coach_set", "missing"].includes(p.thresholdHeartRate.status) ||
+      (p.thresholdHeartRate.measuredAt !== null && typeof p.thresholdHeartRate.measuredAt !== "string")) return false;
+  if (!["mile", "5k", "10k", "half", "marathon", "easy"].every(k => record(p.paces[k]) && (p.paces[k].note == null || typeof p.paces[k].note === "string") && (p.paces[k].missingReason == null || typeof p.paces[k].missingReason === "string") && optionalNumber(p.paces[k].secondsPerMile) && ["measured", "coach_set", "estimated", "missing"].includes(p.paces[k].status))) return false;
   if (!["imperial", "metric"].includes(p.unitSystem) || typeof p.updatedAt !== "string") return false;
   if (!["focus", "preFuel", "postFuel", "downshift", "checkIn"].every(k => record(g[k]) && typeof g[k].title === "string" && Array.isArray(g[k].items) && g[k].items.every((i: unknown) => typeof i === "string"))) return false;
   if (typeof c.focusReady !== "boolean" || typeof l.editProfile !== "string") return false;
@@ -62,6 +67,7 @@ export function isDailyTraining(v: unknown): v is DailyTraining {
       if (!validEndpoint(segment.endpoint) || (segment.endpoint.type === "time" ? segment.seconds !== segment.endpoint.seconds : segment.seconds !== null)) return false;
       if (!optionalNumber(segment.estimatedSeconds) || (segment.estimatedSeconds != null && segment.estimatedSeconds < 0)) return false;
       const t = segment.target;
+      if (t.note !== undefined && typeof t.note !== "string") return false;
       if (!["open", "power", "heartRate", "pace", "speed", "swimStroke"].includes(t.type) || !["explicit", "profile_reference", "effort"].includes(t.source)) return false;
       if (t.type === "swimStroke" && !["freestyle", "backstroke", "breaststroke", "butterfly", "drill", "mixed", "im"].includes(t.stroke)) return false;
       return ["open", "swimStroke"].includes(t.type) ? t.low == null && t.high == null : finite(t.low) && finite(t.high) && t.low >= 0 && t.high > 0 && t.low <= t.high;

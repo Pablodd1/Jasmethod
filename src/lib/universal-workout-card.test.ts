@@ -1,4 +1,5 @@
 import test from "node:test";
+import { isUniversalWorkoutCard } from "./universal-workout-card";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import React, { createElement } from "react";
@@ -181,4 +182,15 @@ test("delivery subject identifies the actual sport and sanitizes date headers",a
   assert.doesNotMatch(mail.subject,/[\r\n]/);
   assert.match(manualWorkoutEmail({...input,language:"es",workoutSport:"bike"}).subject,/Ciclismo entrenamiento/);
   assert.match(manualWorkoutEmail({...input,kind:"held",workoutSport:"run"}).subject,/on hold/);
+});
+
+
+test("unavailable-target explanations are verified as text before rendering", () => {
+  const card = universalWorkoutExample();
+  card.session.steps[0].target.missingReason = "No verified target is available";
+  assert.equal(isUniversalWorkoutCard(card), true);
+  for (const value of [{reason:"Missing"}, ["Missing"], null, 7]) {
+    (card.session.steps[0].target as any).missingReason = value;
+    assert.equal(isUniversalWorkoutCard(card), false);
+  }
 });

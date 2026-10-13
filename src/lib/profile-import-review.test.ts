@@ -1,3 +1,4 @@
+import { readManualPersonalBests, onboardingRaceResults } from "./onboarding-evidence";
 import { parseNutritionContext } from "./nutrition-context";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -40,7 +41,8 @@ test("import review preserves old observations, returns scoped history and no se
   db.metricObservation.findMany=async(q:any)=>{state.queries.push(q);return[row]};
   db.connector.findMany=async(q:any)=>{state.queries.push(q);return[{provider:"strava",status:"connected",lastSyncAt:date,lastSyncCount:1}]};
   db.workout={aggregate:async(q:any)=>{state.queries.push(q);return{_count:{_all:1},_min:{date},_max:{date}}},groupBy:async(q:any)=>{state.queries.push(q);return[{sport:"run",_count:{_all:1}}]}};
-  const api=load("src/app/api/onboard/import-review/route.ts",{"@/lib/auth":{getCurrentUser:async()=>state.authenticated?{id:"user-a"}:null},"@/lib/db":{prisma:db},"@/lib/onboarding-imports":{ONBOARDING_METRICS,onboardingObservations},"@/lib/profile-import-review":helper});
+  db.race={findMany:async(q:any)=>{state.queries.push(q);return[]}};
+  const api=load("src/app/api/onboard/import-review/route.ts",{"@/lib/auth":{getCurrentUser:async()=>state.authenticated?{id:"user-a"}:null},"@/lib/db":{prisma:db},"@/lib/onboarding-evidence":{onboardingRaceResults},"@/lib/onboarding-imports":{ONBOARDING_METRICS,onboardingObservations},"@/lib/profile-import-review":helper});
   const response=await api.GET(),body=await response.json();assert.equal(response.status,200);assert.equal(body.observations.length,1);assert.equal(body.suggestions[0].kind,"reported");assert.equal(body.history.count,1);assert.equal(body.history.sports[0].sport,"run");assert.equal(state.fetches,0);assert.ok(state.queries.every(q=>q.where.userId==="user-a"));assert.match(response.headers.get("cache-control"),/no-store/);
   state.authenticated=false;const before=state.queries.length;assert.equal((await api.GET()).status,401);assert.equal(state.queries.length,before);
 });
@@ -55,7 +57,7 @@ test("weight suggestions omit stale, disconnected and suspect values without gue
 function adoptionFixture(weightSource="manual") {
   const {helper}=fixture();
   class ApiError extends Error { constructor(message:string, public status=400){super(message)} }
-  const patch=load("src/lib/profile-update.ts",{"./nutrition-context":{parseNutritionContext},"./access":{ApiError},"./dates":{parseDate:()=>{throw Error("unexpected date edit")}}});
+  const patch=load("src/lib/profile-update.ts",{"./onboarding-evidence":{readManualPersonalBests},"./nutrition-context":{parseNutritionContext},"./access":{ApiError},"./dates":{parseDate:()=>{throw Error("unexpected date edit")}}});
   const state={source:"strava",method:"provider_profile_reported",connected:true,quality:"ok",observedAt:new Date(),writes:[] as any[],audits:[] as any[]};
   const before={id:"profile",userId:"owner",weightKg:70,weightSource};
   const tx={

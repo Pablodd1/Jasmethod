@@ -1,6 +1,7 @@
 "use client";
 
 import { ONBOARDING_STEP, onboardingNext, onboardingResume, type OnboardingStep } from "@/lib/onboarding-flow";
+import { ONBOARDING_ANCHORS, missingOnboardingAnchors, readManualPersonalBests, appendManualPersonalBest } from "@/lib/onboarding-evidence";
 import { saveReviewedProfile } from "@/lib/profile-client";
 import { onboardingSectionPayload, type OnboardingSection, type SavedOnboarding } from "@/lib/onboarding-save";
 import { DoubleDayFields } from "@/components/double-day-fields";
@@ -8,7 +9,7 @@ import { TravelFields } from "@/components/travel-fields";
 import { PLANNABLE_GOALS, planningGoal } from "@/lib/planning-setup";
 import { dateKey } from "@/lib/dates";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { EMPTY_PROFILE, EMPTY_SETUP, EMPTY_RACE, hydrateOnboarding, onboardingDraftKey, restoreOnboardingDraft, type RaceForm } from "@/lib/onboarding-form";
+import { EMPTY_PROFILE, EMPTY_SETUP, EMPTY_RACE, EMPTY_PERSONAL_BEST, hydrateOnboarding, onboardingDraftKey, restoreOnboardingDraft, type RaceForm } from "@/lib/onboarding-form";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { User, Flag, CheckCircle2, ArrowRight, ArrowLeft } from "lucide-react";
@@ -22,8 +23,9 @@ const LANGS = [
 
 type Provider = { id: string; name: string; description: string; configured: boolean; method: string; connectUrl?: string; status: string; lastSyncAt?: string | null; lastError?: string | null };
 type ImportReview = {
-  observations?: { id: string; metricType: string; value: number; unit: string; source: string; observedAt: string }[];
+  observations?: { id: string; metricType: string; value: number; unit: string; source: string; observedAt: string; kind: string }[];
   suggestions?: { observationId: string; field: "weightKg"; value: number; unit: string; source: string; observedAt: string; kind: string }[];
+  raceResults?: {id:string;name:string;distance:string;minutes:number;date:string;source:string|null;kind:string}[];
   history?: { count: number; earliestAt: string | null; latestAt: string | null; sports: { sport: string; count: number }[] };
 };
 type SavedRace = RaceForm & { id: string; priority?: number };
@@ -37,6 +39,8 @@ export function DetailedAthleteSetup() {
   const requestedGoal = query.get("goal");
   const requestedWeeks = query.get("weeks");
   const redo = query.get("redo") === "1";
+  const advanced = query.get("advanced") === "1";
+  const fullPlanningSetup = advanced || returnToTraining;
   const [savedReadiness, setSavedReadiness] = useState<{ready:boolean;missing:string[];review:string[]}|null>(null);
   const [step, setStep] = useState<OnboardingStep>(ONBOARDING_STEP.devices);
   const [saving, setSaving] = useState(false);
@@ -57,6 +61,8 @@ export function DetailedAthleteSetup() {
   const [raceId, setRaceId] = useState<string | null>(null);
   const [race, setRace] = useState<RaceForm>({...EMPTY_RACE});
   const [races, setRaces] = useState<SavedRace[]>([]);
+  const [personalBest, setPersonalBest] = useState({...EMPTY_PERSONAL_BEST});
+  const [editSavedGoals, setEditSavedGoals] = useState(false);
   const [raceLoadError, setRaceLoadError] = useState(false);
   const t = (en: string, esp: string) => (lang === "es" ? esp : en);
   useEffect(() => { if (user?.language) setLang(user.language); }, [user?.id, user?.language]);
@@ -87,7 +93,7 @@ export function DetailedAthleteSetup() {
       let draft = null;
       try {
         const raw = sessionStorage.getItem(onboardingDraftKey(user.id));
-        draft = restoreOnboardingDraft(raw,user.id,data.revision,data.setupRevision ?? null);
+        draft = restoreOnboardingDraft(raw,user.id,data.revision,data.setupRevision ?? null,data.profile ?? null);
         if (raw && !draft) {
           sessionStorage.removeItem(onboardingDraftKey(user.id));
           setNotice("Your saved profile changed. The latest saved answers are shown; an older tab draft was not applied.");
@@ -102,6 +108,7 @@ export function DetailedAthleteSetup() {
       }
       setProfile(nextProfile); setSetup(nextSetup);
       setReviewedWeightId(draft?.reviewedWeightId ?? null);
+      setPersonalBest(draft?.personalBest ?? {...EMPTY_PERSONAL_BEST});
       setRevision(data.revision); setSetupRevision(data.setupRevision ?? null);
       setSavedReadiness(data.planningReadiness ?? null);
       setStep(requestedStep ? onboardingResume(requestedStep) : draft?.step ?? ONBOARDING_STEP.devices);
@@ -121,42 +128,67 @@ export function DetailedAthleteSetup() {
   useEffect(() => {
     if (!user?.id || loadedUserId.current !== user.id || checking || !revision) return;
     try {
-      sessionStorage.setItem(onboardingDraftKey(user.id), JSON.stringify({version:1,userId:user.id,revision,setupRevision,profile,setup,step,race,raceId,reviewedWeightId}));
+      sessionStorage.setItem(onboardingDraftKey(user.id), JSON.stringify({version:1,userId:user.id,revision,setupRevision,profile,setup,step,race,raceId,reviewedWeightId,personalBest}));
       setDraftStorageError(false);
     } catch { setDraftStorageError(true); }
-  }, [user?.id,checking,revision,setupRevision,profile,setup,step,race,raceId,reviewedWeightId]);
+  }, [user?.id,checking,revision,setupRevision,profile,setup,step,race,raceId,reviewedWeightId,personalBest]);
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [connectionError, setConnectionError] = useState("");
   const [importReview, setImportReview] = useState<ImportReview>({});
   const [refreshing, setRefreshing] = useState(false);
   const importRequest = useRef(0);
+  const importInFlight = useRef(false);
+  const importController = useRef<AbortController | null>(null);
+  const currentStep = useRef(step);
+  currentStep.current = step;
   const reviewImports = useCallback(async () => {
+    // Focus, pageshow, polling and the refresh button share one in-flight request.
+    if (importInFlight.current) return;
+    importInFlight.current = true;
     const requestId = ++importRequest.current;
+    const controller = new AbortController();
+    importController.current = controller;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]);
     setRefreshing(true); setConnectionError("");
     const responses = await Promise.allSettled([
-      fetch("/api/connectors", {cache:"no-store", signal:AbortSignal.timeout(15000)}).then(async response => {if(!response.ok) throw Error("connections");return response.json();}),
-      fetch("/api/onboard/import-review", {cache:"no-store", signal:AbortSignal.timeout(15000)}).then(async response => {if(!response.ok) throw Error("imports");return response.json();}),
+      fetch("/api/connectors", {cache:"no-store", signal}).then(async response => {if(!response.ok) throw Error("connections");return response.json();}),
+      fetch("/api/onboard/import-review", {cache:"no-store", signal}).then(async response => {if(!response.ok) throw Error("imports");return response.json();}),
     ]);
     if (requestId !== importRequest.current) return;
+    if (responses[0].status === "rejected") setProviders([]);
+    if (responses[1].status === "rejected") setImportReview({});
     if (responses[0].status === "fulfilled") setProviders(responses[0].value.providers ?? []);
     if (responses[1].status === "fulfilled") setImportReview(responses[1].value);
     if (responses.some(result=>result.status === "rejected")) setConnectionError("Some connection or import information could not be refreshed. You can continue manually and retry later.");
+    importInFlight.current = false;
+    importController.current = null;
     setRefreshing(false);
   }, []);
-  const cancelImportRefresh = useCallback(() => { importRequest.current++; }, []);
-  useEffect(() => { setProviders([]); setImportReview({}); if (user?.id) void reviewImports(); return cancelImportRefresh; }, [user?.id, reviewImports, cancelImportRefresh]);
-
-  // Refresh imported evidence after a queued sync and when returning from authorization.
-  // Only evidence cards change; unsaved athlete answers are never overwritten.
+  const cancelImportRefresh = useCallback(() => {
+    importRequest.current++;
+    importController.current?.abort();
+    importController.current = null;
+    importInFlight.current = false;
+  }, []);
   useEffect(() => {
-    if (!user?.id || ![ONBOARDING_STEP.devices,ONBOARDING_STEP.profile].includes(step as 1 | 2)) return;
-    const timer = window.setInterval(()=>{if(document.visibilityState === "visible") void reviewImports();},15000);
-    const focus = ()=>void reviewImports();
-    window.addEventListener("focus",focus);
+    setProviders([]); setImportReview({}); setRefreshing(false);
+    if (!user?.id) return;
+    // Update evidence only. Never refetch/hydrate the editable profile over a draft.
+    const onReturn = () => { if (document.visibilityState === "visible") void reviewImports(); };
+    const timer = window.setInterval(() => {
+      if ([ONBOARDING_STEP.devices, ONBOARDING_STEP.profile].includes(currentStep.current as 1 | 2)) onReturn();
+    }, 15000);
+    window.addEventListener("focus", onReturn);
+    window.addEventListener("pageshow", onReturn);
     void reviewImports();
-    return ()=>{window.clearInterval(timer);window.removeEventListener("focus",focus);cancelImportRefresh();};
-  },[user?.id,step,reviewImports,cancelImportRefresh]);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onReturn);
+      window.removeEventListener("pageshow", onReturn);
+      cancelImportRefresh();
+    };
+  }, [user?.id, reviewImports, cancelImportRefresh]);
 
   async function changeLang(language: string) {
     setError("");
@@ -171,13 +203,22 @@ export function DetailedAthleteSetup() {
     if (savingRef.current) return false;
     savingRef.current = true; setSaving(true); setError(""); setNotice("");
     try {
-      const fields: Record<string,unknown> = onboardingSectionPayload(section, profile, setup, savedOnboarding.current, setupRevision);
+      const nextProfile = section === "essentials" && Object.values(personalBest).some(Boolean)
+        ? {...profile,manualPrs:appendManualPersonalBest(profile.manualPrs,personalBest,dateKey(new Date(),user?.timezone))}
+        : profile;
+      const fields: Record<string,unknown> = onboardingSectionPayload(section, nextProfile, setup, savedOnboarding.current, setupRevision);
+      if (!Object.keys(fields).length) return true;
       if (section === "profile" && reviewedWeightId) fields.reviewedWeightObservationId = reviewedWeightId;
       const result = await saveReviewedProfile(fields, revision);
+      if (!result.profile || typeof result.profile !== "object" || Array.isArray(result.profile)) throw Error("The saved profile could not be verified. Reload before saving again.");
       savedOnboarding.current = {profile:result.profile ?? {},setup:result.setup ?? null};
       setSavedReadiness(result.planningReadiness ?? null);
       setRevision(result.revision); setSetupRevision(result.setupRevision);
       if (section === "profile") setReviewedWeightId(null);
+      if (section === "essentials") {
+        setProfile(current => ({...current,manualPrs:typeof result.profile?.manualPrs === "string" ? result.profile.manualPrs : ""}));
+        setPersonalBest({...EMPTY_PERSONAL_BEST});
+      }
       setNotice(t("Section saved to your profile. Existing training stays in place until you review and confirm a plan update.", "Sección guardada en tu perfil. El entrenamiento actual se conserva hasta revisar y confirmar un cambio de plan."));
       return true;
     } catch(e) { setError((e as Error).message); return false; }
@@ -217,21 +258,30 @@ export function DetailedAthleteSetup() {
     savingRef.current = true; setSaving(true); setError("");
     try {
       const response = await fetch("/api/onboard", {method:"POST",headers:{"Content-Type":"application/json"},body:"{}",signal:AbortSignal.timeout(15000)});
-      if (!response.ok) throw Error("Could not finish onboarding. Your saved answers remain available; please retry.");
+      const result = await response.json();
+      if (!response.ok || result.ok !== true) throw Error("Could not finish onboarding. Your saved answers remain available; please retry.");
       completedRef.current = true;
       await refresh(); router.push(destination);
     } catch(e) { setError((e as Error).message); }
     finally { savingRef.current = false; setSaving(false); }
   }
 
+  const savedAnswers = hydrateOnboarding(savedOnboarding.current.profile,savedOnboarding.current.setup);
+  const manualBests = readManualPersonalBests(profile.manualPrs);
+  const savedGoal = savedAnswers.profile.goal;
+  const showGoal = advanced || editSavedGoals || profile.goal !== savedGoal || !savedGoal || !PLANNABLE_GOALS.includes(planningGoal(savedGoal)!);
+  const showExperience = advanced || editSavedGoals || profile.experience !== savedAnswers.profile.experience || !savedAnswers.profile.experience;
+  const evidenceMetric = (metric: string) => ({weight_kg:t("Weight", "Peso"),resting_hr:t("Resting heart rate", "FC en reposo"),hrv_rmssd:t("Heart-rate variability (RMSSD)", "Variabilidad cardíaca (RMSSD)"),hrv_sdnn:t("Heart-rate variability (SDNN)", "Variabilidad cardíaca (SDNN)"),sleep_hours:t("Sleep", "Sueño")}[metric] ?? metric);
+  const evidenceKind = (kind: string) => kind === "estimated" ? t("Estimated", "Estimado") : kind === "measured" ? t("Sensor measurement imported", "Medición del sensor importada") : kind === "manual" ? t("Manually reported", "Declarado manualmente") : kind === "reported" ? t("Provider-reported", "Declarado por proveedor") : kind === "unverified" ? t("Source unverified", "Fuente sin verificar") : t("Imported record", "Registro importado");
+
   // Step indicator
   const STEPS = [
     {step:ONBOARDING_STEP.devices,label:t("1. Connections", "1. Conexiones")},
-    {step:ONBOARDING_STEP.profile,label:t("2. Profile", "2. Perfil")},
+    {step:ONBOARDING_STEP.profile,label:t("2. Your data", "2. Tus datos")},
     {step:ONBOARDING_STEP.race,label:t("3. Goals & schedule", "3. Objetivos y horario")},
     {step:ONBOARDING_STEP.done,label:t("4. Your plan", "4. Tu plan")},
   ];
-  const OPTIONAL_STEPS = [{step:ONBOARDING_STEP.zones,label:t("Training anchors (optional)", "Referencias (opcional)")},{step:ONBOARDING_STEP.travel,label:t("Travel (optional)", "Viajes (opcional)")}];
+  const OPTIONAL_STEPS = [{step:ONBOARDING_STEP.zones,label:t("Edit saved thresholds", "Editar umbrales guardados")},{step:ONBOARDING_STEP.travel,label:t("Travel (optional)", "Viajes (opcional)")}];
 
   if (checking) {
     return (
@@ -246,7 +296,7 @@ export function DetailedAthleteSetup() {
   return (
     <ProtectedPage>
       <div className="max-w-2xl mx-auto py-6 px-1 sm:px-4">
-        <header className="mb-5 space-y-2"><p className="text-sm font-semibold">{t("Free pilot · no payment required", "Piloto gratuito · sin pago")}</p><h1 className="font-display text-3xl">{user?.onboarded ? t("Review your athlete setup", "Revisa tu perfil de atleta") : t("Welcome to JMM", "Bienvenido a JMM")}</h1><p className="text-sm">{t("Connect an available source or skip it, review your information, then choose a goal and training plan.", "Conecta una fuente disponible u omítela, revisa tus datos y elige un objetivo y plan de entrenamiento.")}</p></header>
+        <header className="mb-5 space-y-2"><p className="text-sm font-semibold">{t("Free pilot · no payment required", "Piloto gratuito · sin pago")}</p><h1 className="font-display text-3xl">{user?.onboarded ? t("Review your athlete setup", "Revisa tu perfil de atleta") : t("Welcome to JMM", "Bienvenido a JMM")}</h1><p className="text-sm">{t("Connect or import first. We will show what is actually available and ask only for missing personal bests, thresholds and goals. Everything stays editable in your profile.", "Conecta o importa primero. Mostraremos los datos disponibles y pediremos solo marcas, umbrales y objetivos que falten. Podrás editar todo en tu perfil.")}</p></header>
         {returnToTraining && <section className="mb-5 rounded-xl border border-ocean-200 bg-ocean-50 p-4 space-y-2">
           <h1 className="font-display text-2xl">{t("Planning setup", "Configuración del plan")}</h1>
           <p>{t("Review your goal, recent training, availability and restrictions below. Devices, zones and a race are optional. Save this section to return to your plan preview; nothing is assigned automatically.", "Revisa objetivo, entrenamiento reciente, disponibilidad y restricciones. Dispositivos, zonas y carrera son opcionales. Guarda esta sección para volver al plan; no se asigna nada automáticamente.")}</p>
@@ -294,59 +344,82 @@ export function DetailedAthleteSetup() {
           </div>
         )}
 
-        {/* Step 1: Profile */}
+        {/* Step 2: Acknowledge actual records, then collect only missing references. */}
         <fieldset disabled={!revision || saving} aria-label={t("Editable setup sections", "Secciones de configuración editables")}>
         {step === ONBOARDING_STEP.profile && (
-          <div>
-            <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
-              <User className="w-5 h-5 text-ocean-600" /> {lang === "es" ? "Tu perfil" : "Your profile"}
-            </h2>
-            <section className="card mb-4 space-y-3" aria-label={t("Saved identity and import review", "Identidad y datos importados")}>
-              <div><p className="font-semibold">{user?.name}</p><p className="break-words text-sm">{user?.email}</p><p className="text-xs">{t("Identity from your JMM sign-in. Imported accounts do not replace it.", "Identidad de tu acceso a JMM. Las cuentas importadas no la reemplazan.")}</p></div>
-              <h3 className="font-semibold">{t("Imported information to review", "Datos importados para revisar")}</h3>
-              <p className="text-sm">{t("Saved answers are prefilled. Imports never overwrite them automatically. Review source, date and whether a value was reported before using it.", "Los datos guardados aparecen aquí. La importación no los sobrescribe. Revisa fuente, fecha y si el valor es declarado antes de usarlo.")}</p>
-              <div className="text-sm"><p>{importReview.history ? `${importReview.history.count} ${t("completed imported activities stored", "actividades importadas realizadas guardadas")}` : t("Imported history has not been loaded yet.", "Aún no se ha cargado el historial importado.")}</p>{importReview.history?.latestAt && <p>{t("Latest recorded activity", "Actividad más reciente")}: {new Date(importReview.history.latestAt).toLocaleDateString()}</p>}{importReview.history?.sports.map(item=><span key={item.sport} className="inline-block rounded-full border px-2 py-1 mr-2 mt-2">{item.sport}: {item.count}</span>)}<p className="mt-2">{t("Stored history may be incomplete. It does not establish your current training capacity or a measured baseline.", "El historial guardado puede estar incompleto. No establece tu capacidad actual ni una referencia medida.")}</p></div>
-              {importReview.suggestions?.map(item=><div className="rounded-lg border p-3 text-sm" key={item.observationId}><p>{item.value} {item.unit} · {item.source === "apple_health" ? "Apple Health" : item.source} · {new Date(item.observedAt).toLocaleDateString()} · {item.kind === "uploaded_file" ? t("From your uploaded file; review before use", "De tu archivo; revisa antes de usar") : item.kind === "reported" ? t("Reported by the account, not a measured baseline", "Declarado por la cuenta, no es una referencia medida") : t("Imported observation", "Observación importada")}</p><button className="underline min-h-11" onClick={()=>{setProfile({...profile,weightKg:String(item.value)});setReviewedWeightId(item.observationId);}}>{t("Use this reviewed weight", "Usar este peso revisado")}</button></div>)}
-              {importReview.observations?.filter(item=>item.metricType !== "weight_kg").map(item=><p className="text-sm" key={item.id}>{item.metricType}: {item.value} {item.unit} · {item.source} · {new Date(item.observedAt).toLocaleDateString()} · {t("Imported record; not a training baseline", "Registro importado; no es una referencia de entrenamiento")}</p>)}
-              {!importReview.suggestions?.length && <p className="text-sm">{t("No eligible recent weight is available to adopt. Enter it manually or leave it unknown. Name, sex, age, height and training anchors are not inferred from activity history.", "No hay un peso reciente válido para adoptar. Introdúcelo manualmente o déjalo desconocido. Nombre, sexo, edad, altura y referencias no se infieren del historial.")}</p>}
+          <div className="space-y-5">
+            <h2 className="font-display text-2xl font-bold flex items-center gap-2"><User className="w-5 h-5 text-ocean-600" />{t("Here is what we have", "Estos son tus datos disponibles")}</h2>
+            <section className="card space-y-3" aria-label={t("Saved identity and import review", "Identidad y datos importados")}>
+              <div><p className="font-semibold">{user?.name}</p><p className="break-words text-sm">{user?.email}</p><p className="text-xs">{t("Your JMM account. Imports do not replace your identity or manual answers.", "Tu cuenta de JMM. Las importaciones no reemplazan tu identidad ni tus respuestas manuales.")}</p></div>
+              {refreshing && <p role="status">{t("Checking your imported records…", "Revisando tus registros importados…")}</p>}
+              {query.get("sync") === "queued" && <p role="status" className="text-sm">{t("Initial sync was queued after authorization. The counts below show only records already stored; refresh to check progress.", "La sincronización inicial quedó en cola tras autorizar. Los conteos muestran solo registros guardados; actualiza para revisar el progreso.")}</p>}
+              <div className="text-sm"><p className="font-semibold">{importReview.history ? `${importReview.history.count} ${t("completed imported activities stored", "actividades importadas realizadas guardadas")}` : t("— Imported history could not yet be verified.", "— Aún no se ha verificado el historial importado.")}</p>{importReview.history?.latestAt && <p>{t("Latest recorded activity", "Actividad más reciente")}: {new Date(importReview.history.latestAt).toLocaleDateString()}</p>}{importReview.history?.sports.map(item=><span key={item.sport} className="inline-block rounded-full border px-2 py-1 mr-2 mt-2">{item.sport}: {item.count}</span>)}<p className="mt-2">{t("This is the history stored in JMM, which may be incomplete. Connecting alone does not import every field or establish your current training capacity.", "Este es el historial guardado en JMM y puede estar incompleto. Conectar no importa todos los datos ni establece tu capacidad actual.")}</p></div>
+              {importReview.observations?.map(item=><p className="text-sm" key={item.id}>{evidenceMetric(item.metricType)}: {item.value} {item.unit} · {item.source} · {new Date(item.observedAt).toLocaleDateString()} · {evidenceKind(item.kind)}</p>)}
+              <p className="text-sm">{t("No age-based thresholds or personal bests are invented from activity history. Imported values keep their source; estimates are not measurements.", "No se inventan umbrales por edad ni marcas a partir del historial. Los valores importados conservan su fuente; las estimaciones no son mediciones.")}</p>
               {connectionError && <p role="alert" className="text-sm">{connectionError}</p>}<button disabled={refreshing} className="underline min-h-11" onClick={()=>void reviewImports()}>{refreshing ? "…" : t("Refresh imported information", "Actualizar datos importados")}</button>
             </section>
-            <div className="space-y-3">
+
+            <section className="space-y-3" aria-label={t("Saved and missing thresholds", "Umbrales guardados y pendientes")}>
+              <h3 className="font-semibold">{t("Thresholds and training references", "Umbrales y referencias de entrenamiento")}</h3>
+              <p className="text-sm">{t("We keep your saved references. Add only a missing value you actually know, or leave it unknown. A personal best is not a threshold test.", "Conservamos tus referencias guardadas. Añade solo un valor que conozcas o déjalo desconocido. Una marca personal no es una prueba de umbral.")}</p>
+              {ONBOARDING_ANCHORS.filter(({field})=>savedAnswers.profile[field] !== "").map(({field,en,es,unit})=><p key={field} className="rounded-lg border p-3 text-sm">{t(en,es)}: {savedAnswers.profile[field]} {unit} · {t("Saved reference; source and test date unverified", "Referencia guardada; fuente y fecha de prueba sin verificar")}</p>)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{missingOnboardingAnchors(savedOnboarding.current.profile).map(({field,en,es,unit,min,max})=><label className="block text-sm" key={field}>{t(en,es)} ({unit})<input id={`onboard-anchor-${field}`} className="input" type="number" min={min} max={max} step={field === "lthr" || field === "maxHr" ? "1" : "any"} placeholder={t("Unknown · optional", "Desconocido · opcional")} value={profile[field]} onChange={e=>setProfile({...profile,[field]:e.target.value})}/></label>)}</div>
+              <p className="text-xs">{t("New entries are recorded as athlete-reported references, not verified measurements. You can edit saved thresholds later in Profile & Zones.", "Los nuevos valores son referencias declaradas, no mediciones verificadas. Puedes editar los umbrales guardados después en Perfil y zonas.")}</p>
+            </section>
+
+            <section className="space-y-3" aria-label={t("Personal bests and recorded results", "Marcas personales y resultados guardados")}>
+              <h3 className="font-semibold">{t("Personal bests and race results", "Marcas personales y resultados de carreras")}</h3>
+              {manualBests === null ? <p role="alert">{t("Saved personal bests could not be verified. They have been preserved; review them in your profile.", "No se pudieron verificar las marcas guardadas. Se conservan; revísalas en tu perfil.")}</p> : manualBests.map((item,index)=><p key={`${item.label}-${index}`} className="text-sm">{item.label}: {item.value} {item.unit} · {item.date || t("Date unknown", "Fecha desconocida")} · {t("Manually reported", "Declarado manualmente")}</p>)}
+              {importReview.raceResults?.map(item=><p key={item.id} className="text-sm">{item.name} ({item.distance}): {item.minutes} min · {new Date(item.date).toLocaleDateString()} · {evidenceKind(item.kind)}{item.source ? ` · ${item.source}` : ""}</p>)}
+              {manualBests !== null && !manualBests.length && importReview.raceResults && !importReview.raceResults.length && <p className="text-sm">{t("— No saved personal best or actual race result is available here yet. You can add one or skip.", "— Aún no hay marcas ni resultados reales disponibles aquí. Puedes añadir uno u omitirlo.")}</p>}
+              {!importReview.raceResults && <p className="text-sm">{t("Imported race results: — not yet verified. You can retry the import review or continue with what you know.", "Resultados importados: — aún sin verificar. Puedes actualizar la revisión o continuar con lo que conoces.")}</p>}
+              <details open={Object.values(personalBest).some(Boolean) || undefined}><summary className="cursor-pointer min-h-11 content-center font-semibold">{t("Add a missing personal best (optional)", "Añadir una marca que falte (opcional)")}</summary>
+                <p className="text-sm mb-3">{t("Only add a result that is missing above. Use its actual distance or test label, value and units. No result date is assumed.", "Añade solo un resultado que falte arriba. Indica distancia o prueba, valor y unidades. No se supone ninguna fecha.")}</p>
+                <fieldset disabled={manualBests === null} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block text-sm">{t("Distance or test", "Distancia o prueba")}<input id="onboard-pb-label" className="input" maxLength={60} placeholder={t("e.g. 5K race or 100 m sprint", "p. ej. carrera 5K o 100 m")} value={personalBest.label} onChange={e=>setPersonalBest({...personalBest,label:e.target.value})}/></label>
+                  <label className="block text-sm">{t("Result", "Resultado")}<input id="onboard-pb-value" className="input" type="number" min="0" step="any" value={personalBest.value} onChange={e=>setPersonalBest({...personalBest,value:e.target.value})}/></label>
+                  <label className="block text-sm">{t("Units", "Unidades")}<select id="onboard-pb-unit" className="input" value={personalBest.unit} onChange={e=>setPersonalBest({...personalBest,unit:e.target.value})}><option value="">{t("Choose units", "Elige unidades")}</option>{["sec","min","W","kg","reps","m","km"].map(unit=><option key={unit} value={unit}>{unit}</option>)}</select></label>
+                  <label className="block text-sm">{t("Actual date (optional)", "Fecha real (opcional)")}<input id="onboard-pb-date" className="input" type="date" max={dateKey(new Date(),user?.timezone)} value={personalBest.date} onChange={e=>setPersonalBest({...personalBest,date:e.target.value})}/></label>
+                </fieldset>
+              </details>
+            </section>
+
+            <details open={advanced || undefined} className="border rounded-xl p-4"><summary className="cursor-pointer min-h-11 content-center font-semibold">{t("Personal details and imported weight (optional, editable later)", "Datos personales y peso importado (opcional, editable después)")}</summary>
+              <p className="text-sm mb-3">{t("These details are optional here. Review any imported weight before choosing it; your saved manual value stays in place unless you change and save it.", "Estos datos son opcionales aquí. Revisa el peso importado antes de elegirlo; se conserva tu valor manual salvo que lo cambies y guardes.")}</p>
+              {importReview.suggestions?.map(item=><div className="rounded-lg border p-3 text-sm mb-3" key={item.observationId}><p>{item.value} {item.unit} · {item.source} · {new Date(item.observedAt).toLocaleDateString()} · {item.kind === "uploaded_file" ? t("Uploaded file; measurement unverified", "Archivo importado; medición sin verificar") : item.kind === "reported" ? t("Account-reported, not a device measurement", "Declarado por la cuenta, no medido por dispositivo") : t("Imported observation", "Observación importada")}</p><button className="underline min-h-11" onClick={()=>{setProfile({...profile,weightKg:String(item.value)});setReviewedWeightId(item.observationId);}}>{t("Use this reviewed weight", "Usar este peso revisado")}</button></div>)}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label htmlFor="onboard-field-1" className="label">{lang === "es" ? "Año de nacimiento" : "Birth year"}</label><input id="onboard-field-1" className="input" type="number" placeholder="1995" value={profile.birthYear} onChange={(e) => setProfile({ ...profile, birthYear: e.target.value })} /></div>
-                <div><label htmlFor="onboard-field-2" className="label">{lang === "es" ? "Sexo" : "Sex"}</label><select id="onboard-field-2" className="input" value={profile.sex} onChange={(e) => setProfile({ ...profile, sex: e.target.value })}>
-                    <option value="">—</option><option value="male">{lang === "es" ? "Masculino" : "Male"}</option><option value="female">{lang === "es" ? "Femenino" : "Female"}</option>
-                  </select>
-                </div>
-                <div><label htmlFor="onboard-field-3" className="label">{lang === "es" ? "Altura (cm)" : "Height (cm)"}</label><input id="onboard-field-3" className="input" type="number" placeholder="175" value={profile.heightCm} onChange={(e) => setProfile({ ...profile, heightCm: e.target.value })} /></div>
-                <div><label htmlFor="onboard-field-4" className="label">{lang === "es" ? "Peso (kg)" : "Weight (kg)"}</label><input id="onboard-field-4" className="input" type="number" step="0.1" placeholder="70" value={profile.weightKg} onChange={(e) => {setProfile({ ...profile, weightKg: e.target.value });setReviewedWeightId(null);}} /></div>
+                <label className="block text-sm">{t("Birth year", "Año de nacimiento")}<input id="onboard-field-1" className="input" type="number" value={profile.birthYear} onChange={e=>setProfile({...profile,birthYear:e.target.value})}/></label>
+                <label className="block text-sm">{t("Sex", "Sexo")}<select id="onboard-field-2" className="input" value={profile.sex} onChange={e=>setProfile({...profile,sex:e.target.value})}><option value="">—</option><option value="male">{t("Male", "Masculino")}</option><option value="female">{t("Female", "Femenino")}</option></select></label>
+                <label className="block text-sm">{t("Height (cm)", "Altura (cm)")}<input id="onboard-field-3" className="input" type="number" value={profile.heightCm} onChange={e=>setProfile({...profile,heightCm:e.target.value})}/></label>
+                <label className="block text-sm">{t("Weight (kg)", "Peso (kg)")}<input id="onboard-field-4" className="input" type="number" step="0.1" value={profile.weightKg} onChange={e=>{setProfile({...profile,weightKg:e.target.value});setReviewedWeightId(null);}}/></label>
               </div>
-            </div>
-            <div className="flex justify-between mt-6">
-              <button onClick={() => setStep(ONBOARDING_STEP.devices)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
-              <button onClick={async () => { setStep(onboardingNext(ONBOARDING_STEP.profile, await saveProfile("profile"))); }} disabled={saving || !revision} className="btn-primary">
-                {saving ? "…" : lang === "es" ? "Guardar perfil" : "Save profile"}
-              </button>
+              <button className="btn-secondary mt-3" disabled={saving || !revision} onClick={()=>void saveProfile("profile")}>{t("Save personal details", "Guardar datos personales")}</button>
+            </details>
+            <Link href="/settings" className="underline inline-flex items-center min-h-11">{t("Edit everything later in Profile & Zones", "Editar todo después en Perfil y zonas")}</Link>
+            <div className="flex flex-wrap justify-between gap-3">
+              <button onClick={()=>setStep(ONBOARDING_STEP.devices)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{t("Back", "Atrás")}</button>
+              <button onClick={async()=>{if(await saveProfile("essentials")) setStep(onboardingNext(ONBOARDING_STEP.profile));}} disabled={saving || !revision} className="btn-primary">{saving ? "…" : t("Save new answers and continue", "Guardar respuestas nuevas y continuar")}</button>
             </div>
           </div>
         )}
 
         {step === ONBOARDING_STEP.devices && <section className="space-y-4">
-          <h2 className="font-display text-2xl">{t("Connect first, or continue manually", "Conecta primero o continúa manualmente")}</h2>
-          <p>{t("Authorize your own account. You return here after connecting; the initial import is queued in the background. A connection is not proof that every metric or watch delivery is available.", "Autoriza tu cuenta. Volverás aquí; la importación inicial se programa en segundo plano. Una conexión no confirma todos los datos ni la entrega al reloj.")}</p>
-          <button className="btn-primary w-full sm:w-auto" onClick={()=>setStep(ONBOARDING_STEP.profile)}>{providers.some(provider=>provider.status === "connected") ? t("Continue to review my information", "Continuar y revisar mis datos") : t("Skip connections and continue manually", "Omitir conexiones y continuar manualmente")}</button>
+          <h2 className="font-display text-2xl">{t("Connect your device or import first", "Conecta tu dispositivo o importa primero")}</h2>
+          <p>{t("Choose an available connection or file import below, or skip. After you return, review the records actually stored before filling any gaps.", "Elige una conexión o importación disponible abajo, u omite este paso. Al volver, revisa los registros guardados antes de completar lo que falte.")}</p>
+          <div className="flex flex-wrap gap-3"><Link href="/connectors?onboarding=1" className="btn-secondary">{t("Open devices to sync or import", "Abrir dispositivos para sincronizar o importar")}</Link><button className="btn-primary w-full sm:w-auto" onClick={()=>setStep(ONBOARDING_STEP.profile)}>{providers.some(provider=>provider.status === "connected") ? t("Continue to review my information", "Continuar y revisar mis datos") : t("Skip connections and continue manually", "Omitir conexiones y continuar manualmente")}</button></div>
           <p className="text-sm">{t("Garmin and COROS direct import uses supported files here. An available Intervals.icu connection can provide a separate Garmin bridge; connecting is not proof of watch delivery. Unavailable services cannot be authorized.", "Garmin y COROS usan archivos compatibles aquí. Si Intervals.icu está disponible, puede ofrecer un puente separado con Garmin; conectar no confirma entrega al reloj. No se pueden autorizar servicios no disponibles.")}</p>
           {refreshing && <p role="status">{t("Checking available connections and import status…", "Revisando conexiones e importaciones…")}</p>}
           {connectionError && <p role="alert">{connectionError}</p>}
-          {providers.map(p => <div className="card flex flex-wrap items-center gap-3 break-words" key={p.id}><div className="min-w-0 basis-full sm:flex-1"><h3 className="font-semibold">{p.name}</h3><p className="text-sm">{p.description}</p><p className="text-xs mt-1">{p.status === "connected" ? t("Connected", "Conectado") : p.status === "disconnected" ? t("Not connected", "Sin conectar") : t("Needs attention", "Necesita revisión")} · {p.lastSyncAt ? `${t("Last import", "Última importación")}: ${new Date(p.lastSyncAt).toLocaleString()}` : t("No successful import recorded", "Sin importación registrada")}</p>{p.lastError && <p role="status" className="text-sm text-amber-800">{p.lastError}</p>}</div>
-          {p.configured && p.method === "oauth" && typeof p.connectUrl === "string" && p.connectUrl.startsWith("/api/connectors/") ? <a className="btn-secondary" href={`${p.connectUrl}?return=${encodeURIComponent("/onboard?redo=1&step=devices")}`}>{t("Connect / reconnect", "Conectar / reconectar")}</a> : p.method === "upload" ? <a className="underline min-h-11 inline-flex items-center" href="/connectors?onboarding=1">{t("Import a file", "Importar archivo")}</a> : p.configured && p.method === "athlinks" ? <Link className="underline min-h-11 inline-flex items-center" href="/connectors?onboarding=1">{t("Review race-history import", "Revisar importación de carreras")}</Link> : <span>{t("Unavailable in this environment", "No disponible en este entorno")}</span>}</div>)}
+          {providers.map(p => <div className="card flex flex-wrap items-center gap-3 break-words" key={p.id}><div className="min-w-0 basis-full sm:flex-1"><h3 className="font-semibold">{p.name}</h3><p className="text-sm">{p.description}</p><p className="text-xs mt-1">{p.method === "upload" ? t("File import", "Importación de archivo") : p.status === "connected" ? t("Connected", "Conectado") : p.status === "disconnected" ? t("Not connected", "Sin conectar") : t("Needs attention", "Necesita revisión")} · {p.lastSyncAt ? `${t("Last successful sync check", "Última sincronización comprobada")}: ${new Date(p.lastSyncAt).toLocaleString()}` : t("No successful sync check recorded", "Sin sincronización comprobada")}</p>{p.lastError && <p role="status" className="text-sm text-amber-800">{p.lastError}</p>}</div>
+          {p.configured && p.method === "oauth" && typeof p.connectUrl === "string" && p.connectUrl.startsWith("/api/connectors/") ? <a className="btn-secondary" href={`${p.connectUrl}?return=${encodeURIComponent("/onboard?redo=1&step=profile")}`}>{t("Connect / reconnect", "Conectar / reconectar")}</a> : p.method === "upload" ? <a className="underline min-h-11 inline-flex items-center" href="/connectors?onboarding=1">{t("Import a file", "Importar archivo")}</a> : p.configured && p.method === "athlinks" ? <Link className="underline min-h-11 inline-flex items-center" href="/connectors?onboarding=1">{t("Review race-history import", "Revisar importación de carreras")}</Link> : <span>{t("Unavailable in this environment", "No disponible en este entorno")}</span>}</div>)}
+          <p className="text-sm">{importReview.history ? `${importReview.history.count} ${t("completed imported activities currently stored", "actividades realizadas importadas guardadas")}` : t("Stored activity count: — not yet verified", "Actividades guardadas: — sin verificar todavía")}</p>
           <button className="btn-secondary" disabled={refreshing} onClick={reviewImports}>{refreshing ? "…" : t("Refresh import status", "Actualizar importación")}</button>
 
         </section>}
         {step === ONBOARDING_STEP.zones && <section className="space-y-4">
           <h2 className="font-display text-2xl">{t("Review your training anchors", "Revisa tus referencias de entrenamiento")}</h2>
-          <p>{t("Saved values are prefilled. Enter only known references; no test or device is required to continue. Unknown zones stay unknown. These entries do not verify a laboratory test or establish HYROX station ability.", "Los datos guardados aparecen aquí. Introduce solo referencias conocidas; puedes continuar sin pruebas ni dispositivos. Las zonas desconocidas siguen desconocidas. No se verifica una prueba de laboratorio ni la capacidad en estaciones HYROX.")}</p>
-          {([['lthr','Threshold heart rate (bpm)','FC umbral (lpm)'],['maxHr','Measured maximum heart rate (bpm)','FC máxima medida (lpm)'],['ftp','Cycling FTP (W)','FTP ciclismo (W)'],['runPaceBase','Running threshold pace (seconds/km)','Ritmo umbral carrera (segundos/km)'],['swimPaceBase','Swimming threshold pace (seconds/100 m)','Ritmo umbral natación (segundos/100 m)']] as const).map(([field,en,esp]) => <label className="block" key={field}>{t(en,esp)}<input type="number" className="input" value={profile[field]} onChange={e=>setProfile({...profile,[field]:e.target.value})}/></label>)}
+          <p>{t("Saved values are prefilled for explicit edits. Enter only known references; no test or device is required to continue. Unknown zones stay unknown. These entries do not verify a laboratory test or establish HYROX station ability.", "Los datos guardados aparecen aquí. Introduce solo referencias conocidas; puedes continuar sin pruebas ni dispositivos. Las zonas desconocidas siguen desconocidas. No se verifica una prueba de laboratorio ni la capacidad en estaciones HYROX.")}</p>
+          {([['lthr','Threshold heart rate (bpm)','FC umbral (lpm)'],['maxHr','Maximum heart rate reference (bpm)','Referencia de FC máxima (lpm)'],['ftp','Cycling FTP (W)','FTP ciclismo (W)'],['runPaceBase','Running threshold pace (seconds/km)','Ritmo umbral carrera (segundos/km)'],['swimPaceBase','Swimming threshold pace (seconds/100 m)','Ritmo umbral natación (segundos/100 m)']] as const).map(([field,en,esp]) => <label className="block" key={field}>{t(en,esp)}<input type="number" className="input" value={profile[field]} onChange={e=>setProfile({...profile,[field]:e.target.value})}/></label>)}
           <p className="text-sm">{t("Running power from Stryd requires a separate reviewed running-power reference; cycling FTP must not be reused. You can continue with perceived effort and reviewed pace/heart-rate guidance.", "La potencia de carrera de Stryd requiere su propia referencia revisada; no se reutiliza el FTP ciclista. Puedes continuar con esfuerzo percibido y ritmo/FC revisados.")}</p>
           <button className="btn-primary" disabled={saving || !revision} onClick={async()=>{if(await saveProfile("zones")) setStep(ONBOARDING_STEP.race);}}>{t("Save and continue", "Guardar y continuar")}</button>
         </section>}
@@ -359,19 +432,25 @@ export function DetailedAthleteSetup() {
             <p className="text-sm text-slate-500 mb-4">
               {lang === "es" ? "Completa solo lo que conoces. Puedes guardar el perfil sin añadir una carrera." : "Fill only what you know. You can save your goals without adding a race."}
             </p>
+            {!!(savedGoal || savedAnswers.setup.goalDescription || savedAnswers.setup.planWeeks || (fullPlanningSetup && (savedAnswers.profile.experience))) && <section className="rounded-xl border p-4 mb-4 space-y-2" aria-label={t("Saved goals and schedule", "Objetivos y horario guardados")}>
+              <p className="font-semibold">{t("Your saved answers are already here", "Ya tenemos tus respuestas guardadas")}</p>
+              {savedGoal && <p>{t("Goal", "Objetivo")}: {savedGoal}</p>}
+              {fullPlanningSetup && savedAnswers.profile.experience && <p>{t("Experience", "Experiencia")}: {savedAnswers.profile.experience}</p>}
+              <button type="button" className="underline min-h-11" aria-expanded={editSavedGoals} onClick={()=>setEditSavedGoals(value=>!value)}>{editSavedGoals ? t("Keep saved answers visible", "Mostrar respuestas guardadas") : t("Edit saved goals or availability", "Editar objetivos o disponibilidad")}</button>
+            </section>}
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label htmlFor="onboard-field-5" className="label">{lang === "es" ? "Experiencia" : "Experience"}</label><select id="onboard-field-5" className="input" value={profile.experience} onChange={(e) => setProfile({ ...profile, experience: e.target.value })}>
+                {fullPlanningSetup && showExperience && <div><label htmlFor="onboard-field-5" className="label">{lang === "es" ? "Experiencia (opcional)" : "Experience (optional)"}</label><select id="onboard-field-5" className="input" value={profile.experience} onChange={(e) => setProfile({ ...profile, experience: e.target.value })}>
                     <option value="">{t("Choose experience", "Elige experiencia")}</option>
                     <option value="beginner">{lang === "es" ? "Principiante" : "Beginner"}</option>
                     <option value="amateur">{lang === "es" ? "Amateur" : "Amateur"}</option>
                     <option value="advanced">{lang === "es" ? "Avanzado" : "Advanced"}</option>
                     <option value="pro">Pro</option>
                   </select>
-                </div>
+                </div>}
                 <p className="text-sm self-center">{t("Your coach calculates weekly volume from your history, recovery and available days. You do not need to choose weekly hours.", "Tu entrenador calcula el volumen según historial, recuperación y días disponibles. No necesitas elegir horas semanales.")}</p>
               </div>
-              <div><label htmlFor="onboard-field-7" className="label">{lang === "es" ? "Objetivo" : "Goal"}</label><select id="onboard-field-7" className="input" value={profile.goal} onChange={(e) => setProfile({ ...profile, goal: e.target.value })}>
+              {showGoal && <div><label htmlFor="onboard-field-7" className="label">{lang === "es" ? "Objetivo o deporte (opcional)" : "Goal or sport (optional)"}</label><select id="onboard-field-7" className="input" value={profile.goal} onChange={(e) => setProfile({ ...profile, goal: e.target.value })}>
                   <option value="">{t("Choose a goal", "Elige un objetivo")}</option>
                   {profile.goal && !PLANNABLE_GOALS.includes(planningGoal(profile.goal)!) && <option value={profile.goal} disabled>{t("Saved legacy goal (choose a supported goal to plan)", "Objetivo anterior (elige otro compatible para planificar)")}: {profile.goal}</option>}
                   <option value="sprint">Sprint</option>
@@ -384,14 +463,20 @@ export function DetailedAthleteSetup() {
                   <option value="track-sprint">Track Sprint (100-400m)</option>
                   <option value="swim-only">{t("Swimming", "Natación")}</option>
                 </select>
-              </div>
+              </div>}
             </div>
-            <details className="mt-5"><summary className="cursor-pointer font-semibold min-h-11 content-center">{t("Optional details for your future cycle", "Datos opcionales para tu ciclo futuro")}</summary><fieldset className="mt-6 space-y-3 border rounded-xl p-4">
+            {!fullPlanningSetup && <section className="space-y-4 mt-5">
+              {!savedAnswers.setup.goalDescription || setup.goalDescription !== savedAnswers.setup.goalDescription || editSavedGoals ? <label className="block">{t("What would you like to achieve?", "¿Qué te gustaría lograr?")}<textarea id="onboard-goal-description" className="input" value={setup.goalDescription} onChange={e=>setSetup({...setup,goalDescription:e.target.value})}/></label> : <p>{t("Your goal", "Tu objetivo")}: {savedAnswers.setup.goalDescription}</p>}
+              {!savedAnswers.setup.planWeeks || setup.planWeeks !== savedAnswers.setup.planWeeks || editSavedGoals ? <fieldset><legend className="font-semibold">{t("Choose your training horizon", "Elige tu horizonte de entrenamiento")}</legend><div className="flex flex-wrap gap-3 mt-2">{[{weeks:"12",en:"3 months · 12 weeks",es:"3 meses · 12 semanas"},{weeks:"24",en:"6 months · 24 weeks",es:"6 meses · 24 semanas"}].map(option=><button key={option.weeks} type="button" className={setup.planWeeks===option.weeks?"btn-primary":"btn-secondary"} aria-pressed={setup.planWeeks===option.weeks} onClick={()=>setSetup({...setup,planWeeks:option.weeks})}>{t(option.en,option.es)}</button>)}</div><p className="text-sm mt-2">{t("Optional for now. No race date or performance target is assumed.", "Opcional por ahora. No suponemos fecha de carrera ni marca objetivo.")}</p></fieldset> : <p>{t("Saved horizon", "Horizonte guardado")}: {savedAnswers.setup.planWeeks} {t("weeks", "semanas")}</p>}
+              <p className="text-sm">{t("You can finish with just these answers. A personalized plan will ask for any missing availability, recent training and safety information before you confirm it.", "Puedes terminar con estas respuestas. Antes de confirmar un plan personalizado, se pedirán los datos que falten sobre disponibilidad, entrenamiento reciente y seguridad.")}</p>
+              <Link className="underline min-h-11 inline-flex items-center" href="/onboard?redo=1&step=race&return=training">{t("Review full planning details now", "Revisar ahora todos los datos del plan")}</Link>
+            </section>}
+            {fullPlanningSetup && <details className="mt-5"><summary className="cursor-pointer font-semibold min-h-11 content-center">{t("Details needed for a personalized plan", "Datos necesarios para un plan personalizado")}</summary><fieldset className="mt-6 space-y-3 border rounded-xl p-4">
               <legend className="font-semibold">{t("Training context and pilot eligibility", "Contexto y elegibilidad del piloto")}</legend>
               <p className="text-sm text-slate-600">{t("Unknown answers stay unknown. A device and performance tests are optional. You can start with a conservative day-zero suggestion and add these details later in Profile. Your complete cycle needs reviewed context and a confirmed preview.", "Las respuestas desconocidas siguen sin conocerse. Dispositivos y pruebas son opcionales. Puedes empezar con una propuesta conservadora del día cero y añadir datos en Perfil. El ciclo completo necesita contexto revisado y una vista previa confirmada.")}</p>
               <label className="flex gap-2"><input type="checkbox" checked={setup.adultConfirmed} onChange={e => setSetup({...setup, adultConfirmed:e.target.checked})}/>{t("I confirm I am 18 or older", "Confirmo que tengo 18 años o más")}</label>
               <label className="flex gap-2"><input type="checkbox" checked={setup.profileConfirmed} onChange={e => setSetup({...setup, profileConfirmed:e.target.checked})}/>{t("I confirm my training experience above", "Confirmo mi experiencia indicada")}</label>
-              <label className="block">{t("Goal in your words: fitness, completion or performance", "Objetivo: bienestar, terminar o rendimiento")}<textarea className="input" value={setup.goalDescription} onChange={e => setSetup({...setup,goalDescription:e.target.value})}/></label>
+              {!savedAnswers.setup.goalDescription || setup.goalDescription !== savedAnswers.setup.goalDescription || advanced || editSavedGoals ? <label className="block">{t("Goal in your words: fitness, completion or performance", "Objetivo: bienestar, terminar o rendimiento")}<textarea className="input" value={setup.goalDescription} onChange={e => setSetup({...setup,goalDescription:e.target.value})}/></label> : <p>{t("Your goal", "Tu objetivo")}: {savedAnswers.setup.goalDescription}</p>}
               <details><summary className="min-h-11 cursor-pointer content-center font-semibold">{t("Add a performance target (optional)", "Añadir objetivo de rendimiento (opcional)")}</summary>
               <label className="block">{t("Optional structured target (a goal, not current ability)", "Objetivo estructurado opcional (meta, no capacidad actual)")}<select className="input" value={setup.targetGoal?.metric ?? ""} onChange={e=>setSetup({...setup,baselinePlanOptIn:false,targetGoal:e.target.value?{metric:e.target.value,sport:""}:null})}><option value="">{t("No structured target yet", "Sin objetivo estructurado todavía")}</option><option value="fitness">{t("General fitness", "Bienestar físico general")}</option><option value="completion">{t("Completion", "Terminar")}</option><option value="pace">{t("Target pace", "Ritmo objetivo")}</option><option value="power">{t("Target power / FTP", "Potencia / FTP objetivo")}</option><option value="speed">{t("Target speed", "Velocidad objetivo")}</option></select></label>
               {setup.targetGoal && <div className="space-y-2 border p-3 rounded-lg">
@@ -428,12 +513,12 @@ export function DetailedAthleteSetup() {
               <label className="block">{t("Planning horizon in weeks (no event date is invented)", "Horizonte del plan, semanas (no se inventa una fecha de carrera)")}<input className="input" type="number" min="4" max="30" value={setup.planWeeks ?? ""} onChange={e=>setSetup({...setup,planWeeks:e.target.value})}/></label>
               <p className="text-sm">{t("Unsupported circumstances pause automated planning for qualified review; this form does not provide medical clearance. If you report no recent tolerated training, ask a qualified coach for an appropriate starting load.", "Las circunstancias no admitidas pausan el plan para revisión profesional; este formulario no da autorización médica. Sin entrenamiento reciente tolerado, pide a un entrenador cualificado una carga inicial adecuada.")}</p>
             </fieldset>
-            </details>
-            <details className="mt-4"><summary className="min-h-11 cursor-pointer content-center font-semibold">{t("Double sessions and coach details (optional)", "Sesiones dobles y entrenador (opcional)")}</summary>
+            </details>}
+            {fullPlanningSetup && <details className="mt-4"><summary className="min-h-11 cursor-pointer content-center font-semibold">{t("Double sessions and coach details (optional)", "Sesiones dobles y entrenador (opcional)")}</summary>
             <DoubleDayFields professional={profile.experience === "pro"} value={setup.doubleDay} onChange={doubleDay=>setSetup({...setup,doubleDay})}/>
             <label className="block mt-4">{t("Your coach, if any (optional)", "Tu entrenador, si tienes (opcional)")}<input className="input" value={setup.coachPreference ?? ""} maxLength={200} onChange={e=>setSetup({...setup,coachPreference:e.target.value})}/></label><p className="text-xs">{t("This is a preference, not an access grant. Coach access requires an administrator assignment.", "Es una preferencia, no concede acceso. Un administrador debe asignar al entrenador.")}</p>
-            </details>
-            <h3 className="font-semibold mt-5">{t("Optional race", "Carrera opcional")}</h3>{raceId && <p role="status">{t("Race saved; further edits update this same event.", "Carrera guardada; los cambios actualizan este evento.")}</p>}
+            </details>}
+            <details className="mt-5"><summary className="font-semibold cursor-pointer min-h-11 content-center">{t("Optional race", "Carrera opcional")}</summary>{raceId && <p role="status">{t("Race saved; further edits update this same event.", "Carrera guardada; los cambios actualizan este evento.")}</p>}
             {raceLoadError && <p role="alert" className="text-amber-900">{t("Saved races could not be loaded. Reload before choosing an existing race; new saves check for duplicates.", "No se pudieron cargar las carreras guardadas. Recarga antes de elegir una carrera existente.")}</p>}
             {!!races.length && <label className="block mt-3">{t("Edit an existing race or add a new one", "Edita una carrera o añade otra")}<select className="input" value={raceId ?? ""} onChange={event=>{const selected=races.find(item=>item.id === event.target.value);setRaceId(selected?.id ?? null);setRace(selected ? {name:selected.name,distance:selected.distance,date:selected.date,location:selected.location} : {...EMPTY_RACE});}}><option value="">{t("New race", "Nueva carrera")}</option>{races.map(item=><option key={item.id} value={item.id}>{item.name} · {item.date}</option>)}</select></label>}
             <div className="space-y-3">
@@ -448,13 +533,14 @@ export function DetailedAthleteSetup() {
               <div><label htmlFor="onboard-field-11" className="label">{lang === "es" ? "Ubicación" : "Location"}</label><input id="onboard-field-11" className="input" placeholder="Miami, FL" value={race.location} onChange={(e) => setRace({ ...race, location: e.target.value })} /></div>
             </div>
             <button className="btn-secondary mt-4" disabled={saving} onClick={async()=>{if(await saveRace()) setError("");}}>{raceId ? t("Update this race", "Actualizar carrera") : t("Save race separately", "Guardar carrera por separado")}</button>
-            {savedReadiness && !savedReadiness.ready && <div role="status" className="mt-4 rounded-lg border border-amber-300 p-3">
+            </details>
+            {fullPlanningSetup && savedReadiness && !savedReadiness.ready && <div role="status" className="mt-4 rounded-lg border border-amber-300 p-3">
               <p>{t("Based on your saved answers, planning needs the following review. Saving updates this list; it does not replace an existing plan.", "Según tus respuestas guardadas, falta lo siguiente. Guardar actualiza esta lista y conserva cualquier plan existente.")}</p>
               <ul className="list-disc ml-5">{[...savedReadiness.missing,...savedReadiness.review].map(reason=><li key={reason}>{reason}</li>)}</ul>
             </div>}
             <div className="flex flex-wrap gap-3 justify-between mt-6">
               <button onClick={() => setStep(ONBOARDING_STEP.profile)} className="btn-secondary"><ArrowLeft className="w-4 h-4 mr-1" />{lang === "es" ? "Atrás" : "Back"}</button>
-              <button onClick={async () => { const saved = await saveProfile("goals"); if (!saved || !await saveRace()) return; if (returnToTraining) router.push("/training"); else setStep(onboardingNext(ONBOARDING_STEP.race)); }} disabled={saving || !revision} className="btn-primary">
+              <button onClick={async () => { const saved = await saveProfile(fullPlanningSetup ? "goals" : "intent"); if (!saved || !await saveRace()) return; if (returnToTraining) router.push("/training"); else setStep(onboardingNext(ONBOARDING_STEP.race)); }} disabled={saving || !revision} className="btn-primary">
                 {saving ? "…" : returnToTraining ? t("Save setup and return to training", "Guardar y volver al entrenamiento") : lang === "es" ? "Guardar objetivos y carrera" : "Save goals and race"}
               </button>
             </div>
@@ -473,13 +559,14 @@ export function DetailedAthleteSetup() {
                 ? "Puedes continuar con datos incompletos. Hoy ofrece una propuesta conservadora del día cero cuando no hay plan, evento o actividad previa. Revisa cómo te sientes antes de entrenar; completa tu ciclo más adelante."
                 : "You can continue with incomplete answers. Today offers a conservative day-zero suggestion when there is no plan, event or existing activity. Check in before training; build your full cycle later."}
             </p>
+            <p className="text-sm mb-5"><Link href="/settings" className="underline">{t("Your profile, PBs and thresholds stay editable in Profile & Zones.", "Tu perfil, marcas y umbrales siguen editables en Perfil y zonas.")}</Link></p>
             <button onClick={()=>void finishOnboarding("/today")} disabled={saving} className="btn-primary w-full justify-center text-lg">
               {lang === "es" ? "Abrir el entrenamiento de hoy" : "Open today’s training"} <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>
         )}
 
-        <div className="flex flex-wrap gap-4 mt-6 border-t pt-4"><button disabled={saving} className="underline min-h-11" onClick={()=>{setError("");setStep(onboardingNext(step));}}>{t("Skip this section for now", "Omitir esta sección por ahora")}</button><button disabled={saving} className="underline min-h-11" onClick={()=>void finishOnboarding("/today")}>{t("Open Today with saved answers", "Abrir Hoy con respuestas guardadas")}</button><Link className="underline min-h-11 inline-flex items-center" href="/training">{t("View my saved training plan", "Ver mi plan de entrenamiento guardado")}</Link></div>
+        <div className="flex flex-wrap gap-4 mt-6 border-t pt-4">{step !== ONBOARDING_STEP.done && <button disabled={saving} className="underline min-h-11" onClick={()=>{setError("");setStep(onboardingNext(step));}}>{t("Skip this section for now", "Omitir esta sección por ahora")}</button>}<button disabled={saving} className="underline min-h-11" onClick={()=>void finishOnboarding("/today")}>{t("Open Today with saved answers", "Abrir Hoy con respuestas guardadas")}</button><Link className="underline min-h-11 inline-flex items-center" href="/training">{t("View my saved training plan", "Ver mi plan de entrenamiento guardado")}</Link></div>
         {/* Navigation: language switcher */}
         <div className="mt-5 flex justify-end">
           <select aria-label={t("Setup language", "Idioma de configuración")} className="text-xs bg-white border border-slate-300 rounded-lg px-2 py-1 shadow" value={lang} onChange={(e) => changeLang(e.target.value)}>

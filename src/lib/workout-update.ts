@@ -86,7 +86,7 @@ export async function updateWorkout(
     if (data.title !== undefined && !data.title?.trim())
       throw new ApiError("Title is required");
     if (body.intensity !== undefined) {
-      if (!/^z[1-7]$/.test(body.intensity))
+      if (typeof body.intensity !== "string" || !/^z[1-7]$/.test(body.intensity))
         throw new ApiError("Invalid intensity");
       data.intensity = body.intensity;
     }
@@ -213,6 +213,8 @@ export async function updateWorkout(
       // An explicit edit establishes a new base; measured results stay separate.
       const base = {
         ...baseWorkout(existing),
+        // Omitted intensity is not permission to adopt the legacy Z2 fallback.
+        ...(body.intensity === undefined ? { intensity: existing.intensity } : {}),
         ...Object.fromEntries(
           changedPrescriptionFields.map((k) => [
             k === "notes" ? "description" : k,

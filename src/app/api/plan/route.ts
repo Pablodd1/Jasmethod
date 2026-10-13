@@ -74,7 +74,7 @@ export async function GET(req: Request) {
   const cycleRecord = active ? await prisma.auditLog.findFirst({ where: { subjectId: user.id, action: "plan.generate", entityId: active.id }, orderBy: { createdAt: "desc" }, select: { after: true } }) : null;
   let cycle = null;
   try { cycle = cycleRecord?.after ? JSON.parse(cycleRecord.after).cycle ?? null : null; } catch { /* Older plans retain their saved schedule without invented metadata. */ }
-  return NextResponse.json({ cycle, summary: active ? savedCycleSummary(active, user.timezone) : null, plans: plans.map(plan => ({...plan, days: plan.days.map(day => ({...day, sessions: day.sessions.map(w => ({...w, revision: workoutRevision(w)}))}))})), progression });
+  return NextResponse.json({ cycle, summary: active ? savedCycleSummary(active, user.timezone) : null, plans: plans.map(plan => ({...plan, days: plan.days.map(day => ({...day, sessions: day.sessions.map(w => ({...w, revision: workoutRevision(w)}))}))})), progression }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 // PUT /api/plan — update a session within a plan (edit workout) or toggle a day off

@@ -1,14 +1,25 @@
 import { PLANNABLE_GOALS, planningGoal } from "./planning-setup";
 import { onboardingProfileFields } from "./profile-client";
 
-export type OnboardingSection = "profile" | "zones" | "goals" | "travel";
+export type OnboardingSection = "profile" | "essentials" | "zones" | "intent" | "goals" | "travel";
 export interface SavedOnboarding { profile: Record<string, unknown>; setup: Record<string, unknown> | null }
 
 /** Section saves never persist drafts from a skipped or unrelated section. */
 export function onboardingSectionPayload(section: OnboardingSection, profile: Record<string, unknown>, setup: Record<string, unknown>, saved: SavedOnboarding, setupRevision: string | null) {
   const pick = (keys: string[]) => Object.fromEntries(keys.filter(key => Object.hasOwn(profile, key)).map(key => [key, profile[key]]));
+  if (section === "essentials") {
+    // Omit unchanged values, including manually reviewed references and missing answers.
+    return Object.fromEntries(["lthr", "maxHr", "ftp", "runPaceBase", "swimPaceBase", "manualPrs"]
+      .filter(key => Object.hasOwn(profile,key) && (key === "manualPrs" || saved.profile[key] == null || saved.profile[key] === "") && String(profile[key] ?? "") !== String(saved.profile[key] ?? ""))
+      .map(key => [key,profile[key]]));
+  }
   if (section === "profile") return onboardingProfileFields(pick(["birthYear", "sex", "heightCm", "weightKg"]));
   if (section === "zones") return pick(["lthr", "maxHr", "ftp", "runPaceBase", "swimPaceBase"]);
+  if (section === "intent") {
+    const answers = onboardingProfileFields(pick(["goal"]));
+    if (typeof answers.goal === "string" && answers.goal === saved.profile.goal && !PLANNABLE_GOALS.includes(planningGoal(answers.goal)!)) delete answers.goal;
+    return {...answers,setupSection:"intent",setup:{goalDescription:setup.goalDescription,planWeeks:setup.planWeeks},expectedSetupRevision:setupRevision};
+  }
   if (section === "goals") {
     const answers = onboardingProfileFields(pick(["experience", "goal"]));
     // Preserve historical goals on an unrelated edit, but never offer them as a new planning choice.

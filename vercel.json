@@ -25,7 +25,9 @@
       "dot/conversational-coach-20261003": false,
       "feat/manual-garmin-email": false,
       "codex/jmm-athlete-clarity-audit": false,
-      "review/account-smoke-test": false
+      "review/account-smoke-test": false,
+      "fix/coach-onboarding-reconciled": false,
+      "fix/jmm-experience-integration": false
     }
   }
 }

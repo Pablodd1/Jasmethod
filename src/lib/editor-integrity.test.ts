@@ -43,3 +43,17 @@ test("shared update preserves protocol on label/time edits, rejects stale writes
   assert.equal(feedback.feedbackNote,"Reason for skipped session");
  } finally {(prisma as any).$transaction=savedTransaction;}
 });
+
+
+test("title-only edits preserve unknown intensity in the row and saved base", async () => {
+ const existing:any = {id:"unknown-intensity",userId:"a",date:new Date("2026-10-12T12:00Z"),title:"Saved session",sport:"run",type:"endurance",intensity:null,durationMin:30,notes:"",planned:true,completed:false,approved:true,planDay:null,originalPlan:null,prescription:null};
+ const tx:any = {workout:{findFirst:async()=>existing,update:async({data}:any)=>({...existing,...data})},auditLog:{create:async()=>({})}};
+ for (const originalPlan of [null, JSON.stringify({title:"Saved session",sport:"run",type:"endurance",intensity:"z2",durationMin:30,description:""})]) {
+  existing.originalPlan=originalPlan;
+  const saved=await updateWorkout("a",{id:"a",timezone:"UTC"},{sessionId:existing.id,title:"New title",durationMin:30,expectedRevision:workoutRevision(existing)},tx);
+  assert.equal(saved.intensity,null); assert.equal(JSON.parse(saved.originalPlan!).intensity,null); assert.equal(saved.approved,false);
+ }
+ const explicit=await updateWorkout("a",{id:"a",timezone:"UTC"},{sessionId:existing.id,title:"New title",intensity:"z3",expectedRevision:workoutRevision(existing)},tx);
+ assert.equal(explicit.intensity,"z3"); assert.equal(JSON.parse(explicit.originalPlan!).intensity,"z3");
+ await assert.rejects(()=>updateWorkout("a",{id:"a",timezone:"UTC"},{sessionId:existing.id,intensity:["z2"],expectedRevision:workoutRevision(existing)},tx),/Invalid intensity/);
+});

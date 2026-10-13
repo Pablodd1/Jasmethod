@@ -1,3 +1,4 @@
+import { readManualPersonalBests } from "./onboarding-evidence";
 import { parseNutritionContext } from "./nutrition-context";
 import { ApiError } from "./access";
 import { parseDate } from "./dates";
@@ -63,7 +64,11 @@ const flags = [
 export function profilePatch(body: Record<string, unknown>, timezone: string) {
   const data: Record<string, any> = {};
   for (const [key, value] of Object.entries(body)) {
-    if (key === "nutritionContext") {
+    if (key === "manualPrs") {
+      const records = readManualPersonalBests(value);
+      if (!records || records.some(record => record.value <= 0 || !record.unit.trim())) throw new ApiError("Invalid personal bests. Each result needs a positive value and nonblank units. Reload and review the saved records.");
+      data.manualPrs = JSON.stringify(records);
+    } else if (key === "nutritionContext") {
       try { const context = parseNutritionContext(value, new Date(), timezone); data.nutritionContext = context === null ? null : JSON.stringify(context); }
       catch (error) { throw new ApiError((error as Error).message); }
     } else if (numeric[key]) {

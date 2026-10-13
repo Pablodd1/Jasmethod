@@ -1,3 +1,6 @@
+import { readManualPersonalBests } from "@/lib/onboarding-evidence";
+import { profileRevision, saveProfile } from "@/lib/profile-service";
+import { ApiError, errorResponse } from "@/lib/access";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -9,7 +12,7 @@ export async function GET() {
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const workouts = await prisma.workout.findMany({
+  const [workouts, profile] = await Promise.all([prisma.workout.findMany({
     where: { userId: user.id, completed: true, source: { not: "plan" } }, // imported + manual, skip plan seeds
     orderBy: { date: "desc" },
     select: {
@@ -23,14 +26,22 @@ export async function GET() {
       maxHr: true,
       source: true,
     },
-  });
+  }), prisma.athleteProfile.findUnique({where:{userId:user.id}})]);
+  const savedManual = readManualPersonalBests(profile?.manualPrs);
+  // Do not turn malformed stored records into an editable empty replacement.
+  const manualReviewRequired = savedManual === null || savedManual.some(record => record.value <= 0 || !record.unit.trim());
+  const manual = savedManual ?? [];
 
   if (workouts.length === 0) {
     return NextResponse.json({
       prs: [],
       races: [],
+      manual,
+      manualReviewRequired,
+      revision: profileRevision(profile),
+      total: 0,
       message:
-        "No completed workouts yet. Connect a device (Strava/Garmin) and sync to compute PRs.",
+        "No completed workouts are stored yet. Saved manual personal bests are shown below. Import supported activities to review recorded results.",
     });
   }
 
@@ -146,16 +157,7 @@ export async function GET() {
       avgPower: w.avgPower,
     }));
 
-  const profile = await prisma.athleteProfile.findUnique({
-    where: { userId: user.id },
-    select: { manualPrs: true },
-  });
-  let manual: any[] = [];
-  try {
-    manual = profile?.manualPrs ? JSON.parse(profile.manualPrs) : [];
-  } catch {}
-
-  return NextResponse.json({ prs, races, manual, total: prs.length });
+  return NextResponse.json({ prs, races, manual, manualReviewRequired, revision: profileRevision(profile), total: prs.length });
 }
 
 // PUT /api/prs — replace the athlete's manual personal records.
@@ -166,30 +168,16 @@ export async function PUT(req: Request) {
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const body = await req.json();
-    const list = Array.isArray(body?.manual) ? body.manual : [];
-    if (list.length > 50)
-      return NextResponse.json({ error: "Too many manual PRs (max 50)" }, { status: 400 });
-    const clean = list.map((m: any) => ({
-      label: String(m.label || "").slice(0, 60),
-      value: Number(m.value),
-      unit: String(m.unit || "").slice(0, 20),
-      date: String(m.date || "").slice(0, 10),
-    }));
-    for (const m of clean) {
-      if (!m.label || !Number.isFinite(m.value))
-        return NextResponse.json(
-          { error: "Each PR needs a label and a numeric value" },
-          { status: 400 },
-        );
-    }
-    await prisma.athleteProfile.upsert({
-      where: { userId: user.id },
-      create: { userId: user.id, manualPrs: JSON.stringify(clean) },
-      update: { manualPrs: JSON.stringify(clean) },
+    const body: unknown = await req.json().catch(() => { throw new ApiError("Invalid personal best request"); });
+    if (!body || typeof body !== "object" || Array.isArray(body) || !("manual" in body) || !Array.isArray(body.manual)) throw new ApiError("Supply the personal records you reviewed before saving");
+    const manual = readManualPersonalBests(body.manual);
+    if (!manual || manual.some(row => row.value <= 0 || !row.unit.trim())) throw new ApiError("Each personal best needs a label, positive result and units (maximum 50)");
+    const profile = await saveProfile(user.id, user, {
+      expectedRevision: "expectedRevision" in body ? body.expectedRevision : undefined,
+      manualPrs: JSON.stringify(manual),
     });
-    return NextResponse.json({ ok: true, manual: clean });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
+    return NextResponse.json({ ok: true, manual, revision: profileRevision(profile) });
+  } catch (error) {
+    return errorResponse(error);
   }
 }

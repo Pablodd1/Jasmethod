@@ -68,6 +68,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const [listening, setListening] = useState(false);
   const [voiceReview, setVoiceReview] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [sendingMessage, setSendingMessage] = useState<{ requestId: string; content: string } | null>(null);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const requestGate = useRef(new CoachRequestGate());
   const busy = useRef(false);
@@ -82,6 +83,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const confirmationAttempt = useRef<CoachConfirmationAttempt | null>(null);
   const sendAttempt = useRef<CoachSendAttempt | null>(null);
   const textInput = useRef<HTMLTextAreaElement>(null);
+  const history = useRef<HTMLOListElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const allSessions = mergeCoachSessions(serverSessions, todaySessions);
   const textConfigured = capabilities.externalAi === true && capabilities.textProvider === "Google Gemini";
@@ -90,6 +92,11 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const canSendImage = !!screenshot && permissions.image;
   const blocked = offline || !loaded || needsReload || !!operation;
   const activeProposal = proposal && ["proposed", "pending"].includes(proposal.status) ? proposal : null;
+
+  useEffect(() => {
+    // Only scroll this conversation, never the surrounding training page.
+    if (history.current) history.current.scrollTop = history.current.scrollHeight;
+  }, [messages, sendingMessage]);
 
   const stopVoice = useCallback(() => {
     voiceEpoch.current += 1;
@@ -182,7 +189,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     const interrupt = () => {
       const submitted = activeOperation.current && activeOperation.current !== "load";
       requestGate.current.cancel(); busy.current = false; activeOperation.current = null;
-      stopVoice(); stopFile(); setOperation(null); setListening(false); setImageBusy(false); setExternalConsent(false); setImageConsent(false);
+      stopVoice(); stopFile(); setOperation(null); setSendingMessage(null); setListening(false); setImageBusy(false); setExternalConsent(false); setImageConsent(false);
       if (submitted) { setNeedsReload(true); setStatus(es ? "Solicitud interrumpida. Recarga para verificar el resultado." : "Request interrupted. Reload to verify the result."); }
     };
     window.addEventListener("popstate", interrupt);
@@ -191,7 +198,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
 
   function cancelRequest() {
     const submitted = activeOperation.current !== "load";
-    requestGate.current.cancel(); busy.current = false; activeOperation.current = null; setOperation(null); setExternalConsent(false); setImageConsent(false);
+    requestGate.current.cancel(); busy.current = false; activeOperation.current = null; setOperation(null); setSendingMessage(null); setExternalConsent(false); setImageConsent(false);
     if (submitted) setNeedsReload(true);
     setStatus(es ? "Espera cancelada. Una solicitud ya enviada puede haberse completado; recarga para verificar." : "Stopped waiting. A submitted request may have completed; reload to verify.");
   }
@@ -202,14 +209,17 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     const outgoingImage = canSendImage ? { mimeType: screenshot!.mimeType, dataBase64: screenshot!.dataBase64 } : undefined;
     const outgoing: CoachSendBody = { message: message.trim(), source, externalConsent: permissions.text, ...(permissions.text ? { textProviderConsent: "gemini" } : {}), ...(outgoingImage ? { image: outgoingImage, imageConsent: true, imageProviderConsent: "openai" } : {}), ...(sessionId ? { sessionId } : {}) };
     sendAttempt.current = coachSendAttempt(sendAttempt.current, outgoing, () => crypto.randomUUID());
+    const clientRequestId = sendAttempt.current.clientRequestId;
+    setSendingMessage({ requestId: clientRequestId, content: outgoing.message || (es ? "Captura para revisar" : "Screenshot for review") });
     setExternalConsent(false); setImageConsent(false);
-    const payload = await request("send", "/api/assistant", "POST", { ...outgoing, clientRequestId: sendAttempt.current.clientRequestId });
+    const payload = await request("send", "/api/assistant", "POST", { ...outgoing, clientRequestId });
+    if (mounted.current) setSendingMessage(current => current?.requestId === clientRequestId ? null : current);
     if (!payload || !mounted.current) return;
     try {
       applyPayload(payload); sendAttempt.current = null; setMessage(""); setSource("text"); if (outgoingImage) setScreenshot(null);
       setStatus(payload.replayed
         ? (es ? "Esta solicitud ya estaba registrada. Se muestra la conversación actual." : "This request was already recorded. Showing the current conversation.")
-        : payload.disclosure || (es ? "Respuesta recibida. Revisa las propuestas; todavía no se han guardado cambios." : "Reply received. Review any proposed changes; no changes have been saved yet."));
+        : "");
     } catch (cause) { setError((cause as Error).message); setNeedsReload(true); }
   }
 
@@ -310,80 +320,42 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const pendingDrafts = [...(receipt?.checkinDraft || []), ...(receipt?.planDraft || [])];
   const selectedCount = activeProposal?.candidates.filter(candidate => selected[candidate.id]).length || 0;
 
-  return <section id="jasai" aria-labelledby={`${id}-title`} className="card space-y-4 scroll-mt-24" lang={es ? "es" : "en"}>
+  return <section id="jasai" aria-labelledby={`${id}-title`} className="card space-y-4 scroll-mt-24 min-w-0" lang={es ? "es" : "en"}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 id={`${id}-title`} className="font-display text-xl font-bold">{es ? "Conversar con KCoach" : "Ask KCoach"}</h2>
-        <p className="text-sm text-slate-700 mt-1">{es ? "Cuenta cómo te fue o qué necesitas. La conversación continúa cuando vuelves. Tú revisas y confirmas cada dato antes de guardarlo." : "Share how training went or what you need. Your conversation continues when you return. You review and confirm each fact before it is saved."}</p></div>
-      <button type="button" className={secondaryClass} disabled={blocked || listening || imageBusy || !messages.length} onClick={() => setClearReview(true)}>{es ? "Borrar conversación" : "Clear conversation"}</button>
+        <p className="text-sm text-slate-700 mt-1">{es ? "Pregunta lo que necesites. Pide más detalle cuando quieras." : "Ask what you need. Ask for more detail whenever you want."}</p></div>
     </div>
-    {clearReview && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-3" role="group" aria-label={es ? "Confirmar borrado" : "Confirm conversation clearing"}>
-      <p>{es ? "¿Borrar solo esta conversación y sus propuestas pendientes? Los datos de perfil, resultados, check-ins y el registro de cambios confirmados se conservan." : "Clear only this conversation and its pending proposals? Profile facts, workout results, check-ins and the confirmed change audit are retained."}</p>
-      <div className="flex flex-wrap gap-2"><button type="button" className={secondaryClass} disabled={blocked} onClick={() => setClearReview(false)}>{es ? "Conservar conversación" : "Keep conversation"}</button><button type="button" className={primaryClass} disabled={blocked} onClick={() => void clearConversation()}>{es ? "Sí, borrar conversación" : "Yes, clear conversation"}</button></div>
-    </div>}
     {operation && <div role="status" className="flex flex-wrap items-center gap-3 text-sm"><span>{operation === "load" ? (es ? "Cargando conversación…" : "Loading conversation…") : operation === "confirm" ? (es ? "Comprobando y guardando…" : "Verifying and saving…") : (es ? "Procesando solicitud…" : "Processing request…")}</span><button type="button" className={secondaryClass} onClick={cancelRequest}>{es ? "Dejar de esperar" : "Stop waiting"}</button></div>}
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
     {status && <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm text-slate-800">{status}</p>}
     {(!loaded || needsReload) && !operation && <button type="button" className={secondaryClass} disabled={offline} onClick={() => void load()}>{es ? "Recargar conversación" : "Reload conversation"}</button>}
     {offline && <p role="status" className="text-sm text-amber-900">{es ? "Sin conexión. Conéctate antes de enviar mensajes o confirmar cambios." : "Offline. Reconnect before sending messages or confirming changes."}</p>}
-    <ol className="max-h-96 overflow-y-auto space-y-3 rounded-lg border p-3" aria-label={es ? "Historial de conversación" : "Conversation history"} aria-live="polite" aria-relevant="additions" tabIndex={0}>
+    <ol ref={history} className="min-h-40 max-h-[55vh] overflow-y-auto overscroll-contain space-y-3 rounded-lg border p-3" aria-label={es ? "Historial de conversación" : "Conversation history"} aria-live="polite" aria-relevant="additions" tabIndex={0}>
       {messages.map(entry => <li key={entry.id} className={`rounded-lg p-3 ${entry.role === "user" ? "bg-ocean-50" : "bg-slate-50"}`}>
-        <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "KCoach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
+        <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "J Koach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
         <p className="mt-1 whitespace-pre-wrap break-words">{entry.content}</p>
       </li>)}
-      {loaded && !messages.length && <li className="text-sm text-slate-700">{es ? "Empieza con lo que sabes, aunque no tengas reloj: «Hoy corrí 30 minutos, RPE 4». Elige primero la sesión correcta." : "Start with what you know, even without a watch: “Today I ran for 30 minutes, RPE 4.” Choose the correct workout first."}</li>}
+      {sendingMessage && <li className="rounded-lg bg-ocean-50 p-3"><p className="text-xs font-semibold text-slate-700">{es ? "Tú · Enviando…" : "You · Sending…"}</p><p className="mt-1 whitespace-pre-wrap break-words">{sendingMessage.content}</p></li>}
+      {loaded && !sendingMessage && !messages.length && <li className="text-sm text-slate-700">{es ? "Haz una pregunta sobre tu entrenamiento. Por ejemplo: «¿Qué es el RPE?» o «Tengo una hora para trabajar el VO₂max en pista»." : "Ask a training question. For example: “What is RPE?” or “I have an hour for VO₂max training on the track.”"}</li>}
     </ol>
-    {mode && <p className="text-xs text-slate-700">{mode === "kcoach_ai" || mode === "coach_ai" ? (es ? "Explicación educativa del catálogo, seleccionada con Google Gemini. Las recomendaciones personales, los datos guardados y los cambios se gestionan en el modo local." : "Approved educational explanation selected with Google Gemini. Personal coaching, saved facts and changes are handled locally.") : (es ? "Respuesta de texto local: usa reglas y tus datos de la app. El análisis de imágenes, si se utiliza, se indica por separado." : "Local text response: uses rules and your in-app data. Image analysis, if used, is identified separately.")}</p>}
-    {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}
-    {(imageStatus === "unavailable" || imageStatus === "not_configured") && <p className="text-xs text-amber-900">{es ? "No se pudo analizar la captura. Escribe los datos visibles para revisarlos; no se han inventado valores." : "The screenshot could not be analyzed. Type its visible details for review; no values were guessed."}</p>}
-    {activeProposal && <div className="rounded-xl border-2 border-ocean-300 p-4 space-y-3">
-      <h3 className="font-bold">{es ? "Revisa los datos propuestos" : "Review proposed facts"}</h3>
-      <p className="text-sm text-slate-700">{es ? "Selecciona solo los datos correctos. Puedes editar el valor o dejarlo sin seleccionar. El perfil y los resultados se guardan al confirmar; el check-in y el plan requieren revisión en su pantalla." : "Select only correct facts. Edit a value or leave it unselected. Profile facts and workout results save on confirmation; check-in and plan changes need review in their own screen."}</p>
-      {activeProposal.candidates.map(candidate => {
-        const target = allSessions.find(session => session.id === candidate.sessionId);
-        const ambiguous = candidate.kind === "workout_feedback" && !candidate.sessionId;
-        const candidateId = `${id}-${candidate.id}`;
-        return <fieldset key={candidate.id} disabled={blocked || ambiguous} className="rounded-lg border p-3 space-y-2 min-w-0">
-          <legend className="px-1 font-semibold">{fieldLabel(candidate.field, es)}</legend>
-          <label className="flex items-center gap-2 min-h-8"><input type="checkbox" className={`h-5 w-5 ${focus}`} checked={!!selected[candidate.id]} onChange={event => setSelected(current => ({ ...current, [candidate.id]: event.target.checked }))} />{es ? "Incluir al confirmar" : "Include in confirmation"}</label>
-          <label htmlFor={candidateId} className="block text-sm font-medium">{es ? "Valor" : "Value"}</label>
-          {typeof candidate.value === "boolean" ? <select id={candidateId} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}><option value="true">{es ? "Sí" : "Yes"}</option><option value="false">{es ? "No" : "No"}</option></select> : VALUE_CHOICES[candidate.field] ? <select id={candidateId} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}>{VALUE_CHOICES[candidate.field].map(([value, en, spanish]) => <option key={value} value={value}>{es ? spanish : en}</option>)}</select> : <input id={candidateId} className={inputClass} type={typeof candidate.value === "number" ? "number" : "text"} step="any" maxLength={500} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))} />}
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-slate-700">
-            <div><dt className="inline font-medium">{es ? "Campo: " : "Field: "}</dt><dd className="inline break-words">{candidate.field}</dd></div>
-            <div><dt className="inline font-medium">{es ? "Unidad: " : "Unit: "}</dt><dd className="inline">{candidate.unit || (es ? "No aplica" : "Not applicable")}</dd></div>
-            <div><dt className="inline font-medium">{es ? "Fecha: " : "Date: "}</dt><dd className="inline">{candidate.observedDate || (es ? "Perfil, sin fecha" : "Profile, no date")}</dd></div>
-            <div><dt className="inline font-medium">{es ? "Fuente: " : "Source: "}</dt><dd className="inline">{sourceLabel(candidate.source, es)}</dd></div>
-          </dl>
-          <p className="text-sm break-words"><span className="font-medium">{es ? "Evidencia: " : "Evidence: "}</span>{candidate.evidence}</p>
-          {candidate.kind === "workout_feedback" && <p className="text-sm font-medium">{es ? "Sesión: " : "Workout: "}{target ? `${target.date} · ${target.title} · ${target.sport}` : candidate.sessionId || (es ? "Sin seleccionar. Elige una sesión abajo y vuelve a enviar los detalles." : "Not selected. Choose a workout below and send the details again.")}</p>}
-          {candidate.kind === "profile" && candidate.field === "goal" && <p className="text-sm text-slate-700">{es ? "Este es tu objetivo aspiracional. No demuestra tu capacidad actual ni cambia el plan por sí solo." : "This is your aspirational goal. It does not establish current ability or change the plan by itself."}</p>}
-          {!isSaveable(candidate) && <p className="text-sm font-medium text-amber-900">{es ? "Pendiente: confirmar aquí no aplica este cambio." : "Pending: confirming here does not apply this change."}</p>}
-          {candidate.warnings?.map((warning, index) => <p key={index} className="text-sm text-amber-900">{warning}</p>)}
-        </fieldset>;
-      })}
-      <div className="flex flex-wrap gap-2"><button type="button" className={primaryClass} disabled={blocked || selectedCount === 0} onClick={() => void confirm()}>{es ? `Confirmar ${selectedCount} datos seleccionados` : `Confirm ${selectedCount} selected facts`}</button><button type="button" className={secondaryClass} disabled={blocked} onClick={() => void dismissProposal()}>{es ? "Descartar propuesta" : "Dismiss proposal"}</button></div>
-      <p className="text-xs text-slate-700">{es ? "Si la fecha, unidad o sesión no es correcta, descarta la propuesta y aclárala en un mensaje nuevo." : "If the date, unit or workout is wrong, dismiss the proposal and clarify it in a new message."}</p>
-    </div>}
-    {receipt && <div className="rounded-lg border border-green-700 bg-green-50 p-3 space-y-2">
-      <h3 className="font-semibold">{receipt.applied.length ? (es ? "Cambios guardados con comprobante" : "Saved changes with receipt") : (es ? "Revisión registrada; cambios pendientes" : "Review recorded; changes pending")}</h3>
-      {receipt.applied.length > 0 && <ul className="text-sm list-disc pl-5">{receipt.applied.map(entry => <li key={entry.candidateId}>{fieldLabel(entry.field, es)}: {typeof entry.value === "boolean" ? (entry.value ? (es ? "Sí" : "Yes") : "No") : String(entry.value ?? "—")}{entry.observedDate ? ` · ${entry.observedDate}` : ""}</li>)}</ul>}
-      <p className="text-xs text-slate-700 break-all">{es ? "Comprobante" : "Receipt"}: {receipt.id} · <time dateTime={receipt.confirmedAt}>{new Date(receipt.confirmedAt).toLocaleString(es ? "es" : "en")}</time></p>
-    </div>}
-    {!!pendingActions.length && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2">
-      <h3 className="font-semibold">{es ? "Siguiente paso pendiente" : "Pending next step"}</h3>
-      <p className="text-sm">{es ? "Estos cambios todavía no se han aplicado. Completa la revisión en la pantalla correspondiente." : "These changes have not been applied. Complete the review in the relevant screen."}</p>
-      {pendingDrafts.length > 0 && <><p className="text-sm">{es ? "Valores revisados para introducir en esa pantalla:" : "Reviewed values to enter in that screen:"}</p><ul className="list-disc pl-5 text-sm">{pendingDrafts.map(candidate => <li key={candidate.id}>{fieldLabel(candidate.field, es)}: {typeof candidate.value === "boolean" ? (candidate.value ? (es ? "Sí" : "Yes") : "No") : String(candidate.value ?? "—")}{candidate.unit ? ` ${candidate.unit}` : ""} · {candidate.observedDate || "—"} · {sourceLabel(candidate.source, es)}</li>)}</ul></>}
-      <div className="flex flex-wrap gap-2">{pendingActions.includes("review_checkin") && <Link className={secondaryClass} href="/checkin">{es ? "Completar check-in actual" : "Complete current check-in"}</Link>}{pendingActions.includes("review_plan") && <Link className={secondaryClass} href="/training">{es ? "Revisar plan" : "Review plan"}</Link>}</div>
-    </div>}
     <form onSubmit={send} className="space-y-3">
+      <label className="block font-medium" htmlFor={`${id}-message`}>{source === "voice" ? (es ? "Mensaje con transcripción revisada" : "Message with reviewed transcript") : (es ? "Tu mensaje" : "Your message")}</label>
+      <textarea ref={textInput} id={`${id}-message`} className={inputClass} rows={2} maxLength={COACH_MESSAGE_LIMIT} value={message} disabled={blocked || listening} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={es ? "Pregunta a tu entrenador…" : "Ask your coach…"} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+      <button className={primaryClass} disabled={blocked || listening || imageBusy || (!message.trim() && !canSendImage)} type="submit">{screenshot && !canSendImage ? (es ? "Enviar solo texto" : "Send text only") : source === "voice" ? (es ? "Enviar mensaje revisado" : "Send reviewed message") : (es ? "Enviar mensaje" : "Send message")}</button>
+        <span className="text-xs text-slate-600">{message.length}/{COACH_MESSAGE_LIMIT} · {es ? "Mayús + Intro: nueva línea" : "Shift + Enter: new line"}</span>
+      </div>
+      <p className="text-xs text-slate-700">{es ? "Los cambios en tus datos requieren tu revisión y confirmación." : "Changes to your facts need your review and confirmation."}</p>
+      {(permissions.text || canSendImage) && <p role="status" className="text-xs text-slate-700">{permissions.text ? (es ? "Google Gemini habilitado para este mensaje. " : "Google Gemini enabled for this message. ") : ""}{canSendImage ? (es ? "Esta captura se enviará a OpenAI." : "This screenshot will be sent to OpenAI.") : ""}</p>}
+      <details className="rounded-lg border p-3">
+        <summary className={`cursor-pointer text-sm font-medium ${focus}`}>{es ? "Herramientas opcionales: registro, voz, imágenes e IA" : "Optional tools: logging, voice, images & AI"}</summary>
+        <div className="mt-3 space-y-3">
       <label className="block text-sm font-medium" htmlFor={`${id}-session`}>{es ? "Sesión sobre la que hablas (para registrar resultados)" : "Workout you are discussing (for logging results)"}</label>
       <select id={`${id}-session`} className={inputClass} value={sessionId} disabled={blocked || listening} onChange={event => setSessionId(event.target.value)}>
         <option value="">{es ? "Sin sesión seleccionada" : "No workout selected"}</option>
         {allSessions.map(session => <option value={session.id} key={session.id}>{session.date} · {session.title} · {session.sport}</option>)}
       </select>
       <p className="text-xs text-slate-700">{es ? "Comprueba la fecha y el deporte. No se adivina qué sesión debe recibir los resultados. Si no aparece, abre Entrenamiento." : "Check the date and sport. We do not guess which workout should receive results. If it is missing, open Training."} <Link className={`underline ${focus}`} href="/training">{es ? "Entrenamiento" : "Training"}</Link></p>
-      <label className="block font-medium" htmlFor={`${id}-message`}>{source === "voice" ? (es ? "Mensaje con transcripción revisada" : "Message with reviewed transcript") : (es ? "Tu mensaje" : "Your message")}</label>
-      <textarea ref={textInput} id={`${id}-message`} className={inputClass} rows={3} maxLength={COACH_MESSAGE_LIMIT} value={message} disabled={blocked || listening} onChange={event => setMessage(event.target.value)} placeholder={es ? "Qué hiciste, cuánto tiempo, cómo te sentiste…" : "What you did, how long, how it felt…"} />
-      <p className="text-xs text-slate-700">{message.length}/{COACH_MESSAGE_LIMIT}</p>
       <div className="rounded-lg border p-3 space-y-2">
         <p className="text-sm text-slate-700">{es ? "Dictado opcional en español. Tu navegador puede enviar el audio a su proveedor de reconocimiento. Revisa el texto antes de usarlo; el micrófono nunca guarda ni envía el mensaje automáticamente." : "Optional English dictation. Your browser may send audio to its speech-recognition provider. Review the text before using it; the microphone never saves facts or sends your message automatically."}</p>
         {!listening ? <button type="button" className={secondaryClass} disabled={blocked || imageBusy || !voiceSupported} onClick={startVoice}>{es ? "Iniciar dictado" : "Start dictation"}</button> : <div className="flex flex-wrap gap-2"><span role="status">{es ? "Escuchando…" : "Listening…"}</span><button type="button" className={secondaryClass} onClick={() => recognition.current?.stop()}>{es ? "Terminar y revisar" : "Stop and review"}</button><button type="button" className={secondaryClass} onClick={() => { stopVoice(); setListening(false); setVoiceReview(false); setTranscript(""); }}>{es ? "Cancelar dictado" : "Cancel dictation"}</button></div>}
@@ -403,8 +375,63 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" className={`mt-1 h-5 w-5 shrink-0 ${focus}`} checked={externalConsent} disabled={blocked || !textConfigured} onChange={event => setExternalConsent(event.target.checked)} /><span>{es ? "Permitir a Google Gemini procesar solo este mensaje y el idioma elegido para seleccionar una explicación del catálogo educativo limitado de la app. El mensaje puede incluir datos de salud que escribas. No se envían el perfil, el historial de conversación, la captura ni credenciales. Las decisiones personales de entrenamiento siguen en el modo local." : "Allow Google Gemini to process only this message and the selected language to select an explanation from the app’s bounded educational catalog. The message may include health data you type. Profile facts, conversation history, the screenshot and credentials are not sent. Personal training decisions stay local."}</span></label>
         {!textConfigured && <p className="text-xs text-slate-700">{es ? "Google Gemini no está configurado. Puedes seguir conversando en modo local." : "Google Gemini is not configured. You can keep chatting in local mode."}</p>}
       </div>
-      <button className={primaryClass} disabled={blocked || listening || imageBusy || (!message.trim() && !canSendImage)} type="submit">{screenshot && !canSendImage ? (es ? "Enviar solo texto" : "Send text only") : source === "voice" ? (es ? "Enviar mensaje revisado" : "Send reviewed message") : (es ? "Enviar mensaje" : "Send message")}</button>
       <p className="text-xs text-slate-700">{es ? "Enviar un mensaje no confirma cambios. Puedes confirmar objetivo, horas semanales, peso y resultados de sesión (estado, minutos, deporte y RPE). Las preferencias de comunicación no cambian." : "Sending a message does not confirm changes. Supported facts: goal, weekly hours, weight and workout results (outcome, minutes, sport and RPE). Communication preferences stay unchanged."}</p>
+        </div>
+      </details>
     </form>
+    {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}
+    {(imageStatus === "unavailable" || imageStatus === "not_configured") && <p className="text-xs text-amber-900">{es ? "No se pudo analizar la captura. Escribe los datos visibles para revisarlos; no se han inventado valores." : "The screenshot could not be analyzed. Type its visible details for review; no values were guessed."}</p>}
+    {activeProposal && <details key={activeProposal.id} className="rounded-xl border border-ocean-300 p-4 space-y-3">
+      <summary className={`cursor-pointer font-semibold ${focus}`}>{es ? `Revisar ${activeProposal.candidates.length} datos propuestos · Sin guardar` : `Review ${activeProposal.candidates.length} proposed facts · Not saved`}</summary>
+      <p className="text-sm text-slate-700">{es ? "Selecciona solo los datos correctos. Puedes editar el valor o dejarlo sin seleccionar. El perfil y los resultados se guardan al confirmar; el check-in y el plan requieren revisión en su pantalla." : "Select only correct facts. Edit a value or leave it unselected. Profile facts and workout results save on confirmation; check-in and plan changes need review in their own screen."}</p>
+      {activeProposal.candidates.map(candidate => {
+        const target = allSessions.find(session => session.id === candidate.sessionId);
+        const ambiguous = candidate.kind === "workout_feedback" && !candidate.sessionId;
+        const candidateId = `${id}-${candidate.id}`;
+        return <fieldset key={candidate.id} disabled={blocked || ambiguous} className="rounded-lg border p-3 space-y-2 min-w-0">
+          <legend className="px-1 font-semibold">{fieldLabel(candidate.field, es)}</legend>
+          <label className="flex items-center gap-2 min-h-8"><input type="checkbox" className={`h-5 w-5 ${focus}`} checked={!!selected[candidate.id]} onChange={event => setSelected(current => ({ ...current, [candidate.id]: event.target.checked }))} />{es ? "Incluir al confirmar" : "Include in confirmation"}</label>
+          <label htmlFor={candidateId} className="block text-sm font-medium">{es ? "Valor" : "Value"}</label>
+          {typeof candidate.value === "boolean" ? <select id={candidateId} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}><option value="true">{es ? "Sí" : "Yes"}</option><option value="false">{es ? "No" : "No"}</option></select> : VALUE_CHOICES[candidate.field] ? <select id={candidateId} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}>{VALUE_CHOICES[candidate.field].map(([value, en, spanish]) => <option key={value} value={value}>{es ? spanish : en}</option>)}</select> : <input id={candidateId} className={inputClass} type={typeof candidate.value === "number" ? "number" : "text"} step="any" maxLength={500} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))} />}
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-slate-700">
+            <div><dt className="inline font-medium">{es ? "Campo: " : "Field: "}</dt><dd className="inline break-words">{candidate.field}</dd></div>
+            <div><dt className="inline font-medium">{es ? "Unidad: " : "Unit: "}</dt><dd className="inline">{candidate.unit || (es ? "No aplica" : "Not applicable")}</dd></div>
+            <div><dt className="inline font-medium">{es ? "Fecha: " : "Date: "}</dt><dd className="inline">{candidate.observedDate || (es ? "Perfil, sin fecha" : "Profile, no date")}</dd></div>
+            <div><dt className="inline font-medium">{es ? "Fuente: " : "Source: "}</dt><dd className="inline">{sourceLabel(candidate.source, es)}</dd></div>
+          </dl>
+          <p className="text-sm break-words"><span className="font-medium">{es ? "Evidencia: " : "Evidence: "}</span>{candidate.evidence}</p>
+          {candidate.kind === "workout_feedback" && <p className="text-sm font-medium">{es ? "Sesión: " : "Workout: "}{target ? `${target.date} · ${target.title} · ${target.sport}` : candidate.sessionId || (es ? "Sin seleccionar. Elige una sesión en Herramientas opcionales y vuelve a enviar los detalles." : "Not selected. Choose a workout in Optional tools and send the details again.")}</p>}
+          {candidate.kind === "profile" && candidate.field === "goal" && <p className="text-sm text-slate-700">{es ? "Este es tu objetivo aspiracional. No demuestra tu capacidad actual ni cambia el plan por sí solo." : "This is your aspirational goal. It does not establish current ability or change the plan by itself."}</p>}
+          {!isSaveable(candidate) && <p className="text-sm font-medium text-amber-900">{es ? "Pendiente: confirmar aquí no aplica este cambio." : "Pending: confirming here does not apply this change."}</p>}
+          {candidate.warnings?.map((warning, index) => <p key={index} className="text-sm text-amber-900">{warning}</p>)}
+        </fieldset>;
+      })}
+      <div className="flex flex-wrap gap-2"><button type="button" className={primaryClass} disabled={blocked || selectedCount === 0} onClick={() => void confirm()}>{es ? `Confirmar ${selectedCount} datos seleccionados` : `Confirm ${selectedCount} selected facts`}</button><button type="button" className={secondaryClass} disabled={blocked} onClick={() => void dismissProposal()}>{es ? "Descartar propuesta" : "Dismiss proposal"}</button></div>
+      <p className="text-xs text-slate-700">{es ? "Si la fecha, unidad o sesión no es correcta, descarta la propuesta y aclárala en un mensaje nuevo." : "If the date, unit or workout is wrong, dismiss the proposal and clarify it in a new message."}</p>
+    </details>}
+    {receipt && <details className="rounded-lg border border-green-700 bg-green-50 p-3 space-y-2">
+      <summary className={`cursor-pointer font-semibold ${focus}`}>{receipt.applied.length ? (es ? "Cambios guardados con comprobante" : "Saved changes with receipt") : (es ? "Revisión registrada; cambios pendientes" : "Review recorded; changes pending")}</summary>
+      {receipt.applied.length > 0 && <ul className="text-sm list-disc pl-5">{receipt.applied.map(entry => <li key={entry.candidateId}>{fieldLabel(entry.field, es)}: {typeof entry.value === "boolean" ? (entry.value ? (es ? "Sí" : "Yes") : "No") : String(entry.value ?? "—")}{entry.observedDate ? ` · ${entry.observedDate}` : ""}</li>)}</ul>}
+      <p className="text-xs text-slate-700 break-all">{es ? "Comprobante" : "Receipt"}: {receipt.id} · <time dateTime={receipt.confirmedAt}>{new Date(receipt.confirmedAt).toLocaleString(es ? "es" : "en")}</time></p>
+    </details>}
+    {!!pendingActions.length && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2">
+      <h3 className="font-semibold">{es ? "Siguiente paso pendiente" : "Pending next step"}</h3>
+      <p className="text-sm">{es ? "Estos cambios todavía no se han aplicado. Completa la revisión en la pantalla correspondiente." : "These changes have not been applied. Complete the review in the relevant screen."}</p>
+      {pendingDrafts.length > 0 && <><p className="text-sm">{es ? "Valores revisados para introducir en esa pantalla:" : "Reviewed values to enter in that screen:"}</p><ul className="list-disc pl-5 text-sm">{pendingDrafts.map(candidate => <li key={candidate.id}>{fieldLabel(candidate.field, es)}: {typeof candidate.value === "boolean" ? (candidate.value ? (es ? "Sí" : "Yes") : "No") : String(candidate.value ?? "—")}{candidate.unit ? ` ${candidate.unit}` : ""} · {candidate.observedDate || "—"} · {sourceLabel(candidate.source, es)}</li>)}</ul></>}
+      <div className="flex flex-wrap gap-2">{pendingActions.includes("review_checkin") && <Link className={secondaryClass} href="/checkin">{es ? "Completar check-in actual" : "Complete current check-in"}</Link>}{pendingActions.includes("review_plan") && <Link className={secondaryClass} href="/training">{es ? "Revisar plan" : "Review plan"}</Link>}</div>
+    </div>}
+
+    <details className="text-sm text-slate-700">
+      <summary className={`cursor-pointer ${focus}`}>{es ? "Privacidad y detalles de la conversación" : "Privacy & conversation details"}</summary>
+      <div className="mt-3 space-y-3">
+        <p>{es ? "La conversación se guarda para que puedas continuar al volver. El chat funciona sin IA externa. Las herramientas opcionales explican qué datos se compartirían y piden permiso para cada mensaje." : "Your conversation is saved so you can continue when you return. Chat works without external AI. Optional tools explain what would be shared and ask permission for each message."}</p>
+    {mode && <p className="text-xs text-slate-700">{mode === "kcoach_ai" || mode === "coach_ai" ? (es ? "Explicación educativa del catálogo, seleccionada con Google Gemini. Las recomendaciones personales, los datos guardados y los cambios se gestionan en el modo local." : "Approved educational explanation selected with Google Gemini. Personal coaching, saved facts and changes are handled locally.") : (es ? "Respuesta de texto local: usa reglas y tus datos de la app. El análisis de imágenes, si se utiliza, se indica por separado." : "Local text response: uses rules and your in-app data. Image analysis, if used, is identified separately.")}</p>}
+      <button type="button" className={secondaryClass} disabled={blocked || listening || imageBusy || !messages.length} onClick={() => setClearReview(true)}>{es ? "Borrar conversación" : "Clear conversation"}</button>
+    {clearReview && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-3" role="group" aria-label={es ? "Confirmar borrado" : "Confirm conversation clearing"}>
+      <p>{es ? "¿Borrar solo esta conversación y sus propuestas pendientes? Los datos de perfil, resultados, check-ins y el registro de cambios confirmados se conservan." : "Clear only this conversation and its pending proposals? Profile facts, workout results, check-ins and the confirmed change audit are retained."}</p>
+      <div className="flex flex-wrap gap-2"><button type="button" className={secondaryClass} disabled={blocked} onClick={() => setClearReview(false)}>{es ? "Conservar conversación" : "Keep conversation"}</button><button type="button" className={primaryClass} disabled={blocked} onClick={() => void clearConversation()}>{es ? "Sí, borrar conversación" : "Yes, clear conversation"}</button></div>
+    </div>}
+      </div>
+    </details>
   </section>;
 }

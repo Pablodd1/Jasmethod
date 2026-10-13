@@ -44,3 +44,13 @@ test("an unchanged legacy goal is not erased or resubmitted as a new unsupported
   const changed = payload("goals", {experience:"advanced",weeklyHours:"5",goal:"run-only"}, {}, {profile:{goal:"boxing"},setup:null}, null);
   assert.equal(changed.goal,"run-only");
 });
+
+test("missing-only basics never submit edits from the separate saved-threshold editor", () => {
+  const result=payload("essentials",{ftp:"300",maxHr:"189",manualPrs:""},{},{profile:{ftp:220},setup:null},null);
+  assert.deepEqual(result,{maxHr:"189"});
+});
+
+test("short goals submit only actual goal, description and horizon, never drafts of safety or availability", () => {
+  const result=payload("intent",draft,{...draftSetup,goalDescription:"Ride consistently",planWeeks:"24",adultConfirmed:true},saved,"s1");
+  assert.deepEqual(result,{goal:"hyrox",setupSection:"intent",setup:{goalDescription:"Ride consistently",planWeeks:"24"},expectedSetupRevision:"s1"});
+});
