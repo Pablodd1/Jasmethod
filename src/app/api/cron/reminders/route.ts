@@ -3,6 +3,7 @@ import { mockCoachingEnabled } from "@/lib/coaching-communication";
 import { runMockCoachingSchedule } from "@/lib/coaching-service";
 import { coachingError } from "@/lib/coaching-route";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return Response.json({ error: "Cron is not configured" }, { status: 503 });

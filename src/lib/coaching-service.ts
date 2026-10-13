@@ -113,7 +113,8 @@ function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effective
   // Exclude health/restriction reasons, free-form notes, name and body measurements.
   const lines = [`JMM ${c.sport} · ${c.dateLocal}`];
   if (purpose === "dailyPlan") {
-    if (c.verdict !== "ready" || !workoutCleared) lines.push("No cleared workout is available. Review your current plan and check-in in the app.");
+    if (resolved.workout.planned && resolved.workout.durationMin === 0) lines.push("Today has planned rest, not a missed workout. Review your daily recovery and private check-in in the app. Planned rest is not a report of completed rest.");
+    else if (c.verdict !== "ready" || !workoutCleared) lines.push("No cleared workout is available. Open your private daily check-in: sleep, energy, soreness, stress, symptoms and available time. Review the updated workout in the app before training.");
     else lines.push("Before: review equipment, venue and full preparation/fueling guidance in the app.",
       "During: follow the selected session's exact blocks; stop if unwell or in pain.",
       ...(c.environment ? [dailyEnvironmentSummary(c.environment)] : []),
@@ -128,7 +129,7 @@ function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effective
   lines.push(`Open authenticated app: ${path}`, `Pause or unsubscribe: ${origin.origin}/reminders`, transport === "mock" ? "MOCK ONLY: no external message sent, no read receipt." : "Provider acceptance does not establish reading or completion.");
   return lines.join("\n");
 }
-export async function createCoachingPrompt(actor: CoachingActor, input: { sessionId: string; purpose: Purpose; mockOutcome?: MockOutcome }, now = new Date(), dependencies: { sendTelegram?: typeof sendTelegramCoaching; resolve?: typeof effectivePrescription; clock?: () => Date } = {}) {
+export async function createCoachingPrompt(actor: CoachingActor, input: { sessionId: string; purpose: Purpose; mockOutcome?: MockOutcome }, now = new Date(), dependencies: { sendTelegram?: typeof sendTelegramCoaching; resolve?: typeof effectivePrescription; clock?: () => Date; refreshIncomplete?: boolean } = {}) {
   const transport = coachingMode();
   if (transport !== "mock" && input.mockOutcome !== undefined) throw new ApiError("Mock outcomes cannot be supplied to the real transport");
   if (!PURPOSES.includes(input.purpose) || typeof input.sessionId !== "string" || !input.sessionId || input.sessionId.length > 120) throw new ApiError("Select a session and communication purpose");
@@ -161,12 +162,13 @@ export async function createCoachingPrompt(actor: CoachingActor, input: { sessio
     // Text is an executable prescription too. The same approval/timing gate
     // applies before snapshotting its instructions, not just before FIT export.
     const workoutCleared = transport === "mock" ? resolved.canonical.verdict === "ready"
-      : input.purpose === "dailyPlan" && telegramWorkoutActionable(resolved.canonical, resolved.workout, approvedRevision, now);
+      : !dependencies.refreshIncomplete && input.purpose === "dailyPlan" && telegramWorkoutActionable(resolved.canonical, resolved.workout, approvedRevision, now);
     const result = transport === "mock" ? mockTransport(input.mockOutcome) : { status: "pending", receiptId: null, error: null };
     const attempts = (existing?.attempts || 0) + 1;
     const data = { userId: actor.id, sessionId: input.sessionId, purpose: input.purpose, channel: pref.primaryChannel,
       transport, observationDate, timezone: actor.timezone, sourceRevision: resolved.canonical.revision, sourceWorkoutRevision: workoutRevision(resolved.workout),
-      idempotencyKey: key, questions: JSON.stringify(questions), message: promptMessage(resolved, input.purpose, questions, transport, workoutCleared),
+      idempotencyKey: key, questions: JSON.stringify(questions), message: promptMessage(resolved, input.purpose, questions, transport, workoutCleared)
+        + (dependencies.refreshIncomplete ? "\nConnected data refresh is incomplete or still running. Check connection status and today's private check-in in the app; this message does not clear exercise." : ""),
       ...result, attempts, lastAttemptAt: now, nextAttemptAt: result.status === "failed" && attempts < 3 ? new Date(now.getTime() + 60_000 * 2 ** (attempts - 1)) : null,
       tokenHash: ["simulated", "pending"].includes(result.status) ? token?.hash : null, tokenExpiresAt: ["simulated", "pending"].includes(result.status) ? token?.expiresAt : null };
     const prompt = existing ? await tx.coachingPrompt.update({ where: { id: existing.id }, data }) : await tx.coachingPrompt.create({ data });
@@ -275,7 +277,10 @@ export async function listCoachingPrompts(userId: string) {
   await prisma.coachingPrompt.updateMany({ where: { userId, replyStatus: "pending", repliedAt: { lt: new Date(Date.now() - 7 * 86400_000) } }, data: { candidate: null, replyStatus: "expired", tokenHash: null } });
   return (await prisma.coachingPrompt.findMany({ where: { userId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 50 })).map(publicPrompt);
 }
-export async function runMockCoachingSchedule(now = new Date()) {
+export async function runMockCoachingSchedule(now = new Date(), dependencies: {
+  sync?: (userId: string) => Promise<{ results: Array<{ ok: boolean }>; total: number }>;
+  prompt?: typeof createCoachingPrompt;
+} = {}) {
   const transport = coachingMode();
   await reconcileCoachingAttempts(now);
   const prefs = await prisma.communicationPreference.findMany({ where: { paused: false, OR: PURPOSES.map(purpose => ({ [purpose]: true })) }, include: { user: true } });
@@ -286,12 +291,37 @@ export async function runMockCoachingSchedule(now = new Date()) {
   for (const pref of prefs) {
     // Old consent must not halt other athletes or silently opt into new files.
     if (pref.consentVersion !== (transport === "telegram" ? TELEGRAM_CONSENT_VERSION : CONSENT_VERSION)) { results.push({ userId: pref.userId, status: "blocked", error: "Review and renew communication consent before delivery resumes." }); continue; }
-    const schedule = dueSchedule(settingsFor(pref), now); if (!schedule) continue;
-    const workouts = await prisma.workout.findMany({ where: { userId: pref.userId, date: {
+    if (transport === "telegram" && (pref.primaryChannel !== "telegram" || !pref.verifiedAt ||
+      pref.verificationTransport !== "telegram" || !pref.verifiedChatId || pref.verifiedChatId !== pref.verifiedActorId)) {
+      results.push({ userId: pref.userId, status: "blocked", error: "Select and verify your own private Telegram chat before scheduling delivery." }); continue;
+    }
+    let schedule: ReturnType<typeof dueSchedule>;
+    try { schedule = dueSchedule(settingsFor(pref), now); }
+    catch { results.push({ userId: pref.userId, status: "blocked", error: "Invalid communication settings. Review your schedule in the app." }); continue; }
+    if (!schedule) continue;
+    // The independent hourly sync and reminder crons can start together.
+    // Resolve reminders only after this athlete's refresh, once per scheduled
+    // day. Existing consent, source freshness and prescription gates still apply.
+    const prepared = await prisma.coachingPrompt.findFirst({ where: { userId: pref.userId,
+      observationDate: schedule.day, lastAttemptAt: { gte: schedule.at } }, select: { id: true } });
+    let refreshIncomplete = false;
+    if (transport === "telegram" && !prepared) {
+      try {
+        const sync = dependencies.sync || (await import("./sync")).syncUserConnectors;
+        const refreshed = await sync(pref.userId);
+        refreshIncomplete = refreshed.results.some(r => !r.ok);
+        results.push({ userId: pref.userId, status: refreshIncomplete ? "sync-incomplete" : refreshed.results.length ? "sync-complete" : "no-connected-data" });
+      } catch { refreshIncomplete = true; results.push({ userId: pref.userId, status: "sync-incomplete", error: "Connected data refresh failed. Review freshness and check-in in the app." }); }
+    }
+    const workouts = await prisma.workout.findMany({ where: { userId: pref.userId,
+      OR: [{ planned: false }, { planDay: null }, { planDay: { plan: { status: "active" } } }], date: {
       gte: localDate(addDaysKey(schedule.day, -1), pref.user.timezone), lt: localDate(addDaysKey(schedule.day, 1), pref.user.timezone) } }, orderBy: [{ date: "asc" }, { id: "asc" }] });
-    for (const w of workouts) for (const purpose of PURPOSES) {
+    // Today's guidance/questions take priority over yesterday's reports when
+    // the per-athlete daily prompt limit is reached.
+    for (const purpose of ["dailyPlan", "missingData", "sessionFeedback"] as const) for (const w of workouts) {
       if (!pref[purpose] || (purpose === "sessionFeedback" ? dateKey(w.date, pref.user.timezone) === schedule.day : dateKey(w.date, pref.user.timezone) !== schedule.day)) continue;
-      try { const result = await createCoachingPrompt(pref.user, { sessionId: w.id, purpose }, now);
+      if (purpose !== "sessionFeedback" && (!w.planned || w.completed || w.feedbackStatus === "skipped")) continue;
+      try { const result = await (dependencies.prompt || createCoachingPrompt)(pref.user, { sessionId: w.id, purpose }, now, { refreshIncomplete });
         results.push({ userId: pref.userId, sessionId: w.id, purpose, status: result.duplicate ? "duplicate-skipped" : result.prompt.status });
       } catch (e) { results.push({ userId: pref.userId, sessionId: w.id, purpose, status: "blocked", error: (e as Error).message }); }
     }
