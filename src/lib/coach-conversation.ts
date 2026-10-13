@@ -1,3 +1,4 @@
+import { coachReferral } from "./coach-referrals";
 import { dayOffProtocol, dayOffProtocolText } from "./day-off";
 import type { dailyRecoveryContext } from "./daily-recovery";
 import type { JMetrics } from "./j-metrics";
@@ -81,6 +82,10 @@ const fieldRules: Record<CoachCandidate["kind"], Record<string, Rule>> = {
     goal: { type: "string", unit: null, values: COACH_GOALS },
     weeklyHours: { type: "number", unit: "h/week", min: 0.5, max: 40 },
     weightKg: { type: "number", unit: "kg", min: 20, max: 350 },
+    heightCm: {type:"number",unit:"cm",min:80,max:250},
+    birthYear: {type:"number",unit:"year",min:1900,max:new Date().getFullYear()-13,integer:true},
+    experience: {type:"string",unit:null,values:["beginner","amateur","advanced","pro"]},
+    ftp: {type:"number",unit:"W",min:20,max:700},
   },
   workout_feedback: {
     feedbackStatus: { type: "string", unit: null, values: ["completed", "partial", "substituted", "skipped"] },
@@ -184,6 +189,18 @@ export function extractLocalCandidates(message: string, context: CandidateContex
   if (!historicalProfile && !uncertainNumber && !/\b(?:can't|cannot|can not|could|no puedo|no tengo|no entreno|not available)\b/.test(text) && hours.length === 1 && /\b(i can|i have|i train|i am available|i'm available|my (?:weekly )?availability|tengo|puedo|entreno|disponibilidad)\b/.test(text)) add("profile", "weeklyHours", hours[0], null, message);
   const weights = [...text.matchAll(/\b(?:i weigh|my weight is|weight\s*:|peso(?: actual)?\s*(?:es|:)?|mi peso es)\s*(\d+(?:[.,]\d+)?)\s*(kg|kilograms?|kilos?|lb|lbs|pounds?|libras?)\b/g)].map(m => ({ value: Number(m[1].replace(",", ".")) * (/^(lb|pound|libra)/.test(m[2]) ? 0.45359237 : 1), unit: m[2] }));
   if (!historicalProfile && !uncertainNumber && weights.length && unique(weights.map(w => w.value)).length === 1 && !/\b(goal weight|target weight|want to weigh|quiero pesar|peso objetivo|peso deseado)\b/.test(text) && !globalDate.ambiguous) add("profile", "weightKg", Math.round(weights[0].value * 100) / 100, globalDate.date, message, /^(lb|pound|libra)/.test(weights[0].unit) ? "Converted from explicitly reported pounds to kg; review the conversion." : undefined);
+  if(!historicalProfile && !uncertainNumber && !globalDate.ambiguous) {
+    for(const [field,pattern] of [
+      ["heightCm",/\b(?:my height is|i am|height:|mi altura es|mido)\s*(\d+(?:[.,]\d+)?)\s*cm\b/g],
+      ["birthYear",/\b(?:my birth year is|i was born in|ano de nacimiento:|naci en)\s*(\d{4})\b/g],
+      ["ftp",/\b(?:my ftp is|my ftp:|mi ftp es|mi ftp:)\s*(\d+(?:[.,]\d+)?)\s*(?:w|watts?|vatios?)\b/g],
+    ] as const) {
+      const values=unique(allNumbers(text,pattern));
+      if(values.length===1) add("profile",field,values[0],globalDate.date,message,field==="ftp"?"Athlete-reported reference only. A dated, reviewed benchmark test is required before treating this as an applied training anchor.":undefined);
+    }
+    const experience=/\b(?:my experience is|my level is|mi experiencia es|mi nivel es)\s*(beginner|amateur|intermediate|advanced|pro|principiante|intermedio|avanzado|profesional)\b/.exec(text)?.[1];
+    if(experience) add("profile","experience",({intermediate:"amateur",principiante:"beginner",intermedio:"amateur",avanzado:"advanced",profesional:"pro"} as Record<string,string>)[experience]??experience,null,message);
+  }
   const clauses = message.split(/\n|;|(?<=[.!?])\s+|\b(?:but|pero)\b/i).filter(Boolean);
   for (const clause of clauses) {
     const t = normalize(clause);
@@ -192,7 +209,8 @@ export function extractLocalCandidates(message: string, context: CandidateContex
     const ownDate = dateIn(t, context.localToday);
     if (ownDate.ambiguous) continue;
     const date = ownDate.date || (!globalDate.ambiguous ? globalDate.date || (isCoachDate(context.sessionDate) ? context.sessionDate : null) : null);
-    const planned = /\b(plan(?:ned)? to|planning to|will|going to|want to|schedule|planned|planeo|planifique|voy a|quiero|programado|planificado)\b/.test(t);
+    const explicitEdit = !!context.sessionId && /\b(?:change|set|shorten|reduce|extend|make|cambia|cambiar|ajusta|ajustar|reduce|amplia)\b/.test(t) && /\b(?:my|selected|this|mi|seleccionad[oa]|esta|este)\s+(?:workout|session|training|entrenamiento|sesion)\b/.test(t);
+    const planned = explicitEdit || /\b(plan(?:ned)? to|planning to|will|going to|want to|schedule|planned|planeo|planifique|voy a|quiero|programado|planificado)\b/.test(t);
     const explicitCompletion = /\b(completed|finished|complete|termine)\b/.test(t);
     const completed = explicitCompletion || /\b(?:i (?:ran|swam|rode|cycled|biked|jogged)|corri|nade|pedalee)\b/.test(t) || /\b(?:i did|hice|realice)\s+(?:(?:a|an|my|mi|una?|the)\s+)?(?:run|swim|ride|workout|session|carrera|sesion|entrenamiento)\b/.test(t);
     const skipped = /\b(skipped|missed|me salte|omiti|no hice)\b/.test(t);
@@ -343,6 +361,9 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
     `El VO₂max es la tasa máxima a la que tu cuerpo puede utilizar oxígeno durante ejercicio intenso. Describe la capacidad aeróbica; por sí solo no determina tu ritmo de entrenamiento ni predice un resultado de carrera.${detail ? "\n\nRefleja el transporte y uso de oxígeno en los sistemas cardiovascular y muscular. Los valores relativos suelen expresarse en mL/kg/min. Una estimación del dispositivo es distinta de una medición de laboratorio; sus cambios por sí solos no demuestran un cambio de forma física o disposición. Las decisiones de entrenamiento también necesitan referencias actuales de rendimiento y contexto de recuperación." : ""}`);
   // General explanations above do not authorize exercise or resolve a concern.
   if (pendingSafety) return reply("clarify-prior-safety", "You shared new safety, recovery or available-time information. Before discussing a training start, does that information still apply, and has today's check-in been updated since then? An earlier check-in does not resolve newer information.", "Compartiste información nueva de seguridad, recuperación o tiempo disponible. Antes de hablar de empezar a entrenar, ¿sigue siendo válida y has actualizado el check-in de hoy desde entonces? Un check-in anterior no resuelve información posterior.");
+  const referral=coachReferral(message,context.language);
+  if(referral) return referral;
+  if(!context.candidateContext?.sessionId && /\b(?:change|set|shorten|reduce|extend|cambia|cambiar|ajusta|ajustar)\b/.test(t) && /\b(?:my|this|mi|esta|este)\s+(?:workout|session|training|entrenamiento|sesion)\b/.test(t)) return reply("select-workout-to-edit","Choose the workout in Optional tools, then tell me the change and units. I will show the proposed values for confirmation. Completed sessions, rest days and race/test sessions cannot be rewritten here.","Elige la sesión en Herramientas opcionales y dime el cambio con sus unidades. Mostraré los valores para confirmar. Aquí no se reescriben sesiones realizadas, descansos ni carreras/pruebas.");
   if (/\b(?:j ?metrics|jstress|j ?base|j ?recent|j ?balance)\b/.test(t)) {
     const metrics = context.jMetrics;
     const definition = "JStress = completed minutes × reported session RPE (0–10), in arbitrary units (AU). It uses the published session-RPE method, not provider or legacy load scores.";

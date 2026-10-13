@@ -22,8 +22,9 @@ const CONTEXT_MESSAGE_LIMIT = 16;
 function coachCapabilities() { const externalAi = coachTextConfigured(), imageUnderstanding = coachVisionConfiguration().configured; return { externalAi, textProvider: externalAi ? "Google Gemini" : null, imageUnderstanding, imageProvider: imageUnderstanding ? "OpenAI" : null }; }
 const SAFETY_RULES = ["urgent-symptoms", "illness-or-pain", "clarify-fatigue", "clarify-prior-safety", "clarify-symptom-timing", "clarify-current-symptoms", "unreviewed-image-urgent", "unreviewed-image-symptoms"];
 const mutationFields: Record<string, readonly string[]> = {
-  profile: ["goal", "weeklyHours", "weightKg"],
+  profile: ["goal", "weeklyHours", "weightKg", "heightCm", "birthYear", "experience", "ftp"],
   workout_feedback: ["feedbackStatus", "actualDurationMin", "rpe", "actualSport"],
+  workout_plan:["durationMin","sport"],
 };
 export type PendingAction = "review_checkin" | "review_plan";
 export interface ConversationReceipt {
@@ -345,13 +346,13 @@ export function validateSelectedCandidates(stored: CoachCandidate[], selected: u
     const allowedKeys = new Set(Object.keys(original));
     if (Object.keys(supplied).some(key => !allowedKeys.has(key))) throw new ApiError("Candidate provenance cannot be changed");
     for (const key of Object.keys(original)) if (key !== "value" && JSON.stringify(supplied[key]) !== JSON.stringify(original[key as keyof CoachCandidate])) throw new ApiError("Candidate provenance cannot be changed");
-    if (candidate.kind === "profile" || candidate.kind === "workout_feedback") {
+    if (candidate.kind === "profile" || candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") {
       const destination = `${candidate.kind}:${candidate.sessionId || ""}:${candidate.field}`;
       if (destinations.has(destination)) throw new ApiError("Select only one value per saved field, even when observation dates differ");
       destinations.add(destination);
       if (!mutationFields[candidate.kind].includes(candidate.field)) throw new ApiError("This field cannot be applied from the conversation");
     }
-    if (candidate.kind === "workout_feedback" && !candidate.sessionId) throw new ApiError("Choose the session and send this report again before saving");
+    if ((candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") && !candidate.sessionId) throw new ApiError("Choose the session and send this report again before saving");
   }
   return valid.map(candidate => ({ ...stored.find(original => original.id === candidate.id)!, value: candidate.value }));
 }
@@ -375,7 +376,7 @@ export async function confirmConversation(actor: ConversationActor, raw: unknown
       if (proposal.receipt) {
         if (proposal.idempotencyKey !== idempotencyKey || proposal.requestHash !== requestHash) throw new ApiError("This proposal was already reviewed with a different confirmation", 409);
         const receipt = parsed<ConversationReceipt>(proposal.receipt, "receipt");
-        return { ...await readConversation(actor, tx), ok: true, replayed: true, applied: receipt.applied.length > 0, trainingModified: false, prescriptionModified: false, profileModified: receipt.applied.some(c => c.kind === "profile"), actualsModified: receipt.applied.some(c => c.kind === "workout_feedback"), receipt, pendingAction: receipt.pendingActions[0] ?? null, pendingActions: receipt.pendingActions };
+        return { ...await readConversation(actor, tx), ok: true, replayed: true, applied: receipt.applied.length > 0, trainingModified: receipt.applied.some(c=>c.kind==="workout_plan"), prescriptionModified: receipt.applied.some(c=>c.kind==="workout_plan"), profileModified: receipt.applied.some(c => c.kind === "profile"), actualsModified: receipt.applied.some(c => c.kind === "workout_feedback"), receipt, pendingAction: receipt.pendingActions[0] ?? null, pendingActions: receipt.pendingActions };
       }
       const conversation = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
       if (!conversation || proposal.generation !== conversation.generation || proposal.status !== "pending" || proposal.revision !== body.expectedRevision || proposal.timezone !== actor.timezone) throw new ApiError("This proposal is no longer current. Send a new message and review it again.", 409);
@@ -389,9 +390,9 @@ export async function confirmConversation(actor: ConversationActor, raw: unknown
       const workoutFields = new Map<string, Record<string, unknown>>();
       for (const candidate of selected) {
         if (candidate.kind === "profile") profileFields[candidate.field] = candidate.value;
-        if (candidate.kind === "workout_feedback") {
+        if (candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") {
           const base = bases.workouts[candidate.sessionId!];
-          if (!base || candidate.observedDate !== base.date || base.date > today) throw new ApiError("Session and observation date must match the original proposal", 409);
+          if (!base || candidate.observedDate !== base.date || (candidate.kind === "workout_feedback" ? base.date > today : base.date < today)) throw new ApiError("Session and observation date must match the original proposal", 409);
           const fields = workoutFields.get(candidate.sessionId!) ?? {};
           fields[candidate.field] = candidate.value;
           workoutFields.set(candidate.sessionId!, fields);
@@ -404,21 +405,25 @@ export async function confirmConversation(actor: ConversationActor, raw: unknown
         entityIds.set("profile", saved.id);
       }
       for (const [sessionId, fields] of workoutFields) {
-        const existing = await tx.workout.findFirst({ where: { id: sessionId, userId: actor.id } });
+        const existing = await tx.workout.findFirst({ where: { id: sessionId, userId: actor.id },include:{planDay:true} });
         const base = bases.workouts[sessionId];
         if (!existing || dateKey(existing.date, actor.timezone) !== base.date || workoutRevision(existing) !== base.revision) throw new ApiError("The session changed since this proposal. Send a new message and review it again.", 409);
-        const saved = await updateWorkout(actor.id, actor, { ...fields, sessionId, expectedRevision: base.revision, reason }, tx);
+        const edits=selected.some(c=>c.kind==="workout_plan" && c.sessionId===sessionId);
+        if(edits && selected.some(c=>c.kind==="workout_feedback" && c.sessionId===sessionId)) throw new ApiError("Review planned changes and actual feedback separately");
+        if(edits && (existing.planDay?.dayOff || existing.durationMin===0 || existing.sport==="recovery" || ["race","test"].includes(existing.type))) throw new ApiError("Rest, race and test sessions require a separate cycle review",409);
+        const saved = await updateWorkout(actor.id, actor, { ...fields, sessionId, expectedRevision: base.revision, protectHistory:edits, reason }, tx);
         entityIds.set(sessionId, saved.id);
       }
-      const applied = selected.filter(c => c.kind === "profile" || c.kind === "workout_feedback").map(candidate => ({ candidateId: candidate.id, kind: candidate.kind, field: candidate.field, value: candidate.value, sourceValue: stored.find(c => c.id === candidate.id)!.value, source: candidate.source, observedDate: candidate.observedDate, ...(candidate.sessionId ? { sessionId: candidate.sessionId } : {}), entityId: entityIds.get(candidate.kind === "profile" ? "profile" : candidate.sessionId!)!, evidence: candidate.evidence }));
-      const actions = pendingActions(selected, applied.length > 0);
-      const receipt: ConversationReceipt = { id: randomUUID(), proposalId, confirmedAt: new Date().toISOString(), applied, pendingActions: actions, checkinDraft: selected.filter(c => c.kind === "checkin"), planDraft: selected.filter(c => c.kind === "workout_plan"),
-        message: actor.language === "es" ? applied.length ? "Se guardaron los valores confirmados del perfil o del trabajo realizado. Revisa el check-in de hoy para reevaluar el entrenamiento. No se han reescrito las sesiones de hoy ni las futuras." : "Estos valores aún necesitan revisión en el check-in o la vista previa del plan. No se ha guardado ningún cambio en el perfil, el check-in ni el entrenamiento." : applied.length ? "Confirmed profile or actual-work values saved. Review today's check-in to reassess training. Daily and future prescriptions have not been rewritten." : "These values still need review in the check-in or plan preview. No profile, check-in, or training change has been saved." };
+      const applied = selected.filter(c => c.kind === "profile" || c.kind === "workout_feedback" || c.kind === "workout_plan").map(candidate => ({ candidateId: candidate.id, kind: candidate.kind, field: candidate.field, value: candidate.value, sourceValue: stored.find(c => c.id === candidate.id)!.value, source: candidate.source, observedDate: candidate.observedDate, ...(candidate.sessionId ? { sessionId: candidate.sessionId } : {}), entityId: entityIds.get(candidate.kind === "profile" ? "profile" : candidate.sessionId!)!, evidence: candidate.evidence }));
+      const trainingModified=applied.some(c=>c.kind==="workout_plan");
+      const actions = pendingActions(selected.filter(c=>c.kind!=="workout_plan"), applied.length > 0);
+      const receipt: ConversationReceipt = { id: randomUUID(), proposalId, confirmedAt: new Date().toISOString(), applied, pendingActions: actions, checkinDraft: selected.filter(c => c.kind === "checkin"), planDraft: [],
+        message: trainingModified ? (actor.language === "es" ? "Se guardaron los cambios confirmados. La aprobación anterior del entrenamiento se retiró: revisa el check-in y la nueva estructura antes de entrenar o publicar. No se envió nada al reloj." : "Confirmed changes saved. Previous workout approval was removed: review your check-in and the new structure before training or publishing. Nothing was sent to a watch.") : actor.language === "es" ? applied.length ? "Se guardaron los valores confirmados del perfil o del trabajo realizado. Revisa el check-in de hoy para reevaluar el entrenamiento. No se han reescrito las sesiones de hoy ni las futuras." : "Estos valores necesitan revisión en el check-in. No se ha guardado ningún cambio." : applied.length ? "Confirmed profile or actual-work values saved. Review today's check-in to reassess training. Daily and future prescriptions have not been rewritten." : "These values need review in the check-in. No change has been saved." };
       await tx.coachConversationProposal.update({ where: { id: proposal.id, userId: actor.id }, data: { status: applied.length ? "confirmed" : "review_required", revision: { increment: 1 }, idempotencyKey, requestHash, receipt: JSON.stringify(receipt), confirmedAt: new Date(receipt.confirmedAt) } });
-      if (applied.length) await tx.auditLog.create({ data: { id: receipt.id, actorId: actor.id, subjectId: actor.id, action: "coach.conversation.confirmed", entityId: proposal.id, before: JSON.stringify({ candidates: stored.filter(c => applied.some(a => a.candidateId === c.id)).map(({ evidence: _chatText, warnings: _chatWarnings, ...facts }) => facts), sourceMessageId: proposal.sourceMessageId, baseRevisions: bases }), after: JSON.stringify({ ...receipt, applied: receipt.applied.map(({ evidence: _chatText, ...facts }) => facts), checkinDraft: [], planDraft: [] }), note: `Athlete-confirmed ${actor.timezone}; profile and reported actuals only; no automatic plan rewrite` } });
+      if (applied.length) await tx.auditLog.create({ data: { id: receipt.id, actorId: actor.id, subjectId: actor.id, action: "coach.conversation.confirmed", entityId: proposal.id, before: JSON.stringify({ candidates: stored.filter(c => applied.some(a => a.candidateId === c.id)).map(({ evidence: _chatText, warnings: _chatWarnings, ...facts }) => facts), sourceMessageId: proposal.sourceMessageId, baseRevisions: bases }), after: JSON.stringify({ ...receipt, applied: receipt.applied.map(({ evidence: _chatText, ...facts }) => facts), checkinDraft: [], planDraft: [] }), note: `Athlete-confirmed ${actor.timezone}; explicit reviewed profile, actuals and selected workout edits; approvals revoked for edited prescriptions` } });
       await tx.coachConversationMessage.create({ data: { userId: actor.id, conversationId: conversation.id, role: "assistant", source: "local", content: receipt.message, metadata: JSON.stringify({ proposalId, receiptId: receipt.id, applied: applied.length > 0 }) } });
       await tx.coachConversation.update({ where: { id: conversation.id, userId: actor.id }, data: { revision: { increment: 1 } } });
-      return { ...await readConversation(actor, tx), ok: true, applied: applied.length > 0, trainingModified: false, prescriptionModified: false, profileModified: applied.some(c => c.kind === "profile"), actualsModified: applied.some(c => c.kind === "workout_feedback"), receipt, pendingAction: actions[0] ?? null, pendingActions: actions };
+      return { ...await readConversation(actor, tx), ok: true, applied: applied.length > 0, trainingModified, prescriptionModified: trainingModified, profileModified: applied.some(c => c.kind === "profile"), actualsModified: applied.some(c => c.kind === "workout_feedback"), receipt, pendingAction: actions[0] ?? null, pendingActions: actions };
     }, { isolationLevel: "Serializable", timeout: 20000 });
   } catch (error) { transactionError(error); }
 }

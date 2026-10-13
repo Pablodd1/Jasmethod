@@ -61,7 +61,7 @@ test("uncertain, contradictory, quoted and injection-like statements stay unextr
 
 test("validator refuses unknown fields, dimensions, numeric coercion, dates and confirmed status", () => {
   assert.equal(validateCoachCandidates([sample], context).length, 1);
-  for (const patch of [{ value: "72" }, { value: NaN }, { value: true }, { value: null }, { value: -1 }, { field: "ftp", unit: "W" }, { unit: "lb" }, { observedDate: "2026-02-30" }, { observedDate: "2026-10-04" }, { status: "confirmed" }, { source: "provider" }, { action: "save" }, { sessionId: "other" }]) assert.equal(validateCoachCandidates([{ ...sample, ...patch }], context).length, 0, JSON.stringify(patch));
+  for (const patch of [{ value: "72" }, { value: NaN }, { value: true }, { value: null }, { value: -1 }, { field: "madeUpAnchor", unit: "W" }, { unit: "lb" }, { observedDate: "2026-02-30" }, { observedDate: "2026-10-04" }, { status: "confirmed" }, { source: "provider" }, { action: "save" }, { sessionId: "other" }]) assert.equal(validateCoachCandidates([{ ...sample, ...patch }], context).length, 0, JSON.stringify(patch));
   assert.equal(validateCoachCandidates([{ ...sample, source: "image" }], { ...context, source: "text" }).length, 0);
   assert.equal(validateCoachCandidates([{ ...sample, id: "__proto__", field: "__proto__" }], context).length, 0);
 });
@@ -422,4 +422,28 @@ test("personal summaries retain safety precedence for current and unresolved con
   assert.match(buildCoachReply(`${question}. I have chest pain now`, personal).ruleId, /urgent-symptoms$/);
   assert.match(buildCoachReply(question, { ...personal, checkin: { ...ready.checkin!, sick: true } }).ruleId, /illness-or-pain$/);
   assert.match(buildCoachReply(`${question}. Can I start training?`, { ...personal, unresolvedSafetyConcernAt: "2026-10-03T08:00:00Z" }).ruleId, /clarify-prior-safety$/);
+});
+
+
+test('owner testing and coaching referrals are bilingual and never infer availability or displace safety',()=>{
+ for(const language of ['en','es']) {
+   const c={...ready,language};
+   const testing=buildCoachReply(language==='en'?'Where can I do my VO2max test?':'¿Dónde puedo hacer mi prueba de VO₂max?',c);
+   assert.equal(testing.ruleId,'coach-conversation-v1:testing-referral');assert.match(testing.answer,/Eric/);assert.match(testing.answer,/7862317906/);assert.match(testing.answer,/RMR/);assert.match(testing.answer,/Jasmel/);
+   const coaching=buildCoachReply(language==='en'?'I need coaching guidance. Who can I call?':'Necesito orientación de un entrenador. ¿A quién llamar?',c);
+   assert.equal(coaching.ruleId,'coach-conversation-v1:coaching-referral');assert.match(coaching.answer,/7869708366/);
+ }
+ const urgent=buildCoachReply('I have chest pain. Where can I do my VO2max test?',ready);
+ assert.doesNotMatch(urgent.answer,/7862317906/);assert.match(urgent.ruleId,/urgent/);
+});
+
+test('explicit selected workout changes and reported profile values become proposals, not silent measurements',()=>{
+ const edit=extractLocalCandidates('Change my selected workout to 25 minutes.',{...context,sessionId:'session',sessionDate:context.localToday});
+ assert.equal(edit.find(c=>c.field==='durationMin')?.kind,'workout_plan');assert.equal(edit.find(c=>c.field==='durationMin')?.value,25);
+ assert.equal(value('My height is 180 cm','heightCm'),180);
+ assert.equal(value('My FTP is 250 W','ftp'),250);
+ assert.match(extractLocalCandidates('My FTP is 250 W',context)[0].warnings?.[0]??'',/reported/);
+ assert.equal(value('My goal FTP is 350 W','ftp'),undefined);
+ assert.equal(value('My level is intermediate','experience'),'amateur');
+ assert.equal(value('My birth year is 1990','birthYear'),1990);
 });
