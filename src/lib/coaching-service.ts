@@ -300,10 +300,13 @@ export async function runMockCoachingSchedule(now = new Date(), dependencies: {
     catch { results.push({ userId: pref.userId, status: "blocked", error: "Invalid communication settings. Review your schedule in the app." }); continue; }
     if (!schedule) continue;
     // The independent hourly sync and reminder crons can start together.
-    // Resolve reminders only after this athlete's refresh, once per scheduled
-    // day. Existing consent, source freshness and prescription gates still apply.
-    const prepared = await prisma.coachingPrompt.findFirst({ where: { userId: pref.userId,
-      observationDate: schedule.day, lastAttemptAt: { gte: schedule.at } }, select: { id: true } });
+    // A previous message is not proof of synchronization. Only connector
+    // timestamps establish freshness; failures/running leases keep it unknown.
+    const connections = transport === "telegram" ? await prisma.connector.findMany({ where: {
+      userId: pref.userId, tokenEnc: { not: null }, status: { in: ["connected", "error"] },
+      provider: { in: ["strava", "google_cal", "whoop", "oura", "intervals"] },
+    }, select: { lastSyncAt: true, status: true, syncStartedAt: true } }) : [];
+    const prepared = connections.every(c => c.status === "connected" && !c.syncStartedAt && c.lastSyncAt && c.lastSyncAt >= schedule.at);
     let refreshIncomplete = false;
     if (transport === "telegram" && !prepared) {
       try {

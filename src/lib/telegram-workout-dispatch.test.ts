@@ -61,11 +61,12 @@ async function fixture(mode: "accepted" | "revoke" | "changed" | "approval" | "h
 for (const mode of ["accepted", "revoke", "changed", "approval", "held", "old-consent", "partial", "preflight", "unapproved", "missing-approval", "stale-approval", "started", "approval-preflight", "approval-before-request", "refresh-incomplete"] as const) test(`synthetic end-to-end dispatch: ${mode}`, async () => fixture(mode));
 test("scheduled guidance waits for refresh and excludes imported/completed sessions", async () => {
   const saved = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]])); Object.assign(process.env, env);
-  const originalPrefs = prisma.communicationPreference.findMany, originalFind = prisma.coachingPrompt.findFirst,
+  const originalPrefs = prisma.communicationPreference.findMany, originalFind = prisma.connector.findMany,
     originalUpdate = prisma.coachingPrompt.updateMany, originalWorkouts = prisma.workout.findMany;
   const order: string[] = []; let prepared = false;
   (prisma.communicationPreference as any).findMany = async () => [{ ...basePreference, sessionFeedback: true, user: actor }];
-  (prisma.coachingPrompt as any).findFirst = async () => prepared ? { id: "existing" } : null;
+  (prisma.connector as any).findMany = async () => [{ status: "connected", syncStartedAt: null,
+    lastSyncAt: prepared ? now : null }];
   (prisma.coachingPrompt as any).updateMany = async () => ({ count: 0 });
   (prisma.workout as any).findMany = async () => {
     order.push("read-workouts");
@@ -90,7 +91,7 @@ test("scheduled guidance waits for refresh and excludes imported/completed sessi
     assert.deepEqual(order, ["read-workouts", "prompt:plan", "prompt:report"]);
   } finally {
     (prisma.communicationPreference as any).findMany = originalPrefs;
-    (prisma.coachingPrompt as any).findFirst = originalFind;
+    (prisma.connector as any).findMany = originalFind;
     (prisma.coachingPrompt as any).updateMany = originalUpdate;
     (prisma.workout as any).findMany = originalWorkouts;
     for (const key of Object.keys(env)) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }
