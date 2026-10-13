@@ -37,9 +37,22 @@ PBs, thresholds and goals are requested only where missing; manual entries, draf
 
 PR #48's optional sport/experience choices, removal of required weekly hours, collapsed full-cycle questions and Today completion destination are retained. Day-zero suggestions still require current readiness before execution; a reviewed full cycle remains a separate decision. Starter suggestions are conservative product choices, not measured baselines or validated individual doses.
 
+## Service simplification
+
+The candidate also integrates the separately reviewed service patch. Athlinks is deferred for new search/link/import/sync, with stored results, manual entry and explicit unlink retained. Onboarding labels that deferral rather than offering a new import. The account cap is configurable within 1–100 but still defaults to 50; no production value or expanded enrollment is authorized here. The legacy rich AI briefing explicitly remains local-only. The accompanying service review documents remaining Strava provenance, retention, disclosure and capacity questions; this is not a compliance certification.
+
 ## Verification
 
-Final candidate validation is in progress. Earlier standalone results are not a pass for this combined source.
+- Final aggregate unit/component/provider/handler suite: 1,334 passed, 0 failed.
+- Explicit TypeScript check and production build: passed, with real font downloads through the environment's supported proxy. An initial build without that network configuration failed font resolution; the corrected build passed. No application source was altered to fake that success.
+- Follow-up boundary/transport suite: 27 passed.
+- Reviewed cycle examples: 10 examples and 26 unique structures verified.
+- Built-app public/unauthenticated HTTP smoke: 17 passed. Saved-preview, live-card, PB and both Athlinks endpoints each returned 401 without authentication (five additional checks).
+- Independent bounded review is clear after fixing malformed supplemental-field rendering, personal-summary intent gating, and new PB-write validation.
+- PR #47's card component and stylesheet remain byte-for-byte unchanged; both upstream PR heads are retained in candidate ancestry.
+- Two pre-existing hook-dependency warnings remain in unrelated coach administration components.
+
+GitHub CI, including disposable-Postgres acceptance, is checked separately for the published final commit. Local checks do not establish that result.
 
 ## Verification limits
 

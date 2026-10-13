@@ -59,10 +59,9 @@ export async function GET() {
     try { lastVerdict = JSON.parse(checkins7[0].adaptation || "{}").verdict || ""; } catch {}
   }
   // 4-week completed load per calendar week (Mon-anchored).
-  // AI BOUNDARY (Strava API policy §5.3): Strava-sourced activities are
-  // excluded from the derived load trend sent to the model. The aggregate is
-  // recomputed from eligible (independently acquired / planned-completed)
-  // rows only; a note keeps the omission explicit to the coach view.
+  // This direct-row filter is NOT a complete AI provenance boundary. Matched
+  // plan completion, adopted profile values and earlier derived records may
+  // still depend on Strava data. The whole rich briefing stays local below.
   const restricted4w = workouts4w.filter((w) => w.source === "strava" && w.completed);
   const eligible4w = workouts4w.filter((w) => !(w.source === "strava" && w.completed));
   const weekBuckets = new Map<string, { minutes: number; sessions: number }>();
@@ -76,7 +75,7 @@ export async function GET() {
   }
   const loadTrend = Array.from(weekBuckets.entries()).sort().map(([wk, b]) => `wk${wk.slice(5)}: ${b.sessions} sessions/${Math.round(b.minutes / 60)}h`);
   const loadNote = restricted4w.length
-    ? `[${restricted4w.length} Strava-sourced activities excluded from AI context per provider policy]`
+    ? `[${restricted4w.length} direct Strava activity rows omitted from this local load digest; derived provenance is not fully verified]`
     : null;
   const planned4w = workouts4w.filter((w) => w.planned).length;
   const done4w = workouts4w.filter((w) => w.planned && (w.completed || w.matchedPlanId) && !["partial", "skipped"].includes(w.feedbackStatus || "")).length;
@@ -114,6 +113,9 @@ export async function GET() {
     dnaHighlights: dnaHighlights.slice(0, 4),
     language: user.language,
     historyDigest,
+    // Strava API policy §5.3 covers indirect/derived context too. Do not grant
+    // eligibility from source-row filtering or athlete consent alone.
+    externalAiEligible: false,
   });
 
   return NextResponse.json({ briefing, cached: briefing.mode === "fallback" ? false : true });

@@ -23,7 +23,7 @@ function content(value: unknown): string {
   if (React.isValidElement(value)) return content((value as Node).props.children);
   return String(value);
 }
-function fixture() {
+function fixture(providers: Record<string,unknown>[] = []) {
   const storage = new Map<string,string>();
   const server = {profile:{sex:"",weightKg:null,experience:"beginner",weeklyHours:8,goal:null} as Record<string,unknown>,setup:null as Record<string,unknown>|null,revision:"p1",setupRevision:null as string|null,races:[] as Record<string,unknown>[],conflict:false,importFailure:false,importReview:{observations:[],suggestions:[],history:{count:0,sports:[]}} as Record<string,unknown>};
   const writes: {path:string;body:any}[] = [];
@@ -34,7 +34,7 @@ function fixture() {
       reads.push(path);
       if (path === "/api/profile") return Response.json({...server,planningReadiness:{ready:false,missing:["Confirm available days"],review:[]}});
       if (path === "/api/races") return Response.json({races:server.races});
-      if (path === "/api/connectors") return Response.json({providers:[]});
+      if (path === "/api/connectors") return Response.json({providers});
       return server.importFailure ? Response.json({error:"unavailable"},{status:503}) : Response.json(server.importReview);
     }
     const body = JSON.parse(String(init?.body)); writes.push({path,body});
@@ -192,4 +192,15 @@ test("full-cycle details remain collapsed and completion opens Today without gen
   assert.match(ui.text(),/Experience \(optional\)/);
   await ui.click("4. Your plan");await ui.click("Open today’s training");
   assert.deepEqual(ui.destination,["/today"]);assert.deepEqual(f.writes.map(write=>write.path),["/api/onboard"]);
+});
+
+
+test("deferred imports show saved-history/manual options without offering a connection or new import", async () => {
+  const f=fixture([{id:"athlinks",name:"Athlinks",description:"Race-history imports paused",configured:true,deferred:true,method:"athlinks",status:"connected"}]);
+  const ui=f.mount(); await ui.flush();
+  assert.match(ui.text(),/Import deferred/);
+  assert.match(ui.text(),/Saved history and manual options/);
+  assert.doesNotMatch(ui.text(),/Review race-history import|Connect \/ reconnect/);
+  assert.equal(f.writes.length,0);
+  ui.unmount();
 });

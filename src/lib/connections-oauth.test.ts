@@ -428,7 +428,7 @@ function connectorsDeleteFixture(options={}) {
   const calls=[];const api=fixture(original).intervals;
   const route=load(original,'src/app/api/connectors/route.ts',{
     '@/lib/auth':{getCurrentUser:async()=>options.signedOut?null:{id:'athlete-A'}},
-    '@/lib/db':{prisma:{}},'@/lib/capabilities':{},'@/lib/athlinks':{},
+    '@/lib/db':{prisma:{}},'@/lib/capabilities':{},'@/lib/athlinks':{},'@/lib/athlinks-availability':{ATHLINKS_DEFERRED:true},
     '@/lib/intervals-oauth':{...api,disconnectIntervals:async id=>{
       calls.push(id);if(options.fail)throw new api.IntervalsOAuthError('revocation_failed','Provider revocation could not be confirmed.',502);
       return{ok:true,remoteRevoked:true};

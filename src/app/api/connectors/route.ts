@@ -3,6 +3,7 @@ import { intervalsOAuthConfigured } from "@/lib/intervals-oauth";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { athlinksConfigured } from "@/lib/athlinks";
+import { ATHLINKS_DEFERRED } from "@/lib/athlinks-availability";
 import { disconnectIntervals, IntervalsOAuthError } from "@/lib/intervals-oauth";
 export async function GET() {
   const user = await getCurrentUser();
@@ -88,7 +89,8 @@ export async function GET() {
         id: "athlinks",
         name: "Athlinks",
         description:
-          "Your official race-history record: results, places and PRs — matched to your races automatically.",
+          "Optional race-history imports are deferred. Add races and personal bests manually; existing imported records remain available.",
+        deferred: ATHLINKS_DEFERRED,
       },
       {
         id: "intervals",
