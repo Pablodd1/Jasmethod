@@ -6,6 +6,8 @@ import {
   stepColor,
   type UniversalWorkoutCard as Card,
 } from "@/lib/universal-workout-card";
+import { readTrainingJson } from "./training-read";
+import { readinessReasonText } from "./readiness-copy";
 import type { CanonicalStep } from "@/lib/canonical-session";
 import { FitDownloadActions } from "./FitDownloadActions";
 import { WorkoutEditor } from "./WorkoutEditor";
@@ -31,18 +33,15 @@ export function WorkoutHeader({ card }: { card: Card }) {
           {s.sport.toUpperCase()} · {s.dateLocal} · {s.timezone}
         </p>
         <h1>{s.title}</h1>
-        <p>{s.verdict === "ready" ? card.content.summary : s.reason}</p>
+        <p>{s.verdict === "ready" ? card.content.summary : readinessReasonText(s.reason, es)}</p>
       </div>
       <div className="uwc-stats">
         <b>
-          {s.exactTimeSeconds === null ? "~" : ""}
-          {Number(
-            (s.exactTimeSeconds === null
-              ? s.durationMin
-              : s.exactTimeSeconds / 60
-            ).toFixed(2),
-          )}
-          <small>MIN</small>
+          {s.verdict === "blocked" ? "—" : <>
+            {s.exactTimeSeconds === null && s.durationMin > 0 ? "~" : ""}
+            {Number((s.exactTimeSeconds === null ? s.durationMin : s.exactTimeSeconds / 60).toFixed(2))}
+          </>}
+          <small>{s.verdict === "blocked" ? (es ? "MIN · EN ESPERA" : "MIN · ON HOLD") : "MIN"}</small>
         </b>
         <b>
           {s.verdict === "ready"
@@ -118,7 +117,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
     return { st, i, x: left, w, h, value };
   });
   const step = selected === null ? undefined : s.steps[selected];
-  if (!s.steps.length) return <p role="status">{s.reason}</p>;
+  if (!s.steps.length) return null;
   return (
     <section className="uwc-section">
       <h2>
@@ -480,7 +479,7 @@ export function ErgogenicAidDetails({ card }: { card: Card }) {
         {es ? "Revisar suplementos" : "Review supplements"}
       </a>
       {card.content.limitations.map((v, i) => (
-        <p key={i}>{v}</p>
+        <p key={i}>{readinessReasonText(v, card.language === "es")}</p>
       ))}
     </details>
   );
@@ -655,7 +654,7 @@ export function CoachNotes({ card }: { card: Card }) {
           : "Preparation & coach notes"}
       </summary>
       {card.content.preparation.map((v, i) => (
-        <p key={i}>{v}</p>
+        <p key={i}>{readinessReasonText(v, card.language === "es")}</p>
       ))}
       <a href="/coach">J Koach</a>
     </details>
@@ -665,9 +664,11 @@ export function CoachNotes({ card }: { card: Card }) {
 export function UniversalWorkoutCard({
   card,
   onSaved,
+  heldPreview,
 }: {
   card: Card;
   onSaved?: () => void | Promise<void>;
+  heldPreview?: React.ReactNode;
 }) {
   const es = card.language === "es";
   return (
@@ -683,9 +684,15 @@ export function UniversalWorkoutCard({
           </a>
         </div>
       )}
-      <WorkoutIntensityTimeline card={card} />
-      <WorkoutIntervalDetails card={card} />
-      <details className="uwc-extra"><summary>{es ? "Ritmo, potencia y frecuencia cardíaca" : "Pace, power & heart rate"}</summary><TrainingTargetSelector card={card} /></details>
+      {card.session.verdict !== "ready" && heldPreview && <section aria-label={es ? "Plan guardado durante la revisión" : "Saved plan during readiness review"}>
+        <p role="status">{es ? "La sesión de hoy aún no está autorizada para entrenar. Puedes consultar el plan guardado abajo; sus pasos no eliminan la pausa ni autorizan la ejecución." : "Today's workout is not cleared to train. You can still view the saved plan below; its steps do not remove the hold or authorize execution."}</p>
+        {heldPreview}
+      </section>}
+      {card.session.verdict === "ready" && <>
+        <WorkoutIntensityTimeline card={card} />
+        <WorkoutIntervalDetails card={card} />
+        <details className="uwc-extra"><summary>{es ? "Ritmo, potencia y frecuencia cardíaca" : "Pace, power & heart rate"}</summary><TrainingTargetSelector card={card} /></details>
+      </>}
       <details className="uwc-extra"><summary>{es ? "Alimentación antes, durante y después" : "Fuel before, during & after"}</summary>
       <section className="uwc-section">
         <h2>
@@ -725,15 +732,19 @@ export function UniversalWorkoutCard({
   );
 }
 
-export function UniversalWorkoutCardLoader({
-  sessionId,
-  es = false,
-  onSaved,
-}: {
+type WorkoutCardLoaderProps = {
   sessionId: string;
   es?: boolean;
   onSaved?: () => void | Promise<void>;
-}) {
+  heldPreview?: React.ReactNode;
+};
+
+export function UniversalWorkoutCardLoader(props: WorkoutCardLoaderProps) {
+  // Reset before rendering a newly selected session, not after effect cleanup.
+  return <WorkoutCardLoader key={props.sessionId} {...props} />;
+}
+
+function WorkoutCardLoader({ sessionId, es = false, onSaved, heldPreview }: WorkoutCardLoaderProps) {
   const [card, setCard] = useState<Card | null>(null),
     [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -741,30 +752,20 @@ export function UniversalWorkoutCardLoader({
     const abort = new AbortController();
     setCard(null);
     setError("");
-    fetch(`/api/workout/card?id=${encodeURIComponent(sessionId)}`, {
-      cache: "no-store",
+    readTrainingJson(`/api/workout/card?id=${encodeURIComponent(sessionId)}`, {
       signal: abort.signal,
+      label: "Workout card",
+      validate: (value): value is Card => isUniversalWorkoutCard(value) && value.session.id === sessionId,
     })
-      .then(async (r) => {
-        const d = await r.json();
-        if (!r.ok) throw Error(d.error || "Could not load workout");
-        if (
-          !isUniversalWorkoutCard(d) ||
-          d.session?.id !== sessionId ||
-          !Array.isArray(d.session.steps)
-        )
-          throw Error("Unsupported workout card");
-        if (!abort.signal.aborted) setCard(d);
-      })
-      .catch((e) => {
-        if (!abort.signal.aborted) setError(e.message);
-      });
+      .then(value => { if (!abort.signal.aborted) setCard(value); })
+      .catch(error => { if (!abort.signal.aborted) setError(error instanceof Error ? error.message : "Could not load workout. Please retry."); });
     return () => abort.abort();
   }, [sessionId, retry]);
   return card ? (
     <UniversalWorkoutCard
       key={card.session.revision}
       card={card}
+      heldPreview={heldPreview}
       onSaved={async () => {
         setRetry((v) => v + 1);
         await onSaved?.();
@@ -773,11 +774,11 @@ export function UniversalWorkoutCardLoader({
   ) : (
     <div role={error ? "alert" : "status"}>
       {error || (es ? "Cargando tarjeta…" : "Loading workout card…")}
-      {error && (
-        <button onClick={() => setRetry((v) => v + 1)}>
-          {es ? "Reintentar" : "Retry"}
-        </button>
-      )}
+      {error && <>
+        <button type="button" className="btn-secondary ml-2" onClick={() => setRetry((v) => v + 1)}>{es ? "Reintentar" : "Retry"}</button>
+        <p>{es ? "No se pudo verificar la autorización para entrenar. La vista guardada sigue siendo solo de lectura." : "Readiness could not be verified. The saved preview remains read-only."}</p>
+        {heldPreview}
+      </>}
     </div>
   );
 }

@@ -24,6 +24,7 @@ import {
   Swords,
   Download,
 } from "lucide-react";
+import { readTrainingJson, isSavedPlanResponse, isTrainingProfileResponse } from "@/components/daily-training/training-read";
 import { SavedWorkoutPreviewCard } from "@/components/daily-training/SavedWorkoutPreviewCard";
 import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
 import { addDaysKey, dateKey } from "@/lib/dates";
@@ -54,6 +55,11 @@ function fmtMin(min: number) {
 
 export default function TrainingPage() {
   const { user } = useAuth();
+  return <TrainingPageContent key={user?.id || "signed-out"} />;
+}
+
+function TrainingPageContent() {
+  const { user } = useAuth();
   const es = user?.language === "es";
   const [plans, setPlans] = useState<any[]>([]);
   const [cycle, setCycle] = useState<any>(null);
@@ -61,6 +67,11 @@ export default function TrainingPage() {
   const [savedMessage, setSavedMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [planLoaded, setPlanLoaded] = useState(false);
+  const [setupLoading, setSetupLoading] = useState(true);
+  const [setupError, setSetupError] = useState("");
+  const loadController = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
   const [generating, setGenerating] = useState(false);
   const [form, setForm] = useState({
     distance: "",
@@ -93,38 +104,56 @@ export default function TrainingPage() {
   >({});
 
   const load = useCallback(async () => {
+    if (!mounted.current) return;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    const { signal } = controller;
     setLoading(true);
+    setSetupLoading(true);
     setLoadError("");
-    try {
-    const [planResponse, profileResponse] = await Promise.all([
-      fetch("/api/plan", {cache:"no-store", signal:AbortSignal.timeout(15000)}),
-      fetch("/api/profile", {cache:"no-store", signal:AbortSignal.timeout(15000)}),
+    setSetupError("");
+    // A slow or failed planning setup must not hide an already saved cycle.
+    await Promise.all([
+      readTrainingJson("/api/plan", { signal, label: "Your saved training", validate: isSavedPlanResponse })
+        .then(p => {
+          if (!mounted.current || signal.aborted) return;
+          setPlans(p.plans);
+          setPlanLoaded(true);
+          if (user && initialPreviewFor.current !== user.id) {
+            const todayKey = dateKey(new Date(), user.timezone);
+            const pendingSession = (session: any) => !session.completed && session.feedbackStatus !== "skipped";
+            const nextDay = (p.plans[0]?.days || []).find((day: any) => !day.dayOff && dateKey(new Date(day.date), user.timezone) >= todayKey && day.sessions?.some(pendingSession));
+            const nextSession = nextDay?.sessions.find(pendingSession);
+            setExpanded(new Set(nextSession ? [nextSession.id] : []));
+            if (nextDay) setSelectedMonth(dateKey(new Date(nextDay.date), user.timezone).slice(0, 7));
+            initialPreviewFor.current = user.id;
+          }
+          setCycle(p.cycle ?? null);
+        })
+        .catch(err => { if (!signal.aborted) setLoadError(err instanceof Error ? err.message : "Could not load training."); })
+        .finally(() => { if (!signal.aborted) setLoading(false); }),
+      readTrainingJson("/api/profile", { signal, label: "Planning setup", validate: isTrainingProfileResponse })
+        .then(z => {
+          if (!mounted.current || signal.aborted) return;
+          setZones(z.zones);
+          setProfile(z.profile);
+          setPlanningReadiness(z.planningReadiness);
+          setForm(previous => ({...previous, distance: previous.distance || planningGoal(z.profile?.goal) || "", weeks: previous.weeks || String(z.setup?.planWeeks ?? "")}));
+        })
+        .catch(err => {
+          if (!mounted.current || signal.aborted) return;
+          setPlanningReadiness(null);
+          setSetupError(err instanceof Error ? err.message : "Could not load planning setup.");
+        })
+        .finally(() => { if (!signal.aborted) setSetupLoading(false); }),
     ]);
-    if (!planResponse.ok || !profileResponse.ok) throw Error("Could not load your plan and planning setup. Retry to check your saved information.");
-    const [p, z] = await Promise.all([planResponse.json(), profileResponse.json()]);
-    setPlans(p.plans || []);
-    if (user && initialPreviewFor.current !== user.id) {
-      const todayKey = dateKey(new Date(), user.timezone);
-      const pendingSession = (session: any) => !session.completed && session.feedbackStatus !== "skipped";
-      const nextDay = (p.plans?.[0]?.days || []).find((day: any) => !day.dayOff && dateKey(new Date(day.date), user.timezone) >= todayKey && day.sessions?.some(pendingSession));
-      const nextSession = nextDay?.sessions.find(pendingSession);
-      setExpanded(new Set(nextSession ? [nextSession.id] : []));
-      if (nextDay) setSelectedMonth(dateKey(new Date(nextDay.date), user.timezone).slice(0, 7));
-      initialPreviewFor.current = user.id;
-    }
-    setCycle(p.cycle ?? null);
-    setZones(z.zones);
-    setProfile(z.profile);
-    setPlanningReadiness(z.planningReadiness);
-    setForm(previous => ({...previous, distance: previous.distance || planningGoal(z.profile?.goal) || "", weeks: previous.weeks || String(z.setup?.planWeeks ?? "")}));
-    } catch (err) {
-      setPlanningReadiness(null);
-      setLoadError(err instanceof Error ? err.message : "Could not load training.");
-    } finally { setLoading(false); }
   }, [user]);
 
   useEffect(() => {
-    if (user) load();
+    mounted.current = true;
+    if (user) void load();
+    return () => { mounted.current = false; loadController.current?.abort(); };
   }, [user, load]);
 
   function updatePlanForm(next: typeof form) {
@@ -136,7 +165,7 @@ export default function TrainingPage() {
 
   async function generate(e?: React.FormEvent, confirmed = false) {
     e?.preventDefault();
-    if (!planningReadiness?.ready || generating) return;
+    if (!planningReadiness?.ready || generating || loading || setupLoading || loadError || setupError) return;
     setGenerating(true);
     setError("");
     try {
@@ -264,10 +293,10 @@ export default function TrainingPage() {
             <a href="/api/training/export" className="btn-secondary">
               <Download className="w-4 h-4" /> Download all training
             </a>
-            <span className="chip chip-z2">
+            {planLoaded && <span className="chip chip-z2">
               <Layers className="w-3.5 h-3.5" /> {completedCount}/{totalCount}{" "}
               sessions
-            </span>
+            </span>}
           </div>
         </div>
 
@@ -277,19 +306,21 @@ export default function TrainingPage() {
           files for compatible Garmin/COROS workflows.
         </p>
 
+        {loading && <p role="status" className="card" aria-live="polite">{planLoaded ? (es ? "Actualizando tu ciclo guardado…" : "Refreshing your saved training…") : (es ? "Cargando tu ciclo y sesiones guardadas…" : "Loading your saved cycle and sessions…")}</p>}
+        {loadError && <div role="alert" className="card border-red-300"><p>{loadError}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={() => void load()}>{es ? "Reintentar entrenamiento" : "Retry loading training"}</button></div>}
+        {setupError && <div role="alert" className="card border-amber-300"><p>{setupError} {es ? "El ciclo guardado se carga por separado." : "Your saved cycle loads separately."}</p><button type="button" className="btn-secondary mt-2" disabled={setupLoading} onClick={() => void load()}>{es ? "Reintentar configuración" : "Retry planning setup"}</button></div>}
         {savedMessage && <p role="status" className="card border-emerald-300">{savedMessage}</p>}
         {plan && <TrainingCycleOverview es={es} plan={plan} cycle={cycle} timezone={user?.timezone || "America/New_York"} selectedMonth={visibleMonth} onMonthChange={setSelectedMonth} />}
         <TargetProgressPanel key={user?.id} language={user?.language} />
 
         {/* A saved cycle remains primary; replacing it is an explicit review. */}
-        <details className="card" open={!plan}>
-          <summary className="font-display font-bold text-lg mb-3 cursor-pointer">{plan ? (es ? "Revisar cambios del entrenamiento futuro" : "Review changes to future training") : (es ? "Crear y guardar tu ciclo de entrenamiento" : "Create and save your training cycle")}</summary>
+        <details className="card" open={planLoaded && !plan && !loading && !loadError}>
+          <summary className="font-display font-bold text-lg mb-3 cursor-pointer">{!planLoaded ? (es ? "Configuración del plan" : "Planning setup") : plan ? (es ? "Revisar cambios del entrenamiento futuro" : "Review changes to future training") : (es ? "Crear y guardar tu ciclo de entrenamiento" : "Create and save your training cycle")}</summary>
           <p className="text-sm text-slate-500 mb-4">
             {profile?.lthr
               ? "Saved physiological references remain reported values; dated, verified anchors are needed for exact targets."
               : "No threshold benchmark is required. Use effort and talk-test guidance; missing physiology is not estimated from age, sex or weight."}
           </p>
-          {loadError && <div role="alert" className="mb-4 rounded-lg border border-red-300 p-3"><p>{loadError}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={()=>void load()}>Retry loading training</button></div>}
           {planningReadiness && !planningReadiness.ready && <div role="status" className="mb-4 border border-amber-300 rounded-lg p-3 space-y-3">
             <p className="font-semibold">Complete your planning setup to unlock a preview</p>
             <p className="text-sm">You can use JMM without completing onboarding. A personalized plan needs your recent training, available time and current restrictions. No device, threshold test or race entry is required.</p>
@@ -390,10 +421,10 @@ export default function TrainingPage() {
             </div>
             {planningReadiness && !planningReadiness.ready ? <a href={setupHref} className="btn-primary justify-center">Complete setup to preview</a> : <button
               type="submit"
-              disabled={generating || loading || !planningReadiness?.ready}
+              disabled={generating || loading || setupLoading || !!loadError || !!setupError || !planningReadiness?.ready}
               className="btn-primary justify-center"
             >
-              {loading ? "Loading setup…" : generating ? (
+              {loading || setupLoading ? "Loading setup…" : generating ? (
                 "Preparing preview…"
               ) : (
                 <>
@@ -641,7 +672,7 @@ export default function TrainingPage() {
 
                             {isExpanded && (
                               <div className="px-3 pb-3 -mt-1 space-y-2">
-                                {dateKey(new Date(day.date), user?.timezone) === dateKey(new Date(), user?.timezone) ? <UniversalWorkoutCardLoader key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} onSaved={() => load()} /> : <SavedWorkoutPreviewCard key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} />}
+                                {dateKey(new Date(day.date), user?.timezone) === dateKey(new Date(), user?.timezone) ? <UniversalWorkoutCardLoader key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={s.id} es={es} />} onSaved={() => load()} /> : <SavedWorkoutPreviewCard key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} />}
                                 <Link className="btn-secondary inline-flex" href={`/daily?sessionId=${encodeURIComponent(s.id)}`}>{es ? "Abrir entrenamiento actual" : "Open current workout"}</Link>
                                 {s.preWeightKg &&
                                   s.postWeightKg &&
@@ -795,7 +826,7 @@ export default function TrainingPage() {
               );
             })}
           </div>
-        ) : (
+        ) : planLoaded && !loading && !loadError ? (
           <div className="card text-center py-16 text-slate-400">
             <Dumbbell className="w-12 h-12 mx-auto mb-3 text-slate-300" />
             <p className="font-medium text-slate-500">{es ? "Aún no tienes un plan guardado" : "No training plan yet"}</p>
@@ -803,7 +834,7 @@ export default function TrainingPage() {
               {planningReadiness?.ready ? "Preview a cycle above, review its weeks and confirm it to save structured training. Today and the calendar will use the saved plan." : "Complete planning setup using the button above. You can browse protocols now; applying one requires a confirmed plan and a compatible session."}
             </p>
           </div>
-        )}
+        ) : null}
       </div>
     </ProtectedPage>
   );

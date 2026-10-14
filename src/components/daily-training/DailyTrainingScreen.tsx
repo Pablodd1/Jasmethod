@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react";
 import type { DailyTraining, Guidance, PaceKey, Segment } from "./training-contract";
 import { endpointLabel, plannedSeconds } from "./training-contract";
 import { FitDownloadActions } from "./FitDownloadActions";
+import { SavedWorkoutPreviewCard } from "./SavedWorkoutPreviewCard";
 import { UniversalWorkoutCard } from "./UniversalWorkoutCard";
 
 export type CompletionActual = { durationMinutes: number | null; actualSport: string | null; sessionRpe: number | null; comments: string | null; status: "completed" | "partial" | "substituted" | "skipped" | "unknown" };
@@ -86,7 +87,7 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved 
     finally { pending.current = false; setBusy(false); }
   }
   return <main className="jmm-screen">
-    {plan.workoutCard && <UniversalWorkoutCard key={plan.workoutCard.session.revision} card={plan.workoutCard} onSaved={onSaved}/>}
+    {plan.workoutCard && <UniversalWorkoutCard key={plan.workoutCard.session.revision} card={plan.workoutCard} heldPreview={<SavedWorkoutPreviewCard sessionId={session.id} es={plan.language === "es"} />} onSaved={onSaved}/>}
     {plan.workoutCard && <div className="jmm-panel-body"><button type="button" className="jmm-button" disabled={busy||!ready} aria-pressed={focus} onClick={toggleFocus}>{focus?(plan.language==="es"?"Preparación lista ✓":"Focus ready ✓"):(plan.language==="es"?"Marcar preparación lista":"Mark focus ready")}</button>{error&&<p role="alert">{error}</p>}</div>}
     {plan.workoutCard && <TrainingReferenceDetails plan={plan} />}
     {!plan.workoutCard && <>
