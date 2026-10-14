@@ -51,9 +51,14 @@
 }
 .uwc-header {
   display: flex;
+  flex-wrap: wrap;
   gap: 20px;
   justify-content: space-between;
   align-items: center;
+}
+.uwc-header > div:first-child {
+  flex: 1 1 280px;
+  min-width: 0;
 }
 .uwc-header p,
 .uwc-muted,
@@ -62,9 +67,14 @@
 }
 .uwc-stats {
   display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 20px;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .uwc-stats b {
+  white-space: nowrap;
   font-size: 36px;
   text-align: center;
 }

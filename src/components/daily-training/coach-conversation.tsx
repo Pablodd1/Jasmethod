@@ -4,6 +4,7 @@ import { COACH_REFERRALS } from "@/lib/coach-referrals";
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { coachDictationError } from "./coach-dictation-client";
 import {
   COACH_MESSAGE_LIMIT, COACH_REQUEST_TIMEOUT, COACH_SEND_TIMEOUT, COACH_VOICE_TIMEOUT,
   CoachRequestGate, readCoachResponse, coachExternalPermissions, coachConfirmationAttempt, coachSendAttempt, coachSendWasRecorded, coachPendingActions, editedCoachCandidate, mergeCoachSessions, validateCoachImage, verifiedCoachReceipt,
@@ -72,7 +73,8 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const [voiceReview, setVoiceReview] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [sendingMessage, setSendingMessage] = useState<{ requestId: string; content: string } | null>(null);
-  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
+  const [dictationError, setDictationError] = useState("");
   const requestGate = useRef(new CoachRequestGate());
   const busy = useRef(false);
   const mounted = useRef(false);
@@ -209,6 +211,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   async function send(event: React.FormEvent) {
     event.preventDefault();
     if (busy.current || blocked || listening || imageBusy || (!message.trim() && !canSendImage)) return;
+    setDictationError("");
     const outgoingImage = canSendImage ? { mimeType: screenshot!.mimeType, dataBase64: screenshot!.dataBase64 } : undefined;
     const outgoing: CoachSendBody = { message: message.trim(), source, externalConsent: permissions.text, ...(permissions.text ? { textProviderConsent: "gemini" } : {}), ...(outgoingImage ? { image: outgoingImage, imageConsent: true, imageProviderConsent: "openai" } : {}), ...(sessionId ? { sessionId } : {}) };
     sendAttempt.current = coachSendAttempt(sendAttempt.current, outgoing, () => crypto.randomUUID());
@@ -260,7 +263,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     if (!payload || !mounted.current) return;
     if (payload.cleared !== true) { setNeedsReload(true); setError(es ? "No se ha confirmado el borrado de la conversación." : "Clearing the conversation is unconfirmed."); return; }
     try {
-      applyPayload(payload); setClearReview(false); setMessage(""); setSource("text"); setScreenshot(null); setExternalConsent(false); setImageConsent(false); setVoiceReview(false); setTranscript(""); confirmationAttempt.current = null; sendAttempt.current = null;
+      applyPayload(payload); setClearReview(false); setMessage(""); setSource("text"); setScreenshot(null); setExternalConsent(false); setImageConsent(false); setVoiceReview(false); setTranscript(""); setDictationError(""); confirmationAttempt.current = null; sendAttempt.current = null;
       setStatus(es ? "Conversación borrada. Se conservan tus datos confirmados y el registro de cambios." : "Conversation cleared. Confirmed athlete facts and the change audit are retained.");
     } catch (cause) { setError((cause as Error).message); setNeedsReload(true); }
   }
@@ -285,13 +288,17 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   }
 
   function startVoice() {
-    if (blocked || listening) return;
+    if (blocked || busy.current || listening || imageBusy || recognition.current) return;
     const scope = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
     const Constructor = scope.SpeechRecognition || scope.webkitSpeechRecognition;
-    if (!Constructor) { setError(es ? "Este navegador no admite dictado. Puedes escribir tu mensaje." : "This browser does not support dictation. You can type your message."); return; }
+    if (!Constructor) { setVoiceSupported(false); textInput.current?.focus(); return; }
     stopVoice();
+    setDictationError(""); setStatus("");
     const epoch = voiceEpoch.current;
-    const rec = new Constructor(); recognition.current = rec;
+    let rec: Recognition;
+    try { rec = new Constructor(); }
+    catch (cause) { setDictationError(coachDictationError(cause instanceof Error ? cause.name : "", es)); return; }
+    recognition.current = rec;
     rec.lang = es ? "es-ES" : "en-US"; rec.interimResults = true; rec.continuous = false;
     let heard = ""; let lowConfidence = false;
     const current = () => mounted.current && epoch === voiceEpoch.current;
@@ -300,22 +307,30 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
       heard = Array.from(event.results).map(result => { if (result.isFinal && result[0].confidence > 0 && result[0].confidence < 0.65) lowConfidence = true; return result[0].transcript; }).join(" ").slice(0, COACH_MESSAGE_LIMIT);
       setTranscript(heard);
     };
-    rec.onerror = () => { if (!current()) return; stopVoice(); setListening(false); setVoiceReview(!!heard.trim()); setError(es ? "El dictado se interrumpió o no recibió permiso. Revisa el texto o escribe tu mensaje; no se ha enviado nada." : "Dictation was interrupted or permission was not granted. Review the text or type your message; nothing was sent."); };
+    rec.onerror = event => { if (!current()) return; stopVoice(); setListening(false); setVoiceReview(!!heard.trim()); setDictationError(coachDictationError(event.error, es)); };
     rec.onend = () => {
       if (!current()) return;
       stopVoice(); setListening(false); setVoiceReview(!!heard.trim());
       setStatus(heard.trim() ? (lowConfidence ? (es ? "Algunas palabras no se oyeron con claridad. Corrige la transcripción antes de usarla." : "Some words were unclear. Correct the transcript before using it.") : (es ? "Revisa la transcripción. Todavía no se ha enviado." : "Review the transcript. It has not been sent.")) : (es ? "No se recibió una transcripción. Puedes intentarlo de nuevo o escribir." : "No transcript was received. Try again or type your message."));
     };
-    setTranscript(""); setVoiceReview(false); setError(""); setListening(true);
+    setTranscript(""); setVoiceReview(false); setListening(true);
     voiceTimer.current = setTimeout(() => { if (!current()) return; stopVoice(); setListening(false); setVoiceReview(!!heard.trim()); setStatus(es ? "Se alcanzó el límite de un minuto. Revisa el texto antes de usarlo." : "The one-minute limit was reached. Review the text before using it."); }, COACH_VOICE_TIMEOUT);
-    try { rec.start(); } catch { stopVoice(); setListening(false); setError(es ? "No se pudo iniciar el micrófono. Puedes escribir." : "The microphone could not start. You can type instead."); }
+    try { rec.start(); } catch (cause) { stopVoice(); setListening(false); setDictationError(coachDictationError(cause instanceof Error ? cause.name : "", es)); }
+  }
+
+  function finishVoice() {
+    try { recognition.current?.stop(); }
+    catch {
+      stopVoice(); setListening(false); setVoiceReview(!!transcript.trim());
+      setDictationError(coachDictationError("", es));
+    }
   }
 
   function useTranscript() {
     if (!transcript.trim() || listening || blocked) return;
     const combined = [message.trim(), transcript.trim()].filter(Boolean).join("\n");
     if (combined.length > COACH_MESSAGE_LIMIT) { setError(es ? "El texto supera el límite. Acorta el mensaje antes de añadir la transcripción." : "The text exceeds the limit. Shorten your message before adding the transcript."); return; }
-    setMessage(combined); setSource("voice"); setVoiceReview(false); setTranscript(""); textInput.current?.focus();
+    setMessage(combined); setSource("voice"); setVoiceReview(false); setTranscript(""); setDictationError(""); textInput.current?.focus();
     setStatus(es ? "Transcripción revisada añadida al mensaje. Pulsa Enviar para conversar; no guarda datos por sí sola." : "Reviewed transcript added to your message. Press Send to chat; this does not save athlete facts.");
   }
 
@@ -326,14 +341,14 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   return <section id="jasai" aria-labelledby={`${id}-title`} className="card space-y-4 scroll-mt-24 min-w-0" lang={es ? "es" : "en"}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 id={`${id}-title`} className="font-display text-xl font-bold">{es ? "Conversar con KCoach" : "Ask KCoach"}</h2>
-        <p className="text-sm text-slate-700 mt-1">{es ? "Pregunta lo que necesites. Pide más detalle cuando quieras." : "Ask what you need. Ask for more detail whenever you want."}</p></div>
+        <p className="text-sm text-slate-700 mt-1">{es ? "Escribe o dicta tu pregunta, revísala y envíala. Las respuestas del entrenador aparecen aquí como texto." : "Type or dictate your question, review it, then send. Your coach’s replies appear here as text."}</p></div>
     </div>
     {operation && <div role="status" className="flex flex-wrap items-center gap-3 text-sm"><span>{operation === "load" ? (es ? "Cargando conversación…" : "Loading conversation…") : operation === "confirm" ? (es ? "Comprobando y guardando…" : "Verifying and saving…") : (es ? "Procesando solicitud…" : "Processing request…")}</span><button type="button" className={secondaryClass} onClick={cancelRequest}>{es ? "Dejar de esperar" : "Stop waiting"}</button></div>}
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
     {status && <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm text-slate-800">{status}</p>}
     {(!loaded || needsReload) && !operation && <button type="button" className={secondaryClass} disabled={offline} onClick={() => void load()}>{es ? "Recargar conversación" : "Reload conversation"}</button>}
     {offline && <p role="status" className="text-sm text-amber-900">{es ? "Sin conexión. Conéctate antes de enviar mensajes o confirmar cambios." : "Offline. Reconnect before sending messages or confirming changes."}</p>}
-    <ol ref={history} className="min-h-40 max-h-[55vh] overflow-y-auto overscroll-contain space-y-3 rounded-lg border p-3" aria-label={es ? "Historial de conversación" : "Conversation history"} aria-live="polite" aria-relevant="additions" tabIndex={0}>
+    <ol ref={history} className="min-h-32 max-h-[40vh] sm:max-h-[55vh] overflow-y-auto overscroll-contain space-y-3 rounded-lg border p-3" aria-label={es ? "Historial de conversación" : "Conversation history"} aria-live="polite" aria-relevant="additions" tabIndex={0}>
       {messages.map(entry => <li key={entry.id} className={`rounded-lg p-3 ${entry.role === "user" ? "bg-ocean-50" : "bg-slate-50"}`}>
         <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "J Koach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
         <p className="mt-1 whitespace-pre-wrap break-words">{entry.content}</p>
@@ -343,15 +358,23 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     </ol>
     <form onSubmit={send} className="space-y-3">
       <label className="block font-medium" htmlFor={`${id}-message`}>{source === "voice" ? (es ? "Mensaje con transcripción revisada" : "Message with reviewed transcript") : (es ? "Tu mensaje" : "Your message")}</label>
-      <textarea ref={textInput} id={`${id}-message`} className={inputClass} rows={2} maxLength={COACH_MESSAGE_LIMIT} value={message} disabled={blocked || listening} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={es ? "Pregunta a tu entrenador…" : "Ask your coach…"} />
+      <textarea ref={textInput} id={`${id}-message`} className={`${inputClass} !text-base min-h-24`} rows={3} maxLength={COACH_MESSAGE_LIMIT} value={message} disabled={blocked || listening} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={es ? "Escribe tu pregunta aquí…" : "Type your question here…"} />
       <div className="flex flex-wrap items-center justify-between gap-3">
-      <button className={primaryClass} disabled={blocked || listening || imageBusy || (!message.trim() && !canSendImage)} type="submit">{screenshot && !canSendImage ? (es ? "Enviar solo texto" : "Send text only") : source === "voice" ? (es ? "Enviar mensaje revisado" : "Send reviewed message") : (es ? "Enviar mensaje" : "Send message")}</button>
+      <button className={`${primaryClass} min-h-11 max-w-full whitespace-normal`} disabled={blocked || listening || imageBusy || (!message.trim() && !canSendImage)} type="submit">{screenshot && !canSendImage ? (es ? "Enviar solo texto" : "Send text only") : source === "voice" ? (es ? "Enviar mensaje revisado" : "Send reviewed message") : (es ? "Enviar mensaje" : "Send message")}</button>
         <span className="text-xs text-slate-600">{message.length}/{COACH_MESSAGE_LIMIT} · {es ? "Mayús + Intro: nueva línea" : "Shift + Enter: new line"}</span>
       </div>
       <p className="text-xs text-slate-700">{es ? "Los cambios en tus datos requieren tu revisión y confirmación." : "Changes to your facts need your review and confirmation."}</p>
       {(permissions.text || canSendImage) && <p role="status" className="text-xs text-slate-700">{permissions.text ? (es ? "Google Gemini habilitado para este mensaje. " : "Google Gemini enabled for this message. ") : ""}{canSendImage ? (es ? "Esta captura se enviará a OpenAI." : "This screenshot will be sent to OpenAI.") : ""}</p>}
+      <div role="group" aria-labelledby={`${id}-dictation-title`} className="rounded-lg border border-ocean-200 bg-ocean-50 p-3 space-y-2 min-w-0">
+        <h3 id={`${id}-dictation-title`} className="text-sm font-semibold">{es ? "Dictar un mensaje" : "Dictate a message"}</h3>
+        <p id={`${id}-dictation-help`} className="text-xs text-slate-700">{es ? "Dictado en español. Tu navegador puede enviar el audio a su proveedor de reconocimiento. Revisa el texto antes de usarlo; el micrófono nunca guarda datos ni envía tu mensaje automáticamente." : "English dictation. Your browser may send audio to its speech-recognition provider. Review the text before using it; the microphone never saves facts or sends your message automatically."}</p>
+        {!listening ? <button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal disabled:opacity-50`} aria-describedby={`${id}-dictation-help`} disabled={blocked || imageBusy || voiceSupported !== true} onClick={startVoice}>{es ? "Iniciar dictado" : "Start dictation"}</button> : <div className="flex flex-wrap items-center gap-2"><span role="status">{es ? "Escuchando…" : "Listening…"}</span><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} onClick={finishVoice}>{es ? "Terminar y revisar" : "Stop and review"}</button><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} onClick={() => { stopVoice(); setListening(false); setVoiceReview(false); setTranscript(""); }}>{es ? "Cancelar dictado" : "Cancel dictation"}</button></div>}
+        {voiceSupported === false && <p role="status" className="text-sm text-slate-700">{es ? "El dictado no está disponible en este navegador. Escribe tu mensaje arriba; también puedes usar el dictado del teclado de tu dispositivo si está disponible." : "Dictation is unavailable in this browser. Type your message above; you can also use your device keyboard’s dictation if available."}</p>}
+        {dictationError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{dictationError}</p>}
+        {(voiceReview || listening) && <div className="space-y-2"><label className="block font-medium" htmlFor={`${id}-transcript`}>{es ? "Revisa y corrige la transcripción" : "Review and correct the transcript"}</label><textarea id={`${id}-transcript`} className={`${inputClass} !text-base`} rows={3} value={transcript} maxLength={COACH_MESSAGE_LIMIT} disabled={listening || blocked} onChange={event => setTranscript(event.target.value)} />{!listening && <div className="flex flex-wrap gap-2"><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} disabled={blocked || !transcript.trim()} onClick={useTranscript}>{es ? "Usar transcripción revisada" : "Use reviewed transcript"}</button><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} onClick={() => { setVoiceReview(false); setTranscript(""); }}>{es ? "Descartar transcripción" : "Discard transcript"}</button></div>}</div>}
+      </div>
       <details className="rounded-lg border p-3">
-        <summary className={`cursor-pointer text-sm font-medium ${focus}`}>{es ? "Herramientas opcionales: registro, voz, imágenes e IA" : "Optional tools: logging, voice, images & AI"}</summary>
+        <summary className={`cursor-pointer text-sm font-medium ${focus}`}>{es ? "Herramientas opcionales: registro, imágenes e IA" : "Optional tools: logging, images & AI"}</summary>
         <div className="mt-3 space-y-3">
       <label className="block text-sm font-medium" htmlFor={`${id}-session`}>{es ? "Sesión sobre la que hablas (para registrar resultados)" : "Workout you are discussing (for logging results)"}</label>
       <select id={`${id}-session`} className={inputClass} value={sessionId} disabled={blocked || listening} onChange={event => setSessionId(event.target.value)}>
@@ -359,12 +382,6 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
         {allSessions.map(session => <option value={session.id} key={session.id}>{session.date} · {session.title} · {session.sport}</option>)}
       </select>
       <p className="text-xs text-slate-700">{es ? "Comprueba la fecha y el deporte. No se adivina qué sesión debe recibir los resultados. Si no aparece, abre Entrenamiento." : "Check the date and sport. We do not guess which workout should receive results. If it is missing, open Training."} <Link className={`underline ${focus}`} href="/training">{es ? "Entrenamiento" : "Training"}</Link></p>
-      <div className="rounded-lg border p-3 space-y-2">
-        <p className="text-sm text-slate-700">{es ? "Dictado opcional en español. Tu navegador puede enviar el audio a su proveedor de reconocimiento. Revisa el texto antes de usarlo; el micrófono nunca guarda ni envía el mensaje automáticamente." : "Optional English dictation. Your browser may send audio to its speech-recognition provider. Review the text before using it; the microphone never saves facts or sends your message automatically."}</p>
-        {!listening ? <button type="button" className={secondaryClass} disabled={blocked || imageBusy || !voiceSupported} onClick={startVoice}>{es ? "Iniciar dictado" : "Start dictation"}</button> : <div className="flex flex-wrap gap-2"><span role="status">{es ? "Escuchando…" : "Listening…"}</span><button type="button" className={secondaryClass} onClick={() => recognition.current?.stop()}>{es ? "Terminar y revisar" : "Stop and review"}</button><button type="button" className={secondaryClass} onClick={() => { stopVoice(); setListening(false); setVoiceReview(false); setTranscript(""); }}>{es ? "Cancelar dictado" : "Cancel dictation"}</button></div>}
-        {!voiceSupported && <p className="text-xs text-slate-700">{es ? "El dictado no está disponible en este navegador. La escritura sigue disponible." : "Dictation is unavailable in this browser. Typing is still available."}</p>}
-        {(voiceReview || listening) && <div className="space-y-2"><label className="block font-medium" htmlFor={`${id}-transcript`}>{es ? "Revisa y corrige la transcripción" : "Review and correct the transcript"}</label><textarea id={`${id}-transcript`} className={inputClass} rows={3} value={transcript} maxLength={COACH_MESSAGE_LIMIT} disabled={listening || blocked} onChange={event => setTranscript(event.target.value)} />{!listening && <div className="flex flex-wrap gap-2"><button type="button" className={secondaryClass} disabled={blocked || !transcript.trim()} onClick={useTranscript}>{es ? "Usar transcripción revisada" : "Use reviewed transcript"}</button><button type="button" className={secondaryClass} onClick={() => { setVoiceReview(false); setTranscript(""); }}>{es ? "Descartar transcripción" : "Discard transcript"}</button></div>}</div>}
-      </div>
       <div className="rounded-lg border p-3 space-y-2">
         <label htmlFor={`${id}-image`} className="block text-sm font-medium">{es ? "Captura opcional (PNG, JPEG o WebP, máximo 2 MB)" : "Optional screenshot (PNG, JPEG or WebP, at most 2 MB)"}</label>
         <input ref={fileInput} id={`${id}-image`} type="file" accept="image/png,image/jpeg,image/webp" className={`block max-w-full text-sm ${focus}`} disabled={blocked || listening} onChange={event => { chooseScreenshot(event.target.files?.[0]); event.target.value = ""; }} />

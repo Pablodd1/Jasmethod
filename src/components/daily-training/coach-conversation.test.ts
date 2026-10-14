@@ -183,3 +183,20 @@ for (const es of [false, true]) test(`chat composer precedes closed optional too
   assert.ok(markup.includes(es ? "revisión y confirmación" : "review and confirmation"));
   assert.ok(markup.includes(es ? "Sí, borrar conversación" : "Yes, clear conversation") === false);
 });
+
+for (const es of [false, true]) test(`dictation is visible beside the composer, labeled, and never duplicated (${es ? "ES" : "EN"})`, () => {
+  const markup = renderToStaticMarkup(React.createElement(CoachConversation, { es, athleteId: "test-athlete", onConfirmed: () => undefined }));
+  const visibleComposer = markup.slice(markup.indexOf("<form"), markup.indexOf("<details"));
+  const startLabel = es ? "Iniciar dictado" : "Start dictation";
+  assert.equal(markup.split(startLabel).length - 1, 1);
+  assert.ok(visibleComposer.includes(startLabel));
+  assert.ok(visibleComposer.includes(es ? "Dictar un mensaje" : "Dictate a message"));
+  assert.ok(visibleComposer.includes(es ? "puede enviar el audio a su proveedor" : "may send audio to its speech-recognition provider"));
+  assert.ok(visibleComposer.includes(es ? "nunca guarda datos ni envía tu mensaje automáticamente" : "never saves facts or sends your message automatically"));
+  assert.match(visibleComposer, /<button[^>]*aria-describedby="[^"]+-dictation-help"[^>]*disabled=""/);
+  assert.match(visibleComposer, /<textarea[^>]*!text-base[^>]*rows="3"/);
+  assert.match(visibleComposer, /min-h-11 max-w-full whitespace-normal/);
+  assert.doesNotMatch(markup, /live voice|voice call|voz en vivo/i);
+  // Support is unknown until hydration; do not falsely label capable devices unsupported.
+  assert.ok(!markup.includes(es ? "El dictado no está disponible" : "Dictation is unavailable"));
+});

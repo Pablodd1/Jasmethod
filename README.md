@@ -1,5 +1,9 @@
 # Reliability and coaching update
 
+## Live coach and training repair — 14 October 2026
+
+See [the developer handoff](docs/live-coach-training-repair-2026-10-14.md) for the reproduced loading/referral/layout issues, changed files and behavior, verification commands, safety boundaries, and safe coordination with concurrent Codex work. This is review-branch evidence; release and authenticated live verification must be checked separately.
+
 ## Athlete clarity and evaluation work — 8 October 2026
 
 The current source includes an optional Intervals.icu connection and revision-approved native run/bike publication. Provider acceptance is not evidence of watch receipt. The athlete must authorize the connection, approve the current workout, and check it on the actual device. Manual training and FIT download remain available. See `/help/pilot` for the short athlete guide.

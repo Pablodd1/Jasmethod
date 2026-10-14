@@ -232,7 +232,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
         tx.workout.findMany({ where: { userId: actor.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null, date: { gte: needsLoadHistory ? localDate(addDaysKey(today.key, -89), actor.timezone) : today.start, lt: today.end } }, select: { id: true, date: true, completed: true, feedbackStatus: true, planned: true, durationMin: true, actualDurationMin: true, rpe: true, matchedPlanId: true } }),
         needsLoadHistory ? tx.metricObservation.findMany({ where: { userId: actor.id, metricType: "jmm_rest_day", value: 1, source: "manual", qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: { gte: localDate(addDaysKey(today.key, -89), actor.timezone), lt: today.end } }, select: { observedAt: true } }) : Promise.resolve([]),
         tx.planDay.findFirst({ where: { plan: { userId: actor.id, status: "active" }, date: { gte: today.start, lt: today.end }, dayOff: true }, select: { id: true } }),
-        tx.workout.findMany({ where: { userId: actor.id, date: { gte: today.start, lt: today.end } }, select: { id: true, durationMin: true, intensity: true, planned: true, approved: true, completed: true, planDay: { select: { dayOff: true } } } }),
+        tx.workout.findMany({ where: { userId: actor.id, date: { gte: today.start, lt: today.end } }, orderBy: [{ startTime: "asc" }, { id: "asc" }], select: { id: true, date: true, title: true, sport: true, durationMin: true, intensity: true, planned: true, approved: true, completed: true, planDay: { select: { dayOff: true } } } }),
         contextNeeds.overview ? tx.dailyMetrics.findFirst({
           where: { userId: actor.id, date: { gte: localDate(addDaysKey(today.key, -7), actor.timezone), lt: today.end } },
           orderBy: { date: "desc" }, select: { date: true, source: true, hrv: true, hrvType: true, restingHr: true, sleepHours: true },
@@ -264,6 +264,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const possibleCurrentSymptom = candidates.some(candidate => candidate.kind === "checkin" && ["sick", "newPain", "urgentSymptoms", "painAffectsMovement"].includes(candidate.field) && candidate.value === true);
       const plannedRecoverySessions = todayRecoverySessions.filter(row => row.planned);
       const context: CoachReplyContext = {
+        savedTodaySessions: plannedRecoverySessions.map(row => ({ date: dateKey(row.date, actor.timezone), title: row.title, sport: row.sport, durationMin: row.durationMin, completed: row.completed })),
         localToday: today.key, language: actor.language, setupReady: planning.ready,
         candidateContext: { sessionId, sessionDate },
         recovery: dailyRecoveryContext({

@@ -7,6 +7,7 @@ import { PrismaClient, type User } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { hashToken } from "../src/lib/auth";
 import { dayBounds, addDaysKey, localDate } from "../src/lib/dates";
+import { isTodayTrainingResponse, isSavedPlanResponse, isTrainingProfileResponse } from "../src/components/daily-training/training-read";
 
 for (const key of ["DATABASE_URL", "DIRECT_URL"]) {
   const url = new URL(process.env[key] || "");
@@ -47,6 +48,25 @@ async function ask(a:Actor,message:string,extra:Record<string,unknown>={}) {retu
 function pending(result:any) {assert.ok(result.proposal?.id,"Expected a reviewable saved proposal");assert.ok(result.proposal.candidates?.length,"Expected explicit candidates");return result.proposal;}
 function confirmBody(p:any,candidates=p.candidates) {return {proposalId:p.id,expectedRevision:p.revision,candidates,idempotencyKey:randomUUID(),confirmed:true};}
 async function main() {
+  await scenario("Saved-training questions show owner plans without clearing check-in or changing training", async () => {
+    const owner = await actor("saved-training-owner"), other = await actor("saved-training-other");
+    const own = await fixture(owner), foreign = await fixture(other);
+    await db.workout.update({ where: { id: own.id }, data: { title: "Owner saved bike", durationMin: 9, approved: false } });
+    await db.workout.update({ where: { id: foreign.id }, data: { title: "Other athlete private session" } });
+    const before = await db.workout.findUniqueOrThrow({ where: { id: own.id } });
+    assert.equal(isTodayTrainingResponse(await json("/api/today", owner)), true, "Real held Today DTO passes the client rendering guard");
+    assert.equal(isSavedPlanResponse(await json("/api/plan", owner)), true, "Real plan DTO passes the client rendering guard");
+    assert.equal(isTrainingProfileResponse(await json("/api/profile", owner)), true, "Real profile DTO passes the client rendering guard");
+    const response = await ask(owner, "I need guidance on today's workout");
+    assert.match(response.answer, /Owner saved bike: 9 min/);
+    assert.match(response.answer, /check-in is incomplete/);
+    assert.match(response.answer, /planned durations, not completed minutes or permission to train/);
+    assert.doesNotMatch(response.answer, /Other athlete private session|Call Jasmel/);
+    assert.equal(response.trainingModified, false);
+    assert.ok(!response.proposal?.candidates?.length);
+    assert.deepEqual(await db.workout.findUniqueOrThrow({ where: { id: own.id } }), before);
+    assert.equal(await db.dailyCheckin.count({ where: { userId: owner.id } }), 0);
+  });
   await scenario("Credential overview is administrator-only, preserves identities and revokes selected sessions",async()=>{
     const admin=await actor("credential-admin"),athlete=await actor("credential-athlete"),other=await actor("credential-other");
     await db.user.update({where:{id:admin.id},data:{role:"admin"}});

@@ -113,6 +113,14 @@ jobs:
       - name: Public route and unauthenticated API smoke
         run: node scripts/jmm-public-smoke.mjs
 
+      - name: Install Chromium for synthetic UI acceptance
+        run: npx playwright install --with-deps chromium
+
+      - name: Coach and saved-training browser recovery acceptance
+        env:
+          JMM_UI_TEST_BASE: http://127.0.0.1:3220
+        run: node --import tsx scripts/jmm-live-repair-browser.cjs
+
       - name: J Metrics authenticated data and rest-day acceptance
         run: npx tsx scripts/jmm-metrics-integration.ts
 
@@ -152,6 +160,8 @@ jobs:
             .local/jmm-telegram-webhook-integration/report.json
             .local/jmm-mobile-workflow/report.json
             .local/jmm-conversation-integration/report.json
+            .local/jmm-live-repair-browser/report.json
+            .local/jmm-live-repair-browser/*.png
             .local/jmm-metrics-integration/report.json
             .local/jmm-recovery-integration/report.json
             .local/jmm-race-scenario-integration/report.json

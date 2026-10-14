@@ -1,4 +1,5 @@
 import { coachReferral } from "./coach-referrals";
+import { savedTrainingReply } from "./coach-saved-training";
 import { dayOffProtocol, dayOffProtocolText } from "./day-off";
 import type { dailyRecoveryContext } from "./daily-recovery";
 import type { JMetrics } from "./j-metrics";
@@ -274,6 +275,7 @@ export function conversationClarifications(message: string, context: CandidateCo
 }
 
 export interface CoachReplyContext {
+  savedTodaySessions?: { date: string; title: string; sport: string; durationMin: number; completed: boolean }[];
   recovery?: ReturnType<typeof dailyRecoveryContext>;
   jMetrics?: JMetrics | null;
   localToday: string;
@@ -363,6 +365,8 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
   if (pendingSafety) return reply("clarify-prior-safety", "You shared new safety, recovery or available-time information. Before discussing a training start, does that information still apply, and has today's check-in been updated since then? An earlier check-in does not resolve newer information.", "Compartiste información nueva de seguridad, recuperación o tiempo disponible. Antes de hablar de empezar a entrenar, ¿sigue siendo válida y has actualizado el check-in de hoy desde entonces? Un check-in anterior no resuelve información posterior.");
   const referral=coachReferral(message,context.language);
   if(referral) return referral;
+  const savedTraining = savedTrainingReply(message, context);
+  if (savedTraining) return savedTraining;
   if(!context.candidateContext?.sessionId && /\b(?:change|set|shorten|reduce|extend|cambia|cambiar|ajusta|ajustar)\b/.test(t) && /\b(?:my|this|mi|esta|este)\s+(?:workout|session|training|entrenamiento|sesion)\b/.test(t)) return reply("select-workout-to-edit","Choose the workout in Optional tools, then tell me the change and units. I will show the proposed values for confirmation. Completed sessions, rest days and race/test sessions cannot be rewritten here.","Elige la sesión en Herramientas opcionales y dime el cambio con sus unidades. Mostraré los valores para confirmar. Aquí no se reescriben sesiones realizadas, descansos ni carreras/pruebas.");
   if (/\b(?:j ?metrics|jstress|j ?base|j ?recent|j ?balance)\b/.test(t)) {
     const metrics = context.jMetrics;

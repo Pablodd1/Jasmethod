@@ -1,6 +1,9 @@
 "use client";
 import "@/components/daily-training/universal-workout-card.css";
 import { DailyEnvironmentCard } from "@/components/daily-training/DailyEnvironmentCard";
+import { readinessReasonText } from "@/components/daily-training/readiness-copy";
+import { SavedWorkoutPreviewCard } from "@/components/daily-training/SavedWorkoutPreviewCard";
+import { readTrainingJson, TrainingReadError, isTodayTrainingResponse } from "@/components/daily-training/training-read";
 import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
 import { JMetricsCard } from "@/components/j-metrics-card";
 import { CoachingConversation } from "@/components/coaching-conversation";
@@ -19,6 +22,11 @@ import { endpointLabel } from "@/components/daily-training/training-contract";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 export default function TodayPage() {
+  const { user } = useAuth();
+  return <TodayPageContent key={user?.id || "signed-out"} />;
+}
+
+function TodayPageContent() {
   const { user } = useAuth();
   const router = useRouter();
   useEffect(() => { if(user?.onboarded === false) router.replace("/onboard"); }, [user?.onboarded,router]);
@@ -42,33 +50,49 @@ export default function TodayPage() {
     window.addEventListener("popstate", onHistory);
     return () => window.removeEventListener("popstate", onHistory);
   }, []);
+  const loadController = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
+  const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
+    if (!mounted.current) return;
     if (!user || user.onboarded === false) return;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    setLoading(true);
+    setError("");
     try {
-      const r = await fetch("/api/today");
-      if (!r.ok) throw Error("Could not load today's training");
-      const d = await r.json();
+      const d = await readTrainingJson("/api/today", { signal: controller.signal, label: "Today's training", validate: isTodayTrainingResponse });
+      if (!mounted.current || controller.signal.aborted) return;
       setData(d);
       setOffline(false);
       setError("");
       try {
         localStorage.setItem(`jmm_today_${user.id}`, JSON.stringify(d));
       } catch {}
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      if (!mounted.current || controller.signal.aborted) return;
+      setError(e instanceof Error ? e.message : "Could not load today's training. Please retry.");
+      setOffline(true);
+      if (e instanceof TrainingReadError && (e.status === 401 || e.status === 403)) {
+        setData(null);
+        return;
+      }
       try {
         const saved = localStorage.getItem(`jmm_today_${user.id}`);
-        if (saved) {
-          setData(JSON.parse(saved));
-          setOffline(true);
-        }
+        const cached: unknown = saved ? JSON.parse(saved) : null;
+        if (isTodayTrainingResponse(cached)) setData(cached);
       } catch {}
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [user]);
   // Mount-load: without this the page never fetches — /api/today answers,
   // but nothing ever asks it (regression from an earlier page rewrite).
   useEffect(() => {
-    if (user) load();
+    mounted.current = true;
+    if (user) void load();
+    return () => { mounted.current = false; loadController.current?.abort(); };
   }, [user, load]);
   const starterAttempt = useRef<string|null>(null);
   useEffect(()=>{
@@ -164,7 +188,7 @@ export default function TodayPage() {
           {data?.cycle && <p className="text-sm">{data.cycle.currentWeek ? `${es ? "Semana" : "Week"} ${data.cycle.currentWeek} / ${data.cycle.weeks} · ` : ""}{data.cycle.start} – {data.cycle.end}{data.cycle.status === "ended" ? (es ? " · Ciclo finalizado; revisa tu progreso antes del siguiente." : " · Cycle ended; review your progress before the next one.") : ""}</p>}
           <div className="flex flex-wrap gap-3"><Link href="/training" className="btn-primary">{es ? "Ver ciclo y mes" : "View cycle and month"}</Link><Link href="/calendar" className="btn-secondary">{es ? "Calendario" : "Calendar"}</Link></div>
         </section>
-        {offline && (
+        {offline && data && (
           <div role="status" className="card bg-amber-50 text-amber-900">
             {es ? "Copia sin conexión" : "Offline copy"} · {data?.date} ·{" "}
             {es ? "Actualizada" : "Updated"}{" "}
@@ -177,7 +201,7 @@ export default function TodayPage() {
         {error && (
           <div role="alert" className="card text-red-700">
             {error}
-            <button className="btn-secondary ml-3" onClick={load}>
+            <button className="btn-secondary ml-3" disabled={loading} onClick={load}>
               {es ? "Reintentar" : "Retry"}
             </button>
           </div>
@@ -281,8 +305,8 @@ export default function TodayPage() {
                 </button>
               </form>
             )}
-        {!data && !error && (
-          <p role="status">{es ? "Cargando sesión…" : "Loading session…"}</p>
+        {loading && (
+          <p role="status">{data ? (es ? "Actualizando entrenamiento…" : "Refreshing training…") : (es ? "Cargando sesión…" : "Loading session…")}</p>
         )}
         {data && <DailyRecoveryCard recovery={data.recovery} es={es} offline={offline} />}
         {data && !data.sessions.length && data.recovery?.mode !== "planned-rest" && data.recovery?.mode !== "hold" && (
@@ -316,14 +340,14 @@ export default function TodayPage() {
                 }}
               >
                 {s.feedbackStatus === "partial" ? "◐ " : s.feedbackStatus === "skipped" ? "× " : s.completed ? "✓ " : ""}
-                {s.title} · {s.durationMin} min
+                {s.title} · {s.verdict === "blocked" ? (es ? "Pendiente de revisión" : "Pending review") : `${s.durationMin} min`}
               </button>
             ))}
           </div>
         )}
         {session && (
           <>
-            <UniversalWorkoutCardLoader key={`${session.id}-${session.revision}`} sessionId={session.id} es={es} onSaved={() => load()}/>
+            <UniversalWorkoutCardLoader key={`${session.id}-${session.revision}`} sessionId={session.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={session.id} es={es} />} onSaved={() => load()}/>
             <details><summary className="my-4 cursor-pointer underline">{es ? "Herramientas de la sesión y seguimiento" : "Session tools & feedback"}</summary>
             <div id="today-workout" className="card !p-0 overflow-hidden scroll-mt-4">
               <div className="bg-ocean-800 text-white p-5">
@@ -339,7 +363,7 @@ export default function TodayPage() {
                   {session.title}
                 </h2>
                 <p className="mt-2">
-                  {session.durationIsEstimate ? "~" : ""}{session.durationMin} min · {session.intensity?.toUpperCase()}
+                  {session.verdict === "blocked" ? (es ? "Duración pendiente de revisión" : "Duration pending review") : `${session.durationIsEstimate ? "~" : ""}${session.durationMin} min`} · {session.intensity?.toUpperCase()}
                   {session.prescription.targets.rpe
                     ? ` · RPE ${session.prescription.targets.rpe}/10`
                     : ""}
@@ -347,7 +371,7 @@ export default function TodayPage() {
                 <p className="text-sm opacity-90 mt-1">{es ? "Revisa los objetivos actuales en cada bloque del entrenamiento." : "Review current targets in each workout step."}</p>
               </div>
               <div className="p-5 space-y-4">
-                <p role="status">{session.resolutionReason}</p>
+                <p role="status">{readinessReasonText(session.resolutionReason, es)}</p>
                 {session.verdict === "blocked" && <Link className="btn-secondary" href="/checkin">{es ? "Revisar check-in" : "Review check-in"}</Link>}
                 {session.capability && <FitDownloadActions key={`${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} title={session.title} capability={session.capability} disabled={offline || busy} es={es} />}
                 <DailyEnvironmentCard key={`environment-${user?.id}-${session.id}-${session.revision}`} sessionId={session.id} dateLocal={data.date} timezone={data.timezone} startTime={session.startTime} environment={session.environment} es={es} disabled={offline || busy} offline={offline} onSaved={load} />
@@ -490,7 +514,7 @@ export default function TodayPage() {
                   </div>
                 ) : (
                   <div>
-                    <p>{session.verdict === "blocked" ? session.resolutionReason : (es ? "Descanso hoy." : "Rest today.")}</p>
+                    <p>{session.verdict === "blocked" ? readinessReasonText(session.resolutionReason, es) : (es ? "Descanso hoy." : "Rest today.")}</p>
                   </div>
                 )}
                 {session.durationMin > 0 && (
