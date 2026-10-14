@@ -28,7 +28,7 @@ No production schema migration, credential, OAuth grant, security setting, provi
 
 Local static verification: 1,374 unit/component/provider tests, explicit TypeScript, lint, production build, 27 follow-up boundary/transport tests, and the reviewed pack of 10 cycles/26 structures passed. Lint retains two pre-existing warnings in unrelated admin/coach components. The production build used the repository's official font mock.
 
-Local Chromium execution was blocked by the shell's local-socket restriction; the supported escalation path failed before executing the test. No local browser pass or candidate screenshot is claimed. The existing GitHub workflow now installs the pinned Playwright Chromium and runs the synthetic browser runner, retaining screenshots/report as CI artifacts. Check its result for the exact published head.
+Local Chromium execution was blocked by the shell's local-socket restriction; the supported escalation path failed before executing the test. No local browser pass or candidate screenshot is claimed. The existing GitHub workflow now installs the pinned Playwright Chromium and runs the synthetic browser runner, retaining screenshots/report as CI artifacts. Check its result for the exact published head. The first CI run passed all backend checks through conversational acceptance and the synthetic chat/dictation journey, then failed an arbitrary 90-pixel mobile-width assertion. The runner now measures actual text line fragments, clipping and font size, and saves the Daily screenshot before that assertion. This correction does not establish a browser pass until the rerun succeeds.
 
 The final PR description records exact-head aggregate and CI outcomes. Do not treat an earlier successful run as evidence for later edits.
 

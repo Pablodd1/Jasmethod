@@ -7,7 +7,7 @@ const { buildUniversalWorkoutCard } = require('../src/lib/universal-workout-card
 const base = process.env.JMM_UI_TEST_BASE || 'http://127.0.0.1:3230';
 assert.ok(/^http:\/\/127\.0\.0\.1:\d+$/.test(base), 'Only an isolated loopback app is allowed');
 const dir = '.local/jmm-live-repair-browser'; mkdirSync(dir, { recursive: true });
-const results = [], errors = [], unexpected = [];
+const results = [], errors = [], unexpected = [], geometry = [];
 const { buildCoachReply } = require('../src/lib/coach-conversation.ts');
 const today = new Date().toISOString().slice(0, 10);
 const reason = "Training is on hold until today's safety, recovery and available-time answers are known. Missing: sleep, soreness, motivation, energy, stress, sick, newPain, urgentSymptoms, availableMin. Unknown or skipped answers are not evidence of readiness. No device data is required.";
@@ -91,9 +91,29 @@ async function main() {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Daily card has no horizontal overflow');
       const header = page.locator('.uwc-header').first();
       assert.doesNotMatch(await header.innerText(), /\b0\s*MIN\b/, 'Held duration is not displayed as a zero-minute workout');
-      const stats = await header.locator('.uwc-stats').boundingBox();
-      assert.ok(stats && stats.width >= 90, 'Status column cannot collapse into letter fragments');
+      await page.evaluate(() => document.fonts.ready);
       await page.screenshot({path:`${dir}/daily-${language}-${width}.png`});
+      const stats = await header.locator('.uwc-stats').evaluate(node => {
+        const bounds = node.getBoundingClientRect(), walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT), text = [];
+        let entry;
+        while ((entry = walker.nextNode())) {
+          if (!entry.textContent.trim()) continue;
+          const range = document.createRange(); range.selectNodeContents(entry);
+          const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
+          if (!rects.length) continue; // Intentionally hidden compact status sub-label.
+          const style = getComputedStyle(entry.parentElement);
+          text.push({label:entry.textContent.trim(),fontSize:parseFloat(style.fontSize),lines:new Set(rects.map(rect=>Math.round(rect.top))).size,
+            clipped:rects.some(rect=>rect.left < bounds.left - 1 || rect.right > bounds.right + 1)});
+        }
+        return {width:bounds.width,text};
+      });
+      geometry.push({language,width,stats});
+      const visibleLabels = stats.text.map(item=>item.label);
+      assert.ok(visibleLabels.includes(language === 'es' ? 'REVISAR' : 'REVIEW')
+        && visibleLabels.includes(language === 'es' ? 'MIN · EN ESPERA' : 'MIN · ON HOLD'),
+        `Held duration and review labels remain visible: ${JSON.stringify(stats)}`);
+      assert.ok(stats.text.length > 0 && stats.text.every(item=>item.lines === 1 && !item.clipped && item.fontSize >= 11),
+        `Status labels must be readable single lines without clipping: ${JSON.stringify(stats)}`);
       let release; planRelease = new Promise(resolve=>{release=resolve}); profileFailure = true;
       await page.goto(`${base}/training`); await page.waitForTimeout(700);
       let body = await page.locator('body').innerText();
@@ -107,7 +127,7 @@ async function main() {
       await context.close();
     }
     assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
-  } finally { await browser.close(); writeFileSync(`${dir}/report.json`,JSON.stringify({results,errors,unexpected,scope:'API-mocked synthetic Chromium only; no production data or API writes, actual microphone or network provider acceptance; coach sends are intercepted synthetic fixtures'},null,2)); }
+  } finally { await browser.close(); writeFileSync(`${dir}/report.json`,JSON.stringify({results,errors,unexpected,geometry,scope:'API-mocked synthetic Chromium only; no production data or API writes, actual microphone or network provider acceptance; coach sends are intercepted synthetic fixtures'},null,2)); }
   console.log(`${results.length} EN/ES viewport journeys passed; no page errors or unexpected API writes (coach sends intercepted synthetically).`);
 }
 main().catch(error=>{console.error(error);process.exitCode=1});
