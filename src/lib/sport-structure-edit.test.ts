@@ -30,6 +30,7 @@ test("history guards protect prior dates and every recorded-activity marker", ()
   assert.match(structureEditBlockReason({ ...workout, date: new Date("2026-10-01T12:00:00Z") }, "UTC", now)!, /Past sessions/);
   for (const evidence of [{ planned: false }, { completed: true }, { feedbackStatus: "unknown" }, { feedbackAt: now }, { feedbackNote: "" }, { actualDurationMin: 0 }, { actualSport: "strength" }, { actualDetails: "{}" }, { rpe: 1 }, { avgHr: 120 }, { avgPower: 100 }, { maxHr: 150 }, { np: 100 }, { preWeightKg: 70 }, { postWeightKg: 69 }, { externalId: "provider:123" }, { matchedPlanId: "plan-1" }]) assert.notEqual(structureEditBlockReason({ ...workout, ...evidence }, "UTC", now), null, JSON.stringify(evidence));
   assert.match(structureEditBlockReason({ ...workout, planDay: { dayOff: true } }, "UTC", now)!, /rest day/);
+  for(const distanceKm of [0,12])assert.match(structureEditBlockReason({...workout,distanceKm},"UTC",now)!,/recorded activity/);
 });
 
 test("history is determined in the athlete local date, not server UTC", () => {

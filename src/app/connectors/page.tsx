@@ -381,14 +381,14 @@ export default function ConnectorsPage() {
         if (!p.configured) {
           return es
             ? [
-                "La conexión automática con Oura aún no está activada en el servidor.",
+                "La conexión automática con Oura no está disponible aquí.",
                 "Mientras tanto: registra tu sueño manualmente en la página Sleep (o en el chequeo diario).",
-                "El administrador puede activarla añadiendo las claves de API de Oura.",
+                "Puedes seguir usando JMM sin esta conexión.",
               ]
             : [
-                "Oura auto-connect isn't enabled on the server yet.",
+                "Oura automatic sync is unavailable here.",
                 "Meanwhile: log your sleep manually on the Sleep page (or in the daily check-in).",
-                "The administrator can enable it by adding the Oura API keys.",
+                "You can keep using JMM without this connection.",
               ];
         }
         return es
@@ -677,26 +677,16 @@ export default function ConnectorsPage() {
                     ) : (
                       <div className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
                         {lang === "es"
-                          ? `La conexión automática de ${p.name} aún no está activada. Mientras tanto: registra tus actividades en Strava o Apple Health y sube el archivo aquí (funciona hoy).`
-                          : `${p.name} auto-connect isn't enabled yet. Meanwhile: log activities in Strava or Apple Health and upload the file here (works today).`}
-                        <div className="text-[10px] text-amber-500 mt-1">
-                          {lang === "es"
-                            ? "(Ajuste del servidor: "
-                            : "(Server setting: "}
-                          {(p.setupEnv || []).join(" / ")})
-                        </div>
+                          ? `La conexión automática con ${p.name} no está disponible aquí. Puedes seguir usando JMM sin esta conexión. Utiliza el chequeo diario o una opción de importación de archivos compatible cuando corresponda.`
+                          : `Automatic connection to ${p.name} is unavailable here. You can keep using JMM without this connection. Use Daily check-in or a supported file-import option when relevant.`}
                       </div>
                     ))}
                   {p.method === "unavailable" && (
                     <div className="text-sm text-slate-500">
                       <p>
                         {lang === "es"
-                          ? "Conexión no configurada por el propietario."
-                          : "Connection not configured by the owner."}
-                      </p>
-                      <p className="text-[10px] text-amber-600 mt-1">
-                        {lang === "es" ? "Ajuste necesario: " : "Required setting: "}
-                        {(p.setupEnv || []).join(" / ")}
+                          ? "Esta conexión no está disponible. Puedes continuar con entradas manuales y las opciones de importación de archivos compatibles."
+                          : "This connection is unavailable. You can continue with manual entries and supported file-import options."}
                       </p>
                       <RequestButton provider={p.id} label={p.name} lang={lang} />
                     </div>
@@ -749,13 +739,8 @@ export default function ConnectorsPage() {
                   {p.id === "oura" && !p.configured && (
                     <div className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mt-2">
                       {lang === "es"
-                        ? "Conexión automática de Oura aún no activada. Mientras tanto, tus datos pueden llegar vía Apple Health o Whoop."
-                        : "Oura auto-connect isn't enabled yet. Meanwhile, your data can arrive via Apple Health or Whoop."}
-                      <div className="text-[10px] text-amber-500 mt-1">
-                        {lang === "es"
-                          ? "(Ajuste del servidor: OURA_CLIENT_ID / OURA_CLIENT_SECRET — cuenta dev gratis en cloud.ouraring.com)"
-                          : "(Server setting: OURA_CLIENT_ID / OURA_CLIENT_SECRET — free dev account at cloud.ouraring.com)"}
-                      </div>
+                        ? "La sincronización automática con Oura no está disponible aquí. Puedes registrar el sueño en el chequeo diario o subir manualmente un archivo export.xml de Apple Health que contenga los datos disponibles. Estas opciones manuales no activan la sincronización con Oura."
+                        : "Oura automatic sync is unavailable here. You can report sleep in Daily check-in or manually upload an Apple Health export.xml file containing available records. These manual options do not enable Oura sync."}
                     </div>
                   )}
                   {p.id === "oura" && p.configured && (

@@ -1,7 +1,7 @@
 "use client";
 
 // HYROX Race Split Planner — target time -> 16-segment pacing plan; log actual
-// splits after the race -> weak-station analysis + next-block emphasis.
+// splits after the race -> temporary comparison only; inputs are not saved.
 import { useEffect, useState } from "react";
 import { Layers, Target, Trophy, Info } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
@@ -11,22 +11,24 @@ export default function HyroxPage() {
   const { user } = useAuth();
   const lang = (user?.language || "es") as string;
   const es = lang === "es";
-  const [target, setTarget] = useState("75");
+  const [target, setTarget] = useState("");
   const [pace, setPace] = useState("");
-  const [sex, setSex] = useState("male");
-  const [pro, setPro] = useState(false);
+  const [sex, setSex] = useState("");
+  const [pro, setPro] = useState("");
   const [error, setError] = useState("");
   const [plan, setPlan] = useState<any>(null);
   const [actuals, setActuals] = useState<string[]>(Array(16).fill(""));
   const [analysis, setAnalysis] = useState<any>(null);
   const [busy, setBusy] = useState(false);
-
+  const inputsReady = ["male", "female"].includes(sex) && ["0", "1"].includes(pro) && Number.isFinite(Number(target)) && Number(target) >= 1;
+  const missingInputs = es ? "Elige tu división, Open o Pro y un objetivo de tiempo antes de calcular." : "Choose your division, Open or Pro and a target time before calculating.";
 
   async function loadPlan() {
     if (busy) return;
+    if (!inputsReady) { setError(missingInputs); return; }
     setBusy(true); setError(""); setPlan(null); setAnalysis(null);
     try {
-      const q = new URLSearchParams({ target, ...(pace ? { pace } : {}), sex, pro: pro ? "1" : "0" });
+      const q = new URLSearchParams({ target, ...(pace ? { pace } : {}), sex, pro });
       const res = await fetch(`/api/hyrox/split-planner?${q}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Unable to build the scenario.");
@@ -39,11 +41,12 @@ export default function HyroxPage() {
 
   async function analyze() {
     if (busy) return;
+    if (!inputsReady) { setError(missingInputs); return; }
     setBusy(true); setError(""); setAnalysis(null);
     try {
       const res = await fetch("/api/hyrox/split-planner", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target, pace: pace || undefined, sex, pro, actualSecs: actuals.map(a => a.trim() === "" ? null : a) }),
+        body: JSON.stringify({ target, pace: pace || undefined, sex, pro: pro === "1", actualSecs: actuals.map(a => a.trim() === "" ? null : a) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Unable to analyze splits.");
@@ -65,13 +68,16 @@ export default function HyroxPage() {
               ? "Explora un escenario de 16 segmentos, no una predicción validada. Registra los parciales disponibles para compararlos; los campos vacíos son datos faltantes."
               : "Explore a 16-segment scenario, not a validated prediction. Log available splits to compare them; blank fields remain missing data."}
           </p>
+          <p className="text-sm text-amber-800 mt-2">{es
+            ? "Comparación temporal: estos parciales no se guardan para tu historial ni para el coaching futuro. Al recargar o salir de esta página se pierden."
+            : "Temporary comparison: these splits are not saved to your history or used for future coaching. Reloading or leaving this page loses them."}</p>
         </div>
 
         {/* Controls */}
         <div className="card grid sm:grid-cols-5 gap-3 items-end">
           <div>
             <label htmlFor="hyrox-target" className="label">{es ? "Objetivo (min)" : "Target (min)"}</label>
-            <input id="hyrox-target" disabled={busy} min="1" className="input" type="number" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="75" />
+            <input id="hyrox-target" disabled={busy} min="1" className="input" type="number" value={target} onChange={(e) => setTarget(e.target.value)} placeholder={es ? "Ejemplo: 75" : "Example: 75"} />
           </div>
           <div>
             <label htmlFor="hyrox-pace" className="label">{es ? "Ritmo 1km (seg/km)" : "1km pace (sec/km)"}</label>
@@ -80,17 +86,19 @@ export default function HyroxPage() {
           <div>
             <label htmlFor="hyrox-sex" className="label">{es ? "División" : "Division"}</label>
             <select id="hyrox-sex" disabled={busy} className="input" value={sex} onChange={(e) => setSex(e.target.value)}>
+              <option value="">{es ? "Elige tu división" : "Choose your division"}</option>
               <option value="male">{es ? "Hombres" : "Men"}</option>
               <option value="female">{es ? "Mujeres" : "Women"}</option>
             </select>
           </div>
           <div>
             <label htmlFor="hyrox-pro" className="label">Open / Pro</label>
-            <select id="hyrox-pro" disabled={busy} className="input" value={pro ? "1" : "0"} onChange={e => setPro(e.target.value === "1")}>
+            <select id="hyrox-pro" disabled={busy} className="input" value={pro} onChange={e => setPro(e.target.value)}>
+              <option value="">{es ? "Elige Open o Pro" : "Choose Open or Pro"}</option>
               <option value="0">Open</option><option value="1">Pro</option>
             </select>
           </div>
-          <button onClick={loadPlan} disabled={busy} className="btn-primary justify-center">
+          <button onClick={loadPlan} disabled={busy || !inputsReady} className="btn-primary justify-center">
             <Target className="w-4 h-4" /> {es ? "Calcular plan" : "Build plan"}
           </button>
         </div>
@@ -140,7 +148,7 @@ export default function HyroxPage() {
               </table>
             </div>
             <div className="p-3 border-t border-sand-200 flex justify-end">
-              <button onClick={analyze} disabled={busy} className="btn-primary">
+              <button onClick={analyze} disabled={busy || !inputsReady} className="btn-primary">
                 <Trophy className="w-4 h-4" /> {es ? "Analizar mis parciales" : "Analyze my splits"}
               </button>
             </div>
@@ -158,7 +166,7 @@ export default function HyroxPage() {
                   <div className="text-sm font-semibold">
                     {g.deltaSec > 0 ? "✗" : "✓"} {g.name}: {fmt(g.actualSec)} {es ? "vs" : "vs"} {fmt(g.targetSec)} ({g.deltaSec >= 0 ? "+" : ""}{g.deltaSec}s · {g.pctOfTotalLoss}% {es ? "del tiempo perdido" : "of lost time"})
                   </div>
-                  {g.deltaSec > 0 && g.advice && <div className="text-xs text-slate-600 mt-1">💪 {es ? "Énfasis del próximo bloque: " : "Next block emphasis: "}{g.advice}</div>}
+                  {g.deltaSec > 0 && g.advice && <div className="text-xs text-slate-600 mt-1">💪 {es ? "Para revisar con tu coach: " : "Discuss with your coach: "}{g.advice}</div>}
                 </div>
               ))}
             </div>

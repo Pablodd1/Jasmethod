@@ -1,6 +1,7 @@
 import { dateKey } from "./dates";
 import { canonicalSession } from "./canonical-session";
 import { normalizeSportStructure } from "./sport-structure";
+import { workoutHasHistory } from "./workout-update";
 
 export const MAX_STRUCTURE_REQUEST_BYTES = 64 * 1024;
 export const STRUCTURED_SPORTS = ["run", "bike", "swim", "strength", "hyrox", "brick"] as const;
@@ -52,7 +53,7 @@ export interface StructureEditableWorkout {
   date: Date | string; sport: string; planned: boolean; completed: boolean;
   feedbackAt?: Date | string | null; feedbackStatus?: string | null; feedbackNote?: string | null;
   actualDurationMin?: number | null; actualSport?: string | null; actualDetails?: string | null; rpe?: number | null;
-  avgHr?: number | null; maxHr?: number | null; avgPower?: number | null; np?: number | null;
+  avgHr?: number | null; maxHr?: number | null; avgPower?: number | null; np?: number | null; distanceKm?: number | null;
   preWeightKg?: number | null; postWeightKg?: number | null; externalId?: string | null; matchedPlanId?: string | null;
   planDay?: { dayOff: boolean } | null;
 }
@@ -60,7 +61,7 @@ export function structureEditBlockReason(workout: StructureEditableWorkout, time
   if (!STRUCTURED_SPORTS.includes(workout.sport as typeof STRUCTURED_SPORTS[number])) return "Structured sport editing is available for run, bike, pool swim, strength, HYROX and brick sessions.";
   if (!workout.planned) return "Recorded activities cannot be changed into a planned workout.";
   if (dateKey(new Date(workout.date), timezone) < dateKey(now, timezone)) return "Past sessions are read-only. Edit a current or future planned workout instead.";
-  if (workout.completed || workout.feedbackAt != null || workout.feedbackStatus != null || workout.feedbackNote != null || workout.actualDurationMin != null || workout.actualSport != null || workout.actualDetails != null || workout.rpe != null || workout.avgHr != null || workout.maxHr != null || workout.avgPower != null || workout.np != null || workout.preWeightKg != null || workout.postWeightKg != null || workout.externalId != null || workout.matchedPlanId != null) return "Sessions with recorded activity or feedback are read-only. Their training history is preserved.";
+  if (workoutHasHistory(workout)) return "Sessions with recorded activity or feedback are read-only. Their training history is preserved.";
   if (workout.planDay?.dayOff) return "This is a rest day. Review the plan before adding training.";
   return null;
 }

@@ -2,6 +2,18 @@ import type { Prisma } from "@prisma/client";
 
 export class RaceUpdateError extends Error {}
 
+/** Creation uses the same manual-field boundary as edits; no owner or measured
+ * course fields are accepted from the request. */
+export function parseRaceCreate(value: unknown): Omit<Prisma.RaceUncheckedCreateInput, "userId"> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new RaceUpdateError("Invalid race");
+  const body = value as Record<string, unknown>;
+  if (Object.hasOwn(body, "id")) throw new RaceUpdateError("Race id cannot be supplied on creation");
+  if (typeof body.name !== "string" || typeof body.date !== "string") throw new RaceUpdateError("Race name and date required");
+  const distance = body.distance ?? "olympic";
+  if (typeof distance === "string" && ["boxing", "lifting"].includes(distance.trim().toLowerCase())) throw new RaceUpdateError("Choose swimming, cycling, running, HYROX or triathlon.");
+  return parseRaceUpdate({ ...body, distance, id: "new-race" }).data as Omit<Prisma.RaceUncheckedCreateInput, "userId">;
+}
+
 /** Manual fields only. Ownership, relations, provider provenance and GPX measurements are immutable here. */
 export function parseRaceUpdate(value: unknown): { id: string; data: Prisma.RaceUpdateInput } {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new RaceUpdateError("Invalid race update");

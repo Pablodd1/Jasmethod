@@ -789,18 +789,6 @@ function TodayPageContent() {
             ))}
           </div>
         )}
-        {(!data?.connectors || data.connectors.length === 0) && (
-          <div className="card border-ocean-300 bg-ocean-50/60 p-4">
-            <p className="text-sm font-medium text-ocean-900">
-              ⌚ {es
-                ? "Conecta un proveedor disponible o registra tus datos sin dispositivo."
-                : "Connect an available provider or enter your data without a device."}
-            </p>
-            <Link href="/connectors" className="btn-primary text-sm mt-2 inline-flex">
-              {es ? "Conectar dispositivo →" : "Connect device →"}
-            </Link>
-          </div>
-        )}
         {user && data && <JMetricsCard key={user.id} es={es} refreshKey={data} />}
         {user && <CoachConversation
           key={user.id}

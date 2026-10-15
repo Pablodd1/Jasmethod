@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { intervalsConnectorEnabled, automatedDeliveryEnabled } from "./capabilities";
 import { intervalsUpsertFit, intervalsDeleteOwnedEvent } from "./intervals";
 import { allDeliveryGuides } from "./device-delivery";
@@ -43,4 +44,14 @@ test("manual Garmin guide covers USB/NewFiles, compatibility, Mac limits and no 
     assert.match(words, /Windows/);
     assert.doesNotMatch(words, /Workouts → Import|Workouts.*Import Workout|JSON/);
   }
+});
+
+test("athlete connector guidance distinguishes manual files from Oura sync and omits server settings in both languages", () => {
+  const page = readFileSync("src/app/connectors/page.tsx", "utf8");
+  assert.doesNotMatch(page, /setupEnv|OURA_CLIENT_ID|OURA_CLIENT_SECRET|Server setting:|Ajuste del servidor:/);
+  assert.doesNotMatch(page, /your data can arrive via Apple Health or Whoop|tus datos pueden llegar vía Apple Health o Whoop|upload the file here \(works today\)/);
+  assert.match(page, /These manual options do not enable Oura sync/);
+  assert.match(page, /Estas opciones manuales no activan la sincronización con Oura/);
+  assert.match(page, /Use Daily check-in or a supported file-import option when relevant/);
+  assert.match(page, /Utiliza el chequeo diario o una opción de importación de archivos compatible cuando corresponda/);
 });
