@@ -8,7 +8,11 @@ export const ONBOARDING_ANCHORS = [
 ] as const;
 
 export function missingOnboardingAnchors(profile: Record<string, unknown>) {
-  return ONBOARDING_ANCHORS.filter(({ field }) => profile[field] == null || profile[field] === "");
+  const goal = profile.goal;
+  const applicable = (field: string) => goal === "swim-only" ? !["ftp","runPaceBase"].includes(field)
+    : goal === "cycle" ? !["runPaceBase","swimPaceBase"].includes(field)
+    : ["run-only","track-sprint","hyrox","5k","10k","half-marathon","marathon"].includes(String(goal)) ? !["ftp","swimPaceBase"].includes(field) : true;
+  return ONBOARDING_ANCHORS.filter(({ field }) => applicable(field) && (profile[field] == null || profile[field] === ""));
 }
 
 export type ManualPersonalBest = { label: string; value: number; unit: string; date: string };

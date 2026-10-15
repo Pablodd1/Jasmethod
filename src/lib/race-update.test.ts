@@ -32,10 +32,11 @@ function route(signedIn = true, ownsRace = true) {
     if (name === "@/lib/db") return { prisma: { race: {
       findFirst: async (args: any) => { calls.push({ read: args }); return ownsRace ? { id: "race", userId: "owner" } : null; },
       update: async (args: any) => { calls.push({ write: args }); return { id: "race", userId: "owner", ...args.data }; },
+      create: async (args: any) => { calls.push({ create: args }); return { id: "race", ...args.data }; },
     } } };
     throw new Error(`Unexpected dependency ${name}`);
   } });
-  return { put: (fixtureModule.exports as any).PUT, calls };
+  return { put: (fixtureModule.exports as any).PUT, post: (fixtureModule.exports as any).POST, calls };
 }
 const request = (body: unknown) => new Request("https://jmm.test/api/races", { method: "PUT", body: JSON.stringify(body) });
 
@@ -54,4 +55,24 @@ test("race PUT rejects owner reassignment before any write and scopes valid writ
   const anonymous = route(false);
   assert.equal((await anonymous.put(request({ id: "race", resultMin: 40 }))).status, 401);
   assert.equal(anonymous.calls.length, 0);
+});
+
+test("race creation shares edit validation, refuses reassignment and returns safe 400 errors", async () => {
+  const valid = { name: "Synthetic event", date: "2026-11-01", distance: "40k", priority: "2", goalTimeMin: "60.5", location: "" };
+  for (const patch of [{ date: "not-a-date" }, { date: "2026-02-30" }, { priority: 0 }, { goalTimeMin: -1 },
+    { resultMin: "40oops" }, { humidity: 101 }, { userId: "other-athlete" }, { id: "supplied-id" },
+    { name: { set: "nested" } }, { distance: "boxing" }]) {
+    const fixture = route();
+    const response = await fixture.post(new Request("https://jmm.test/api/races", { method: "POST", body: JSON.stringify({ ...valid, ...patch }) }));
+    assert.equal(response.status, 400);
+    assert.equal(fixture.calls.length, 0);
+    assert.doesNotMatch(JSON.stringify(await response.json()), /Prisma|password|schema/);
+  }
+  const fixture = route();
+  assert.equal((await fixture.post(new Request("https://jmm.test/api/races", { method: "POST", body: JSON.stringify(valid) }))).status, 200);
+  assert.equal(fixture.calls[0].create.data.userId, "owner");
+  assert.equal(fixture.calls[0].create.data.goalTimeMin, 60.5);
+  assert.equal(fixture.calls[0].create.data.lat, null);
+  assert.equal((await route(false).post(new Request("https://jmm.test/api/races", { method: "POST", body: JSON.stringify(valid) }))).status, 401);
+  assert.equal((await route().post(new Request("https://jmm.test/api/races", { method: "POST", body: "{" }))).status, 400);
 });

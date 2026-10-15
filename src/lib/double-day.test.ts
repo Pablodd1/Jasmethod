@@ -36,7 +36,7 @@ test('optional pair relocates one existing easy session without adding weekly lo
  assert.equal(JSON.stringify(week),before);
 });
 test('refusal, insufficient time/separation, race week and missing donor retain single sessions with reason',()=>{
- for(const altered of [{...setup,doubleDay:{...preference,athleteAgreed:false}},{...setup,maxSessionMinutes:60},{...setup,doubleDay:{...preference,secondStart:'07:30'}},{...setup,doubleDay:{...preference,weekday:6}}]){
+ for(const altered of [{...setup,doubleDay:{...preference,athleteAgreed:false}},{...setup,maxSessionMinutes:60},{...setup,doubleDay:{...preference,secondStart:'07:30'}},{...setup,trainingDays:[0,1,2,3,4,5],doubleDay:{...preference,weekday:6}}]){
   const result=boundPlanWeeks([week],altered,10,0,'advanced').weeks[0];
   assert.equal(result.sessions.filter(s=>s.doubleDayRole).length,0);assert.ok(result.doubleDayNote);
  }
@@ -44,6 +44,15 @@ test('refusal, insufficient time/separation, race week and missing donor retain 
  const duplicates={...week,sessions:Array.from({length:14},()=>exercise())};
  const noConsent=boundPlanWeeks([duplicates],{...setup,doubleDay:null},20,0,'pro').weeks[0];
  assert.equal(new Set(noConsent.sessions.map(s=>s.daySlot)).size,noConsent.sessions.length);
+});
+
+test('an available agreed weekday is not discarded by the arbitrary default rest tie-break',()=>{
+ const easyWeek={...week,sessions:Array.from({length:7},()=>exercise())};
+ const selected={...setup,doubleDay:{...preference,weekday:6}};
+ const result=boundPlanWeeks([easyWeek],selected,10,0,'advanced').weeks[0];
+ assert.equal(result.sessions.filter(s=>s.doubleDayRole&&s.daySlot===6).length,2);
+ assert.ok(result.restDaySlots.length>=1);
+ assert.equal(result.totalMinutes,240);
 });
 function pairRecords() {
  const pair=[{id:'first',sport:'bike',type:'interval',intensity:'z4',durationMin:40,startTime:'07:00'},{id:'second',sport:'bike',type:'endurance',intensity:'z2',durationMin:40,startTime:'15:00'}];

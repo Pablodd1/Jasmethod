@@ -1,7 +1,7 @@
 import { workoutRevision } from "@/lib/workout-update";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { dayBounds, dateKey, localDate, parseDate } from "@/lib/dates";
+import { dayBounds, dateKey, localDate } from "@/lib/dates";
 import { errorResponse, ApiError } from "@/lib/access";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -91,14 +91,29 @@ export async function POST(req: Request) {
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const body = await req.json();
+    let body: any;
+    try { body = await req.json(); } catch { throw new ApiError("Invalid JSON body"); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError("Enter calendar event details");
+    for (const [key, max] of [["title", 200], ["notes", 2000]] as const) {
+      if (body[key] != null && (typeof body[key] !== "string" || body[key].length > max))
+        throw new ApiError(`${key} must be text of at most ${max} characters`);
+    }
+    if (body.type !== undefined && !["workout", "race", "appointment", "note"].includes(body.type)) throw new ApiError("Choose a valid calendar event type");
+    let date = dayBounds(user.timezone).start;
+    if (body.date !== undefined) {
+      if (typeof body.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) throw new ApiError("Enter a valid calendar date");
+      try { date = localDate(body.date, user.timezone); } catch { throw new ApiError("Enter a valid calendar date"); }
+    }
+    for (const key of ["startTime", "endTime"] as const) {
+      if (body[key] != null && (typeof body[key] !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(body[key])))
+        throw new ApiError(`${key} must use HH:MM`);
+    }
+    if (body.startTime && body.endTime && body.endTime <= body.startTime) throw new ApiError("End time must follow start time on the event date");
     const ev = await prisma.calendarEvent.create({
       data: {
         userId: user.id,
-        title: body.title || "Event",
-        date: body.date
-          ? parseDate(body.date, user.timezone)
-          : dayBounds(user.timezone).start,
+        title: body.title?.trim() || "Event",
+        date,
         startTime: body.startTime,
         endTime: body.endTime,
         type: body.type || "note",
@@ -106,7 +121,5 @@ export async function POST(req: Request) {
       },
     });
     return NextResponse.json({ ok: true, event: ev });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Failed" }, { status: 500 });
-  }
+  } catch (e) { return errorResponse(e); }
 }

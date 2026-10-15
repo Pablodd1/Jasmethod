@@ -2,7 +2,7 @@ import {test} from "node:test";
 import assert from "node:assert/strict";
 import {boundPlanWeeks,levelRecoveryPolicy} from "./planning-bounds";
 import {parsePlanningSetup} from "./planning-setup";
-import type {GeneratedWeek,PlanSession} from "./science";
+import {generatePlan,type GeneratedWeek,type PlanSession} from "./science";
 const session=(zone:"z2"|"z4"="z2"):PlanSession=>({sport:"run",title:"Run",minutes:60,zone,type:"endurance",description:"Run by effort"});
 const week=(sessions:PlanSession[]):GeneratedWeek=>({week:1,theme:"Base",sessions,totalMinutes:sessions.length*60});
 test("bounds never invent available days or make up missed work",()=>{
@@ -88,4 +88,23 @@ test('weekly volume comes from reviewed baseline and daily availability, not leg
  const results=[undefined,1,40].map(hours=>boundPlanWeeks([raw],setup,hours,0,'amateur'));
  assert.deepEqual(results.map(result=>result.weeklyBudget),[150,150,150]);
  assert.deepEqual(results.map(result=>result.weeks[0].totalMinutes),[150,150,150]);
+});
+
+test('triathlon overflow keeps a brick and strength purpose instead of duplicate easy bouts',()=>{
+ const setup=parsePlanningSetup({trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:180,baselineWeeklyMinutes:480});
+ const raw=generatePlan({level:'advanced',distance:'olympic',weeks:8,startDate:new Date('2026-10-15T00:00Z'),weeklyHours:8});
+ const before=JSON.stringify(raw);
+ const result=boundPlanWeeks(raw,setup,undefined,4,'advanced');
+ for(const sport of ['swim','bike','run','brick','strength']) assert.ok(result.weeks.some(w=>w.sessions.some(s=>s.sport===sport)),`Missing ${sport}`);
+ for(const w of result.weeks){
+  assert.ok(w.totalMinutes<=480);
+  assert.ok(w.restDaySlots.length>=1);
+  assert.equal(new Set(w.sessions.map(s=>s.daySlot)).size,w.sessions.length);
+  assert.ok(w.sessions.every(s=>s.minutes<=180));
+  const demanding=w.sessions.filter(s=>s.sport==='strength'||s.sport==='brick'||Number(s.zone.slice(1))>=4);
+  for(const a of demanding) for(const b of demanding) if(a!==b) assert.ok(Math.min(Math.abs(a.daySlot-b.daySlot),7-Math.abs(a.daySlot-b.daySlot))>1);
+ }
+ assert.equal(JSON.stringify(raw),before);
+ const restricted=boundPlanWeeks(raw,{...setup,trainingDays:[1,3],maxSessionMinutes:30},undefined,4,'advanced');
+ for(const w of restricted.weeks){assert.ok(w.sessions.every(s=>[1,3].includes((4+s.daySlot)%7)&&s.minutes<=30));assert.ok(w.totalMinutes<=60);}
 });

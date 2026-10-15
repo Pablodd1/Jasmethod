@@ -17,6 +17,14 @@ test("only unknown thresholds are collected; manually saved anchors survive new 
   assert.deepEqual(onboardingSectionPayload("essentials",{...EMPTY_PROFILE,...profile},{},{profile,setup:null},null),{});
 });
 
+test("known sport asks only applicable optional references; triathlon and unknown goals retain all", () => {
+  assert.deepEqual(missingOnboardingAnchors({goal:"swim-only"}).map(r=>r.field),["lthr","maxHr","swimPaceBase"]);
+  assert.deepEqual(missingOnboardingAnchors({goal:"cycle"}).map(r=>r.field),["lthr","maxHr","ftp"]);
+  for (const goal of ["run-only","hyrox","track-sprint","10k"]) assert.deepEqual(missingOnboardingAnchors({goal}).map(r=>r.field),["lthr","maxHr","runPaceBase"]);
+  for (const goal of [undefined,"olympic","sprint","half","full"]) assert.equal(missingOnboardingAnchors({goal}).length,5);
+  assert.deepEqual(missingOnboardingAnchors({goal:"swim-only",swimPaceBase:102,maxHr:180}).map(r=>r.field),["lthr"]);
+});
+
 test("manual PB saves preserve previous entries and do not invent dates or transform PBs into thresholds", () => {
   const original = [{label:"100 m",value:13.4,unit:"sec",date:"2025-07-11"}];
   const result = appendManualPersonalBest(JSON.stringify(original),{label:"5K race",value:"24.5",unit:"min",date:""},today);
@@ -106,7 +114,7 @@ test("first step offers import or skip, callback reviews actual data, and all pr
   assert.match(source,/useState<OnboardingStep>\(ONBOARDING_STEP.devices\)/);
   assert.match(source,/Skip connections and continue manually/);
   assert.match(source,/\/onboard\?redo=1&step=profile/);
-  assert.match(source,/missingOnboardingAnchors\(savedOnboarding.current.profile\)/);
+  assert.match(source,/missingOnboardingAnchors\(\{\.\.\.savedOnboarding.current.profile,goal:profile.goal\}\)/);
   assert.match(source,/if \(!Object.keys\(fields\).length\) return true/);
   assert.match(source,/Edit everything later in Profile & Zones/);
   assert.match(source,/href="\/settings"/);

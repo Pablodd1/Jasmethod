@@ -13,9 +13,8 @@ export function validateWorkoutType(value: unknown): string {
   return value;
 }
 export function workoutHasHistory(w: Record<string, any>): boolean {
-  return Boolean(w.completed || !w.planned || w.feedbackStatus || w.feedbackAt || w.feedbackNote ||
-    w.actualDurationMin != null || w.actualSport || w.actualDetails || w.rpe != null || w.avgHr != null || w.avgPower != null ||
-    w.externalId || w.matchedPlanId);
+  return Boolean(w.completed || !w.planned || ["feedbackStatus", "feedbackAt", "feedbackNote", "actualDurationMin", "actualSport", "actualDetails", "rpe",
+    "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg", "externalId", "matchedPlanId"].some(field => w[field] != null));
 }
 export function workoutRevision(w: Record<string, any>): string {
   const keys = ["id", "date", "title", "sport", "type", "durationMin", "intensity", "startTime", "notes", "planned", "completed", "approved", "originalPlan", "prescription", "feedbackStatus", "actualDurationMin", "actualSport", "actualDetails", "feedbackNote", "feedbackAt", "rpe", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg", "indoor", "planDayId"];
@@ -40,6 +39,15 @@ export async function updateWorkout(
       include: { planDay: true },
     });
     if (!existing) throw new ApiError("Session not found", 404);
+    // Execution reports are observations, not future plans. Apply this at the
+    // shared writer so calendar, daily card, chat and coach edits agree.
+    const reportsActual = ["completed", "feedbackStatus", "actualDurationMin", "actualSport", "actualDetails", "rpe", "feedbackNote", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg"].some(key => body[key] !== undefined);
+    let observedDate = existing.date;
+    if (reportsActual && body.date !== undefined) {
+      try { observedDate = parseDate(body.date, athlete.timezone); } catch { throw new ApiError("Invalid session date"); }
+    }
+    if (reportsActual && dateKey(observedDate, athlete.timezone) > dateKey(new Date(), athlete.timezone))
+      throw new ApiError("Future sessions cannot have recorded results. Change the planned session instead, or report work on its actual date.", 409);
     if (body.protectHistory && workoutHasHistory(existing)) throw new ApiError("Recorded sessions and feedback cannot be rewritten by the plan editor.", 409);
     const prescriptionKeys = ["title", "type", "durationMin", "intensity", "sport", "notes", "startTime", "date", "indoor"];
     if(prescriptionKeys.some(key=>body[key]!==undefined) && hasDoubleDayMetadata(existing)&&!doubleDayPlan(existing)) throw new ApiError("Saved pair metadata needs review. Generate a new reviewed plan before editing this session.",409);

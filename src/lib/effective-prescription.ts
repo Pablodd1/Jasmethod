@@ -1,4 +1,5 @@
 import { isStarterSession, starterRestriction } from "./starter-session";
+import { isUnperformedSupersededWorkout } from "./superseded-workout";
 import { evidenceWorkout, reviewedWorkoutStructureCurrent } from "./evidence-workouts";
 import { assessDailyEnvironment } from "./daily-environment";
 import { readDailyEnvironment } from "./daily-environment-store";
@@ -32,6 +33,8 @@ export interface ReportedActivity {
   feedbackAt?: Date | string | null; feedbackStatus?: string | null; feedbackNote?: string | null;
   actualDurationMin?: number | null; actualSport?: string | null; actualDetails?: string | null;
   rpe?: number | null; completed?: boolean; planned?: boolean; sport?: string; durationMin?: number;
+  source?: string | null;
+  [key: string]: unknown;
 }
 function timestamp(value: unknown): number {
   return value instanceof Date ? value.getTime() : typeof value === "string" ? Date.parse(value) : NaN;
@@ -70,7 +73,7 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
   if (adaptation?.verdict === "rest") safety = { ...safety, status: "hold", reason: adaptation.message || "The current check-in requires rest." };
   const activityStart = localDate(addDaysKey(today, -3), timezone).getTime();
   const activityEnd = localDate(addDaysKey(today, 1), timezone).getTime();
-  const activity = (input.reportedActivity || []).filter(row => row.userId === userId && timestamp(row.date) >= activityStart && timestamp(row.date) < activityEnd)
+  const activity = (input.reportedActivity || []).filter(row => !isUnperformedSupersededWorkout(row) && row.userId === userId && timestamp(row.date) >= activityStart && timestamp(row.date) < activityEnd)
     .map(row => ({ id: row.id, date: row.date, createdAt: row.createdAt ?? null, feedbackAt: row.feedbackAt ?? null, feedbackStatus: row.feedbackStatus ?? null, feedbackNote: row.feedbackNote ?? null, actualDurationMin: row.actualDurationMin ?? null, actualSport: row.actualSport ?? null, actualDetails: row.actualDetails ?? null, rpe: row.rpe ?? null, completed: row.completed ?? null, planned: row.planned ?? null, sport: row.sport ?? null, durationMin: row.durationMin ?? null }))
     .sort((a, b) => a.id.localeCompare(b.id));
   const reviewedAt = timestamp(answers?.inputMetadata?.recordedAt);
@@ -177,7 +180,7 @@ export async function effectivePrescription(userId: string, workoutId: string, d
     db.benchmarkTest.findMany({ where: { userId, id: { in: appliedIds }, completed: true, skipped: false }, orderBy: { date: "desc" } }),
     db.workout.findMany({
       where: { userId, date: { gte: localDate(addDaysKey(today.key, -3), timezone), lt: today.end }, OR: [{ feedbackAt: { not: null } }, { feedbackStatus: { not: null } }, { completed: true }, { planned: false }, { actualDurationMin: { not: null } }, { actualSport: { not: null } }, { actualDetails: { not: null } }, { rpe: { not: null } }] },
-      select: { id: true, userId: true, date: true, createdAt: true, feedbackAt: true, feedbackStatus: true, feedbackNote: true, actualDurationMin: true, actualSport: true, actualDetails: true, rpe: true, completed: true, planned: true, sport: true, durationMin: true },
+      select: { id: true, userId: true, date: true, createdAt: true, feedbackAt: true, feedbackStatus: true, feedbackNote: true, actualDurationMin: true, actualSport: true, actualDetails: true, rpe: true, completed: true, planned: true, sport: true, durationMin: true, source:true, avgHr:true, maxHr:true, avgPower:true, np:true, distanceKm:true, preWeightKg:true, postWeightKg:true, externalId:true, matchedPlanId:true },
       orderBy: [{ date: "asc" }, { id: "asc" }],
     }),
     db.workout.findMany({ where: { userId, date: { gte: sessionDate, lt: localDate(addDaysKey(dateKey(workout.date, timezone), 1), timezone) }, OR: [{completed:true},{actualDurationMin:{gt:0}},{feedbackStatus:{in:["partial","substituted","unknown"]}},{planned:true,AND:[{OR:[{feedbackStatus:null},{feedbackStatus:{not:"skipped"}}]},{OR:[{planDay:null},{planDay:{dayOff:false,plan:{status:"active"}}}]}]}] }, select: { id:true,userId:true,date:true,sport:true,durationMin:true,intensity:true,type:true,rpe:true,completed:true,actualDurationMin:true,actualSport:true,prescription:true,originalPlan:true,startTime:true,feedbackAt:true,feedbackStatus:true,matchedPlanId:true },orderBy:[{startTime:"asc"},{id:"asc"}] }),

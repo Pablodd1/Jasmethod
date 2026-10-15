@@ -1,4 +1,5 @@
 import { isStarterSession, starterRestriction } from "@/lib/starter-session";
+import { isUnperformedSupersededWorkout } from "@/lib/superseded-workout";
 import { ensureStarterWorkout } from "@/lib/starter-session-store";
 import { preserveSportStructure } from "@/lib/preserve-sport-structure";
 import { intervalsConnectorEnabled } from "@/lib/capabilities";
@@ -196,7 +197,7 @@ export async function POST(req: Request) {
           orderBy: { date: "desc" },
         }),
         readPlanningSetup(user.id),
-        prisma.workout.findMany({ where: { userId: user.id, date: { gte: start, lt: end }, OR: [{ feedbackAt: { not: null } }, { planned: false }, { completed: true }] }, select: { id: true, feedbackStatus: true, actualDurationMin: true, matchedPlanId: true } }),
+        prisma.workout.findMany({ where: { userId: user.id, date: { gte: start, lt: end }, OR: [{ feedbackAt: { not: null } }, { planned: false }, { completed: true }] } }),
       ],
     );
     const history = metrics.filter((m) => m.date < start);
@@ -224,9 +225,9 @@ export async function POST(req: Request) {
     const setupGate = assessPlanningSetup(profile, planning.setup, new Date(), "daily");
     if (!setupGate.ready && !starterReady && adaptation.safetyStatus === "clear") adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", scoreAvailable: false, safetyStatus: "unknown", ruleId: setupGate.ruleId, missingFields: setupGate.missing, message: `Individual training is on hold until setup is complete or reviewed. ${[...setupGate.missing, ...setupGate.review].join("; ")}. Update athlete setup; no device benchmark is required.` };
     if (hrvLow && adaptation.verdict === "full") adaptation = { ...adaptation, verdict: "trim", durationFactor: 0.85, intensityCap: "z4", ruleId: "checkin-safety-v1:low-hrv", message: "HRV is below your recent baseline; today's plan is conservative. Review how you feel before training." };
-    const execution = applyExecutionFeedback(adaptation, feedback);
+    const execution = applyExecutionFeedback(adaptation, feedback.filter(w => !isUnperformedSupersededWorkout(w)));
     adaptation = execution.adaptation;
-    const uniqueSameDayReports = sameDayReports.filter((w) => !w.matchedPlanId || !sameDayReports.some((actual) => actual.id === w.matchedPlanId));
+    const uniqueSameDayReports = sameDayReports.filter((w) => !isUnperformedSupersededWorkout(w) && (!w.matchedPlanId || !sameDayReports.some((actual) => actual.id === w.matchedPlanId)));
     const uncertainSameDay = uniqueSameDayReports.some((w) => w.feedbackStatus !== "skipped" && w.actualDurationMin == null);
     const usedDailyMinutes = uniqueSameDayReports.reduce((sum, w) => sum + (w.actualDurationMin ?? 0), 0);
     const dailyBudgetRemaining = Math.max(0, (planning.setup?.maxSessionMinutes ?? (starterReady ? 20 : 0)) - usedDailyMinutes);
