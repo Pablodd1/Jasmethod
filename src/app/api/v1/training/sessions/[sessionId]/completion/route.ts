@@ -42,6 +42,7 @@ export async function POST(
       expectedRevision: workoutRevision(resolved.workout),
       actualSport: actual.actualSport ?? null,
       actualDetails: actual.actualDetails,
+      actualFueling: actual.actualFueling,
       rpe: actual.sessionRpe ?? null,
       actualDurationMin: actual.durationMinutes ?? null,
       feedbackStatus: actual.status,

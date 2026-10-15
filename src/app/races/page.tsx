@@ -128,7 +128,7 @@ export default function RacesPage() {
                     <div className="text-xs text-slate-500">
                       {r.distance} · {new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone:"UTC" })}
                       {r.startTime ? ` · ${r.startTime}` : ""}
-                      {r.priority === 1 ? " · A-race" : ""}
+                      {r.priority === 1 ? " · A-race" : r.priority === 2 ? " · B-race" : r.priority === 3 ? " · C-race" : ""}
                     </div>
                   </div>
                   <button onClick={() => del(r.id)} className="text-slate-400 hover:text-coral-600"><Trash2 className="w-4 h-4" /></button>
@@ -172,6 +172,7 @@ export default function RacesPage() {
                       📐 {lang === "es" ? "Estimación derivada del GPX" : "GPX-derived estimate"}: {r.courseKm} km · {r.courseElevM} m {lang === "es" ? "ascenso · revisar en escenarios" : "ascent · review in scenarios"}
                     </div>
                   )}
+                  {r.notes && <details className="rounded-lg border p-3"><summary className="cursor-pointer font-medium">{lang === "es" ? "Notas de la carrera y recorrido declarado" : "Race notes & reported course"}</summary><p className="mt-2 whitespace-pre-wrap break-words">{r.notes}</p><p className="mt-2">{lang === "es" ? "Las notas no sustituyen un recorrido verificado. Introduce las distancias de cada segmento explícitamente en Escenarios." : "Notes do not replace a verified course. Enter each leg distance explicitly in Scenarios."}</p></details>}
                   <div className="pt-1">
                     <label className="text-[10px] font-semibold uppercase tracking-wide text-ocean-600 cursor-pointer hover:underline">
                       📐 {r.courseKm != null ? (lang === "es" ? "Reemplazar GPX del recorrido" : "Replace course GPX") : (lang === "es" ? "Subir GPX del recorrido" : "Upload course GPX")}

@@ -7,6 +7,8 @@ import { appendManualPersonalBest, missingOnboardingAnchors, observationKind, on
 import { onboardingSectionPayload } from "./onboarding-save";
 import { EMPTY_PROFILE, EMPTY_SETUP, EMPTY_RACE, restoreOnboardingDraft } from "./onboarding-form";
 import { profilePatch } from "./profile-update";
+import * as importedTraining from "./imported-training-review";
+import { localDate } from "./dates";
 
 const today = "2026-10-12";
 test("only unknown thresholds are collected; manually saved anchors survive new imports", () => {
@@ -96,11 +98,20 @@ test("import review is authenticated, athlete-scoped and backed by real stored r
     if (name === "@/lib/onboarding-imports") return {ONBOARDING_METRICS:[],onboardingObservations:()=>[]};
     if (name === "@/lib/onboarding-evidence") return {onboardingRaceResults};
     if (name === "@/lib/profile-import-review") return {importedWeightSuggestions:()=>[]};
+    if (name === "@/lib/imported-training-review") return importedTraining;
+    if (name === "@/lib/dates") return {localDate};
     throw Error(name);
   }});
   const response = await loaded.exports.GET();
   const data = await response.json();
   assert.equal(data.history.count,7);
+  assert.equal(data.trainingReview.weeks.length,4);
+  assert.equal(data.trainingReview.recordedWeeklyAverageMinutes,null);
+  const trainingCall=calls.find(call=>call.table === "workout" && call.args.take === 2001);
+  assert.ok(trainingCall);
+  assert.equal(trainingCall.args.where.planned,false);
+  assert.equal(trainingCall.args.select.source,true);
+  assert.ok(trainingCall.args.where.date.gte instanceof Date);
   assert.equal(data.raceResults[0].minutes,23.5);
   assert.equal(response.headers.get("Cache-Control"),"private, no-store");
   const callCount = calls.length;

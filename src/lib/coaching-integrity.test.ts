@@ -42,6 +42,14 @@ test("novice or unknown sprint experience never inherits maximal elite templates
 });
 
 import { personalizedDailyMotivation, dailyMotivation, MOTIVATION_LIBRARY } from "./reference";
+import { dailyRecoveryContext } from "./daily-recovery";
+
+test("missing daily answers do not turn a saved training session into a recovery-day cue", () => {
+  const recovery = dailyRecoveryContext({ plannedRest: false, sessions: [{ durationMin: 0, verdict: "blocked" }], answers: null });
+  const cue = personalizedDailyMotivation({ date: "2026-10-15", name: "Athlete", sessionTitle: "Bike: Aerobic Spin", checkinComplete: false, rest: ["hold", "urgent"].includes(recovery.safetyStatus) });
+  assert.match(cue!.message, /Complete your daily check-in/);
+  assert.doesNotMatch(cue!.message, /Today is for recovery/);
+});
 
 test("daily encouragement is deterministic, personalized and disabled on request", () => {
   const context = { date: "2026-09-27", name: "Alex", goal: "5K", sessionTitle: "Easy run", checkinComplete: true };

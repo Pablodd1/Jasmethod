@@ -4,7 +4,7 @@ import { dayOffProtocol } from "@/lib/day-off";
 import { resolveCheckinSafety } from "@/lib/checkin-safety";
 
 export interface DailyRecoveryView {
-  mode: "event-day" | "hold" | "planned-rest" | "easy-day" | "training" | "unplanned";
+  mode: "event-day" | "hold" | "planned-rest" | "easy-day" | "training" | "unplanned" | "checkin-needed" | "review-needed";
   allowMovement: boolean;
   safetyStatus: "clear" | "unknown" | "hold" | "urgent";
   recoveryNeedsReview: boolean;
@@ -17,6 +17,17 @@ export function DailyRecoveryCard({ recovery, es = false, offline = false }: { r
   const unknown = !recovery || recovery.safetyStatus === "unknown" || offline;
   const held = mode === "hold" || recovery?.safetyStatus === "hold" || recovery?.safetyStatus === "urgent";
   const urgent = recovery?.safetyStatus === "urgent";
+  const reviewNeeded = mode === "review-needed";
+  const missingReadiness = !held && (reviewNeeded || mode === "checkin-needed" || (unknown && mode !== "planned-rest" && mode !== "event-day"));
+  if (missingReadiness) return <section id="daily-recovery" className="card space-y-2 border-ocean-200" aria-labelledby="daily-recovery-title">
+    <h2 id="daily-recovery-title" className="font-display text-lg font-bold">{reviewNeeded ? (es ? "Revisar entrenamiento" : "Review training") : (es ? "Falta el check-in" : "Check-in needed")}</h2>
+    <p role="status" className="text-sm">{offline
+      ? (es ? "Los datos guardados no confirman tu estado actual. Reconecta y actualiza el check-in antes de seguir el entrenamiento." : "Saved data does not confirm your current condition. Reconnect and update your check-in before following the workout.")
+      : reviewNeeded
+        ? (es ? "Tu entrenamiento guardado necesita revisión antes de realizarse. Actualiza el check-in y revisa las indicaciones de la sesión abajo. Responder las preguntas no anula un bloqueo pendiente ni demuestra enfermedad o descanso." : "Your saved workout needs review before you follow it. Update your check-in and review the session guidance below. Answering the questions does not override an unresolved block or establish illness or rest.")
+        : (es ? "Revisa sueño, energía, molestias, estrés, síntomas y tiempo disponible. Si tienes un entrenamiento guardado, sigue visible abajo; aún no está autorizado para realizarse. La falta de respuestas no demuestra enfermedad ni prescribe descanso." : "Review sleep, energy, soreness, stress, symptoms and available time. Your saved workout, if available, remains below; it is not yet cleared to follow. Missing answers do not establish illness or prescribe rest.")}</p>
+    <Link href="/checkin" className="inline-block underline text-sm font-semibold text-ocean-700">{es ? "Completar check-in de hoy" : "Complete today's check-in"}</Link>
+  </section>;
   // Server clearance, current connectivity and the correct day context must all agree.
   const allowMovement = !unknown && !held && mode === "planned-rest" && recovery?.allowMovement === true && recovery.safetyStatus === "clear" && !recovery.recoveryNeedsReview && recovery.optionalMovementMinutes === 20;
   const protocol = dayOffProtocol(es ? "es" : "en", { allowMovement });

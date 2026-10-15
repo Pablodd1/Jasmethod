@@ -7,6 +7,8 @@ import { createRequire } from "node:module";
 import vm from "node:vm";
 import { createHash } from "node:crypto";
 import { ONBOARDING_METRICS, onboardingObservations } from "./onboarding-imports";
+import * as importedTraining from "./imported-training-review";
+import { localDate } from "./dates";
 const require = createRequire(import.meta.url), ts = require("typescript");
 function load(path:string,deps:Record<string,unknown>) {
   const exports:any={};
@@ -40,9 +42,13 @@ test("import review preserves old observations, returns scoped history and no se
   const row={id:"weight",metricType:"weight_kg",value:75,unit:"kg",source:"strava",observedAt:date,qualityFlag:"ok",measurementMethod:"provider_profile_reported"};
   db.metricObservation.findMany=async(q:any)=>{state.queries.push(q);return[row]};
   db.connector.findMany=async(q:any)=>{state.queries.push(q);return[{provider:"strava",status:"connected",lastSyncAt:date,lastSyncCount:1}]};
-  db.workout={aggregate:async(q:any)=>{state.queries.push(q);return{_count:{_all:1},_min:{date},_max:{date}}},groupBy:async(q:any)=>{state.queries.push(q);return[{sport:"run",_count:{_all:1}}]}};
+  db.workout={
+    aggregate:async(q:any)=>{state.queries.push(q);return{_count:{_all:1},_min:{date},_max:{date}}},
+    groupBy:async(q:any)=>{state.queries.push(q);return[{sport:"run",_count:{_all:1}}]},
+    findMany:async(q:any)=>{state.queries.push(q);return[]},
+  };
   db.race={findMany:async(q:any)=>{state.queries.push(q);return[]}};
-  const api=load("src/app/api/onboard/import-review/route.ts",{"@/lib/auth":{getCurrentUser:async()=>state.authenticated?{id:"user-a"}:null},"@/lib/db":{prisma:db},"@/lib/onboarding-evidence":{onboardingRaceResults},"@/lib/onboarding-imports":{ONBOARDING_METRICS,onboardingObservations},"@/lib/profile-import-review":helper});
+  const api=load("src/app/api/onboard/import-review/route.ts",{"@/lib/auth":{getCurrentUser:async()=>state.authenticated?{id:"user-a"}:null},"@/lib/db":{prisma:db},"@/lib/onboarding-evidence":{onboardingRaceResults},"@/lib/onboarding-imports":{ONBOARDING_METRICS,onboardingObservations},"@/lib/profile-import-review":helper,"@/lib/imported-training-review":importedTraining,"@/lib/dates":{localDate}});
   const response=await api.GET(),body=await response.json();assert.equal(response.status,200);assert.equal(body.observations.length,1);assert.equal(body.suggestions[0].kind,"reported");assert.equal(body.history.count,1);assert.equal(body.history.sports[0].sport,"run");assert.equal(state.fetches,0);assert.ok(state.queries.every(q=>q.where.userId==="user-a"));assert.match(response.headers.get("cache-control"),/no-store/);
   state.authenticated=false;const before=state.queries.length;assert.equal((await api.GET()).status,401);assert.equal(state.queries.length,before);
 });

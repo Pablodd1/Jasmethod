@@ -87,6 +87,11 @@ jobs:
       - name: Authenticated race scenario boundaries
         run: npx tsx scripts/jmm-race-scenario-integration.ts
 
+      - name: Actual fueling persistence and owner boundaries
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-fueling-integration.ts
+
       - name: Day-zero incomplete-profile and recovery acceptance
         run: npx tsx scripts/jmm-starter-integration.ts
 

@@ -48,10 +48,35 @@ test("Training and easy days get daily recovery choices without additional exerc
 
 test("Unavailable recovery input shows unknown state and links check-in without inventing clearance", () => {
   const html = render(null);
-  assert.match(html, /Your daily recovery/);
-  assert.match(html, /safety information is missing/);
+  assert.match(html, /Check-in needed/);
+  assert.match(html, /not yet cleared to follow/);
   assert.match(html, /href="\/checkin"/);
   assert.doesNotMatch(html, /20 min|20 minutes/);
+});
+
+test("missing readiness gets a compact check-in notice above the saved plan instead of a recovery prescription", () => {
+  for (const es of [false, true]) {
+    const html = render({ ...rest, mode: "checkin-needed", safetyStatus: "unknown", allowMovement: false, optionalMovementMinutes: null }, es);
+    assert.match(html, es ? /Falta el check-in/ : /Check-in needed/);
+    assert.match(html, es ? /entrenamiento guardado/ : /saved workout/);
+    assert.match(html, /href="\/checkin"/);
+    assert.doesNotMatch(html, /<details|<h3|20 min|training on hold|entrenamiento en pausa|VISUALIZATION|Visualización opcional/);
+    assert.ok(html.length < 1500);
+  }
+  const offline = render({ ...rest, mode: "training" }, false, true);
+  assert.match(offline, /Reconnect and update your check-in/);
+  assert.doesNotMatch(offline, /<details|<h3/);
+});
+
+test("a canonical block with answered safety questions shows review guidance without medical or rest claims", () => {
+  for (const es of [false, true]) {
+    const html = render({ ...rest, mode: "review-needed", safetyStatus: "clear", allowMovement: false, optionalMovementMinutes: null }, es);
+    assert.match(html, es ? /Revisar entrenamiento/ : /Review training/);
+    assert.match(html, es ? /no anula un bloqueo pendiente/ : /does not override an unresolved block/);
+    assert.match(html, /href="\/checkin"/);
+    assert.doesNotMatch(html, /<details|<h3|20 min|training on hold|entrenamiento en pausa|Recovery day/);
+    assert.ok(html.length < 1500);
+  }
 });
 
 test("Spanish recovery includes safety limits, optional mental rehearsal and inspectable sources", () => {

@@ -2,6 +2,7 @@ import { isDailyEnvironmentAssessment, type DailyEnvironmentAssessment } from "@
 import type { CanonicalStep } from "@/lib/canonical-session";
 import type { UniversalWorkoutCard } from "@/lib/universal-workout-card";
 import { isUniversalWorkoutCard } from "@/lib/universal-workout-card";
+import { parseActualFueling, type ActualFueling } from "@/lib/actual-fueling";
 
 export type Endpoint = { type: "time"; seconds: number } | { type: "distance"; meters: number } | { type: "reps"; reps: number } | { type: "lap" };
 export type PaceRef = { secondsPerMile: number | null; measuredAt: string | null; status: 'measured' | 'coach_set' | 'estimated' | 'missing'; note?: string; missingReason?: string | null };
@@ -20,7 +21,7 @@ export type DailyTraining = {
   profile: { paces: Record<PaceKey, PaceRef>; thresholdHeartRate: { bpm: number | null; status: 'measured' | 'coach_set' | 'missing'; measuredAt: string | null }; unitSystem: 'imperial' | 'metric'; updatedAt: string };
   blocks: Block[];
   guidance: { focus: Guidance; preFuel: Guidance; postFuel: Guidance; downshift: Guidance & { timerSeconds: number | null; inhaleSeconds: number | null; exhaleSeconds: number | null }; checkIn: Guidance };
-  completion: { focusReady: boolean; submittedAt: string | null; actual: null | { durationMinutes: number | null; actualSport?: string | null; sessionRpe: number | null; comments: string | null } };
+  completion: { focusReady: boolean; submittedAt: string | null; actual: null | { durationMinutes: number | null; actualSport?: string | null; sessionRpe: number | null; comments: string | null; status?: "completed" | "partial" | "substituted" | "skipped" | "unknown"; actualFueling?: ActualFueling | null } };
   links: { editProfile: string };
 };
 
@@ -51,6 +52,12 @@ export function isDailyTraining(v: unknown): v is DailyTraining {
   if (!["imperial", "metric"].includes(p.unitSystem) || typeof p.updatedAt !== "string") return false;
   if (!["focus", "preFuel", "postFuel", "downshift", "checkIn"].every(k => record(g[k]) && typeof g[k].title === "string" && Array.isArray(g[k].items) && g[k].items.every((i: unknown) => typeof i === "string"))) return false;
   if (typeof c.focusReady !== "boolean" || typeof l.editProfile !== "string") return false;
+  if (c.actual?.actualFueling != null) {
+    if (!record(c.actual.actualFueling) || c.actual.actualFueling.schemaVersion !== 1) return false;
+    const { schemaVersion: _version, ...fields } = c.actual.actualFueling;
+    try { parseActualFueling(fields); } catch { return false; }
+  }
+  if (c.actual?.status !== undefined && !["completed", "partial", "substituted", "skipped", "unknown"].includes(c.actual.status)) return false;
   if (v.schemaVersion === 2) {
     if (typeof s.sourceRevision !== "string" || !/^[a-f0-9]{64}$/.test(s.sourceRevision) || !["ready", "rest", "blocked"].includes(s.verdict)) return false;
     if (!record(s.capability) || typeof s.capability.available !== "boolean" || s.capability.deviceTested !== false || !["native", "generic", "split", "unavailable"].includes(s.capability.mode) || typeof s.capability.reason !== "string") return false;
