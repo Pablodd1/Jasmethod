@@ -21,6 +21,8 @@ import { FitDownloadActions, fitDownloadUrl } from "@/components/daily-training/
 import { endpointLabel } from "@/components/daily-training/training-contract";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
+import { ActualFuelingFields } from "@/components/daily-training/ActualFuelingFields";
+import { actualFuelingFromForm } from "@/lib/actual-fueling";
 export default function TodayPage() {
   const { user } = useAuth();
   return <TodayPageContent key={user?.id || "signed-out"} />;
@@ -225,9 +227,11 @@ function TodayPageContent() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const f = new FormData(e.currentTarget);
+                  let actualFueling;
+                  try { actualFueling = actualFuelingFromForm(f); } catch (cause) { setError((cause as Error).message); return; }
                   action(
                     "/api/plan",
-                    { sessionId: session.id, ...Object.fromEntries(f) },
+                    { sessionId: session.id, ...Object.fromEntries(f), actualFueling },
                     "PUT",
                   );
                 }}
@@ -290,6 +294,7 @@ function TodayPageContent() {
                     {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </label>
+                <ActualFuelingFields key={`${session.id}-${session.revision}`} details={session.actualDetails} actualDurationMin={session.actualDurationMin} es={es} />
                 <textarea
                   aria-label="Workout feedback"
                   name="feedbackNote"

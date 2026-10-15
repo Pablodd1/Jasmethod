@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { SPORT_STRUCTURE_EXAMPLES } from "@/lib/sport-structure-examples";
+import { friendlyStructureFrom, friendlyStructureValue, type FriendlyStructure } from "@/lib/sport-structure-form";
+import { FriendlySportStructureForm } from "./FriendlySportStructureForm";
 
 type StructureMetadata = {
   sessionId: string; sport: string; revision: string; sportStructure: unknown | null;
@@ -14,6 +16,8 @@ export function StructuredSportEditor({ sessionId, sport, disabled = false, es =
   const [open, setOpen] = useState(false);
   const [metadata, setMetadata] = useState<StructureMetadata | null>(null);
   const [draft, setDraft] = useState("");
+  const [form, setForm] = useState<FriendlyStructure | null>(null);
+  const [mode, setMode] = useState<"form" | "json">("form");
   const [busy, setBusy] = useState<"loading" | "saving" | null>(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -23,6 +27,22 @@ export function StructuredSportEditor({ sessionId, sport, disabled = false, es =
   const url = `/api/workout/structure?id=${encodeURIComponent(sessionId)}${athleteId ? `&athleteId=${encodeURIComponent(athleteId)}` : ""}`;
 
   useEffect(() => () => request.current?.abort(), []);
+  function acceptStructure(value: unknown | null) {
+    const next = friendlyStructureFrom(value, sport);
+    setForm(next); setMode(next ? "form" : "json");
+    setDraft(value === null ? "" : JSON.stringify(value, null, 2));
+  }
+  function switchMode() {
+    try {
+      if (mode === "form" && form) { setDraft(form.steps.length ? JSON.stringify(friendlyStructureValue(form, sport), null, 2) : ""); setMode("json"); }
+      else {
+        const next = friendlyStructureFrom(draft.trim() ? JSON.parse(draft) : null, sport);
+        if (!next) throw new Error(es ? "Esta estructura usa campos avanzados. Se conserva en JSON." : "This structure uses advanced fields and remains in JSON.");
+        setForm(next); setMode("form");
+      }
+      setError("");
+    } catch (cause) { setError((cause as Error).message); }
+  }
   async function load() {
     if (request.current || disabled) return;
     const controller = new AbortController(); request.current = controller;
@@ -33,7 +53,7 @@ export function StructuredSportEditor({ sessionId, sport, disabled = false, es =
       if (!response.ok) throw new Error(data.error || "Could not load the saved structure.");
       if (data.sessionId !== sessionId || typeof data.revision !== "string") throw new Error("Unexpected session response. Reload the page.");
       if (controller.signal.aborted) return;
-      setMetadata(data); setDraft(data.sportStructure === null ? "" : JSON.stringify(data.sportStructure, null, 2));
+      setMetadata(data); acceptStructure(data.sportStructure);
       setStatus(es ? "Se cargó la estructura guardada." : "Loaded the saved structure.");
     } catch (cause) { if (!controller.signal.aborted) setError((cause as Error).message); }
     finally { if (request.current === controller) request.current = null; if (!controller.signal.aborted) setBusy(null); }
@@ -48,9 +68,9 @@ export function StructuredSportEditor({ sessionId, sport, disabled = false, es =
     let structure: unknown = null;
     if (!clear) {
       try {
-        structure = JSON.parse(draft);
+        structure = mode === "form" && form ? friendlyStructureValue(form, sport) : JSON.parse(draft);
         if (!structure || typeof structure !== "object" || Array.isArray(structure)) throw new Error("Use a JSON object. Use Clear structure to remove it.");
-      } catch (cause) { setError(`${es ? "JSON no válido" : "Invalid JSON"}: ${(cause as Error).message}`); textArea.current?.focus(); return; }
+      } catch (cause) { setError((cause as Error).message); textArea.current?.focus(); return; }
     }
     const controller = new AbortController(); request.current = controller;
     setBusy("saving"); setError(""); setStatus("");
@@ -65,7 +85,7 @@ export function StructuredSportEditor({ sessionId, sport, disabled = false, es =
         throw new Error(data.error || "Could not save the structure. Your JSON is still here.");
       }
       if (controller.signal.aborted) return;
-      setMetadata(data); setDraft(data.sportStructure === null ? "" : JSON.stringify(data.sportStructure, null, 2));
+      setMetadata(data); acceptStructure(data.sportStructure);
       setStatus(data.message || (es ? "Estructura guardada." : "Structure saved."));
       await onSaved();
     } catch (cause) { if (!controller.signal.aborted) { setError((cause as Error).message); textArea.current?.focus(); } }
@@ -75,16 +95,21 @@ export function StructuredSportEditor({ sessionId, sport, disabled = false, es =
   if (!example) return null;
   const locked = disabled || !!busy || !metadata?.editable;
   return <section className="rounded-xl border border-slate-300 bg-white p-4 text-slate-900 space-y-3" aria-label={es ? "Estructura deportiva explícita" : "Explicit sport structure"}>
-    <button type="button" className="btn-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700" aria-expanded={open} aria-controls={`${id}-panel`} disabled={disabled || busy === "saving"} onClick={toggle}>{open ? (es ? "Cerrar editor" : "Close editor") : (es ? "Editar estructura deportiva (JSON)" : "Edit sport structure (JSON)")}</button>
+    <button type="button" className="btn-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700" aria-expanded={open} aria-controls={`${id}-panel`} disabled={disabled || busy === "saving"} onClick={toggle}>{open ? (es ? "Cerrar editor" : "Close editor") : (es ? "Editar pasos, series y descansos" : "Edit steps, sets and rests")}</button>
     {open && <div id={`${id}-panel`} className="space-y-3">
       <p className="text-sm">{es ? "Solo se guarda lo que introduces. No se deducen largos, cargas ni transiciones del texto. Siguen vigentes los límites del check-in." : "Only the structure you enter is saved. Lengths, loads and transitions are never inferred from prose. Current check-in limits still apply."}</p>
       <button type="button" className="btn-secondary" disabled={disabled || !!busy} onClick={() => void load()}>{busy === "loading" ? (es ? "Cargando…" : "Loading…") : (es ? "Recargar guardado (reemplaza el borrador)" : "Reload saved structure (replaces draft)")}</button>
       {metadata && <p className="text-sm">{es ? "Tiempo revisado" : "Reviewed time budget"}: {metadata.declaredBudgetMin == null ? (es ? "— requiere check-in" : "— complete check-in") : `${metadata.declaredBudgetMin} min`}. {es ? "La estructura debe respetar este límite." : "Your structure must fit this limit."}</p>}
       {metadata?.reason && <p role="status">{metadata.reason}</p>}
       {metadata && metadata.verdict !== "ready" && <p role="status">{metadata.resolutionReason}</p>}
+      {metadata && <button type="button" className="btn-secondary" disabled={locked} onClick={switchMode}>{mode === "form" ? (es ? "Opciones avanzadas (JSON)" : "Advanced options (JSON)") : (es ? "Usar formulario sencillo" : "Use simple form")}</button>}
+      {mode === "form" && form && <FriendlySportStructureForm id={`${id}-form`} value={form} disabled={locked} es={es} onChange={next => { setForm(next); setError(""); setStatus(""); }} />}
+      {mode === "json" && <>
+      <p className="text-sm">{es ? "Editor avanzado: se conserva la estructura completa, incluidos campos que no admite el formulario sencillo." : "Advanced editor: preserves the complete structure, including fields unavailable in the simple form."}</p>
       <label htmlFor={`${id}-json`} className="block font-medium">{es ? "Estructura deportiva JSON" : "Sport structure JSON"}</label>
       <textarea ref={textArea} id={`${id}-json`} value={draft} onChange={event => { setDraft(event.target.value); setError(""); setStatus(""); }} disabled={disabled || !!busy} readOnly={metadata !== null && !metadata.editable} rows={14} maxLength={60000} spellCheck={false} aria-invalid={!!error} aria-describedby={`${id}-help${error ? ` ${id}-error` : ""}`} className="w-full rounded-lg border border-slate-500 bg-white p-3 font-mono text-sm text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-700" />
       <p id={`${id}-help`} className="text-sm">{es ? "schemaVersion debe ser 1. Cada paso requiere campos explícitos y válidos. Los ejemplos son ficticios; ajústalos a tu plan antes de aplicar." : "schemaVersion must be 1. Every step needs valid, explicit fields. Examples are illustrative; edit them to match your plan before applying."}</p>
+      </>}
       <details>
         <summary className="cursor-pointer font-medium">{es ? "Ver ejemplos completos y campos" : "See full examples and fields"}</summary>
         <div className="space-y-3 pt-3">
@@ -93,12 +118,12 @@ export function StructuredSportEditor({ sessionId, sport, disabled = false, es =
           {Object.entries(SPORT_STRUCTURE_EXAMPLES).map(([key, entry]) => <details key={key}>
             <summary className="cursor-pointer">{entry.label}</summary>
             <pre className="max-h-80 overflow-auto rounded-lg border border-slate-300 bg-slate-50 p-3 text-xs text-slate-900">{JSON.stringify(entry.structure, null, 2)}</pre>
-            {key === sport && <button type="button" className="btn-secondary mt-2" disabled={locked} onClick={() => { setDraft(JSON.stringify(entry.structure, null, 2)); setError(""); setStatus(es ? "Ejemplo cargado como borrador. No está guardado." : "Example loaded as a draft. It has not been saved."); textArea.current?.focus(); }}>{es ? "Usar como borrador (no guarda)" : "Use as draft (does not save)"}</button>}
+            {key === sport && <button type="button" className="btn-secondary mt-2" disabled={locked} onClick={() => { acceptStructure(entry.structure); setError(""); setStatus(es ? "Ejemplo cargado como borrador. No está guardado." : "Example loaded as a draft. It has not been saved."); textArea.current?.focus(); }}>{es ? "Usar como borrador (no guarda)" : "Use as draft (does not save)"}</button>}
           </details>)}
         </div>
       </details>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn-primary" disabled={locked || !draft.trim()} onClick={() => void save(false)}>{busy === "saving" ? (es ? "Guardando…" : "Saving…") : (es ? "Aplicar estructura JSON" : "Apply JSON structure")}</button>
+        <button type="button" className="btn-primary" disabled={locked || (mode === "form" ? !form?.steps.length : !draft.trim())} onClick={() => void save(false)}>{busy === "saving" ? (es ? "Guardando…" : "Saving…") : (es ? "Guardar estructura revisada" : "Save reviewed structure")}</button>
         <button type="button" className="btn-secondary" disabled={locked || metadata?.sportStructure == null} onClick={() => void save(true)}>{es ? "Borrar estructura" : "Clear structure"}</button>
       </div>
       <p className="text-sm">{es ? "Borrar elimina también los pasos antiguos. Deberás recalcular con el check-in antes de entrenar o exportar." : "Clearing also removes obsolete executable steps. Recalculate through check-in before training or export."}</p>

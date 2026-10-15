@@ -8,6 +8,7 @@ import { dayBounds, dateKey, localDate } from "./dates";
 import { canonicalSession, SessionResolutionError } from "./canonical-session";
 import { unitsOf } from "./units";
 import { canonicalBlocks, planningDensity } from "../components/daily-training/training-contract";
+import { readActualFueling } from "./actual-fueling";
 
 function fixture(dateLocal: string, timezone = "America/New_York") {
   const workout = { id: "synthetic-session", userId: "synthetic-athlete", date: localDate(dateLocal, timezone), sport: "bike", title: "Synthetic ride", durationMin: 30, startTime: null, planned: true, completed: false };
@@ -19,6 +20,7 @@ function fixture(dateLocal: string, timezone = "America/New_York") {
   class NextResponse extends Response { static json(data: unknown, init?: ResponseInit) { return new Response(JSON.stringify(data), { ...init, headers: { "Content-Type": "application/json", ...init?.headers } }); } }
   const deps: Record<string, any> = {
     "@/lib/universal-workout-card-server": {buildUniversalWorkoutCard},
+    "@/lib/actual-fueling": {readActualFueling},
     "next/server": { NextResponse }, "@/lib/units": { unitsOf },
     "@/lib/canonical-session": { SessionResolutionError },
     "@/lib/dates": { dayBounds, dateKey },
@@ -60,4 +62,19 @@ test("selected links fail closed for other athletes, deleted sessions, bad IDs a
 test("unselected daily endpoint retains today's scoped empty response", async () => {
   const { get, state } = fixture("2024-01-01"); assert.equal((await get("")).status, 204);
   assert.equal(dateKey(state.queryStart!, "America/New_York"), dateKey(new Date(), "America/New_York"));
+});
+test("daily completion reloads saved fueling and actual minutes, never substituting planned time",async()=>{
+  const {get,workout}=fixture("2028-12-04");
+  Object.assign(workout,{feedbackStatus:"completed",feedbackAt:new Date(),actualDurationMin:90,actualDetails:JSON.stringify({schemaVersion:1,values:{distanceKm:42},fueling:{schemaVersion:1,carbsG:90,fluidMl:1000,giSymptoms:"mild"}})});
+  const response=await get();assert.equal(response.status,200);
+  const body=await response.json();assert.equal(body.completion.actual.durationMinutes,90);assert.equal(body.completion.actual.status,"completed");
+  assert.deepEqual(body.completion.actual.actualFueling,{schemaVersion:1,carbsG:90,fluidMl:1000,giSymptoms:"mild"});
+  assert.equal(body.session.totalMinutes,30,"planned duration remains a separate field");
+});
+
+test("quantity-only feedback reloads with unknown outcome, never inferred completion",async()=>{
+  const {get,workout}=fixture("2028-12-04");
+  Object.assign(workout,{feedbackStatus:null,feedbackAt:new Date(),completed:false,actualDurationMin:null,actualDetails:JSON.stringify({schemaVersion:1,values:{distanceKm:42},fueling:{schemaVersion:1,carbsG:0,fluidMl:null,giSymptoms:null}})});
+  const response=await get();assert.equal(response.status,200);
+  const body=await response.json();assert.equal(body.completion.actual.status,"unknown");assert.equal(body.completion.actual.durationMinutes,null);assert.equal(body.completion.actual.actualFueling.carbsG,0);
 });

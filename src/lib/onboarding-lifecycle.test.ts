@@ -138,10 +138,10 @@ test("PB conflict retains the unfinished entry and does not silently retry again
 });
 
 test("returning from an import refreshes actual data, and a failed refresh does not retain stale success", async()=>{
-  const f=fixture();const ui=f.mount("redo=1&step=profile");await ui.flush();assert.match(ui.text(),/0 completed imported activities stored/);
+  const f=fixture();const ui=f.mount("redo=1&step=profile");await ui.flush();assert.match(ui.text(),/0 completed imported records/);
   f.server.importReview={history:{count:12,sports:[{sport:"run",count:12}]},observations:[{id:"hrv",metricType:"hrv_rmssd",value:55,unit:"ms",source:"oura",kind:"estimated",observedAt:"2026-10-12T00:00:00Z"}]};
-  await ui.focus();assert.match(ui.text(),/12 completed imported activities stored/);assert.match(ui.text(),/55 ms.*Estimated/);
-  f.server.importFailure=true;await ui.focus();assert.match(ui.text(),/Imported history could not yet be verified/);assert.doesNotMatch(ui.text(),/12 completed imported activities stored/);
+  await ui.focus();assert.match(ui.text(),/12 completed imported records/);assert.match(ui.text(),/55 ms.*Estimated/);
+  f.server.importFailure=true;await ui.focus();assert.match(ui.text(),/Imported history could not yet be verified/);assert.doesNotMatch(ui.text(),/12 completed imported records/);
   await ui.click("Save new answers and continue");assert.equal(f.writes.length,0);assert.match(ui.text(),/Goals and optional race/);
 });
 
@@ -203,4 +203,12 @@ test("deferred imports show saved-history/manual options without offering a conn
   assert.doesNotMatch(ui.text(),/Review race-history import|Connect \/ reconnect/);
   assert.equal(f.writes.length,0);
   ui.unmount();
+});
+
+
+test("imported-history review shows uncertainty without autofilling or saving the athlete's explicit tolerated baseline",async()=>{
+ const f=fixture();f.server.setup={baselineWeeklyMinutes:90,baselineObservedAt:'2026-10-14'};
+ f.server.importReview={history:{count:153,sports:[{sport:'run',count:153}]},trainingReview:{timezone:'America/New_York',rawRecordCount:5,possibleOverlapGroups:1,recordedWeeklyAverageMinutes:null,truncated:false,weeks:[{startKey:'2026-10-05',endKey:'2026-10-11',rawRecordCount:5,recordedDays:2,unknownDurationRecords:1,minutesRange:{minimum:120,maximum:null},sources:['strava','whoop'],overlaps:[{sport:'run',startAt:'2026-10-06T07:00:00Z',records:[{source:'strava',minutes:60},{source:'whoop',minutes:55}]}]}]}};
+ const ui=f.mount('redo=1&step=race&return=training');await ui.flush();assert.match(ui.text(),/Review imported training before changing your baseline/);assert.match(ui.text(),/Possible copies; not reconciled/);assert.match(ui.text(),/other days unknown/);assert.match(ui.text(),/Nothing is filled or saved automatically/);
+ const baseline=ui.find(node=>node.type==='input'&&node.props.type==='number'&&node.props.max==='2400');assert.equal(baseline.props.value,"90");assert.equal(f.writes.length,0);assert.equal(f.server.setup?.baselineWeeklyMinutes,90);
 });

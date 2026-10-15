@@ -1,4 +1,5 @@
 import { unitsOf } from "@/lib/units";
+import { readActualFueling } from "@/lib/actual-fueling";
 import { buildUniversalWorkoutCard } from "@/lib/universal-workout-card-server";
 import { SessionResolutionError } from "@/lib/canonical-session";
 // GET /api/v1/training/today — daily-training screen adapter.
@@ -178,12 +179,14 @@ export async function GET(req: Request) {
       completion: {
         focusReady,
         submittedAt: workout.feedbackAt?.toISOString() || null,
-        actual: workout.feedbackStatus
+        actual: workout.feedbackStatus || workout.feedbackAt || workout.actualDetails || workout.actualDurationMin != null || workout.actualSport || workout.rpe != null || workout.completed
           ? {
               durationMinutes: workout.actualDurationMin ?? null,
               actualSport: workout.actualSport ?? null,
               sessionRpe: workout.rpe ?? null,
               comments: workout.feedbackNote ?? null,
+              status: (workout.feedbackStatus ?? (workout.completed ? "completed" : "unknown")) as "completed" | "partial" | "substituted" | "skipped" | "unknown",
+              actualFueling: readActualFueling(workout.actualDetails),
             }
           : null,
       },

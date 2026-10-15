@@ -8,6 +8,8 @@ import { t, type Lang } from "@/lib/i18n";
 import { parseCheckinTranscript, VOICE_LANGUAGES, type VoiceCheckinAnswers } from "@/lib/voice-parse";
 import { CognitiveCheck } from "@/components/cognitive-check";
 import { Activity } from "lucide-react";
+import { ActualFuelingFields } from "@/components/daily-training/ActualFuelingFields";
+import { actualFuelingFromForm } from "@/lib/actual-fueling";
 
 const QUESTIONS = [
   { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great — hours matter but how you FEEL matters more" },
@@ -193,7 +195,8 @@ export default function CheckinPage() {
   }
   async function saveSessionFeedback(event: React.FormEvent<HTMLFormElement>, sessionId: string) {
     event.preventDefault(); setFeedbackBusy(sessionId); setErr(""); setFeedbackMessage("");
-    const fields = Object.fromEntries(new FormData(event.currentTarget));
+    const form = new FormData(event.currentTarget);
+    const fields = Object.fromEntries(form);
     const actualDetails = {
       distanceKm: fields.actualDistanceKm ? Number(fields.actualDistanceKm) : null,
       reps: fields.actualReps ? Number(fields.actualReps) : null,
@@ -201,7 +204,8 @@ export default function CheckinPage() {
     };
     delete fields.actualDistanceKm; delete fields.actualReps; delete fields.actualLoadKg;
     try {
-      const res = await fetch("/api/plan", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, ...fields, actualSport: fields.actualSport || null, actualDetails }) });
+      const actualFueling = actualFuelingFromForm(form);
+      const res = await fetch("/api/plan", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, ...fields, actualSport: fields.actualSport || null, actualDetails, actualFueling }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not save feedback");
       await loadFeedbackDate(feedbackDate);
@@ -324,6 +328,7 @@ export default function CheckinPage() {
                 <label className="text-sm">{lang === "es" ? "Repeticiones reales (opcional)" : "Actual repetitions (optional)"}<input name="actualReps" className="input" type="number" min={0} max={100000} step={1} placeholder="—" defaultValue={actualDetailValues(session).reps ?? ""} /></label>
                 <label className="text-sm">{lang === "es" ? "Carga realizada (kg, opcional)" : "Actual load (kg, optional)"}<input name="actualLoadKg" className="input" type="number" min={0} max={1500} step="any" placeholder="—" defaultValue={actualDetailValues(session).loadKg ?? ""} /></label>
               </div>
+              <ActualFuelingFields details={session.actualDetails} actualDurationMin={session.actualDurationMin} es={lang === "es"} />
               <label className="block text-sm">{lang === "es" ? "Cambios en intervalos/descansos, distancia/repeticiones/carga si se conocen; tolerancia, dolor y cuándo ocurrió" : "Interval/recovery changes, distance/reps/load if known; tolerance, pain and when it occurred"}<textarea name="feedbackNote" maxLength={4000} className="input" defaultValue={session.feedbackNote || ""} /></label>
               <p className="text-xs text-slate-600">{lang === "es" ? "Informa síntomas actuales también en las preguntas de seguridad de hoy. Las notas de sesiones no son un diagnóstico." : "Also report current symptoms in today's safety questions. Session notes are not a diagnosis."}</p>
               <button type="submit" disabled={feedbackBusy === session.id} className="btn-secondary">{feedbackBusy === session.id ? "Saving…" : lang === "es" ? "Guardar informe de esta sesión" : "Save this session report"}</button>

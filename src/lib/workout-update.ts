@@ -6,6 +6,7 @@ import { prisma } from "./db";
 import { ApiError } from "./access";
 import { dateKey, parseDate, localDate } from "./dates";
 import { baseWorkout } from "./prescription";
+import { parseActualFueling, readActualFueling } from "./actual-fueling";
 
 export const WORKOUT_TYPES = ["interval", "tempo", "threshold", "endurance", "recovery", "strength", "skill", "race", "test", "speed", "plyo", "volume", "mobility", "hyrox", "boxing"];
 export function validateWorkoutType(value: unknown): string {
@@ -41,7 +42,7 @@ export async function updateWorkout(
     if (!existing) throw new ApiError("Session not found", 404);
     // Execution reports are observations, not future plans. Apply this at the
     // shared writer so calendar, daily card, chat and coach edits agree.
-    const reportsActual = ["completed", "feedbackStatus", "actualDurationMin", "actualSport", "actualDetails", "rpe", "feedbackNote", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg"].some(key => body[key] !== undefined);
+    const reportsActual = ["completed", "feedbackStatus", "actualDurationMin", "actualSport", "actualDetails", "actualFueling", "rpe", "feedbackNote", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg"].some(key => body[key] !== undefined);
     let observedDate = existing.date;
     if (reportsActual && body.date !== undefined) {
       try { observedDate = parseDate(body.date, athlete.timezone); } catch { throw new ApiError("Invalid session date"); }
@@ -133,20 +134,35 @@ export async function updateWorkout(
       else if (["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing", "other"].includes(body.actualSport)) data.actualSport = body.actualSport;
       else throw new ApiError("Invalid actual sport");
     }
-    if (body.actualDetails !== undefined) {
-      if (body.actualDetails === null) data.actualDetails = null;
-      else {
+    if (body.actualDetails !== undefined || body.actualFueling !== undefined) {
+      let details: Record<string, any> = {};
+      if (existing.actualDetails != null) {
+        try { details = JSON.parse(existing.actualDetails); } catch { throw new ApiError("Saved actual details need review before adding quantities or fueling"); }
+        if (!details || typeof details !== "object" || Array.isArray(details) || details.schemaVersion !== 1 || !details.values || typeof details.values !== "object" || Array.isArray(details.values)) throw new ApiError("Saved actual details need review before adding quantities or fueling");
+      }
+      let values = details.values || {};
+      if (body.actualDetails === null) values = {};
+      else if (body.actualDetails !== undefined) {
         if (!body.actualDetails || typeof body.actualDetails !== "object" || Array.isArray(body.actualDetails)) throw new ApiError("Invalid reported quantities");
         const limits: Record<string, number> = { distanceKm: 1500, reps: 100000, loadKg: 2000 };
-        if (Object.keys(body.actualDetails).some(key => !(key in limits))) throw new ApiError("Unknown reported quantity");
-        const values: Record<string, number | null> = {};
+        if (Object.keys(body.actualDetails).some(key => !Object.hasOwn(limits,key))) throw new ApiError("Unknown reported quantity");
+        values = {};
         for (const [key, value] of Object.entries(body.actualDetails)) {
           if (value === null) { values[key] = null; continue; }
           if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > limits[key] || (key === "reps" && !Number.isInteger(value))) throw new ApiError(`Invalid actual ${key}`);
           values[key] = value;
         }
-        data.actualDetails = JSON.stringify({ schemaVersion: 1, source: "athlete_report", observedDate: dateKey(existing.date, athlete.timezone), enteredAt: new Date().toISOString(), values });
       }
+      const next: Record<string, unknown> = { ...details, schemaVersion: 1, source: "athlete_report", observedDate: dateKey(existing.date, athlete.timezone), enteredAt: new Date().toISOString(), values };
+      if (body.actualFueling !== undefined) {
+        let patch;
+        try { patch = parseActualFueling(body.actualFueling); } catch (error) { throw new ApiError((error as Error).message); }
+        const fueling = patch === null ? null : { schemaVersion:1, carbsG:null,fluidMl:null,giSymptoms:null,...readActualFueling(details),...patch };
+        if (fueling && [fueling.carbsG,fueling.fluidMl,fueling.giSymptoms].some(value=>value!==null)) next.fueling = fueling;
+        else delete next.fueling;
+      }
+      const siblingData = Object.keys(next).some(key => !["schemaVersion","source","observedDate","enteredAt","values"].includes(key));
+      data.actualDetails = body.actualDetails === null && !Object.keys(values).length && !siblingData ? null : JSON.stringify(next);
     }
     if (body.feedbackStatus !== undefined) {
       if (!["completed", "partial", "substituted", "skipped", "unknown"].includes(body.feedbackStatus))
@@ -160,7 +176,7 @@ export async function updateWorkout(
     }
     // Corrections are new observations for the next safety/load assessment,
     // even when the athlete keeps the same outcome or clears a prior value.
-    if (["actualDurationMin", "actualSport", "actualDetails", "rpe", "feedbackNote"].some(key => body[key] !== undefined))
+    if (["actualDurationMin", "actualSport", "actualDetails", "actualFueling", "rpe", "feedbackNote"].some(key => body[key] !== undefined))
       data.feedbackAt = new Date();
     if (body.date !== undefined) {
       try { data.date = parseDate(body.date, athlete.timezone); } catch { throw new ApiError("Invalid session date"); }

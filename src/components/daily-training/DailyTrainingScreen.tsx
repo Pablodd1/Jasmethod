@@ -5,8 +5,10 @@ import { endpointLabel, plannedSeconds } from "./training-contract";
 import { FitDownloadActions } from "./FitDownloadActions";
 import { SavedWorkoutPreviewCard } from "./SavedWorkoutPreviewCard";
 import { UniversalWorkoutCard } from "./UniversalWorkoutCard";
+import { ActualFuelingFields } from "./ActualFuelingFields";
+import { actualFuelingFromForm, type ActualFuelingPatch } from "@/lib/actual-fueling";
 
-export type CompletionActual = { durationMinutes: number | null; actualSport: string | null; sessionRpe: number | null; comments: string | null; status: "completed" | "partial" | "substituted" | "skipped" | "unknown" };
+export type CompletionActual = { durationMinutes: number | null; actualSport: string | null; sessionRpe: number | null; comments: string | null; status: "completed" | "partial" | "substituted" | "skipped" | "unknown"; actualFueling?: ActualFuelingPatch | null };
 type Props = {
   plan: DailyTraining;
   onFocusReady: (ready: boolean) => Promise<void>;
@@ -53,7 +55,7 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved 
   const [actualSport, setActualSport] = useState(plan.completion.actual?.actualSport ?? "");
   const [rpe, setRpe] = useState<number | "">(plan.completion.actual?.sessionRpe ?? "");
   const [comments, setComments] = useState(plan.completion.actual?.comments ?? "");
-  const [outcome, setOutcome] = useState<CompletionActual["status"] | "">("");
+  const [outcome, setOutcome] = useState<CompletionActual["status"] | "">(plan.completion.actual?.status ?? "");
   const [saved, setSaved] = useState(Boolean(plan.completion.submittedAt));
   const [remaining, setRemaining] = useState<number | null>(null);
   const timerActive = remaining != null && remaining > 0;
@@ -82,7 +84,7 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved 
     if (rpe !== "" && (!Number.isInteger(rpe) || rpe < 1 || rpe > 10)) { setError("Choose an effort between 1 and 10."); return; }
     if (minutes !== "" && (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440)) { setError("Actual minutes must be a whole number from 0 to 1440."); return; }
     pending.current = true; setBusy(true); setError("");
-    try { await onCompletion({ status: outcome, actualSport: actualSport || null, durationMinutes: minutes === "" ? null : minutes, sessionRpe: rpe === "" ? null : rpe, comments: comments.trim() || null }); setSaved(true); }
+    try { const actualFueling = actualFuelingFromForm(new FormData(event.currentTarget as HTMLFormElement)); await onCompletion({ status: outcome, actualSport: actualSport || null, durationMinutes: minutes === "" ? null : minutes, sessionRpe: rpe === "" ? null : rpe, comments: comments.trim() || null, actualFueling }); setSaved(true); }
     catch (cause) { setError((cause as Error).message || "Could not save feedback. Your entries are still here; try again."); }
     finally { pending.current = false; setBusy(false); }
   }
@@ -106,7 +108,7 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved 
     <GuidanceCard number="04" title="After training · Recovery food" guide={guidance.postFuel} />
     <GuidanceCard number="05" title="Downshift · Optional breathing" guide={guidance.downshift}><button type="button" className="jmm-button" onClick={() => setRemaining(remaining == null || remaining === 0 ? guidance.downshift.timerSeconds : null)} disabled={!guidance.downshift.timerSeconds}>{remaining == null || remaining === 0 ? "Start optional timer" : "Stop timer"}</button><p role="status">{remaining == null ? "Wait until breathing is comfortable." : remaining === 0 ? "Done. Resume natural breathing." : `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")} left`}</p></GuidanceCard>
     </>}
-    <details className="jmm-panel"><summary><span className="jmm-num">06</span><b>Close the loop</b><span className="jmm-plus" aria-hidden="true">+</span></summary><div className="jmm-panel-body"><p>{guidance.checkIn.items.join(" ")}</p><form onSubmit={submit}><label>What happened?<select required value={outcome} onChange={e => setOutcome(e.target.value as CompletionActual["status"])}><option value="">Choose an outcome</option><option value="completed">Completed</option><option value="partial">Partly completed</option><option value="substituted">Substituted (describe actual sport below)</option><option value="skipped">Skipped</option><option value="unknown">Unknown / not reported</option></select></label><label>Actual sport (optional)<select value={actualSport} onChange={e => setActualSport(e.target.value)}><option value="">Unknown / not reported</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}</select></label><label>Actual minutes (leave blank if unknown)<input type="number" min="0" max="1440" value={minutes} onChange={e => setMinutes(e.target.value === "" ? "" : Number(e.target.value))} /></label><label>Session effort · 1 easy, 10 maximal (optional)<input type="number" min="1" max="10" value={rpe} onChange={e => setRpe(e.target.value === "" ? "" : Number(e.target.value))} /></label><label>How did it go?<textarea maxLength={1000} value={comments} onChange={e => setComments(e.target.value)} /></label><button className="jmm-button" type="submit" disabled={busy}>{busy ? "Saving…" : "Save workout feedback"}</button>{saved && <p role="status">Workout feedback saved.</p>}</form></div></details>
+    <details className="jmm-panel"><summary><span className="jmm-num">06</span><b>Close the loop</b><span className="jmm-plus" aria-hidden="true">+</span></summary><div className="jmm-panel-body"><p>{guidance.checkIn.items.join(" ")}</p><form onSubmit={submit}><label>What happened?<select required value={outcome} onChange={e => setOutcome(e.target.value as CompletionActual["status"])}><option value="">Choose an outcome</option><option value="completed">Completed</option><option value="partial">Partly completed</option><option value="substituted">Substituted (describe actual sport below)</option><option value="skipped">Skipped</option><option value="unknown">Unknown / not reported</option></select></label><label>Actual sport (optional)<select value={actualSport} onChange={e => setActualSport(e.target.value)}><option value="">Unknown / not reported</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}</select></label><label>Actual minutes (leave blank if unknown)<input type="number" min="0" max="1440" value={minutes} onChange={e => setMinutes(e.target.value === "" ? "" : Number(e.target.value))} /></label><label>Session effort · 1 easy, 10 maximal (optional)<input type="number" min="1" max="10" value={rpe} onChange={e => setRpe(e.target.value === "" ? "" : Number(e.target.value))} /></label><ActualFuelingFields details={{schemaVersion:1,fueling:plan.completion.actual?.actualFueling}} actualDurationMin={plan.completion.actual?.durationMinutes} es={plan.language === "es"} /><label>How did it go?<textarea maxLength={1000} value={comments} onChange={e => setComments(e.target.value)} /></label><button className="jmm-button" type="submit" disabled={busy}>{busy ? "Saving…" : "Save workout feedback"}</button>{saved && <p role="status">Workout feedback saved.</p>}</form></div></details>
     {!plan.workoutCard && <footer className="jmm-foot">Session revision {session.revision}. Full web instructions remain available without a watch.</footer>}
   </main>;
 }
