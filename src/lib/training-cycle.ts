@@ -1,58 +1,30 @@
 import { addDaysKey, dateKey } from "./dates";
+import {groupActivityEvidence,type ActivityDecision,type ActivityEvidenceRow} from "./activity-evidence";
 import type { BoundedPlanSession } from "./planning-bounds";
 import type { GeneratedWeek, Sport, ZoneKey } from "./science";
-import { cycleEventDay, normalizeCycleEvents, validCycleDateKey, type CycleEventInput } from "./cycle-events";
+import { cycleEventDay, normalizeCycleEvents, type CycleEventInput } from "./cycle-events";
 import { CYCLE_REVIEW_INTERVAL_DAYS, comfortableObservationDescription, cycleBaselineStatus, type CycleBaselineReview } from "./cycle-review";
 
 export const TRAINING_CYCLE_VERSION = "bounded-cycle-v1";
 type BoundedWeek = Omit<GeneratedWeek, "sessions"> & { sessions: BoundedPlanSession[]; restDaySlots: number[]; doubleDayNote: string };
-export interface CycleActivity {
+export interface CycleActivity extends ActivityEvidenceRow {
   id: string; date: Date; completed: boolean; actualDurationMin: number | null;
   feedbackStatus: string | null; rpe: number | null; matchedPlanId?: string | null;
 }
 /** Only records of performed work count. Missing reports are never zero training. */
-export function cycleActivityEvidence(rows: CycleActivity[], today: string, timezone: string) {
-  // A match relates reports of one session; it is not evidence that the planned
-  // row was performed. Merge the connected reports before counting, and retain
-  // every date with actual performed evidence, even when matching dates differ.
-  const parents = new Map<string, string>();
-  const root = (id: string): string => {
-    if (!parents.has(id)) parents.set(id, id);
-    let current = id;
-    while (parents.get(current)! !== current) current = parents.get(current)!;
-    let child = id;
-    while (parents.get(child)! !== current) {
-      const next = parents.get(child)!;
-      parents.set(child, current);
-      child = next;
-    }
-    return current;
-  };
-  for (const row of rows) {
-    const own = root(row.id);
-    if (row.matchedPlanId) parents.set(own, root(row.matchedPlanId));
-  }
-  const isPerformed = (row: CycleActivity) => row.completed || (row.actualDurationMin ?? 0) > 0
-    || ["partial", "substituted"].includes(row.feedbackStatus || "");
-  const performed = rows.filter(isPerformed);
-  const groups = new Map<string, CycleActivity[]>();
-  for (const row of performed) {
-    const key = root(row.id);
-    groups.set(key, [...(groups.get(key) ?? []), row]);
-  }
-  const durations = [...groups.values()].map(group => {
-    const known = group.flatMap(row => row.actualDurationMin != null && Number.isFinite(row.actualDurationMin) && row.actualDurationMin >= 0 ? [row.actualDurationMin] : []);
-    // Conflicting actual reports are not additive. Until reconciled, retain the
-    // largest recorded duration rather than implying less performed work.
-    return known.length ? Math.max(...known) : null;
-  });
+export function cycleActivityEvidence(rows: CycleActivity[], today: string, timezone: string,decisions:readonly ActivityDecision[]=[]) {
+  const isPerformed = (row: CycleActivity) => row.completed || (row.actualDurationMin ?? 0) > 0 || ["partial", "substituted"].includes(row.feedbackStatus || "");
+  const performed=rows.filter(isPerformed),reconciled=groupActivityEvidence(rows,decisions);
+  const groups=reconciled.groups.filter(group=>group.members.some(isPerformed));
+  const durations=groups.map(group=>group.budgetMinutes);
   return {
-    reportedSessions: groups.size,
-    reportedMinutes: durations.some(minutes => minutes != null) ? durations.reduce<number>((sum, minutes) => sum + (minutes ?? 0), 0) : null,
-    unknownDurationSessions: durations.filter(minutes => minutes == null).length,
-    protectedDays: [...new Set(performed.map(row => dateKey(row.date, timezone)))].sort(),
-    recoveryReview: rows.some(row => dateKey(row.date, timezone) >= addDaysKey(today, -7) && dateKey(row.date, timezone) <= today && ((row.rpe ?? 0) >= 8 || ["partial", "skipped"].includes(row.feedbackStatus || ""))),
-    note: "Recorded actual minutes only; unreported work and unknown durations are not treated as zero. Matched reports count once; conflicting durations use the largest reported value, not their sum. Every performed date remains protected. Completion does not establish recovery or increased capacity.",
+    reportedSessions: groups.length,
+    reportedMinutes: reconciled.unresolvedGroups ? null : durations.some(minutes=>minutes!==null)?durations.reduce<number>((sum,minutes)=>sum+(minutes??0),0):null,
+    unknownDurationSessions: groups.filter(group=>group.unresolved||group.budgetMinutes===null).length,
+    protectedDays:[...new Set(performed.map(row=>dateKey(row.date,timezone)))].sort(),
+    reconciliation:{rawRecords:performed.length,groupedCopies:reconciled.groupedCopies,unresolvedGroups:reconciled.unresolvedGroups,requiresReview:reconciled.unresolvedGroups>0},
+    recoveryReview:reconciled.unresolvedGroups>0||rows.some(row=>dateKey(row.date,timezone)>=addDaysKey(today,-7)&&dateKey(row.date,timezone)<=today&&((row.rpe??0)>=8||["partial","skipped"].includes(row.feedbackStatus||""))),
+    note:"Recorded actual minutes only; unreported work and unknown durations are not treated as zero. Corroborated or matched reports count once; conflicting linked durations use the largest reported value unless the athlete explicitly selected a primary record. Unresolved cross-provider copies keep totals unknown and require review. Every performed date remains protected. Completion does not establish recovery or increased capacity.",
   };
 }
 
@@ -148,13 +120,4 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
   });
 }
 
-export function savedCycleSummary(plan: { id: string; name: string; startDate: Date | string; weeks: number; raceDate?: Date | string | null }, timezone: string, today = dateKey(new Date(), timezone)) {
-  const calendarKey = (value: Date | string) => validCycleDateKey(value) ? value : dateKey(new Date(value), timezone);
-  const start = calendarKey(plan.startDate);
-  const end = addDaysKey(start, plan.weeks * 7 - 1);
-  const elapsed = Math.floor((Date.parse(today) - Date.parse(start)) / 86400000);
-  return { id: plan.id, name: plan.name, start, end, weeks: plan.weeks,
-    currentWeek: elapsed < 0 || today > end ? null : Math.floor(elapsed / 7) + 1,
-    status: today < start ? "upcoming" : today > end ? "ended" : "active",
-    raceDate: plan.raceDate ? calendarKey(plan.raceDate) : null };
-}
+export { savedCycleSummary } from "./training-cycle-summary";

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
+import * as activityEvidence from "./activity-evidence";
+import { readActivityDecisions } from "./activity-reconciliation";
 
 function load(file: string, dependencies: Record<string, unknown>, extras = {}) {
   const exports: any = {};
@@ -37,6 +39,7 @@ test("legacy coach route explicitly withholds eligibility after gathering mixed-
     dailyMetrics: { findMany: async () => [] }, trainingPlan: { findMany: async () => [] },
     bloodResult: { findMany: async () => [] }, geneticVariant: { findMany: async () => [] },
     workout: { findMany: async () => [planned] }, dailyCheckin: { findMany: async () => [] }, benchmarkTest: { findMany: async () => [] },
+    auditLog: { findMany: async ({ where }: any) => { assert.equal(where.subjectId, "synthetic-athlete"); assert.equal(where.action, "activity.reconcile"); return []; } },
   };
   const route = load("src/app/api/coach/route.ts", {
     "next/server": { NextResponse: { json: (value: unknown, init?: ResponseInit) => Response.json(value, init) } },
@@ -44,6 +47,8 @@ test("legacy coach route explicitly withholds eligibility after gathering mixed-
     "@/lib/coach-readiness": { currentHrvReadiness: () => null },
     "@/lib/dates": { dayBounds: () => ({ start: date, end: new Date(+date + 86400000) }), dateKey: (value: Date) => value.toISOString().slice(0, 10), addDaysKey: (value: string) => value },
     "@/lib/adaptive": {}, "@/lib/prescription": {},
+    "@/lib/activity-evidence": activityEvidence,
+    "@/lib/activity-reconciliation": { readActivityDecisions: (id: string) => readActivityDecisions(id, data) },
     "@/lib/coach": { getCoachBriefing: (_id: string, context: unknown) => { captured = context; return { mode: "fallback" }; } },
   });
   assert.equal((await route.GET()).status, 200);

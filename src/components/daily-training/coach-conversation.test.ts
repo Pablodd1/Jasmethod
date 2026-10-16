@@ -115,8 +115,16 @@ for (const es of [false, true]) test(`conversation first render is labeled, cons
 });
 
 import { coachExternalPermissions } from "./coach-conversation-client";
+import { coachTextStatusMessage } from "./coach-conversation-client";
+test("DeepSeek availability and local-policy messages never fabricate provider success or fallback", () => {
+  assert.match(coachTextStatusMessage("unavailable",false)!, /DeepSeek could not answer.*local reply.*no other text provider/);
+  assert.match(coachTextStatusMessage("unavailable",true)!, /DeepSeek no pudo responder/);
+  assert.match(coachTextStatusMessage("not_configured",false)!, /not configured/);
+  assert.match(coachTextStatusMessage("policy_local",false)!, /Answered within JMM/);
+  assert.equal(coachTextStatusMessage("not_requested",false),null);
+});
 test("external providers each require matching named capability and independent explicit consent", () => {
-  const configured = { externalAi: true, textProvider: "Google Gemini", imageUnderstanding: true, imageProvider: "OpenAI" };
+  const configured = { externalAi: true, textProvider: "DeepSeek", imageUnderstanding: true, imageProvider: "OpenAI" };
   assert.deepEqual(coachExternalPermissions(configured, false, false), { text: false, image: false });
   assert.deepEqual(coachExternalPermissions(configured, true, false), { text: true, image: false });
   assert.deepEqual(coachExternalPermissions(configured, false, true), { text: false, image: true });
@@ -134,7 +142,7 @@ test("malformed receipt bodies fail closed without crashing confirmation", () =>
 
 import { coachSendAttempt, coachSendWasRecorded, coachPendingActions, type CoachSendBody } from "./coach-conversation-client";
 const paidBody: CoachSendBody = {
-  message: "Explain RPE", source: "text", sessionId: "session-one", externalConsent: true, textProviderConsent: "gemini", imageConsent: true, imageProviderConsent: "openai", image: { mimeType: "image/png", dataBase64: "bytes-one" },
+  message: "Explain RPE", source: "text", sessionId: "session-one", externalConsent: true, textProviderConsent: "deepseek", imageConsent: true, imageProviderConsent: "openai", image: { mimeType: "image/png", dataBase64: "bytes-one" },
 };
 test("all send retries reuse a stable client request id for the exact logical request", () => {
   const first = coachSendAttempt(null, paidBody, () => "send-one");
@@ -179,7 +187,10 @@ for (const es of [false, true]) test(`chat composer precedes closed optional too
   assert.match(markup,/tel:\+17862317906/);
   assert.match(markup,/tel:\+17869708366/);
   assert.doesNotMatch(markup, /<details[^>]*\bopen(?:=|>|\s)/);
-  assert.ok(markup.includes("Google Gemini") && markup.includes("OpenAI"));
+  assert.ok(markup.includes("DeepSeek") && markup.includes("OpenAI"));
+  assert.ok(markup.includes(es ? "cuatro mensajes" : "four recent messages"));
+  assert.ok(markup.includes(es ? "diez actividades manuales" : "ten manual activities"));
+  assert.ok(markup.includes(es ? "solo para este mensaje" : "this message only"));
   assert.ok(markup.includes(es ? "revisión y confirmación" : "review and confirmation"));
   assert.ok(markup.includes(es ? "Sí, borrar conversación" : "Yes, clear conversation") === false);
 });

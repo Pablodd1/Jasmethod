@@ -1,3 +1,5 @@
+import {readActivityDecisions} from "./activity-reconciliation";
+import * as activityEvidence from "./activity-evidence";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -90,6 +92,7 @@ test("import review is authenticated, athlete-scoped and backed by real stored r
     if (table === "race") return [row];
     return [];
   }]))]));
+  (prisma as any).auditLog={findMany:async(args:any)=>{assert.equal(args.where.subjectId,"owner");assert.equal(args.where.action,"activity.reconcile");return [];}};
   const js = ts.transpileModule(readFileSync("src/app/api/onboard/import-review/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const loaded = {exports:{} as {GET:()=>Promise<Response>}};
   runInNewContext(js,{module:loaded,exports:loaded.exports,Date,Response,require:(name:string)=>{
@@ -100,6 +103,8 @@ test("import review is authenticated, athlete-scoped and backed by real stored r
     if (name === "@/lib/profile-import-review") return {importedWeightSuggestions:()=>[]};
     if (name === "@/lib/imported-training-review") return importedTraining;
     if (name === "@/lib/dates") return {localDate};
+    if (name === "@/lib/activity-evidence") return activityEvidence;
+    if (name === "@/lib/activity-reconciliation") return {readActivityDecisions:(id:string)=>readActivityDecisions(id,prisma as any)};
     throw Error(name);
   }});
   const response = await loaded.exports.GET();

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { canCoach, canAccessAthlete, ApiError, errorResponse } from "@/lib/access";
 import { coachingSummary } from "@/lib/coaching";
+import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { dayBounds } from "@/lib/dates";
 
 export async function GET(
@@ -133,6 +134,8 @@ export async function GET(
         metrics,
         athlete.profile,
         athlete.timezone,
+        new Date(),
+        await readActivityDecisions(athlete.id),
       ),
     });
   } catch (e) {

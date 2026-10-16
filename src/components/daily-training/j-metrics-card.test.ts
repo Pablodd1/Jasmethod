@@ -67,3 +67,9 @@ test("New athletes see daily JStress before trends exist; unknown days differ fr
   assert.equal((html.match(/data-daily-load=/g) || []).length, 2);
   assert.match(html, /daily bars/);
 });
+
+test("ambiguous source load displays review route without invented zero",()=>{
+ const html=renderToStaticMarkup(React.createElement(JMetricsCard,{metrics:{...sample,totalJStress:null,reconciliation:{rawRecords:2,groupedCopies:0,unresolvedGroups:1}}}));
+ assert.match(html,/Recorded JStress[^<]*<strong>— AU/);
+ assert.match(html,/Possible activity copies/);assert.match(html,/href="\/onboard\?redo=1&amp;advanced=1&amp;step=race"/);
+});

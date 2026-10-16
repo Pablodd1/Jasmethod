@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { importedTrainingReview, importedTrainingWindow, type ImportedTrainingRow } from './imported-training-review';
 const now=new Date('2026-10-15T12:00:00Z');
-const row=(id:string,date:string,source='strava',minutes:number|null=60,sport='run'):ImportedTrainingRow=>({id,date:new Date(date),source,sport,durationMin:minutes,actualDurationMin:minutes});
+const row=(id:string,date:string,source='strava',minutes:number|null=60,sport='run'):ImportedTrainingRow=>({id,userId:"synthetic-review",planned:false,completed:true,date:new Date(date),source,sport,durationMin:minutes,actualDurationMin:minutes});
 const four=()=>['2026-09-15','2026-09-22','2026-09-29','2026-10-06'].map((day,i)=>row(String(i),day+'T07:00:00Z','garmin',60+i*30));
 test('import review uses four full athlete-local calendar weeks and never counts partial current week or future work',()=>{
  assert.deepEqual(importedTrainingWindow('UTC',now),{startKey:'2026-09-14',endKey:'2026-10-12'});

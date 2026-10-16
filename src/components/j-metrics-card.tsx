@@ -5,6 +5,7 @@ import Link from "next/link";
 
 export type JMetrics = {
   version: "jstress-srpe-v1"; unit: "AU";
+  reconciliation?: {rawRecords:number;groupedCopies:number;unresolvedGroups:number};
   totalJStress: number | null; eligibleSessions: number; totalSessions: number;
   coveragePct: number | null; missingDays: number; windowDays: number; note: string;
   confirmedRestDays: string[]; timezone: string; today: string;
@@ -78,6 +79,7 @@ export function JMetricsCard({ metrics, refreshKey, es = false, allowRestEntry =
         </svg>
         <div className="flex flex-wrap gap-4 text-xs"><span>▥ JStress · {es ? "barras diarias; ○ = cero confirmado" : "daily bars; ○ = confirmed zero"}</span>{lines.map(line => <span key={line.key}><svg width="25" height="10" className="inline mr-1" aria-hidden="true"><line x1="0" x2="25" y1="5" y2="5" stroke={line.color} strokeWidth="2" strokeDasharray={line.dash} /></svg>{line.label}</span>)}</div>
       </>}
+      {!!data.reconciliation?.unresolvedGroups && <p role="status" className="text-sm">{es ? "Posibles copias: carga incompleta hasta revisar." : "Possible activity copies: load remains incomplete until reviewed."} <Link className="underline" href="/onboard?redo=1&advanced=1&step=race">{es ? "Revisar importaciones en configuración" : "Review imports in athlete setup"}</Link></p>}
       <p className="text-xs text-slate-600">{data.note}</p>
       {allowRestEntry && metrics === undefined && <form onSubmit={saveRest} className="border rounded-lg p-3 space-y-3 text-sm">
         <p>{es ? "Confirma solo días realmente sin entrenamiento. J Recent requiere 7 días consecutivos completos; J Base y J Balance requieren 42. Un día desconocido interrumpe la secuencia." : "Confirm only actual days without training. J Recent needs 7 consecutive complete days; J Base and J Balance need 42. An unknown day interrupts the sequence."}</p>

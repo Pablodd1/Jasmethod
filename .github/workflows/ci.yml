@@ -115,6 +115,16 @@ jobs:
       - name: Persistent conversational coach acceptance
         run: npm run test:conversation
 
+      - name: Activity evidence reconciliation and correction acceptance
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-activity-reconciliation-integration.ts
+
+      - name: Administrator integration diagnostics boundaries
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-launch-integrations-check.ts
+
       - name: Public route and unauthenticated API smoke
         run: node scripts/jmm-public-smoke.mjs
 
@@ -171,4 +181,5 @@ jobs:
             .local/jmm-recovery-integration/report.json
             .local/jmm-race-scenario-integration/report.json
             .local/jmm-adaptive-cycle-integration/report.json
+            .local/athlete-qa/activity-reconciliation-report.json
           if-no-files-found: ignore

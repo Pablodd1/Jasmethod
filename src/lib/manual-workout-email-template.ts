@@ -1,3 +1,4 @@
+import type { DeliveryWorkoutPreview } from "./delivery-workout-preview";
 export type ManualWorkoutEmailLanguage = "en" | "es";
 export type ManualWorkoutEmailKind = "ready" | "revised" | "held" | "cancelled";
 
@@ -24,6 +25,8 @@ export interface ManualWorkoutEmailInput {
   settingsUrl: string;
   /** Only verified canonical content, with consent for instructions/targets/nutrition in email. */
   readyPlan?: ManualWorkoutEmailReadyPlan;
+  heldPreview?: DeliveryWorkoutPreview;
+  plannedRest?: boolean;
 }
 
 export interface ManualWorkoutEmailContent {
@@ -92,7 +95,9 @@ export function manualWorkoutEmail(input: ManualWorkoutEmailInput): ManualWorkou
     cancelled: `Your workout for ${date} has been cancelled. No workout file is attached.`,
   };
   const greeting = es ? "¡Hola!" : "Hi!";
-  const intro = introductions[kind];
+  const plannedRest = kind === "held" && input.plannedRest === true;
+  const intro = plannedRest ? (es ? `Hoy (${date}) tienes descanso planificado. No es un entrenamiento perdido ni confirma que ya descansaste. Revisa la recuperación y el check-in privado en la aplicación. No adjuntamos ningún FIT.` : `Today (${date}) has planned rest. This is not a missed workout or a report of completed rest. Review recovery and your private check-in in the app. No FIT is attached.`) : introductions[kind];
+  const preview = kind === "held" ? input.heldPreview : null;
   const revisionLine = `${es ? "Revisión" : "Revision"}: ${revision}.`;
   const status = actionable
     ? es ? "Descarga lista. La transferencia a tu Garmin no está verificada." : "Download ready. Transfer to your Garmin has not been verified."
@@ -162,6 +167,7 @@ export function manualWorkoutEmail(input: ManualWorkoutEmailInput): ManualWorkou
   const html = [
     `<!doctype html><html lang="${es ? "es" : "en"}"><head><meta charset="utf-8"></head><body><main style="font-family:Arial,sans-serif;line-height:1.6;max-width:600px;margin:0 auto;color:#17202a;padding:24px">`,
     paragraph(greeting), paragraph(intro), paragraph(revisionLine), paragraph(status),
+    ...(preview ? [paragraph(preview.heading), paragraph(preview.summary), paragraph(preview.caution), paragraph(preview.checkinLabel)] : []),
     `<p>${anchor(reviewLabel, links.workout)}</p>`,
     ...(notice ? [paragraph(notice)] : []),
     ...(actionable ? [
@@ -175,7 +181,7 @@ export function manualWorkoutEmail(input: ManualWorkoutEmailInput): ManualWorkou
     "</main></body></html>",
   ].join("\n");
   const text = [
-    greeting, intro, revisionLine, status, `${reviewLabel}\n${links.workout}`,
+    greeting, intro, revisionLine, status, ...(preview ? [preview.heading, preview.summary, preview.caution, preview.checkinLabel] : []), `${reviewLabel}\n${links.workout}`,
     ...(notice ? [notice] : []),
     ...(actionable ? [...planText, preparation, steps.map((step, index) => `${index + 1}. ${step}`).join("\n"), caveat,
       `${helpLabel}: ${MANUAL_GARMIN_FILE_HELP}\n${macLabel}: ${MANUAL_GARMIN_MAC_HELP}`] : []),
@@ -183,6 +189,6 @@ export function manualWorkoutEmail(input: ManualWorkoutEmailInput): ManualWorkou
   ].join("\n\n");
   const sports: Record<string,string> = es ? {run:"Carrera",bike:"Ciclismo",swim:"Natación",hyrox:"HYROX",brick:"Sesión combinada",strength:"Fuerza",mobility:"Movilidad",recovery:"Recuperación"} : {run:"Run",bike:"Bike",swim:"Swim",hyrox:"HYROX",brick:"Brick",strength:"Strength",mobility:"Mobility",recovery:"Recovery"};
   const sport = input.workoutSport ? sports[input.workoutSport] : undefined;
-  const subject = actionable && typeof sport === "string" ? `${sport} ${es ? "entrenamiento" : "Training"} — ${date}${kind === "revised" ? es ? " (actualizado)" : " (updated)" : ""}` : `${subjects[kind]} · ${date}`;
+  const subject = plannedRest ? `${es ? "Tu descanso planificado" : "Your planned recovery day"} · ${date}` : preview ? `${es ? "Tu plan guardado — completa el check-in" : "Your saved plan — complete your check-in"} · ${date}` : actionable && typeof sport === "string" ? `${sport} ${es ? "entrenamiento" : "Training"} — ${date}${kind === "revised" ? es ? " (actualizado)" : " (updated)" : ""}` : `${subjects[kind]} · ${date}`;
   return { subject, html, text };
 }

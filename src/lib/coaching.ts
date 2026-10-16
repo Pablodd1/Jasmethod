@@ -1,5 +1,6 @@
 import { estimateTss, computePmc } from "./fitness";
 import { dateKey } from "./dates";
+import {groupActivityEvidence,type ActivityDecision} from "./activity-evidence";
 
 // Explain observations and their data coverage. Missing data is not a diagnosis.
 export function coachingSummary(
@@ -8,9 +9,11 @@ export function coachingSummary(
   profile: any,
   timezone: string,
   now = new Date(),
+  decisions:readonly ActivityDecision[]=[],
 ) {
   const past = workouts.filter((w) => new Date(w.date) <= now);
-  const completed = past.filter((w) => w.completed && !w.matchedPlanId);
+  const activity=groupActivityEvidence(past.filter((w)=>w.completed&&!w.matchedPlanId),decisions);
+  const completed=activity.effective;
   const planned = past.filter((w) => w.planned);
   const measured = completed.filter(
     (w) => w.avgHr != null || w.avgPower != null || w.np != null,
@@ -25,7 +28,7 @@ export function coachingSummary(
     ftp: profile?.ftp,
     lthr: profile?.lthr,
   });
-  const pmc = computePmc(
+  const pmc = activity.unresolvedGroups?null:computePmc(
     completed.map((w) => ({ date: new Date(w.date), tssInput: input(w) })),
     now,
     timezone,
@@ -47,6 +50,7 @@ export function coachingSummary(
     title: string;
     detail: string;
   }[] = [];
+  if(activity.unresolvedGroups)insights.push({level:"attention",title:"Imported activity needs reconciliation",detail:"Possible cross-provider copies remain separate observations. Review them before treating activity totals or load as known; no extra capacity is inferred."});
   if (!completed.length)
     insights.push({
       level: "info",
@@ -109,16 +113,17 @@ export function coachingSummary(
     fulfillmentPct: planned.length
       ? Math.round((100 * fulfilled) / planned.length)
       : null,
-    minutes: completed.reduce(
+    minutes: activity.unresolvedGroups?null:completed.reduce(
       (s, w) => s + (w.actualDurationMin ?? w.durationMin),
       0,
     ),
     measuredSessions: measured.length,
-    estimatedLoad: Math.round(
+    estimatedLoad: activity.unresolvedGroups?null:Math.round(
       completed.reduce((s, w) => s + estimateTss(input(w)), 0),
     ),
     pmc,
-    daily: Array.from(daily.values()).sort((a, b) =>
+    reconciliation:{rawRecords:activity.rawRecords,groupedCopies:activity.groupedCopies,unresolvedGroups:activity.unresolvedGroups},
+    daily: Array.from(daily.values()).map(day=>activity.groups.some(group=>group.unresolved&&group.members.some(row=>dateKey(new Date(row.date),timezone)===day.date))?{...day,minutes:null,load:null}:day).sort((a, b) =>
       a.date.localeCompare(b.date),
     ),
     insights,

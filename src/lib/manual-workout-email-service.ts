@@ -11,6 +11,7 @@ import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
 import { renderUniversalWorkoutPng } from "./universal-workout-render";
 import { eligibleManualEmail, manualEmailActionable, manualEmailChanged, manualEmailConfigured, manualEmailDue, manualEmailKey, manualEmailOrigin } from "./manual-workout-email";
 import { sendManualEmail } from "./manual-workout-email-transport";
+import { deliveryWorkoutPreview } from "./delivery-workout-preview";
 
 async function snapshot(userId: string, sessionId: string) {
   const workout = await prisma.workout.findFirst({ where: { id: sessionId, userId } });
@@ -110,7 +111,9 @@ export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?
           content.plan.graphicCid="workout-profile@jmm";
           content.plan.graphicAlt=content.plan.steps.join("; ");
         }
-        const email = manualWorkoutEmail({ language, kind, workoutSport: actionable ? actionable.canonical.sport : undefined, dateLabel: fresh.resolved?.canonical.dateLocal || bounds.key, revision: row.revision.slice(0, 8), workoutUrl: `${origin}/daily?sessionId=${encodeURIComponent(sessionId)}`, settingsUrl: `${origin}/workout-email/settings`, ...(content ? { readyPlan: content.plan } : {}) });
+        const heldPreview = kind === "held" && fresh.resolved && fresh.workout ? deliveryWorkoutPreview(fresh.workout, { ...fresh.resolved.canonical, language }, dependencies.clock()) : null;
+        const plannedRest = kind === "held" && fresh.workout?.planned && fresh.workout.durationMin === 0 && fresh.resolved?.canonical.verdict === "rest";
+        const email = manualWorkoutEmail({ language, kind, workoutSport: actionable ? actionable.canonical.sport : undefined, dateLabel: fresh.resolved?.canonical.dateLocal || bounds.key, revision: row.revision.slice(0, 8), workoutUrl: `${origin}/daily?sessionId=${encodeURIComponent(sessionId)}`, settingsUrl: `${origin}/workout-email/settings`, ...(content ? { readyPlan: content.plan } : {}), ...(heldPreview ? { heldPreview } : {}), plannedRest });
         const download = actionable ? buildPrivateSafeSessionDownload(actionable.canonical) : null;
         const attachments = download ? [{ filename: download.filename, content: Buffer.from(download.bytes) }, ...(content?.graphic ? [{ filename: "workout-profile.png", content: content.graphic, cid: "workout-profile@jmm" }] : [])] : [];
         // Last-moment source/consent/time check after potentially expensive FIT/PNG work.
@@ -120,7 +123,7 @@ export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?
           resolveState(),
         ]);
         const sendNow = dependencies.clock();
-        const due = !actionable || (last?.resolved && manualEmailDue({ dateLocal: last.resolved.canonical.dateLocal, timezone: lastUser?.timezone || pref.timezone, startTime: last.workout?.startTime || null, minuteOfDay: changed ? 0 : lastPref?.minuteOfDay ?? pref.minuteOfDay, leadMinutes: lastPref?.leadMinutes ?? pref.leadMinutes }, sendNow));
+        const due = dateKey(sendNow, pref.timezone) === bounds.key && (!actionable || (last?.resolved && manualEmailDue({ dateLocal: last.resolved.canonical.dateLocal, timezone: lastUser?.timezone || pref.timezone, startTime: last.workout?.startTime || null, minuteOfDay: changed ? 0 : lastPref?.minuteOfDay ?? pref.minuteOfDay, leadMinutes: lastPref?.leadMinutes ?? pref.leadMinutes }, sendNow)));
         if (!lastPref || !lastUser || lastUser.language !== language || !eligibleManualEmail(lastPref, lastUser.email) || lastPref.recipient !== row.recipient || lastPref.timezone !== lastUser.timezone || !(changed ? lastPref.revisions : lastPref.daily) || !last || last.revision !== row.revision || last.kind !== (kind === "revised" ? "ready" : kind) || !due) {
           await prisma.manualWorkoutEmailOutbox.update({ where: { id: row.id }, data: { status: "superseded" } });
           continue;

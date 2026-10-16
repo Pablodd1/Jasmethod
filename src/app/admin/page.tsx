@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { AdminAccountControls } from "@/components/admin-account-controls";
+import { AdminIntegrationChecks } from "@/components/admin-integration-checks";
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -40,6 +41,7 @@ export default function AdminPage() {
           </p>
         </div>
         {user?.role === "admin" && <AdminOperations />}
+        {user?.role === "admin" && <AdminIntegrationChecks />}
         {user?.role === "admin" && <AdminAccountControls key={user.id} />}
         <form
           className="flex gap-2"

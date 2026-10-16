@@ -44,9 +44,16 @@ export type CoachPayload = {
 export type CoachCapabilities = { externalAi?: boolean; imageUnderstanding?: boolean; textProvider?: string | null; imageProvider?: string | null };
 export function coachExternalPermissions(capabilities: CoachCapabilities, textConsent: boolean, imageConsent: boolean) {
   return {
-    text: capabilities.externalAi === true && capabilities.textProvider === "Google Gemini" && textConsent === true,
+    text: capabilities.externalAi === true && capabilities.textProvider === "DeepSeek" && textConsent === true,
     image: capabilities.imageUnderstanding === true && capabilities.imageProvider === "OpenAI" && imageConsent === true,
   };
+}
+
+export function coachTextStatusMessage(status: string, es: boolean): string | null {
+  if (status === "unavailable") return es ? "DeepSeek no pudo responder. Se muestra la respuesta local de JMM; no se utilizó otro proveedor de texto." : "DeepSeek could not answer. JMM's local reply is shown; no other text provider was used.";
+  if (status === "not_configured") return es ? "DeepSeek no está configurado. Se muestra la respuesta local de JMM." : "DeepSeek is not configured. JMM's local reply is shown.";
+  if (status === "policy_local") return es ? "Respuesta dentro de JMM: las decisiones de seguridad, cálculos verificados, datos restringidos y cambios propuestos se gestionan en la app." : "Answered within JMM: safety decisions, verified calculations, restricted data and proposed changes stay in the app.";
+  return null;
 }
 
 export const COACH_IMAGE_LIMIT = 2 * 1024 * 1024;
@@ -132,7 +139,7 @@ export type CoachSendBody = {
   message: string;
   source: "text" | "voice";
   externalConsent: boolean;
-  textProviderConsent?: "gemini";
+  textProviderConsent?: "deepseek";
   imageConsent?: boolean;
   imageProviderConsent?: "openai";
   image?: { mimeType: "image/png" | "image/jpeg" | "image/webp"; dataBase64: string };
