@@ -60,3 +60,10 @@ test("verified bot identity must match the pairing username", async () => {
   });
   assert.equal(check.state, "failed"); assert.equal(check.botUsername, "Different_JMM_bot"); assert.equal(changed, false);
 });
+test("SMTP failure reports only a safe actionable category, never provider text or credentials", async () => {
+  for (const [code, detail] of [["EAUTH", /authentication was rejected/], ["EDNS", /host lookup failed/], ["ETIMEDOUT", /connection timed out/], ["ESOCKET", /connection or TLS/], ["private-token", /verification failed/]] as const) {
+    const result = await probeLaunchIntegrations(env, { smtp: async () => { throw { code, message: "private-provider-response smtp-password", response: "private-authentication-response" }; }, telegram: async method => method === "getMe" ? { is_bot: true, username: env.TELEGRAM_BOT_USERNAME } : { url: telegramWebhookTarget(env) } });
+    assert.equal(result.email.state, "failed"); assert.match(result.email.detail, detail);
+    assert.doesNotMatch(JSON.stringify(result), /private-provider|smtp-password|private-authentication|private-token/);
+  }
+});
