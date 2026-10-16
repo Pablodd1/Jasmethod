@@ -1,4 +1,6 @@
+import {ACTIVITY_EVIDENCE_SELECT} from "@/lib/activity-evidence";
 import { normalizeCycleEvents, assessCycleEvents } from "@/lib/cycle-events";
+import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { buildCycleBaselineReviews, requiredCycleSports } from "@/lib/cycle-review";
 import { cycleActivityEvidence, shapeTrainingCycle, TRAINING_CYCLE_VERSION } from "@/lib/training-cycle";
 import { evidencedTargetProfile } from "@/lib/anchor-evidence";
@@ -97,7 +99,7 @@ export async function POST(req: Request) {
     const dist = String(planningGoal(distance || profile.goal) || "");
     if (dist !== planningGoal(profile.goal)) throw new ApiError("Update and confirm your saved goal before previewing a different sport.",422);
     // Keep recent events as recovery context, and protect every planned event day.
-    const activityQuery = { where: { userId: user.id, date: { gte: localDate(addDaysKey(todayKey, -28), user.timezone), lt: localDate(addDaysKey(startKey, weeksCount * 7), user.timezone) }, OR: [{ completed: true }, { actualDurationMin: { not: null } }, { feedbackStatus: { not: null } }] }, orderBy: { id: "asc" as const }, select: { id: true, date: true, completed: true, actualDurationMin: true, feedbackStatus: true, rpe: true, matchedPlanId: true } };
+    const activityQuery = { where: { userId: user.id, date: { gte: localDate(addDaysKey(todayKey, -28), user.timezone), lt: localDate(addDaysKey(startKey, weeksCount * 7), user.timezone) }, OR: [{ completed: true }, { actualDurationMin: { not: null } }, { feedbackStatus: { not: null } }] }, orderBy: { id: "asc" as const }, select: ACTIVITY_EVIDENCE_SELECT };
     const benchmarkQuery = { where: { userId: user.id, completed: true, skipped: false }, orderBy: { id: "asc" as const }, select: { id: true, date: true, type: true, result: true, completed: true, skipped: true } };
     const anchorQuery = { where: { subjectId: user.id, action: "baseline.fromTest" }, orderBy: { id: "asc" as const }, select: { entityId: true } };
     const raceQuery = {
@@ -110,7 +112,8 @@ export async function POST(req: Request) {
     // Race rows store the entered calendar day at UTC midnight, whereas profile
     // dates and explicit request dates use athlete-local midnight. Normalize only race rows.
     const allRaces = storedRaces.map(row => ({ ...row, date: toLocalMidnight(row.date.toISOString().slice(0,10)) }));
-    const activityEvidence = cycleActivityEvidence(recentActivity, todayKey, user.timezone);
+    const activityDecisions=await readActivityDecisions(user.id);
+    const activityEvidence = cycleActivityEvidence(recentActivity, todayKey, user.timezone, activityDecisions);
     const anchors = evidencedTargetProfile(profile, benchmarkTests, appliedAnchors.flatMap(row => row.entityId ? [row.entityId] : []));
     const needsAssessment = dist === "cycle" ? !anchors.ftp : dist === "swim-only" ? !anchors.swimPaceBase : ["track-sprint", "hyrox"].includes(dist) ? true : dist === "run-only" ? !anchors.runPaceBase : !anchors.ftp || !anchors.runPaceBase || !anchors.swimPaceBase;
     const upcomingRaces = allRaces.filter(r => dateKey(r.date, user.timezone) >= startKey);
@@ -216,7 +219,7 @@ export async function POST(req: Request) {
     }
     const doubleDayAgreementRequired=generated.some(w=>w.sessions.some(s=>s.doubleDayRole));
     const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true}});
-    const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated, storedRaces, recentActivity, benchmarkTests, appliedAnchors })).digest("hex");
+    const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated, storedRaces, recentActivity, activityDecisions, benchmarkTests, appliedAnchors })).digest("hex");
     if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated, recoveryPolicy, cycle}, previewToken,
       planningBasis: setup.baselinePlanOptIn ? "baseline_only" : "baseline", targetReview: readiness.targetReview ?? [],
       doubleDayAgreementRequired, eventTradeoffAgreementRequired:eventReview.requiresChoice,
@@ -230,11 +233,12 @@ export async function POST(req: Request) {
     // Original prescriptions and completed history remain retrievable.
     const plan = await prisma.$transaction(
       async (tx) => {
-        const [latestProfile, latestSetup, latestActivity, latestBenchmarks, latestAnchors, latestRaces] = await Promise.all([
+        const [latestProfile, latestSetup, latestActivity, latestBenchmarks, latestAnchors, latestRaces,latestActivityDecisions] = await Promise.all([
           tx.athleteProfile.findUnique({where:{userId:user.id}}),
           readPlanningSetup(user.id, tx),
-          tx.workout.findMany(activityQuery), tx.benchmarkTest.findMany(benchmarkQuery), tx.auditLog.findMany(anchorQuery), tx.race.findMany(raceQuery),
+          tx.workout.findMany(activityQuery), tx.benchmarkTest.findMany(benchmarkQuery), tx.auditLog.findMany(anchorQuery), tx.race.findMany(raceQuery),readActivityDecisions(user.id,tx),
         ]);
+        if (JSON.stringify(latestActivityDecisions)!==JSON.stringify(activityDecisions)) throw new ApiError("Your activity reconciliation changed. Review a fresh preview before saving.",409);
         if (JSON.stringify(latestRaces) !== JSON.stringify(storedRaces)) throw new ApiError("Your events changed. Review a fresh preview before saving.",409);
         if (JSON.stringify([latestActivity, latestBenchmarks, latestAnchors]) !== JSON.stringify([recentActivity, benchmarkTests, appliedAnchors])) throw new ApiError("Your training history or baseline evidence changed. Review a fresh preview before saving.", 409);
         if(latestSetup.setup?.doubleDay?.athleteAgreed && (actor.id!==user.id||latestSetup.setup.source!=="athlete_reported")) throw new ApiError("Athlete agreement must be confirmed by the athlete.",403);

@@ -151,9 +151,10 @@ test("saved availability and history never backfill missing actual numbers", () 
 });
 
 test("image and text named consents are distinct, typed and opt-in", () => {
-  const input = parseConversationInput({ message: "hello", externalConsent: true, textProviderConsent: "gemini", imageConsent: false });
-  assert.equal(input.imageConsent, false); assert.equal(input.textProviderConsent, "gemini"); assert.equal(input.imageProviderConsent, undefined);
-  for (const patch of [{ imageConsent: "true" }, { imageProviderConsent: "gemini" }, { textProviderConsent: "openai" }]) assert.throws(() => parseConversationInput({ message: "x", ...patch }));
+  const input = parseConversationInput({ message: "hello", externalConsent: true, textProviderConsent: "deepseek", imageConsent: false });
+  assert.equal(input.imageConsent, false); assert.equal(input.textProviderConsent, "deepseek"); assert.equal(input.imageProviderConsent, undefined);
+  for (const patch of [{ imageConsent: "true" }, { imageProviderConsent: "deepseek" }, { textProviderConsent: "openai" }]) assert.throws(() => parseConversationInput({ message: "x", ...patch }));
+  assert.throws(() => parseConversationInput({message:"hello",externalConsent:true,textProviderConsent:"gemini"}), /provider consent/);
 });
 
 test("persistent safety marker outlives short conversational context until fresh explicit review", () => {

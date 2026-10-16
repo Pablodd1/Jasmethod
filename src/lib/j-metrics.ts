@@ -1,8 +1,9 @@
 import { addDaysKey, dateKey, DEFAULT_TIMEZONE } from "./dates";
+import { groupActivityEvidence,type ActivityDecision,type ActivityEvidenceRow } from "./activity-evidence";
 
 // JMM naming, published session-RPE method (Foster et al. 2001, PMID 11708692).
 // This scale never consumes legacy tss/np/if fields or estimates missing effort.
-export interface JStressWorkout {
+export interface JStressWorkout extends ActivityEvidenceRow {
   id?: string; date: Date; completed: boolean; planned: boolean;
   durationMin: number; actualDurationMin?: number | null; rpe?: number | null;
   matchedPlanId?: string | null; feedbackStatus?: string | null;
@@ -32,13 +33,17 @@ export interface JMetrics {
   series: JMetricPoint[]; current: Pick<JMetricPoint, "jBase" | "jRecent" | "jBalance">;
   missingDays: number; windowDays: number; note: string;
   confirmedRestDays: string[]; timezone: string; today: string;
+  reconciliation?: {rawRecords:number;groupedCopies:number;unresolvedGroups:number};
 }
-export function computeJMetrics(workouts: JStressWorkout[], asOf = new Date(), timezone = DEFAULT_TIMEZONE, restDays: string[] = [], windowDays = 90): JMetrics {
+export function computeJMetrics(workouts: JStressWorkout[], asOf = new Date(), timezone = DEFAULT_TIMEZONE, restDays: string[] = [], windowDays = 90,decisions:readonly ActivityDecision[]=[]): JMetrics {
   const days = Number.isFinite(windowDays) ? Math.max(1, Math.min(90, Math.floor(windowDays))) : 90;
   const today = dateKey(asOf, timezone), first = addDaysKey(today, 1 - days);
-  const eligible = workouts.filter(w => hasPerformedTraining(w) && !w.matchedPlanId && Number.isFinite(w.date.getTime()) && w.date <= asOf && dateKey(w.date, timezone) >= first);
+  const records = workouts.filter(w => hasPerformedTraining(w) && !w.matchedPlanId && Number.isFinite(w.date.getTime()) && w.date <= asOf && dateKey(w.date, timezone) >= first);
+  const reconciled=groupActivityEvidence(records,decisions),eligible=reconciled.effective;
+  const unresolved=new Set(reconciled.groups.filter(g=>g.unresolved).map(g=>g.primary));
+  const score=(w:JStressWorkout):JStressValue=>unresolved.has(w)?{value:null,unit:"AU",method:"session-rpe-v1",source:"unavailable",reason:"Possible cross-provider copies need your explicit review before load is counted."}:workoutJStress(w);
   const grouped = new Map<string, JStressValue[]>();
-  for (const w of eligible) { const key = dateKey(w.date, timezone); grouped.set(key, [...(grouped.get(key) || []), workoutJStress(w)]); }
+  for (const w of eligible) { const key = dateKey(w.date, timezone); grouped.set(key, [...(grouped.get(key) || []), score(w)]); }
   const confirmed = new Set(restDays.filter(d => d >= first && d <= today && /^\d{4}-\d{2}-\d{2}$/.test(d)));
   const series: JMetricPoint[] = [];
   let base = 0, recent = 0, consecutive = 0;
@@ -53,11 +58,12 @@ export function computeJMetrics(workouts: JStressWorkout[], asOf = new Date(), t
     consecutive++;
     series.push({ date: day, jStress: load, jBase: consecutive >= 42 ? round(base) : null, jRecent: consecutive >= 7 ? round(recent) : null, jBalance: consecutive >= 42 ? round(base - recent) : null });
   }
-  const scores = eligible.map(workoutJStress).filter(s => s.value !== null);
+  const scores = eligible.map(score).filter(s => s.value !== null);
   const last = series.at(-1)!;
   return { version: "jstress-srpe-v1", unit: "AU", totalJStress: scores.length ? round(scores.reduce((sum, s) => sum + s.value!, 0)) : null,
     eligibleSessions: scores.length, totalSessions: eligible.length, coveragePct: eligible.length ? round(scores.length / eligible.length * 100) : null,
     series, current: { jBase: last.jBase, jRecent: last.jRecent, jBalance: last.jBalance }, missingDays: series.filter(p => p.jStress === null).length, windowDays: days,
     confirmedRestDays: [...confirmed].filter(d => !grouped.has(d)).sort(), timezone, today,
-    note: "JStress is actual minutes × reported session effort (0–10), in arbitrary units. Totals include only scored sessions. Unrecorded days are unknown, not rest. Gaps restart the model; J Recent needs 7 consecutive known days and J Base/J Balance need 42. These are display rules, not validated injury or readiness thresholds. Legacy/provider scores are excluded." };
+    reconciliation:{rawRecords:records.length,groupedCopies:reconciled.groupedCopies,unresolvedGroups:reconciled.unresolvedGroups},
+    note: "JStress is actual minutes × reported session effort (0–10), in arbitrary units. Totals include only scored sessions. Corroborated copies count once without combining measurements; unresolved copies have unknown load and reduce coverage until reviewed. Provider records remain unchanged. Unrecorded days are unknown, not rest. Gaps restart the model; J Recent needs 7 consecutive known days and J Base/J Balance need 42. These are display rules, not validated injury or readiness thresholds. Legacy/provider scores are excluded." };
 }

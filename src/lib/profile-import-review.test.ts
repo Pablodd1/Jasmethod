@@ -1,3 +1,5 @@
+import {readActivityDecisions} from "./activity-reconciliation";
+import * as activityEvidence from "./activity-evidence";
 import { readManualPersonalBests, onboardingRaceResults } from "./onboarding-evidence";
 import { parseNutritionContext } from "./nutrition-context";
 import { test } from "node:test";
@@ -48,7 +50,8 @@ test("import review preserves old observations, returns scoped history and no se
     findMany:async(q:any)=>{state.queries.push(q);return[]},
   };
   db.race={findMany:async(q:any)=>{state.queries.push(q);return[]}};
-  const api=load("src/app/api/onboard/import-review/route.ts",{"@/lib/auth":{getCurrentUser:async()=>state.authenticated?{id:"user-a"}:null},"@/lib/db":{prisma:db},"@/lib/onboarding-evidence":{onboardingRaceResults},"@/lib/onboarding-imports":{ONBOARDING_METRICS,onboardingObservations},"@/lib/profile-import-review":helper,"@/lib/imported-training-review":importedTraining,"@/lib/dates":{localDate}});
+  db.auditLog={findMany:async(q:any)=>{assert.equal(q.where.subjectId,"user-a");assert.equal(q.where.action,"activity.reconcile");return [];}};
+  const api=load("src/app/api/onboard/import-review/route.ts",{"@/lib/auth":{getCurrentUser:async()=>state.authenticated?{id:"user-a"}:null},"@/lib/db":{prisma:db},"@/lib/onboarding-evidence":{onboardingRaceResults},"@/lib/onboarding-imports":{ONBOARDING_METRICS,onboardingObservations},"@/lib/profile-import-review":helper,"@/lib/imported-training-review":importedTraining,"@/lib/dates":{localDate},"@/lib/activity-evidence":activityEvidence,"@/lib/activity-reconciliation":{readActivityDecisions:(id:string)=>readActivityDecisions(id,db)}});
   const response=await api.GET(),body=await response.json();assert.equal(response.status,200);assert.equal(body.observations.length,1);assert.equal(body.suggestions[0].kind,"reported");assert.equal(body.history.count,1);assert.equal(body.history.sports[0].sport,"run");assert.equal(state.fetches,0);assert.ok(state.queries.every(q=>q.where.userId==="user-a"));assert.match(response.headers.get("cache-control"),/no-store/);
   state.authenticated=false;const before=state.queries.length;assert.equal((await api.GET()).status,401);assert.equal(state.queries.length,before);
 });

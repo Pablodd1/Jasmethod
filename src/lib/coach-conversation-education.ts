@@ -1,7 +1,7 @@
 export type EducationalLanguage = "en" | "es";
 export type ApprovedParagraph = { id: string; en: string; es: string };
-// This catalog is the entire renderable educational output. The provider can
-// select IDs, but cannot author, translate, supplement or overwrite this text.
+// Trusted bilingual definitions for local answers and the optional DeepSeek
+// context. Provider prose remains advisory and cannot overwrite this catalog.
 export const educationalCatalog = {
   jmetrics: [
     {

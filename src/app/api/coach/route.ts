@@ -1,3 +1,5 @@
+import {activityActualMinutes,groupActivityEvidence} from "@/lib/activity-evidence";
+import {readActivityDecisions} from "@/lib/activity-reconciliation";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -14,7 +16,7 @@ export async function GET() {
   const now = new Date(), { start, end } = dayBounds(user.timezone, now);
 
   const profile = await prisma.athleteProfile.findUnique({ where: { userId: user.id } });
-  const [metrics, plans, blood, dna, todayWorkouts, checkins7, workouts4w, benchmarks] = await Promise.all([
+  const [metrics, plans, blood, dna, todayWorkouts, checkins7, workouts4w, benchmarks,activityDecisions] = await Promise.all([
     prisma.dailyMetrics.findMany({ where: { userId: user.id, date: { gte: new Date(+now - 28 * 86400000), lt: end } }, orderBy: { date: "desc" }, take: 28 }),
     prisma.trainingPlan.findMany({ where: { userId: user.id, status: "active" }, orderBy: { createdAt: "desc" }, take: 1 }),
     prisma.bloodResult.findMany({ where: { panel: { user: { id: user.id } } } }),
@@ -24,6 +26,7 @@ export async function GET() {
     prisma.dailyCheckin.findMany({ where: { userId: user.id, date: { lt: end } }, orderBy: { date: "desc" }, take: 7 }),
     prisma.workout.findMany({ where: { userId: user.id, date: { gte: new Date(+now - 28 * 86400000), lte: now } }, orderBy: { date: "asc" } }),
     prisma.benchmarkTest.findMany({ where: { userId: user.id, completed: true }, orderBy: { date: "asc" } }),
+    readActivityDecisions(user.id),
   ]);
 
   const readiness = currentHrvReadiness(metrics, user.timezone, now);
@@ -64,16 +67,17 @@ export async function GET() {
   // still depend on Strava data. The whole rich briefing stays local below.
   const restricted4w = workouts4w.filter((w) => w.source === "strava" && w.completed);
   const eligible4w = workouts4w.filter((w) => !(w.source === "strava" && w.completed));
-  const weekBuckets = new Map<string, { minutes: number; sessions: number }>();
-  for (const w of eligible4w) {
+  const activity=groupActivityEvidence(eligible4w.filter(w=>w.completed&&!w.matchedPlanId),activityDecisions);
+  const weekBuckets = new Map<string, { minutes: number; sessions: number; unknown:boolean }>();
+  for (const w of activity.effective) {
     if (!w.completed || w.matchedPlanId) continue;
     const localKey = dateKey(w.date, user.timezone);
     const key = addDaysKey(localKey, -((new Date(`${localKey}T12:00Z`).getUTCDay() + 6) % 7));
-    const b = weekBuckets.get(key) || { minutes: 0, sessions: 0 };
-    b.minutes += w.actualDurationMin ?? w.durationMin; b.sessions += 1;
+    const b = weekBuckets.get(key) || { minutes: 0, sessions: 0,unknown:false };
+    const minutes=activityActualMinutes(w);if(minutes===null)b.unknown=true;else b.minutes+=minutes; b.sessions += 1;
     weekBuckets.set(key, b);
   }
-  const loadTrend = Array.from(weekBuckets.entries()).sort().map(([wk, b]) => `wk${wk.slice(5)}: ${b.sessions} sessions/${Math.round(b.minutes / 60)}h`);
+  const loadTrend = activity.unresolvedGroups?[]:Array.from(weekBuckets.entries()).sort().map(([wk, b]) => `wk${wk.slice(5)}: ${b.sessions} sessions/${b.unknown?"unknown actual duration":`${Math.round(b.minutes / 6) / 10}h`}`);
   const loadNote = restricted4w.length
     ? `[${restricted4w.length} direct Strava activity rows omitted from this local load digest; derived provenance is not fully verified]`
     : null;
@@ -93,6 +97,7 @@ export async function GET() {
 
   const historyDigest = [
     loadNote,
+    activity.unresolvedGroups ? "Possible activity copies need review in athlete setup. Weekly completed-session and duration totals remain unknown until reconciliation; source rows are preserved." : null,
     checkinTrend.length ? `Last check-ins (older to new): ${checkinTrend.join(" | ")}` : null,
     lastVerdict ? `Previous adaptation verdict: ${lastVerdict}` : null,
     loadTrend.length ? `Completed training by week: ${loadTrend.join(", ")}` : null,

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { coachDictationError } from "./coach-dictation-client";
 import {
   COACH_MESSAGE_LIMIT, COACH_REQUEST_TIMEOUT, COACH_SEND_TIMEOUT, COACH_VOICE_TIMEOUT,
-  CoachRequestGate, readCoachResponse, coachExternalPermissions, coachConfirmationAttempt, coachSendAttempt, coachSendWasRecorded, coachPendingActions, editedCoachCandidate, mergeCoachSessions, validateCoachImage, verifiedCoachReceipt,
+  CoachRequestGate, readCoachResponse, coachExternalPermissions, coachTextStatusMessage, coachConfirmationAttempt, coachSendAttempt, coachSendWasRecorded, coachPendingActions, editedCoachCandidate, mergeCoachSessions, validateCoachImage, verifiedCoachReceipt,
   type CoachCandidate, type CoachCapabilities, type CoachConfirmationAttempt, type CoachMessage, type CoachPayload, type CoachProposal, type CoachReceipt, type CoachSession, type CoachSendAttempt, type CoachSendBody,
 } from "./coach-conversation-client";
 
@@ -40,7 +40,7 @@ const VALUE_CHOICES: Record<string, Array<[string, string, string]>> = {
   actualSport: [["run", "Run", "Carrera"], ["bike", "Bike", "Ciclismo"], ["swim", "Swim", "Natación"], ["strength", "Strength", "Fuerza"], ["mobility", "Mobility", "Movilidad"], ["recovery", "Recovery", "Recuperación"], ["brick", "Brick", "Sesión combinada"], ["hyrox", "HYROX", "HYROX"], ["other", "Other", "Otro"]],
 };
 VALUE_CHOICES.sport = VALUE_CHOICES.actualSport;
-const sourceLabel = (source: string, es: boolean) => source === "gemini" ? "Google Gemini" : source === "voice" ? (es ? "Voz revisada" : "Reviewed voice") : source === "image" ? (es ? "Captura" : "Screenshot") : (es ? "Texto" : "Text");
+const sourceLabel = (source: string, es: boolean) => source === "deepseek" ? "DeepSeek" : source === "gemini" ? (es ? "Google Gemini (anterior)" : "Google Gemini (previous)") : source === "voice" ? (es ? "Voz revisada" : "Reviewed voice") : source === "image" ? (es ? "Captura" : "Screenshot") : (es ? "Texto" : "Text");
 const fieldLabel = (field: string, es: boolean) => FIELD_LABELS[field]?.[es ? 1 : 0] || field;
 const isSaveable = (candidate: CoachCandidate) => candidate.kind === "profile" || candidate.kind === "workout_feedback" || (candidate.kind === "workout_plan" && !!candidate.sessionId);
 
@@ -68,6 +68,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const [status, setStatus] = useState("");
   const [mode, setMode] = useState("");
   const [imageStatus, setImageStatus] = useState("");
+  const [externalStatus, setExternalStatus] = useState("");
   const [clearReview, setClearReview] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceReview, setVoiceReview] = useState(false);
@@ -91,7 +92,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const history = useRef<HTMLOListElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const allSessions = mergeCoachSessions(serverSessions, todaySessions);
-  const textConfigured = capabilities.externalAi === true && capabilities.textProvider === "Google Gemini";
+  const textConfigured = capabilities.externalAi === true && capabilities.textProvider === "DeepSeek";
   const imageConfigured = capabilities.imageUnderstanding === true && capabilities.imageProvider === "OpenAI";
   const permissions = coachExternalPermissions(capabilities, externalConsent, imageConsent);
   const canSendImage = !!screenshot && permissions.image;
@@ -134,6 +135,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     if (payload.capabilities) setCapabilities(payload.capabilities);
     if (payload.mode) setMode(payload.mode);
     if (payload.imageStatus) setImageStatus(payload.imageStatus);
+    setExternalStatus(payload.externalStatus || "");
   }, [es]);
 
   const request = useCallback(async (kind: NonNullable<typeof operation>, url: string, method = "GET", body?: unknown) => {
@@ -213,7 +215,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     if (busy.current || blocked || listening || imageBusy || (!message.trim() && !canSendImage)) return;
     setDictationError("");
     const outgoingImage = canSendImage ? { mimeType: screenshot!.mimeType, dataBase64: screenshot!.dataBase64 } : undefined;
-    const outgoing: CoachSendBody = { message: message.trim(), source, externalConsent: permissions.text, ...(permissions.text ? { textProviderConsent: "gemini" } : {}), ...(outgoingImage ? { image: outgoingImage, imageConsent: true, imageProviderConsent: "openai" } : {}), ...(sessionId ? { sessionId } : {}) };
+    const outgoing: CoachSendBody = { message: message.trim(), source, externalConsent: permissions.text, ...(permissions.text ? { textProviderConsent: "deepseek" } : {}), ...(outgoingImage ? { image: outgoingImage, imageConsent: true, imageProviderConsent: "openai" } : {}), ...(sessionId ? { sessionId } : {}) };
     sendAttempt.current = coachSendAttempt(sendAttempt.current, outgoing, () => crypto.randomUUID());
     const clientRequestId = sendAttempt.current.clientRequestId;
     setSendingMessage({ requestId: clientRequestId, content: outgoing.message || (es ? "Captura para revisar" : "Screenshot for review") });
@@ -364,7 +366,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
         <span className="text-xs text-slate-600">{message.length}/{COACH_MESSAGE_LIMIT} · {es ? "Mayús + Intro: nueva línea" : "Shift + Enter: new line"}</span>
       </div>
       <p className="text-xs text-slate-700">{es ? "Los cambios en tus datos requieren tu revisión y confirmación." : "Changes to your facts need your review and confirmation."}</p>
-      {(permissions.text || canSendImage) && <p role="status" className="text-xs text-slate-700">{permissions.text ? (es ? "Google Gemini habilitado para este mensaje. " : "Google Gemini enabled for this message. ") : ""}{canSendImage ? (es ? "Esta captura se enviará a OpenAI." : "This screenshot will be sent to OpenAI.") : ""}</p>}
+      {(permissions.text || canSendImage) && <p role="status" className="text-xs text-slate-700">{permissions.text ? (es ? "DeepSeek habilitado para este mensaje. " : "DeepSeek enabled for this message. ") : ""}{canSendImage ? (es ? "Esta captura se enviará a OpenAI." : "This screenshot will be sent to OpenAI.") : ""}</p>}
       <div role="group" aria-labelledby={`${id}-dictation-title`} className="rounded-lg border border-ocean-200 bg-ocean-50 p-3 space-y-2 min-w-0">
         <h3 id={`${id}-dictation-title`} className="text-sm font-semibold">{es ? "Dictar un mensaje" : "Dictate a message"}</h3>
         <p id={`${id}-dictation-help`} className="text-xs text-slate-700">{es ? "Dictado en español. Tu navegador puede enviar el audio a su proveedor de reconocimiento. Revisa el texto antes de usarlo; el micrófono nunca guarda datos ni envía tu mensaje automáticamente." : "English dictation. Your browser may send audio to its speech-recognition provider. Review the text before using it; the microphone never saves facts or sends your message automatically."}</p>
@@ -392,13 +394,14 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
         {screenshot && imageConfigured && !imageConsent && <p className="text-sm text-amber-900">{es ? "La captura no se enviará sin tu consentimiento para OpenAI. Puedes enviar solo el texto." : "The screenshot will not be sent without your OpenAI consent. You can send text only."}</p>}
       </div>
       <div className="rounded-lg border p-3 space-y-2">
-        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className={`mt-1 h-5 w-5 shrink-0 ${focus}`} checked={externalConsent} disabled={blocked || !textConfigured} onChange={event => setExternalConsent(event.target.checked)} /><span>{es ? "Permitir a Google Gemini procesar solo este mensaje y el idioma elegido para seleccionar una explicación del catálogo educativo limitado de la app. El mensaje puede incluir datos de salud que escribas. No se envían el perfil, el historial de conversación, la captura ni credenciales. Las decisiones personales de entrenamiento siguen en el modo local." : "Allow Google Gemini to process only this message and the selected language to select an explanation from the app’s bounded educational catalog. The message may include health data you type. Profile facts, conversation history, the screenshot and credentials are not sent. Personal training decisions stay local."}</span></label>
-        {!textConfigured && <p className="text-xs text-slate-700">{es ? "Google Gemini no está configurado. Puedes seguir conversando en modo local." : "Google Gemini is not configured. You can keep chatting in local mode."}</p>}
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className={`mt-1 h-5 w-5 shrink-0 ${focus}`} checked={externalConsent} disabled={blocked || !textConfigured} onChange={event => setExternalConsent(event.target.checked)} /><span>{es ? "Permitir a DeepSeek procesar este mensaje, hasta cuatro mensajes tuyos recientes (800 caracteres cada uno), el idioma, tu objetivo confirmado, experiencia explícita, peso de fuente manual, respuestas del check-in de hoy y hasta diez actividades manuales sin vínculo a importaciones en los últimos 30 días (fecha, deporte, minutos reales y RPE). El texto puede incluir datos de salud que escribas. No se envían identidad/contacto del perfil, notas, biometría importada, datos de dispositivos o Strava, capturas ni credenciales; el texto se filtra para quitar enlaces y credenciales comunes. Es orientación que puede fallar; no realiza cambios ni autoriza entrenar. Consentimiento solo para este mensaje." : "Allow DeepSeek to process this message, up to four recent messages from you (800 characters each), language, confirmed goal, explicitly answered experience, manually sourced weight, today’s check-in answers, and up to ten manual activities unlinked to imports in the past 30 days (date, sport, actual minutes and RPE). Text may include health details you type. Profile identity/contact fields, notes, imported biometrics, device or Strava data, screenshots and credentials are excluded; text is filtered for links and common credentials. Guidance can be mistaken; it does not change records or clear training. Consent applies to this message only."}</span></label>
+        {!textConfigured && <p className="text-xs text-slate-700">{es ? "DeepSeek no está configurado. Puedes seguir conversando en modo local." : "DeepSeek is not configured. You can keep chatting in local mode."}</p>}
       </div>
       <p className="text-xs text-slate-700">{es ? "Enviar un mensaje no confirma cambios. Puedes confirmar objetivo, horas semanales, peso y resultados de sesión (estado, minutos, deporte y RPE). Las preferencias de comunicación no cambian." : "Sending a message does not confirm changes. Supported facts: goal, weekly hours, weight and workout results (outcome, minutes, sport and RPE). Communication preferences stay unchanged."}</p>
         </div>
       </details>
     </form>
+    {coachTextStatusMessage(externalStatus, es) && <p role="status" className="text-xs text-slate-700">{coachTextStatusMessage(externalStatus, es)}</p>}
     {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}
     {(imageStatus === "unavailable" || imageStatus === "not_configured") && <p className="text-xs text-amber-900">{es ? "No se pudo analizar la captura. Escribe los datos visibles para revisarlos; no se han inventado valores." : "The screenshot could not be analyzed. Type its visible details for review; no values were guessed."}</p>}
     {activeProposal && <details key={activeProposal.id} className="rounded-xl border border-ocean-300 p-4 space-y-3">
@@ -452,7 +455,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
       <summary className={`cursor-pointer ${focus}`}>{es ? "Privacidad y detalles de la conversación" : "Privacy & conversation details"}</summary>
       <div className="mt-3 space-y-3">
         <p>{es ? "La conversación se guarda para que puedas continuar al volver. El chat funciona sin IA externa. Las herramientas opcionales explican qué datos se compartirían y piden permiso para cada mensaje." : "Your conversation is saved so you can continue when you return. Chat works without external AI. Optional tools explain what would be shared and ask permission for each message."}</p>
-    {mode && <p className="text-xs text-slate-700">{mode === "kcoach_ai" || mode === "coach_ai" ? (es ? "Explicación educativa del catálogo, seleccionada con Google Gemini. Las recomendaciones personales, los datos guardados y los cambios se gestionan en el modo local." : "Approved educational explanation selected with Google Gemini. Personal coaching, saved facts and changes are handled locally.") : (es ? "Respuesta de texto local: usa reglas y tus datos de la app. El análisis de imágenes, si se utiliza, se indica por separado." : "Local text response: uses rules and your in-app data. Image analysis, if used, is identified separately.")}</p>}
+    {mode && <p className="text-xs text-slate-700">{mode === "kcoach_ai" || mode === "coach_ai" ? (es ? "Orientación conversacional de DeepSeek con contexto manual limitado y consentimiento por mensaje. No es un diagnóstico ni autorización; los cambios requieren revisión y confirmación en JMM." : "Conversational DeepSeek guidance with limited manual context and per-message consent. It is not diagnosis or clearance; changes require JMM review and confirmation.") : (es ? "Respuesta de texto local: usa reglas y tus datos de la app. El análisis de imágenes, si se utiliza, se indica por separado." : "Local text response: uses rules and your in-app data. Image analysis, if used, is identified separately.")}</p>}
       <button type="button" className={secondaryClass} disabled={blocked || listening || imageBusy || !messages.length} onClick={() => setClearReview(true)}>{es ? "Borrar conversación" : "Clear conversation"}</button>
     {clearReview && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-3" role="group" aria-label={es ? "Confirmar borrado" : "Confirm conversation clearing"}>
       <p>{es ? "¿Borrar solo esta conversación y sus propuestas pendientes? Los datos de perfil, resultados, check-ins y el registro de cambios confirmados se conservan." : "Clear only this conversation and its pending proposals? Profile facts, workout results, check-ins and the confirmed change audit are retained."}</p>

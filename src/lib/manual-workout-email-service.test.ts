@@ -351,3 +351,13 @@ test("a saved-language change during generation supersedes the old-language emai
     });
   }
 });
+
+test("pending-check-in daily email includes an honest saved-plan preview but no FIT, graphic, targets or private notes",async()=>{
+ await withHarness(async h=>{h.state=snapshot('held');h.state!.resolved!.canonical={...h.state!.resolved!.canonical,verdict:'blocked'};
+  assert.equal((await h.run()).accepted,1);assert.match(h.sends[0].subject,/saved plan/);assert.match(h.sends[0].text,/Saved plan preview.*not cleared to execute/);assert.match(h.sends[0].text,/planned duration 10 min/);assert.match(h.sends[0].text,/sleep, energy, soreness, stress, symptoms and available time/);assert.deepEqual(h.sends[0].attachments,[]);assert.doesNotMatch(h.sends[0].text,/Steady effort|600 s|TOTAL carbohydrate/);assert.equal((await h.run()).accepted,0);assert.equal(h.sends.length,1);
+ });
+});
+
+test("a held morning email prepared before local midnight does not dispatch on the next local date",async()=>{
+ await withHarness(async h=>{h.state=snapshot('held');h.sendTime=new Date('2026-10-08T00:00:00Z');assert.equal((await h.run()).accepted,0);assert.equal(h.sends.length,0);});
+});

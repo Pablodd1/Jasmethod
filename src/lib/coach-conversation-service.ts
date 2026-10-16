@@ -1,3 +1,5 @@
+import {ACTIVITY_EVIDENCE_SELECT} from "./activity-evidence";
+import { readActivityDecisions } from "./activity-reconciliation";
 import { dailyRecoveryContext } from "./daily-recovery";
 import { computeJMetrics } from "./j-metrics";
 import { createHash, randomUUID } from "node:crypto";
@@ -13,13 +15,14 @@ import { effectivePrescription } from "./effective-prescription";
 import { parseConversationInput, extractLocalCandidates, validateCoachCandidates, buildCoachReply, coachContextNeeds, conversationClarifications, type CoachCandidate, type CoachReplyContext } from "./coach-conversation";
 import { extractImageCandidates } from "./coach-image";
 import { coachTextAnswer, coachTextConfigured } from "./coach-text-provider";
+import { personalCoachFacts } from "./coach-personal-context";
 import { coachVisionConfiguration, createCoachVisionProvider } from "./coach-vision-provider";
 
 export type ConversationActor = { id: string; timezone: string; language?: string };
 type DB = Prisma.TransactionClient;
 export const CONVERSATION_MESSAGE_LIMIT = 60;
 const CONTEXT_MESSAGE_LIMIT = 16;
-function coachCapabilities() { const externalAi = coachTextConfigured(), imageUnderstanding = coachVisionConfiguration().configured; return { externalAi, textProvider: externalAi ? "Google Gemini" : null, imageUnderstanding, imageProvider: imageUnderstanding ? "OpenAI" : null }; }
+function coachCapabilities() { const externalAi = coachTextConfigured(), imageUnderstanding = coachVisionConfiguration().configured; return { externalAi, textProvider: externalAi ? "DeepSeek" : null, imageUnderstanding, imageProvider: imageUnderstanding ? "OpenAI" : null }; }
 const SAFETY_RULES = ["urgent-symptoms", "illness-or-pain", "clarify-fatigue", "clarify-prior-safety", "clarify-symptom-timing", "clarify-current-symptoms", "unreviewed-image-urgent", "unreviewed-image-symptoms"];
 const mutationFields: Record<string, readonly string[]> = {
   profile: ["goal", "weeklyHours", "weightKg", "heightCm", "birthYear", "experience", "ftp"],
@@ -143,7 +146,7 @@ export async function appendConversation(actor: ConversationActor, raw: unknown)
   const input = parseAssistantInput(body);
   const selectedSessionId = body.sessionId == null || body.sessionId === "" ? undefined : identifier(body.sessionId, "session");
   const requestedConversationId = body.conversationId === undefined ? undefined : identifier(body.conversationId, "conversation");
-  const namedExternal = (input.externalConsent && input.textProviderConsent === "gemini") || Boolean(input.image && input.imageConsent && input.imageProviderConsent === "openai");
+  const namedExternal = (input.externalConsent && input.textProviderConsent === "deepseek") || Boolean(input.image && input.imageConsent && input.imageProviderConsent === "openai");
   if (namedExternal && body.clientRequestId === undefined) throw new ApiError("An external request needs a stable clientRequestId before sending");
   const clientRequestId = body.clientRequestId === undefined ? randomUUID() : identifier(body.clientRequestId, "client request id");
   const requestHash = createHash("sha256").update(JSON.stringify({ input, sessionId: selectedSessionId ?? null, conversationId: requestedConversationId ?? null })).digest("hex");
@@ -181,7 +184,7 @@ export async function appendConversation(actor: ConversationActor, raw: unknown)
   if (claim.replayed) {
     const history = await prisma.$transaction(tx => readConversation(actor, tx), { isolationLevel: "Serializable" });
     const lastAnswer = [...history.conversation.messages].reverse().find(message => message.role === "assistant");
-    return { ...history, capabilities: coachCapabilities(), ok: true, replayed: true, mode: lastAnswer?.source === "gemini" ? "coach_ai" : "coach_local", answer: lastAnswer?.content ?? "", trainingModified: false, externalStatus: "not_requested", imageStatus: "not_requested" };
+    return { ...history, capabilities: coachCapabilities(), ok: true, replayed: true, mode: lastAnswer?.source === "deepseek" ? "coach_ai" : "coach_local", answer: lastAnswer?.content ?? "", trainingModified: false, externalStatus: "not_requested", imageStatus: "not_requested" };
   }
   const guard = claim.guard;
   const finish = async (status: "completed" | "failed") => prisma.$transaction(tx => tx.coachConversationRequest.updateMany({ where: { id: guard.id, userId: actor.id, status: "processing" }, data: { status, activeKey: null, finishedAt: new Date() } }), { isolationLevel: "Serializable" });
@@ -215,7 +218,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const current = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
       if (!current || current.id !== guard.conversationId || current.generation !== guard.generation || current.revision !== guard.revision) throw new ApiError("The conversation changed while this message was processing. Review the current conversation before sending again.", 409);
       const conversation = await tx.coachConversation.update({ where: { id: current.id, userId: actor.id }, data: { revision: { increment: 1 } } });
-      const [messages, profile, setup, checkin, selected, planned, recentFeedback, safetyConcern, loadWorkouts, restObservations, plannedRestDay, todayRecoverySessions, latestMetrics, nextRace] = await Promise.all([
+      const [messages, profile, setup, checkin, selected, planned, recentFeedback, safetyConcern, loadWorkouts, restObservations, plannedRestDay, todayRecoverySessions, latestMetrics, nextRace, externalHistory] = await Promise.all([
         tx.coachConversationMessage.findMany({ where: { userId: actor.id, conversationId: conversation.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: CONTEXT_MESSAGE_LIMIT, select: { role: true, content: true, createdAt: true } }),
         tx.athleteProfile.findUnique({ where: { userId: actor.id } }),
         readPlanningSetup(actor.id, tx),
@@ -229,7 +232,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           select: { date: true, planned: true, completed: true, durationMin: true, sport: true, feedbackStatus: true, actualDurationMin: true, actualSport: true, rpe: true },
         }) : Promise.resolve([]),
         tx.coachConversationMessage.findFirst({ where: { userId: actor.id, conversationId: conversation.id, role: "assistant", OR: [...SAFETY_RULES.map(rule => ({ metadata: { contains: `\"ruleId\":\"coach-conversation-v1:${rule}\"` } })), { metadata: { contains: '"requiresCheckinReview":true' } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { createdAt: true } }),
-        tx.workout.findMany({ where: { userId: actor.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null, date: { gte: needsLoadHistory ? localDate(addDaysKey(today.key, -89), actor.timezone) : today.start, lt: today.end } }, select: { id: true, date: true, completed: true, feedbackStatus: true, planned: true, durationMin: true, actualDurationMin: true, rpe: true, matchedPlanId: true } }),
+        tx.workout.findMany({ where: { userId: actor.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null, date: { gte: needsLoadHistory ? localDate(addDaysKey(today.key, -89), actor.timezone) : today.start, lt: today.end } }, select: ACTIVITY_EVIDENCE_SELECT }),
         needsLoadHistory ? tx.metricObservation.findMany({ where: { userId: actor.id, metricType: "jmm_rest_day", value: 1, source: "manual", qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: { gte: localDate(addDaysKey(today.key, -89), actor.timezone), lt: today.end } }, select: { observedAt: true } }) : Promise.resolve([]),
         tx.planDay.findFirst({ where: { plan: { userId: actor.id, status: "active" }, date: { gte: today.start, lt: today.end }, dayOff: true }, select: { id: true } }),
         tx.workout.findMany({ where: { userId: actor.id, date: { gte: today.start, lt: today.end } }, orderBy: [{ startTime: "asc" }, { id: "asc" }], select: { id: true, date: true, title: true, sport: true, durationMin: true, intensity: true, planned: true, approved: true, completed: true, planDay: { select: { dayOff: true } } } }),
@@ -241,6 +244,12 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           where: { userId: actor.id, date: { gte: new Date(`${today.key}T00:00:00Z`) } },
           orderBy: [{ priority: "asc" }, { date: "asc" }], select: { name: true, date: true, distance: true },
         }) : Promise.resolve(null),
+        input.externalConsent && input.textProviderConsent === "deepseek" ? tx.workout.findMany({
+          where: { userId: actor.id, source: "manual", planned: false, completed: true, matchedPlanId: null, externalId: null,
+            date: { gte: localDate(addDaysKey(today.key,-29),actor.timezone), lt: today.end } },
+          orderBy: [{date:"desc"},{id:"desc"}], take:10,
+          select: {date:true,source:true,planned:true,completed:true,matchedPlanId:true,externalId:true,actualDurationMin:true,durationMin:true,actualSport:true,sport:true,rpe:true},
+        }) : Promise.resolve([]),
       ]);
       if (sessionId && !selected) throw new ApiError("Session not found", 404);
       if (selected && guard.sessionRevision !== workoutRevision(selected)) throw new ApiError("The selected session changed while this message was processing. Review it before sending again.", 409);
@@ -264,6 +273,9 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const possibleCurrentSymptom = candidates.some(candidate => candidate.kind === "checkin" && ["sick", "newPain", "urgentSymptoms", "painAffectsMovement"].includes(candidate.field) && candidate.value === true);
       const plannedRecoverySessions = todayRecoverySessions.filter(row => row.planned);
       const context: CoachReplyContext = {
+        externalFacts: input.externalConsent && input.textProviderConsent === "deepseek" ? personalCoachFacts(
+          profile ? {...profile,goal:setup.setup?.goalDescription ? profile.goal : null} : null,
+          setup.setup?.profileConfirmed === true || setup.setup?.profileAnswers?.experience === true, externalHistory, today.key) : undefined,
         savedTodaySessions: plannedRecoverySessions.map(row => ({ date: dateKey(row.date, actor.timezone), title: row.title, sport: row.sport, durationMin: row.durationMin, completed: row.completed })),
         localToday: today.key, language: actor.language, setupReady: planning.ready,
         candidateContext: { sessionId, sessionDate },
@@ -274,7 +286,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           performedToday: loadWorkouts.some(row => row.date <= new Date() && dateKey(row.date, actor.timezone) === today.key),
           injured: !!profile?.injured, answers: checkin && !unreviewedCurrentCheckin ? answers : null,
         }),
-        jMetrics: needsLoadHistory ? computeJMetrics(loadWorkouts, new Date(), actor.timezone, restObservations.map(row => dateKey(row.observedAt, actor.timezone))) : null,
+        jMetrics: needsLoadHistory ? computeJMetrics(loadWorkouts, new Date(), actor.timezone, restObservations.map(row => dateKey(row.observedAt, actor.timezone)),90,await readActivityDecisions(actor.id,tx)) : null,
         unreviewedImageConcern: candidates.some(c => c.source === "image" && c.kind === "checkin" && c.field === "urgentSymptoms" && c.value === true) ? "urgent" : candidates.some(c => c.source === "image" && c.kind === "checkin" && ["sick", "newPain", "painAffectsMovement"].includes(c.field) && c.value === true) ? "symptom" : undefined,
         unresolvedSafetyConcernAt: possibleCurrentSymptom ? new Date().toISOString() : safetyConcern?.createdAt.toISOString() ?? null,
         athleteOverview: contextNeeds.overview ? {
@@ -311,7 +323,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const lastAnswer = [...history.conversation.messages].reverse().find(message => message.role === "assistant");
       return { ...result, ...history, answer: lastAnswer?.content ?? "", externalStatus: provider.status };
     }
-    const disclosure = actor.language === "es" ? "Google Gemini seleccionó esta explicación educativa aprobada usando solo esta pregunta y tu idioma. La redacción procede de un catálogo limitado de la app. Los datos guardados y las decisiones de entrenamiento se responden localmente. No se guardó ningún cambio." : "Google Gemini selected this approved educational explanation using only this question and your language. Its wording comes from a bounded app catalog. Saved facts and coaching decisions stay local. No profile or training change was saved.";
+    const disclosure = actor.language === "es" ? "Orientación de DeepSeek con contexto manual limitado y tu consentimiento para este mensaje. Puede contener errores; no es diagnóstico, autorización ni predicción validada. No se modificó tu perfil o entrenamiento ni se envió nada al reloj. Los cambios requieren propuesta, revisión y confirmación en JMM." : "DeepSeek guidance using limited manual context and your consent for this message. It can be mistaken; this is not diagnosis, clearance or a validated prediction. No profile or workout was changed and nothing was sent to a watch. Changes require JMM proposal, review and confirmation.";
     try {
       return await prisma.$transaction(async tx => {
         const current = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
@@ -320,7 +332,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           return { ...result, ...history, answer: [...history.conversation.messages].reverse().find(message => message.role === "assistant")?.content ?? "", externalStatus: "unavailable" };
         }
         const answer = `${provider.answer}\n\n${disclosure}`;
-        const updated = await tx.coachConversationMessage.updateMany({ where: { id: _guard.messageId, userId: actor.id, conversationId: current.id }, data: { content: answer, source: "gemini", metadata: JSON.stringify({ ruleId: _ruleId, provider: "Google Gemini", namedConsent: "gemini", externalConsent: true }) } });
+        const updated = await tx.coachConversationMessage.updateMany({ where: { id: _guard.messageId, userId: actor.id, conversationId: current.id }, data: { content: answer, source: "deepseek", metadata: JSON.stringify({ ruleId: _ruleId, provider: "DeepSeek", namedConsent: "deepseek", contextVersion: "deepseek-personal-v1", sourceIds: provider.sourceIds ?? [], externalConsent: true }) } });
         if (updated.count !== 1) return { ...result, ...await readConversation(actor, tx), externalStatus: "unavailable" };
         await tx.coachConversation.update({ where: { id: current.id, userId: actor.id }, data: { revision: { increment: 1 } } });
         return { ...result, ...await readConversation(actor, tx), answer, mode: "coach_ai", externalStatus: "answered", disclosure };

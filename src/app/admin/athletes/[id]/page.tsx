@@ -183,14 +183,14 @@ export default function AthletePage() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   {[
                     ["Recorded sessions", data.analysis.completed],
-                    ["Hours", (data.analysis.minutes / 60).toFixed(1)],
+                    ["Hours", data.analysis.minutes==null?"— (review activity copies)":(data.analysis.minutes / 60).toFixed(1)],
                     [
                       "Plan fulfilled",
                       data.analysis.fulfillmentPct == null
                         ? "No plan"
                         : `${data.analysis.fulfillmentPct}%`,
                     ],
-                    ["Estimated load", data.analysis.estimatedLoad],
+                    ["Estimated load", data.analysis.estimatedLoad??"— (review activity copies)"],
                   ].map(([l, v]) => (
                     <div key={l} className="card">
                       <p className="text-xs text-slate-500">{l}</p>
@@ -216,13 +216,13 @@ export default function AthletePage() {
                 </div>
                 <div className="card">
                   <h2 className="font-bold mb-3">Completed training by day</h2>
-                  <Trend
+                  {data.analysis.reconciliation?.unresolvedGroups>0?<p role="status" className="text-sm text-amber-800">Activity totals are unknown while possible imported copies need review. Ask the athlete to reconcile source records in athlete setup; unknown load is not zero.</p>:<Trend
                     values={data.analysis.daily.map((d: any) => ({
                       date: d.date,
                       value: d.minutes,
                     }))}
                     unit="minutes"
-                  />
+                  />}
                   <p className="text-xs text-slate-500 mt-2">
                     {data.analysis.measuredSessions}/{data.analysis.completed}{" "}
                     sessions have HR/power. Missing days may mean no training or

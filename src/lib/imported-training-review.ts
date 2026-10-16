@@ -1,13 +1,14 @@
 /** Read-only import review. Possible cross-provider copies are never asserted to be one verified activity. */
 import { addDaysKey, dateKey } from './dates';
-export type ImportedTrainingRow = { id: string; date: Date; sport: string; source: string | null; durationMin: number | null; actualDurationMin: number | null };
+import {groupActivityEvidence,type ActivityDecision,type ActivityEvidenceRow} from './activity-evidence';
+export type ImportedTrainingRow = ActivityEvidenceRow & { id: string; date: Date; sport: string; source: string | null; durationMin: number | null; actualDurationMin: number | null };
 export function importedTrainingWindow(timezone: string, now = new Date()) {
  const today = dateKey(now, timezone);
  const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
  const endKey = addDaysKey(today, -((weekday + 6) % 7));
  return { startKey: addDaysKey(endKey, -28), endKey };
 }
-export function importedTrainingReview(rows: ImportedTrainingRow[], timezone: string, now = new Date(), truncated = false) {
+export function importedTrainingReview(rows: ImportedTrainingRow[], timezone: string, now = new Date(), truncated = false,decisions:readonly ActivityDecision[]=[]) {
  const window = importedTrainingWindow(timezone, now);
  const minutes = (row: ImportedTrainingRow) => {
   // These are completed, unplanned imports: durationMin is the original provider
@@ -17,19 +18,19 @@ export function importedTrainingReview(rows: ImportedTrainingRow[], timezone: st
  };
  const eligible = rows.filter(row => Number.isFinite(row.date.getTime()) && dateKey(row.date, timezone) >= window.startKey && dateKey(row.date, timezone) < window.endKey)
   .sort((a,b)=>a.date.getTime()-b.date.getTime() || a.id.localeCompare(b.id));
- const globalGroups:ImportedTrainingRow[][]=[];
- for(const row of eligible){const group=globalGroups.find(group=>group[0].sport===row.sport&&row.date.getTime()-group[0].date.getTime()<=60000);if(group)group.push(row);else globalGroups.push([row]);}
- const globalOverlaps=globalGroups.filter(group=>new Set(group.map(row=>row.source)).size>1);
+ const effective=groupActivityEvidence(eligible,decisions);
+ const globalOverlaps=effective.pending;
  const weeks = Array.from({length:4},(_,i)=>{
   const startKey=addDaysKey(window.startKey,i*7),endKey=addDaysKey(startKey,7);
   const weekRows=eligible.filter(row=>dateKey(row.date,timezone)>=startKey&&dateKey(row.date,timezone)<endKey);
-  const groups=globalGroups.map(group=>group.filter(row=>weekRows.includes(row))).filter(group=>group.length);
+  const groups=effective.groups.filter(group=>dateKey(group.primary.date,timezone)>=startKey&&dateKey(group.primary.date,timezone)<endKey);
   const overlaps=globalOverlaps.filter(group=>group.some(row=>weekRows.includes(row)));
   const overlapIds=new Set(overlaps.flatMap(group=>group.map(row=>row.id)));
   const known=weekRows.filter(row=>minutes(row)!==null);
-  const unknownDurationRecords=weekRows.length-known.length;
-  const minimum=groups.reduce((sum,group)=>sum+(globalOverlaps.some(overlap=>overlap.includes(group[0])) ? Math.max(0,...group.flatMap(row=>minutes(row)===null?[]:[minutes(row)!])) : group.reduce((sum,row)=>sum+(minutes(row)??0),0)),0);
-  const maximum=known.reduce((sum,row)=>sum+minutes(row)!,0);
+  const unknownDurationRecords=groups.filter(group=>group.budgetMinutes===null||group.budgetMinutes===0).length;
+  const confirmed=groups.filter(group=>!group.unresolved).reduce((sum,group)=>sum+(group.budgetMinutes??0),0);
+  const minimum=confirmed+overlaps.reduce((sum,group)=>sum+Math.max(0,...group.filter(row=>weekRows.includes(row)).map(row=>minutes(row)??0)),0);
+  const maximum=groups.reduce((sum,group)=>sum+(group.budgetMinutes??0),0);
   return { startKey,endKey:addDaysKey(endKey,-1),rawRecordCount:weekRows.length,recordedDays:new Set(weekRows.map(row=>dateKey(row.date,timezone))).size,
    unknownDurationRecords,possibleOverlapGroups:overlaps.length,recordsInPossibleOverlap:overlapIds.size,
    minutesRange:{minimum:known.length?Math.round(minimum*10)/10:null,maximum:known.length&&!unknownDurationRecords?Math.round(maximum*10)/10:null},
@@ -42,5 +43,5 @@ export function importedTrainingReview(rows: ImportedTrainingRow[], timezone: st
   ? Math.round(weeks.reduce((sum,week)=>sum+week.minutesRange.minimum!,0)/4) : null;
  return {version:'imported-training-review-v1',timezone,...window,rawRecordCount:eligible.length,truncated,weeks,possibleOverlapGroups,unknownDurationRecords,
   recordedWeeklyAverageMinutes:reviewableAverage,requiresAthleteReview:true,
-  note:'Recorded volume only, not training capacity or a prescription. Near-start cross-provider records may overlap; ranges show all-overlap versus no-overlap interpretations, not verified session counts. Empty weeks, unrecorded days and missing durations are unknown, never confirmed rest. Confirm completeness, tolerability and recovery before explicitly editing your baseline. No profile or training is changed.'};
+  note:'Recorded volume only, not training capacity or a prescription. Corroborated copies and current explicit choices count once; unresolved near-start records show possible-overlap ranges, not verified session counts. Empty weeks, unrecorded days and missing durations are unknown, never confirmed rest. Confirm completeness, tolerability and recovery before explicitly editing your baseline. No profile or training is changed.'};
 }

@@ -16,6 +16,8 @@ import { User, Flag, CheckCircle2, ArrowRight, ArrowLeft } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import type { importedTrainingReview } from "@/lib/imported-training-review";
+import {ActivityReconciliationReview} from "@/components/ActivityReconciliationReview";
+import type {publicActivityReconciliation} from "@/lib/activity-evidence";
 
 const LANGS = [
   { code: "en", label: "English" },
@@ -29,6 +31,7 @@ type ImportReview = {
   raceResults?: {id:string;name:string;distance:string;minutes:number;date:string;source:string|null;kind:string}[];
   history?: { count: number; earliestAt: string | null; latestAt: string | null; sports: { sport: string; count: number }[] };
   trainingReview?: ReturnType<typeof importedTrainingReview>;
+  activityReconciliation?:ReturnType<typeof publicActivityReconciliation>&{truncated?:boolean};
 };
 type SavedRace = RaceForm & { id: string; priority?: number };
 
@@ -502,6 +505,7 @@ export function DetailedAthleteSetup() {
                 <p className="text-sm">{t("This target never replaces a measured baseline. Exact pace/power/speed progression is unavailable in this pilot and requires coaching review. You may explicitly choose a conservative baseline-only plan while keeping your target as an aspiration.", "Esta meta nunca sustituye una referencia medida. La progresión exacta de ritmo/potencia/velocidad no está disponible en este piloto y requiere revisión profesional. Puedes elegir explícitamente un plan conservador basado en tu nivel actual y conservar tu objetivo como aspiración.")}</p>
               </div>}
               </details>
+              <ActivityReconciliationReview initial={importReview.activityReconciliation} es={lang === "es"} onSaved={reviewImports} />
               {importReview.trainingReview && <details className="border rounded-xl p-3"><summary className="min-h-11 cursor-pointer content-center font-semibold">{t("Review imported training before changing your baseline", "Revisar entrenamiento importado antes de cambiar tu base")}</summary>
                 <p className="text-sm">{t("Four completed calendar weeks (Monday–Sunday), in your account timezone", "Cuatro semanas completas (lunes–domingo), en la zona horaria de tu cuenta")}: {importReview.trainingReview.timezone}. {importReview.trainingReview.rawRecordCount} {t("stored records; possible overlap groups", "registros guardados; posibles grupos solapados")}: {importReview.trainingReview.possibleOverlapGroups}.</p>
                 {importReview.trainingReview.weeks.map(week=><div key={week.startKey} className="border-t py-2 text-sm"><p className="font-medium">{week.startKey} – {week.endKey}</p><p>{week.rawRecordCount} {t("raw records", "registros originales")} · {week.recordedDays}/7 {t("days with records (other days unknown)", "días con registros (otros días desconocidos)")}</p><p>{t("Recorded-minute range", "Rango de minutos registrados")}: {week.minutesRange.minimum ?? "—"} – {week.minutesRange.maximum ?? t("unknown", "desconocido")} · {week.unknownDurationRecords} {t("durations unknown", "duraciones desconocidas")} · {week.sources.join(", ") || "—"}</p>{week.overlaps.map(group=><p key={`${group.sport}:${group.startAt}`} className="text-amber-900">{t("Possible copies; not reconciled", "Posibles copias; sin reconciliar")}: {group.sport} · {group.startAt} · {group.records.map(record=>`${record.source}: ${record.minutes ?? "—"} min`).join(" / ")}</p>)}</div>)}

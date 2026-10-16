@@ -10,6 +10,8 @@ import { Decoder, Stream } from "@garmin/fitsdk";
 import { canonicalSession } from "./canonical-session";
 import { buildPrivateSafeSessionDownload } from "./fit-export";
 import { CYCLE_MOVEMENT_GUIDANCE } from "./cycle-movement-guidance";
+import { deliveryWorkoutPreview } from "./delivery-workout-preview";
+import { dateKey } from "./dates";
 
 const session = (note = "PRIVATE_MEDICAL_NOTE", group = "PRIVATE_CONTEXT") => canonicalSession({
   athleteId: "synthetic-athlete", workout: { id: "synthetic-session", sport: "bike", title: "PRIVATE_TITLE", durationMin: 1 },
@@ -79,7 +81,7 @@ test("email reconciliation sends sanitized FIT through injected transport and ab
     const deps: Record<string, any> = {
       "./manual-workout-email-locale": { manualEmailLanguage: () => "en" }, "./db": { prisma },
       "./canonical-session": { SessionResolutionError: class extends Error {} }, "./workout-update": {},
-      "./dates": { dayBounds: () => ({ key: "2026-10-11", start: new Date("2026-10-11"), end: new Date("2026-10-12") }) },
+      "./dates": { dateKey, dayBounds: () => ({ key: "2026-10-11", start: new Date("2026-10-11"), end: new Date("2026-10-12") }) },
       "./effective-prescription": {}, "./fit-export": { buildPrivateSafeSessionDownload },
       "./manual-workout-email-template": { manualWorkoutEmail: () => ({ subject: "Synthetic", text: "Synthetic", html: "Synthetic" }) },
       "./manual-workout-email-content": { manualWorkoutEmailContent },
@@ -87,6 +89,7 @@ test("email reconciliation sends sanitized FIT through injected transport and ab
       "./universal-workout-render":{renderUniversalWorkoutPng},
       "./manual-workout-email": { manualEmailConfigured: () => true, manualEmailOrigin: () => "https://example.invalid", eligibleManualEmail: () => true, manualEmailChanged: () => false, manualEmailDue: () => true, manualEmailKey: () => "synthetic-key" },
       "./manual-workout-email-transport": {},
+      "./delivery-workout-preview": { deliveryWorkoutPreview },
     };
     const compiled = ts.transpileModule(fs.readFileSync("src/lib/manual-workout-email-service.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
     const mod = { exports: {} as any }; vm.runInNewContext(compiled, { module: mod, exports: mod.exports, require: (id: string) => { assert.ok(id in deps, id); return deps[id]; }, Buffer, Date });

@@ -7,7 +7,7 @@ export const MANUAL_EMAIL_CONSENT = "manual-garmin-workout-email-v1";
 export function manualEmailConfigured(env: NodeJS.ProcessEnv = process.env) {
   return env.ENABLE_MANUAL_WORKOUT_EMAIL === "true" && !!env.SMTP_HOST && !!env.SMTP_FROM && !!env.MANUAL_WORKOUT_EMAIL_ORIGIN;
 }
-export function manualEmailOrigin(env: NodeJS.ProcessEnv = process.env) {
+export function manualEmailOrigin(env: Record<string, string | undefined> = process.env) {
   const url = new URL(env.MANUAL_WORKOUT_EMAIL_ORIGIN || "");
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/") throw Error("Configure an HTTPS app origin");
   return url.origin;

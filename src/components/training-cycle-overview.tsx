@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { dateKey } from "@/lib/dates";
-import { savedCycleSummary } from "@/lib/training-cycle";
+import { savedCycleSummary } from "@/lib/training-cycle-summary";
 
 function themeLabel(theme: string, es: boolean) {
   if (!es) return theme;

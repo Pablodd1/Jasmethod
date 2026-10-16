@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { computeJMetrics } from "@/lib/j-metrics";
+import { groupActivityEvidence,publicActivityReconciliation } from "@/lib/activity-evidence";
+import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { addDaysKey, dateKey, localDate } from "@/lib/dates";
 import { computePmc, executionScore, predictRace } from "@/lib/fitness";
 
@@ -13,7 +15,7 @@ export async function GET() {
 
   const asOf = new Date();
   const since90 = localDate(addDaysKey(dateKey(asOf, user.timezone), -89), user.timezone);
-  const [profile, completed, rest] = await Promise.all([
+  const [profile, completed, rest,activityDecisions] = await Promise.all([
     prisma.athleteProfile.findUnique({ where: { userId: user.id } }),
     prisma.workout.findMany({
       where: { userId: user.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null, date: { gte: since90, lte: asOf } },
@@ -23,12 +25,14 @@ export async function GET() {
       where: { userId: user.id, metricType: "jmm_rest_day", source: "manual", value: 1, qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: { gte: since90, lte: asOf } },
       select: { observedAt: true },
     }),
+    readActivityDecisions(user.id),
   ]);
   const ftp = profile?.ftp ?? null;
   const lthr = profile?.lthr ?? null;
-  const jMetrics = computeJMetrics(completed, asOf, user.timezone, rest.map(r => dateKey(r.observedAt, user.timezone)));
-  const pmc = computePmc(
-    completed.filter(w => w.completed).map((w) => ({
+  const reconciled=groupActivityEvidence(completed,activityDecisions);
+  const jMetrics = computeJMetrics(completed, asOf, user.timezone, rest.map(r => dateKey(r.observedAt, user.timezone)),90,activityDecisions);
+  const pmc = reconciled.unresolvedGroups?null:computePmc(
+    reconciled.effective.filter(w => w.completed).map((w) => ({
       date: w.date,
       tssInput: {
         durationMin: w.actualDurationMin ?? w.durationMin,
@@ -63,13 +67,15 @@ export async function GET() {
       },
     }),
   ]);
-  const execution = executionScore(
+  const executionEvidence=groupActivityEvidence(completed7,activityDecisions);
+  const executionUnavailableReason=executionEvidence.unresolvedGroups?"Possible activity copies need explicit review before execution and duration compliance can be calculated.":null;
+  const execution = executionUnavailableReason?null:executionScore(
     planned7.map((w) => ({
       date: w.date,
       sport: w.sport,
       durationMin: w.durationMin,
     })),
-    completed7.map((w) => ({
+    executionEvidence.effective.map((w) => ({
       date: w.date,
       sport: w.sport,
       durationMin: w.actualDurationMin ?? w.durationMin,
@@ -93,7 +99,9 @@ export async function GET() {
   return NextResponse.json({
     pmc,
     jMetrics,
+    activityReconciliation:publicActivityReconciliation(completed,activityDecisions),
     execution,
+    executionUnavailableReason,
     predictions,
     goalDistance: profile?.goal ?? null,
     physiology: { ftp, lthr },

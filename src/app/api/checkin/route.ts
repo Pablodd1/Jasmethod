@@ -1,5 +1,7 @@
 import { isStarterSession, starterRestriction } from "@/lib/starter-session";
 import { isUnperformedSupersededWorkout } from "@/lib/superseded-workout";
+import { groupActivityEvidence } from "@/lib/activity-evidence";
+import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { ensureStarterWorkout } from "@/lib/starter-session-store";
 import { preserveSportStructure } from "@/lib/preserve-sport-structure";
 import { intervalsConnectorEnabled } from "@/lib/capabilities";
@@ -170,7 +172,7 @@ export async function POST(req: Request) {
     await ensureStarterWorkout(user.id,actor.id);
     const syncFreshness = checkinSyncFreshness(deviceProviders, syncResults, syncAttempted);
     const { start, end, key } = dayBounds(user.timezone);
-    const [metrics, profile, appointments, prefs, feedback, planning, sameDayReports] = await Promise.all(
+    const [metrics, profile, appointments, prefs, feedback, planning, sameDayReports,activityDecisions] = await Promise.all(
       [
         prisma.dailyMetrics.findMany({
           where: {
@@ -198,6 +200,7 @@ export async function POST(req: Request) {
         }),
         readPlanningSetup(user.id),
         prisma.workout.findMany({ where: { userId: user.id, date: { gte: start, lt: end }, OR: [{ feedbackAt: { not: null } }, { planned: false }, { completed: true }] } }),
+        readActivityDecisions(user.id),
       ],
     );
     const history = metrics.filter((m) => m.date < start);
@@ -225,11 +228,14 @@ export async function POST(req: Request) {
     const setupGate = assessPlanningSetup(profile, planning.setup, new Date(), "daily");
     if (!setupGate.ready && !starterReady && adaptation.safetyStatus === "clear") adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", scoreAvailable: false, safetyStatus: "unknown", ruleId: setupGate.ruleId, missingFields: setupGate.missing, message: `Individual training is on hold until setup is complete or reviewed. ${[...setupGate.missing, ...setupGate.review].join("; ")}. Update athlete setup; no device benchmark is required.` };
     if (hrvLow && adaptation.verdict === "full") adaptation = { ...adaptation, verdict: "trim", durationFactor: 0.85, intensityCap: "z4", ruleId: "checkin-safety-v1:low-hrv", message: "HRV is below your recent baseline; today's plan is conservative. Review how you feel before training." };
-    const execution = applyExecutionFeedback(adaptation, feedback.filter(w => !isUnperformedSupersededWorkout(w)));
+    const groupedHistory=groupActivityEvidence([...feedback,...sameDayReports].filter(w=>!isUnperformedSupersededWorkout(w)),activityDecisions);
+    const previousIds=new Set(feedback.map(w=>w.id)),todayIds=new Set(sameDayReports.map(w=>w.id));
+    const execution = applyExecutionFeedback(adaptation, groupedHistory.groups.filter(g=>g.members.some(w=>previousIds.has(w.id))).map(g=>g.primary));
     adaptation = execution.adaptation;
-    const uniqueSameDayReports = sameDayReports.filter((w) => !isUnperformedSupersededWorkout(w) && (!w.matchedPlanId || !sameDayReports.some((actual) => actual.id === w.matchedPlanId)));
-    const uncertainSameDay = uniqueSameDayReports.some((w) => w.feedbackStatus !== "skipped" && w.actualDurationMin == null);
-    const usedDailyMinutes = uniqueSameDayReports.reduce((sum, w) => sum + (w.actualDurationMin ?? 0), 0);
+    if(groupedHistory.unresolvedGroups&&adaptation.safetyStatus==="clear"&&adaptation.verdict!=="rest")adaptation={...adaptation,verdict:"easy",durationFactor:Math.min(adaptation.durationFactor,.6),intensityCap:Number(adaptation.intensityCap.slice(1))>2?"z2":adaptation.intensityCap,message:"Possible copies of imported training need your explicit review. Keep conservative easy guidance; raw provider records are unchanged and no extra capacity is inferred.",ruleId:"checkin-safety-v1:activity-reconciliation"};
+    const uniqueSameDayReports = groupedHistory.groups.filter(g=>g.members.some(w=>todayIds.has(w.id)));
+    const uncertainSameDay = uniqueSameDayReports.some(g=>g.unresolved||(g.primary.feedbackStatus!=="skipped"&&g.budgetMinutes===null));
+    const usedDailyMinutes = uniqueSameDayReports.reduce((sum,g)=>sum+(g.budgetMinutes??0),0);
     const dailyBudgetRemaining = Math.max(0, (planning.setup?.maxSessionMinutes ?? (starterReady ? 20 : 0)) - usedDailyMinutes);
     if (adaptation.safetyStatus === "clear" && (uncertainSameDay || dailyBudgetRemaining === 0)) adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", ruleId: "checkin-safety-v1:daily-budget", message: uncertainSameDay ? "Confirm actual duration for today's reported activity before adding a workout. Unknown duration is not zero." : "Today's reviewed training-time budget is already used. No further workout is prescribed." };
     if(starterReady && adaptation.safetyStatus === "clear" && adaptation.verdict !== "rest") adaptation = {...adaptation,intensityCap:"z1",durationFactor:Math.min(1,adaptation.durationFactor),message:"Your starter session stays comfortable and within today's available time. Report actual minutes and effort afterward; no pace, power or performance baseline is inferred."};
@@ -459,6 +465,7 @@ export async function POST(req: Request) {
       prescription,
       adaptation,
       executionFeedback: { inputs: execution.inputs, notes: execution.notes },
+      activityReconciliation:{rawRecords:groupedHistory.rawRecords,groupedCopies:groupedHistory.groupedCopies,unresolvedGroups:groupedHistory.unresolvedGroups,requiresReview:groupedHistory.unresolvedGroups>0},
       fuel,
       ergos,
       post: session.durationMin ? postWorkoutFuel({ ...session, weightKg: checkin.weightKg ?? profile?.weightKg ?? undefined }) : null,

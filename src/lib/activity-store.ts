@@ -59,23 +59,8 @@ export async function storeActivity(
       await matchActivity(tx, userId, timezone, { ...existing, ...activity, id: existing.id });
       return false;
     }
-    const same = await tx.workout.findFirst({
-      where: {
-        userId,
-        planned: false,
-        completed: true,
-        sport: activity.sport,
-        date: {
-          gte: new Date(new Date(activity.date).getTime() - 60000),
-          lte: new Date(new Date(activity.date).getTime() + 60000),
-        },
-        durationMin: {
-          gte: activity.durationMin - 1,
-          lte: activity.durationMin + 1,
-        },
-      },
-    });
-    if (same) return false;
+    // Preserve each provider's observation. Cross-provider reconciliation is a
+    // read-time evidence decision, never grounds to discard a provider record.
     const fields = [
       "date",
       "sport",
