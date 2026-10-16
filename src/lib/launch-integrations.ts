@@ -86,6 +86,16 @@ async function verifySmtp(env: Environment): Promise<boolean> {
     auth: { user: env.SMTP_USER || "", pass: env.SMTP_PASS || "" } });
   try { return await transport.verify(); } finally { transport.close(); }
 }
+/** Allowlisted categories only: SMTP errors can contain credentials or server responses. */
+function smtpFailureDetail(error: unknown): string {
+  const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+  if (code === "EAUTH") return "SMTP authentication was rejected. Review SMTP_USER, SMTP_PASS and the mail provider's authorization settings. No email was sent.";
+  if (code === "EDNS" || code === "ENOTFOUND") return "SMTP host lookup failed. Review SMTP_HOST. No email was sent.";
+  if (code === "ETIMEDOUT") return "SMTP connection timed out. Review the mail provider's host, port and connection availability. No email was sent.";
+  if (["ECONNECTION", "ECONNREFUSED", "ESOCKET", "ETLS", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID", "ERR_SOCKET_BAD_PORT"].includes(String(code)))
+    return "SMTP connection or TLS verification failed. Review SMTP_HOST, SMTP_PORT, SMTP_SECURE and the provider's certificate. No email was sent.";
+  return "SMTP verification failed or timed out. No email was sent.";
+}
 export async function probeLaunchIntegrations(env: Environment = process.env, dependencies: { smtp?: () => Promise<boolean>; telegram?: TelegramRequest } = {}): Promise<LaunchChecks> {
   const config = launchConfiguration(env);
   const [email, telegram] = await Promise.all([
@@ -95,7 +105,7 @@ export async function probeLaunchIntegrations(env: Environment = process.env, de
         return await (dependencies.smtp ? dependencies.smtp() : verifySmtp(env))
           ? { state: "verified", detail: "SMTP connection, TLS and authentication verified. No email was sent; inbox delivery remains unverified." }
           : { state: "failed", detail: "SMTP verification was not confirmed. No email was sent." };
-      } catch { return { state: "failed", detail: "SMTP verification failed or timed out. No email was sent." }; }
+      } catch (error) { return { state: "failed", detail: smtpFailureDetail(error) }; }
     })(),
     checkTelegramWebhook(false, env, dependencies.telegram),
   ]);
