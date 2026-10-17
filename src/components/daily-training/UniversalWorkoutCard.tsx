@@ -12,13 +12,14 @@ import type { CanonicalStep } from "@/lib/canonical-session";
 import { FitDownloadActions } from "./FitDownloadActions";
 import { WorkoutEditor } from "./WorkoutEditor";
 import { StructuredSportEditor } from "@/components/StructuredSportEditor";
+import { stepExecutionGuide } from "@/lib/workout-execution-guide";
 
 type Mode = "zone" | "RPE" | "heartRate" | "pace" | "power";
 const n = (s: CanonicalStep, mode: Mode): number | null =>
   mode === "zone"
     ? Number(s.zone.slice(1))
     : mode === "RPE"
-      ? Number(/RPE (\d+)\/10/.exec(s.target.label)?.[1] || 0) || null
+      ? Number(/RPE (\d+)\/10/.exec(s.target.label)?.[1] || [0, 2, 3, 5, 7, 8, 9, 10][Number(s.zone.slice(1))]) || null
       : s.target.type === mode
         ? (s.target.high ?? null)
         : null;
@@ -65,8 +66,11 @@ export function WorkoutHeader({ card }: { card: Card }) {
 export function WorkoutIntensityTimeline({ card }: { card: Card }) {
   const { session: s } = card,
     es = card.language === "es";
-  const [mode, setMode] = useState<Mode>("zone"),
-    [selected, setSelected] = useState<number | null>(null),
+  const [mode, setMode] = useState<Mode>(() => {
+    const target = s.steps.find(st => ["power", "heartRate", "pace"].includes(st.target.type))?.target.type;
+    return target === "power" || target === "heartRate" || target === "pace" ? target : "RPE";
+  }),
+    [selected, setSelected] = useState<number | null>(0),
     [zoom, setZoom] = useState(1);
   const [elapsed, setElapsed] = useState(0),
     [running, setRunning] = useState(false);
@@ -100,7 +104,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
   const values = s.steps.map((st) => n(st, mode)),
     max = Math.max(1, ...values.filter((v): v is number => v !== null));
   const width = 900,
-    height = 170,
+    height = 190,
     total = s.exactTimeSeconds || s.steps.length;
   let x = 0;
   const bars = s.steps.map((st, i) => {
@@ -158,6 +162,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
                 }
               }}
             >
+              <title>{st.name} · {endpointText(st)} · {st.target.label}</title>
               <rect
                 x={x}
                 y={140 - h}
@@ -173,9 +178,10 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
                 }
                 strokeWidth={selected === i ? 3 : 1}
               />
+              {w >= 85 && <text x={x + w / 2} y={160} textAnchor="middle" fill="#ecf3f5" fontSize="12">{mode === "zone" ? st.zone.toUpperCase() : mode === "RPE" ? `RPE ${value ?? "—"}` : value === null ? "—" : st.target.label.split(" (")[0].slice(0, 24)}</text>}
               {w >= 20 && <text
                 x={x + w / 2}
-                y={163}
+                y={182}
                 textAnchor="middle"
                 fill="#ecf3f5"
                 fontSize="13"
@@ -192,7 +198,9 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
             {(selected ?? 0) + 1}. {step.name} · {endpointText(step)}
           </b>
           <p>{step.target.label}</p>
-          <details><summary>{es ? "Instrucciones completas" : "Full instructions"}</summary><p>{card.content.steps[selected ?? 0]}</p>{step.note && <p>{step.note}</p>}</details>
+          <p>{stepExecutionGuide(step, s.sport, es).effort} · {step.zone.toUpperCase()}</p>
+          <p>{card.content.steps[selected ?? 0]}</p>
+          {step.note && <p>{step.note}</p>}
           {values[selected ?? 0] === null && (
             <p>
               {es
@@ -317,12 +325,13 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
         <span>02</span>
         {es ? "LOS DETALLES" : "THE DETAILS"}
       </h2>
+      {[...new Set(card.session.steps.map(step => stepExecutionGuide(step, card.session.sport, es).technique))].map(text => <p key={text} className="uwc-execution-overview">{text}</p>)}
       <div className="uwc-step-grid">
         {groups.map((group, i) => {
           const timed = group.steps.every((st) => st.endpoint.type === "time");
           const workSteps = group.steps.filter(st => st.phase === "active");
           const recoverySteps = group.steps.filter(st => st.phase === "recovery");
-          const repeatLabel = (steps: CanonicalStep[], fallback: string) => steps.length && steps.every(st => endpointText(st) === endpointText(steps[0]) && st.zone === steps[0].zone)
+          const repeatLabel = (steps: CanonicalStep[], fallback: string) => steps.length && steps.every(st => endpointText(st) === endpointText(steps[0]) && st.zone === steps[0].zone && st.target.label === steps[0].target.label)
             ? `${steps.length} × ${endpointText(steps[0])} · ${steps[0].zone.toUpperCase()}`
             : `${steps.length} ${fallback}`;
           const detail = group.steps.map((step, index) => (
@@ -336,6 +345,8 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
               {step.note && <p>{step.note}</p>}
             </div>
           ));
+          const first = group.steps[0];
+          const guide = stepExecutionGuide(first, card.session.sport, es);
           return (
             <article
               key={i}
@@ -348,12 +359,16 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
                   ? `${Number((group.steps.reduce((sum, st) => sum + st.seconds, 0) / 60).toFixed(2))} min`
                   : endpointText(group.steps[0])}
               </b>
+              <p className="uwc-execution-target"><strong>{guide.target}</strong><br />{guide.effort} · {first.zone.toUpperCase()}</p>
+              <p>{guide.phase}</p>
+              {first.target.missingReason && <p className="uwc-muted">{es ? "Falta una referencia validada para objetivos numéricos. Sigue el esfuerzo indicado; no se inventan valores." : first.target.missingReason}</p>}
               {group.steps.length > 1 ? (
                 <>
                   <p>
                     {repeatLabel(workSteps, es ? "esfuerzos" : "efforts")}<br />
                     {repeatLabel(recoverySteps, es ? "recuperaciones" : "recoveries")} {es ? "recuperación" : "recovery"}
                   </p>
+                  {recoverySteps.length > 0 && <p><strong>{es ? "Recuperación" : "Recovery"}:</strong> {recoverySteps[0].target.label} · {stepExecutionGuide(recoverySteps[0], card.session.sport, es).effort}</p>}
                   <details>
                     <summary>
                       {es ? "Ver todos los pasos" : "View every step"}
@@ -362,7 +377,7 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
                   </details>
                 </>
               ) : (
-                <details><summary>{es ? "Instrucciones" : "Instructions"}</summary>{detail}</details>
+                <div className="uwc-execution-instructions">{detail}</div>
               )}
             </article>
           );
