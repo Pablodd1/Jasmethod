@@ -1,5 +1,5 @@
-/** Real-browser synthetic acceptance. Requires Playwright on NODE_PATH and
- * JMM_QA_BROWSER pointing to an installed Chromium/headless-shell executable.
+/** Real-browser synthetic acceptance. Requires Playwright's installed Chromium;
+ * JMM_QA_BROWSER can select an installed Chromium/headless-shell executable.
  * Run only beside the guarded disposable app and PostgreSQL in the same shell.
  * No real credentials, athlete data, provider authorization or remote app access used.
  */
@@ -20,7 +20,6 @@ for (const key of ['DATABASE_URL', 'DIRECT_URL']) {
 }
 assert.notEqual(process.env.VERCEL_ENV, 'production');
 assert.ok(process.env.NODE_OPTIONS?.includes('jmm-test-egress-guard.cjs'));
-assert.ok(process.env.JMM_QA_BROWSER, 'Set JMM_QA_BROWSER to the installed official test browser');
 const db = new PrismaClient(), ids = [], results = [], blockedRequests = [], pageErrors = [];
 const base = 'http://127.0.0.1:3220', root = path.resolve('.local/jmm-mobile-workflow/browser');
 fs.mkdirSync(root, { recursive: true });
@@ -135,7 +134,7 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
     await p.getByLabel('Planning horizon in weeks (no event date is invented)', { exact: true }).fill(weeks);
 }
 (async () => {
-    browser = await chromium.launch({ executablePath: process.env.JMM_QA_BROWSER, headless: true, args: ['--no-sandbox'] });
+    browser = await chromium.launch({ ...(process.env.JMM_QA_BROWSER ? { executablePath: process.env.JMM_QA_BROWSER } : {}), headless: true, args: ['--no-sandbox'] });
     let athlete, p, originalPlan, completed, feedbackRecord;
     await scenario('390px iPhone-like new athlete: connections first, draft reload, profile save, goals evaluation, preview and confirmed saved cycle', async () => {
         athlete = await actor('new');
