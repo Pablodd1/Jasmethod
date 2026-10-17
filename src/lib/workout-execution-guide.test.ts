@@ -25,7 +25,19 @@ test("execution detail renders instructions outside collapsed panels and preserv
   assert.equal(readableStepInstruction("active: Run · 300 s · 200 W [profile_reference] · Keep technique"), "Work: Run · 300 s · 200 W · Keep technique");
   assert.equal(additionalStepInstruction("active: Run · 300 s · 200 W [profile_reference] · Keep technique"), "Keep technique");
   assert.equal(additionalStepInstruction("warmup: Warm-up · 60 s [explicit]"), "");
+  assert.equal(additionalStepInstruction("Warm-up · Z1 · Open effort · RPE 2/10 (effort guidance) · No validated benchmark is available."), "");
+  assert.equal(additionalStepInstruction("Calentamiento · Z1 · RPE 2/10 (esfuerzo orientativo)"), "");
+  assert.equal(additionalStepInstruction("Keep the prescribed stroke and the full recovery."), "Keep the prescribed stroke and the full recovery.");
   card.language = "es";
   const es = renderToStaticMarkup(createElement(WorkoutIntervalDetails, { card }));
   assert.match(es, /Empieza suave/); assert.match(es, /Recuperación/);
+});
+test("adjacent triathlon components with the same group name remain separate and labeled", () => {
+  const card = universalWorkoutExample(); const step = card.session.steps[0];
+  card.session.sport = "brick";
+  card.session.steps = [{ ...step, group: "Main set", componentSport: "swim" }, { ...step, group: "Main set", componentSport: "bike" }, { ...step, group: "Main set", componentSport: "run" }];
+  card.content.steps = ["", "", ""];
+  const html = renderToStaticMarkup(createElement(WorkoutIntervalDetails, { card }));
+  for (const sport of ["SWIM", "BIKE", "RUN"]) assert.match(html, new RegExp(`${sport} · .*?Main set`));
+  assert.equal((html.match(/<article/g) ?? []).length, 3);
 });

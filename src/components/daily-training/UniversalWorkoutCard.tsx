@@ -195,7 +195,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
       {step && (
         <div className="uwc-selected" aria-live="polite">
           <b>
-            {(selected ?? 0) + 1}. {step.name} · {endpointText(step)}
+            {(selected ?? 0) + 1}. {step.componentSport ? `${step.componentSport.toUpperCase()} · ` : ""}{step.name} · {endpointText(step)}
           </b>
           <p>{step.target.label}</p>
           <p>{step.target.label.includes("RPE") ? step.zone.toUpperCase() : `${stepExecutionGuide(step, s.sport, es).effort} · ${step.zone.toUpperCase()}`}</p>
@@ -317,7 +317,7 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
   card.session.steps.forEach((step, index) => {
     const title = step.group || step.name;
     const previous = groups.at(-1);
-    if (previous?.title === title && step.group) previous.steps.push(step);
+    if (previous?.title === title && step.group && previous.steps.at(-1)?.componentSport === step.componentSport) previous.steps.push(step);
     else groups.push({ title, start: index, steps: [step] });
   });
   return (
@@ -355,7 +355,7 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
               style={{ borderTopColor: stepColor(group.steps[0]) }}
             >
               <small>{String(i + 1).padStart(2, "0")}</small>
-              <h3>{group.title}</h3>
+              <h3>{first.componentSport ? `${first.componentSport.toUpperCase()} · ` : ""}{group.title}</h3>
               <b>
                 {timed && group.steps.length > 1
                   ? `${Number((group.steps.reduce((sum, st) => sum + st.seconds, 0) / 60).toFixed(2))} min`
@@ -363,7 +363,7 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
               </b>
               <p className="uwc-execution-target"><strong>{guide.target}</strong><br />{guide.target.includes("RPE") ? first.zone.toUpperCase() : `${guide.effort} · ${first.zone.toUpperCase()}`}</p>
               <p>{guide.phase}</p>
-              {first.target.missingReason && <p className="uwc-muted">{es ? "Falta una referencia validada para objetivos numéricos. Sigue el esfuerzo indicado; no se inventan valores." : first.target.missingReason}</p>}
+              {first.target.missingReason && <p className="uwc-muted">{es ? "Referencia pendiente: " : ""}{first.target.missingReason}</p>}
               {group.steps.length > 1 ? (
                 <>
                   <p>
