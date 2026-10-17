@@ -370,3 +370,13 @@
 @media screen and (max-width: 650px) {
   .uwc-step-grid article details p { font-size: 13px; }
 }
+
+/* Execution instructions stay readable below the graph on a phone. */
+.uwc .uwc-execution-overview { font-size: 14px; line-height: 1.5; }
+.uwc .uwc-step-grid article p { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.uwc .uwc-execution-target { color: #f1f7fa; }
+.uwc-execution-instructions { margin-top: 8px; }
+@media screen and (max-width: 650px) {
+  .uwc-step-grid { grid-template-columns: 1fr; }
+  .uwc-step-grid article { padding: 12px; }
+}
