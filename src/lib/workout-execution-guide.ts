@@ -6,6 +6,10 @@ export function readableStepInstruction(text: string): string {
     .replace(/^(warmup|active|recovery|cooldown):/, (_, phase: string) => `${phases[phase]}:`);
 }
 export function additionalStepInstruction(text: string): string {
+  // The read-only preview adapter contains metadata only. Its phase, target,
+  // component and missing-reference reason are rendered separately already.
+  if (/^(?:Warm-up|Main effort|Recovery|Cool-down|Calentamiento|Trabajo principal|Recuperación|Vuelta a la calma) · /.test(text)
+    && /\((?:saved explicit target|profile-derived reference|effort guidance|objetivo explícito guardado|referencia derivada del perfil|esfuerzo orientativo)\)(?: · [\s\S]*)?$/.test(text)) return "";
   // English generated metadata is already shown as headings/targets. Preserve
   // authored sport/movement guidance after it; unfamiliar/localized text stays.
   const generated = /\[(?:explicit|profile_reference|effort)\](?: · ([\s\S]*))?$/.exec(text);
