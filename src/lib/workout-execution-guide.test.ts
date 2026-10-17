@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { stepExecutionGuide } from "./workout-execution-guide";
+import { additionalStepInstruction, readableStepInstruction, stepExecutionGuide } from "./workout-execution-guide";
 import { universalWorkoutExample } from "./universal-workout-example";
 import { WorkoutIntervalDetails } from "../components/daily-training/UniversalWorkoutCard";
 
@@ -21,6 +21,10 @@ test("execution detail renders instructions outside collapsed panels and preserv
   const html = renderToStaticMarkup(createElement(WorkoutIntervalDetails, { card }));
   assert.match(html, /uwc-execution-instructions/); assert.match(html, /Start gently/); assert.match(html, /5 × 3 min/); assert.match(html, /4 × 3 min/);
   assert.match(html, /RPE 8\/10/); assert.match(html, /Recovery/);
+  assert.doesNotMatch(html, /\[explicit\]|\[profile_reference\]|\[effort\]/);
+  assert.equal(readableStepInstruction("active: Run · 300 s · 200 W [profile_reference] · Keep technique"), "Work: Run · 300 s · 200 W · Keep technique");
+  assert.equal(additionalStepInstruction("active: Run · 300 s · 200 W [profile_reference] · Keep technique"), "Keep technique");
+  assert.equal(additionalStepInstruction("warmup: Warm-up · 60 s [explicit]"), "");
   card.language = "es";
   const es = renderToStaticMarkup(createElement(WorkoutIntervalDetails, { card }));
   assert.match(es, /Empieza suave/); assert.match(es, /Recuperación/);

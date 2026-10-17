@@ -12,7 +12,7 @@ import type { CanonicalStep } from "@/lib/canonical-session";
 import { FitDownloadActions } from "./FitDownloadActions";
 import { WorkoutEditor } from "./WorkoutEditor";
 import { StructuredSportEditor } from "@/components/StructuredSportEditor";
-import { stepExecutionGuide } from "@/lib/workout-execution-guide";
+import { additionalStepInstruction, stepExecutionGuide } from "@/lib/workout-execution-guide";
 
 type Mode = "zone" | "RPE" | "heartRate" | "pace" | "power";
 const n = (s: CanonicalStep, mode: Mode): number | null =>
@@ -162,7 +162,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
                 }
               }}
             >
-              <title>{st.name} · {endpointText(st)} · {st.target.label}</title>
+              <title>{`${st.name} · ${endpointText(st)} · ${st.target.label}`}</title>
               <rect
                 x={x}
                 y={140 - h}
@@ -198,8 +198,9 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
             {(selected ?? 0) + 1}. {step.name} · {endpointText(step)}
           </b>
           <p>{step.target.label}</p>
-          <p>{stepExecutionGuide(step, s.sport, es).effort} · {step.zone.toUpperCase()}</p>
-          <p>{card.content.steps[selected ?? 0]}</p>
+          <p>{step.target.label.includes("RPE") ? step.zone.toUpperCase() : `${stepExecutionGuide(step, s.sport, es).effort} · ${step.zone.toUpperCase()}`}</p>
+          <p>{stepExecutionGuide(step, s.sport, es).phase}</p>
+          {additionalStepInstruction(card.content.steps[selected ?? 0] || "") && <p>{additionalStepInstruction(card.content.steps[selected ?? 0] || "")}</p>}
           {step.note && <p>{step.note}</p>}
           {values[selected ?? 0] === null && (
             <p>
@@ -340,8 +341,9 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
                 {endpointText(step)} · {step.name}
               </b>
               <p>
-                {card.content.steps[group.start + index] || step.target.label}
+                {step.target.label}
               </p>
+              {additionalStepInstruction(card.content.steps[group.start + index] || "") && <p>{additionalStepInstruction(card.content.steps[group.start + index] || "")}</p>}
               {step.note && <p>{step.note}</p>}
             </div>
           ));
@@ -355,11 +357,11 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
               <small>{String(i + 1).padStart(2, "0")}</small>
               <h3>{group.title}</h3>
               <b>
-                {timed
+                {timed && group.steps.length > 1
                   ? `${Number((group.steps.reduce((sum, st) => sum + st.seconds, 0) / 60).toFixed(2))} min`
                   : endpointText(group.steps[0])}
               </b>
-              <p className="uwc-execution-target"><strong>{guide.target}</strong><br />{guide.effort} · {first.zone.toUpperCase()}</p>
+              <p className="uwc-execution-target"><strong>{guide.target}</strong><br />{guide.target.includes("RPE") ? first.zone.toUpperCase() : `${guide.effort} · ${first.zone.toUpperCase()}`}</p>
               <p>{guide.phase}</p>
               {first.target.missingReason && <p className="uwc-muted">{es ? "Falta una referencia validada para objetivos numéricos. Sigue el esfuerzo indicado; no se inventan valores." : first.target.missingReason}</p>}
               {group.steps.length > 1 ? (
@@ -368,7 +370,7 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
                     {repeatLabel(workSteps, es ? "esfuerzos" : "efforts")}<br />
                     {repeatLabel(recoverySteps, es ? "recuperaciones" : "recoveries")} {es ? "recuperación" : "recovery"}
                   </p>
-                  {recoverySteps.length > 0 && <p><strong>{es ? "Recuperación" : "Recovery"}:</strong> {recoverySteps[0].target.label} · {stepExecutionGuide(recoverySteps[0], card.session.sport, es).effort}</p>}
+                  {recoverySteps.length > 0 && <p><strong>{es ? "Recuperación" : "Recovery"}:</strong> {recoverySteps[0].target.label}{!recoverySteps[0].target.label.includes("RPE") && ` · ${stepExecutionGuide(recoverySteps[0], card.session.sport, es).effort}`}</p>}
                   <details>
                     <summary>
                       {es ? "Ver todos los pasos" : "View every step"}
@@ -377,7 +379,7 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
                   </details>
                 </>
               ) : (
-                <div className="uwc-execution-instructions">{detail}</div>
+                <div className="uwc-execution-instructions">{additionalStepInstruction(card.content.steps[group.start] || "") && <p>{additionalStepInstruction(card.content.steps[group.start] || "")}</p>}{first.note && <p>{first.note}</p>}</div>
               )}
             </article>
           );

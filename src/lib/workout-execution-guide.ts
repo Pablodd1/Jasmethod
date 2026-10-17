@@ -1,5 +1,17 @@
 import type { CanonicalStep, SessionSport } from "./canonical-session";
 
+export function readableStepInstruction(text: string): string {
+  const phases: Record<string, string> = { warmup: "Warm-up", active: "Work", recovery: "Recovery", cooldown: "Cool-down" };
+  return text.replace(/\s+\[(explicit|profile_reference|effort)\](?= ·|$)/g, "")
+    .replace(/^(warmup|active|recovery|cooldown):/, (_, phase: string) => `${phases[phase]}:`);
+}
+export function additionalStepInstruction(text: string): string {
+  // English generated metadata is already shown as headings/targets. Preserve
+  // authored sport/movement guidance after it; unfamiliar/localized text stays.
+  const generated = /\[(?:explicit|profile_reference|effort)\](?: · ([\s\S]*))?$/.exec(text);
+  return generated ? generated[1] ?? "" : readableStepInstruction(text);
+}
+
 /** Display references from the canonical step; never create a second prescription. */
 export function stepExecutionGuide(step: CanonicalStep, sessionSport: SessionSport, es = false) {
   const sport = step.componentSport ?? sessionSport;
