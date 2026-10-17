@@ -3,7 +3,10 @@ import { resolveCheckinSafety } from "./checkin-safety";
 
 /** Read-only navigation and saved-plan context, never a training clearance. */
 export function savedTrainingReply(message: string, context: CoachReplyContext): CoachReply | null {
-  const text = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’‘]/g, "'");
+  // Narrow read-only aliases for common phone typing/dictation. Do not repair
+  // numbers, dates, symptoms or mutation commands into permission to change data.
+  const text = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’‘]/g, "'")
+    .replace(/\b(?:explin|explan|explainn)\b/g, 'explain').replace(/\btodays\b/g, "today's");
   const subject = /\b(?:my|today'?s|this|mi|mis|hoy|este)\s+(?:saved\s+)?(?:training|trainings|workouts?|sessions?|plan|entrenamientos?|sesion|sesiones)\b|\b(?:training|workout|session|entrenamiento|sesion) (?:for )?today\b|\b(?:entrenamiento|sesion) de hoy\b/.test(text);
   const readIntent = /\b(?:show|see|view|find|where|explain|help|guidance|what|won't load|doesn't load|not loading|can't see|cannot see|ver|muestra|muestrame|donde|explica|ayuda|orientacion|que|no carga|no veo)\b/.test(text);
   // Queries about other days, history and changes retain their own handlers.

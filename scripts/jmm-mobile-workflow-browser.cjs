@@ -1,5 +1,5 @@
-/** Real-browser synthetic acceptance. Requires Playwright on NODE_PATH and
- * JMM_QA_BROWSER pointing to an installed Chromium/headless-shell executable.
+/** Real-browser synthetic acceptance. Requires Playwright's installed Chromium;
+ * JMM_QA_BROWSER can select an installed Chromium/headless-shell executable.
  * Run only beside the guarded disposable app and PostgreSQL in the same shell.
  * No real credentials, athlete data, provider authorization or remote app access used.
  */
@@ -20,7 +20,6 @@ for (const key of ['DATABASE_URL', 'DIRECT_URL']) {
 }
 assert.notEqual(process.env.VERCEL_ENV, 'production');
 assert.ok(process.env.NODE_OPTIONS?.includes('jmm-test-egress-guard.cjs'));
-assert.ok(process.env.JMM_QA_BROWSER, 'Set JMM_QA_BROWSER to the installed official test browser');
 const db = new PrismaClient(), ids = [], results = [], blockedRequests = [], pageErrors = [];
 const base = 'http://127.0.0.1:3220', root = path.resolve('.local/jmm-mobile-workflow/browser');
 fs.mkdirSync(root, { recursive: true });
@@ -135,7 +134,42 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
     await p.getByLabel('Planning horizon in weeks (no event date is invented)', { exact: true }).fill(weeks);
 }
 (async () => {
-    browser = await chromium.launch({ executablePath: process.env.JMM_QA_BROWSER, headless: true, args: ['--no-sandbox'] });
+    browser = await chromium.launch({ ...(process.env.JMM_QA_BROWSER ? { executablePath: process.env.JMM_QA_BROWSER } : {}), headless: true, args: ['--no-sandbox'] });
+    if (process.argv.includes('--feedback-only')) {
+        for (const width of [390, 412]) await scenario(`${width}px imported activity feedback persists without a saved plan or duplicate metrics`, async () => {
+            const a = await actor(`feedback-${width}`, {onboarded:true});
+            const ride = await db.workout.create({data:{userId:a.id,date:new Date(new Date().toISOString().slice(0,10)+'T12:00:00Z'),sport:'bike',title:'Synthetic imported feedback ride',type:'endurance',durationMin:60,intensity:'z2',completed:true,planned:false,source:'strava',avgHr:128,avgPower:176.1,calories:500}});
+            const p = await pageFor(a,width);
+            const openFeedback = async () => {
+                await p.getByRole('heading',{name:'Activity is already recorded today',exact:true}).waitFor();
+                await p.getByText('See activity & log effort (1)',{exact:true}).click();
+                await p.getByRole('button',{name:'Log effort & recovery',exact:true}).click();
+            };
+            await p.goto(base+'/today');
+            await p.getByRole('region',{name:'Your JMM metrics',exact:true}).waitFor();
+            assert.equal(await p.getByRole('region',{name:'Your JMM metrics',exact:true}).count(),1);
+            await openFeedback();
+            assert.equal(await p.getByRole('region',{name:'Your JMM metrics',exact:true}).count(),1);
+            await p.getByLabel('Outcome').selectOption('completed');
+            assert.equal(await p.getByLabel('Actual minutes',{exact:true}).inputValue(),'60');
+            assert.equal(await p.getByLabel('Effort 0–10',{exact:true}).inputValue(),'');
+            await p.getByLabel('Effort 0–10',{exact:true}).fill('3');
+            await p.getByText('HR, power, calories & weight (optional)',{exact:true}).click();
+            for (const [label,value] of Object.entries({'Average HR (bpm)':'135','Actual average power (W, this sport’s device)':'210','Reported energy (kcal)':'100','Weight before (kg)':'70','Weight after (kg)':'69.9'})) await p.getByLabel(label,{exact:true}).fill(value);
+            const response = p.waitForResponse(r=>r.url().endsWith('/api/plan')&&r.request().method()==='PUT');
+            await p.getByRole('button',{name:'Save result',exact:true}).click();
+            assert.equal((await response).status(),200);
+            const saved = await db.workout.findUniqueOrThrow({where:{id:ride.id}});
+            for(const [field,value] of Object.entries({avgHr:135,avgPower:210,calories:100,preWeightKg:70,postWeightKg:69.9,rpe:3,actualDurationMin:60})) assert.equal(saved[field],value,field);
+            await p.reload();
+            await openFeedback();
+            await p.getByText('HR, power, calories & weight (optional)',{exact:true}).click();
+            for (const [label,value] of Object.entries({'Effort 0–10':'3','Average HR (bpm)':'135','Actual average power (W, this sport’s device)':'210','Reported energy (kcal)':'100','Weight before (kg)':'70','Weight after (kg)':'69.9'})) assert.equal(await p.getByLabel(label,{exact:true}).inputValue(),value,label);
+            assert.equal(await p.getByRole('region',{name:'Your JMM metrics',exact:true}).count(),1);
+            await shot(p,`feedback-${width}-reloaded`);
+        });
+        return;
+    }
     let athlete, p, originalPlan, completed, feedbackRecord;
     await scenario('390px iPhone-like new athlete: connections first, draft reload, profile save, goals evaluation, preview and confirmed saved cycle', async () => {
         athlete = await actor('new');
@@ -218,10 +252,19 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
         });
         await p.reload();
         await p.getByRole('button', { name: 'Log how it felt', exact: true }).waitFor();
+        await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).waitFor();
+        assert.equal(await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).count(), 1);
         await p.getByRole('button', { name: 'Log how it felt', exact: true }).click();
+        assert.equal(await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).count(), 1, 'Opening feedback must not duplicate keyed metrics/coach siblings');
         await p.getByLabel('Outcome').selectOption('partial');
         await p.getByLabel('Actual minutes', { exact: true }).fill('15');
         await p.getByLabel('Effort 0–10', { exact: true }).fill('3');
+        await p.getByText('HR, power, calories & weight (optional)', { exact: true }).click();
+        await p.getByLabel('Average HR (bpm)', { exact: true }).fill('135');
+        await p.getByLabel('Actual average power (W, this sport’s device)', { exact: true }).fill('210');
+        await p.getByLabel('Reported energy (kcal)', { exact: true }).fill('100');
+        await p.getByLabel('Weight before (kg)', { exact: true }).fill('70');
+        await p.getByLabel('Weight after (kg)', { exact: true }).fill('69.9');
         await p.getByLabel('Workout feedback', { exact: true }).fill('Synthetic QA: easy partial session, test data only.');
         const response = p.waitForResponse(r => r.url().endsWith('/api/plan') && r.request().method() === 'PUT');
         await p.getByRole('button', { name: 'Save result', exact: true }).click();
@@ -232,6 +275,11 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
         assert.equal(await p.getByLabel('Effort 0–10', { exact: true }).inputValue(), '3');
         feedbackRecord = await db.workout.findFirst({ where: { userId: athlete.id, feedbackStatus: 'partial', actualDurationMin: 15 } });
         assert.ok(feedbackRecord);
+        for(const [field,value] of Object.entries({avgHr:135,avgPower:210,calories:100,preWeightKg:70,postWeightKg:69.9})) assert.equal(feedbackRecord[field],value);
+        await p.getByText('HR, power, calories & weight (optional)', { exact: true }).click();
+        assert.equal(await p.getByLabel('Reported energy (kcal)', { exact: true }).inputValue(),'100');
+        assert.equal(await p.getByLabel('Weight after (kg)', { exact: true }).inputValue(),'69.9');
+        assert.equal(await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).count(), 1);
         await shot(p, '05b-feedback-reloaded');
     });
     await scenario('390px returning athlete: saved profile edits preserve existing cycle; changed availability re-preview retains completed history', async () => {

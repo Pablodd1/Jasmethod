@@ -131,6 +131,11 @@ jobs:
       - name: Install Chromium for synthetic UI acceptance
         run: npx playwright install --with-deps chromium
 
+      - name: Mobile feedback persistence and single-panel browser acceptance
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node scripts/jmm-mobile-workflow-browser.cjs --feedback-only
+
       - name: Coach and saved-training browser recovery acceptance
         env:
           JMM_UI_TEST_BASE: http://127.0.0.1:3220
@@ -174,6 +179,7 @@ jobs:
             .local/jmm-followup-integration/*-decoded.json
             .local/jmm-telegram-webhook-integration/report.json
             .local/jmm-mobile-workflow/report.json
+            .local/jmm-mobile-workflow/browser/report.json
             .local/jmm-conversation-integration/report.json
             .local/jmm-live-repair-browser/report.json
             .local/jmm-live-repair-browser/*.png
