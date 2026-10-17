@@ -23,6 +23,9 @@ import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { ActualFuelingFields } from "@/components/daily-training/ActualFuelingFields";
 import { actualFuelingFromForm } from "@/lib/actual-fueling";
+import { AthleteDayReview } from "@/components/daily-training/AthleteDayReview";
+import { SessionMeasurementsFields } from "@/components/daily-training/SessionMeasurementsFields";
+import { observationsFromForm } from "@/lib/session-observations";
 export default function TodayPage() {
   const { user } = useAuth();
   return <TodayPageContent key={user?.id || "signed-out"} />;
@@ -34,6 +37,7 @@ function TodayPageContent() {
   useEffect(() => { if(user?.onboarded === false) router.replace("/onboard"); }, [user?.onboarded,router]);
   const es = user?.language === "es";
   const [stepsView, setStepsView] = useState<"list" | "cards">("list");
+  const [reportActivityId, setReportActivityId] = useState<string | null>(null);
   useEffect(() => {
     try {
       const v = localStorage.getItem("jmm_steps_view");
@@ -48,7 +52,7 @@ function TodayPageContent() {
     [feedback, setFeedback] = useState(false),
     [message, setMessage] = useState("");
   useEffect(() => {
-    const onHistory = () => { setSelected(new URLSearchParams(window.location.search).get("sessionId")); setFeedback(false); setMessage(""); setError(""); };
+    const onHistory = () => { setSelected(new URLSearchParams(window.location.search).get("sessionId")); setReportActivityId(null); setFeedback(false); setMessage(""); setError(""); };
     window.addEventListener("popstate", onHistory);
     return () => window.removeEventListener("popstate", onHistory);
   }, []);
@@ -132,6 +136,7 @@ function TodayPageContent() {
       (s: any) => !s.completed && s.feedbackStatus !== "skipped",
     ) ||
     data?.sessions[0];
+  const feedbackSession = reportActivityId ? data?.athleteReview?.records.find((record: any) => record.id === reportActivityId) : session;
   async function action(url: string, body: any, method = "POST") {
     setBusy(true);
     setError("");
@@ -218,20 +223,22 @@ function TodayPageContent() {
             {es ? "Chequeo de hoy" : "Daily check-in"}
           </Link>
           <a href={session ? "#today-workout" : "/training"} className="btn-secondary min-h-12 justify-center">{es ? "Ver entrenamiento" : "View workout"}</a>
-          <button className="btn-secondary min-h-12 justify-center" disabled={!session || !!session.matchedPlanId || busy || offline} onClick={() => { setFeedback(true); requestAnimationFrame(() => document.getElementById("workout-feedback")?.scrollIntoView({ behavior:"smooth", block:"start" })); }}>{es ? "¿Cómo te sentiste?" : "Log how it felt"}</button>
+          <button className="btn-secondary min-h-12 justify-center" disabled={!session || !!session.matchedPlanId || busy || offline} onClick={() => { setReportActivityId(null); setFeedback(true); requestAnimationFrame(() => document.getElementById("workout-feedback")?.scrollIntoView({ behavior:"smooth", block:"start" })); }}>{es ? "¿Cómo te sentiste?" : "Log how it felt"}</button>
         </nav>
-            {session && feedback && !session.matchedPlanId && (
+        {data?.athleteReview && <AthleteDayReview review={data.athleteReview} plannedMinutes={session?.prescription?.scaled?.originalMin ?? session?.durationMin} es={es} onReport={id => { setReportActivityId(id); setFeedback(true); requestAnimationFrame(() => document.getElementById('workout-feedback')?.scrollIntoView({behavior:'smooth',block:'start'})); }} />}
+            {feedbackSession && feedback && (!feedbackSession.matchedPlanId || reportActivityId) && (
               <form
+                key={feedbackSession.id}
                 id="workout-feedback"
                 className="card space-y-3"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const f = new FormData(e.currentTarget);
-                  let actualFueling;
-                  try { actualFueling = actualFuelingFromForm(f); } catch (cause) { setError((cause as Error).message); return; }
+                  let actualFueling, observations;
+                  try { actualFueling = actualFuelingFromForm(f); observations = observationsFromForm(f); } catch (cause) { setError((cause as Error).message); return; }
                   action(
                     "/api/plan",
-                    { sessionId: session.id, ...Object.fromEntries(f), actualFueling },
+                    { sessionId: feedbackSession.id, expectedRevision: feedbackSession.feedbackRevision, ...Object.fromEntries(f), ...observations, actualFueling },
                     "PUT",
                   );
                 }}
@@ -239,13 +246,14 @@ function TodayPageContent() {
                 <h3 className="font-bold">
                   {es ? "¿Cómo fue?" : "How did it go?"}
                 </h3>
+                <p className="text-sm">{feedbackSession.title} · {feedbackSession.source || feedbackSession.sport}</p>
                 <div className="grid sm:grid-cols-3 gap-3">
                   <label>
                     {es ? "Resultado" : "Outcome"}
                     <select
                       name="feedbackStatus"
                       className="input"
-                      defaultValue={session.feedbackStatus || ""}
+                      defaultValue={feedbackSession.feedbackStatus || (reportActivityId ? "completed" : "")}
                       required
                     >
                       <option value="">{es ? "Elige resultado" : "Choose outcome"}</option>
@@ -272,7 +280,7 @@ function TodayPageContent() {
                       min="0"
                       max="1440"
                       defaultValue={
-                        session.actualDurationMin ?? ""
+                        feedbackSession.actualDurationMin ?? feedbackSession.minutes ?? ""
                       }
                     />
                   </label>
@@ -284,20 +292,22 @@ function TodayPageContent() {
                       type="number"
                       min="0"
                       max="10"
-                      defaultValue={session.rpe ?? ""}
+                      defaultValue={feedbackSession.rpe ?? ""}
                     />
                   </label>
                 </div>
                 <label>{es ? "Deporte realizado (opcional)" : "Actual sport (optional)"}
-                  <select name="actualSport" className="input" defaultValue={session.actualSport || ""}>
+                  <select name="actualSport" className="input" defaultValue={feedbackSession.actualSport || ""}>
                     <option value="">{es ? "Desconocido / sin informar" : "Unknown / not reported"}</option>
                     {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </label>
-                <ActualFuelingFields key={`${session.id}-${session.revision}`} details={session.actualDetails} actualDurationMin={session.actualDurationMin} es={es} />
+                <SessionMeasurementsFields saved={feedbackSession} details={feedbackSession.actualDetails} actualMinutes={feedbackSession.actualDurationMin ?? feedbackSession.minutes} es={es} />
+                <ActualFuelingFields key={`${feedbackSession.id}-${feedbackSession.revision}`} details={feedbackSession.actualDetails} actualDurationMin={feedbackSession.actualDurationMin ?? feedbackSession.minutes} es={es} />
                 <textarea
                   aria-label="Workout feedback"
                   name="feedbackNote"
+                  defaultValue={feedbackSession.feedbackNote || ""}
                   className="input"
                   placeholder={
                     es
@@ -305,7 +315,7 @@ function TodayPageContent() {
                       : "Actual sport if substituted, difficulty, discomfort…"
                   }
                 />
-                <button disabled={busy} className="btn-primary">
+                <button disabled={busy || offline} className="btn-primary">
                   {es ? "Guardar resultado" : "Save result"}
                 </button>
               </form>

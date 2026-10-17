@@ -3,6 +3,7 @@ export interface ActualFueling {
   schemaVersion: 1;
   carbsG: number | null;
   fluidMl: number | null;
+  urineMl?: number | null;
   giSymptoms: "none" | "mild" | "moderate" | "severe" | null;
 }
 export type ActualFuelingPatch = Partial<Omit<ActualFueling, "schemaVersion">>;
@@ -10,9 +11,9 @@ const object = (value: unknown): value is Record<string, unknown> => !!value && 
 const symptoms = ["none", "mild", "moderate", "severe"];
 export function parseActualFueling(value: unknown): ActualFuelingPatch | null {
   if (value === null) return null;
-  if (!object(value) || Object.keys(value).some(key => !["carbsG", "fluidMl", "giSymptoms"].includes(key))) throw new Error("Choose only actual carbohydrate grams, fluid milliliters and gut symptoms");
+  if (!object(value) || Object.keys(value).some(key => !["carbsG", "fluidMl", "urineMl", "giSymptoms"].includes(key))) throw new Error("Choose only actual carbohydrate grams, fluid and urine milliliters and gut symptoms");
   const result: ActualFuelingPatch = {};
-  for (const [key, max] of [["carbsG", 1500], ["fluidMl", 30000]] as const) {
+  for (const [key, max] of [["carbsG", 1500], ["fluidMl", 30000], ["urineMl", 10000]] as const) {
     if (!Object.hasOwn(value, key)) continue;
     const amount = value[key];
     if (amount !== null && (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0 || amount > max)) throw new Error(`${key} must be a reported total from 0 to ${max}, or unknown`);
@@ -30,7 +31,7 @@ export function readActualFueling(raw: unknown): ActualFueling | null {
     if (!object(details) || details.schemaVersion !== 1 || !object(details.fueling) || details.fueling.schemaVersion !== 1) return null;
     const { schemaVersion: _version, ...fields } = details.fueling;
     const parsed = parseActualFueling(fields);
-    return parsed ? { schemaVersion: 1, carbsG: parsed.carbsG ?? null, fluidMl: parsed.fluidMl ?? null, giSymptoms: parsed.giSymptoms ?? null } : null;
+    return parsed ? { schemaVersion: 1, carbsG: parsed.carbsG ?? null, fluidMl: parsed.fluidMl ?? null, giSymptoms: parsed.giSymptoms ?? null, ...(Object.hasOwn(parsed,'urineMl') ? {urineMl:parsed.urineMl} : {}) } : null;
   } catch { return null; }
 }
 export function actualFuelingRates(fueling: ActualFueling | null, actualDurationMin: unknown) {
@@ -41,5 +42,5 @@ export function actualFuelingRates(fueling: ActualFueling | null, actualDuration
 /** Shared native form adapter: a blank means explicitly unknown, never zero. */
 export function actualFuelingFromForm(form: FormData): ActualFuelingPatch {
   const amount = (name: string) => { const raw = form.get(name); return raw === null || raw === "" ? null : Number(raw); };
-  return parseActualFueling({ carbsG: amount("actualCarbsG"), fluidMl: amount("actualFluidMl"), giSymptoms: form.get("actualGiSymptoms") || null })!;
+  return parseActualFueling({ carbsG: amount("actualCarbsG"), fluidMl: amount("actualFluidMl"), giSymptoms: form.get("actualGiSymptoms") || null, ...(form.has('actualUrineMl') ? {urineMl:amount('actualUrineMl')} : {}) })!;
 }

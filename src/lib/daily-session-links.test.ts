@@ -9,6 +9,7 @@ import { canonicalSession, SessionResolutionError } from "./canonical-session";
 import { unitsOf } from "./units";
 import { canonicalBlocks, planningDensity } from "../components/daily-training/training-contract";
 import { readActualFueling } from "./actual-fueling";
+import { readSessionObservations } from './session-observations';
 
 function fixture(dateLocal: string, timezone = "America/New_York") {
   const workout = { id: "synthetic-session", userId: "synthetic-athlete", date: localDate(dateLocal, timezone), sport: "bike", title: "Synthetic ride", durationMin: 30, startTime: null, planned: true, completed: false };
@@ -21,6 +22,7 @@ function fixture(dateLocal: string, timezone = "America/New_York") {
   const deps: Record<string, any> = {
     "@/lib/universal-workout-card-server": {buildUniversalWorkoutCard},
     "@/lib/actual-fueling": {readActualFueling},
+    "@/lib/session-observations": {readSessionObservations},
     "next/server": { NextResponse }, "@/lib/units": { unitsOf },
     "@/lib/canonical-session": { SessionResolutionError },
     "@/lib/dates": { dayBounds, dateKey },
@@ -65,10 +67,11 @@ test("unselected daily endpoint retains today's scoped empty response", async ()
 });
 test("daily completion reloads saved fueling and actual minutes, never substituting planned time",async()=>{
   const {get,workout}=fixture("2028-12-04");
-  Object.assign(workout,{feedbackStatus:"completed",feedbackAt:new Date(),actualDurationMin:90,actualDetails:JSON.stringify({schemaVersion:1,values:{distanceKm:42},fueling:{schemaVersion:1,carbsG:90,fluidMl:1000,giSymptoms:"mild"}})});
+  Object.assign(workout,{feedbackStatus:"completed",feedbackAt:new Date(),actualDurationMin:90,avgHr:140,avgPower:180,calories:900,preWeightKg:70,postWeightKg:69.5,actualDetails:JSON.stringify({schemaVersion:1,values:{distanceKm:42},fueling:{schemaVersion:1,carbsG:90,fluidMl:1000,giSymptoms:"mild"}})});
   const response=await get();assert.equal(response.status,200);
   const body=await response.json();assert.equal(body.completion.actual.durationMinutes,90);assert.equal(body.completion.actual.status,"completed");
   assert.deepEqual(body.completion.actual.actualFueling,{schemaVersion:1,carbsG:90,fluidMl:1000,giSymptoms:"mild"});
+  assert.deepEqual(body.completion.actual.measurements,{avgHr:140,avgPower:180,calories:900,preWeightKg:70,postWeightKg:69.5});
   assert.equal(body.session.totalMinutes,30,"planned duration remains a separate field");
 });
 

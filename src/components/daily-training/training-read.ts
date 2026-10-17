@@ -96,6 +96,7 @@ function todaySession(session: Record<string, any>) {
 
 export const isTodayTrainingResponse = (value: unknown): value is Record<string, any> =>
   object(value) && date(value.date) && text(value.timezone) && records(value.sessions, todaySession) &&
+    optionalObject(value.athleteReview, review => finite(review.rawRecordCount) && finite(review.possibleCopies) && (review.baselineWeeklyMinutes == null || finite(review.baselineWeeklyMinutes)) && optionalText(review.baselineObservedAt) && records(review.records, row => text(row.id) && text(row.title) && text(row.sport) && text(row.source) && ['minutes','rpe','distanceKm','paceSecondsPerKm','avgHr','avgPower','calories','preWeightKg','postWeightKg'].every(key => row[key] == null || finite(row[key])) && textFields(row,['actualDetails','feedbackStatus','feedbackNote','matchedPlanId']))) &&
     optionalObject(value.race, race => optionalText(race.name) && finite(race.daysAway)) &&
     optionalObject(value.cycle, cycle => textFields(cycle, ["start", "end", "status"]) && finite(cycle.weeks) && (cycle.currentWeek == null || finite(cycle.currentWeek))) &&
     optionalObject(value.motivation, motivation => textFields(motivation, ["quote", "message", "source"])) &&

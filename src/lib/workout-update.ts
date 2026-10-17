@@ -7,6 +7,7 @@ import { ApiError } from "./access";
 import { dateKey, parseDate, localDate } from "./dates";
 import { baseWorkout } from "./prescription";
 import { parseActualFueling, readActualFueling } from "./actual-fueling";
+import { parseSessionObservations, OBSERVATION_LIMITS } from "./session-observations";
 
 export const WORKOUT_TYPES = ["interval", "tempo", "threshold", "endurance", "recovery", "strength", "skill", "race", "test", "speed", "plyo", "volume", "mobility", "hyrox", "boxing"];
 export function validateWorkoutType(value: unknown): string {
@@ -15,10 +16,10 @@ export function validateWorkoutType(value: unknown): string {
 }
 export function workoutHasHistory(w: Record<string, any>): boolean {
   return Boolean(w.completed || !w.planned || ["feedbackStatus", "feedbackAt", "feedbackNote", "actualDurationMin", "actualSport", "actualDetails", "rpe",
-    "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg", "externalId", "matchedPlanId"].some(field => w[field] != null));
+    "avgHr", "maxHr", "avgPower", "np", "distanceKm", "calories", "preWeightKg", "postWeightKg", "externalId", "matchedPlanId"].some(field => w[field] != null));
 }
 export function workoutRevision(w: Record<string, any>): string {
-  const keys = ["id", "date", "title", "sport", "type", "durationMin", "intensity", "startTime", "notes", "planned", "completed", "approved", "originalPlan", "prescription", "feedbackStatus", "actualDurationMin", "actualSport", "actualDetails", "feedbackNote", "feedbackAt", "rpe", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg", "indoor", "planDayId"];
+  const keys = ["id", "date", "title", "sport", "type", "durationMin", "intensity", "startTime", "notes", "planned", "completed", "approved", "originalPlan", "prescription", "feedbackStatus", "actualDurationMin", "actualSport", "actualDetails", "feedbackNote", "feedbackAt", "rpe", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "calories", "preWeightKg", "postWeightKg", "indoor", "planDayId"];
   return createHash("sha256").update(JSON.stringify(keys.map(key => w[key] ?? null))).digest("hex");
 }
 export function requireWorkoutRevision(w: Record<string, any>, revision: unknown) {
@@ -42,7 +43,7 @@ export async function updateWorkout(
     if (!existing) throw new ApiError("Session not found", 404);
     // Execution reports are observations, not future plans. Apply this at the
     // shared writer so calendar, daily card, chat and coach edits agree.
-    const reportsActual = ["completed", "feedbackStatus", "actualDurationMin", "actualSport", "actualDetails", "actualFueling", "rpe", "feedbackNote", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "preWeightKg", "postWeightKg"].some(key => body[key] !== undefined);
+    const reportsActual = ["completed", "feedbackStatus", "actualDurationMin", "actualSport", "actualDetails", "actualFueling", "rpe", "feedbackNote", "avgHr", "maxHr", "avgPower", "np", "distanceKm", "calories", "preWeightKg", "postWeightKg"].some(key => body[key] !== undefined);
     let observedDate = existing.date;
     if (reportsActual && body.date !== undefined) {
       try { observedDate = parseDate(body.date, athlete.timezone); } catch { throw new ApiError("Invalid session date"); }
@@ -55,6 +56,13 @@ export async function updateWorkout(
     if (prescriptionKeys.some(key => body[key] !== undefined) || body.expectedRevision !== undefined)
       requireWorkoutRevision(existing, body.expectedRevision);
     const data: Record<string, any> = {};
+    // Validate optional measurements consistently for Today, daily and calendar.
+    const observations: Record<string, number | null> = {};
+    for (const key of Object.keys(OBSERVATION_LIMITS)) if (body[key] !== undefined) {
+      if (body[key] !== null && typeof body[key] !== 'number' && typeof body[key] !== 'string') throw new ApiError(`Invalid ${key}`);
+      observations[key] = body[key] === null || body[key] === '' ? null : Number(body[key]);
+    }
+    try { Object.assign(data, parseSessionObservations(observations)); } catch (error) { throw new ApiError((error as Error).message); }
     if (body.type !== undefined) data.type = validateWorkoutType(body.type);
     for (const [key, max] of Object.entries({
       durationMin: 1440,
@@ -64,6 +72,7 @@ export async function updateWorkout(
       maxHr: 250,
       avgPower: 2500,
       np: 2500,
+      calories: 20000,
       distanceKm: 1500,
       preWeightKg: 350,
       postWeightKg: 350,
@@ -78,7 +87,7 @@ export async function updateWorkout(
         !Number.isFinite(n) ||
         n < 0 ||
         n > max ||
-        (["durationMin", "actualDurationMin", "rpe", "avgHr", "maxHr"].includes(
+        (["durationMin", "actualDurationMin", "rpe", "avgHr", "maxHr", "calories"].includes(
           key,
         ) &&
           !Number.isInteger(n))
@@ -158,7 +167,7 @@ export async function updateWorkout(
         let patch;
         try { patch = parseActualFueling(body.actualFueling); } catch (error) { throw new ApiError((error as Error).message); }
         const fueling = patch === null ? null : { schemaVersion:1, carbsG:null,fluidMl:null,giSymptoms:null,...readActualFueling(details),...patch };
-        if (fueling && [fueling.carbsG,fueling.fluidMl,fueling.giSymptoms].some(value=>value!==null)) next.fueling = fueling;
+        if (fueling && [fueling.carbsG,fueling.fluidMl,fueling.giSymptoms,fueling.urineMl ?? null].some(value=>value!==null)) next.fueling = fueling;
         else delete next.fueling;
       }
       const siblingData = Object.keys(next).some(key => !["schemaVersion","source","observedDate","enteredAt","values"].includes(key));
@@ -176,7 +185,7 @@ export async function updateWorkout(
     }
     // Corrections are new observations for the next safety/load assessment,
     // even when the athlete keeps the same outcome or clears a prior value.
-    if (["actualDurationMin", "actualSport", "actualDetails", "actualFueling", "rpe", "feedbackNote"].some(key => body[key] !== undefined))
+    if (["actualDurationMin", "actualSport", "actualDetails", "actualFueling", "rpe", "feedbackNote", ...Object.keys(OBSERVATION_LIMITS)].some(key => body[key] !== undefined))
       data.feedbackAt = new Date();
     if (body.date !== undefined) {
       try { data.date = parseDate(body.date, athlete.timezone); } catch { throw new ApiError("Invalid session date"); }

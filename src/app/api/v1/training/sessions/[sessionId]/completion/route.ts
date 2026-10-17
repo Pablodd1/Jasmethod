@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { effectivePrescription } from "@/lib/effective-prescription";
 import { updateWorkout, workoutRevision } from "@/lib/workout-update";
+import { parseSessionObservations } from '@/lib/session-observations';
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +35,14 @@ export async function POST(
     if (actual.comments != null && (typeof actual.comments !== "string" || actual.comments.length > 1000))
       throw new ApiError("comments must be text of at most 1000 characters");
     const resolved = await effectivePrescription(athlete.id, sessionId);
+    let measurements;
+    try { measurements = actual.measurements === undefined ? {} : parseSessionObservations(actual.measurements); } catch (error) { throw new ApiError((error as Error).message); }
     if (!resolved) throw new ApiError("Session not found", 404);
     if (body.expectedRevision !== resolved.canonical.revision)
       throw new ApiError("This session changed. Refresh the plan before saving feedback.", 409);
     await updateWorkout(actor.id, athlete, {
       sessionId,
+      ...measurements,
       expectedRevision: workoutRevision(resolved.workout),
       actualSport: actual.actualSport ?? null,
       actualDetails: actual.actualDetails,

@@ -16,12 +16,16 @@ import {
 import { effectivePrescription } from "@/lib/effective-prescription";
 import { intervalsConnectorEnabled, trainingCapabilities } from "@/lib/capabilities";
 import { baseWorkout } from "@/lib/prescription";
+import { athleteDayReview } from "@/lib/athlete-day-review";
+import { readPlanningSetup } from "@/lib/planning-setup-store";
+import { readActivityDecisions } from "@/lib/activity-reconciliation";
+import { workoutRevision } from '@/lib/workout-update';
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
-  const [allWorkouts, race, connectors, checkin, restDay, activePlan, eventToday] = await Promise.all([
+  const [allWorkouts, race, connectors, checkin, restDay, activePlan, eventToday, setupState, activityDecisions] = await Promise.all([
     prisma.workout.findMany({
       where: {
         userId: user.id,
@@ -50,6 +54,8 @@ export async function GET(req: Request) {
     prisma.planDay.findFirst({ where: { plan: { userId: user.id, status: "active" }, date: { gte: start, lt: end }, OR:[{dayOff:true},{focus:"event"}] }, select: { id: true, dayOff:true, focus:true } }),
     prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: { createdAt: "desc" }, select: { id:true, name:true, startDate:true, weeks:true, raceDate:true } }),
     prisma.race.findFirst({where:{userId:user.id,date:{gte:new Date(`${key}T00:00:00Z`),lt:new Date(`${addDaysKey(key,1)}T00:00:00Z`)}},select:{id:true}}),
+    readPlanningSetup(user.id),
+    readActivityDecisions(user.id),
   ]);
 
   const workouts = allWorkouts.filter(w => w.planned);
@@ -82,14 +88,14 @@ export async function GET(req: Request) {
       const resolved = resolvedWorkouts[index];
       if (!resolved) return [];
       if ("resolutionError" in resolved) return [{
-        id: w.id, title: w.title || "Session needs review", sport: w.sport, type: w.type,
+        id: w.id, feedbackRevision: workoutRevision(w), title: w.title || "Session needs review", sport: w.sport, type: w.type,
         revision: null, verdict: "blocked", resolutionReason: resolved.resolutionError,
         capability: { available: false, mode: "unavailable", reason: resolved.resolutionError, deviceTested: false },
         matchedPlanId: w.matchedPlanId,
         jStress: workoutJStress(w),
         durationMin: 0, durationIsEstimate: false, intensity: null, tss: null, if: null, distanceKm: null,
         startTime: w.startTime, completed: w.completed, feedbackStatus: w.feedbackStatus,
-        actualDurationMin: w.actualDurationMin, actualSport: w.actualSport, actualDetails: w.actualDetails, rpe: w.rpe, regenCount: w.regenCount, approved: w.approved,
+        actualDurationMin: w.actualDurationMin, actualSport: w.actualSport, actualDetails: w.actualDetails, rpe: w.rpe, avgHr: w.avgHr, avgPower: w.avgPower, calories: w.calories, preWeightKg: w.preWeightKg, postWeightKg: w.postWeightKg, regenCount: w.regenCount, approved: w.approved,
         dayOff: !!w.planDay?.dayOff, prescription: { steps: [], targets: {}, verdict: "rest", detail: {}, scaled: { reason: resolved.resolutionError, originalMin: w.durationMin } },
         fuel: null, fuelCurve: [], post: null, coachNotes: null,
       }];
@@ -112,6 +118,7 @@ export async function GET(req: Request) {
           : null;
       return {
         id: w.id,
+        feedbackRevision: workoutRevision(w),
         revision: canonical.revision,
         environment: canonical.environment,
         intervalsPublication: w.deliveryProvider === "intervals" ? (() => {
@@ -140,6 +147,7 @@ export async function GET(req: Request) {
         actualDetails: w.actualDetails,
         actualSport: w.actualSport,
         rpe: w.rpe,
+        avgHr: w.avgHr, avgPower: w.avgPower, calories: w.calories, preWeightKg: w.preWeightKg, postWeightKg: w.postWeightKg,
         regenCount: w.regenCount,
         approved: w.approved,
         dayOff: !!w.planDay?.dayOff,
@@ -157,6 +165,7 @@ export async function GET(req: Request) {
     const recovery = dailyRecoveryContext({ plannedRest, eventDay, sessions, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     const visibleConnectors = connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled());
     return Response.json({
+      athleteReview: athleteDayReview(allWorkouts.map(w=>({...w,feedbackRevision:workoutRevision(w)})), user.id, key, user.timezone, setupState.setup, activityDecisions),
       recovery,
       cycle: activePlan ? savedCycleSummary(activePlan, user.timezone, key) : null,
       capabilities: trainingCapabilities(),
@@ -206,7 +215,7 @@ export async function GET(req: Request) {
             ),
           }
         : null,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     return errorResponse(e);
   }
