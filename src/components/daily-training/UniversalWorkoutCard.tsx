@@ -363,7 +363,7 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
               </b>
               <p className="uwc-execution-target"><strong>{guide.target}</strong><br />{guide.target.includes("RPE") ? first.zone.toUpperCase() : `${guide.effort} · ${first.zone.toUpperCase()}`}</p>
               <p>{guide.phase}</p>
-              {first.target.missingReason && <p className="uwc-muted">{es ? "Falta una referencia validada para objetivos numéricos. Sigue el esfuerzo indicado; no se inventan valores." : first.target.missingReason}</p>}
+              {first.target.missingReason && <p className="uwc-muted">{es ? "Referencia pendiente: " : ""}{first.target.missingReason}</p>}
               {group.steps.length > 1 ? (
                 <>
                   <p>
