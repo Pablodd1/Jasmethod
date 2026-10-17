@@ -404,13 +404,13 @@ export function TrainingTargetSelector({ card }: { card: Card }) {
               card.session.steps
                 .filter((step) =>
                   type === "RPE"
-                    ? /RPE \d+\/10/.test(step.target.label)
+                    ? true
                     : step.target.type === type,
                 )
                 .map((step) =>
                   type === "RPE"
-                    ? /RPE \d+\/10/.exec(step.target.label)![0]
-                    : step.target.label,
+                    ? stepExecutionGuide(step, step.componentSport || card.session.sport, es).effort
+                    : `${type === 'power' ? `${step.componentSport || card.session.sport} · ` : ''}${step.target.label}`,
                 ),
             ),
           ];

@@ -3,6 +3,7 @@ import type { CanonicalStep } from "@/lib/canonical-session";
 import type { UniversalWorkoutCard } from "@/lib/universal-workout-card";
 import { isUniversalWorkoutCard } from "@/lib/universal-workout-card";
 import { parseActualFueling, type ActualFueling } from "@/lib/actual-fueling";
+import { parseSessionObservations, type SessionObservations } from '@/lib/session-observations';
 
 export type Endpoint = { type: "time"; seconds: number } | { type: "distance"; meters: number } | { type: "reps"; reps: number } | { type: "lap" };
 export type PaceRef = { secondsPerMile: number | null; measuredAt: string | null; status: 'measured' | 'coach_set' | 'estimated' | 'missing'; note?: string; missingReason?: string | null };
@@ -21,7 +22,7 @@ export type DailyTraining = {
   profile: { paces: Record<PaceKey, PaceRef>; thresholdHeartRate: { bpm: number | null; status: 'measured' | 'coach_set' | 'missing'; measuredAt: string | null }; unitSystem: 'imperial' | 'metric'; updatedAt: string };
   blocks: Block[];
   guidance: { focus: Guidance; preFuel: Guidance; postFuel: Guidance; downshift: Guidance & { timerSeconds: number | null; inhaleSeconds: number | null; exhaleSeconds: number | null }; checkIn: Guidance };
-  completion: { focusReady: boolean; submittedAt: string | null; actual: null | { durationMinutes: number | null; actualSport?: string | null; sessionRpe: number | null; comments: string | null; status?: "completed" | "partial" | "substituted" | "skipped" | "unknown"; actualFueling?: ActualFueling | null } };
+  completion: { focusReady: boolean; submittedAt: string | null; actual: null | { durationMinutes: number | null; actualSport?: string | null; sessionRpe: number | null; comments: string | null; status?: "completed" | "partial" | "substituted" | "skipped" | "unknown"; actualFueling?: ActualFueling | null; measurements?: SessionObservations } };
   links: { editProfile: string };
 };
 
@@ -52,6 +53,7 @@ export function isDailyTraining(v: unknown): v is DailyTraining {
   if (!["imperial", "metric"].includes(p.unitSystem) || typeof p.updatedAt !== "string") return false;
   if (!["focus", "preFuel", "postFuel", "downshift", "checkIn"].every(k => record(g[k]) && typeof g[k].title === "string" && Array.isArray(g[k].items) && g[k].items.every((i: unknown) => typeof i === "string"))) return false;
   if (typeof c.focusReady !== "boolean" || typeof l.editProfile !== "string") return false;
+  if (c.actual?.measurements !== undefined) { try { parseSessionObservations(c.actual.measurements); } catch { return false; } }
   if (c.actual?.actualFueling != null) {
     if (!record(c.actual.actualFueling) || c.actual.actualFueling.schemaVersion !== 1) return false;
     const { schemaVersion: _version, ...fields } = c.actual.actualFueling;

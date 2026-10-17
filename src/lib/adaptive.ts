@@ -454,14 +454,15 @@ export function analyzeHydration(
   let flag: HydrationStatus["flag"] = "ok";
   let advice =
     lossKg > 0.3
-      ? `Lost ${lossKg} L sweat this session — that's your sweat rate. Replace with fluids + electrolytes.`
-      : "Sweat loss within limits — hydrate normally.";
+      ? `Net body mass decreased ${lossKg} kg. This is not measured sweat loss or a sweat rate; fluid intake, urine, duration, food and weighing conditions matter.`
+      : postKg > preKg ? "Net body mass increased. This is not proof of fluid status; review intake and weighing conditions. Do not force fluids."
+      : "Little net body mass change was recorded. This alone does not establish hydration status or sweat loss.";
   if (pct > 3) {
     flag = "severe";
-    advice = `Lost ${pct}% of body weight (${lossKg} L) — significant dehydration. Replace 150% of the loss with fluids + electrolytes over the next 2h and ease tomorrow's intensity.`;
+    advice = `Net body mass decreased ${pct}% (${lossKg} kg); review the measurement, symptoms and individual fluid plan. This is not a dehydration diagnosis, a sweat rate or an automatic change to tomorrow's training. Seek appropriate care for concerning symptoms; do not force a fixed fluid amount.`;
   } else if (pct > 2) {
     flag = "high";
-    advice = `Lost ${pct}% of body weight (${lossKg} L). Drink 1.5× the loss in the next 2h with sodium.`;
+    advice = `Net body mass decreased ${pct}% (${lossKg} kg). Review conditions and your individual fluid plan. Weight change alone does not establish sweat rate, sodium loss or a fixed replacement dose.`;
   }
   return { preKg, postKg, lossKg, pct, flag, advice };
 }
