@@ -150,7 +150,7 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
             assert.equal(await p.getByRole('region',{name:'Your JMM metrics',exact:true}).count(),1);
             await openFeedback();
             assert.equal(await p.getByRole('region',{name:'Your JMM metrics',exact:true}).count(),1);
-            await p.getByLabel('Outcome',{exact:true}).selectOption('completed');
+            await p.getByLabel('Outcome').selectOption('completed');
             assert.equal(await p.getByLabel('Actual minutes',{exact:true}).inputValue(),'60');
             assert.equal(await p.getByLabel('Effort 0–10',{exact:true}).inputValue(),'');
             await p.getByLabel('Effort 0–10',{exact:true}).fill('3');
