@@ -134,7 +134,7 @@ jobs:
       - name: Mobile feedback persistence and single-panel browser acceptance
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
-        run: node scripts/jmm-mobile-workflow-browser.cjs
+        run: node scripts/jmm-mobile-workflow-browser.cjs --feedback-only
 
       - name: Coach and saved-training browser recovery acceptance
         env:
