@@ -804,9 +804,9 @@ function TodayPageContent() {
             ))}
           </div>
         )}
-        {user && data && <JMetricsCard key={user.id} es={es} refreshKey={data} />}
+        {user && data && <JMetricsCard key={`metrics-${user.id}`} es={es} refreshKey={data} />}
         {user && <CoachConversation
-          key={user.id}
+          key={`coach-${user.id}`}
           athleteId={user.id}
           es={es}
           offline={offline}

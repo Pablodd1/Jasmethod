@@ -9,7 +9,7 @@ const context: CoachReplyContext = { localToday: "2026-10-14", language: "en", s
 ] };
 
 test("ordinary training questions retrieve saved planning context while check-in is missing", () => {
-  for (const message of ["Show my training", "Explain my workout", "Where is my plan?", "I need guidance on today's workout", "My training doesn't load", "I can't see my workouts"]) {
+  for (const message of ["Show my training", "Explain my workout", "Where is my plan?", "I need guidance on today's workout", "My training doesn't load", "I can't see my workouts", "explin todays training for me pls", "explan todays workout"]) {
     const result = buildCoachReply(message, context);
     assert.equal(result.ruleId, "coach-conversation-v1:saved-training-navigation", message);
     assert.match(result.answer, /Saved easy bike: 9 min/);
@@ -52,6 +52,8 @@ test("mutations, history, other days and examples retain their separate handlers
 });
 
 test("current and unresolved safety concerns continue to take precedence", () => {
+  assert.equal(buildCoachReply("explin todays training; I have chest pain", context).ruleId, "coach-conversation-v1:urgent-symptoms");
+  assert.equal(savedTrainingReply("explin todays training and change it to 60 minutes", context), null);
   assert.equal(buildCoachReply("Show my workout; I have chest pain", context).ruleId, "coach-conversation-v1:urgent-symptoms");
   assert.equal(buildCoachReply("Show my training", { ...context, checkin: { observedDate: context.localToday, newPain: true } }).ruleId, "coach-conversation-v1:illness-or-pain");
   assert.equal(buildCoachReply("Show my training", { ...context, unresolvedSafetyConcernAt: "2026-10-14T08:00:00Z" }).ruleId, "coach-conversation-v1:clarify-prior-safety");

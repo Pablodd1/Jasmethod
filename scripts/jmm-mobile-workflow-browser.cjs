@@ -218,10 +218,19 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
         });
         await p.reload();
         await p.getByRole('button', { name: 'Log how it felt', exact: true }).waitFor();
+        await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).waitFor();
+        assert.equal(await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).count(), 1);
         await p.getByRole('button', { name: 'Log how it felt', exact: true }).click();
+        assert.equal(await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).count(), 1, 'Opening feedback must not duplicate keyed metrics/coach siblings');
         await p.getByLabel('Outcome').selectOption('partial');
         await p.getByLabel('Actual minutes', { exact: true }).fill('15');
         await p.getByLabel('Effort 0–10', { exact: true }).fill('3');
+        await p.getByText('HR, power, calories & weight (optional)', { exact: true }).click();
+        await p.getByLabel('Average HR (bpm)', { exact: true }).fill('135');
+        await p.getByLabel('Actual average power (W, this sport’s device)', { exact: true }).fill('210');
+        await p.getByLabel('Reported energy (kcal)', { exact: true }).fill('100');
+        await p.getByLabel('Weight before (kg)', { exact: true }).fill('70');
+        await p.getByLabel('Weight after (kg)', { exact: true }).fill('69.9');
         await p.getByLabel('Workout feedback', { exact: true }).fill('Synthetic QA: easy partial session, test data only.');
         const response = p.waitForResponse(r => r.url().endsWith('/api/plan') && r.request().method() === 'PUT');
         await p.getByRole('button', { name: 'Save result', exact: true }).click();
@@ -232,6 +241,11 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
         assert.equal(await p.getByLabel('Effort 0–10', { exact: true }).inputValue(), '3');
         feedbackRecord = await db.workout.findFirst({ where: { userId: athlete.id, feedbackStatus: 'partial', actualDurationMin: 15 } });
         assert.ok(feedbackRecord);
+        for(const [field,value] of Object.entries({avgHr:135,avgPower:210,calories:100,preWeightKg:70,postWeightKg:69.9})) assert.equal(feedbackRecord[field],value);
+        await p.getByText('HR, power, calories & weight (optional)', { exact: true }).click();
+        assert.equal(await p.getByLabel('Reported energy (kcal)', { exact: true }).inputValue(),'100');
+        assert.equal(await p.getByLabel('Weight after (kg)', { exact: true }).inputValue(),'69.9');
+        assert.equal(await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).count(), 1);
         await shot(p, '05b-feedback-reloaded');
     });
     await scenario('390px returning athlete: saved profile edits preserve existing cycle; changed availability re-preview retains completed history', async () => {
