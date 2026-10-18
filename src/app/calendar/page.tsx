@@ -697,13 +697,14 @@ export default function CalendarPage() {
                   </h2>
                   <p className="text-xs text-slate-400">
                     {allSessions.length
-                      ? `${allSessions.length} workout${allSessions.length > 1 ? "s" : ""} · tap ⏱ to move`
+                      ? `${allSessions.length} ${es?'registros de sesión/fuente':'session/source records'}`
                       : selDayOff
                         ? "Day off"
                         : "No sessions"}
                   </p>
                 </div>
                 <button
+                  aria-label={es?'Cerrar detalles del día':'Close day details'}
                   onClick={() => setSelected(null)}
                   className="p-2 rounded-lg hover:bg-slate-100"
                 >
@@ -729,9 +730,12 @@ export default function CalendarPage() {
 
                 {allSessions.map((s: any) => {
                   const d = workoutDetail(s, user?.profile);
+                  const reported=s.calendarState==='reported'||s.completed||s.feedbackStatus!=null||s.actualDurationMin!=null;
+                  const actualMinutes=s.actualDurationMin??(s.completed&&s.planned===false?s.durationMin:null);
                   return (
                     <div
                       key={s.id}
+                      data-testid={`calendar-session-${s.id}`}
                       className={`rounded-2xl border p-4 ${s.completed ? "border-emerald-200 bg-emerald-50/50" : "border-sand-200"}`}
                     >
                       <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
@@ -750,26 +754,30 @@ export default function CalendarPage() {
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-slate-400">
                             {s.startTime ? `${s.startTime} · ` : ""}
-                            {fmtMin(s.durationMin)} ·{" "}
-                            {s.intensity?.toUpperCase() || "Z2"}
+                            {reported?actualMinutes==null?'—':fmtMin(actualMinutes):fmtMin(s.durationMin)}{!reported&&` · ${s.intensity?.toUpperCase()||'—'}`}
                           </span>
                           <button type="button" className="btn-secondary text-xs px-2.5 py-1.5" disabled={resultBusy || dateKey(new Date(s.date), user?.timezone) > dateKey(new Date(), user?.timezone)} onClick={() => openResult(s)}>{es ? "Editar resultado" : "Edit result"}</button>
-                          <button
+                          {!reported&&<button
                             onClick={() => openMove(s)}
                             className="btn-secondary text-xs px-2.5 py-1.5"
                           >
                             <Clock className="w-3 h-3 inline mr-1" />
                             Move
-                          </button>
-                          <button
+                          </button>}
+                          {!reported&&<button
                             onClick={() => toggleDone(s)}
                             className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${s.completed ? "bg-emerald-600 text-white" : "bg-white border border-ocean-200 text-ocean-700"}`}
                           >
                             {s.completed ? "✓ Done" : "Done"}
-                          </button>
+                          </button>}
                         </div>
                       </div>
-                      <div className="rounded-xl bg-ocean-50/50 p-3 space-y-1.5 text-xs">
+                      {reported?<div className="rounded-xl bg-slate-50 p-3 space-y-1.5 text-xs">
+                        <p>{es?'Registro informado, no una prescripción. No se infieren calentamiento, intervalos ni zonas medidas.':'Reported record, not a prescription. Warm-up, intervals and measured zones are not inferred.'}</p>
+                        <p>RPE {s.rpe??'—'}/10 · HR {s.avgHr??'—'} bpm · {es?'Potencia informada':'Reported power'} {s.avgPower??'—'} W</p>
+                        <p>{es?'Distancia':'Distance'} {s.distanceKm??'—'} km · {es?'Calorías informadas':'Reported calories'} {s.calories??'—'} kcal</p>
+                        <p>{es?'Peso antes/después':'Weight before/after'} {s.preWeightKg??'—'} / {s.postWeightKg??'—'} kg</p>
+                      </div>:<div className="rounded-xl bg-ocean-50/50 p-3 space-y-1.5 text-xs">
                         <p className="text-slate-700">
                           <span className="font-bold text-ocean-700">
                             WARM-UP
@@ -790,7 +798,7 @@ export default function CalendarPage() {
                         </p>
                         <p className="text-slate-500">🧘 {d.breathing}</p>
                         <p className="text-slate-400">📚 Study: {d.study}</p>
-                      </div>
+                      </div>}
                     </div>
                   );
                 })}
