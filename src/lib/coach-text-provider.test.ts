@@ -29,6 +29,8 @@ test("DeepSeek sends bounded manual athlete context, approved references and no 
   assert.equal(payload.context.facts.recentManualActuals[0].actualMinutes,25);assert.equal(payload.context.checkin.status,"unknown");
   for(const forbidden of ["private-profile","123.45","private assistant","athlete@example.invalid","synthetic-credential","private-race","private-method","999","private-match",env.DEEPSEEK_API_KEY])assert.ok(!JSON.stringify(payload).includes(forbidden),forbidden);
   assert.ok(payload.references.acsm.url.startsWith("https://pubmed.ncbi.nlm.nih.gov/"));
+  assert.match(payload.editingLimits,/Recurring weekday assignments, rest-day preferences, whole cycles/);
+  assert.match(payload.editingLimits,/Never offer to record or propose those unsupported settings/);
 });
 test("manual context enforces explicit weight/experience, source ancestry, history bounds and missingness",()=>{
   const row={date:"2026-10-15",source:"manual",planned:false,completed:true,matchedPlanId:null,externalId:null,actualDurationMin:25,durationMin:40,actualSport:"run",sport:"run",rpe:null};
