@@ -312,7 +312,7 @@ function TrainingPageContent() {
         {setupError && <div role="alert" className="card border-amber-300"><p>{setupError} {es ? "El ciclo guardado se carga por separado." : "Your saved cycle loads separately."}</p><button type="button" className="btn-secondary mt-2" disabled={setupLoading} onClick={() => void load()}>{es ? "Reintentar configuración" : "Retry planning setup"}</button></div>}
         {savedMessage && <p role="status" className="card border-emerald-300">{savedMessage}</p>}
         {plan && <TrainingCycleOverview es={es} plan={plan} cycle={cycle} timezone={user?.timezone || "America/New_York"} selectedMonth={visibleMonth} onMonthChange={setSelectedMonth} />}
-        <RestPreference es={es} />
+        <RestPreference es={es} onSaved={()=>{setPreview(null);void load();}} />
         <TargetProgressPanel key={user?.id} language={user?.language} />
 
         {/* A saved cycle remains primary; replacing it is an explicit review. */}

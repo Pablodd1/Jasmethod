@@ -19,9 +19,10 @@ export function levelRecoveryPolicy(level?: string | null) {
   return { minimumRestDays, maximumTrainingDays: 7 - minimumRestDays,
     note: "Suggested planning defaults only. Availability, symptoms, fatigue and coach review may require more rest. No fixed rest minimum never requires seven training days." };
 }
-/** Reduction-only pilot constraints. Preserve generator day order; unavailable
- * days are omitted, never made up or stacked onto an available day. These are
- * implementation limits for review, not a claimed validated coaching model. */
+/** Legacy calls retain reduction-only scheduling. New generation explicitly
+ * allocates the existing template dose once within reviewed limits. Performed
+ * work is protected later; allocation is never catch-up for missed sessions.
+ * These are product constraints, not a validated individual response model. */
 export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _legacyWeeklyHours: number | null | undefined, startWeekday: number, level?: string | null, doubleDayExcludedWeeks: number[] = [], options:{preserveWeeklyDose?:boolean}={}) {
   const recoveryPolicy = setup.restPreference==='no_fixed_rest'?{minimumRestDays:0,maximumTrainingDays:7,note:'Explicit no-fixed-rest preference. Easy recovery practice uses existing weekly minutes. Safety, events and availability can still require rest.'}:levelRecoveryPolicy(level);
   const weeklyBudget = Math.min(setup.baselineWeeklyMinutes ?? 0, (setup.maxSessionMinutes ?? 0)*setup.trainingDays.length);
