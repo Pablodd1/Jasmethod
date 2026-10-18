@@ -170,7 +170,11 @@ async function main() {
     await race(other, "Synthetic recent C marathon", addDaysKey(today, -4), 3, "marathon");
     const draft = await preview(other);
     assert.ok(draft.preview.cycle.events.warnings.some((warning: Json) => warning.code === "recent_event"));
-    assert.ok(draft.preview.weeksPreview[0].cycleFactor <= .5);
+    const week=draft.preview.weeksPreview[0];
+    // Event control now applies only the additional reduction after the
+    // recorded template wave. Check the combined ceiling and actual dose.
+    assert.ok((week.periodizationFactor??1)*week.cycleFactor <= .5+1e-9);
+    assert.ok(week.totalMinutes<=draft.preview.weeklyBudgetMin*.5);
     assert.ok(draft.preview.weeksPreview[0].sessions.every((session: Json) => Number(session.zone.slice(1)) <= 2));
   });
   await scenario("Sport evidence stays separate and expiry inside a long cycle lowers effort without renewing tests", async () => {
