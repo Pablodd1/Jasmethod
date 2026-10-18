@@ -1,5 +1,5 @@
 /** Browser-only interaction helpers. No athlete facts are inferred here. */
-export type CoachMessage = { id: string; role: string; content: string; createdAt: string; source: string; clientRequestId?: string };
+export type CoachMessage = { id: string; role: string; content: string; createdAt: string; source: string; clientRequestId?: string;needsHumanReview?:boolean;localContextSummary?:string };
 export type CoachCandidate = {
   id: string;
   kind: "profile" | "workout_feedback" | "workout_plan" | "checkin";
@@ -28,6 +28,7 @@ export type CoachPayload = {
   conversation?: { id: string; messages: CoachMessage[] };
   proposal?: CoachProposal | null;
   sessions?: CoachSession[];
+  defaultSessionId?:string|null;
   receipt?: CoachReceipt | null;
   capabilities?: CoachCapabilities;
   mode?: string;
@@ -139,6 +140,7 @@ export type CoachSendBody = {
   message: string;
   source: "text" | "voice";
   externalConsent: boolean;
+  aiReplyMemoryConsent?:boolean;
   textProviderConsent?: "deepseek";
   imageConsent?: boolean;
   imageProviderConsent?: "openai";

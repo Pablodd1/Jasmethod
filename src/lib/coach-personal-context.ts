@@ -31,7 +31,7 @@ export function personalCoachFacts(profile: { goal?: string | null; experience?:
       experience: explicitExperience && levels.has(profile?.experience || "") ? profile!.experience! : null,
       weightKg: profile?.weightSource === "manual" ? finite(profile.weightKg,20,300) : null, source: "athlete_intent_and_explicit_manual_fields" },
     recentManualActuals, historyDays: 30,
-    excluded: ["identity_and_contact", "device_and_imported_data", "strava_and_derived_values", "generated_plans_with_unverified_ancestry", "biometrics", "race_predictions", "raw_profile_notes", "credentials", "images", "prior_assistant_messages"],
+    excluded: ["identity_and_contact", "device_and_imported_data", "strava_and_derived_values", "generated_plans_with_unverified_ancestry", "biometrics", "race_predictions", "raw_profile_notes", "credentials", "images", "local_or_unverified_assistant_messages"],
   };
 }
 /** Strip common credentials/contact details from opt-in typed text; never export arbitrary profile blobs. */
@@ -43,7 +43,7 @@ export function minimizedCoachText(text: string): string {
     .replace(/https?:\/\/\S+/gi,"[link removed]").replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,"[email removed]")
     .replace(/(?<!\w)(?:\+?\d[\d ().-]{7,}\d)(?!\w)/g,"[contact number removed]");
 }
-export function externalCoachContext(context: CoachReplyContext) {
+export function externalCoachContext(context: CoachReplyContext,includeAiReplies=false) {
   const checkin = context.checkin?.observedDate === context.localToday ? context.checkin : null;
   const safety = resolveCheckinSafety(checkin);
   const answers = checkin ? Object.fromEntries(["sleep","soreness","motivation","energy","stress","sick","newPain","urgentSymptoms","availableMin"].map(key => [key,
@@ -60,5 +60,6 @@ export function externalCoachContext(context: CoachReplyContext) {
   return { date: context.localToday, language: context.language === "es" ? "es" as const : "en" as const, facts: boundedFacts,
     checkin: { source: "athlete_self_report", status: safety.status, observedDate: checkin?.observedDate ?? null, answers },
     recentUserMessages: (context.recentMessages || []).filter(m => m.role === "user" && !/strava|ignore (?:all|previous|system)|system prompt|developer message|ignora|exfiltrate/i.test(m.content)).slice(-4).map(m => ({ content: minimizedCoachText(m.content.slice(0,800)), source: "unverified_athlete_message" })),
+    recentAiReplies:includeAiReplies?(context.recentMessages||[]).filter(m=>m.role==='assistant'&&m.source==='deepseek'&&m.externalContextVersion===COACH_CONTEXT_VERSION&&!/strava|ignore (?:all|previous|system)|system prompt|developer message|exfiltrate/i.test(m.content)).slice(-2).map(m=>({content:minimizedCoachText(m.content.slice(0,800)),source:'unverified_prior_ai_explanation'})):[],
   };
 }

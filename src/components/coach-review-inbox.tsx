@@ -1,0 +1,10 @@
+'use client';
+import React,{useCallback,useEffect,useState} from 'react';
+import Link from 'next/link';
+type Review={id:string;athleteId:string;body:string;createdAt:string;athlete:{name:string}};
+export function CoachReviewInbox() {
+  const [requests,setRequests]=useState<Review[]>([]),[error,setError]=useState('');
+  const load=useCallback(async(signal?:AbortSignal)=>{try{const r=await fetch('/api/coaching/reviews',{cache:'no-store',signal});const data=await r.json();if(!r.ok||data.ok!==true||!Array.isArray(data.requests))throw Error(data.error||'Could not load review requests');if(!signal?.aborted){setRequests(data.requests);setError('');}}catch(e){if(!signal?.aborted)setError(e instanceof Error?e.message:'Could not load review requests');}},[]);
+  useEffect(()=>{const c=new AbortController();void load(c.signal);const timer=setInterval(()=>{if(document.visibilityState==='visible')void load(c.signal);},30000);return()=>{c.abort();clearInterval(timer);};},[load]);
+  return <section className="card space-y-3" aria-label="Human coaching review inbox"><h2 className="font-semibold text-lg">Recent coach review requests</h2><p className="text-sm">Athlete-approved questions only. Open the athlete’s shared conversation to respond. Latest 50 requests; inclusion does not mean unread or unresolved.</p>{error&&<p role="alert">{error}</p>}<button className="btn-secondary" onClick={()=>void load()}>Refresh requests</button>{!error&&!requests.length&&<p className="text-sm">No shared review requests.</p>}<div className="max-h-96 overflow-y-auto space-y-3">{requests.map(r=><article key={r.id} className="rounded border p-3"><p className="font-medium">{r.athlete.name} · <time dateTime={r.createdAt}>{new Date(r.createdAt).toLocaleString()}</time></p><p className="whitespace-pre-wrap break-words text-sm">{r.body}</p><Link className="underline text-sm" href={`/admin/athletes/${encodeURIComponent(r.athleteId)}#coach-conversation`}>Review athlete and reply</Link></article>)}</div></section>;
+}

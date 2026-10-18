@@ -48,6 +48,41 @@ async function ask(a:Actor,message:string,extra:Record<string,unknown>={}) {retu
 function pending(result:any) {assert.ok(result.proposal?.id,"Expected a reviewable saved proposal");assert.ok(result.proposal.candidates?.length,"Expected explicit candidates");return result.proposal;}
 function confirmBody(p:any,candidates=p.candidates) {return {proposalId:p.id,expectedRevision:p.revision,candidates,idempotencyKey:randomUUID(),confirmed:true};}
 async function main() {
+  await scenario('Dated natural workout edits bind one owner session, save only on confirmation, and ask when ambiguous',async()=>{
+    const a=await actor('natural-edit'),w=await fixture(a);
+    assert.equal((await json('/api/assistant',a)).defaultSessionId,w.id);
+    const result=await ask(a,"Make today's run 45 minutes at zone 2");const p=pending(result);
+    assert.ok(p.candidates.every((c:any)=>c.sessionId===w.id&&c.observedDate===today));
+    assert.equal((await db.workout.findUniqueOrThrow({where:{id:w.id}})).durationMin,30);
+    await json('/api/assistant/confirm',a,{body:confirmBody(p)});
+    const saved=await db.workout.findUniqueOrThrow({where:{id:w.id}});assert.equal(saved.durationMin,45);assert.equal(saved.intensity,'z2');assert.equal(saved.approved,false);
+    const tomorrow=await fixture(a,1);
+    const routed=pending(await ask(a,"Make tomorrow's run 25 minutes",{sessionId:w.id}));
+    assert.ok(routed.candidates.every((c:any)=>c.sessionId===tomorrow.id&&c.observedDate===addDaysKey(today,1)));
+    assert.equal((await db.workout.findUniqueOrThrow({where:{id:tomorrow.id}})).durationMin,30);
+    await json('/api/assistant/confirm',a,{body:confirmBody(routed)});assert.equal((await db.workout.findUniqueOrThrow({where:{id:tomorrow.id}})).durationMin,25);
+    const second=await fixture(a);const snapshot=await db.workout.findMany({where:{userId:a.id},orderBy:{id:'asc'}});
+    assert.equal((await json('/api/assistant',a)).defaultSessionId,null);
+    const unclear=await ask(a,"Make today's workout 20 minutes");assert.match(unclear.answer,/Which workout/);assert.notEqual(unclear.proposal?.status,'pending');
+    assert.deepEqual(await db.workout.findMany({where:{userId:a.id},orderBy:{id:'asc'}}),snapshot);assert.ok(second.id);
+  });
+  await scenario('Reviewed human handoff is owner-only, idempotent and visible only to authorized coaches/admin',async()=>{
+    const a=await actor('review-owner'),b=await actor('review-other'),coach=await actor('review-coach'),admin=await actor('review-admin');
+    await db.user.update({where:{id:coach.id},data:{role:'coach'}});await db.user.update({where:{id:admin.id},data:{role:'admin'}});
+    const conversation=await ask(a,'Help me understand the next coaching decision.');const source=conversation.conversation.messages.find((m:any)=>m.role==='user');
+    const body={sourceMessageId:source.id,question:'Synthetic decision: please review my available training time.',clientId:randomUUID(),confirmed:true,notifyAdmin:false};
+    await request('/api/assistant/escalate',undefined,{body,status:401});await request('/api/assistant/escalate',b,{body,status:404});
+    await request('/api/assistant/escalate',a,{body:{...body,confirmed:false},status:400});
+    const shared=await json('/api/assistant/escalate',a,{body});assert.equal(shared.notificationStatus,'not_requested');
+    const replay=await json('/api/assistant/escalate',a,{body});assert.equal(replay.sharedMessageId,shared.sharedMessageId);assert.equal(replay.replayed,true);
+    assert.equal(await db.coachingMessage.count({where:{authorId:a.id}}),1);
+    assert.equal((await json('/api/coaching/reviews',b)).requests.length,0);assert.equal((await json('/api/coaching/reviews',coach)).requests.length,0);
+    await db.coachAssignment.create({data:{coachId:coach.id,athleteId:a.id,status:'active',consent:'granted'}});
+    assert.equal((await json('/api/coaching/reviews',coach)).requests.length,1);assert.ok((await json('/api/coaching/reviews',admin)).requests.some((r:any)=>r.id===shared.sharedMessageId));
+    await db.coachAssignment.updateMany({where:{coachId:coach.id,athleteId:a.id},data:{consent:'revoked'}});assert.equal((await json('/api/coaching/reviews',coach)).requests.length,0);
+    await request('/api/assistant/escalate',a,{body:{...body,question:'A different question with the same identifier.'},status:409});
+    assert.ok((await json('/api/coaching/messages',a)).messages.some((m:any)=>m.id===shared.sharedMessageId));
+  });
   await scenario("Saved-training questions show owner plans without clearing check-in or changing training", async () => {
     const owner = await actor("saved-training-owner"), other = await actor("saved-training-other");
     const own = await fixture(owner), foreign = await fixture(other);

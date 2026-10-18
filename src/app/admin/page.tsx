@@ -5,6 +5,7 @@ import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { AdminAccountControls } from "@/components/admin-account-controls";
 import { AdminIntegrationChecks } from "@/components/admin-integration-checks";
+import { CoachReviewInbox } from '@/components/coach-review-inbox';
 
 export default function AdminPage() {
   const { user } = useAuth();
@@ -41,6 +42,7 @@ export default function AdminPage() {
           </p>
         </div>
         {user?.role === "admin" && <AdminOperations />}
+        {user&&['admin','coach'].includes(user.role)&&<CoachReviewInbox key={user.id}/>}
         {user?.role === "admin" && <AdminIntegrationChecks />}
         {user?.role === "admin" && <AdminAccountControls key={user.id} />}
         <form

@@ -17,7 +17,7 @@ export function CoachingConversation({athleteId}:{athleteId?:string}) {
   const d=await r.json();if(!r.ok)throw Error(d.error);setBody("");pending.current=null;await load();
  }catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  async function consent(id:string,value:string){setBusy(true);setError("");try{const r=await fetch("/api/coaching/assignments",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,consent:value})});if(!r.ok)throw Error((await r.json()).error);await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
- return <section className="card space-y-3"><h2 className="font-bold text-lg">Athlete–coach conversation</h2>
+ return <section id="coach-conversation" className="card space-y-3"><h2 className="font-bold text-lg">Athlete–coach conversation</h2>
  <p className="text-sm text-slate-600">Shared with authorized coaches and platform administrators. Messages refresh every 30 seconds while this page is visible. Discuss a change here, then save it in the training or profile editor; messages do not change your plan automatically.</p>
  {!athleteId&&assignments.map(a=><div key={a.id} className="flex flex-wrap gap-3 items-center text-sm"><span>{a.coach.name}: {a.consent} ({a.status})</span><button disabled={busy||a.status!=="active"} className="btn-secondary" onClick={()=>consent(a.id,a.consent==="granted"?"revoked":"granted")}>{a.consent==="granted"?"Revoke coach access":"Grant coach access"}</button></div>)}
  {!athleteId&&!assignments.length&&<p className="text-sm">No coach is assigned. Your notes remain available here for you and the platform administrator.</p>}

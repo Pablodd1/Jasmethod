@@ -61,3 +61,18 @@ test("DeepSeek deadline aborts stalled fetch/body without fallback or retries",a
   let cancelled=false;const body=coachTextAnswer(input,{env,fetch:async()=>new Response(new ReadableStream({cancel(){cancelled=true;}}),{headers:{"content-type":"application/json"}})});
   await Promise.resolve();await Promise.resolve();t.mock.timers.tick(12000);assert.deepEqual(await body,{status:"unavailable"});assert.equal(cancelled,true);
 });
+
+test('natural change JSON remains an unchecked grounded proposal; unsupported or invented changes invalidate the response',async()=>{
+ const message='Could you make this session half an hour?';
+ const context={...input.context,candidateContext:{sessionId:'own-session',sessionDate:input.context.localToday}};
+ const raw={answer:'I can propose 30 minutes for your confirmation.',sourceIds:[],changes:[{kind:'workout_plan',field:'durationMin',unit:'min',value:30,evidence:message}],needsHumanReview:false};
+ const result=await coachTextAnswer({...input,message,context},{env,fetch:async()=>reply(raw)});
+ assert.equal(result.status,'answered');assert.equal(result.candidates?.[0].sessionId,'own-session');assert.equal(result.candidates?.[0].status,'proposed');
+ for(const patch of [{value:90},{sessionId:'other'},{field:'approved',value:true},{evidence:'not the actual message'}])assert.equal((await coachTextAnswer({...input,message,context},{env,fetch:async()=>reply({...raw,changes:[{...raw.changes[0],...patch}]})})).status,'unavailable');
+});
+test('follow-up memory is opt-in and includes only bounded replies with verified manual-only DeepSeek ancestry',()=>{
+ const messages=[{role:'assistant' as const,source:'local',content:'private device history',externalContextVersion:'deepseek-personal-v1'}, {role:'assistant' as const,source:'deepseek',content:'unverified ancestry'},...Array.from({length:4},(_,i)=>({role:'assistant' as const,source:'deepseek',externalContextVersion:'deepseek-personal-v1',content:`Explanation ${i} `+'x'.repeat(1000)}))];
+ assert.deepEqual(externalCoachContext({...input.context,recentMessages:messages}).recentAiReplies,[]);
+ const exported=externalCoachContext({...input.context,recentMessages:messages},true).recentAiReplies;
+ assert.equal(exported.length,2);assert.ok(exported.every(m=>m.content.length===800&&m.source==='unverified_prior_ai_explanation'));assert.match(exported[0].content,/Explanation 2/);assert.doesNotMatch(JSON.stringify(exported),/private device|unverified ancestry/);
+});
