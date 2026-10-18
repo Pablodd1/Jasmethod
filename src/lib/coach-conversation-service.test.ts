@@ -666,3 +666,19 @@ test('chat workout confirmation protects recovery, event sessions and stale revi
    } finally {f.restore();}
  }
 });
+
+test('DeepSeek interpretation creates an owner-bound review proposal, then confirmation alone changes the workout',async()=>{
+ const f=fixture(),originalFetch=globalThis.fetch,oldEnv={enabled:process.env.EXTERNAL_AI_ENABLED,key:process.env.DEEPSEEK_API_KEY,model:process.env.DEEPSEEK_MODEL};
+ const message='Could you make this session half an hour?';let calls=0;
+ try {
+   Object.assign(f.state.workout,{completed:false,feedbackStatus:null,feedbackAt:null,actualDurationMin:null,rpe:null,approved:false});
+   process.env.EXTERNAL_AI_ENABLED='true';process.env.DEEPSEEK_API_KEY='synthetic-test-only';process.env.DEEPSEEK_MODEL='deepseek-flash';
+   globalThis.fetch=async(url,init)=>{calls++;assert.equal(String(url),'https://api.deepseek.com/chat/completions');const payload=JSON.parse(String(init?.body));assert.ok(!payload.messages[1].content.includes('session-a'));return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({answer:'I can propose a duration of 30 minutes for your review.',sourceIds:[],changes:[{kind:'workout_plan',field:'durationMin',unit:'min',value:30,evidence:message}]})}}]});};
+   const result=await appendConversation(actor,{message,sessionId:'session-a',source:'voice',externalConsent:true,textProviderConsent:'deepseek',clientRequestId:'ai-change-once'});
+   assert.equal(result.externalStatus,'answered');assert.equal(calls,1);assert.equal(f.state.workout.durationMin,40);assert.deepEqual(f.state.writes,[]);
+   const proposal=result.proposal!;assert.equal(proposal.status,'pending');assert.equal(proposal.candidates[0].source,'voice');assert.equal(proposal.candidates[0].sessionId,'session-a');
+   const body={proposalId:proposal.id,expectedRevision:proposal.revision,candidates:proposal.candidates,confirmed:true,idempotencyKey:'ai-confirm-once'};
+   const saved=await confirmConversation(actor,body);assert.equal(saved.trainingModified,true);assert.equal(f.state.workout.durationMin,30);assert.equal(f.state.workout.approved,false);
+   const writes=f.state.writes.length;await confirmConversation(actor,body);assert.equal(f.state.writes.length,writes);assert.equal(calls,1);
+ }finally{globalThis.fetch=originalFetch;for(const [key,value] of Object.entries({EXTERNAL_AI_ENABLED:oldEnv.enabled,DEEPSEEK_API_KEY:oldEnv.key,DEEPSEEK_MODEL:oldEnv.model})){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
+});

@@ -21,7 +21,7 @@ export interface CoachCandidate {
   warnings?: string[];
 }
 export type CoachImageInput = { mimeType: "image/png" | "image/jpeg" | "image/webp"; dataBase64: string };
-export interface ConversationInput { message: string; source: "text" | "voice"; externalConsent: boolean; textProviderConsent?: "deepseek"; imageConsent: boolean; imageProviderConsent?: "openai"; image?: CoachImageInput }
+export interface ConversationInput { message: string; source: "text" | "voice"; externalConsent: boolean; aiReplyMemoryConsent?:boolean;textProviderConsent?: "deepseek"; imageConsent: boolean; imageProviderConsent?: "openai"; image?: CoachImageInput }
 export interface CandidateContext { localToday: string; sessionId?: string; sessionDate?: string; source?: "text" | "voice" | "image" }
 export const COACH_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const COACH_GOALS = ["sprint", "olympic", "half", "full", "hyrox", "run-only", "track-sprint", "cycle", "swim-only", "5k", "10k", "half-marathon", "marathon"] as const;
@@ -60,11 +60,12 @@ export function coachContextNeeds(message: string): { overview: boolean; history
 
 /** Envelope validation only; coach-image performs actual byte decoding server-side. */
 export function parseConversationInput(raw: unknown): ConversationInput {
-  if (!record(raw) || Object.keys(raw).some(k => !["message", "source", "externalConsent", "textProviderConsent", "imageConsent", "imageProviderConsent", "image", "sessionId", "conversationId"].includes(k))) throw Error("Invalid conversation input");
+  if (!record(raw) || Object.keys(raw).some(k => !["message", "source", "externalConsent", "aiReplyMemoryConsent","textProviderConsent", "imageConsent", "imageProviderConsent", "image", "sessionId", "conversationId"].includes(k))) throw Error("Invalid conversation input");
   if (typeof raw.message !== "string" || raw.message.length > 4000) throw Error("Message must be at most 4000 characters");
   const message = raw.message.trim();
   if (raw.source !== undefined && raw.source !== "text" && raw.source !== "voice") throw Error("Invalid input source");
   if (raw.externalConsent !== undefined && typeof raw.externalConsent !== "boolean") throw Error("Choose explicit external AI consent");
+  if(raw.aiReplyMemoryConsent!==undefined&&typeof raw.aiReplyMemoryConsent!=='boolean')throw Error('Choose explicit AI reply memory consent');
   if (raw.imageConsent !== undefined && typeof raw.imageConsent !== "boolean") throw Error("Choose explicit image consent");
   if (raw.imageProviderConsent !== undefined && raw.imageProviderConsent !== "openai") throw Error("Invalid image provider consent");
   if (raw.textProviderConsent !== undefined && raw.textProviderConsent !== "deepseek") throw Error("Invalid text provider consent");
@@ -74,7 +75,7 @@ export function parseConversationInput(raw: unknown): ConversationInput {
     image = { mimeType: raw.image.mimeType as CoachImageInput["mimeType"], dataBase64: raw.image.dataBase64 };
   }
   if (!message && !image) throw Error("Add a message or image");
-  return { message, source: raw.source === "voice" ? "voice" : "text", externalConsent: raw.externalConsent === true, imageConsent: raw.imageConsent === true, ...(raw.textProviderConsent === "deepseek" ? { textProviderConsent: "deepseek" as const } : {}), ...(raw.imageProviderConsent === "openai" ? { imageProviderConsent: "openai" as const } : {}), ...(image ? { image } : {}) };
+  return { message, source: raw.source === "voice" ? "voice" : "text", externalConsent: raw.externalConsent === true, imageConsent: raw.imageConsent === true,...(raw.aiReplyMemoryConsent===true?{aiReplyMemoryConsent:true}:{}), ...(raw.textProviderConsent === "deepseek" ? { textProviderConsent: "deepseek" as const } : {}), ...(raw.imageProviderConsent === "openai" ? { imageProviderConsent: "openai" as const } : {}), ...(image ? { image } : {}) };
 }
 
 type Rule = { unit: string | null; type: "number" | "boolean" | "string"; min?: number; max?: number; integer?: boolean; values?: readonly string[] };
@@ -93,8 +94,13 @@ const fieldRules: Record<CoachCandidate["kind"], Record<string, Rule>> = {
     actualDurationMin: { type: "number", unit: "min", min: 0, max: 1440, integer: true },
     rpe: { type: "number", unit: "0-10", min: 0, max: 10, integer: true },
     actualSport: { type: "string", unit: null, values: COACH_SPORTS },
+    avgHr: {type:'number',unit:'bpm',min:20,max:240,integer:true},
+    avgPower: {type:'number',unit:'W',min:0,max:2500},
+    calories: {type:'number',unit:'kcal',min:0,max:20000,integer:true},
+    preWeightKg: {type:'number',unit:'kg',min:20,max:350},
+    postWeightKg: {type:'number',unit:'kg',min:20,max:350},
   },
-  workout_plan: { durationMin: { type: "number", unit: "min", min: 1, max: 1440, integer: true }, sport: { type: "string", unit: null, values: COACH_SPORTS } },
+  workout_plan: { durationMin: { type: "number", unit: "min", min: 1, max: 1440, integer: true }, sport: { type: "string", unit: null, values: COACH_SPORTS }, intensity:{type:'string',unit:null,values:['z1','z2','z3','z4','z5','z6','z7']} },
   checkin: {
     ...Object.fromEntries(["sleep", "soreness", "motivation", "energy", "stress"].map(k => [k, { type: "number", unit: "1-5", min: 1, max: 5, integer: true } as Rule])),
     ...Object.fromEntries(["sick", "newPain", "urgentSymptoms", "painAffectsMovement"].map(k => [k, { type: "boolean", unit: null } as Rule])),
@@ -102,6 +108,7 @@ const fieldRules: Record<CoachCandidate["kind"], Record<string, Rule>> = {
     painLocation: { type: "string", unit: null },
   },
 };
+export const coachChangeFields = () => Object.fromEntries(['profile','workout_plan','workout_feedback'].map(kind=>[kind,fieldRules[kind as CoachCandidate['kind']]]));
 const candidateKeys = new Set(["id", "kind", "field", "value", "unit", "observedDate", "source", "evidence", "sessionId", "status", "warnings"]);
 const binding = (c: CoachCandidate) => `${c.kind}:${c.observedDate || ""}:${c.sessionId || ""}`;
 const simpleId = (x: unknown): x is string => typeof x === "string" && /^[A-Za-z0-9_-]{1,120}$/.test(x);
@@ -171,6 +178,7 @@ export function extractLocalCandidates(message: string, context: CandidateContex
   const text = normalize(message);
   if (/\b(?:my (?:friend|partner|wife|husband|coach)|he|she|they|mi (?:amig[oa]|pareja|espos[oa]|entrenador)|el atleta|ella)\b/.test(text)) return [];
   const deniesCompletion = /\b(?:did not|didn't|have not|haven't|never|not|no|nunca)\s+(?:(?:actually|really|fully|ever|realmente)\s+)?(?:complete|finish|completed|finished|completado|terminado|complete|termine)\b/.test(text);
+  if(/\b(?:do not|don't|not|no|nunca)\s+(?:change|set|update|make|log|record|save|cambies|cambiar|guardes|registres)\b/.test(text))return [];
   if (uncertain.test(text) || injected.test(text) || /[“”"]/.test(message)) return [];
   const candidates: CoachCandidate[] = [];
   const add = (kind: CoachCandidate["kind"], field: string, value: CoachCandidate["value"], date: string | null, evidence: string, warning?: string) => {
@@ -188,13 +196,13 @@ export function extractLocalCandidates(message: string, context: CandidateContex
   }
   const hours = unique(allNumbers(text, /\b(\d+(?:[.,]\d+)?)\s*(?:hours?|horas?|h)\s*(?:per week|a week|weekly|\/week|por semana|a la semana|semanales)\b/g));
   if (!historicalProfile && !uncertainNumber && !/\b(?:can't|cannot|can not|could|no puedo|no tengo|no entreno|not available)\b/.test(text) && hours.length === 1 && /\b(i can|i have|i train|i am available|i'm available|my (?:weekly )?availability|tengo|puedo|entreno|disponibilidad)\b/.test(text)) add("profile", "weeklyHours", hours[0], null, message);
-  const weights = [...text.matchAll(/\b(?:i weigh|my weight is|weight\s*:|peso(?: actual)?\s*(?:es|:)?|mi peso es)\s*(\d+(?:[.,]\d+)?)\s*(kg|kilograms?|kilos?|lb|lbs|pounds?|libras?)\b/g)].map(m => ({ value: Number(m[1].replace(",", ".")) * (/^(lb|pound|libra)/.test(m[2]) ? 0.45359237 : 1), unit: m[2] }));
+  const weights = [...text.matchAll(/\b(?:i weigh|my weight is|(?:change|set|update|correct)\s+my\s+weight\s*(?:to|as|:)|weight\s*:|peso(?: actual)?\s*(?:es|:)?|mi peso es)\s*(\d+(?:[.,]\d+)?)\s*(kg|kilograms?|kilos?|lb|lbs|pounds?|libras?)\b/g)].map(m => ({ value: Number(m[1].replace(",", ".")) * (/^(lb|pound|libra)/.test(m[2]) ? 0.45359237 : 1), unit: m[2] }));
   if (!historicalProfile && !uncertainNumber && weights.length && unique(weights.map(w => w.value)).length === 1 && !/\b(goal weight|target weight|want to weigh|quiero pesar|peso objetivo|peso deseado)\b/.test(text) && !globalDate.ambiguous) add("profile", "weightKg", Math.round(weights[0].value * 100) / 100, globalDate.date, message, /^(lb|pound|libra)/.test(weights[0].unit) ? "Converted from explicitly reported pounds to kg; review the conversion." : undefined);
   if(!historicalProfile && !uncertainNumber && !globalDate.ambiguous) {
     for(const [field,pattern] of [
       ["heightCm",/\b(?:my height is|i am|height:|mi altura es|mido)\s*(\d+(?:[.,]\d+)?)\s*cm\b/g],
       ["birthYear",/\b(?:my birth year is|i was born in|ano de nacimiento:|naci en)\s*(\d{4})\b/g],
-      ["ftp",/\b(?:my ftp is|my ftp:|mi ftp es|mi ftp:)\s*(\d+(?:[.,]\d+)?)\s*(?:w|watts?|vatios?)\b/g],
+      ["ftp",/\b(?:my ftp is|my ftp:|(?:change|set|update|correct)\s+my\s+ftp\s*(?:to|as|:)|mi ftp es|mi ftp:)\s*(\d+(?:[.,]\d+)?)\s*(?:w|watts?|vatios?)\b/g],
     ] as const) {
       const values=unique(allNumbers(text,pattern));
       if(values.length===1) add("profile",field,values[0],globalDate.date,message,field==="ftp"?"Athlete-reported reference only. A dated, reviewed benchmark test is required before treating this as an applied training anchor.":undefined);
@@ -210,7 +218,7 @@ export function extractLocalCandidates(message: string, context: CandidateContex
     const ownDate = dateIn(t, context.localToday);
     if (ownDate.ambiguous) continue;
     const date = ownDate.date || (!globalDate.ambiguous ? globalDate.date || (isCoachDate(context.sessionDate) ? context.sessionDate : null) : null);
-    const explicitEdit = !!context.sessionId && /\b(?:change|set|shorten|reduce|extend|make|cambia|cambiar|ajusta|ajustar|reduce|amplia)\b/.test(t) && /\b(?:my|selected|this|mi|seleccionad[oa]|esta|este)\s+(?:workout|session|training|entrenamiento|sesion)\b/.test(t);
+    const explicitEdit = !!context.sessionId && /\b(?:change|set|shorten|reduce|extend|make|cambia|cambiar|ajusta|ajustar|reduce|amplia)\b/.test(t) && /\b(?:(?:my|selected|this|today's|todays|tomorrow's|mi|seleccionad[oa]|esta|este)\s+(?:workout|session|training|run|ride|swim|entrenamiento|sesion)|it)\b/.test(t);
     const planned = explicitEdit || /\b(plan(?:ned)? to|planning to|will|going to|want to|schedule|planned|planeo|planifique|voy a|quiero|programado|planificado)\b/.test(t);
     const explicitCompletion = /\b(completed|finished|complete|termine)\b/.test(t);
     const completed = explicitCompletion || /\b(?:i (?:ran|swam|rode|cycled|biked|jogged)|corri|nade|pedalee)\b/.test(t) || /\b(?:i did|hice|realice)\s+(?:(?:a|an|my|mi|una?|the)\s+)?(?:run|swim|ride|workout|session|carrera|sesion|entrenamiento)\b/.test(t);
@@ -229,6 +237,10 @@ export function extractLocalCandidates(message: string, context: CandidateContex
     if (!planned && (explicitCompletion || partial)) add(kind, "feedbackStatus", partial ? "partial" : "completed", date, clause);
     if (durations.length === 1) add(kind, planned ? "durationMin" : "actualDurationMin", durations[0], date, clause);
     if (sports.length === 1) add(kind, planned ? "sport" : "actualSport", sports[0], date, clause);
+    if(explicitEdit) {
+      const zones=unique([...t.matchAll(/\b(?:z|zone|zona)\s*([1-7])\b/g)].map(m=>`z${m[1]}`));
+      if(zones.length===1)add('workout_plan','intensity',zones[0],date,clause,'A requested effort label is not a new measured threshold. Review the rebuilt workout before execution.');
+    }
     const rpes = unique(allNumbers(t, /\brpe\s*(?:was|of|de|fue|:|=)?\s*(\d+(?:[.,]\d+)?)\b/g));
     if (!planned && rpes.length === 1 && !/\brpe\s*(?:was|of|de|fue|:|=)?\s*\d+\s*\/\s*(?!10\b)\d+/.test(t)) add(kind, "rpe", rpes[0], date, clause);
   }
@@ -287,7 +299,7 @@ export interface CoachReplyContext {
   setupReady?: boolean;
   unresolvedSafetyConcernAt?: string | null;
   unreviewedImageConcern?: "urgent" | "symptom";
-  recentMessages?: { role: "user" | "assistant"; content: string; createdAt?: string }[];
+  recentMessages?: { role: "user" | "assistant"; content: string; createdAt?: string;source?:string;externalContextVersion?:string }[];
   candidateContext?: Pick<CandidateContext, "sessionId" | "sessionDate">;
   profile?: { goal?: string | null; experience?: string | null; weeklyHours?: number | null; weightKg?: number | null } | null;
   athleteOverview?: {
@@ -390,6 +402,9 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
       `Your saved sport/goal: ${context.profile?.goal??"unknown"}; experience: ${context.profile?.experience??"unknown"}. In the last ${overview.historyDays} days, ${known.length}/${reports.length} returned session reports have recorded actual minutes (${minutes} min total; incomplete when reports are missing). ${metric?`Latest readings (${metric.date}, ${metric.source??"unknown source"}): sleep ${metric.sleepHours??"unknown"} h, resting HR ${metric.restingHr??"unknown"} bpm, HRV ${metric.hrv??"unknown"} ms (${metric.hrvType??"unknown method"}).`:"No recent biometric readings are available."} ${race?`Upcoming saved race: ${race.name}, ${race.date}, ${race.distance??"distance unknown"}. A race prediction needs comparable performance and venue evidence; these readings alone do not predict a finish time.`:"No upcoming race is saved."} Review today's check-in and record session outcomes to inform daily coaching. Change persistent details in /profile; chat does not silently change your training or invent a benchmark.`,
       `Deporte/objetivo guardado: ${context.profile?.goal??"desconocido"}; experiencia: ${context.profile?.experience??"desconocida"}. En ${overview.historyDays} días, ${known.length}/${reports.length} informes devueltos tienen minutos reales (${minutes} min; incompleto si faltan informes). ${metric?`Últimas lecturas (${metric.date}, ${metric.source??"fuente desconocida"}): sueño ${metric.sleepHours??"desconocido"} h, FC en reposo ${metric.restingHr??"desconocida"} lpm, VFC ${metric.hrv??"desconocida"} ms (${metric.hrvType??"método desconocido"}).`:"No hay biometría reciente disponible."} ${race?`Próxima carrera guardada: ${race.name}, ${race.date}, ${race.distance??"distancia desconocida"}. Un pronóstico necesita rendimiento comparable y datos del recorrido; estas lecturas no predicen un tiempo final.`:"No hay carrera próxima guardada."} Revisa el chequeo de hoy y registra resultados reales. Cambia los datos permanentes en /profile; el chat no cambia el entrenamiento ni inventa referencias.`);
   }
+  if (/\b(?:no (?:days? off|rest days?)|every day|seven days|sin dias? (?:libres?|de descanso)|todos los dias)\b/.test(t)) return reply('schedule-preference',
+    "I understand this as a weekly schedule preference, not a request for a rest-day guide. Being available every day does not mean every day should be hard; recovery can still be planned. Weekly availability can be proposed below when stated clearly. Rest-day preferences, recurring weekday assignments and full-cycle changes still need the Profile/planning setup editor; I have not changed those settings. Tell me which supported workout or profile value you want to review, or use the human-coach option for the wider schedule.",
+    "Entiendo que describes una preferencia de horario semanal, no que pides una guía de descanso. Estar disponible todos los días no significa entrenar fuerte cada día; se puede planificar recuperación. Las horas semanales pueden proponerse abajo si las indicas claramente. Las preferencias de descanso, días fijos y cambios del ciclo completo siguen en Perfil/configuración del plan; no he cambiado esos ajustes. Indica qué sesión o dato quieres revisar, o consulta al entrenador humano para el horario completo.");
   if (/\b(?:recovery|rest day|day off|meditation|visualization|visualisation|recuperacion|dia de descanso|dia libre|meditacion|visualizacion)\b/.test(t)) {
     const recovery = context.recovery;
     if (recovery?.mode === "planned-rest") {
@@ -460,6 +475,7 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
   }
   if (/\b(goal|target|motivation|consistent|consistency|habit|objetivo|meta|motivacion|constancia|habito)\b/.test(t)) return reply("process-goal", "Choose a realistic outcome goal and a controllable process goal, such as preparing for and following approved sessions, then review what helped or got in the way. Specific goals and feedback can support adherence, but they do not guarantee performance. A goal time is not a measured training reference, and missed sessions are not a debt.", "Elige una meta realista de resultado y una de proceso que puedas controlar, como prepararte para las sesiones aprobadas y seguirlas; después revisa qué ayudó y qué lo dificultó. Las metas concretas y la información de seguimiento pueden apoyar la constancia, pero no garantizan rendimiento. Un tiempo objetivo no es una referencia medida de entrenamiento y las sesiones perdidas no son una deuda.");
   const candidateContext = { localToday: context.localToday, ...context.candidateContext };
+  if(!candidateContext.sessionId&&/\b(?:change|make|shorten|extend|switch|cambia|ajusta)\b/.test(t)&&/\b(?:workout|session|training|run|ride|swim|entrenamiento|sesion)\b/.test(t))return reply('choose-workout','Which workout should I change? Choose its date and title in the workout selector above, then send the requested change. I will show the exact proposal before you confirm it.','¿Qué sesión quieres cambiar? Elige su fecha y título en el selector de arriba y envía el cambio. Te mostraré la propuesta exacta antes de que la confirmes.');
   const clarifications = conversationClarifications(message, candidateContext);
   if (clarifications.length) return { answer: clarifications.join(" "), ruleId: "coach-conversation-v1:clarify-data" };
   if (extractLocalCandidates(message, candidateContext).length) return reply("review-proposals", "I found possible updates in what you shared. Review each value, date and session before confirming anything. Planned work stays separate from what you actually completed; nothing has been saved from this message alone.", "Encontré posibles actualizaciones en lo que compartiste. Revisa cada valor, fecha y sesión antes de confirmar. Lo planeado queda separado de lo realizado; este mensaje por sí solo no ha guardado ningún cambio.");

@@ -106,7 +106,7 @@ import { CoachConversation } from "./coach-conversation";
 for (const es of [false, true]) test(`conversation first render is labeled, consent-off, and safe (${es ? "ES" : "EN"})`, () => {
   const markup = renderToStaticMarkup(React.createElement(CoachConversation, { es, athleteId: "test-athlete", onConfirmed: () => undefined }));
   assert.ok(markup.includes(`lang="${es ? "es" : "en"}"`));
-  assert.ok(markup.includes(es ? "Conversar con KCoach" : "Ask KCoach"));
+  assert.ok(markup.includes('Jas KCoach'));
   assert.ok(markup.includes(es ? "Historial de conversación" : "Conversation history"));
   assert.ok(markup.includes('type="file" accept="image/png,image/jpeg,image/webp"'));
   assert.equal(markup.includes('checked=""'), false);
@@ -157,7 +157,7 @@ test("changed message, source, session, consent, provider or image cannot reuse 
   const first = coachSendAttempt(null, paidBody, () => "send-one");
   const changes: Partial<CoachSendBody>[] = [
     { message: "Explain easy endurance" }, { source: "voice" }, { sessionId: "session-two" },
-    { externalConsent: false }, { textProviderConsent: undefined }, { imageConsent: false }, { imageProviderConsent: undefined },
+    { externalConsent: false }, { aiReplyMemoryConsent: true }, { textProviderConsent: undefined }, { imageConsent: false }, { imageProviderConsent: undefined },
     { image: undefined }, { image: { ...paidBody.image!, dataBase64: "different-bytes" } }, { image: { ...paidBody.image!, mimeType: "image/webp" } },
   ];
   for (const change of changes) assert.equal(coachSendAttempt(first, { ...paidBody, ...change }, () => "new-request").clientRequestId, "new-request");
@@ -175,29 +175,29 @@ test("safety next-step links do not need a proposal or saved receipt", () => {
   assert.deepEqual(coachPendingActions({ ok: true }), []);
 });
 
-for (const es of [false, true]) test(`chat composer precedes closed optional tools and privacy (${es ? "ES" : "EN"})`, () => {
+for (const es of [false, true]) test(`AI choice and workout scope are visible; optional image tools and privacy stay closed (${es ? "ES" : "EN"})`, () => {
   const markup = renderToStaticMarkup(React.createElement(CoachConversation, { es, athleteId: "test-athlete", onConfirmed: () => undefined }));
   const composer = markup.indexOf("<textarea");
   const send = markup.indexOf('type="submit"');
   const tools = markup.indexOf(es ? "Herramientas opcionales" : "Optional tools");
   const workout = markup.indexOf(es ? "Sesión sobre la que hablas" : "Workout you are discussing");
   const privacy = markup.indexOf(es ? "Privacidad y detalles" : "Privacy &amp; conversation");
-  assert.ok(composer >= 0 && composer < send && send < tools && tools < workout && workout < privacy);
-  assert.equal((markup.match(/<details/g) || []).length, 3);
+  assert.ok(workout>=0&&workout<composer&&composer<send&&send<tools&&tools<privacy);
+  assert.equal((markup.match(/<details/g) || []).length, 4);
   assert.match(markup,/tel:\+17862317906/);
   assert.match(markup,/tel:\+17869708366/);
   assert.doesNotMatch(markup, /<details[^>]*\bopen(?:=|>|\s)/);
   assert.ok(markup.includes("DeepSeek") && markup.includes("OpenAI"));
   assert.ok(markup.includes(es ? "cuatro mensajes" : "four recent messages"));
   assert.ok(markup.includes(es ? "diez actividades manuales" : "ten manual activities"));
-  assert.ok(markup.includes(es ? "solo para este mensaje" : "this message only"));
+  assert.ok(markup.includes(es ? "mientras esta página esté abierta" : "while this page is open"));
   assert.ok(markup.includes(es ? "revisión y confirmación" : "review and confirmation"));
   assert.ok(markup.includes(es ? "Sí, borrar conversación" : "Yes, clear conversation") === false);
 });
 
 for (const es of [false, true]) test(`dictation is visible beside the composer, labeled, and never duplicated (${es ? "ES" : "EN"})`, () => {
   const markup = renderToStaticMarkup(React.createElement(CoachConversation, { es, athleteId: "test-athlete", onConfirmed: () => undefined }));
-  const visibleComposer = markup.slice(markup.indexOf("<form"), markup.indexOf("<details"));
+  const visibleComposer = markup.slice(markup.indexOf("<form"), markup.indexOf("<details",markup.indexOf('<form')));
   const startLabel = es ? "Iniciar dictado" : "Start dictation";
   assert.equal(markup.split(startLabel).length - 1, 1);
   assert.ok(visibleComposer.includes(startLabel));

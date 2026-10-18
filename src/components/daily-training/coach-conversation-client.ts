@@ -1,5 +1,5 @@
 /** Browser-only interaction helpers. No athlete facts are inferred here. */
-export type CoachMessage = { id: string; role: string; content: string; createdAt: string; source: string; clientRequestId?: string };
+export type CoachMessage = { id: string; role: string; content: string; createdAt: string; source: string; clientRequestId?: string;needsHumanReview?:boolean;localContextSummary?:string };
 export type CoachCandidate = {
   id: string;
   kind: "profile" | "workout_feedback" | "workout_plan" | "checkin";
@@ -28,6 +28,7 @@ export type CoachPayload = {
   conversation?: { id: string; messages: CoachMessage[] };
   proposal?: CoachProposal | null;
   sessions?: CoachSession[];
+  defaultSessionId?:string|null;
   receipt?: CoachReceipt | null;
   capabilities?: CoachCapabilities;
   mode?: string;
@@ -139,6 +140,7 @@ export type CoachSendBody = {
   message: string;
   source: "text" | "voice";
   externalConsent: boolean;
+  aiReplyMemoryConsent?:boolean;
   textProviderConsent?: "deepseek";
   imageConsent?: boolean;
   imageProviderConsent?: "openai";
@@ -149,7 +151,7 @@ export type CoachSendAttempt = { signature: string; clientRequestId: string };
 export function coachSendAttempt(previous: CoachSendAttempt | null, body: CoachSendBody, createId: () => string): CoachSendAttempt {
   // An explicit sequence is stable across object property insertion order. Include
   // every provider-affecting field so changed consent can never reuse a paid claim.
-  const signature = JSON.stringify([body.message, body.source, body.sessionId ?? null, body.externalConsent, body.textProviderConsent ?? null, body.imageConsent === true, body.imageProviderConsent ?? null, body.image?.mimeType ?? null, body.image?.dataBase64 ?? null]);
+  const signature = JSON.stringify([body.message, body.source, body.sessionId ?? null, body.externalConsent, body.aiReplyMemoryConsent === true, body.textProviderConsent ?? null, body.imageConsent === true, body.imageProviderConsent ?? null, body.image?.mimeType ?? null, body.image?.dataBase64 ?? null]);
   return previous?.signature === signature ? previous : { signature, clientRequestId: createId() };
 }
 export function coachSendWasRecorded(attempt: CoachSendAttempt | null, messages: CoachMessage[]): boolean {
