@@ -744,7 +744,7 @@ export default function CalendarPage() {
                             <CheckCircle2 className="w-4 h-4 inline text-emerald-600 mr-1" />
                           )}
                           {s.title}
-                          <span className="ml-2 text-xs text-slate-500">{s.calendarState==='reported'?(es?'Informe':'Reported'):s.planned?(es?'Planificado':'Planned'):(es?'Registro':'Record')} · {s.source||'JMM'}</span>
+                          <span className="ml-2 text-xs text-slate-500">{reported?(es?'Informe':'Reported'):s.planned?(es?'Planificado':'Planned'):(es?'Registro':'Record')} · {s.source||'JMM'}</span>
                           {s.indoor && (
                             <span className="chip bg-slate-200 text-slate-600 ml-2">
                               🏠 Indoor
