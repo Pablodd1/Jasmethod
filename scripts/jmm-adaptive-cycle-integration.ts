@@ -97,6 +97,22 @@ async function scenario(name: string, work: () => Promise<void>) {
 async function main() {
   const runner = await actor("runner"), other = await actor("other"), coach = await actor("coach", "run-only", "coach");
   await setup(runner); await setup(other);
+  await scenario('Explicit rest preference preserves evidence, template dose, daily recovery and confirmed activation',async()=>{
+    const a=await actor('purposeful','half');await setup(a,'half');let state=await api('/api/profile',a);
+    state=await api('/api/profile',a,{expectedRevision:state.revision,expectedSetupRevision:state.setupRevision,experience:'advanced',setup:{...state.setup,baselineWeeklyMinutes:411,trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:90}},200,'PUT');
+    const confirmedAt=state.setup.confirmedAt;
+    state=await api('/api/profile',a,{expectedRevision:state.revision,expectedSetupRevision:state.setupRevision,setupSection:'schedule',setup:{restPreference:'no_fixed_rest'}},200,'PUT');
+    assert.equal(state.setup.confirmedAt,confirmedAt);assert.equal(state.setup.baselineWeeklyMinutes,411);
+    await api('/api/profile',a,{expectedRevision:state.revision,expectedSetupRevision:state.setupRevision,setupSection:'schedule',setup:{restPreference:'no_fixed_rest',restrictions:'none'}},400,'PUT');
+    for(const [source,minutes] of [['strava',40],['whoop',60]] as const)await db.workout.create({data:{userId:a.id,date:localDate(addDaysKey(today,-1),a.timezone,'08:00'),sport:'bike',title:'Synthetic ambiguous provider record',source,externalId:`${source}-${randomUUID()}`,durationMin:minutes,actualDurationMin:minutes,completed:true,planned:false,rpe:3,feedbackStatus:'completed',type:'endurance',intensity:'z2'}});
+    const draft=await api('/api/plan/generate',a,{distance:'half',weeks:12,startDate:addDaysKey(today,1),preview:true});
+    assert.equal(draft.preview.cycle.activity.historyReview,true);assert.equal(draft.preview.cycle.activity.recoveryReview,false);
+    const first=draft.preview.weeksPreview[0];assert.equal(first.cycleFactor,1);assert.equal(first.totalMinutes,first.doseAllocation.allocatedMinutes);assert.ok(first.totalMinutes>300);assert.equal(first.restDaySlots.length,0);assert.ok(first.sessions.some((s:Json)=>s.sport==='mobility'&&s.type==='recovery'&&s.minutes<=20));
+    assertBudgets(draft,411,90);assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),0);
+    const saved=await api('/api/plan/generate',a,{distance:'half',weeks:12,startDate:addDaysKey(today,1),previewToken:draft.previewToken});
+    assert.equal(await db.trainingPlan.count({where:{userId:a.id,status:'active'}}),1);assert.ok(saved.plan.id);
+    const message=await api('/api/assistant',a,{message:'Push me and help me improve',source:'text',externalConsent:false,clientRequestId:randomUUID()});assert.match(message.answer,/cannot be guaranteed/);assert.equal(message.trainingModified,false);
+  });
   await scenario("Authentication and cross-athlete plan boundaries", async () => {
     await api("/api/plan/generate", undefined, { preview: true }, 401);
     await api(`/api/plan/generate?athleteId=${runner.id}`, other, { preview: true }, 403);

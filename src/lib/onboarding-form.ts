@@ -11,7 +11,7 @@ export const EMPTY_SETUP = {
   doubleDay: null as DoubleDayPreference | null, travel: null as TravelContext | null,
   coachPreference: "", adultConfirmed: false, profileConfirmed: false, goalDescription: "",
   baselineWeeklyMinutes: "", baselineObservedAt: "", interruptions: "unknown", restrictions: "unknown",
-  qualifiedReview: "unknown", trainingDays: [] as number[], maxSessionMinutes: "", equipmentAccess: "",
+  qualifiedReview: "unknown", trainingDays: [] as number[], restPreference: "level_default", maxSessionMinutes: "", equipmentAccess: "",
   planWeeks: "", trackEvent: "", baselinePlanOptIn: false,
   targetGoal: null as { context?: string; contextDescription?: string; metric: string; sport: string; value?: string | number; unit?: string; targetDate?: string } | null,
 };

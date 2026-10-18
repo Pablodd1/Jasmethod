@@ -176,6 +176,23 @@ async function main() {
       results.push({width,confirmedActionReview:'pass',pageScopedAiConsent:'pass',optionalMemory:'pass',humanHandoff:'pass'});
       await context.close();
     }
+    {
+      const context=await browser.newContext({viewport:{width:390,height:900}}),page=await context.newPage(),f=fixtures('en');let saves=0;
+      let state={profile:{goal:'run-only'},zones:null,revision:'synthetic-profile-1',setupRevision:'synthetic-setup-1',setup:{planWeeks:12,restPreference:'level_default',confirmedAt:'2020-01-01T00:00:00.000Z'},planningReadiness:{ready:false,missing:[],review:[]}};
+      page.on('pageerror',e=>errors.push(String(e)));
+      await page.route('**/api/**',async route=>{
+        const req=route.request(),path=new URL(req.url()).pathname;
+        if(path==='/api/profile'&&req.method()==='PUT'){const b=req.postDataJSON();assert.deepEqual(Object.keys(b).sort(),['expectedRevision','expectedSetupRevision','setup','setupSection']);assert.equal(b.setupSection,'schedule');assert.deepEqual(b.setup,{restPreference:'no_fixed_rest'});saves++;state={...state,setupRevision:'synthetic-setup-2',setup:{...state.setup,restPreference:b.setup.restPreference}};return route.fulfill({json:{ok:true,...state}});}
+        if(req.method()!=='GET'){unexpected.push(`${req.method()} ${path}`);return route.fulfill({status:500,json:{error:'Unexpected synthetic write'}});}
+        if(path==='/api/auth/me')return route.fulfill({json:{user:f.user}});
+        if(path==='/api/profile')return route.fulfill({json:state});
+        if(path==='/api/plan')return route.fulfill({json:{plans:[f.plan],cycle:null}});
+        if(path.endsWith('/preview'))return route.fulfill({json:f.preview});
+        return route.fulfill({json:{ok:true}});
+      });
+      await page.goto(`${base}/training`);const choice=page.getByRole('combobox',{name:'Rest-day preference',exact:true});await choice.waitFor();await choice.selectOption('no_fixed_rest');await page.getByRole('button',{name:'Save rest-day preference',exact:true}).click();await page.getByText(/Preference saved. Preview and confirm a replacement plan/).waitFor();assert.equal(saves,1);assert.equal(state.setup.confirmedAt,'2020-01-01T00:00:00.000Z');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${dir}/rest-preference-390.png`});
+      await page.reload();await choice.waitFor();await page.waitForFunction(()=>{const el=document.querySelector('select[aria-label="Rest-day preference"]');return el&&!el.disabled;});assert.equal(await choice.inputValue(),'no_fixed_rest');results.push({width:390,restPreferenceSave:'pass',noSilentPlanReplacement:'pass'});await context.close();
+    }
     assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
   } finally { await browser.close(); writeFileSync(`${dir}/report.json`,JSON.stringify({results,errors,unexpected,geometry,scope:'API-mocked synthetic Chromium only; no production data or API writes, actual microphone or network provider acceptance; coach sends are intercepted synthetic fixtures'},null,2)); }
   console.log(`${results.length} EN/ES viewport journeys passed; no page errors or unexpected API writes (coach sends intercepted synthetically).`);
