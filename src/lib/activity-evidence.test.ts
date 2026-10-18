@@ -17,7 +17,7 @@ test("start alone and mismatched duration or distance never verify identity; amb
   const rows=[row("a"),row("b","whoop",extra)],result=groupActivityEvidence(rows);assert.equal(result.groups.length,2);assert.equal(result.unresolvedGroups,1);
   assert.equal(result.groups.reduce((sum,g)=>sum+(g.budgetMinutes??0),0),extra.durationMin===35?95:120);
   const metrics=computeJMetrics(rows as any,now,"UTC",["2026-10-16"],1);assert.equal(metrics.totalJStress,null);assert.equal(metrics.coveragePct,0);assert.equal(metrics.series[0].jStress,null);assert.deepEqual(metrics.confirmedRestDays,[]);
-  const cycle=cycleActivityEvidence(rows as any,"2026-10-16","UTC");assert.equal(cycle.reportedMinutes,null);assert.equal(cycle.recoveryReview,true);
+  const cycle=cycleActivityEvidence(rows as any,"2026-10-16","UTC");assert.equal(cycle.reportedMinutes,null);assert.equal(cycle.historyReview,true);assert.equal(cycle.recoveryReview,false,'Uncertain record identity does not establish physical fatigue');
  }
 });
 test("owner, actual sport, provider identity and separate times prevent accidental grouping",()=>{

@@ -1,6 +1,7 @@
 import { clockMinutes, doubleDayReadiness, doubleDayWeekdays } from "./double-day";
 import type {GeneratedWeek,PlanSession} from "./science";
 import type {PlanningSetup} from "./planning-setup";
+import {allocateWeeklyDose} from './weekly-dose';
 function pairSportPriority(primary:string|undefined,secondary:string) {
   if(primary === "run") return secondary === "swim" ? 0 : secondary === "bike" ? 1 : 3;
   if(primary === "bike" || primary === "swim") return secondary === "run" ? 0 : secondary === primary ? 3 : 2;
@@ -21,8 +22,8 @@ export function levelRecoveryPolicy(level?: string | null) {
 /** Reduction-only pilot constraints. Preserve generator day order; unavailable
  * days are omitted, never made up or stacked onto an available day. These are
  * implementation limits for review, not a claimed validated coaching model. */
-export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _legacyWeeklyHours: number | null | undefined, startWeekday: number, level?: string | null, doubleDayExcludedWeeks: number[] = []) {
-  const recoveryPolicy = levelRecoveryPolicy(level);
+export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _legacyWeeklyHours: number | null | undefined, startWeekday: number, level?: string | null, doubleDayExcludedWeeks: number[] = [], options:{preserveWeeklyDose?:boolean}={}) {
+  const recoveryPolicy = setup.restPreference==='no_fixed_rest'?{minimumRestDays:0,maximumTrainingDays:7,note:'Explicit no-fixed-rest preference. Easy recovery practice uses existing weekly minutes. Safety, events and availability can still require rest.'}:levelRecoveryPolicy(level);
   const weeklyBudget = Math.min(setup.baselineWeeklyMinutes ?? 0, (setup.maxSessionMinutes ?? 0)*setup.trainingDays.length);
   const hardAbsoluteDays: number[] = [];
   return {weeklyBudget, recoveryPolicy, weeks:weeks.map((week, weekIndex)=>{
@@ -92,12 +93,14 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _le
     const total=available.reduce((sum,session)=>sum+session.minutes,0);
     const factor=total>weeklyBudget?weeklyBudget/total:1;
     const dayTotals=new Map<number,number>();
-    const sessions:BoundedPlanSession[]=available.map(session=>{
+    let sessions:BoundedPlanSession[]=available.map(session=>{
       const remaining=(setup.maxSessionMinutes ?? 0)-(dayTotals.get(session.daySlot)??0);
       const minutes=Math.max(0,Math.min(remaining,Math.floor(session.minutes*factor)));
       dayTotals.set(session.daySlot,(dayTotals.get(session.daySlot)??0)+minutes);
       return {...session,minutes,description:`${session.description} Duration is bounded by your recent tolerated training and available time. Use the confirmed daily instructions. Omitted work is not made up.`};
     }).filter(session=>session.minutes>0);
+    const allocation=options.preserveWeeklyDose?allocateWeeklyDose(sessions,Math.min(weeklyBudget,week.totalMinutes),setup.maxSessionMinutes??0,setup.trainingDays.map(day=>(day-startWeekday+7)%7),setup.restPreference==='no_fixed_rest'):null;
+    if(allocation)sessions=allocation.sessions;
     let doubleDayNote="No optional double day selected; single-session scheduling retained.";
     if(preference) {
       doubleDayNote=consent.reasons.join(" ");
@@ -114,16 +117,22 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _le
         else if(clockMinutes(preference.firstStart)+primary.minutes>=clockMinutes(preference.secondStart)||clockMinutes(preference.secondStart)+donor.minutes>1440) doubleDayNote="The selected times do not leave separation or finish within the day. The single-session schedule is retained.";
         else {
           const from=donor.daySlot;
+          let paired=donor;
           primary.startTime=preference.firstStart;primary.doubleDayRole="primary";
-          donor.movedFromSlot=from;donor.daySlot=slot;donor.startTime=preference.secondStart;donor.doubleDayRole="secondary";
-          donor.description += " Optional second session: report the first session and complete a new check-in before proceeding. Declining never creates catch-up work.";
-          doubleDayNote=`Optional pair scheduled: ${primary.title} at ${primary.startTime}, then ${donor.title} at ${donor.startTime}, moved from ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(startWeekday+from)%7]}. Purpose: ${preference.purpose}. No weekly minutes added; separation is logistical, not a guarantee of recovery.`;
+          if(setup.restPreference==='no_fixed_rest') {
+            if(donor.minutes<2){doubleDayNote='Not enough existing easy time to split without creating an empty day; keep single sessions.';delete primary.startTime;delete primary.doubleDayRole;continue;}
+            const secondary={...donor,title:`${donor.sport}: Easy split practice · second session`,minutes:Math.floor(donor.minutes/2),daySlot:slot,startTime:preference.secondStart,doubleDayRole:'secondary' as const,movedFromSlot:from};
+            donor.minutes-=secondary.minutes;donor.title=`${donor.sport}: Easy split practice`;sessions.push(secondary);
+            paired=secondary;
+          }else {donor.movedFromSlot=from;donor.daySlot=slot;donor.startTime=preference.secondStart;donor.doubleDayRole="secondary";}
+          paired.description += " Optional second session: report the first session and complete a new check-in before proceeding. Declining never creates catch-up work.";
+          doubleDayNote=`Optional pair scheduled: ${primary.title} at ${primary.startTime}, then ${paired.title} at ${paired.startTime}, ${setup.restPreference==='no_fixed_rest'?'split from existing easy time; source day retained':'moved from '+['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(startWeekday+from)%7]}. Purpose: ${preference.purpose}. No weekly minutes added; separation is logistical, not a guarantee of recovery.`;
           sessions.sort((a,b)=>a.daySlot-b.daySlot||(a.startTime||'').localeCompare(b.startTime||''));
         }
       }
     }
     const populatedSlots=new Set(sessions.map(session=>session.daySlot));
     const restDaySlots=Array.from({length:7},(_,slot)=>slot).filter(slot=>!populatedSlots.has(slot));
-    return {...week,sessions,restDaySlots,doubleDayNote,totalMinutes:sessions.reduce((sum,session)=>sum+session.minutes,0)};
+    return {...week,sessions,restDaySlots,doubleDayNote,...(allocation?{doseAllocation:allocation.decision}:{}),totalMinutes:sessions.reduce((sum,session)=>sum+session.minutes,0)};
   })};
 }

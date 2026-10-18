@@ -4,6 +4,7 @@ import "@/components/daily-training/universal-workout-card.css";
 import { trustedCycleMovementGuidance } from "@/lib/cycle-movement-guidance";
 import { TrainingCycleOverview } from "@/components/training-cycle-overview";
 import { TargetProgressPanel } from "@/components/target-progress-panel";
+import { RestPreference } from "@/components/rest-preference";
 import { planningGoal } from "@/lib/planning-setup";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -311,6 +312,7 @@ function TrainingPageContent() {
         {setupError && <div role="alert" className="card border-amber-300"><p>{setupError} {es ? "El ciclo guardado se carga por separado." : "Your saved cycle loads separately."}</p><button type="button" className="btn-secondary mt-2" disabled={setupLoading} onClick={() => void load()}>{es ? "Reintentar configuración" : "Retry planning setup"}</button></div>}
         {savedMessage && <p role="status" className="card border-emerald-300">{savedMessage}</p>}
         {plan && <TrainingCycleOverview es={es} plan={plan} cycle={cycle} timezone={user?.timezone || "America/New_York"} selectedMonth={visibleMonth} onMonthChange={setSelectedMonth} />}
+        <RestPreference es={es} />
         <TargetProgressPanel key={user?.id} language={user?.language} />
 
         {/* A saved cycle remains primary; replacing it is an explicit review. */}
@@ -437,7 +439,7 @@ function TrainingPageContent() {
             <h3 className="font-semibold">Review before assigning</h3>
             <p>{preview.preview.distance}, {preview.preview.weeks} weeks. Weekly time ceiling: {preview.preview.weeklyBudgetMin} minutes. Event date: {preview.preview.raceDate ? String(preview.preview.raceDate).slice(0,10) : "No event date supplied"}.</p>
             {preview.preview.recoveryPolicy && <div className="my-3 rounded-lg border border-ink-200 bg-paper p-3 space-y-2">
-              <p><strong>Recovery planning:</strong> {preview.preview.recoveryPolicy.minimumRestDays === 0 ? "No fixed minimum off-days for a professional profile. This does not require seven training days." : `At least ${preview.preview.recoveryPolicy.minimumRestDays} planned off-day${preview.preview.recoveryPolicy.minimumRestDays === 1 ? "" : "s"} per seven-day plan block for your current experience level.`}</p>
+              <p><strong>Recovery planning:</strong> {preview.preview.recoveryPolicy.minimumRestDays === 0 ? "No fixed minimum off-days for this saved preference/profile. Easy recovery practice stays within the weekly budget; complete rest can still be required." : `At least ${preview.preview.recoveryPolicy.minimumRestDays} planned off-day${preview.preview.recoveryPolicy.minimumRestDays === 1 ? "" : "s"} per seven-day plan block for your current experience level.`}</p>
               <p className="text-sm">These are coaching defaults, not universal research-established off-day counts. Your unavailable days, symptoms, fatigue and coach review can require more rest. Review the dates below before confirming.</p>
               <p className="text-sm"><strong>First week off-days:</strong> {preview.preview.weeksPreview[0]?.restDaySlots?.length ? preview.preview.weeksPreview[0].restDaySlots.map((slot:number)=>addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),slot)).filter((key:string)=>!preview.preview.weeksPreview[0].eventDays?.includes(key)).join(", ") || (es ? "Solo fechas de evento protegidas" : "Protected event dates only") : "None fixed in this preview; add rest whenever needed."} No compulsory workout is assigned on these dates. Planned rest does not count as confirmed completed rest.</p>
             </div>}
@@ -446,7 +448,7 @@ function TrainingPageContent() {
             <p>{preview.preview.existingPlans ? "Confirming will archive the current plan and supersede its uncompleted future sessions. History is retained." : "Confirming will assign this provisional plan."}</p>
             <details className="my-3"><summary className="cursor-pointer underline">Review every week, off-day and session</summary>{preview.preview.weeksPreview.map((week:any,weekIndex:number)=><div className="my-4" key={week.week}>
               <h4 className="font-semibold">Week {week.week}: {week.theme} · {week.totalMinutes} min</h4>
-              <p className="text-sm">{week.doubleDayNote}</p>
+              <p className="text-sm">{week.doubleDayNote}</p>{week.volumeDecision && <p className="text-sm">Dose decision: {week.volumeDecision.scheduledMinutes} scheduled min · adjustment ×{week.volumeDecision.cycleFactor} · {week.volumeDecision.remainingPlannedMinutes} future planned min. {week.volumeDecision.reason}. Performed/protected dates are excluded, not counted as zero training.</p>}
               <ul className="mt-2 space-y-2">{Array.from({length:7},(_,slot)=>{
                 const localDay=addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+slot);
                 const sessions=week.sessions.filter((session:any)=>session.daySlot===slot);

@@ -60,3 +60,10 @@ test("reviewed full-cycle experience saves without a weekly-hours guess",async()
   const setup=JSON.parse(f.audits.find(row=>row.action==="profile.setup").after);
   assert.equal(setup.profileConfirmed,true);assert.equal(setup.profileAnswers.weeklyHours,false);
 });
+
+test('rest preference saves narrowly without renewing safety, baseline, source or confirmation age',async()=>{
+ const f=fixture();const body={expectedRevision:f.body.expectedRevision,expectedSetupRevision:'s1',setupSection:'schedule',setup:{restPreference:'no_fixed_rest'}};
+ await f.save(body);const saved=JSON.parse(f.audits.find(a=>a.action==='profile.setup').after);
+ assert.deepEqual(saved,JSON.parse(JSON.stringify({...f.prior,restPreference:'no_fixed_rest'})));
+ for(const patch of [{setup:{restPreference:'no_fixed_rest',restrictions:'none'}},{setup:{restPreference:'invalid'}},{ftp:300},{expectedSetupRevision:'stale'}])await assert.rejects(()=>fixture().save({...body,...patch}));
+});

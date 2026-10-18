@@ -21,6 +21,7 @@ export interface PlanningSetup {
   restrictions: "none" | "present" | "unknown";
   qualifiedReview: "none_needed" | "required" | "unknown";
   trainingDays: number[];
+  restPreference?: "level_default" | "no_fixed_rest";
   maxSessionMinutes: number | null;
   equipmentAccess: string;
   planWeeks: number | null;
@@ -59,7 +60,7 @@ export function parsePlanningSetup(value: unknown, now = new Date(), timezone = 
     interruptions: option("interruptions", ["none", "yes", "unknown"], "unknown"),
     restrictions: option("restrictions", ["none", "present", "unknown"], "unknown"),
     qualifiedReview: option("qualifiedReview", ["none_needed", "required", "unknown"], "unknown"),
-    trainingDays: [...new Set(days as number[])].sort(), maxSessionMinutes: number("maxSessionMinutes", 10, 300),
+    trainingDays: [...new Set(days as number[])].sort(), restPreference: option<"level_default"|"no_fixed_rest">("restPreference", ["level_default", "no_fixed_rest"], "level_default"), maxSessionMinutes: number("maxSessionMinutes", 10, 300),
     equipmentAccess: typeof v.equipmentAccess === "string" ? v.equipmentAccess.trim().slice(0,1000) : "",
     planWeeks: number("planWeeks", 4, 30),
     baselinePlanOptIn: v.baselinePlanOptIn === true,

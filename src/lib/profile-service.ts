@@ -15,9 +15,11 @@ export function profileRevision(profile: unknown) {
 export async function saveProfile(actorId: string, athlete: {id: string; timezone: string}, body: Record<string, unknown>, transaction?: Prisma.TransactionClient) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError("Invalid profile body");
   const { expectedRevision, reason, setup: rawSetup, expectedSetupRevision, setupSection, reviewedWeightObservationId, ...fields } = body;
-  if (setupSection !== undefined && setupSection !== "travel" && setupSection !== "intent") throw new ApiError("Invalid setup section");
+  if (setupSection !== undefined && setupSection !== "travel" && setupSection !== "intent" && setupSection !== "schedule") throw new ApiError("Invalid setup section");
   const travelOnly = setupSection === "travel";
   const intentOnly = setupSection === "intent";
+  const scheduleOnly = setupSection === "schedule";
+  if(scheduleOnly&&(reviewedWeightObservationId!==undefined||Object.keys(fields).length||!rawSetup||typeof rawSetup!=='object'||Array.isArray(rawSetup)||Object.keys(rawSetup).join(',')!=='restPreference'))throw new ApiError('Schedule preference updates require only restPreference and revisions');
   if (travelOnly && (reviewedWeightObservationId !== undefined || Object.keys(fields).length || !rawSetup || typeof rawSetup !== "object" || Array.isArray(rawSetup) || !Object.hasOwn(rawSetup, "travel"))) throw new ApiError("Travel updates require only travel context and revisions");
   if (intentOnly && (reviewedWeightObservationId !== undefined || Object.keys(fields).some(key=>key !== "goal") || !rawSetup || typeof rawSetup !== "object" || Array.isArray(rawSetup) || Object.keys(rawSetup).some(key=>!["goalDescription","planWeeks"].includes(key)))) throw new ApiError("Goal updates require only goal, description, planning horizon and revisions");
   let setup: PlanningSetup | undefined;
@@ -47,6 +49,7 @@ export async function saveProfile(actorId: string, athlete: {id: string; timezon
       if (setup || travelOnly) {
         const priorSetup = await readPlanningSetup(athlete.id, tx);
         if (expectedSetupRevision !== priorSetup.revision) throw new ApiError("Your setup changed. Reload and review it before saving.", 409);
+        if(scheduleOnly){if(!priorSetup.setup)throw new ApiError('Review your saved planning setup first',409);setup={...priorSetup.setup,restPreference:setup!.restPreference};}
         if (intentOnly) {
           if (!priorSetup.setup && priorSetup.revision) throw new ApiError("Review invalid saved setup before updating goals.",409);
           // A short onboarding goal edit does not renew or replace safety/baseline evidence.

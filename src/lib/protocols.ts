@@ -4,6 +4,9 @@ import type { WorkoutStep } from "./prescription";
 
 export const PROTOCOL_VERSION = "2026-10-11";
 export const PROTOCOL_SOURCES = {
+  loadMonitoring: {title:'Bourdon et al. · Monitoring Athlete Training Loads (2017)',url:'https://pubmed.ncbi.nlm.nih.gov/28463642/',kind:'Consensus statement; not validation of JMM dose rules'},
+  subjectiveResponse: {title:'Saw et al. · Monitoring the athlete training response (2016)',url:'https://pubmed.ncbi.nlm.nih.gov/26423706/',kind:'Systematic review; subjective and objective signals are complementary'},
+  autonomousMotivation: {title:'Teixeira et al. · Exercise and self-determination theory (2012)',url:'https://pubmed.ncbi.nlm.nih.gov/22726453/',kind:'Systematic review of exercise motivation; not a guarantee of competitive performance'},
   galpinResistance: {
     title: "Huberman & Galpin · Strength, hypertrophy, speed and power (2023)",
     url: "https://www.hubermanlab.com/episode/dr-andy-galpin-optimal-protocols-to-build-strength-and-grow-muscles",
