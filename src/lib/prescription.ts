@@ -248,7 +248,7 @@ export function structuredSteps(
       : patterns[idx];
     // Cycling recipes and evidence must not masquerade as swimming/running
     // protocols. These time-budget examples are not exact studied doses.
-    const pat = sport === 'swim' || sport === 'run'
+    const pat = sport === 'swim' || (sport === 'run' && z === 3)
       ? {...selected,label:z<=2?'Easy technique repeats':z===3?'Controlled aerobic repeats':'Controlled effort repeats',workName:sport==='swim'?'Swim effort':'Run effort',restName:sport==='swim'?'Easy swim or rest':'Easy jog or walk',cite:'JMM time-budget coaching example; review sport-specific effort and recovery, not an exact trial protocol'}
       : selected;
     const block = pat.workSec + pat.restSec;
