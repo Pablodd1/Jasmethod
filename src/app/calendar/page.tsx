@@ -58,6 +58,8 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [races, setRaces] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
+  const [displayWorkouts,setDisplayWorkouts]=useState<any[]>([]);
+  const [possibleCopyGroups,setPossibleCopyGroups]=useState(0);
   const [plan, setPlan] = useState<any>(null);
   const [showForm, setShowForm] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -85,17 +87,18 @@ export default function CalendarPage() {
 
   async function load(m: Date) {
     const key = format(m, "yyyy-MM");
-    const res = await fetch(`/api/calendar?month=${key}`);
+    const [res,sres]=await Promise.all([fetch(`/api/calendar?month=${key}`,{cache:'no-store'}),fetch('/api/calendar?month=auto',{cache:'no-store'})]);
     const d = await res.json();
     setEvents(d.events || []);
     setWorkouts(d.workouts || []);
+    setDisplayWorkouts(d.displayWorkouts||d.workouts||[]);
+    setPossibleCopyGroups(d.calendarReview?.possibleCopyGroups||0);
     setRaces(d.races || []);
     setPlan(d.plan);
-    // Week strip spans prev/next month — one extra request, cached server-side.
-    const sres = await fetch("/api/calendar?month=auto");
+    // The concurrent wider request supplies the week strip without stale data.
     if (sres.ok) {
       const sd = await sres.json();
-      setStripWorkouts(sd.workouts || []);
+      setStripWorkouts(sd.displayWorkouts||sd.workouts||[]);
     }
   }
 
@@ -271,6 +274,8 @@ export default function CalendarPage() {
       <div className="space-y-6">
         {mutationError && <p role="alert" className="text-red-700">{mutationError}</p>}
         <nav className="flex flex-wrap gap-3" aria-label={es ? "Navegación de entrenamiento" : "Training navigation"}><a href="/today" className="btn-primary min-h-12">{es ? "Entrenamiento de hoy" : "Today’s workout"}</a><a href="/training" className="btn-secondary min-h-12">{es ? "Ciclo y meses guardados" : "Saved cycle and months"}</a></nav>
+        <p className="text-sm text-slate-600">{es?'Solo se muestran las sesiones pendientes del ciclo activo y los informes guardados. Los planes reemplazados sin resultados no son entrenamiento adicional.':'Only pending sessions from your active cycle and saved reports are shown. Replaced plans without results are not extra training.'}</p>
+        {possibleCopyGroups>0&&<p role="status" className="card text-sm">{es?'Posibles copias de dispositivos agrupadas para revisión; no se suman ni se fusionan. Abre el día para ver cada registro.':'Possible device copies are bundled for review, not summed or merged. Open the day to see each source record.'} <a className="underline" href="/onboard?redo=1&advanced=1&step=race">{es?'Revisar importaciones':'Review imports'}</a></p>}
         <details className="card space-y-2">
           <summary className="cursor-pointer min-h-11 content-center font-semibold">{es ? "Usar mi calendario de Apple u otra app" : "Use Apple Calendar or another calendar app"}</summary>
           <a className="btn-secondary min-h-11" href="/api/training/export?format=ics">{es ? "Descargar calendario (.ics)" : "Download calendar (.ics)"}</a>
@@ -531,7 +536,7 @@ export default function CalendarPage() {
                               )}
                               <span className="truncate">{"priority" in e ? `🏁 ${e.name}` : e.title}</span>
                             </div>
-                            {"planned" in e && dateKey(new Date(e.date), user?.timezone) <= dateKey(new Date(), user?.timezone) && <button type="button" className="btn-secondary text-xs mt-2" disabled={resultBusy} onClick={() => openResult(e)}>{es ? "Editar resultado" : "Edit result"}</button>}
+                            {"planned" in e && !e.calendarGroup && dateKey(new Date(e.date), user?.timezone) <= dateKey(new Date(), user?.timezone) && <button type="button" className="btn-secondary text-xs mt-2" disabled={resultBusy} onClick={() => openResult(e)}>{es ? "Editar resultado" : "Edit result"}</button>}
                             <div className="text-[11px] text-slate-500 mt-0.5">
                               {"priority" in e ? (
                                 <>
@@ -590,7 +595,7 @@ export default function CalendarPage() {
               const dayEvents = events.filter(
                 (e) => dateKey(new Date(e.date), user?.timezone) === key,
               );
-              const dayWorkouts = workouts.filter(
+              const dayWorkouts = displayWorkouts.filter(
                 (w) => dateKey(new Date(w.date), user?.timezone) === key,
               );
               const isDayOff = plan?.days?.some(
@@ -609,7 +614,7 @@ export default function CalendarPage() {
                     {format(day, "d")}
                   </div>
                   <div className="space-y-1 overflow-hidden pointer-events-none">
-                    {isDayOff && (
+                    {isDayOff && !dayWorkouts.some(w=>w.calendarState==='reported'||w.calendarState==='review') && (
                       <div
                         className="text-[10px] md:text-[11px] rounded-md px-1.5 py-0.5 bg-slate-200 text-slate-600 font-semibold truncate"
                         title="Day off — rest, with optional comfortable movement"
@@ -621,7 +626,7 @@ export default function CalendarPage() {
                       <div
                         key={w.id}
                         className={`text-[10px] md:text-[11px] rounded-md px-1.5 py-0.5 truncate ${SPORT_COLOR[w.sport] || "bg-slate-100 text-slate-600"} ${w.completed ? "line-through opacity-60" : ""} ${isDayOff ? "opacity-50" : ""}`}
-                        title={`${w.title} — ${w.durationMin} min`}
+                        title={`${w.title} — ${w.calendarState||''} · ${w.source||'JMM'}${w.durationMin!=null?' · '+w.durationMin+' min':''}`}
                       >
                         <Dumbbell className="w-2.5 h-2.5 inline mr-1" />
                         {w.title.split(":").pop()?.trim().slice(0, 22)}
@@ -735,6 +740,7 @@ export default function CalendarPage() {
                             <CheckCircle2 className="w-4 h-4 inline text-emerald-600 mr-1" />
                           )}
                           {s.title}
+                          <span className="ml-2 text-xs text-slate-500">{s.calendarState==='reported'?(es?'Informe':'Reported'):s.planned?(es?'Planificado':'Planned'):(es?'Registro':'Record')} · {s.source||'JMM'}</span>
                           {s.indoor && (
                             <span className="chip bg-slate-200 text-slate-600 ml-2">
                               🏠 Indoor

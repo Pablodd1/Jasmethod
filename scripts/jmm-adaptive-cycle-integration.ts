@@ -118,6 +118,19 @@ async function main() {
     await api(`/api/plan/generate?athleteId=${runner.id}`, other, { preview: true }, 403);
     await api(`/api/plan/generate?athleteId=${runner.id}`, coach, { preview: true }, 403);
   });
+  await scenario('Calendar replacement hides obsolete prescriptions while preserving source reports and owner boundaries',async()=>{
+    const a=await actor('calendar');await setup(a);
+    const first=await preview(a);const old=await api('/api/plan/generate',a,{distance:'run-only',weeks:12,previewToken:first.previewToken});
+    const original=await db.workout.findFirstOrThrow({where:{userId:a.id,planDay:{planId:old.plan.id}},orderBy:{date:'asc'}});
+    await db.workout.update({where:{id:original.id},data:{actualDurationMin:12,feedbackStatus:'partial',feedbackAt:new Date()}});
+    const next=await preview(a);const saved=await api('/api/plan/generate',a,{distance:'run-only',weeks:12,previewToken:next.previewToken});
+    for(const [source,minutes]of [['strava',40],['whoop',44]]as const)await db.workout.create({data:{userId:a.id,date:localDate(today,a.timezone,'08:00'),sport:'run',title:'Synthetic calendar source',source,externalId:randomUUID(),durationMin:minutes,actualDurationMin:minutes,completed:true,planned:false,type:'endurance',intensity:'z2'}});
+    const calendar=await api('/api/calendar?month=auto',a);assert.equal(calendar.plan.id,saved.plan.id);assert.ok(calendar.calendarReview.hiddenUnperformed>0);assert.ok(calendar.workouts.some((w:Json)=>w.id===original.id),'A saved actual report survives replacement');
+    assert.ok(calendar.workouts.every((w:Json)=>w.userId===a.id));const oldIds=new Set((await db.workout.findMany({where:{userId:a.id,planDay:{planId:old.plan.id}},select:{id:true}})).map(w=>w.id));assert.ok(calendar.workouts.filter((w:Json)=>oldIds.has(w.id)).every((w:Json)=>w.id===original.id));
+    const bundle=calendar.displayWorkouts.find((w:Json)=>w.calendarGroup?.pending);assert.equal(bundle.calendarGroup.recordIds.length,2);assert.equal(bundle.durationMin,null);assert.equal(calendar.workouts.filter((w:Json)=>['strava','whoop'].includes(w.source)).length,2);
+    const foreign=await api('/api/calendar?month=auto',other);assert.ok(!foreign.workouts.some((w:Json)=>w.userId===a.id));await api('/api/calendar?month=auto',undefined,undefined,401);
+    assert.equal(await db.workout.count({where:{userId:a.id,planDay:{planId:old.plan.id}}}),oldIds.size,'Calendar reads never delete history');
+  });
   await scenario("Missing baseline: budgeted comfortable observations and no automatic test battery", async () => {
     const draft = await preview(runner);
     assert.equal(draft.preview.cycle.baselineReviews.find((review: Json) => review.sport === "run").status, "missing");
