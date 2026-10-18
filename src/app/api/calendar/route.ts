@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { dayBounds, dateKey, localDate } from "@/lib/dates";
 import { errorResponse, ApiError } from "@/lib/access";
 import { getCurrentUser } from "@/lib/auth";
+import {calendarWorkoutView} from '@/lib/calendar-workouts';
+import {readActivityDecisions} from '@/lib/activity-reconciliation';
 
 // GET /api/calendar?month=YYYY-MM — calendar events + workouts for the month.
 // month=auto spans the previous month, current month and next month so the
@@ -39,13 +41,14 @@ export async function GET(req: Request) {
     `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-01`,
     user.timezone,
   );
-  const [events, workouts, plans, races] = await Promise.all([
+  const [events, workouts, plans, races, decisions] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: { userId: user.id, date: { gte: start, lt: end } },
       orderBy: { date: "asc" },
     }),
     prisma.workout.findMany({
       where: { userId: user.id, date: { gte: start, lt: end } },
+      include: {planDay:{select:{plan:{select:{id:true,status:true,userId:true}}}}},
       orderBy: { date: "asc" },
     }),
     prisma.trainingPlan.findMany({
@@ -56,7 +59,7 @@ export async function GET(req: Request) {
           include: { sessions: true },
         },
       },
-      orderBy: { startDate: "desc" },
+      orderBy: { createdAt: "desc" },
       take: 1,
     }),
     // Race rows store entered UTC calendar days; query by those day keys.
@@ -74,15 +77,20 @@ export async function GET(req: Request) {
         location: true,
       },
     }),
+    readActivityDecisions(user.id),
   ]);
+  const view=calendarWorkoutView(workouts,user.id,plans[0]?.id??null,decisions);
+  const visibleIds=new Set(view.workouts.map(w=>w.id));
   return NextResponse.json({
     events,
-    workouts: workouts.map(w => ({...w, revision: workoutRevision(w)})),
+    workouts: view.workouts.map(w => ({...w, revision: workoutRevision(w)})),
+    displayWorkouts:view.displayWorkouts,
+    calendarReview:{hiddenUnperformed:view.hiddenUnperformed,possibleCopyGroups:view.possibleCopyGroups},
     // Calendar consumers group timestamps in the athlete timezone. Preserve
     // the entered day while adapting to that display contract (no DB write).
     races: races.map(race=>({...race,dateKey:race.date.toISOString().slice(0,10),date:localDate(race.date.toISOString().slice(0,10),user.timezone)})),
-    plan: plans[0] ? {...plans[0], days: plans[0].days.map(day => ({...day, sessions: day.sessions.map(w => ({...w,revision:workoutRevision(w)}))}))} : null,
-  });
+    plan: plans[0] ? {...plans[0], days: plans[0].days.map(day => ({...day, sessions: day.sessions.filter(w=>visibleIds.has(w.id)).map(w => ({...w,revision:workoutRevision(w)}))}))} : null,
+  },{headers:{'Cache-Control':'private, no-store'}});
 }
 
 // POST /api/calendar — add event

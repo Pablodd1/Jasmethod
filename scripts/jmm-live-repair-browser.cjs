@@ -9,6 +9,7 @@ assert.ok(/^http:\/\/127\.0\.0\.1:\d+$/.test(base), 'Only an isolated loopback a
 const dir = '.local/jmm-live-repair-browser'; mkdirSync(dir, { recursive: true });
 const results = [], errors = [], unexpected = [], geometry = [];
 const { buildCoachReply } = require('../src/lib/coach-conversation.ts');
+const { calendarWorkoutView } = require('../src/lib/calendar-workouts.ts');
 const today = new Date().toISOString().slice(0, 10);
 const reason = "Training is on hold until today's safety, recovery and available-time answers are known. Missing: sleep, soreness, motivation, energy, stress, sick, newPain, urgentSymptoms, availableMin. Unknown or skipped answers are not evidence of readiness. No device data is required.";
 function fixtures(language) {
@@ -192,6 +193,18 @@ async function main() {
       });
       await page.goto(`${base}/training`);const choice=page.getByRole('combobox',{name:'Rest-day preference',exact:true});await choice.waitFor();await choice.selectOption('no_fixed_rest');await page.getByRole('button',{name:'Save rest-day preference',exact:true}).click();await page.getByText(/Preference saved. Preview and confirm a replacement plan/).waitFor();assert.equal(saves,1);assert.equal(state.setup.confirmedAt,'2020-01-01T00:00:00.000Z');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${dir}/rest-preference-390.png`});
       await page.reload();await choice.waitFor();await page.waitForFunction(()=>{const el=document.querySelector('select[aria-label="Rest-day preference"]');return el&&!el.disabled;});assert.equal(await choice.inputValue(),'no_fixed_rest');results.push({width:390,restPreferenceSave:'pass',noSilentPlanReplacement:'pass'});await context.close();
+    }
+    for(const width of [390,1173]){
+      const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),f=fixtures('en');page.on('pageerror',e=>errors.push(String(e)));
+      const primary={...f.plan.days[0].sessions[0],userId:f.user.id,source:'manual',planDay:{plan:{id:f.plan.id,status:'active',userId:f.user.id}}};
+      const secondary={...primary,id:'synthetic-secondary',title:'Synthetic second easy practice',durationMin:18};
+      const old={...primary,id:'synthetic-old',title:'Obsolete duplicate session',planDay:{plan:{id:'synthetic-archived',status:'archived',userId:f.user.id}}};
+      const sources=['strava','whoop'].map((source,i)=>({...primary,id:`synthetic-${source}`,title:`Synthetic ${source} source`,source,planDay:null,planned:false,completed:true,actualDurationMin:40+i,date:`${today}T08:00:00Z`}));
+      const view=calendarWorkoutView([primary,secondary,old,...sources],f.user.id,f.plan.id);assert.equal(view.hiddenUnperformed,1);
+      f.plan.days[0].sessions=[primary,secondary];
+      await page.route('**/api/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname;if(req.method()!=='GET'){unexpected.push(`${req.method()} ${path}`);return route.fulfill({status:500,json:{error:'Unexpected synthetic write'}});}if(path==='/api/auth/me')return route.fulfill({json:{user:f.user}});if(path==='/api/calendar')return route.fulfill({json:{events:[],races:[],...view,calendarReview:view,plan:f.plan}});return route.fulfill({json:{ok:true}});});
+      await page.goto(`${base}/calendar`);await page.getByText(/Possible device copies are bundled for review/).waitFor();assert.equal(await page.getByText('Obsolete duplicate session',{exact:true}).count(),0);
+      const day=page.getByRole('button',{name:new RegExp('^'+Number(today.slice(-2))+' ')});await day.click();await page.getByText('Reported · strava',{exact:true}).waitFor();await page.getByText('Reported · whoop',{exact:true}).waitFor();assert.equal(await page.getByText('Synthetic second easy practice',{exact:true}).count()>0,true);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${dir}/calendar-overlap-${width}.png`});results.push({width,calendarActiveCycleOnly:'pass',calendarCopyBundle:'pass',sourceRecordsPreserved:'pass'});await context.close();
     }
     assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
   } finally { await browser.close(); writeFileSync(`${dir}/report.json`,JSON.stringify({results,errors,unexpected,geometry,scope:'API-mocked synthetic Chromium only; no production data or API writes, actual microphone or network provider acceptance; coach sends are intercepted synthetic fixtures'},null,2)); }
