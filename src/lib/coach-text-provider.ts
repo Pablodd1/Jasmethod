@@ -19,7 +19,7 @@ export function coachTextConfigured(env: CoachTextEnvironment = currentEnvironme
 }
 // Safety, exact local calculations and all writes remain server-owned. The model
 // may describe requested field changes, never execute them or create a workout.
-const allowedRules = new Set(["ask-next-detail","clarify-data","greeting","acknowledgment","athlete-context-summary","remember-confirmed-goal","remember-confirmed-availability","remember-reported-history","missing-reported-history","process-goal"]);
+const allowedRules = new Set(["ask-next-detail","clarify-data","schedule-preference","greeting","acknowledgment","athlete-context-summary","remember-confirmed-goal","remember-confirmed-availability","remember-reported-history","missing-reported-history","process-goal"]);
 export function textProviderQuestionAllowed(message: string, ruleId: string): boolean {
   if (typeof message !== "string" || !message.trim() || message.length > 4000 || !ruleId.startsWith("coach-conversation-v1:")) return false;
   const rule = ruleId.slice("coach-conversation-v1:".length);

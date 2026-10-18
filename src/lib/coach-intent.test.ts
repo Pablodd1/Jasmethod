@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {coachAutoSessionDay,coachRequestedDay,groundCoachChanges,type CoachChange} from './coach-intent';
-import {extractLocalCandidates} from './coach-conversation';
+import {buildCoachReply,extractLocalCandidates} from './coach-conversation';
 const context={localToday:'2026-10-17',sessionId:'owned-session',sessionDate:'2026-10-17'};
 const change=(patch:Partial<CoachChange>={}):CoachChange=>({kind:'workout_plan',field:'durationMin',unit:'min',value:30,evidence:'Make this session half an hour',...patch});
 test('natural values are proposed with server-owned record, date and evidence, never model-supplied targets',()=>{
@@ -32,4 +32,12 @@ test('common explicit profile and workout changes also work locally without exte
   const candidates=extractLocalCandidates("Make today's run 45 minutes at zone 2",context);
   assert.equal(candidates.find(c=>c.field==='durationMin')?.value,45);assert.equal(candidates.find(c=>c.field==='intensity')?.value,'z2');
   assert.deepEqual(extractLocalCandidates('Do not change my workout to 45 minutes',context),[]);
+});
+
+test('no-day-off preferences do not trigger the recovery-day guide or claim a schedule was changed',()=>{
+  for(const message of ['no day off, monday weights','I am available every day','sin dias de descanso']) {
+    const reply=buildCoachReply(message,{localToday:context.localToday});
+    assert.equal(reply.ruleId,'coach-conversation-v1:schedule-preference');
+    assert.match(reply.answer,/preference|preferencia/);assert.doesNotMatch(reply.answer,/RECOVERY DAY|meditation/);
+  }
 });
