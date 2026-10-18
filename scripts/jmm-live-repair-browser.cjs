@@ -191,7 +191,7 @@ async function main() {
         return route.fulfill({json:{ok:true}});
       });
       await page.goto(`${base}/training`);const choice=page.getByRole('combobox',{name:'Rest-day preference',exact:true});await choice.waitFor();await choice.selectOption('no_fixed_rest');await page.getByRole('button',{name:'Save rest-day preference',exact:true}).click();await page.getByText(/Preference saved. Preview and confirm a replacement plan/).waitFor();assert.equal(saves,1);assert.equal(state.setup.confirmedAt,'2020-01-01T00:00:00.000Z');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${dir}/rest-preference-390.png`});
-      await page.reload();await choice.waitFor();assert.equal(await choice.inputValue(),'no_fixed_rest');results.push({width:390,restPreferenceSave:'pass',noSilentPlanReplacement:'pass'});await context.close();
+      await page.reload();await choice.waitFor();await page.waitForFunction(()=>{const el=document.querySelector('select[aria-label="Rest-day preference"]');return el&&!el.disabled;});assert.equal(await choice.inputValue(),'no_fixed_rest');results.push({width:390,restPreferenceSave:'pass',noSilentPlanReplacement:'pass'});await context.close();
     }
     assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
   } finally { await browser.close(); writeFileSync(`${dir}/report.json`,JSON.stringify({results,errors,unexpected,geometry,scope:'API-mocked synthetic Chromium only; no production data or API writes, actual microphone or network provider acceptance; coach sends are intercepted synthetic fixtures'},null,2)); }
