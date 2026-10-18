@@ -20,7 +20,9 @@ async function main(){
  const token=randomBytes(32).toString('hex');await db.authSession.create({data:{userId,tokenHash:hashToken(token),expiresAt:new Date(Date.now()+3600000)}});
  async function api(path:string,body?:unknown,method=body===undefined?'GET':'POST',expected=200){const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',cookie:`jmm_session=${token}`},...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:'manual'});const text=await r.text();assert.equal(r.status,expected,`${path}: ${text.slice(0,600)}`);try{return JSON.parse(text);}catch{return text;}}
  const current=await api('/api/profile');
- const setup={adultConfirmed:true,profileConfirmed:true,goalDescription:'Sustainable cycling with an optional easy pair',baselineWeeklyMinutes:480,baselineObservedAt:day.key,interruptions:'none',restrictions:'none',qualifiedReview:'none_needed',trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:180,equipmentAccess:'Familiar stationary bike and safe movement space',planWeeks:4,doubleDay:{version:DOUBLE_DAY_VERSION,weekday:new Date(day.key+'T12:00Z').getUTCDay(),purpose:'Keep one convenient optional pair without adding weekly work',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true}};
+ // Exercise a real cycling pair within the daily limit. The no-fixed-rest
+ // preference permits splitting existing easy cycling, never recovery mobility.
+ const setup={adultConfirmed:true,profileConfirmed:true,goalDescription:'Sustainable cycling with an optional easy pair',baselineWeeklyMinutes:480,baselineObservedAt:day.key,interruptions:'none',restrictions:'none',qualifiedReview:'none_needed',restPreference:'no_fixed_rest',trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:180,equipmentAccess:'Familiar stationary bike and safe movement space',planWeeks:4,doubleDay:{version:DOUBLE_DAY_VERSION,weekday:new Date(day.key+'T12:00Z').getUTCDay(),purpose:'Keep one convenient optional pair without adding weekly work',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true}};
  await api('/api/profile',{expectedRevision:current.revision,expectedSetupRevision:current.setupRevision,experience:'advanced',weeklyHours:8,setup},'PUT');
  const request={distance:'cycle',weeks:4,startDate:day.key};
  const preview=await api('/api/plan/generate',{...request,preview:true});
@@ -31,6 +33,8 @@ async function main(){
  const generated=await api('/api/plan/generate',{...request,previewToken:preview.previewToken,confirmDoubleDay:true});
  const sessions=generated.plan.sessions.filter((w:any)=>dateKey(new Date(w.date),timezone)===day.key);
  assert.equal(sessions.length,2);
+ assert.ok(sessions.every((session:any)=>session.sport==='bike'));
+ assert.ok(sessions.reduce((sum:number,session:any)=>sum+session.durationMin,0)<=180);
  const first=sessions.find((w:any)=>JSON.parse(w.originalPlan).doubleDay.role==='primary');
  const second=sessions.find((w:any)=>JSON.parse(w.originalPlan).doubleDay.role==='secondary');
  assert.equal(JSON.parse(second.originalPlan).doubleDay.pair[0].id,first.id);
