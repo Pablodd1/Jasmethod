@@ -151,6 +151,7 @@ export async function POST(req: Request) {
       ? generateTrackSprint({ level, event: setup.trackEvent!, weeks: weeksCount, startDate: start })
       : isSingleSport
       ? generateSingleSport({
+          reviewedCycle: true,
           sport:
             dist === "cycle"
               ? "bike"
@@ -165,12 +166,14 @@ export async function POST(req: Request) {
         })
       : isHyrox
           ? generateHyroxPlan({
+              reviewedCycle: true,
               level,
               weeks: weeksCount,
               startDate: start,
               weeklyHours: setup.baselineWeeklyMinutes! / 60,
             })
           : generatePlan({
+              reviewedCycle: true,
               level,
               distance: dist,
               weeks: weeksCount,

@@ -60,7 +60,11 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
     const baseFactor = rebuild ? .6 : options.templatePeriodized ? 1 : recoveryWeek ? .7 : Math.min(1, .8 + (index % 4) * .05 + Math.floor(index / 4) * .025);
     // Taking the most conservative applicable window avoids additive loads or
     // separate promised peaks. Event days are removed rather than assigned dose.
-    const factor = Math.min(baseFactor, ...eventDays.map(day => day.protected ? .5 : day.factor));
+    const eventFactor = Math.min(1, ...eventDays.map(day => day.protected ? .5 : day.factor));
+    // The reviewed template already contains its volume wave. Apply only the
+    // additional reduction necessary for an event; never multiply two tapers.
+    const templateFactor = options.templatePeriodized && week.periodizationFactor && week.periodizationFactor > 0 ? Math.min(1,week.periodizationFactor) : 1;
+    const factor = Math.min(baseFactor, eventFactor / templateFactor);
     const theme = hasPreparation && hasRecovery ? "Event preparation and recovery · reduced load"
       : hasPreparation ? "Event preparation · reduced load"
       : hasRecovery ? "Post-event recovery · review before resuming"

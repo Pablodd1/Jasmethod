@@ -243,9 +243,14 @@ export function structuredSteps(
     // recipe automatically; variants remain for existing explicit workouts.
     const vo2Variant = [1, 2, 3]; // Rønnestad, 80/160, 1:1
     const idx = z <= 2 ? 4 : z === 3 ? 4 : z === 4 ? 5 : z <= 6 ? vo2Variant[variant % vo2Variant.length] : 0;
-    const pat = z <= 2
+    const selected = z <= 2
       ? { ...patterns[4], label: "Easy technique repeats", workZone: zone, workName: "Easy effort", restName: "Easy recovery", cite: "conservative effort; not threshold work" }
       : patterns[idx];
+    // Cycling recipes and evidence must not masquerade as swimming/running
+    // protocols. These time-budget examples are not exact studied doses.
+    const pat = sport === 'swim' || sport === 'run'
+      ? {...selected,label:z<=2?'Easy technique repeats':z===3?'Controlled aerobic repeats':'Controlled effort repeats',workName:sport==='swim'?'Swim effort':'Run effort',restName:sport==='swim'?'Easy swim or rest':'Easy jog or walk',cite:'JMM time-budget coaching example; review sport-specific effort and recovery, not an exact trial protocol'}
+      : selected;
     const block = pat.workSec + pat.restSec;
     let reps = Math.max(2, Math.floor(main / block));
     // Whole-set guarantee: never exceed the main budget (rounding safety).

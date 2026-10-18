@@ -24,4 +24,6 @@ The software change repairs accounting and scheduling logic. It is not a fitted 
 
 ## Verification scope
 
+Live preview follow-up: reviewed generators retain the existing sixth-week volume recovery wave but do not label it as an unapproved test or halve individual sport bouts again. The event controller compares the template's recorded volume factor with its event ceiling, applying only the additional reduction needed; performed/event dates remain protected. Optional sport pairs cannot split recovery mobility. Swimming/running repeat labels use sport-specific coaching language and do not claim a cycling study validated their time-budget example. These remain product policies, not fitted dose-response models.
+
 Regression tests cover five sports across four experience levels, both rest policies, caps, integer step time, no second generic ramp, template taper preservation, split pairs, performed-date protection and motivation with symptom priority. New HTTP/Postgres acceptance checks narrow preference saves, unchanged evidence age, ambiguous copies without a recovery cut, persisted confirmed plan activation and local motivational chat. Browser acceptance adds a mobile preference-save/reload journey that verifies no silent plan replacement. No production symptom answers, test results or import-copy decisions are fabricated.

@@ -351,6 +351,8 @@ export interface GeneratedWeek {
   theme: string;
   sessions: PlanSession[];
   totalMinutes: number;
+  /** Existing template volume wave; event control compares reductions rather than stacking them. */
+  periodizationFactor?: number;
   tss?: number;
 }
 
@@ -478,6 +480,7 @@ export function generatePlan(opts: {
   easyPct?: number; // target % of weekly minutes in Z1-Z2; rest = quality. Default 70 (70/30).
   raceDate?: Date; // race day — volume dips after it, then rebuilds
   extraRaces?: PlanRace[]; // B/C races — B = train-through sharpening
+  reviewedCycle?: boolean; // No automatic test or second per-sport taper in reviewed cycles.
 }): GeneratedWeek[] {
   const { level, distance, weeks, startDate, weeklyHours, easyPct, raceDate, extraRaces } = opts;
   const splitTarget = easyPct ?? 70; // 70/30 default, manual-adjustable
@@ -497,10 +500,10 @@ export function generatePlan(opts: {
     // legacy 4-phase mapping for session content variety: early block = base,
     // mid = build, late = peak-style race work, week 6 = taper
     const inBlock = (w - 1) % 6;
-    const legacy: "base" | "build" | "peak" | "taper" = ph === "taper" ? "taper" : inBlock <= 1 ? "base" : inBlock <= 3 ? "build" : "peak";
+    const legacy: "base" | "build" | "peak" | "taper" = ph === "taper" ? opts.reviewedCycle ? "base" : "taper" : inBlock <= 1 ? "base" : inBlock <= 3 ? "build" : "peak";
     const phaseTheme: Record<string, string> = {
       build: `Block ${block + 1} · Threshold & Speed`,
-      taper: "Baseline Test Week · Freshness & Taper",
+      taper: opts.reviewedCycle ? "Recovery and response review" : "Baseline Test Week · Freshness & Taper",
     };
 
     const totalMin = Math.round(targetHours * 60 * volumeFactor);
@@ -645,6 +648,7 @@ export function generatePlan(opts: {
     const cappedSessions = finalSessions.map((x) => capSessionMinutes(x, totalMin, distance));
     weeksOut.push({
       week: w,
+      ...(opts.reviewedCycle ? {periodizationFactor:volumeFactor} : {}),
       theme: phaseTheme[ph],
       sessions: cappedSessions,
       // Report what the week ACTUALLY contains, after all adjustments.
@@ -833,6 +837,7 @@ export function generateHyroxPlan(opts: {
   weeks: number;
   startDate: Date;
   weeklyHours?: number;
+  reviewedCycle?: boolean;
 }): GeneratedWeek[] {
   const { level, weeks, startDate, weeklyHours } = opts;
   const baseWeekly = weeklyHours ?? (level === "pro" ? 14 : level === "advanced" ? 10 : level === "amateur" ? 7 : 5);
@@ -849,7 +854,7 @@ export function generateHyroxPlan(opts: {
 
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
-    const ph = legacy(w);
+    const ph = opts.reviewedCycle && legacy(w)==='taper' ? 'base' : legacy(w);
     const vol = mesoVolume(w - 1, level).vol;
 
     const totalMin = Math.round(baseWeekly * 60 * vol);
@@ -904,7 +909,7 @@ export function generateHyroxPlan(opts: {
     const sum = capped.reduce((a, x) => a + x.minutes, 0);
     const factor = Math.min(1, totalMin / Math.max(1, sum));
     const bounded = capped.map(x => ({ ...x, minutes: Math.max(0, Math.floor(x.minutes * factor)) })).filter(x => x.minutes > 0);
-    weeksOut.push({ week: w, theme: theme[ph], sessions: bounded, totalMinutes: bounded.reduce((a, x) => a + x.minutes, 0) });
+    weeksOut.push({ week: w, theme: opts.reviewedCycle && legacy(w)==='taper' ? 'Recovery and response review' : theme[ph], ...(opts.reviewedCycle?{periodizationFactor:vol}:{}), sessions: bounded, totalMinutes: bounded.reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }
@@ -1120,6 +1125,7 @@ export function generateSingleSport(opts: {
   startDate: Date;
   weeklyHours?: number;
   hasRace?: boolean;
+  reviewedCycle?: boolean;
 }): GeneratedWeek[] {
   const { sport, level, weeks, startDate, weeklyHours, hasRace } = opts;
   const baseWeekly = weeklyHours ?? (level === "advanced" ? 10 : level === "amateur" ? 7 : level === "beginner" ? 4 : 12);
@@ -1130,7 +1136,7 @@ export function generateSingleSport(opts: {
 
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
-    const ph = phase(w);
+    const ph = opts.reviewedCycle && phase(w)==='taper' ? 'base' : phase(w);
     const vol = mesoVolume(w - 1, level).vol;
 
     const totalMin = Math.round(baseWeekly * 60 * vol);
@@ -1162,7 +1168,7 @@ export function generateSingleSport(opts: {
       sessions.push({ sport: "mobility", title: "Mobility + Core", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "recovery", description: "Hips, shoulders, spine + anti-rotation core. Mobility is what lets you keep loading heavy." });
     }
 
-    weeksOut.push({ week: w, theme: ph === "taper" ? "Freshness & Sharpening" : ph === "peak" ? "Peak Intensity" : ph === "build" ? "Build: Raise the Ceiling" : "Base: Aerobic Foundation", sessions: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)), totalMinutes: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)).reduce((a, x) => a + x.minutes, 0) });
+    weeksOut.push({ week: w, ...(opts.reviewedCycle?{periodizationFactor:vol}:{}), theme: opts.reviewedCycle && phase(w)==='taper' ? 'Recovery and response review' : ph === "taper" ? "Freshness & Sharpening" : ph === "peak" ? "Peak Intensity" : ph === "build" ? "Build: Raise the Ceiling" : "Base: Aerobic Foundation", sessions: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)), totalMinutes: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)).reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }

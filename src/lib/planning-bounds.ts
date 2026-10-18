@@ -108,14 +108,15 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _le
       if(consent.ready) for (const weekday of pairDays) {
         const slot=(weekday-startWeekday+7)%7;
         const primary=sessions.find(s=>s.daySlot===slot);
-        const donors=sessions.filter(s=>!s.doubleDayRole && !pairSlots.includes(s.daySlot) && s.daySlot!==slot && ['run','bike','swim','mobility'].includes(s.sport) && /^z[12]$/.test(s.zone) && !['race','test','speed','interval','threshold','plyo'].includes(s.type)).sort((a,b)=>pairSportPriority(primary?.sport,a.sport)-pairSportPriority(primary?.sport,b.sport));
+        const pairedMinutes=(s:BoundedPlanSession)=>setup.restPreference==='no_fixed_rest'?Math.floor(s.minutes/2):s.minutes;
+        const donors=sessions.filter(s=>!s.doubleDayRole && !pairSlots.includes(s.daySlot) && s.daySlot!==slot && ['run','bike','swim'].includes(s.sport) && /^z[12]$/.test(s.zone) && !['race','test','speed','interval','threshold','plyo'].includes(s.type)).sort((a,b)=>pairSportPriority(primary?.sport,a.sport)-pairSportPriority(primary?.sport,b.sport));
         // Try another already-planned easy bout when the first does not fit;
         // never shorten its dose or invent extra work merely to fill a quota.
-        const donor=donors.find(s=>primary && primary.minutes+s.minutes<=(setup.maxSessionMinutes??0) && clockMinutes(preference.firstStart)+primary.minutes<clockMinutes(preference.secondStart) && clockMinutes(preference.secondStart)+s.minutes<=1440) ?? donors[0];
+        const donor=donors.find(s=>pairedMinutes(s)>0 && primary && primary.minutes+pairedMinutes(s)<=(setup.maxSessionMinutes??0) && clockMinutes(preference.firstStart)+primary.minutes<clockMinutes(preference.secondStart) && clockMinutes(preference.secondStart)+pairedMinutes(s)<=1440) ?? donors[0];
         if(doubleDayExcludedWeeks.includes(weekIndex) || /taper|race|test|freshness|sharpening|deload/i.test(week.theme) || sessions.some(s=>['race','test'].includes(s.type))) doubleDayNote="Optional pair omitted in this race/test/taper week; keep the single-session schedule.";
         else if(!primary||primary.doubleDayRole||!donor) doubleDayNote="No suitable existing priority/easy pair fits this weekday. No extra session was invented.";
-        else if(primary.minutes+donor.minutes>(setup.maxSessionMinutes??0)) doubleDayNote="The pair exceeds your daily time limit; the single-session schedule is retained.";
-        else if(clockMinutes(preference.firstStart)+primary.minutes>=clockMinutes(preference.secondStart)||clockMinutes(preference.secondStart)+donor.minutes>1440) doubleDayNote="The selected times do not leave separation or finish within the day. The single-session schedule is retained.";
+        else if(primary.minutes+pairedMinutes(donor)>(setup.maxSessionMinutes??0)) doubleDayNote="The pair exceeds your daily time limit; the single-session schedule is retained.";
+        else if(clockMinutes(preference.firstStart)+primary.minutes>=clockMinutes(preference.secondStart)||clockMinutes(preference.secondStart)+pairedMinutes(donor)>1440) doubleDayNote="The selected times do not leave separation or finish within the day. The single-session schedule is retained.";
         else {
           const from=donor.daySlot;
           let paired=donor;
