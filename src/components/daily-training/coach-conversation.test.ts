@@ -157,7 +157,7 @@ test("changed message, source, session, consent, provider or image cannot reuse 
   const first = coachSendAttempt(null, paidBody, () => "send-one");
   const changes: Partial<CoachSendBody>[] = [
     { message: "Explain easy endurance" }, { source: "voice" }, { sessionId: "session-two" },
-    { externalConsent: false }, { textProviderConsent: undefined }, { imageConsent: false }, { imageProviderConsent: undefined },
+    { externalConsent: false }, { aiReplyMemoryConsent: true }, { textProviderConsent: undefined }, { imageConsent: false }, { imageProviderConsent: undefined },
     { image: undefined }, { image: { ...paidBody.image!, dataBase64: "different-bytes" } }, { image: { ...paidBody.image!, mimeType: "image/webp" } },
   ];
   for (const change of changes) assert.equal(coachSendAttempt(first, { ...paidBody, ...change }, () => "new-request").clientRequestId, "new-request");
