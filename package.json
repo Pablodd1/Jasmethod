@@ -13,6 +13,7 @@
     "db:deploy": "prisma migrate deploy",
     "admin:grant": "tsx scripts/grant-admin.ts",
     "test": "node --import tsx --test src/lib/*.test.ts src/components/daily-training/*.test.ts",
+    "check:google-calendar": "node --import tsx scripts/check-google-calendar-redirect.ts",
     "test:integration": "node --import tsx scripts/integration-check.ts",
     "test:sync": "node --import tsx scripts/sync-check.ts",
     "db:migrate-production": "node scripts/migrate-production.mjs",
