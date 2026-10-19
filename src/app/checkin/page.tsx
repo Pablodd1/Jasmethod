@@ -10,6 +10,7 @@ import { CognitiveCheck } from "@/components/cognitive-check";
 import { Activity } from "lucide-react";
 import { ActualFuelingFields } from "@/components/daily-training/ActualFuelingFields";
 import { actualFuelingFromForm } from "@/lib/actual-fueling";
+import { checkinAdaptationView } from "@/components/daily-training/checkin-result-view";
 
 const QUESTIONS = [
   { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great — hours matter but how you FEEL matters more" },
@@ -65,6 +66,8 @@ export default function CheckinPage() {
   const [importing, setImporting] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState("");
+  // Asks the page to move focus to an unanswered question. Set only by a submit or an explicit button press.
+  const [focusRequest, setFocusRequest] = useState<{ id: string; token: number } | null>(null);
   const recognition = useRef<any>(null);
   const voiceSupported = (VOICE_LANGUAGES as readonly string[]).includes(lang);
   useEffect(() => () => { if (recognition.current) { recognition.current.onend = null; recognition.current.abort(); } }, []);
@@ -130,6 +133,14 @@ export default function CheckinPage() {
     }
   }
   useEffect(() => { if (user) void load().catch((e) => setErr(e.message)); }, [user]);
+  useEffect(() => {
+    if (!focusRequest) return;
+    const element = document.getElementById(focusRequest.id);
+    if (!element) return;
+    element.focus();
+    element.scrollIntoView({ block: "center" });
+  }, [focusRequest]);
+  const focusAnswer = (id: string) => setFocusRequest({ id, token: Date.now() });
 
   const connectedCount = providers.filter((p) => p.status === "connected").length;
 
@@ -221,6 +232,9 @@ export default function CheckinPage() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed");
       setResult(d); setDownloaded(false); setSelectedSessionId(d.prescriptions?.[0]?.sessionId || "");
+      // An unanswered question is explained in the result card and its input receives focus.
+      const view = checkinAdaptationView(d.adaptation, lang === "es");
+      if (view.kind === "incomplete" && view.focusInputId) focusAnswer(view.focusInputId);
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
@@ -229,6 +243,8 @@ export default function CheckinPage() {
   // day (no submitted check-in yet) `result` holds loading data (recovery,
   // fuel brands, readiness) but no adaptation, and verdict would be undefined.
   const adaptation = result?.adaptation?.verdict ? result.adaptation : null;
+  // Display-only: separates an unanswered question from a real answer of 0 minutes. Safety rules are untouched.
+  const adaptationView = adaptation ? checkinAdaptationView(adaptation, lang === "es") : null;
   const prescription = result?.prescriptions?.find((p: any) => p.sessionId === selectedSessionId) || result?.prescription;
   const fuel = result?.fuel;
   const ergos = result?.ergos?.recommended;
@@ -396,7 +412,7 @@ export default function CheckinPage() {
                 </div>
               ))}
               {([ ["sick", lang === "es" ? "¿Enfermedad, fiebre u otros síntomas hoy?" : "Illness, fever or other illness symptoms today?"], ["urgentSymptoms", lang === "es" ? "¿Molestias en el pecho, desmayo, falta de aire grave sin explicación, confusión o colapso actualmente?" : "Current chest discomfort, fainting, severe unexplained breathlessness, confusion or collapse?"], ["menstrual", lang === "es" ? "Fase menstrual (opcional; no reduce la preparación por sí sola)" : "Menstrual phase (optional; does not reduce readiness by itself)"] ] as const).map(([key, label]) => (
-                <label key={key} className="block text-sm">{label}<select className="input mt-1" value={typeof answers[key] === "boolean" ? String(answers[key]) : ""} onChange={(e) => setQ(key, e.target.value === "" ? "" : e.target.value === "true")}><option value="">{lang === "es" ? "No sé / prefiero no responder" : "Unknown / prefer not to answer"}</option><option value="false">No</option><option value="true">{lang === "es" ? "Sí" : "Yes"}</option></select></label>
+                <label key={key} className="block text-sm">{label}<select id={`answer-${key}`} className="input mt-1" value={typeof answers[key] === "boolean" ? String(answers[key]) : ""} onChange={(e) => setQ(key, e.target.value === "" ? "" : e.target.value === "true")}><option value="">{lang === "es" ? "No sé / prefiero no responder" : "Unknown / prefer not to answer"}</option><option value="false">No</option><option value="true">{lang === "es" ? "Sí" : "Yes"}</option></select></label>
               ))}
               {answers.urgentSymptoms === true && <p role="alert" className="text-sm text-coral-700">{lang === "es" ? "Detén el ejercicio. Busca atención médica urgente; si los síntomas son graves o continúan, contacta emergencias locales ahora." : "Stop exercise. Seek urgent medical assessment; if symptoms are severe or ongoing, contact local emergency services now."}</p>}
               <label className="flex items-center gap-2 text-sm">
@@ -411,15 +427,16 @@ export default function CheckinPage() {
                   {lang === "es" ? "Tu día real" : "Your real day"}
                 </div>
                 <div>
-                  <label className="label">{lang === "es" ? "¿Cuántos minutos disponibles te quedan hoy?" : "How many available training minutes remain today?"}</label>
+                  <label className="label" htmlFor="answer-availableMinutes">{lang === "es" ? "¿Cuántos minutos disponibles te quedan hoy?" : "How many available training minutes remain today?"}</label>
                   <input
+                    id="answer-availableMinutes" aria-describedby="answer-availableMinutes-hint"
                     type="number" min={0} max={600} step={5}
                     className="input"
                     value={answers.availableMinutes ?? ""}
                     onChange={(e) => setQ("availableMinutes", e.target.value)}
                     placeholder={lang === "es" ? "p.ej. 45" : "e.g. 45"}
                   />
-                  <div className="text-[11px] text-slate-400">
+                  <div id="answer-availableMinutes-hint" className="text-[11px] text-slate-400">
                     {lang === "es"
                       ? "La sesión se ajusta a este tiempo — 0 significa que no se prescribe entrenamiento."
                       : "The session is fitted to this window — 0 means no workout is prescribed."}
@@ -428,7 +445,7 @@ export default function CheckinPage() {
                 <div>
                   <label className="block text-sm">
                     {lang === "es" ? "¿Dolor nuevo o que empeora en un punto concreto? (distinto de agujetas generales)" : "Any new or worsening pain in a specific spot? (different from general soreness)"}
-                    <select className="input mt-1" value={typeof answers.newPain === "boolean" ? String(answers.newPain) : ""} onChange={(e) => setQ("newPain", e.target.value === "" ? "" : e.target.value === "true")}><option value="">{lang === "es" ? "No sé / prefiero no responder" : "Unknown / prefer not to answer"}</option><option value="false">No</option><option value="true">{lang === "es" ? "Sí" : "Yes"}</option></select>
+                    <select id="answer-newPain" className="input mt-1" value={typeof answers.newPain === "boolean" ? String(answers.newPain) : ""} onChange={(e) => setQ("newPain", e.target.value === "" ? "" : e.target.value === "true")}><option value="">{lang === "es" ? "No sé / prefiero no responder" : "Unknown / prefer not to answer"}</option><option value="false">No</option><option value="true">{lang === "es" ? "Sí" : "Yes"}</option></select>
                   </label>
                   {answers.newPain === true && (
                     <div className="mt-2 space-y-2 pl-6">
@@ -499,13 +516,31 @@ export default function CheckinPage() {
 
           <div className="space-y-4">
             {result?.rejectedSessions?.map((session: any) => <p key={session.sessionId} role="alert" className="text-sm text-coral-700">{session.reason}</p>)}
-            {adaptation && (
+            {adaptation && adaptationView?.kind === "incomplete" && (
+              <div className="card border-amber-300 bg-amber-50" role="status">
+                <h3 className="font-display font-bold mb-2">{adaptationView.heading}</h3>
+                <p className="text-sm text-amber-900">{adaptationView.summary}</p>
+                {adaptationView.explanation && <p className="text-sm text-amber-900 mt-2">{adaptationView.explanation}</p>}
+                {adaptationView.missing.length > 0 && (
+                  <ul className="mt-3 flex flex-wrap gap-2">
+                    {adaptationView.missing.map((item) => (
+                      <li key={item.key}>
+                        <button type="button" className="btn-secondary text-xs" onClick={() => focusAnswer(item.inputId)}>
+                          {lang === "es" ? "Responder: " : "Answer: "}{item.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            {adaptation && adaptationView?.kind !== "incomplete" && (
               <div className="card">
                 <h3 className="font-display font-bold mb-2">Today&apos;s Adaptation</h3>
                 <div className={`font-display text-2xl font-bold ${VERDICT_COLOR[adaptation.verdict] || ""}`}>
-                  {t(lang, `adapt.${adaptation.verdict}`)} · {adaptation.scoreAvailable === false ? (lang === "es" ? "— datos insuficientes o pausa de seguridad" : "— unavailable") : `${adaptation.score}/100 (self-report heuristic)`}
+                  {t(lang, `adapt.${adaptation.verdict}`)} · {adaptationView?.kind === "no-time" ? adaptationView.heading : adaptation.scoreAvailable === false ? (lang === "es" ? "— datos insuficientes o pausa de seguridad" : "— unavailable") : `${adaptation.score}/100 (self-report heuristic)`}
                 </div>
-                <p className="text-sm text-slate-600 mt-1">{adaptation.message}</p>
+                <p className="text-sm text-slate-600 mt-1">{adaptationView?.kind === "no-time" ? adaptationView.summary : adaptation.message}</p>
                 <div className="text-xs text-slate-400 mt-2">Duration ×{adaptation.durationFactor} · intensity cap {adaptation.intensityCap}</div>
                 <a href="/onboarding#evaluation" className="text-xs text-ocean-600 underline mt-2 inline-block">What do Full / Trim / Easy / Rest mean?</a>
               </div>
