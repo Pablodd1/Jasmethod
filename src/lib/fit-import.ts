@@ -17,7 +17,8 @@ import { MAX_ACTIVITY_SECONDS, normalizeStreams, type ActivityStreams, type RawS
  *
  * GPS position fields are not read at all.
  */
-export const MAX_FIT_BYTES = 40 * 1024 * 1024;
+export { MAX_UPLOAD_BYTES as MAX_FIT_BYTES } from "./upload-limits";
+import { MAX_UPLOAD_BYTES as MAX_FIT_BYTES } from "./upload-limits";
 
 export interface FitActivity { workout: ImportedWorkout; streams: ActivityStreams | null; stravaMarked: boolean }
 export type FitImportError = "too_large" | "not_fit" | "integrity_failed" | "decode_failed" | "not_activity" | "no_session";
@@ -54,6 +55,7 @@ export function decodeFitActivity(bytes: Uint8Array): FitImportResult {
   const sessions = messages.sessionMesgs ?? [];
   if (!sessions.length) return { ok: false, error: "no_session" };
   const records = messages.recordMesgs ?? [];
+  const knownDevice = /^(garmin|coros|wahoo_fitness|polar|suunto)$/i.test(String(fileId.manufacturer ?? ""));
   const stravaMarked = String(fileId.manufacturer ?? "").toLowerCase() === "strava";
   const warnings: string[] = [];
   const idPart = createHash("sha256").update([fileId.manufacturer, fileId.product, fileId.serialNumber, ms(fileId.timeCreated)].map(String).join("|")).digest("hex").slice(0, 16);
@@ -83,7 +85,7 @@ export function decodeFitActivity(bytes: Uint8Array): FitImportResult {
         avgHr: within(num(session.avgHeartRate), 25, 250), maxHr: within(num(session.maxHeartRate), 25, 260),
         avgPower: within(num(session.avgPower), 0, 2500), np: within(num(session.normalizedPower), 0, 2500), tss: within(num(session.trainingStressScore), 0, 2000), calories: within(num(session.totalCalories), 0, 30000),
         title: `${sport[0].toUpperCase()}${sport.slice(1)} Activity`,
-        source: "fit", notes: stravaMarked ? "Original source: STRAVA (file export)." : undefined,
+        source: knownDevice || stravaMarked ? "fit" : "uploaded_unknown", notes: stravaMarked ? "Original source: STRAVA (file export)." : undefined,
       },
     });
   });

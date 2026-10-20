@@ -1,4 +1,4 @@
-import { XMLParser } from "fast-xml-parser";
+import { XMLParser, XMLValidator } from "fast-xml-parser";
 import type { ImportedWorkout } from "./importers";
 import { normalizeStreams, type ActivityStreams, type RawSample, MAX_ACTIVITY_SECONDS } from "./activity-streams";
 
@@ -46,13 +46,16 @@ export function parseTcxActivities(xml: string): TcxResult {
   const text = xml.charCodeAt(0) === 0xfeff ? xml.slice(1) : xml;
   if (!/<TrainingCenterDatabase[\s>]/.test(text)) return { ok: false, error: "not_tcx", activities: [], skipped };
   if (/<!DOCTYPE|<!ENTITY/i.test(text)) return { ok: false, error: "doctype_rejected", activities: [], skipped };
+  if (XMLValidator.validate(text) !== true) return { ok: false, error: "parse_failed", activities: [], skipped };
   let root: any;
   try {
     root = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@", parseAttributeValue: false, parseTagValue: false, processEntities: false, removeNSPrefix: true }).parse(text)?.TrainingCenterDatabase;
   } catch { return { ok: false, error: "parse_failed", activities: [], skipped }; }
   if (!root) return { ok: false, error: "not_tcx", activities: [], skipped };
   // Strava names itself in the file's metadata (Author/Creator), never in the sample data.
-  const stravaMarked = /strava/i.test(text.replace(/<Track>[\s\S]*?<\/Track>/g, ""));
+  const metadata = JSON.stringify([root.Author, ...list(root.Activities?.Activity).map(a => a.Creator)]);
+  const stravaMarked = /strava/i.test(metadata);
+  const knownDevice = /garmin|forerunner|fenix|edge|coros/i.test(metadata);
   const activities: TcxActivity[] = [];
 
   for (const activity of list(root.Activities?.Activity)) {
@@ -85,14 +88,15 @@ export function parseTcxActivities(xml: string): TcxResult {
     const weighted = lapAvg.length && lapAvg.every(v => v !== undefined) && lapSeconds.every(v => v !== undefined) && lapSeconds.reduce((a, b) => a! + b!, 0)! > 0
       ? lapAvg.reduce((sum, v, i) => sum + v! * lapSeconds[i]!, 0) / lapSeconds.reduce((a, b) => a! + b!, 0)!
       : undefined;
-    const avgHr = weighted !== undefined ? Math.round(weighted) : hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : undefined;
-    const lapMax = laps.map(lap => bpm(lap.MaximumHeartRateBpm)).filter((v): v is number => v !== undefined);
+    const candidateHr = weighted !== undefined ? Math.round(weighted) : hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : undefined;
+    const avgHr = candidateHr !== undefined && candidateHr >= 25 && candidateHr <= 250 ? candidateHr : undefined;
+    const lapMax = laps.map(lap => bpm(lap.MaximumHeartRateBpm)).filter((v): v is number => v !== undefined && v >= 25 && v <= 260);
     const maxHr = lapMax.length ? Math.max(...lapMax) : hrs.length ? Math.max(...hrs) : undefined;
     const watts = samples.map(s => s.power).filter((v): v is number => typeof v === "number" && v >= 0 && v <= 2500);
     const avgPower = watts.length ? Math.round(watts.reduce((a, b) => a + b, 0) / watts.length) : undefined;
     const lapCal = laps.map(lap => num(lap.Calories)).filter((v): v is number => v !== undefined);
     // Unknown stays unknown: a file with no calorie field reports no calories (not 0).
-    const calories = lapCal.length ? Math.round(lapCal.reduce((a, b) => a + b, 0)) : undefined;
+    const calories = lapCal.length === laps.length && lapCal.every(c => c >= 0 && c <= 30000) ? Math.round(lapCal.reduce((a, b) => a + b, 0)) : undefined;
     const lapDist = laps.map(lap => num(lap.DistanceMeters));
     const lastDistance = [...samples].reverse().find(s => typeof s.distanceM === "number")?.distanceM as number | undefined;
     const meters = lapDist.length && lapDist.every(v => v !== undefined) ? lapDist.reduce((a, b) => a! + b!, 0)! : lastDistance;
@@ -106,7 +110,7 @@ export function parseTcxActivities(xml: string): TcxResult {
         externalId: `tcx:${id}`, sport, date: new Date(startMs), durationMin: Math.max(1, Math.round(timer / 60)),
         distanceKm: meters !== undefined && meters > 0 ? Math.round(meters / 10) / 100 : undefined,
         avgHr, maxHr, avgPower, calories, title: `${sport[0].toUpperCase()}${sport.slice(1)} Activity`,
-        source: stravaMarked ? "tcx" : "garmin", notes: stravaMarked ? "Original source: STRAVA (file export)." : undefined,
+        source: stravaMarked ? "tcx" : knownDevice ? "garmin" : "uploaded_unknown", notes: stravaMarked ? "Original source: STRAVA (file export)." : undefined,
       },
     });
   }

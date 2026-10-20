@@ -33,7 +33,7 @@ const PROBLEMS: Record<string, { en: string; es: string }> = {
   decode_failed: { en: "This FIT file could not be read. Nothing was imported.", es: "No se pudo leer este archivo FIT. No se importó nada." },
   not_activity: { en: "This FIT file is not a completed activity (for example a planned workout or a course). Nothing was imported.", es: "Este archivo FIT no es una actividad completada (por ejemplo, un entrenamiento planificado o un recorrido). No se importó nada." },
   no_session: { en: "This FIT activity has no usable session (start time, duration and a supported sport). Nothing was imported.", es: "Esta actividad FIT no tiene una sesión utilizable (inicio, duración y un deporte compatible). No se importó nada." },
-  too_large: { en: "The file exceeds 40 MB. Export a smaller date range.", es: "El archivo supera 40 MB. Exporta un intervalo menor." },
+  too_large: { en: "The file exceeds 4 MB. Export a smaller date range.", es: "El archivo supera 4 MB. Exporta un intervalo menor." },
   not_tcx: { en: "This XML file is not a Garmin TCX activity.", es: "Este archivo XML no es una actividad TCX de Garmin." },
   doctype_rejected: { en: "This XML file contains a document-type declaration, which TCX files do not need, so it was refused.", es: "Este XML contiene una declaración de tipo de documento, que los TCX no necesitan, por lo que se rechazó." },
   parse_failed: { en: "This TCX file could not be read. Nothing was imported.", es: "No se pudo leer este archivo TCX. No se importó nada." },

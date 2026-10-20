@@ -1,4 +1,5 @@
 "use client";
+import { MAX_UPLOAD_BYTES } from "@/lib/upload-limits";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -245,8 +246,8 @@ export default function ConnectorsPage() {
       setMsg("");
       return;
     }
-    if (file.size > 40 * 1024 * 1024) {
-      setErr(lang === "es" ? "El archivo supera 40 MB. Exporta un intervalo menor." : "The file exceeds 40 MB. Export a smaller date range.");
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setErr(lang === "es" ? "El archivo supera 4 MB. Exporta un intervalo menor." : "The file exceeds 4 MB. Export a smaller date range.");
       return;
     }
     setImporting(source);
@@ -255,16 +256,19 @@ export default function ConnectorsPage() {
     const fd = new FormData();
     fd.append("source", source);
     fd.append("file", file);
+    const units = (document.getElementById(`csv-units-${source}`) as HTMLSelectElement | null)?.value;
+    if (units === "metric" || units === "imperial") fd.append("distanceUnits", units);
     // Second-by-second data is kept only when the operator enabled it AND the athlete ticked the box for this upload.
     if (streamStatus.enabled && streamConsent && (source === "garmin" || source === "coros")) fd.append("streamConsent", "1");
     try {
       const res = await fetch("/api/import", { method: "POST", body: fd });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ error: res.status === 413 ? (lang === "es" ? "Archivo demasiado grande. Usa un archivo menor de 4 MB." : "Upload too large. Use a file smaller than 4 MB.") : t(lang, "conn.importFailed") }));
       if (!res.ok) throw new Error(data.error || t(lang, "conn.importFailed"));
       setMsg(importResultMessage(source, data, lang === "es" ? "es" : "en"));
       setRecentStreamIds(Array.isArray(data.streams?.workoutIds) ? data.streams.workoutIds : []);
       void reloadStreams();
       input.value = "";
+      setStreamConsent(false);
       load();
     } catch (e: any) {
       setErr(e.message);
@@ -313,14 +317,14 @@ export default function ConnectorsPage() {
               "Abre connect.garmin.com en Safari o en el navegador de un ordenador e inicia sesión. La exportación se hace en la web de Garmin Connect.",
               "Para varias actividades: abre Actividades → Todas las actividades y elige Exportar CSV. El archivo contiene las actividades incluidas en esa exportación; no confirma todo tu historial.",
               "Abre una actividad y elige «Exportar a TCX» en el menú de exportación. «Exportar original» descarga un ZIP con el archivo .fit: descomprímelo y sube el .fit (el ZIP no se acepta).",
-              "Guarda el .tcx, .fit o Activities.csv en Archivos/Descargas. Vuelve aquí, elige el archivo y pulsa Importar. Límite: 40 MB; no se aceptan ZIP. El Activities.csv debe tener las columnas en inglés; si tu cuenta de Garmin está en otro idioma, exporta cada actividad como TCX.",
+              "Guarda el .tcx, .fit o Activities.csv en Archivos/Descargas. Vuelve aquí, elige el archivo y pulsa Importar. Límite: 4 MB; no se aceptan ZIP. El Activities.csv debe tener las columnas en inglés; si tu cuenta de Garmin está en otro idioma, exporta cada actividad como TCX.",
               "Revisa el resultado de la importación y vuelve a la configuración para revisar los datos disponibles. Un archivo de actividades no incluye necesariamente peso, zonas ni datos de recuperación.",
             ]
           : [
               "Open connect.garmin.com in Safari or a computer browser and sign in. Export from the Garmin Connect website.",
               "For several activities: open Activities → All Activities and choose Export CSV. This includes the activities in that export, not necessarily your complete history.",
               'Open an activity and choose "Export to TCX" from its export menu. "Export Original" downloads a ZIP containing the .fit file: unzip it and upload the .fit (the ZIP itself is not accepted).',
-              "Save the .tcx, .fit or Activities.csv in Files/Downloads. Return here, choose that file and press Import. Maximum 40 MB; ZIP archives are not accepted. Activities.csv needs the English column names; if your Garmin account is in another language, export each activity as TCX.",
+              "Save the .tcx, .fit or Activities.csv in Files/Downloads. Return here, choose that file and press Import. Maximum 4 MB; ZIP archives are not accepted. Activities.csv needs the English column names; if your Garmin account is in another language, export each activity as TCX.",
               "Check the import result, then return to setup to review available data. Activity files do not necessarily include weight, zones or recovery data.",
             ];
       case "google_cal":
@@ -653,6 +657,14 @@ export default function ConnectorsPage() {
                   )}
                   {p.method === "upload" && (
                     <div className="space-y-2">
+                      {p.id === "garmin" && <label className="block text-xs">
+                        {lang === "es" ? "Solo CSV: unidades de distancia de la exportación" : "CSV only: distance units in your export"}
+                        <select id={`csv-units-${p.id}`} className="input text-xs" defaultValue="">
+                          <option value="">{lang === "es" ? "No sé — omitir distancia" : "Not sure — omit distance"}</option>
+                          <option value="metric">{lang === "es" ? "Kilómetros / metros en natación" : "Kilometres / metres for swimming"}</option>
+                          <option value="imperial">{lang === "es" ? "Millas / yardas en natación" : "Miles / yards for swimming"}</option>
+                        </select>
+                      </label>}
                       <div className="flex flex-col sm:flex-row gap-2">
                         <input
                           id={`file-${p.id}`}
@@ -684,12 +696,12 @@ export default function ConnectorsPage() {
                       <div className="text-[10px] text-slate-400">
                         {lang === "es"
                           ? p.id === "garmin"
-                            ? "Acepta TCX, FIT (actividad) o Activities.csv de Garmin Connect (hasta 40 MB; sin ZIP). Solo se importan las actividades válidas incluidas en el archivo; no confirma un historial completo."
+                            ? "Acepta TCX, FIT (actividad) o Activities.csv de Garmin Connect (hasta 4 MB; sin ZIP). Solo se importan las actividades válidas incluidas en el archivo; no confirma un historial completo."
                             : p.id === "apple"
                               ? "Acepta el export.xml de Apple Health."
                               : "Acepta el CSV exportado de Whoop."
                           : p.id === "garmin"
-                            ? "Accepts TCX, FIT (activity) or Garmin Connect Activities.csv (up to 40 MB; no ZIP). Only valid activities included in the file are imported; this does not confirm a complete history."
+                            ? "Accepts TCX, FIT (activity) or Garmin Connect Activities.csv (up to 4 MB; no ZIP). Only valid activities included in the file are imported; this does not confirm a complete history."
                             : p.id === "apple"
                               ? "Accepts the Apple Health export.xml."
                               : "Accepts the CSV exported from Whoop."}
@@ -773,8 +785,8 @@ export default function ConnectorsPage() {
             <div className="text-sm text-ocean-900">
               <strong>{t(lang, "conn.which")}</strong>{" "}
               {lang === "es"
-                ? "Strava consulta hasta 365 días de actividades disponibles en la primera sincronización. Los archivos TCX y Garmin CSV permiten añadir historial anterior. Whoop y Oura aportan recuperación y sueño; Apple Health acepta export.xml hasta 40 MB."
-                : "Strava requests up to 365 days of available activities on first sync. TCX and Garmin CSV imports can add earlier history. Whoop and Oura supply recovery and sleep; Apple Health accepts export.xml up to 40 MB."}
+                ? "Strava consulta hasta 365 días de actividades disponibles en la primera sincronización. Los archivos TCX y Garmin CSV permiten añadir historial anterior. Whoop y Oura aportan recuperación y sueño; Apple Health acepta export.xml hasta 4 MB."
+                : "Strava requests up to 365 days of available activities on first sync. TCX and Garmin CSV imports can add earlier history. Whoop and Oura supply recovery and sleep; Apple Health accepts export.xml up to 4 MB."}
             </div>
           </div>
         </div>

@@ -77,7 +77,8 @@ test("TCX: non-TCX XML and malformed XML are refused with a reason, not imported
   const notTcx = parseTcxActivities(`<?xml version="1.0"?><HealthData></HealthData>`);
   assert.equal(!notTcx.ok && notTcx.error, "not_tcx");
   const broken = parseTcxActivities(`<TrainingCenterDatabase><Activities><Activity Sport="Running"><Id>x</Id><Lap></Activities>`);
-  assert.equal(broken.ok === true ? broken.activities.length : -1, 0);
+  assert.equal(broken.ok, false);
+  assert.equal(!broken.ok && broken.error, "parse_failed");
 });
 
 test("TCX: a file whose metadata names Strava is marked Strava-origin and not stored as a Garmin record", () => {
@@ -97,7 +98,7 @@ test("CSV: English export parses; swims are metres, runs are km, '--' is unknown
     `"Running","2026-10-18 07:30:00","false","Morning Run","10.02","640","00:50:30","151","172","--","--","--"`,
     `"Pool Swim","2026-10-17 06:00:00","false","Lap swim","1,620","300","00:35:00","--","--","--","--","--"`,
     `"Cycling","2026-10-16 17:00:00","false","Ride","54.09","1,420","02:10:00","140","165","210","225","130.5"`,
-  ), "America/New_York");
+  ), "America/New_York", "metric");
   assert.equal(result.ok, true);
   const [r, s, c] = result.activities;
   assert.deepEqual([r.sport, r.distanceKm, r.durationMin, r.avgHr, r.avgPower], ["run", 10.02, 51, 151, null]);
@@ -176,7 +177,7 @@ function fitActivity(opts: { type?: string; manufacturer?: string; sport?: strin
   const seconds = opts.seconds ?? 120;
   const start = new Date(T0);
   const encoder = new Encoder();
-  encoder.onMesg(Profile.MesgNum.FILE_ID, { type: opts.type ?? "activity", manufacturer: opts.manufacturer ?? "development", product: 7, serialNumber: 424242, timeCreated: start } as any);
+  encoder.onMesg(Profile.MesgNum.FILE_ID, { type: opts.type ?? "activity", manufacturer: opts.manufacturer ?? "garmin", product: 7, serialNumber: 424242, timeCreated: start } as any);
   const records = opts.records ?? Array.from({ length: seconds + 1 }, (_, i) => ({ timestamp: new Date(T0 + i * 1000), heartRate: 120 + (i % 20), power: 200 + (i % 10), cadence: 85, speed: 3.2, altitude: 10 + i / 10, distance: i * 3.2 }));
   for (const record of records) encoder.onMesg(Profile.MesgNum.RECORD, record as any);
   encoder.onMesg(Profile.MesgNum.SESSION, { timestamp: new Date(T0 + seconds * 1000), startTime: start, totalElapsedTime: seconds, totalTimerTime: seconds, totalDistance: seconds * 3.2,

@@ -78,7 +78,7 @@ export function parseGarminNumber(raw: string | undefined): { value: number | nu
 
 const inRange = (v: number | null, lo: number, hi: number) => v !== null && v >= lo && v <= hi;
 
-export function parseGarminActivitiesCsvDetailed(csv: string, timeZone = "UTC"): GarminCsvResult {
+export function parseGarminActivitiesCsvDetailed(csv: string, timeZone = "UTC", distanceUnits?: "metric" | "imperial"): GarminCsvResult {
   const result: GarminCsvResult = { ok: false, foundColumns: [], activities: [], rows: 0, ambiguousNumbers: 0, implausibleValues: 0,
     skipped: { unsupported_activity_type: 0, bad_date: 0, bad_duration: 0, blank_row: 0 }, unsupportedTypes: {} };
   const table = parseCsvRows(csv);
@@ -114,11 +114,11 @@ export function parseGarminActivitiesCsvDetailed(csv: string, timeZone = "UTC"):
     if (!date) { result.skipped.bad_date++; continue; }
     const tm = /^(\d+):(\d{2}):(\d{2})(?:\.\d+)?$/.exec((cells[iTime] || "").trim());
     const seconds = tm ? +tm[1] * 3600 + +tm[2] * 60 + +tm[3] : NaN;
-    if (!Number.isFinite(seconds) || seconds < 30 || seconds > 72 * 3600) { result.skipped.bad_duration++; continue; }
+    if (!tm || +tm[2] > 59 || +tm[3] > 59 || !Number.isFinite(seconds) || seconds < 30 || seconds > 72 * 3600) { result.skipped.bad_duration++; continue; }
 
     const rawDistance = read(cells, iDist, 0, sport === "swim" ? 100_000 : 5000);
     // Garmin writes swims in METRES ("1,620") and run/bike in km ("54.09").
-    const distanceKm = rawDistance === null ? null : sport === "swim" ? Math.round(rawDistance) / 1000 : rawDistance;
+    const distanceKm = rawDistance === null || !distanceUnits ? null : sport === "swim" ? rawDistance * (distanceUnits === "imperial" ? 0.0009144 : 0.001) : rawDistance * (distanceUnits === "imperial" ? 1.609344 : 1);
     const title = (cells[iTitle] || type).trim();
     result.activities.push({
       date, sport, title, durationMin: Math.max(1, Math.round(seconds / 60)), distanceKm,

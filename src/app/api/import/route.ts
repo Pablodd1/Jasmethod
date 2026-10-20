@@ -1,3 +1,4 @@
+import { boundedUploadForm, MAX_UPLOAD_BYTES, UploadLimitError } from "@/lib/upload-limits";
 import { deviceMetricSnapshot } from "@/lib/device-metric-snapshot";
 import { persistDeviceDay } from "@/lib/sync";
 import { storeActivity } from "@/lib/activity-store";
@@ -26,10 +27,10 @@ export async function POST(req: Request) {
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const form = await req.formData();
+    const form = await boundedUploadForm(req);
     const source = String(form.get("source") || "");
     const file = form.get("file") as File | null;
-    if (!file)
+    if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function")
       return NextResponse.json({ error: "No file provided." }, { status: 400 });
 
     // Normalize: the Connectors page posts the provider id as the source.
@@ -40,9 +41,9 @@ export async function POST(req: Request) {
           ? "applehealth"
           : source;
 
-    if (file.size > 40 * 1024 * 1024)
+    if (file.size > MAX_UPLOAD_BYTES)
       return NextResponse.json(
-        { error: "File exceeds 40 MB. Export a smaller date range." },
+        { error: "File exceeds 4 MB. Export a smaller date range." },
         { status: 413 },
       );
     const lang = user.language === "es" ? "es" : "en";
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
         for (const a of tcx.activities) streamsByExternalId.set(a.workout.externalId, a.streams);
         skipped = { ...tcx.skipped };
       } else {
-        const csv = parseGarminActivitiesCsvDetailed(text, user.timezone);
+        const csv = parseGarminActivitiesCsvDetailed(text, user.timezone, form.get("distanceUnits") === "metric" ? "metric" : form.get("distanceUnits") === "imperial" ? "imperial" : undefined);
         if (!csv.ok) return refuse(csv.error === "empty" ? "empty_csv" : (csv.error ?? "unrecognized_columns"), 422, { foundColumns: csv.foundColumns });
         workouts = csv.activities.map((a) => ({
           date: a.date,
@@ -192,7 +193,7 @@ export async function POST(req: Request) {
           else streamReport.refused[outcome] = (streamReport.refused[outcome] ?? 0) + 1;
         }
       } catch (error) {
-        console.error("activity stream storage failed:", error instanceof Error ? error.message : "unknown");
+        console.error("activity stream storage unavailable");
         streamReport.error = true;
       }
     }
@@ -269,9 +270,10 @@ export async function POST(req: Request) {
       ),
     });
   } catch (e: any) {
-    console.error("import error:", e);
+    if (e instanceof UploadLimitError) return NextResponse.json({ error: uploadProblem("too_large", user.language === "es" ? "es" : "en"), code: "too_large" }, { status: 413 });
+    console.error("activity import failed");
     return NextResponse.json(
-      { error: e.message || "Import failed" },
+      { error: "Import failed. Please check the file format and retry." },
       { status: 500 },
     );
   }
