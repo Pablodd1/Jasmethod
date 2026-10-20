@@ -34,7 +34,7 @@ function fixture(root,options={}) {
   const importers=load(root,'src/lib/importers.ts',{
     './provider-fetch':{providerFetch:async(url,opts)=> {log.tokenRequests.push(String(url)); return Response.json(fakeToken);}},
     'crypto':require('node:crypto'),'./dates':{dateKey:()=> '2026-09-26',DEFAULT_TIMEZONE:'UTC'},
-    'fast-xml-parser':{XMLParser:class{}},
+    'fast-xml-parser':{XMLParser:class{}},'./tcx-import':{parseTcxActivities:()=>({ok:false,activities:[]})},'./garmin-activities-csv':{parseGarminActivitiesCsvDetailed:()=>({ok:false,activities:[]})},
   });
   const state=load(root,'src/lib/oauth-state.ts',{'crypto':require('node:crypto')});
   const db={oAuthTransaction:{
@@ -151,7 +151,7 @@ test('connections: WHOOP v2 workout sport, energy units and invalid timestamps',
       {id:'run',sport_name:'running',start:'2026-09-26T12:00:00Z',end:'2026-09-26T13:00:00Z',score:{kilojoule:418.4}},
       {id:'unknown',sport_name:'new sport',start:'2026-09-26T12:00:00Z',end:'2026-09-26T13:00:00Z'},
       {id:'bad',sport_name:'running',start:'invalid',end:'2026-09-26T13:00:00Z'},
-    ]})},'crypto':require('node:crypto'),'./dates':{dateKey:()=>'',DEFAULT_TIMEZONE:'UTC'},'fast-xml-parser':{XMLParser:class{}}
+    ]})},'crypto':require('node:crypto'),'./dates':{dateKey:()=>'',DEFAULT_TIMEZONE:'UTC'},'fast-xml-parser':{XMLParser:class{}},'./tcx-import':{parseTcxActivities:()=>({ok:false,activities:[]})},'./garmin-activities-csv':{parseGarminActivitiesCsvDetailed:()=>({ok:false,activities:[]})}
   });
   const workouts=await api.whoopGetWorkouts('fake');
   assert.equal(workouts.length,2); assert.equal(workouts[0].sport,'run');

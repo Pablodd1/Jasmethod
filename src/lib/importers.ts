@@ -2,6 +2,8 @@ import { providerFetch } from "./provider-fetch";
 import { createHash } from "crypto";
 import { addDaysKey, dateKey, DEFAULT_TIMEZONE } from "./dates";
 import { XMLParser } from "fast-xml-parser";
+import { parseTcxActivities } from "./tcx-import";
+import { parseGarminActivitiesCsvDetailed, type GarminActivity } from "./garmin-activities-csv";
 // Data importers: Garmin TCX, Apple Health XML (export.xml), Whoop CSV,
 // Strava API (OAuth), and 23andMe/Ancestry DNA raw files.
 // All return normalized shapes the app stores in its own schema.
@@ -15,6 +17,9 @@ export interface ImportedWorkout {
   avgHr?: number;
   maxHr?: number;
   avgPower?: number;
+  /** Device-reported normalized power / training stress, when the file carries them. */
+  np?: number;
+  tss?: number;
   calories?: number;
   title: string;
   source: string;
@@ -23,89 +28,11 @@ export interface ImportedWorkout {
 }
 
 // ---------- Garmin TCX (Training Center XML) ----------
-// TCX is Garmin's XML export format (also produced by Strava, TrainingPeaks,
-// and most platforms for "download original"). Simple, robust XML parse.
+// Kept as a thin wrapper so existing callers keep their shape. The parser itself (and the stream samples it
+// also extracts) lives in tcx-import.ts; use parseTcxActivities there when streams or skip reasons are needed.
 export function parseTcx(xml: string): ImportedWorkout[] {
-  const workouts: ImportedWorkout[] = [];
-  const sportMatch = /sport="([^"]+)"/gi;
-  const activityRegex = /<Activity[^>]*>([\s\S]*?)<\/Activity>/g;
-  const trackpointRegex = /<Trackpoint>([\s\S]*?)<\/Trackpoint>/g;
-  const timeRegex = /<Time>([^<]+)<\/Time>/;
-  const hrRegex =
-    /<HeartRateBpm[^>]*>[\s\S]*?<Value>(\d+)<\/Value>[\s\S]*?<\/HeartRateBpm>/;
-  const distRegex = /<DistanceMeters>([\d.]+)<\/DistanceMeters>/;
-  const calRegex = /<Calories>(\d+)<\/Calories>/;
-  const powerRegex = /<Watts>([\d.]+)<\/Watts>/;
-
-  let m: RegExpExecArray | null;
-  const sports: string[] = [];
-  while ((m = sportMatch.exec(xml)) !== null) sports.push(m[1]);
-
-  let actIdx = 0;
-  while ((m = activityRegex.exec(xml)) !== null) {
-    const block = m[1];
-    const sportRaw = (sports[actIdx] || "other").toLowerCase();
-    actIdx++;
-    const sport: ImportedWorkout["sport"] = sportRaw.includes("swim")
-      ? "swim"
-      : sportRaw.includes("running")
-        ? "run"
-        : sportRaw.includes("biking") || sportRaw.includes("cycling")
-          ? "bike"
-          : sportRaw.includes("strength")
-            ? "strength"
-            : "other";
-
-    const times: string[] = [];
-    const hrs: number[] = [];
-    let lastDist = 0;
-    const powers: number[] = [];
-    let tp: RegExpExecArray | null;
-    while ((tp = trackpointRegex.exec(block)) !== null) {
-      const tpt = tp[1];
-      const t = tpt.match(timeRegex);
-      if (t) times.push(t[1]);
-      const h = tpt.match(hrRegex);
-      if (h) hrs.push(parseInt(h[1], 10));
-      const d = tpt.match(distRegex);
-      if (d) lastDist = parseFloat(d[1]);
-      const p = tpt.match(powerRegex);
-      if (p) powers.push(parseFloat(p[1]));
-    }
-    if (times.length === 0) continue;
-    const start = new Date(times[0]);
-    const end = new Date(times[times.length - 1]);
-    const durationMin = Math.max(
-      1,
-      Math.round((end.getTime() - start.getTime()) / 60000),
-    );
-    const cal = block.match(calRegex);
-    const avgHr = hrs.length
-      ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length)
-      : undefined;
-    const maxHr = hrs.length ? Math.max(...hrs) : undefined;
-    const avgPower = powers.length
-      ? Math.round(powers.reduce((a, b) => a + b, 0) / powers.length)
-      : undefined;
-    const idBase =
-      block.match(/<Id>([^<]+)<\/Id>/)?.[1] ||
-      `${start.toISOString()}-${sport}`;
-
-    workouts.push({
-      externalId: `tcx:${idBase}`,
-      sport,
-      date: start,
-      durationMin,
-      distanceKm: lastDist > 0 ? Math.round(lastDist / 10) / 100 : undefined,
-      avgHr,
-      maxHr,
-      avgPower,
-      calories: cal ? parseInt(cal[1], 10) : undefined,
-      title: `${sport[0].toUpperCase()}${sport.slice(1)} Activity`,
-      source: "garmin",
-    });
-  }
-  return workouts;
+  const result = parseTcxActivities(xml);
+  return result.ok ? result.activities.map((activity) => activity.workout) : [];
 }
 
 // ---------- Apple Health export.xml ----------
@@ -1094,118 +1021,11 @@ export async function whoopGetWorkouts(
 }
 
 // ---------- Garmin Connect "Activities.csv" (activity export) ----------
-// Parses the CSV you get from Garmin Connect → Activities → Export CSV
-// (columns: Activity Type, Date, Title, Distance, Calories, Time, Avg HR,
-// Max HR, Avg Power, NP, TSS, ...). Distances: km for run/bike, meters for
-// swims (Garmin exports swims in meters with thousands separators).
-export interface GarminActivity {
-  date: Date;
-  sport: "swim" | "bike" | "run";
-  title: string;
-  durationMin: number;
-  distanceKm: number | null;
-  avgHr: number | null;
-  maxHr: number | null;
-  avgPower: number | null;
-  np: number | null;
-  tss: number | null;
-  calories: number | null;
-  externalId: string;
-}
-
-function csvSplit(line: string): string[] {
-  const out: string[] = [];
-  let cur = "",
-    inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQ && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else inQ = !inQ;
-    } else if (ch === "," && !inQ) {
-      out.push(cur);
-      cur = "";
-    } else cur += ch;
-  }
-  out.push(cur);
-  return out;
-}
-
-export function parseGarminActivitiesCsv(csv: string): GarminActivity[] {
-  const lines = csv.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const header = csvSplit(lines[0]).map((h) => h.trim());
-  const idx = (name: string) => header.findIndex((h) => h === name);
-  const iType = idx("Activity Type"),
-    iDate = idx("Date"),
-    iTitle = idx("Title"),
-    iDist = idx("Distance"),
-    iCal = idx("Calories"),
-    iTime = idx("Time"),
-    iAvgHr = idx("Avg HR"),
-    iMaxHr = idx("Max HR"),
-    iAvgPwr = idx("Avg Power"),
-    iNP = header.findIndex((h) => h.startsWith("Normalized Power")),
-    iTss = header.findIndex((h) => h.startsWith("Training Stress Score"));
-
-  const num = (v: string | undefined): number | null => {
-    if (v == null) return null;
-    const clean = v
-      .replace(/,/g, "")
-      .replace(/^'-/, "-")
-      .replace(/'/g, "")
-      .trim();
-    if (clean === "" || clean === "--") return null;
-    const n = parseFloat(clean);
-    return isNaN(n) ? null : n;
-  };
-
-  const out: GarminActivity[] = [];
-  for (const line of lines.slice(1)) {
-    const c = csvSplit(line);
-    const type = (c[iType] || "").trim();
-    const sport: GarminActivity["sport"] | null = /Swim/i.test(type)
-      ? "swim"
-      : /Cycling|Bike/i.test(type)
-        ? "bike"
-        : /Run|Jog|Walk/i.test(type)
-          ? "run"
-          : null;
-    if (!sport) continue; // skip strength/other rows the app can't use yet
-    const dateStr = (c[iDate] || "").trim();
-    const date = new Date(dateStr.replace(" ", "T"));
-    if (isNaN(date.getTime())) continue;
-    const timeStr = (c[iTime] || "").trim();
-    const tm = timeStr.match(/^(\d+):(\d+):(\d+)/);
-    if (!tm) continue;
-    const durationMin = Math.round((+tm[1] * 3600 + +tm[2] * 60 + +tm[3]) / 60);
-    const rawDist = num(c[iDist]);
-    // Garmins: swims in METERS (e.g. "1,620"), run/bike in KM (e.g. "54.09").
-    const distanceKm =
-      rawDist == null
-        ? null
-        : sport === "swim"
-          ? Math.round((rawDist / 1000) * 100) / 100
-          : rawDist;
-    const title = (c[iTitle] || type).trim();
-    out.push({
-      date,
-      sport,
-      title,
-      durationMin,
-      distanceKm,
-      avgHr: num(c[iAvgHr]),
-      maxHr: num(c[iMaxHr]),
-      avgPower: num(c[iAvgPwr]),
-      np: num(iNP >= 0 ? c[iNP] : undefined),
-      tss: num(iTss >= 0 ? c[iTss] : undefined),
-      calories: num(c[iCal]),
-      externalId: `garmin-csv:${dateStr}:${title}`,
-    });
-  }
-  return out;
+// Garmin Connect → Activities → Export CSV. Parsing (and what is verified vs refused) lives in
+// garmin-activities-csv.ts; this wrapper keeps the old call shape for any remaining caller.
+export type { GarminActivity } from "./garmin-activities-csv";
+export function parseGarminActivitiesCsv(csv: string, timeZone = "UTC"): GarminActivity[] {
+  return parseGarminActivitiesCsvDetailed(csv, timeZone).activities;
 }
 
 // ---------- Google Calendar: publish training sessions (write) ----------
