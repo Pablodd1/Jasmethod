@@ -1,9 +1,10 @@
 import test from "node:test";
-import { isUniversalWorkoutCard } from "./universal-workout-card";
+import { endpointText, isUniversalWorkoutCard } from "./universal-workout-card";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import React, { createElement } from "react";
 import { Decoder, Stream } from "@garmin/fitsdk";
+import type { CanonicalStep } from "./canonical-session";
 import { universalWorkoutExample } from "./universal-workout-example";
 import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
 import {
@@ -13,6 +14,13 @@ import {
 import { buildFitWorkout } from "./fit-export";
 import { UniversalWorkoutCard } from "../components/daily-training/UniversalWorkoutCard";
 import { parseWorkoutCardEdit } from "./workout-card-edit";
+
+test("non-whole-minute step endpoints are readable without changing the execution duration", () => {
+  for (const [seconds, label] of [[20, "20 s"], [60, "1 min"], [414, "6:54 min"], [2070, "34:30 min"], [276, "4:36 min"], [90.5, "1:30.5 min"]] as const) {
+    const step = { endpoint: { type: "time", seconds } } as CanonicalStep;
+    assert.equal(endpointText(step), label); assert.equal(step.endpoint.type === "time" && step.endpoint.seconds, seconds);
+  }
+});
 
 test("56-minute example has exactly five main efforts and four main recoveries in the authoritative steps", () => {
   const card = universalWorkoutExample(),

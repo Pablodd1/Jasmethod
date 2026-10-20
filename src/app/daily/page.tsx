@@ -26,7 +26,8 @@ async function postEvent(path: string, session: DailyTraining["session"], body: 
     headers: { "Content-Type": "application/json", "X-Idempotency-Key": eventId },
     body: JSON.stringify({ planRevision: session.revision, expectedRevision: session.sourceRevision, eventId, ...body }),
   });
-  if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || `Save failed (${response.status})`); }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok !== true) throw new Error(data.error || `Save could not be verified (${response.status})`);
 }
 
 export default function DailyTrainingPage() {
@@ -132,13 +133,14 @@ export default function DailyTrainingPage() {
           { ready },
         )
       }
-      onCompletion={(actual) =>
-        postEvent(
+      onCompletion={async (actual) => {
+        await postEvent(
           `/api/v1/training/sessions/${encodeURIComponent(session.id)}/completion`,
           session,
           { actual },
-        )
-      }
+        );
+        await load();
+      }}
     />
     </>
   );

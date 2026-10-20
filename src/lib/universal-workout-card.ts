@@ -136,6 +136,10 @@ export function stepColor(
 }
 export function endpointText(step: CanonicalStep): string {
   const e = step.endpoint;
+  if (e.type === "time" && e.seconds >= 60 && e.seconds % 60 !== 0) {
+    const seconds = e.seconds % 60;
+    return `${Math.floor(e.seconds / 60)}:${seconds < 10 ? "0" : ""}${seconds} min`;
+  }
   return e.type === "time"
     ? e.seconds % 60 === 0
       ? `${e.seconds / 60} min`

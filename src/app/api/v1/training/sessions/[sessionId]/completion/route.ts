@@ -30,8 +30,8 @@ export async function POST(
       throw new ApiError("Choose an explicit session outcome");
     if (actual.durationMinutes != null && (!Number.isInteger(actual.durationMinutes) || actual.durationMinutes < 0 || actual.durationMinutes > 1440))
       throw new ApiError("durationMinutes must be a whole number from 0 to 1440");
-    if (actual.sessionRpe != null && (!Number.isInteger(actual.sessionRpe) || actual.sessionRpe < 1 || actual.sessionRpe > 10))
-      throw new ApiError("sessionRpe must be a whole number from 1 to 10");
+    if (actual.sessionRpe != null && (!Number.isInteger(actual.sessionRpe) || actual.sessionRpe < 0 || actual.sessionRpe > 10))
+      throw new ApiError("sessionRpe must be a whole number from 0 to 10");
     if (actual.comments != null && (typeof actual.comments !== "string" || actual.comments.length > 1000))
       throw new ApiError("comments must be text of at most 1000 characters");
     const resolved = await effectivePrescription(athlete.id, sessionId);
