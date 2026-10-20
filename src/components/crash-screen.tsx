@@ -39,7 +39,7 @@ function collect(error: unknown): Collected {
       online: nav.onLine,
       standalone,
     }),
-    es: (document.documentElement.lang || nav.language || "").toLowerCase().startsWith("es"),
+    es: (document.documentElement.dataset.jmmLanguage || nav.language || "").toLowerCase().startsWith("es"),
   };
 }
 
