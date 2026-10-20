@@ -30,6 +30,8 @@ jobs:
       NEXT_TELEMETRY_DISABLED: "1"
       ENABLE_INTERVALS_CONNECTOR: "false"
       ENABLE_AUTOMATED_DELIVERY: "false"
+      # Disposable localhost database only. Production collection remains opt-in/off.
+      ENABLE_ACTIVITY_STREAMS: "1"
       ENABLE_MOCK_COACHING: "false"
       COACHING_TRANSPORT: mock
       TOKEN_ENCRYPTION_KEY: isolated-ci-token-key
@@ -87,6 +89,11 @@ jobs:
       - name: Authenticated race scenario boundaries
         run: npx tsx scripts/jmm-race-scenario-integration.ts
 
+      - name: Release audit PostgreSQL import, editing, erasure and privacy acceptance
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-release-audit-integration.ts
+
       - name: Actual fueling persistence and owner boundaries
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
@@ -131,6 +138,9 @@ jobs:
       - name: Install Chromium for synthetic UI acceptance
         run: npx playwright install --with-deps chromium
 
+      - name: EN and ES mobile Smart Coach and upload limit acceptance
+        run: node --import tsx scripts/jmm-release-audit-browser.cjs
+
       - name: Mobile feedback persistence and single-panel browser acceptance
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
@@ -171,6 +181,9 @@ jobs:
           name: jmm-launch-acceptance
           path: |
             .local/jmm-launch-integration/report.json
+            .local/jmm-release-audit/report.json
+            .local/jmm-release-audit-browser/report.json
+            .local/jmm-release-audit-browser/*.png
             .local/jmm-launch-integration/*.fit
             .local/jmm-launch-integration/*-decoded.json
             .local/jmm-followup-integration/report.json

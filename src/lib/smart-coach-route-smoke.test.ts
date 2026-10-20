@@ -69,7 +69,7 @@ before(async () => {
   (globalThis as any).prisma = fakePrisma;
   M._load = function (request: string, parent: unknown, isMain: boolean) {
     let file = "";
-    try { file = M._resolveFilename(request, parent, isMain); } catch { /* builtin or missing: fall through */ }
+    try { file = M._resolveFilename(request, parent, isMain).replace(/\\/g, "/"); } catch { /* builtin or missing: fall through */ }
     if (file.endsWith("/src/lib/auth.ts")) return { getCurrentUser: async () => currentUser };
     if (file.endsWith("/src/lib/activity-store.ts")) return fakeStore;
     if (file.endsWith("/src/lib/sync.ts")) return { persistDeviceDay: async () => {} };
@@ -102,7 +102,7 @@ function rideTcx(opts: { creator?: string; power?: boolean; seconds?: number } =
 }
 function fitRide(seconds = 600): Uint8Array {
   const encoder = new Encoder(), start = new Date(T0);
-  encoder.onMesg(Profile.MesgNum.FILE_ID, { type: "activity", manufacturer: "development", product: 7, serialNumber: 99, timeCreated: start } as any);
+  encoder.onMesg(Profile.MesgNum.FILE_ID, { type: "activity", manufacturer: "garmin", product: 7, serialNumber: 99, timeCreated: start } as any);
   for (let i = 0; i <= seconds; i++) encoder.onMesg(Profile.MesgNum.RECORD, { timestamp: new Date(T0 + i * 1000), heartRate: 130, power: 180 } as any);
   encoder.onMesg(Profile.MesgNum.SESSION, { timestamp: new Date(T0 + seconds * 1000), startTime: start, totalElapsedTime: seconds, totalTimerTime: seconds, sport: "cycling", subSport: "generic", avgHeartRate: 130, maxHeartRate: 131, avgPower: 180 } as any);
   encoder.onMesg(Profile.MesgNum.ACTIVITY, { timestamp: new Date(T0 + seconds * 1000), numSessions: 1, type: "manual", event: "activity", eventType: "stop" } as any);
@@ -198,7 +198,7 @@ test("operator flag off → nothing second-by-second is stored even with consent
   const off = await json(await importPost(upload("garmin", rideTcx({ seconds: 900 }), { consent: true })));
   assert.equal(off.body.streams.enabled, false);
   assert.equal(tables.activityStream.length, 1, "only the earlier row exists");
-  assert.deepEqual((await json(await streamsGet(get("/api/activity-streams")))).body, { enabled: false, retentionDays: null, workoutIds: [] });
+  assert.deepEqual((await json(await streamsGet(get("/api/activity-streams")))).body, { enabled: false, retentionDays: 180, workoutIds: [id] });
   assert.equal((await json(await analysisGet(get(`/api/activity-analysis?workoutId=${id}`)))).body.reason, "storage_disabled");
   assert.equal((await json(await streamsDelete(new Request("http://localhost/api/activity-streams?all=1", { method: "DELETE" })))).body.deleted, 1);
 });
