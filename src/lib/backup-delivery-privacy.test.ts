@@ -76,6 +76,7 @@ test("email reconciliation sends sanitized FIT through injected transport and ab
       manualWorkoutEmailPreference: { findMany: async () => [pref], findUnique: async () => pref },
       user: { findUnique: async () => pref.user },
       workout: { findMany: async () => [{ id: canonical.id }] },
+      trainingPlan: { findFirst: async () => null },
       manualWorkoutEmailDispatch: { upsert: async () => ({}), updateMany: async () => ({ count: 1 }) },
     };
     const deps: Record<string, any> = {
@@ -90,6 +91,8 @@ test("email reconciliation sends sanitized FIT through injected transport and ab
       "./manual-workout-email": { manualEmailConfigured: () => true, manualEmailOrigin: () => "https://example.invalid", eligibleManualEmail: () => true, manualEmailChanged: () => false, manualEmailDue: () => true, manualEmailKey: () => "synthetic-key" },
       "./manual-workout-email-transport": {},
       "./delivery-workout-preview": { deliveryWorkoutPreview },
+      "./delivery-session": { readDeliveryWorkout: async () => ({id:canonical.id}) },
+      "./calendar-workouts": { currentWorkoutWhere: () => ({userId:pref.userId}) },
     };
     const compiled = ts.transpileModule(fs.readFileSync("src/lib/manual-workout-email-service.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
     const mod = { exports: {} as any }; vm.runInNewContext(compiled, { module: mod, exports: mod.exports, require: (id: string) => { assert.ok(id in deps, id); return deps[id]; }, Buffer, Date });

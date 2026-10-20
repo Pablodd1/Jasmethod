@@ -224,7 +224,7 @@ export async function syncUserConnectors(
             externalId: { startsWith: "google_cal:", notIn: live },
           },
         });
-        const activePlan = await prisma.trainingPlan.findFirst({ where: { userId, status: "active" }, orderBy: { createdAt: "desc" }, select: { id: true } });
+        const activePlan = await prisma.trainingPlan.findFirst({ where: { userId, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
         const planned = await prisma.workout.findMany({
           where: { AND: [currentOrReportedWorkoutWhere(userId, activePlan?.id ?? null), { planned: true, date: { gte: start, lt: end } }] },
           include: { planDay: { include: { plan: { select: { id: true, status: true, userId: true } } } } },

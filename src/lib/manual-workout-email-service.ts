@@ -12,6 +12,8 @@ import { renderUniversalWorkoutPng } from "./universal-workout-render";
 import { eligibleManualEmail, manualEmailActionable, manualEmailChanged, manualEmailConfigured, manualEmailDue, manualEmailKey, manualEmailOrigin } from "./manual-workout-email";
 import { sendManualEmail } from "./manual-workout-email-transport";
 import { deliveryWorkoutPreview } from "./delivery-workout-preview";
+import { readDeliveryWorkout } from "./delivery-session";
+import { currentWorkoutWhere } from "./calendar-workouts";
 
 async function snapshot(userId: string, sessionId: string) {
   const workout = await prisma.workout.findFirst({ where: { id: sessionId, userId } });
@@ -45,12 +47,15 @@ export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?
     if (!language) { unsupportedLanguage++; continue; }
     if (!eligibleManualEmail(pref, pref.user.email) || pref.timezone !== pref.user.timezone) continue;
     const bounds = dayBounds(pref.timezone, now);
-    const [workouts, prior] = await Promise.all([
-      prisma.workout.findMany({ where: { userId: pref.userId, date: { gte: bounds.start, lt: bounds.end }, planned: true }, select: { id: true }, take: 100 }),
+    const activePlan = await prisma.trainingPlan.findFirst({ where: { userId: pref.userId, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+    const [workouts, prior, queuedRows] = await Promise.all([
+      prisma.workout.findMany({ where: { AND: [currentWorkoutWhere(pref.userId, activePlan?.id ?? null), { date: { gte: bounds.start, lt: bounds.end }, planned: true }] }, select: { id: true }, take: 100 }),
       prisma.manualWorkoutEmailOutbox.findMany({ where: { userId: pref.userId, createdAt: { gte: new Date(now.getTime() - 2 * 86400000) }, status: { in: ["accepted", "unknown", "sending"] } }, orderBy: { createdAt: "desc" }, take: 200 }),
+      prisma.manualWorkoutEmailOutbox.findMany({ where: { userId: pref.userId, status: "queued" }, orderBy: { createdAt: "asc" }, take: 200 }),
     ]);
-    for (const sessionId of new Set([...workouts.map(w => w.id), ...prior.map(p => p.sessionId)])) {
+    for (const sessionId of new Set([...workouts.map(w => w.id), ...prior.map(p => p.sessionId), ...queuedRows.map(p => p.sessionId)])) {
       const resolveState = async () => {
+        if (!await readDeliveryWorkout(prisma, pref.userId, sessionId)) return { kind: "cancelled" as const, revision: "retired", resolved: null, workout: null };
         const value = await dependencies.resolve(pref.userId, sessionId);
         if (value?.resolved && value.resolved.canonical.dateLocal !== bounds.key) value.kind = "held";
         return value;
@@ -58,7 +63,10 @@ export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?
       const previous = prior.find(p => p.sessionId === sessionId);
       const state = await resolveState();
       if (!state) continue;
-      if (state.kind === "cancelled" && !previous) continue;
+      if (state.kind === "cancelled" && !previous) {
+        await prisma.manualWorkoutEmailOutbox.updateMany({ where: { userId: pref.userId, sessionId, status: "queued" }, data: { status: "superseded", error: "Session is no longer current; no email was sent." } });
+        continue;
+      }
       const sessionDate = state.resolved?.canonical.dateLocal || (state.workout?.date ? dateKey(state.workout.date, pref.timezone) : bounds.key);
       if (sessionDate !== bounds.key) {
         // A moved or future session invalidates a previously sent file, but does not export tomorrow's plan.
