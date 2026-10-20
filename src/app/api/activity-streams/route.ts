@@ -13,10 +13,11 @@ export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const enabled = streamStorageEnabled();
-  if (!enabled) return NextResponse.json({ enabled, retentionDays: null, workoutIds: [] }, { headers: NO_STORE });
   try {
-    return NextResponse.json({ enabled, retentionDays: retentionDays(), workoutIds: await repo().listWorkoutIds(user.id, new Date()) }, { headers: NO_STORE });
+    const workoutIds = await repo().listWorkoutIds(user.id, new Date());
+    return NextResponse.json({ enabled, retentionDays: enabled || workoutIds.length ? retentionDays() : null, workoutIds }, { headers: NO_STORE });
   } catch (error) {
+    if (!enabled && error && typeof error === "object" && "code" in error && error.code === "P2021") return NextResponse.json({ enabled, retentionDays: null, workoutIds: [] }, { headers: NO_STORE });
     console.error("activity stream status failed:", error instanceof Error ? error.message : "unknown");
     return NextResponse.json({ enabled, retentionDays: retentionDays(), workoutIds: [], unavailable: true }, { headers: NO_STORE });
   }

@@ -56,7 +56,7 @@ export function normalizeStreams(samples: readonly RawSample[], maxPoints = MAX_
   if (unique.length < 2) return null;
   const origin = unique[0].t;
   if (unique[unique.length - 1].t - origin > MAX_ACTIVITY_SECONDS) return null;
-  const stride = Math.max(1, Math.ceil(unique.length / Math.max(2, maxPoints)));
+  const stride = Math.max(1, Math.ceil((unique.length - 1) / (Math.max(2, maxPoints) - 1)));
   const picked = unique.filter((_, i) => i % stride === 0 || i === unique.length - 1);
   const out: ActivityStreams = { version: STREAM_SCHEMA_VERSION, t: [], hr: [], power: [], cadence: [], speedMs: [], altitudeM: [], distanceM: [],
     originalSampleCount: samples.length, reduced: stride > 1 || dropped > 0, droppedSamples: dropped };
@@ -94,9 +94,11 @@ export function parseStoredStreams(json: string | null | undefined): ActivityStr
     const value = JSON.parse(json) as Partial<ActivityStreams> | null;
     if (!value || value.version !== STREAM_SCHEMA_VERSION || !Array.isArray(value.t) || value.t.length < 2) return null;
     const n = value.t.length;
+    if (n > MAX_STREAM_POINTS || value.t[0] !== 0 || value.t[n - 1] > MAX_ACTIVITY_SECONDS) return null;
+    if (!Number.isInteger(value.originalSampleCount) || value.originalSampleCount! < n || !Number.isInteger(value.droppedSamples) || value.droppedSamples! < 0 || typeof value.reduced !== "boolean") return null;
     for (const channel of CHANNELS) {
       const series = value[channel];
-      if (!Array.isArray(series) || series.length !== n || series.some(v => v !== null && !finite(v))) return null;
+      if (!Array.isArray(series) || series.length !== n || series.some(v => v !== null && (!finite(v) || v < CHANNEL_LIMITS[channel][0] || v > CHANNEL_LIMITS[channel][1]))) return null;
     }
     if (value.t.some((v, i) => !finite(v) || (i > 0 && v <= (value.t as number[])[i - 1]))) return null;
     return value as ActivityStreams;

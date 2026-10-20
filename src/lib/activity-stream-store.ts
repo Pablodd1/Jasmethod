@@ -74,14 +74,14 @@ export const purgeExpired = (repo: StreamRepo, now = new Date()) => repo.deleteE
 
 /** Structural slice of the Prisma delegate, so this file never imports the (ungenerated here) client types. */
 export interface StreamDelegate {
-  upsert(args: { where: { workoutId: string }; create: StreamRow; update: Partial<StreamRow> }): Promise<unknown>;
+  upsert(args: { where: { workoutId: string; userId: string }; create: StreamRow; update: Partial<StreamRow> }): Promise<unknown>;
   findFirst(args: { where: { userId: string; workoutId: string } }): Promise<StreamRow | null>;
   deleteMany(args: { where: Record<string, unknown> }): Promise<{ count: number }>;
   findMany(args: { where: Record<string, unknown>; select: { workoutId: true } }): Promise<{ workoutId: string }[]>;
 }
 export function prismaStreamRepo(delegate: StreamDelegate): StreamRepo {
   return {
-    upsert: async row => { await delegate.upsert({ where: { workoutId: row.workoutId }, create: row, update: { data: row.data, sampleCount: row.sampleCount, durationSec: row.durationSec, consentAt: row.consentAt, expiresAt: row.expiresAt, schemaVersion: row.schemaVersion } }); },
+    upsert: async row => { await delegate.upsert({ where: { workoutId: row.workoutId, userId: row.userId }, create: row, update: { data: row.data, sampleCount: row.sampleCount, durationSec: row.durationSec, consentAt: row.consentAt, expiresAt: row.expiresAt, schemaVersion: row.schemaVersion } }); },
     find: (userId, workoutId) => delegate.findFirst({ where: { userId, workoutId } }),
     deleteForWorkout: async (userId, workoutId) => (await delegate.deleteMany({ where: { userId, workoutId } })).count,
     deleteAllForUser: async userId => (await delegate.deleteMany({ where: { userId } })).count,
