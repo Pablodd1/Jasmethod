@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     if (!id || id.length > 200) throw new ApiError("Select a workout.");
     const none = (reason: string) => Response.json({ suggestion: null, reason }, { headers: NO_STORE });
     if (actor.id !== athlete.id) return none("own_data_only");
+    if (process.env.ENABLE_SMART_COACH_SUGGESTIONS !== "1") return none("pilot_disabled");
     if (!streamStorageEnabled()) return none("storage_disabled");
 
     const resolved = await effectivePrescription(athlete.id, id);
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
 
     const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000);
     const recent = await prisma.workout.findMany({
-      where: { userId: athlete.id, planned: false, completed: true, date: { gte: since, lte: new Date() } },
+      where: { userId: athlete.id, planned: false, completed: true, sport: resolved.canonical.sport, date: { gte: since, lte: new Date() } },
       orderBy: { date: "desc" }, take: 8,
       select: { id: true, title: true, date: true, sport: true, source: true, externalId: true, notes: true, matchedPlanId: true },
     });
@@ -54,7 +55,7 @@ export async function GET(req: Request) {
       const streams = await loadStreams(repo, athlete.id, activity.id);
       if (!streams) continue;
       const sport: AnalysisSport = ["bike", "run", "swim"].includes(activity.sport) ? (activity.sport as AnalysisSport) : "other";
-      const analysis = analyseStreams({ streams, provenance, athlete: { ftpW: anchors.ftp ?? null, lthr: anchors.lthr ?? null }, sport });
+      const analysis = analyseStreams({ streams, provenance, athlete: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, lthr: anchors.lthr ?? null }, sport });
       if (!analysis.ok) continue;
       let plannedSet = null;
       if (activity.matchedPlanId) {

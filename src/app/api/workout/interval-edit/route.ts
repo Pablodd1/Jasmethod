@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { workoutHasHistory } from "@/lib/workout-update";
 import { localDate, dateKey } from "@/lib/dates";
 import { applyIntervalPatch, parseIntervalRequest, readIntensityCapZone, toEditableSteps, type IntervalPatch } from "@/lib/workout-interval-edit";
+import { readStructureEditBody, StructureEditError } from "@/lib/sport-structure-edit";
 import { PATCH as saveCardSteps } from "../card/route";
 
 export const runtime = "nodejs";
@@ -34,10 +35,11 @@ export async function POST(req: Request) {
   try {
     const { actor, athlete } = await trainingAccess(req);
     let body: any;
-    try { body = await req.json(); } catch { throw new ApiError("Invalid JSON."); }
+    try { body = JSON.parse(await readStructureEditBody(req)); } catch (error) { throw new ApiError("Invalid or oversized JSON.", error instanceof StructureEditError ? error.status : 400); }
     if (typeof body?.id !== "string" || !body.id || body.id.length > 200) throw new ApiError("Select a workout.");
     if (typeof body.expectedRevision !== "string" || !/^[a-f0-9]{64}$/.test(body.expectedRevision)) throw new ApiError("Reload the workout before editing.", 409);
-    const mode = body.mode === "apply" ? "apply" : "preview";
+    if (body.mode !== "preview" && body.mode !== "apply") throw new ApiError("Choose preview or apply.");
+    const mode = body.mode;
     const lang = athlete.language === "es" ? "es" : "en";
 
     const resolved = await effectivePrescription(athlete.id, body.id);

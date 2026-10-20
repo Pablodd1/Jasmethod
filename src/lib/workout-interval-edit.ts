@@ -243,8 +243,15 @@ export function applyIntervalPatch(stepsIn: readonly EditableStep[], patch: Inte
 
   const confirm = { en: [] as string[], es: [] as string[] };
   if (workZone > existingMax) { confirm.en.push(`Raises the work zone to Z${workZone}.`); confirm.es.push(`Sube la zona de trabajo a Z${workZone}.`); }
-  const increase = before.hardSeconds === 0 ? after.hardSeconds > 0 : (after.hardSeconds - before.hardSeconds) / before.hardSeconds * 100 > LIMITS.hardTimeIncreasePct;
+  const increase = after.hardSeconds > before.hardSeconds;
   if (increase) { confirm.en.push(`Hard time (Z4+) rises from ${Math.round(before.hardSeconds / 60)} to ${Math.round(after.hardSeconds / 60)} min.`); confirm.es.push(`El tiempo duro (Z4+) sube de ${Math.round(before.hardSeconds / 60)} a ${Math.round(after.hardSeconds / 60)} min.`); }
+  if (restSeconds !== null && before.restSeconds !== null && restSeconds < before.restSeconds) {
+    confirm.en.push("Less recovery between efforts increases session density.");
+    confirm.es.push("Menos descanso entre esfuerzos aumenta la densidad de la sesión.");
+  }
+  if (after.totalSeconds > before.totalSeconds && !increase && restSeconds === before.restSeconds) {
+    confirm.en.push("The session duration increases."); confirm.es.push("La duración de la sesión aumenta.");
+  }
   return { ok: true, steps, setLabel: located.label, before, after, changes, requiresConfirmation: confirm.en.length > 0, confirmationReasons: confirm };
 }
 

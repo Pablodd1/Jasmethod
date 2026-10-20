@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import type { UniversalWorkoutCard } from "@/lib/universal-workout-card";
 
 /**
@@ -23,6 +23,7 @@ export function IntervalCoachEditor({ card, onSaved }: { card: UniversalWorkoutC
   const [done, setDone] = useState("");
   const [history, setHistory] = useState<HistoryResponse | null>(null);
   const [proposal, setProposal] = useState<SuggestionResponse | null>(null);
+  useEffect(() => { setPreview(null); setConfirmed(false); setHistory(null); setProposal(null); setText(""); }, [s.id, s.revision, s.athleteId]);
   const q = `?athleteId=${encodeURIComponent(s.athleteId)}`;
 
   const call = useCallback(async (body: Record<string, unknown>) => {

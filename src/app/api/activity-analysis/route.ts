@@ -38,8 +38,8 @@ export async function GET(req: Request) {
     const tests = await prisma.benchmarkTest.findMany({ where: { userId: user.id, id: { in: appliedIds }, completed: true, skipped: false }, orderBy: { date: "desc" } });
     const anchors = evidencedTargetProfile(profile, tests, appliedIds);
     const sport: AnalysisSport = ["bike", "run", "swim"].includes(workout.sport) ? (workout.sport as AnalysisSport) : "other";
-    const analysis = analyseStreams({ streams, provenance, athlete: { ftpW: anchors.ftp ?? null, lthr: anchors.lthr ?? null }, sport });
-    return NextResponse.json({ ...analysis, workout: { id: workout.id, title: workout.title, date: workout.date, sport: workout.sport }, anchors: { ftpW: anchors.ftp ?? null, ftpBasis: anchors.ftp ? "validated test within 90 days" : null } }, { headers: NO_STORE });
+    const analysis = analyseStreams({ streams, provenance, athlete: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, lthr: anchors.lthr ?? null }, sport });
+    return NextResponse.json({ ...analysis, workout: { id: workout.id, title: workout.title, date: workout.date, sport: workout.sport }, anchors: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, ftpBasis: sport === "bike" && anchors.ftp ? "validated test within 90 days" : null } }, { headers: NO_STORE });
   } catch (error) {
     console.error("activity analysis failed:", error instanceof Error ? error.message : "unknown");
     return NextResponse.json({ error: "Could not analyse this activity." }, { status: 500 });

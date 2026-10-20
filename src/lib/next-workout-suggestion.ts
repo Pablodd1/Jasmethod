@@ -35,7 +35,10 @@ export const THRESHOLDS = { decouplingHold: 5, decouplingReduce: 8, fadeHold: 4,
 export function fadePercent(efforts: StreamAnalysis["efforts"]): number | null {
   if (efforts.length < THRESHOLDS.minEffortsForFade) return null;
   const channel = efforts[0].channel;
-  if (efforts.some(e => e.channel !== channel)) return null;
+  if (channel !== "power" || efforts.some(e => e.channel !== channel)) return null;
+  // HR is an internal response, not external output. Compare like-duration efforts only.
+  const duration = efforts[0].durationS;
+  if (duration <= 0 || efforts.some(e => Math.abs(e.durationS - duration) > duration * 0.1)) return null;
   const first = efforts[0].avg, last = efforts[efforts.length - 1].avg;
   return first > 0 ? Math.round(((first - last) / first) * 1000) / 10 : null;
 }
@@ -49,6 +52,7 @@ export function suggestNextWorkout(input: NextWorkoutInput): NextWorkoutSuggesti
   const evidence = { decouplingPct: decoupling, fadePct: fade, hardEfforts: efforts, plannedRepeats: planned };
   const none = (en: string, es: string): NextWorkoutSuggestion => ({ kind: "none", requiresConfirmation: false, reasons: [{ en, es }], evidence });
 
+  if (analysis.streamsReduced) return none("Reduced streams are descriptive only; no load change is suggested.", "Los datos reducidos son descriptivos; no se propone cambiar la carga.");
   if (!nextSet) return none("The next session is not an interval set, so there is nothing to adjust from this analysis.", "La próxima sesión no es una serie de intervalos, así que no hay nada que ajustar con este análisis.");
   if (decoupling === null && fade === null && (planned === null || efforts === 0)) return none("Not enough evidence in this activity to adjust the next session.", "No hay evidencia suficiente en esta actividad para ajustar la próxima sesión.");
 
@@ -73,7 +77,7 @@ export function suggestNextWorkout(input: NextWorkoutInput): NextWorkoutSuggesti
   const steady = fade !== null && fade < THRESHOLDS.fadeProgressMax;
   const driftOk = decoupling === null || decoupling < THRESHOLDS.decouplingHold;
   if (complete && steady && driftOk) {
-    reasons.push({ en: `All ${planned} planned hard efforts were completed with only ${fade}% fade.`, es: `Se completaron los ${planned} esfuerzos duros planificados con solo ${fade}% de caída.` });
+    reasons.push({ en: `${efforts} similar-duration power efforts were detected with ${fade}% fade; this does not verify planned completion.`, es: `Se detectaron ${efforts} esfuerzos de potencia de duración similar con ${fade}% de caída; esto no verifica que completaras lo planificado.` });
     if (decoupling !== null) reasons.push({ en: `Aerobic decoupling stayed at ${decoupling}%.`, es: `El desacople aeróbico se mantuvo en ${decoupling}%.` });
     reasons.push({ en: "Suggestion: one more repeat next time. This raises load, so it needs your explicit confirmation.", es: "Sugerencia: una repetición más la próxima vez. Esto sube la carga, así que necesita tu confirmación explícita." });
     return { kind: "progress", patch: { repeatsDelta: 1 }, requiresConfirmation: true, reasons, evidence };

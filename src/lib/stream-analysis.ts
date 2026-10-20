@@ -98,7 +98,7 @@ const positive = (v: unknown): v is number => typeof v === "number" && Number.is
 export function resample1Hz(t: readonly number[], values: readonly (number | null)[], maxGap?: number): (number | null)[] {
   if (t.length < 2) return [];
   const steps = t.slice(1).map((v, i) => v - t[i]).sort((a, b) => a - b);
-  const gap = maxGap ?? Math.max(10, 2.5 * steps[Math.floor(steps.length / 2)]);
+  const gap = maxGap ?? Math.min(10, Math.max(2, 2.5 * steps[Math.floor(steps.length / 2)]));
   const total = Math.floor(t[t.length - 1] - t[0]) + 1;
   const out: (number | null)[] = new Array(total).fill(null);
   let j = 0;
@@ -234,7 +234,7 @@ export function analyseStreams(input: AnalysisInput): StreamAnalysisResult {
     if (np === null) notes.push("Normalized power, IF and TSS not computed: they need at least 20 minutes of power data.");
     else if (!positive(ftp)) notes.push("IF and TSS not computed: no FTP is recorded for this athlete.");
     power = {
-      avgW: round(avgW), npW: np === null ? null : round(np), vi: np === null ? null : round(np / avgW, 3),
+      avgW: round(avgW), npW: np === null ? null : round(np), vi: np === null || avgW <= 0 ? null : round(np / avgW, 3),
       intensityFactor: ifactor === null ? null : round(ifactor, 3), tss: tss === null ? null : round(tss),
       best: BEST_EFFORT_SECONDS.flatMap(seconds => { const v = bestAverage(grid.power, seconds); return v === null ? [] : [{ seconds, avgW: round(v) }]; }),
     };

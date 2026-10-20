@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import { analysisNote } from "@/lib/activity-analysis-copy";
 
 type Lang = "en" | "es";
 export interface StreamStatus { enabled: boolean; retentionDays: number | null; workoutIds: string[]; unavailable?: boolean }
@@ -10,8 +11,9 @@ export function useStreamStatus() {
   const reload = useCallback(async () => {
     try {
       const response = await fetch("/api/activity-streams", { cache: "no-store" });
-      if (response.ok) setStatus(await response.json());
-    } catch { /* optional feature: stay hidden when unreachable */ }
+      if (!response.ok) throw new Error("Unavailable");
+      setStatus(await response.json());
+    } catch { setStatus({ enabled: false, retentionDays: null, workoutIds: [], unavailable: true }); }
   }, []);
   useEffect(() => { void reload(); }, [reload]);
   return { status, reload };
@@ -62,9 +64,9 @@ export function ActivityAnalysisCard({ workoutId, lang }: { workoutId: string; l
     setData(null); setError("");
     fetch(`/api/activity-analysis?workoutId=${encodeURIComponent(workoutId)}`, { cache: "no-store" })
       .then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "Failed"); if (live) setData(body); })
-      .catch(e => live && setError((e as Error).message));
+      .catch(() => live && setError(es ? "No se pudo analizar esta actividad. Inténtalo de nuevo." : "Could not analyse this activity. Please retry."));
     return () => { live = false; };
-  }, [workoutId]);
+  }, [workoutId, es]);
   if (error) return <p role="alert" className="text-xs text-red-600">{error}</p>;
   if (!data) return <p role="status" className="text-xs text-slate-500">{es ? "Analizando…" : "Analysing…"}</p>;
   if (!data.ok) return <p role="status" className="text-xs text-slate-600">{(data.reason && REFUSALS[data.reason]?.[lang]) || data.message}</p>;
@@ -91,7 +93,7 @@ export function ActivityAnalysisCard({ workoutId, lang }: { workoutId: string; l
           </ol>
         </div>
       )}
-      {!!data.notes?.length && <ul className="text-slate-500 list-disc pl-5">{data.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+      {!!data.notes?.length && <ul className="text-slate-500 list-disc pl-5">{data.notes.map((n, i) => <li key={i}>{analysisNote(n, lang)}</li>)}</ul>}
     </section>
   );
 }
@@ -101,7 +103,7 @@ export function StoredStreamsPanel({ lang, status, reload, recentIds }: { lang: 
   const es = lang === "es";
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  if (!status.enabled) return null;
+  if (!status.enabled && !status.workoutIds.length) return null;
   async function remove(query: string) {
     if (busy) return;
     setBusy(true); setMessage("");
@@ -125,7 +127,7 @@ export function StoredStreamsPanel({ lang, status, reload, recentIds }: { lang: 
         </button>
       )}
       {message && <p role="status" className="text-xs text-slate-600">{message}</p>}
-      {recentIds.slice(0, 3).map(id => (
+      {(status.enabled ? recentIds : []).slice(0, 3).map(id => (
         <div key={id} className="space-y-1">
           <ActivityAnalysisCard workoutId={id} lang={lang} />
           <button type="button" className="text-xs underline text-slate-500" disabled={busy} onClick={() => remove(`workoutId=${encodeURIComponent(id)}`)}>

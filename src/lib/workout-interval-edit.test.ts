@@ -90,9 +90,9 @@ test("a load REDUCTION needs no extra confirmation: one less interval, shorter w
   assert.equal(r.after.totalSeconds, r.before.totalSeconds - 240 - 120);
 });
 
-test("small increases (≤ +20% hard time) apply without a second confirmation; larger ones and zone raises require it", () => {
+test("all hard-time increases and zone raises require explicit confirmation", () => {
   const small = ok(applyIntervalPatch(session(10, 60, 60, "z4"), { repeatsDelta: 1 }, BIG)); // 10 → 11 min = +10%
-  assert.equal(small.requiresConfirmation, false);
+  assert.equal(small.requiresConfirmation, true);
   const raise = ok(applyIntervalPatch(session(4, 240, 120, "z3"), { workZone: 4 }, BIG));
   assert.equal(raise.requiresConfirmation, true);
   assert.match(raise.confirmationReasons.en.join(" "), /Z4/);

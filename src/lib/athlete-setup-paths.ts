@@ -254,7 +254,7 @@ export const ROW_COPY: Record<string, { what: Dict; limit: Dict }> = {
   garmin_direct: { what: D("Direct publishing from JMM to Garmin Connect.", "Publicación directa de JMM en Garmin Connect."),
     limit: D("Not available: JMM has no Garmin publishing approval. Use the FIT download, or Intervals.icu when it is enabled.", "No disponible: JMM no tiene aprobación de Garmin para publicar. Usa la descarga FIT, o Intervals.icu cuando esté habilitada.") },
   coros_direct: { what: D("Direct publishing from JMM to COROS.", "Publicación directa de JMM en COROS."),
-    limit: D("Not available: it needs COROS partner approval that JMM does not have. Use the FIT download.", "No disponible: requiere una aprobación de socio de COROS que JMM no tiene. Usa la descarga FIT.") },
+    limit: D("Not available in JMM: a direct partner connection has not been verified. Follow Today; file compatibility must be checked for your device.", "No disponible en JMM: no se ha verificado una conexión directa. Sigue Hoy; comprueba la compatibilidad de archivos con tu dispositivo.") },
 };
 
 export function rowCopy(row: Pick<SetupRow, "copyKey">, lang: Lang): { what: string; limit: string } {
