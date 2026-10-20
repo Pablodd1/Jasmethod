@@ -44,6 +44,14 @@ Keep sport-specific equipment, pace units, pool lengths and unsupported exports
 explicit. A generic conversation or timed bike interval editor does not prove
 that swim, HYROX stations, bricks and full cycles can all be edited by chat.
 
+Include at least 85 pending suggestions on an older plan still marked active,
+plus an old skipped report with zero actual minutes and RPE zero. These must
+not consume today's budget, become the default session, impose an old rest day,
+or remain executable through old links. Retain the report unchanged. Replace a
+plan during approval and during delivery preparation: stale approval must fail
+and an unsent obsolete attachment must be superseded. Repeated unchanged
+approval and multiple genuine current sessions must continue to work.
+
 ## Morning delivery: verify each stage
 
 - Confirm saved local time and timezone, purpose consent, quiet hours, verified
