@@ -11,7 +11,7 @@ export default function PrivacyPage() {
       <SiteHeader />
       <main className="pub-container py-12 max-w-3xl mx-auto">
         <h1 className="font-display text-3xl font-bold mb-2">Privacy Policy · Política de Privacidad</h1>
-        <p className="micro mb-8">JasMiamiMethod · <a href={PUBLIC_CONTACT_MAILTO} className="underline">{PUBLIC_CONTACT_EMAIL}</a> · Last updated: October 16, 2026</p>
+        <p className="micro mb-8">JasMiamiMethod · <a href={PUBLIC_CONTACT_MAILTO} className="underline">{PUBLIC_CONTACT_EMAIL}</a> · Last updated: October 20, 2026</p>
 
         <section className="space-y-4 text-sm leading-relaxed text-ink-700">
           <div className="rounded-2xl border border-ink-200 bg-white p-5">
@@ -36,6 +36,12 @@ export default function PrivacyPage() {
             <h2 className="font-display font-bold text-lg mb-1">4. Your controls / Tus controles</h2>
             <p><strong>EN:</strong> Connecting a device is always optional and revocable — disconnect in the app or at the provider at any time. Health information here is educational coaching, not medical diagnosis; consult a physician for medical decisions.</p>
             <p className="mt-2"><strong>ES:</strong> Conectar un dispositivo siempre es opcional y revocable — desconéctalo en la app o en el proveedor cuando quieras. La información de salud aquí es coaching educativo, no diagnóstico médico; consulta a un médico para decisiones médicas.</p>
+          </div>
+
+          <div className="rounded-2xl border border-ink-200 bg-white p-5">
+            <h2 className="font-display font-bold text-lg mb-1">5. Public inquiries and booking / Consultas públicas y reservas</h2>
+            <p><strong>EN:</strong> If you submit the public contact form, JMM processes your name, reply email, selected topic and message to respond. The form sends the details to the JMM business mailbox using our configured SMTP provider; provider acceptance does not prove inbox delivery. Do not include medical records or sensitive information. If you choose the external Cal.com calendar, Cal.com processes the booking details under its own terms and privacy practices. Contact JMM to request deletion of inquiry information held by JMM.</p>
+            <p className="mt-2"><strong>ES:</strong> Si envías el formulario público, JMM utiliza nombre, correo, tema y mensaje para responder. El formulario envía estos datos al buzón empresarial mediante el proveedor SMTP configurado; su aceptación no confirma la recepción final. No incluyas historiales médicos ni información sensible. Si usas el calendario externo de Cal.com, ese servicio procesa los datos de reserva conforme a sus propias condiciones. Escribe a JMM para solicitar la eliminación de consultas conservadas por JMM.</p>
           </div>
 
           <div className="rounded-2xl border border-vermillion-300 bg-paper-100 p-5">

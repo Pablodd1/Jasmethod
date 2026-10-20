@@ -62,6 +62,10 @@ export function SiteHeader() {
           <Link href="/how-it-works" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors">
             {t(language, "pub.howItWorks")}
           </Link>
+          <Link href="/blog" aria-current={pathname.startsWith("/blog") ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">{language === "es" ? "Artículos" : "Blog"}</Link>
+          <Link href="/faq" aria-current={pathname === "/faq" ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">FAQ</Link>
+          <Link href="/contact" aria-current={pathname === "/contact" ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">{language === "es" ? "Contacto" : "Contact"}</Link>
+          <Link href="/book" aria-current={pathname === "/book" ? "page" : undefined} className="text-sm font-semibold text-ocean-700 hover:text-ocean-900 aria-[current=page]:text-vermillion-600">{language === "es" ? "Reservar" : "Book a call"}</Link>
           {/* Logged-in athletes keep the app one tap away on every public page
               (science guides included). Logged-out visitors get the same door:
               /today redirects to sign-in, then straight back to training. */}
@@ -108,6 +112,10 @@ export function SiteFooter() {
           <Link href="/personal-coaching" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Coaching diario" : "Daily coaching"}</Link>
           <Link href="/science" className="text-ink-600 hover:text-ink-900">{t(language, "pub.science")}</Link>
           <Link href="/onboarding" className="text-ink-600 hover:text-ink-900">{t(language, "pub.onboarding")}</Link>
+          <Link href="/blog" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Artículos" : "Blog"}</Link>
+          <Link href="/faq" className="text-ink-600 hover:text-ink-900">FAQ</Link>
+          <Link href="/contact" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Contacto" : "Contact"}</Link>
+          <Link href="/book" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Reservar" : "Book"}</Link>
         </div>
       </div>
     </footer>
