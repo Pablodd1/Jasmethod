@@ -25,9 +25,11 @@ export function PublicInquiryForm() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const result: { ok?: boolean; message?: string; error?: string } = await res.json();
+      const result: { ok?: boolean; channel?: "telegram" | "smtp"; message?: string; error?: string } = await res.json();
       if (!res.ok || result.ok !== true) throw new Error(result.error || "Delivery could not be confirmed.");
-      setSuccess(es ? "El proveedor de correo aceptó la solicitud. Esto no confirma su llegada a la bandeja." : "Our mail provider accepted the inquiry. This does not confirm inbox delivery.");
+      setSuccess(result.channel === "telegram"
+        ? (es ? "El canal de Telegram del administrador aceptó la consulta. No confirma que se haya leído." : "The administrator Telegram channel accepted the inquiry. This does not confirm it was read.")
+        : (es ? "El proveedor de correo aceptó la solicitud. Esto no confirma su llegada a la bandeja." : "Our mail provider accepted the inquiry. This does not confirm inbox delivery."));
       setForm(initial);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : (es ? "No se confirmó el envío." : "Delivery not confirmed."));
@@ -61,7 +63,7 @@ export function PublicInquiryForm() {
     </div>
     <label className="flex items-start gap-3 text-sm text-ink-700">
       <input type="checkbox" className="mt-1" required checked={form.consent} onChange={e => set("consent", e.target.checked)} />
-      <span>{es ? "Acepto enviar estos datos para que el equipo JMM responda a mi solicitud. He leído la " : "I consent to sending these details so the JMM team can respond. I have read the "}
+      <span>{es ? "Acepto enviar estos datos al canal de Telegram del administrador o al buzón de JMM para responder. He leído la " : "I consent to sending these details to the JMM administrator Telegram channel or business mailbox so the team can respond. I have read the "}
         <a href="/privacy" className="underline font-semibold text-ocean-700">{es ? "política de privacidad" : "privacy policy"}</a>.</span>
     </label>
     <button disabled={sending} type="submit" className="btn-primary">{sending ? (es ? "Enviando…" : "Submitting…") : (es ? "Enviar solicitud" : "Send inquiry")}</button>
