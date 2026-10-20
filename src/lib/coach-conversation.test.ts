@@ -194,6 +194,47 @@ test("negated, historical or approximate profile statements are not present fact
   assert.equal(value("My weekly availability is 5 hours per week", "weeklyHours"), 5);
 });
 
+test("ordinary update, switch and set requests create local review proposals without external AI", () => {
+  const selected = { localToday: "2026-10-20", sessionId: "owned-session", sessionDate: "2026-10-20" };
+  const cases: Array<[string, string, string | number]> = [
+    ["Update today's workout to 30 minutes", "durationMin", 30],
+    ["Switch today's workout to bike", "sport", "bike"],
+    ["Set this session to 45 minutes at zone 2", "durationMin", 45],
+    ["Set my goal to marathon", "goal", "marathon"],
+    ["Update my weekly hours to 8 hours per week", "weeklyHours", 8],
+    ["Actualiza esta sesión a 30 minutos", "durationMin", 30],
+    ["Cambia mi objetivo a una maratón", "goal", "marathon"],
+  ];
+  for (const [message, field, expected] of cases) {
+    const candidates = extractLocalCandidates(message, selected);
+    const proposal = candidates.find(candidate => candidate.field === field);
+    assert.equal(proposal?.value, expected, message);
+    assert.equal(proposal?.status, "proposed");
+    if (proposal?.kind === "workout_plan") { assert.equal(proposal.sessionId, selected.sessionId); assert.equal(proposal.observedDate, selected.sessionDate); }
+    assert.equal(buildCoachReply(message, { localToday: selected.localToday, candidateContext: selected }).ruleId, "coach-conversation-v1:review-proposals", message);
+  }
+  for (const message of ["Do not update today's workout to 30 minutes", "Don't switch today's workout to bike", "Do not set my goal to marathon", "Maybe update my weekly hours to 8 hours per week", "Last year my goal was marathon", "Set my goal to marathon or 5k", "Update my weekly hours to 8"]) assert.deepEqual(extractLocalCandidates(message, selected), [], message);
+  for (const message of ["Update my workout to 30 minutes", "Switch my workout to bike"]) {
+    assert.equal(extractLocalCandidates(message, { localToday: selected.localToday }).length, 0);
+    assert.equal(buildCoachReply(message, { localToday: selected.localToday }).ruleId, "coach-conversation-v1:select-workout-to-edit");
+  }
+});
+
+test("mixed availability and no-day-off requests review the supported value before schedule or recovery education", () => {
+  const message = "can you change that i have 12 hours a week to train, no day off";
+  const context = { localToday: "2026-10-20", language: "en" };
+  const candidates = extractLocalCandidates(message, context);
+  assert.equal(candidates.length, 1); assert.equal(candidates[0].field, "weeklyHours"); assert.equal(candidates[0].value, 12); assert.equal(candidates[0].status, "proposed");
+  const reply = buildCoachReply(message, context);
+  assert.equal(reply.ruleId, "coach-conversation-v1:review-proposals");
+  assert.match(reply.answer, /availability is 12 hours/); assert.match(reply.answer, /Review and confirm/); assert.match(reply.answer, /nothing has been saved/);
+  assert.match(reply.answer, /Rest-day preferences.*editor/); assert.match(reply.answer, /does not change those settings/);
+  assert.doesNotMatch(reply.answer, /meditation|visualization|20.minute workout|Tell me which/);
+  assert.equal(buildCoachReply(`${message}. My chest hurts now`, context).ruleId, "coach-conversation-v1:urgent-symptoms");
+  assert.equal(buildCoachReply(`${message}. I am tired`, context).ruleId, "coach-conversation-v1:clarify-fatigue");
+  assert.equal(buildCoachReply(`${message}. I choose to rest`, context).ruleId, "coach-conversation-v1:respect-rest-choice");
+});
+
 test("unreviewed image safety never clears or encourages activity, and urgency is conditional", () => {
   const urgent = buildCoachReply("I feel lazy", { ...ready, unreviewedImageConcern: "urgent" });
   assert.match(urgent.ruleId, /unreviewed-image-urgent$/); assert.match(urgent.answer, /If these symptoms are yours and current/);
