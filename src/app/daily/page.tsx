@@ -5,6 +5,7 @@ import "@/components/daily-training/universal-workout-card.css";
 // both read the same plan. This page handles loading/empty/error states.
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useAuth } from "@/components/auth";
 import { DailyEnvironmentCard } from "@/components/daily-training/DailyEnvironmentCard";
 import { DailyTrainingScreen } from "@/components/daily-training/DailyTrainingScreen";
 import { readTrainingJson, TrainingReadError } from "@/components/daily-training/training-read";
@@ -29,6 +30,7 @@ async function postEvent(path: string, session: DailyTraining["session"], body: 
 }
 
 export default function DailyTrainingPage() {
+  const { user } = useAuth();
   const requestSequence = useRef(0);
   const loadController = useRef<AbortController | null>(null);
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -76,11 +78,12 @@ export default function DailyTrainingPage() {
     return () => loadController.current?.abort();
   }, [load]);
 
-  const displayNavigation = <nav aria-label="Today's training display" className="mx-auto max-w-[540px] px-4 py-3 flex flex-wrap gap-4 items-center text-sm">
-    <Link className="underline font-semibold" href={selected ? `/today?sessionId=${encodeURIComponent(selected)}` : "/today"}>Today: full view</Link>
-    <span aria-current="page">Workout card view</span>
+  const es = state.kind === "ready" ? state.plan.language === "es" : user?.language === "es";
+  const displayNavigation = <nav aria-label={es ? "Vista del entrenamiento de hoy" : "Today's training display"} className="mx-auto max-w-[540px] px-4 py-3 flex flex-wrap gap-4 items-center text-sm">
+    <Link className="underline font-semibold" href={selected ? `/today?sessionId=${encodeURIComponent(selected)}` : "/today"}>{es ? "Hoy: vista completa" : "Today: full view"}</Link>
+    <span aria-current="page">{es ? "Tarjeta del entrenamiento" : "Workout card view"}</span>
     <Link className="underline" href="/coach">J Koach</Link>
-    <Link className="underline" href="/calendar">Plan &amp; Calendar</Link>
+    <Link className="underline" href="/calendar">{es ? "Plan y calendario" : "Plan & Calendar"}</Link>
   </nav>;
 
   if (state.kind !== "ready")
@@ -88,25 +91,25 @@ export default function DailyTrainingPage() {
       <main className="jmm-screen" role={state.kind === "error" ? "alert" : "status"}>
         {displayNavigation}
         <div className="jmm-state">
-          <h1>Daily training</h1>
+          <h1>{es ? "Entrenamiento diario" : "Daily training"}</h1>
           <p>
             {state.kind === "loading"
-              ? "Loading your plan…"
+              ? (es ? "Cargando tu plan…" : "Loading your plan…")
               : state.message}
           </p>
           {(state.kind === "error" || state.kind === "empty") && (
             <div className="flex gap-2">
               <button className="jmm-button" onClick={() => void load()}>
-                Refresh
+                {es ? "Actualizar" : "Refresh"}
               </button>
               <a className="jmm-button" style={{ textDecoration: "none" }} href="/today">
-                Open Today
+                {es ? "Abrir Hoy" : "Open Today"}
               </a>
             </div>
           )}
           {state.kind === "unauthorized" && (
             <a className="jmm-button" style={{ textDecoration: "none" }} href="/login">
-              Sign in
+              {es ? "Iniciar sesión" : "Sign in"}
             </a>
           )}
         </div>
@@ -116,7 +119,7 @@ export default function DailyTrainingPage() {
   return (
     <>
     {displayNavigation}
-    {state.plan.sessions && state.plan.sessions.length > 1 && <nav aria-label="Today's sessions" className="jmm-screen jmm-session-switcher"><label>Select today&apos;s session <select value={session.id} onChange={e => selectSession(e.target.value)}>{state.plan.sessions.map(s => <option key={s.id} value={s.id}>{s.startTime ? `${s.startTime} · ` : ""}{s.title} · {s.sport}</option>)}</select></label></nav>}
+    {state.plan.sessions && state.plan.sessions.length > 1 && <nav aria-label={es ? "Sesiones de hoy" : "Today's sessions"} className="jmm-screen jmm-session-switcher"><label>{es ? "Elige la sesión de hoy " : "Select today's session "}<select value={session.id} onChange={e => selectSession(e.target.value)}>{state.plan.sessions.map(s => <option key={s.id} value={s.id}>{s.startTime ? `${s.startTime} · ` : ""}{s.title} · {s.sport}</option>)}</select></label></nav>}
     <div className="mx-auto max-w-[540px] px-4 py-3"><DailyEnvironmentCard key={`environment-${session.id}-${session.sourceRevision}`} sessionId={session.id} dateLocal={session.dateLocal} timezone={session.timezone} startTime={state.plan.sessions?.find(s => s.id === session.id)?.startTime} environment={state.plan.environment} es={state.plan.language === "es"} onSaved={() => load()} /></div>
     <DailyTrainingScreen
       key={`${session.id}-${session.revision}`}

@@ -7,12 +7,25 @@ import { UniversalWorkoutCard } from "../components/daily-training/UniversalWork
 import { ActivityAnalysisCard, StoredStreamsPanel, StreamConsentCheckbox } from "../components/activity-streams";
 import { applyIntervalPatch, parseIntervalRequest, summarizeSet, toEditableSteps } from "./workout-interval-edit";
 import { parseWorkoutCardEdit } from "./workout-card-edit";
+import { DailyTrainingScreen } from "../components/daily-training/DailyTrainingScreen";
+import dailySample from "../components/daily-training/sample-session.json";
 
 function html(element: React.ReactElement): string {
   const previous = (globalThis as any).React;
   (globalThis as any).React = React;
   try { return renderToStaticMarkup(element); } finally { (globalThis as any).React = previous; }
 }
+
+test("actual-workout reporting remains understandable in both languages without changing stored field values", () => {
+  for (const lang of ["en", "es"] as const) {
+    const plan = { ...dailySample, language: lang, workoutCard: universalWorkoutExample(lang) };
+    const text = html(createElement(DailyTrainingScreen, { plan: plan as any, onFocusReady: async () => {}, onCompletion: async () => {} }));
+    assert.match(text, lang === "es" ? /Cuéntanos cómo fue/ : /Close the loop/);
+    assert.match(text, lang === "es" ? /Guardar comentario del entrenamiento/ : /Save workout feedback/);
+    assert.match(text, /value="completed"/);
+    assert.match(text, /value="unknown"/);
+  }
+});
 
 test("the interval coach editor is part of the editable card, in EN and ES", () => {
   for (const [lang, title] of [["en", "Change intervals with your coach"], ["es", "Cambiar intervalos con tu coach"]] as const) {

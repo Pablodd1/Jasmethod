@@ -42,6 +42,9 @@ async function main() {
         return route.fulfill({ json: { ok: true, configured: false, enabled: false, available: false } });
       });
       await page.goto(`${base}/daily`);
+      await page.getByText(lang === 'es' ? 'Cuéntanos cómo fue' : 'Close the loop', { exact: true }).click();
+      assert.equal(await page.getByLabel(lang === 'es' ? '¿Qué ocurrió?' : 'What happened?', { exact: true }).inputValue(), '', 'Reporting starts unknown, never completed');
+      await page.getByText(lang === 'es' ? 'Compartir, dispositivo y editar' : 'Share, device & edit', { exact: true }).click();
       const editor = page.getByTestId('interval-coach-editor');
       await editor.locator('summary').click();
       await editor.getByRole('textbox').fill(lang === 'es' ? 'un intervalo menos' : 'one less interval');
@@ -56,8 +59,9 @@ async function main() {
       await page.goto(`${base}/connectors`);
       const file = page.locator('#file-garmin'); await file.waitFor();
       await file.setInputFiles({ name: 'too-large.csv', mimeType: 'text/csv', buffer: Buffer.alloc(4_000_001, 65) });
-      await file.locator('..').getByRole('button').click();
-      await page.getByText(/4 MB/).first().waitFor();
+      await file.locator('..').locator('button').click();
+      try { await page.getByText(lang === 'es' ? 'El archivo supera 4 MB. Exporta un intervalo menor.' : 'The file exceeds 4 MB. Export a smaller date range.').waitFor(); }
+      catch (error) { writeFileSync(`${dir}/failure-text.txt`, await page.locator('body').innerText()); await page.screenshot({ path: `${dir}/failure.png` }); throw error; }
       assert.equal(saves, 1); assert.deepEqual(unexpected, [], 'Oversized file never reaches server');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Connections fit on mobile');
       assert.equal(await page.locator('#csv-units-garmin').inputValue(), '', 'No guessed CSV units');
