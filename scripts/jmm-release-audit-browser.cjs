@@ -43,7 +43,7 @@ async function main() {
       });
       await page.goto(`${base}/daily`);
       await page.getByText(lang === 'es' ? 'Cuéntanos cómo fue' : 'Close the loop', { exact: true }).click();
-      assert.equal(await page.getByLabel(lang === 'es' ? '¿Qué ocurrió?' : 'What happened?', { exact: true }).inputValue(), '', 'Reporting starts unknown, never completed');
+      assert.equal(await page.getByLabel(lang === 'es' ? /^¿Qué ocurrió/ : /^What happened/).inputValue(), '', 'Reporting starts unknown, never completed');
       await page.getByText(lang === 'es' ? 'Compartir, dispositivo y editar' : 'Share, device & edit', { exact: true }).click();
       const editor = page.getByTestId('interval-coach-editor');
       await editor.locator('summary').click();
