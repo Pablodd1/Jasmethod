@@ -13,7 +13,7 @@ const compiled = ts.transpileModule(fs.readFileSync("src/lib/sync.ts", "utf8"), 
 type Row = Record<string, any>;
 function fixture(provider = "strava", expired = false, lastSyncAt: Date | null = null) {
   const row: Row = { id: "connection", userId: "athlete", provider, status: "connected", tokenEnc: "synthetic-old", refreshEnc: "synthetic-refresh", expiresAt: expired ? new Date(0) : null, syncStartedAt: null, lastSyncAt };
-  const calls: string[] = [], windows: Array<{ kind: string; start: Date; end: Date }> = [], writes: Row[] = [];
+  const calls: string[] = [], windows: Array<{ kind: string; start: Date; end: Date }> = [], writes: Row[] = [], daysRequested: number[] = [];
   const hooks: { refresh?: () => void; read?: () => void; fail?: boolean; windowFailure?: number; final?: () => void } = {};
   const equal = (a: any, b: any) => a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b;
   const matches = (where: Row): boolean => Object.entries(where).every(([key, value]: [string, any]) => {
@@ -51,7 +51,8 @@ function fixture(provider = "strava", expired = false, lastSyncAt: Date | null =
     "./crypto": { decryptSecret: () => "synthetic", encryptSecret: (v: string) => `encrypted:${v}` },
     "./importers": {
       stravaRefreshToken: async () => { calls.push("refresh"); hooks.refresh?.(); return { access_token: "synthetic-rotated", refresh_token: "synthetic-new-refresh", expires_in: 3600 }; },
-      stravaGetActivities: read, googleCalGetEvents: read, ouraGetDaily: read,
+      stravaGetActivities: read, googleCalGetEvents: read,
+      ouraGetDaily: async (_: string, days: number) => { daysRequested.push(days); return read(); },
       whoopGetDaily: async (_: string, _days: number, _tz: string, window: any) => windowRead("wellness", window),
       whoopGetWorkouts: async (_: string, _days: number, window: any) => windowRead("workout", window),
     },
@@ -65,7 +66,7 @@ function fixture(provider = "strava", expired = false, lastSyncAt: Date | null =
   vm.runInNewContext(compiled, { module: mod, exports: mod.exports, Date, console, process: { env: {} }, require: (id: string) => {
     if (id in deps) return deps[id]; throw Error(`Unmocked boundary: ${id}`);
   } });
-  return { row, calls, windows, writes, hooks, run: () => mod.exports.syncUserConnectors("athlete", provider),
+  return { row, calls, windows, writes, daysRequested, hooks, run: () => mod.exports.syncUserConnectors("athlete", provider),
     disconnect: () => Object.assign(row, { status: "disconnected", tokenEnc: null, refreshEnc: null, expiresAt: null, syncStartedAt: null }) };
 }
 
@@ -127,6 +128,19 @@ test("WHOOP long interruption starts at its retained cursor and incomplete histo
   assert.equal((await f.run()).results[0].ok, true);
   assert.equal(f.windows[0].start.getTime(), original.getTime() - 86400000);
   assert.ok(f.windows.filter(w => w.kind === "workout").length >= 5);
+});
+
+test("Oura long interruption requests its entire retained history and preserves the cursor on provider failure", async () => {
+  const original = new Date(Date.now() - 120 * 86400000), f = fixture("oura", false, original);
+  f.hooks.fail = true;
+  assert.equal((await f.run()).results[0].ok, false);
+  assert.ok(f.daysRequested[0] >= 121 && f.daysRequested[0] <= 122);
+  assert.equal(f.row.lastSyncAt, original);
+  assert.equal(f.writes.some(write => write.lastSyncAt), false);
+  f.hooks.fail = false;
+  assert.equal((await f.run()).results[0].ok, true);
+  assert.ok(f.daysRequested[1] >= 121 && f.daysRequested[1] <= 122);
+  assert.ok(f.row.lastSyncAt > original);
 });
 
 test("WHOOP importer pagination keeps fixed explicit history bounds and refuses truncated success", async () => {

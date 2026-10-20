@@ -319,10 +319,9 @@ export async function syncUserConnectors(
         // WHOOP wellness and workouts cover the same explicit windows. Only
         // advance the shared cursor when every window completes; a failed
         // page retains the cursor so idempotent imports can be retried.
-        const days = Math.min(
-          conn.lastSyncAt ? 90 : 180,
-          Math.max(1, Math.ceil((syncStartedAt.getTime() - since.getTime()) / 86400000)),
-        );
+        // Oura must cover the retained cursor too; capping a long gap and then
+        // advancing that cursor would silently discard the older observations.
+        const days = Math.max(1, Math.ceil((syncStartedAt.getTime() - since.getTime()) / 86400000));
         const windows: Array<{ start: Date; end: Date }> = [];
         if (conn.provider === "whoop") {
           for (let cursor = since.getTime(); cursor < syncStartedAt.getTime();) {
