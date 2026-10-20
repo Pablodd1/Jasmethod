@@ -13,7 +13,7 @@ export function parsePublicInquiry(value: unknown): PublicInquiry | null {
   if (name.length < 2 || name.length > 80 || email.length > 254 ||
       !/^[^\s@<>;,]+@[^\s@<>;,]+\.[A-Za-z]{2,}$/.test(email) ||
       message.length < 20 || message.length > 1500 ||
-      CONTROL.test(name) || CONTROL.test(email) || CONTROL.test(message) ||
+      (CONTROL.test(name) || /[\r\n]/.test(name)) || (CONTROL.test(email) || /[\r\n]/.test(email)) || CONTROL.test(message) ||
       !INQUIRY_TOPICS.includes(v.topic as InquiryTopic)) return null;
   return { name, email, topic: v.topic as InquiryTopic, message };
 }
