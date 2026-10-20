@@ -19,6 +19,13 @@ export async function GET() {
     { loc: `${BASE}/privacy`, priority: "0.3" },
     { loc: `${BASE}/terms`, priority: "0.3" },
     { loc: `${BASE}/help`, priority: "0.5" },
+    { loc: `${BASE}/contact`, priority: "0.8" },
+    { loc: `${BASE}/book`, priority: "0.7" },
+    { loc: `${BASE}/faq`, priority: "0.8" },
+    { loc: `${BASE}/blog`, priority: "0.8" },
+    { loc: `${BASE}/blog/why-a-daily-coach-needs-context`, priority: "0.7" },
+    { loc: `${BASE}/blog/how-to-read-hrv-and-recovery`, priority: "0.7" },
+    { loc: `${BASE}/blog/sleep-stress-and-personalized-training`, priority: "0.7" },
     { loc: `${BASE}/login`, priority: "0.6" },
   ];
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
