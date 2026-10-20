@@ -3,6 +3,7 @@ type Lang = "en" | "es";
 export interface ImportResponse {
   workoutsImported?: number; workoutsAlreadyStored?: number; metricsImported?: number; workoutsFound?: number;
   skipped?: Record<string, number>; unsupportedTypes?: Record<string, number>;
+  streams?: { enabled: boolean; stored: number; error?: boolean; refused?: Record<string, number> };
 }
 const SKIP_LABEL: Record<string, { en: string; es: string }> = {
   unsupported_activity_type: { en: "unsupported activity type", es: "tipo de actividad no compatible" },
@@ -28,6 +29,12 @@ export function importResultMessage(source: string, data: ImportResponse, lang: 
   for (const [key, count] of Object.entries(data.skipped ?? {})) if (count > 0 && SKIP_LABEL[key]) notes.push(`${count} ${SKIP_LABEL[key][lang]}`);
   const types = Object.entries(data.unsupportedTypes ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, n]) => `${name} ×${n}`);
   if (notes.length) text += (es ? " No importado: " : " Not imported: ") + notes.join("; ") + (types.length ? ` (${types.join(", ")})` : "") + ".";
+  if (data.streams?.enabled && data.streams.stored > 0) text += es
+    ? ` Datos detallados guardados para ${data.streams.stored} actividades.`
+    : ` Detailed data stored for ${data.streams.stored} activities.`;
+  if (data.streams?.error) text += es
+    ? " No se pudo confirmar el almacenamiento detallado de todas las actividades. Revisa el panel de datos guardados antes de reintentar."
+    : " Detailed storage could not be confirmed for every activity. Check the stored-data panel before retrying.";
   text += es
     ? " Revisa los datos disponibles en la configuración; importar no completa los campos que faltan."
     : " Review available data in setup; importing does not fill missing fields.";

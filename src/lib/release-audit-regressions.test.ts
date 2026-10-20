@@ -8,6 +8,7 @@ import { fadePercent } from "./next-workout-suggestion";
 import { resample1Hz } from "./stream-analysis";
 import { parseGarminActivitiesCsvDetailed } from "./garmin-activities-csv";
 import { parseTcxActivities } from "./tcx-import";
+import { importResultMessage } from "./import-result-message";
 
 test("upload accepts bounded multipart and rejects actual oversized bodies, including missing length", async () => {
   assert.ok(MAX_UPLOAD_BYTES < 4_500_000 && MAX_UPLOAD_REQUEST_BYTES < 4_500_000);
@@ -48,4 +49,10 @@ test("a valid TCX with unknown author is imported with unknown origin, never rel
   const tcx = '<TrainingCenterDatabase><Activities><Activity Sport="Running"><Id>fixture</Id><Lap><TotalTimeSeconds>60</TotalTimeSeconds><Track><Trackpoint><Time>2026-10-18T10:00:00Z</Time></Trackpoint><Trackpoint><Time>2026-10-18T10:01:00Z</Time></Trackpoint></Track></Lap></Activity></Activities></TrainingCenterDatabase>';
   const result = parseTcxActivities(tcx); assert.ok(result.ok);
   assert.equal(result.activities[0].workout.source, "uploaded_unknown");
+});
+
+test("successful summary import does not conceal a failed optional stream write", () => {
+  const result = { workoutsImported: 2, streams: { enabled: true, stored: 1, error: true } };
+  assert.match(importResultMessage("garmin", result, "en"), /could not be confirmed for every activity/);
+  assert.match(importResultMessage("garmin", result, "es"), /No se pudo confirmar/);
 });
