@@ -26,7 +26,7 @@ The implementation and deployment steps are documented in [docs/coaching-release
 
 ## 1. Executive Summary
 
-JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting the Miami athlete population. It combines a **rule-based training engine grounded in peer-reviewed research** with an **AI coach (Gemini)** that reads the athlete's full data picture. The app covers the complete athlete lifecycle: baseline testing → periodized planning → daily adaptive check-in → race targeting → recovery → fuel → natural ergogenic aids → equipment guidance → multi-language (5 langs).
+JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting the Miami athlete population. It combines a **rule-based training engine grounded in peer-reviewed research** with **optional DeepSeek coaching** using the app's consented, provenance-filtered context. Imported device history is not automatically shared with an external model. The app covers the complete athlete lifecycle: baseline testing → periodized planning → daily adaptive check-in → race targeting → recovery → fuel → natural ergogenic aids → equipment guidance → multi-language (5 langs).
 
 Current state: a webapp with locally tested core workflows. See the release guide for test evidence and deployment requirements.
 
@@ -55,7 +55,7 @@ Current state: a webapp with locally tested core workflows. See the release guid
 | Device | Method | Status |
 |---|---|---|
 | Strava | Official OAuth2 (auth/exchange/refresh/activities) | ✅ Working (needs STRAVA_CLIENT_ID/SECRET in env) |
-| Garmin | **New** official Garmin Connect OAuth2 + TCX manual fallback | ✅ Code complete (needs GARMIN_CLIENT_ID/SECRET) |
+| Garmin | Manual TCX/FIT/CSV import; optional Intervals bridge when configured | Direct Training API publishing is partner-gated and not externally verified in JMM |
 | Google Calendar (Gmail) | OAuth2 — imports busy time and publishes planned workouts | ✅ Code complete (needs GOOGLE_CLIENT_ID/SECRET) |
 | Whoop | CSV upload parser | ✅ Working (manual) |
 | Oura Ring | API v2 — provider scaffolded | ⚠️ Needs OURA_CLIENT_ID/SECRET |

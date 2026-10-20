@@ -1,66 +1,49 @@
-# JasMiamiMethod — Architecture
+# JasMiamiMethod architecture — reviewed 2026-10-20
 
-One Next.js 14 app (App Router) + Postgres/Supabase (Prisma) + Gemini. No
-microservices. This file is the map for any developer (or agent) taking over.
+One Next.js 15 App Router application, TypeScript, PostgreSQL and Prisma 5.
+DeepSeek supplies optional coaching text through existing consent/provenance boundaries.
+The deterministic training engine remains authoritative; AI prose is not a measurement.
 
-## The daily loop (the product in one line)
+## Daily workflow
 
-login → **/today** (the prescribed session pops, full pre/during/post arc) →
-optional **check-in** rewrites the session from biometrics → execute →
-calendar. Around it: 5 AM cron syncs devices; evening cron sends tomorrow's
-plan via email/Telegram.
+Account → optional device/file connection → review imported facts → goals and dated benchmarks →
+daily safety/recovery/time check-in → canonical workout → explicit revision and approval →
+supported export → actual outcome and optional measurements → subsequent coaching review.
 
-## Module map (src/lib — pure functions, no DB unless named)
+Missing data, a saved preview, actual completion, approval, provider acceptance and device receipt
+are separate states. Scheduling uses the athlete's timezone/preferences; a cron entry proves no delivery.
 
-| Module | Owns |
-|---|---|
-| `science.ts` | Zones (HR/power/pace), VO2max/HRmax math, periodized plan generators (tri/single/HYROX/boxing), review-dependent optional power slots. Re-exports `reference.ts`. |
-| `reference.ts` | DATA, not logic: blood ranges, DNA traits, nutrition consensus, motivation library. |
-| `adaptive.ts` | Daily adaptation (check-in → verdict), fuel/ergogenics, temperature/venue adjustments, prescribeToday, progression. |
-| `regen.ts` | Workout regeneration: same-sport variants + cross-modality options with a different stimulus (3 max). |
-| `hyrox.ts` | 16-segment split planner + weak-station analysis. |
-| `raceforecast.ts` | AdvanzedRacing engine (thresholds + PMC + course). |
-| `weather.ts` | Open-Meteo race-day forecast + geocoding + heat/wind factors (no API key). |
-| `sync.ts` | Per-athlete device sync (shared by button + cron) + admin failure alerts. |
-| `coach.ts` / `assistant` API | JASAI daily briefing + Q&A (Gemini, athlete-grounded, localized fallback). |
-| `importers.ts` | Strava OAuth + Garmin CSV/TCX + Apple Health + Whoop parsers. |
-| `fitness.ts` | TSS estimation, PMC (CTL/ATL/TSB), execution score. |
+## Boundaries and invariants
 
-## API surface (47 routes — the money paths)
+- `access.ts`: authenticated owner or explicitly authorized coaching assignment; streams are owner-only.
+- `effective-prescription.ts` / `canonical-session.ts`: one current prescription. Revisions go through the existing card writer with serializable transaction, expected revision, audit and approval invalidation.
+- `activity-store.ts`: owner-scoped import idempotence and separate reconciliation decisions.
+- `activity-stream-store.ts`: optional migration, default-off collection, per-upload consent, no GPS. Expired rows are excluded immediately; authenticated worker physically purges even with collection off.
+- `strava-provenance.ts`: new analysis refuses Strava and unknown origins. Legacy displays need separate policy review.
+- Regeneration preserves the reviewed goal and existing limit of three alternatives; applying a change requires revision checks and review.
+- Never fabricate measurements, dated threshold evidence, actual completion or successful delivery.
+- Optional plyometrics require individual suitability review; there is no universal weekly jump prescription.
+- Keep RLS enabled. Disposable CI access does not verify production server-role grants.
+- English and Spanish preserve units, identifiers, revisions and consent semantics.
+- HRV alone cannot clear illness, pain or urgent-symptom holds. Confirmation cannot override safety holds.
+- Token encryption and login limiting already exist. Do not resurrect retired unsigned/demo sessions.
+- Personalized forecasts remain disabled; explicit target scenarios are not validated predictions. Legacy default-based predictions are retired. Altitude VO2max group data must not become individual power/pace prescriptions.
+- Automatic error telemetry accepts only closed categories and static route shapes, never arbitrary exception text or stacks.
 
-`/api/today` · `/api/checkin` · `/api/plan/generate` · `/api/workout/regenerate`
-· `/api/race-forecast` · `/api/hyrox/split-planner` · `/api/assistant` ·
-`/api/connectors/sync` · `/api/cron/sync` (5 AM) · `/api/cron/reminders` (hourly)
-· `/api/auth/*` (incl. self-provisioning `/api/auth/demo` for one-tap testers)
+## Release/provider gates
 
-## Invariants — never break these
+`ENABLE_ACTIVITY_STREAMS` and `ENABLE_SMART_COACH_SUGGESTIONS` default off. Stream-based
+progression thresholds are heuristics pending coach sign-off. Production collection needs a separately
+approved migration, consent and role verification. This audit changes no production settings or sending.
 
-1. Every query filters by the session's `userId` (per-athlete isolation).
-2. Regeneration preserves the session GOAL (zone/duration) — max 3.
-3. Plyometrics 1-2×/week in every generated plan.
-4. RLS stays ON for all public tables (app connects as table owner).
-5. i18n: user language first, es fallback (Miami default), then en.
+Garmin direct publishing and COROS are not externally verified in JMM. COROS documents MCP workout
+creation/editing; that does not establish JMM authorization or delivery. Intervals publication is conditional.
+Calendar reminders and FIT downloads do not prove watch receipt. See the dated release/provider documents.
 
-## Testing
+## Verification
 
-- Unit (pure libs): `npx tsx src/lib/*.test.ts` (adaptive, fitness, i18n, regen, hyrox)
-- Money-path API smoke (needs app running): `node scripts/api-smoke.cjs [base] [email] [pw]`
-
-## Scripts (pruned set)
-
-| Script | Purpose |
-|---|---|
-| `api-smoke.cjs` | 14-check money-path smoke test |
-| `import-garmin-csv.cjs` | Bulk-load a Garmin Activities.csv for one athlete |
-| `geocode-races.ts` | Backfill venue lat/lng for weather |
-| `fix-duplicate-plan-days.cjs` | One-time repair for pre-fix plans (dry-run default) |
-| `plyo-check.ts` | Legacy schedule diagnostic; slot/keyword counts do not verify movement eligibility |
-| `setup-supabase.ts` | One-shot DB wiring |
-
-## Known deferred debts (documented, deliberate)
-
-- OAuth tokens stored plaintext (MVP testers only — must encrypt pre-launch)
-- Login rate limiting missing (same constraint)
-- AI briefing cache is in-memory (per-instance)
-- Garmin direct push blocked on Garmin's paused developer program (Strava
-  bridge + .FIT export are the live paths)
+`npm test`, `npx tsc --noEmit`, `npx prisma validate`, `npm run lint`, `npm run build`.
+Hosted CI additionally exercises disposable PostgreSQL, authenticated routes, egress guards,
+SDK-decoded FIT exports and EN/ES mobile browser acceptance. Check the exact PR head's evidence.
+Never point fixture scripts at production. Compilation and provider mocks do not prove real OAuth,
+inbox delivery, native Safari behavior or physical watch receipt.
