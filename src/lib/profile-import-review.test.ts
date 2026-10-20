@@ -46,13 +46,13 @@ test("import review preserves old observations, returns scoped history and no se
   db.connector.findMany=async(q:any)=>{state.queries.push(q);return[{provider:"strava",status:"connected",lastSyncAt:date,lastSyncCount:1}]};
   db.workout={
     aggregate:async(q:any)=>{state.queries.push(q);return{_count:{_all:1},_min:{date},_max:{date}}},
-    groupBy:async(q:any)=>{state.queries.push(q);return[{sport:"run",_count:{_all:1}}]},
+    groupBy:async(q:any)=>{state.queries.push(q);return q.by[0]==="source"?[{source:"strava",_count:{_all:1},_max:{date}}]:[{sport:"run",_count:{_all:1}}]},
     findMany:async(q:any)=>{state.queries.push(q);return[]},
   };
   db.race={findMany:async(q:any)=>{state.queries.push(q);return[]}};
   db.auditLog={findMany:async(q:any)=>{assert.equal(q.where.subjectId,"user-a");assert.equal(q.where.action,"activity.reconcile");return [];}};
   const api=load("src/app/api/onboard/import-review/route.ts",{"@/lib/auth":{getCurrentUser:async()=>state.authenticated?{id:"user-a"}:null},"@/lib/db":{prisma:db},"@/lib/onboarding-evidence":{onboardingRaceResults},"@/lib/onboarding-imports":{ONBOARDING_METRICS,onboardingObservations},"@/lib/profile-import-review":helper,"@/lib/imported-training-review":importedTraining,"@/lib/dates":{localDate},"@/lib/activity-evidence":activityEvidence,"@/lib/activity-reconciliation":{readActivityDecisions:(id:string)=>readActivityDecisions(id,db)}});
-  const response=await api.GET(),body=await response.json();assert.equal(response.status,200);assert.equal(body.observations.length,1);assert.equal(body.suggestions[0].kind,"reported");assert.equal(body.history.count,1);assert.equal(body.history.sports[0].sport,"run");assert.equal(state.fetches,0);assert.ok(state.queries.every(q=>q.where.userId==="user-a"));assert.match(response.headers.get("cache-control"),/no-store/);
+  const response=await api.GET(),body=await response.json();assert.equal(response.status,200);assert.equal(body.observations.length,1);assert.equal(body.suggestions[0].kind,"reported");assert.equal(body.history.count,1);assert.equal(body.history.sports[0].sport,"run");assert.deepEqual(body.history.bySource.map((x:any)=>[x.source,x.count]),[["strava",1]]);assert.equal(typeof body.history.bySource[0].latestAt,"string");assert.equal(state.fetches,0);assert.ok(state.queries.every(q=>q.where.userId==="user-a"));assert.match(response.headers.get("cache-control"),/no-store/);
   state.authenticated=false;const before=state.queries.length;assert.equal((await api.GET()).status,401);assert.equal(state.queries.length,before);
 });
 test("weight suggestions omit stale, disconnected and suspect values without guessing measurements",()=>{

@@ -295,6 +295,15 @@
   color: #fff;
   background: #17252b;
 }
+/* Free-text field of the interval coach editor: same dark control style as the number inputs above. */
+.uwc input[type="text"] {
+  width: min(100%, 360px);
+  padding: 8px;
+  border: 1px solid #5a7888;
+  color: #fff;
+  background: #17252b;
+  font: inherit;
+}
 @media print {
   .uwc svg text {
     fill: #111;

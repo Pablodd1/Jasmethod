@@ -11,6 +11,7 @@ import { readinessReasonText } from "./readiness-copy";
 import type { CanonicalStep } from "@/lib/canonical-session";
 import { FitDownloadActions } from "./FitDownloadActions";
 import { WorkoutEditor } from "./WorkoutEditor";
+import { IntervalCoachEditor } from "./IntervalCoachEditor";
 import { StructuredSportEditor } from "@/components/StructuredSportEditor";
 import { additionalStepInstruction, stepExecutionGuide } from "@/lib/workout-execution-guide";
 
@@ -730,6 +731,7 @@ export function UniversalWorkoutCard({
       <div>
         <ShareWorkout card={card} />
         <DeviceExportMenu card={card} />
+        {onSaved && <IntervalCoachEditor card={card} onSaved={onSaved} />}
         {onSaved && <WorkoutEditor card={card} onSaved={onSaved} />}
         {onSaved && (card.session.verdict !== "ready" || !["run", "bike"].includes(card.session.sport)) && (
           <StructuredSportEditor
