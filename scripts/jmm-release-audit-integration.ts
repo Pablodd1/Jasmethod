@@ -263,6 +263,13 @@ async function main() {
     await request(`/api/workout/card?id=${obsoleteId}`, owner, { status: 404 });
     await request(`/api/workout/approve?sessionId=${obsoleteId}`, owner, { method: "POST", status: 404 });
     await request(`/api/workout/approve?sessionId=${obsoleteId}`, owner, { status: 404 });
+    const reportedCurrent = await db.workout.create({ data: { userId: owner.id, planDayId: current.today.id, date: day, title: "Synthetic partial current report", sport: "bike", type: "endurance", intensity: "z2", durationMin: 30, planned: true, completed: false, source: "plan", originalPlan: JSON.stringify(prescription("bike", 30)), prescription: JSON.stringify(prescription("bike", 30)), feedbackStatus: "partial", actualDurationMin: 0, rpe: 0, feedbackAt: new Date() } });
+    await json("/api/checkin", owner, { method: "DELETE" });
+    const restored = await db.workout.findMany({ where: { id: { in: [current.run.id, current.bike.id] } } });
+    assert.ok(restored.every(w => w.prescription === null && !w.approved));
+    assert.deepEqual(await db.workout.findUniqueOrThrow({ where: { id: reportedCurrent.id } }), reportedCurrent, "Reset preserves current reported work, including zero-valued actuals");
+    assert.deepEqual(await db.workout.findMany({ where: { planDayId: oldDay.id }, orderBy: { id: "asc" } }), before, "Reset never rewrites replaced suggestions or reports");
+    assert.equal(await db.dailyCheckin.count({ where: { userId: owner.id, date: day } }), 0);
   });
 }
 main().catch(error => { results.push({ name: "acceptance setup", status: "FAIL", detail: String(error) }); }).finally(async () => {

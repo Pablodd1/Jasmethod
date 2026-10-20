@@ -36,11 +36,11 @@ function row(id:string, planId="current", extra:any={}) {
     originalPlan:JSON.stringify(base),planDay:{dayOff:false,plan:{id:planId,status:"active",userId:"owner"}},createdAt:new Date(Date.now()-100000),...extra};
 }
 function checkinFixture(rows:any[], latest="current") {
-  const updates:any[]=[],queries:any[]=[], planReads:any[]=[];
+  const updates:any[]=[],queries:any[]=[], planReads:any[]=[],deletions:any[]=[],audits:any[]=[];
   const tx={
     trainingPlan:{findFirst:async(q:any)=>{planReads.push(q);return {id:latest};}},
-    workout:{findMany:async(q:any)=>{queries.push(q);return rows.filter(w=>matches(w,q.where));},update:async({where,data}:any)=>{updates.push({id:where.id,...data});return data;}},
-    dailyCheckin:{upsert:async({create}:any)=>create},auditLog:{create:async()=>({})},
+    workout:{findMany:async(q:any)=>{queries.push(q);return rows.filter(w=>matches(w,q.where));},update:async({where,data}:any)=>{updates.push({id:where.id,...data});const saved=rows.find(w=>w.id===where.id);Object.assign(saved,data);return saved;}},
+    dailyCheckin:{upsert:async({create}:any)=>create,deleteMany:async(q:any)=>{deletions.push(q);return {count:1};}},auditLog:{create:async({data}:any)=>{audits.push(data);return data;}},
   };
   let serializationConflict=false;
   const prisma={...tx,trainingPlan:{findFirst:async()=>({id:"stale-outer-snapshot"})},connector:{findMany:async()=>[]},workout:{findMany:async()=>[],findFirst:async()=>null},dailyMetrics:{findMany:async()=>[]},athleteProfile:{findUnique:async()=>profile},calendarEvent:{findMany:async()=>[]},supplementProfile:{findUnique:async()=>null},$transaction:async(fn:any,options:any)=>{assert.equal(options?.isolationLevel,"Serializable");if(serializationConflict)throw {code:"P2034"};return fn(tx);}};
@@ -55,7 +55,8 @@ function checkinFixture(rows:any[], latest="current") {
   const source=ts.transpileModule(fs.readFileSync("src/app/api/checkin/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   vm.runInNewContext(source,{module:mod,exports:mod.exports,require:(id:string)=>id in deps?deps[id]:id.startsWith("@/lib/")?require(path.resolve("src/lib",id.slice(6)+".ts")):require(id),Response,Request,URL,Date,setTimeout,clearTimeout,console});
   const run=(extra={})=>mod.exports.POST(new Request("https://example.invalid/api/checkin",{method:"POST",body:JSON.stringify({sleep:5,soreness:1,motivation:5,energy:5,stress:1,sick:false,newPain:false,urgentSymptoms:false,availableMinutes:120,...extra})}));
-  return {run,updates,queries,planReads,conflict:()=>{serializationConflict=true;}};
+  const reset=()=>mod.exports.DELETE(new Request("https://example.invalid/api/checkin",{method:"DELETE"}));
+  return {run,reset,updates,queries,planReads,deletions,audits,conflict:()=>{serializationConflict=true;}};
 }
 test("85 older active-plan suggestions never spend the current plan's check-in budget or get rewritten",async()=>{
   const old=Array.from({length:85},(_,i)=>row(`old-${i}`,"older"));
@@ -77,6 +78,28 @@ test("current reported work is preserved and illness still holds both current se
 test("a concurrent plan change rejects the check-in instead of claiming allocation succeeded",async()=>{
   const f=checkinFixture([row("current")]);f.conflict();
   const response=await f.run();assert.equal(response.status,409);assert.match((await response.json()).error,/plan changed/);assert.equal(f.updates.length,0);
+});
+test("check-in reset restores only current unreported sessions and preserves retired and actual history",async()=>{
+  const oldPending=row("old-pending","older",{durationMin:5});
+  const retired=row("retired","current",{source:"superseded-plan",durationMin:5});
+  const oldReported=row("old-reported","older",{feedbackStatus:"partial",actualDurationMin:0,rpe:0});
+  const currentReported=row("current-reported","current",{feedbackStatus:"partial",actualDurationMin:0,rpe:0});
+  const current=row("current","current",{durationMin:5,approved:true});
+  const protectedRows=[oldPending,retired,oldReported,currentReported];
+  const before=JSON.stringify(protectedRows);
+  const f=checkinFixture([...protectedRows,current]);
+  const response=await f.reset();assert.equal(response.status,200);assert.equal((await response.json()).ok,true);
+  assert.deepEqual(f.updates.map(w=>w.id),["current"]);
+  assert.equal(current.durationMin,30);assert.equal(current.prescription,null);assert.equal(current.approved,false);
+  assert.equal(JSON.stringify(protectedRows),before,"old and reported records remain unchanged, including explicit zero effort");
+  assert.equal(f.planReads.length,1,"reset reads the authoritative latest plan inside its transaction");
+  assert.equal(f.deletions.length,1);assert.equal(f.deletions[0].where.userId,"owner");assert.equal(f.deletions[0].where.date.getTime(),day.start.getTime());
+  assert.equal(f.audits.length,1);assert.equal(f.audits[0].action,"checkin.undo");assert.deepEqual(JSON.parse(f.audits[0].after).sessions,["current"]);
+});
+test("a concurrent plan change rejects check-in reset without deleting the check-in or claiming success",async()=>{
+  const f=checkinFixture([row("current")]);f.conflict();
+  const response=await f.reset();assert.equal(response.status,409);assert.match((await response.json()).error,/plan changed while resetting/);
+  assert.equal(f.updates.length,0);assert.equal(f.deletions.length,0);assert.equal(f.audits.length,0);
 });
 function readerFixture(workout:any, peers:any[]=[]) {
   const queries:any[]=[];

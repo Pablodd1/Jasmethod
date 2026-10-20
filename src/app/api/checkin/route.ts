@@ -516,15 +516,17 @@ export async function DELETE(req: Request) {
     const { actor, athlete } = await trainingAccess(req);
     const { start, end } = dayBounds(athlete.timezone);
     await prisma.$transaction(async (tx) => {
-      const sessions = await tx.workout.findMany({
+      const activePlan = await tx.trainingPlan.findFirst({ where: { userId: athlete.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+      const candidates = await tx.workout.findMany({
         where: {
-          userId: athlete.id,
+          AND: [currentWorkoutWhere(athlete.id, activePlan?.id ?? null)],
           planned: true,
           completed: false,
           date: { gte: start, lt: end },
           originalPlan: { not: null },
         },
       });
+      const sessions = candidates.filter(workout => !hasWorkoutReport(workout));
       for (const w of sessions) {
         const b = baseWorkout(w);
         await tx.workout.update({
@@ -552,13 +554,14 @@ export async function DELETE(req: Request) {
           after: JSON.stringify({ sessions: sessions.map((w) => w.id) }),
         },
       });
-    });
+    }, { isolationLevel: "Serializable" });
     return NextResponse.json({
       ok: true,
       message:
         "Original sessions restored. Completed results and health measurements were retained.",
     });
   } catch (e) {
+    if ((e as { code?: string })?.code === "P2034") return errorResponse(new ApiError("Your plan changed while resetting the check-in. Review the current plan and try again.", 409));
     return errorResponse(e);
   }
 }
