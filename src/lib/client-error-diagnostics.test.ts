@@ -208,11 +208,11 @@ test("the crash screen is wired as a boundary, shows only sanitized text and rep
   // One report, to the endpoint ErrorTelemetry already uses, with only the sanitized fields the route reads.
   assert.equal((screen.match(/fetch\(/g) ?? []).length, 1);
   assert.match(screen, /fetch\("\/api\/telemetry\/error"/);
-  assert.match(screen, /message: `Render crash \(\$\{d\.kind\}\)/);
-  assert.match(screen, /stack: d\.stack\.join/);
-  assert.match(screen, /route: d\.route/);
+  assert.match(screen, /clientErrorPayload\(/);
+  assert.doesNotMatch(screen, /stack: d\.stack/);
   const intake = src("src/app/api/telemetry/error/route.ts");
-  for (const field of ["body?.message", "body?.stack", "body?.route"]) assert.ok(intake.includes(field), `intake still reads ${field}`);
+  assert.match(intake, /acceptedClientError\(await readTelemetryBody\(req\)\)/);
+  assert.doesNotMatch(intake, /userAgent:|stack:/);
 
   const route = src("src/app/error.tsx");
   assert.match(route, /^"use client";/);

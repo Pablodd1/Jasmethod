@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { clientErrorPayload } from "@/lib/client-error-payload";
 
 // Client error telemetry: window.onerror + unhandledrejection → /api/telemetry/error.
 // Throttled and capped — a broken page can never spam the ledger.
@@ -10,7 +11,7 @@ export function ErrorTelemetry() {
   useEffect(() => {
     let sent = 0;
     const lastSentAt = { t: 0 };
-    const report = (message: string, stack?: string) => {
+    const report = (message: string) => {
       const now = Date.now();
       if (sent >= 5 || now - lastSentAt.t < 10000) return; // max 5/10s
       sent++;
@@ -19,18 +20,13 @@ export function ErrorTelemetry() {
         fetch("/api/telemetry/error", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message,
-            stack,
-            route: pathname,
-            appVersion: undefined,
-          }),
+          body: JSON.stringify(clientErrorPayload(message, pathname)),
           keepalive: true,
         }).catch(() => {});
       } catch {}
     };
     const onError = (e: ErrorEvent) =>
-      report(e.message || "ErrorEvent", e.error?.stack);
+      report(e.message || "ErrorEvent");
     const onRejection = (e: PromiseRejectionEvent) =>
       report(`Unhandled rejection: ${String(e.reason).slice(0, 300)}`);
     window.addEventListener("error", onError);
