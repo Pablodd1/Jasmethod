@@ -100,11 +100,11 @@ export function buildWorkoutHistory(rows: readonly AuditRow[], opts: { workoutId
       const before = parse(row.before), after = parse(row.after);
       if (!before || !after) continue;
       const changed = Object.keys(PLAN_FIELDS).filter(k => comparable(before[k]) !== comparable(after[k]));
-      if (!changed.length) continue; // feedback-only or no-op update: not a plan revision
       const prescriptionChanged = comparable(before.prescription) !== comparable(after.prescription);
+      if (!changed.length && !prescriptionChanged) continue; // feedback-only or no-op
       entries.push({ ...base, kind: "plan_edited", approvalCleared: before.approved === true && after.approved === false,
         ...(prescriptionChanged ? { before: stepsDigest(before.prescription), after: stepsDigest(after.prescription) } : {}),
-        summary: { en: `Plan edited: ${changed.map(k => PLAN_FIELDS[k].en).join(", ")}.`, es: `Plan editado: ${changed.map(k => PLAN_FIELDS[k].es).join(", ")}.` } });
+        summary: { en: `Plan edited: ${[...changed.map(k => PLAN_FIELDS[k].en), ...(prescriptionChanged ? ["prescription"] : [])].join(", ")}.`, es: `Plan editado: ${[...changed.map(k => PLAN_FIELDS[k].es), ...(prescriptionChanged ? ["prescripción"] : [])].join(", ")}.` } });
     } else if (row.action === "workout.sportStructure") {
       entries.push({ ...base, kind: "structure_edited", approvalCleared: true, before: stepsDigest(row.before), after: stepsDigest(row.after), summary: { en: "Sport structure edited.", es: "Estructura deportiva editada." } });
     } else {
@@ -115,12 +115,12 @@ export function buildWorkoutHistory(rows: readonly AuditRow[], opts: { workoutId
 }
 
 /** Is the athlete's latest approval for exactly the revision that is current now? */
-export function approvalStatus(rows: readonly AuditRow[], opts: { workoutId: string; currentRevision: string }): { approved: boolean; approvedAt: string | null; reason: "current" | "never_approved" | "revision_changed" } {
+export function approvalStatus(rows: readonly AuditRow[], opts: { workoutId: string; currentRevision: string; currentApproved?: boolean }): { approved: boolean; approvedAt: string | null; reason: "current" | "never_approved" | "revision_changed" } {
   const approvals = rows.filter(r => r.action === "workout.approved" && r.entityId === opts.workoutId).sort((a, b) => when(b) - when(a));
   const latest = approvals[0];
   if (!latest) return { approved: false, approvedAt: null, reason: "never_approved" };
   const revision = parse(latest.after)?.revision;
-  return revision === opts.currentRevision ? { approved: true, approvedAt: iso(latest.createdAt), reason: "current" } : { approved: false, approvedAt: iso(latest.createdAt), reason: "revision_changed" };
+  return revision === opts.currentRevision && opts.currentApproved !== false ? { approved: true, approvedAt: iso(latest.createdAt), reason: "current" } : { approved: false, approvedAt: iso(latest.createdAt), reason: "revision_changed" };
 }
 
 /** Mirrors /api/workout/card restore: the newest step edit must have produced the prescription that is saved now. */

@@ -106,3 +106,15 @@ test("restore entries are labelled as restores and still clear approval", () => 
   assert.match(h.summary.en, /restored/);
   assert.match(h.summary.en, /repeats 5 → 4/);
 });
+
+test("restoring an old revision never resurrects its historical approval", () => {
+  const rows = [row({ action: "workout.approved", after: JSON.stringify({ revision: "original" }) })];
+  assert.equal(approvalStatus(rows, { workoutId: W, currentRevision: "original", currentApproved: false }).approved, false);
+});
+
+test("prescription-only updates remain visible without exposing raw prescription data", () => {
+  const [entry] = buildWorkoutHistory([row({ action: "workout.update", before: JSON.stringify({ prescription: rx(steps(4)) }), after: JSON.stringify({ prescription: rx(steps(5)) }) })], { workoutId: W });
+  assert.equal(entry.kind, "plan_edited");
+  assert.match(entry.summary.en, /prescription/);
+  assert.match(entry.summary.es, /prescripción/);
+});

@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     const history = buildWorkoutHistory(rows, { workoutId: id, athleteId: athlete.id }).map(({ summary, ...entry }) => ({ ...entry, summary: summary[lang] }));
     return Response.json({
       workoutId: id, revision: resolved.canonical.revision, history,
-      approval: approvalStatus(rows, { workoutId: id, currentRevision: resolved.canonical.revision }),
+      approval: approvalStatus(rows, { workoutId: id, currentRevision: resolved.canonical.revision, currentApproved: resolved.workout.approved }),
       canRestoreLatestStepEdit: canRestoreLatest(rows, { workoutId: id, currentPrescription: resolved.workout.prescription ?? null }),
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
