@@ -20,18 +20,20 @@ import { athleteDayReview } from "@/lib/athlete-day-review";
 import { readPlanningSetup } from "@/lib/planning-setup-store";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { workoutRevision } from '@/lib/workout-update';
+import { currentOrReportedWorkoutWhere, isCurrentWorkout } from '@/lib/calendar-workouts';
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const { athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
+    const currentPlan = await prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id:true, name:true, startDate:true, weeks:true, raceDate:true } });
   const [allWorkouts, race, connectors, checkin, restDay, activePlan, eventToday, setupState, activityDecisions] = await Promise.all([
     prisma.workout.findMany({
       where: {
-        userId: user.id,
+        AND: [currentOrReportedWorkoutWhere(user.id, currentPlan?.id ?? null)],
         date: { gte: start, lt: end },
       },
-      include: { planDay: { select: { notes: true, dayOff: true } } },
+      include: { planDay: { select: { notes: true, dayOff: true, plan: { select: { id: true, status: true, userId: true } } } } },
       orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
     }),
     prisma.race.findFirst({
@@ -51,14 +53,14 @@ export async function GET(req: Request) {
     prisma.dailyCheckin.findUnique({
       where: { userId_date: { userId: user.id, date: start } },
     }),
-    prisma.planDay.findFirst({ where: { plan: { userId: user.id, status: "active" }, date: { gte: start, lt: end }, OR:[{dayOff:true},{focus:"event"}] }, select: { id: true, dayOff:true, focus:true } }),
-    prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: { createdAt: "desc" }, select: { id:true, name:true, startDate:true, weeks:true, raceDate:true } }),
+    currentPlan ? prisma.planDay.findFirst({ where: { planId: currentPlan.id, plan: { userId: user.id, status: "active" }, date: { gte: start, lt: end }, OR:[{dayOff:true},{focus:"event"}] }, select: { id: true, dayOff:true, focus:true } }) : Promise.resolve(null),
+    Promise.resolve(currentPlan),
     prisma.race.findFirst({where:{userId:user.id,date:{gte:new Date(`${key}T00:00:00Z`),lt:new Date(`${addDaysKey(key,1)}T00:00:00Z`)}},select:{id:true}}),
     readPlanningSetup(user.id),
     readActivityDecisions(user.id),
   ]);
 
-  const workouts = allWorkouts.filter(w => w.planned);
+  const workouts = allWorkouts.filter(w => w.planned && isCurrentWorkout(w, user.id, currentPlan?.id ?? null));
 
   // KCoach Activity Reports — narratives generated at sync time (last 7 days,
   // newest first) for the Today page report card.

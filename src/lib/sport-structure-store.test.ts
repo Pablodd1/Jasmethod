@@ -18,6 +18,7 @@ function fixture() {
       updateMany: async ({ where, data }: any) => { assert.equal(where.userId, "athlete-1"); assert.equal(where.planned, true); assert.equal(where.completed, false); assert.equal(where.prescription, row.prescription); assert.equal(where.feedbackAt, null); if (conflict) return { count: 0 }; writes++; row = { ...row, ...data }; return { count: 1 }; },
     },
     athleteProfile: { findUnique: async () => null },
+    trainingPlan: { findFirst: async () => null },
     user: { findUnique: async () => ({ timezone: "UTC" }) },
     auditLog: { findFirst: async () => null, findMany: async () => [], create: async ({ data }: any) => { audit.push(data); return data; } },
     supplementProfile: { findUnique: async () => null },

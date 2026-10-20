@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse } from "@/lib/access";
 import { dayBounds, dateKey } from "@/lib/dates";
 import { effectivePrescription } from "@/lib/effective-prescription";
+import { currentOrReportedWorkoutWhere, isCurrentWorkout } from "@/lib/calendar-workouts";
 import { canonicalBlocks, planningDensity } from "@/components/daily-training/training-contract";
 import type {
   DailyTraining,
@@ -57,23 +58,26 @@ export async function GET(req: Request) {
     // Links may refer to another day or a rescheduled session. Resolve its date
     // from an athlete-owned record, never from an untrusted date parameter.
     if (selected !== null && (!selected || selected.length > 200)) return NextResponse.json({ error: "Invalid session ID" }, { status: 400 });
+    const activePlan = await prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+    const visible = currentOrReportedWorkoutWhere(user.id, activePlan?.id ?? null);
     const selectedWorkout = selected ? await prisma.workout.findFirst({
-      where: { id: selected, userId: user.id, planned: true }, select: { date: true },
+      where: { ...visible, id: selected, planned: true }, select: { date: true },
     }) : null;
     if (selected && !selectedWorkout) return NextResponse.json({ error: "Session not found" }, { status: 404 });
     const { start, end } = dayBounds(user.timezone, selectedWorkout?.date);
     const [workouts, race] = await Promise.all([
       prisma.workout.findMany({
-        where: { userId: user.id, date: { gte: start, lt: end }, planned: true },
+        where: { ...visible, date: { gte: start, lt: end }, planned: true },
         orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
-        include: { planDay: { select: { dayOff: true } } },
+        include: { planDay: { select: { dayOff: true, plan: { select: { id: true, status: true, userId: true } } } } },
       }),
       prisma.race.findFirst({
         where: { userId: user.id, date: { gte: new Date(`${dateKey(start,user.timezone)}T00:00:00Z`) } },
         orderBy: [{ priority: "asc" }, { date: "asc" }],
       }),
     ]);
-    const workout = selected ? workouts.find(w => w.id === selected) : workouts[0];
+    const currentWorkouts = workouts.filter(w => isCurrentWorkout(w, user.id, activePlan?.id ?? null));
+    const workout = selected ? workouts.find(w => w.id === selected) : currentWorkouts[0];
     if (!workout) return selected
       ? NextResponse.json({ error: "Session not found for this date" }, { status: 404 })
       : new NextResponse(null, { status: 204 });
@@ -102,7 +106,7 @@ export async function GET(req: Request) {
       schemaVersion: 2,
       environment: canonical.environment,
       language: user.language,
-      sessions: workouts.map(w => ({ id: w.id, title: w.title, sport: w.sport, startTime: w.startTime })),
+      sessions: workouts.filter(w => isCurrentWorkout(w, user.id, activePlan?.id ?? null) || w.id === selected).map(w => ({ id: w.id, title: w.title, sport: w.sport, startTime: w.startTime })),
       session: {
         id: workout.id,
         revision,

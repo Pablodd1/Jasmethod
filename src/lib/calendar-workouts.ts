@@ -7,20 +7,25 @@ const retiredSources = ['superseded-plan','superseded-starter','superseded-start
 export function hasWorkoutReport(workout:Record<string,any>) {
  return workout.completed===true||reportFields.some(key=>workout[key]!=null);
 }
-export function isCurrentOrReportedWorkout(workout:{userId?:string;source?:string|null;planDay?:{plan?:{id:string;status:string;userId:string}}|null;[key:string]:any},ownerId:string,activePlanId:string|null) {
+export function isCurrentWorkout(workout:{userId?:string;source?:string|null;planDay?:{plan?:{id:string;status:string;userId:string}}|null;[key:string]:any},ownerId:string,activePlanId:string|null) {
  if(workout.userId!==ownerId)return false;
- if(hasWorkoutReport(workout))return true;
  if(retiredSources.includes(workout.source||''))return false;
  if(workout.planDay){const plan=workout.planDay.plan;return !!plan&&plan.userId===ownerId&&plan.status==='active'&&plan.id===activePlanId;}
  return true;
+}
+export function isCurrentOrReportedWorkout(workout:Parameters<typeof isCurrentWorkout>[0],ownerId:string,activePlanId:string|null) {
+ return workout.userId===ownerId&&(hasWorkoutReport(workout)||isCurrentWorkout(workout,ownerId,activePlanId));
+}
+export function currentWorkoutWhere(ownerId:string,activePlanId:string|null):Prisma.WorkoutWhereInput {
+ return {userId:ownerId,AND:[{OR:[{source:null},{source:{notIn:retiredSources}}]},
+  {OR:[{planDay:null},...(activePlanId?[{planDay:{plan:{id:activePlanId,userId:ownerId,status:'active'}}}]:[])]}]};
 }
 /** Apply before a query's limit so retired suggestions cannot crowd out current
  * sessions. Actual/source evidence remains available even from an older plan. */
 export function currentOrReportedWorkoutWhere(ownerId:string,activePlanId:string|null):Prisma.WorkoutWhereInput {
  return {userId:ownerId,OR:[
   {completed:true},...reportFields.map(field=>({[field]:{not:null}})),
-  {AND:[{OR:[{source:null},{source:{notIn:retiredSources}}]},
-   {OR:[{planDay:null},...(activePlanId?[{planDay:{plan:{id:activePlanId,userId:ownerId,status:'active'}}}]:[])]}]},
+  currentWorkoutWhere(ownerId,activePlanId),
  ]};
 }
 /** Calendar visibility is not deletion, reconciliation or a report of rest. */

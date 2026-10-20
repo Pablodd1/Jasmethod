@@ -237,6 +237,33 @@ async function main() {
     assert.equal(await db.workout.count({ where: { userId: a.id } }), before, "Visibility never deletes history");
     await request(`/api/workouts?athleteId=${a.id}`, b, { status: 403 });
   });
+  await scenario("replaced plans cannot consume today's budget, become the default workout or remain executable by old links", async () => {
+    const owner = await actor("legacy-budget");
+    const current = await fixture(owner);
+    const old = await db.trainingPlan.create({ data: { userId: owner.id, name: "Synthetic legacy active cycle", distance: "cycle", level: "amateur", weeks: 2, startDate: day, status: "active", createdAt: new Date(Date.now() - 86400000) } });
+    const oldDay = await db.planDay.create({ data: { planId: old.id, date: day, week: 1, dayOfWeek: day.getUTCDay(), dayOff: false } });
+    await db.workout.createMany({ data: Array.from({ length: 85 }, () => ({ userId: owner.id, planDayId: oldDay.id, date: day, startTime: "05:00", title: "Synthetic retired budget consumer", sport: "bike", type: "endurance", intensity: "z2", durationMin: 30, planned: true, completed: false, approved: true, source: "plan", originalPlan: JSON.stringify(prescription("bike", 30)), createdAt: new Date(Date.now() - 3600000) })) });
+    await db.workout.create({ data: { userId: owner.id, planDayId: oldDay.id, date: day, startTime: "05:00", title: "Synthetic retained skipped history", sport: "bike", type: "endurance", intensity: "z2", durationMin: 30, planned: true, completed: false, source: "plan", originalPlan: JSON.stringify(prescription("bike", 30)), feedbackStatus: "skipped", actualDurationMin: 0, rpe: 0, feedbackAt: new Date(Date.now() - 60000) } });
+    const before = await db.workout.findMany({ where: { planDayId: oldDay.id }, orderBy: { id: "asc" } });
+    const obsoleteId = before.find(w => w.feedbackStatus === null)!.id;
+    const response = await json("/api/checkin", owner, { body: validAnswers });
+    assert.notEqual(response.adaptation.verdict, "rest", "Legacy suggestions do not exhaust the current training budget");
+    const saved = await db.workout.findMany({ where: { id: { in: [current.run.id, current.bike.id] } }, orderBy: { startTime: "asc" } });
+    assert.deepEqual(saved.map(w => w.durationMin), [20, 30], "Only current sessions share the 60-minute daily ceiling");
+    assert.deepEqual(await db.workout.findMany({ where: { planDayId: oldDay.id }, orderBy: { id: "asc" } }), before, "Read/adaptation never rewrites retired prescriptions");
+    await db.planDay.update({ where: { id: oldDay.id }, data: { dayOff: true } });
+    const overview = await json("/api/today", owner);
+    assert.deepEqual(overview.sessions.map((s: any) => s.id).sort(), [current.run.id, current.bike.id].sort());
+    assert.notEqual(overview.recovery.mode, "planned-rest");
+    const daily = await json("/api/v1/training/today", owner);
+    assert.equal(daily.session.id, current.run.id);
+    assert.equal(daily.session.totalMinutes, 20);
+    assert.equal(daily.sessions.length, 2);
+    await request(`/api/v1/training/today?sessionId=${obsoleteId}`, owner, { status: 404 });
+    await request(`/api/workout/card?id=${obsoleteId}`, owner, { status: 404 });
+    await request(`/api/workout/approve?sessionId=${obsoleteId}`, owner, { method: "POST", status: 404 });
+    await request(`/api/workout/approve?sessionId=${obsoleteId}`, owner, { status: 404 });
+  });
 }
 main().catch(error => { results.push({ name: "acceptance setup", status: "FAIL", detail: String(error) }); }).finally(async () => {
   await db.user.deleteMany({ where: { id: { in: createdIds } } });

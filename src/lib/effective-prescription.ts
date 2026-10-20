@@ -1,5 +1,6 @@
 import { isStarterSession, starterRestriction } from "./starter-session";
 import { isUnperformedSupersededWorkout } from "./superseded-workout";
+import { currentOrReportedWorkoutWhere, isCurrentOrReportedWorkout, isCurrentWorkout } from "./calendar-workouts";
 import { groupActivityEvidence,ACTIVITY_EVIDENCE_SELECT,type ActivityDecision } from "./activity-evidence";
 import { readActivityDecisions } from "./activity-reconciliation";
 import { evidenceWorkout, reviewedWorkoutStructureCurrent } from "./evidence-workouts";
@@ -55,6 +56,7 @@ export interface EffectiveRecords {
   currentEvents?: {id:string;userId:string;date:Date}[];
   activityDecisions?: readonly ActivityDecision[];
   now?: Date;
+  currentPrescription?: boolean;
 }
 export function effectiveSessionFromRecords(input: EffectiveRecords): { workout: any; prescription: any; canonical: CanonicalSession; targetProfile: TargetProfile | null | undefined; nutrition: SessionNutrition } {
   const { workout, profile, userId, timezone } = input;
@@ -74,6 +76,7 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
   if (key !== today && gate.status === "clear") safety = { ...safety, status: "unknown", reason: "This session is outside today's local date. Reassess safety and readiness on the session day before exporting." };
   if (gate.status === "clear" && !validAdaptation(adaptation)) safety = { ...safety, status: "unknown", reason: "The check-in adaptation is missing or invalid. Complete the check-in again before training or exporting." };
   if (adaptation?.verdict === "rest") safety = { ...safety, status: "hold", reason: adaptation.message || "The current check-in requires rest." };
+  if (input.currentPrescription === false && !["hold", "urgent"].includes(safety.status)) safety = { ...safety, status: "unknown", reason: "This record belongs to replaced training and is retained as history. It is not a current workout prescription." };
   const activityStart = localDate(addDaysKey(today, -3), timezone).getTime();
   const activityEnd = localDate(addDaysKey(today, 1), timezone).getTime();
   const activity = (input.reportedActivity || []).filter(row => !isUnperformedSupersededWorkout(row) && row.userId === userId && timestamp(row.date) >= activityStart && timestamp(row.date) < activityEnd)
@@ -164,10 +167,10 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
     durationMin: canonical.durationMin, intensity: canonicalFuelIntensity(canonical, prescription.intensity, profile), startTime: workout.startTime, verdict: canonical.verdict }, now);
   return { workout, prescription, canonical, targetProfile: profile, nutrition };
 }
-type EffectivePrescriptionReader = Pick<typeof prisma, "workout" | "athleteProfile" | "user" | "auditLog" | "supplementProfile" | "dailyCheckin" | "benchmarkTest" | "race">;
+type EffectivePrescriptionReader = Pick<typeof prisma, "workout" | "trainingPlan" | "athleteProfile" | "user" | "auditLog" | "supplementProfile" | "dailyCheckin" | "benchmarkTest" | "race">;
 export async function effectivePrescription(userId: string, workoutId: string, db: EffectivePrescriptionReader = prisma) {
-  const [workout, profile, user, setup, applied, supplement, environment,activityDecisions] = await Promise.all([
-    db.workout.findFirst({ where: { id: workoutId, userId }, include: { planDay: { select: { dayOff: true } } } }),
+  const [workout, profile, user, setup, applied, supplement, environment,activityDecisions, activePlan] = await Promise.all([
+    db.workout.findFirst({ where: { id: workoutId, userId }, include: { planDay: { select: { dayOff: true, plan: { select: { id: true, status: true, userId: true } } } } } }),
     db.athleteProfile.findUnique({ where: { userId } }),
     db.user.findUnique({ where: { id: userId }, select: { timezone: true, language: true } }),
     readPlanningSetup(userId, db),
@@ -175,8 +178,9 @@ export async function effectivePrescription(userId: string, workoutId: string, d
     db.supplementProfile.findUnique({ where: { userId } }),
     readDailyEnvironment(userId, workoutId, db),
     readActivityDecisions(userId,db),
+    db.trainingPlan.findFirst({ where: { userId, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } }),
   ]);
-  if (!workout || !user) return null;
+  if (!workout || !user || !isCurrentOrReportedWorkout(workout, userId, activePlan?.id ?? null)) return null;
   const timezone = user.timezone;
   const sessionDate = localDate(dateKey(workout.date, timezone), timezone);
   const today = dayBounds(timezone);
@@ -190,10 +194,11 @@ export async function effectivePrescription(userId: string, workoutId: string, d
       select: {...ACTIVITY_EVIDENCE_SELECT,createdAt:true,feedbackNote:true,actualDetails:true,avgHr:true,maxHr:true,avgPower:true,np:true,preWeightKg:true,postWeightKg:true},
       orderBy: [{ date: "asc" }, { id: "asc" }],
     }),
-    db.workout.findMany({ where: { userId, date: { gte: sessionDate, lt: localDate(addDaysKey(dateKey(workout.date, timezone), 1), timezone) }, OR: [{completed:true},{actualDurationMin:{gt:0}},{feedbackStatus:{in:["partial","substituted","unknown"]}},{planned:true,AND:[{OR:[{feedbackStatus:null},{feedbackStatus:{not:"skipped"}}]},{OR:[{planDay:null},{planDay:{dayOff:false,plan:{status:"active"}}}]}]}] }, select: {...ACTIVITY_EVIDENCE_SELECT,intensity:true,type:true,prescription:true,originalPlan:true,startTime:true},orderBy:[{startTime:"asc"},{id:"asc"}] }),
+    db.workout.findMany({ where: { userId, AND: [currentOrReportedWorkoutWhere(userId, activePlan?.id ?? null), { date: { gte: sessionDate, lt: localDate(addDaysKey(dateKey(workout.date, timezone), 1), timezone) }, OR: [{completed:true},{actualDurationMin:{gt:0}},{feedbackStatus:{in:["partial","substituted","unknown"]}},{planned:true,AND:[{OR:[{feedbackStatus:null},{feedbackStatus:{not:"skipped"}}]},{OR:[{planDay:null},{planDay:{dayOff:false}}]}]}] }] }, select: {...ACTIVITY_EVIDENCE_SELECT,intensity:true,type:true,prescription:true,originalPlan:true,startTime:true},orderBy:[{startTime:"asc"},{id:"asc"}] }),
     db.race.findMany({where:{userId,date:{gte:new Date(`${dateKey(workout.date,timezone)}T00:00:00Z`),lt:new Date(`${addDaysKey(dateKey(workout.date,timezone),1)}T00:00:00Z`)}},select:{id:true,userId:true,date:true},orderBy:{id:"asc"}}),
   ]);
   if(profile?.raceDate && dateKey(profile.raceDate,timezone)===dateKey(workout.date,timezone)) currentEvents.push({id:"profile-event",userId,date:new Date(`${dateKey(profile.raceDate,timezone)}T00:00:00Z`)});
   const restrictedStarter = isStarterSession(workout) && starterRestriction(profile,setup.setup);
-  return effectiveSessionFromRecords({ userId, timezone, workout: restrictedStarter ? {...workout, source:"restricted-starter"} : workout, environment, currentEvents, profile: evidencedTargetProfile(profile ? {...profile, units: unitsOf(profile.units, user.language)} : null, tests, appliedIds), checkin, currentCheckin, reportedActivity, sameDaySessions, activityDecisions, doubleDayContext:{preference:setup.setup?.doubleDay,setupRevision:setup.revision,source:setup.setup?.source}, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
+  const currentPrescription = isCurrentWorkout(workout, userId, activePlan?.id ?? null);
+  return effectiveSessionFromRecords({ userId, timezone, workout: restrictedStarter ? {...workout, source:"restricted-starter"} : workout, currentPrescription, environment, currentEvents, profile: evidencedTargetProfile(profile ? {...profile, units: unitsOf(profile.units, user.language)} : null, tests, appliedIds), checkin, currentCheckin, reportedActivity, sameDaySessions, activityDecisions, doubleDayContext:{preference:setup.setup?.doubleDay,setupRevision:setup.revision,source:setup.setup?.source}, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
 }

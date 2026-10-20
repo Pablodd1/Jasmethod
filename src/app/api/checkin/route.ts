@@ -1,5 +1,6 @@
 import { isStarterSession, starterRestriction } from "@/lib/starter-session";
 import { isUnperformedSupersededWorkout } from "@/lib/superseded-workout";
+import { currentOrReportedWorkoutWhere, currentWorkoutWhere, hasWorkoutReport } from "@/lib/calendar-workouts";
 import { groupActivityEvidence } from "@/lib/activity-evidence";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { ensureStarterWorkout } from "@/lib/starter-session-store";
@@ -55,6 +56,7 @@ export async function GET(req: Request) {
     try { feedbackStart = localDate(feedbackDate, user.timezone); } catch { throw new ApiError("Invalid feedback observation date"); }
     if (feedbackDate > key) throw new ApiError("Feedback must describe today or an earlier date");
     const feedbackEnd = localDate(addDaysKey(feedbackDate, 1), user.timezone);
+    const activePlan = await prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
     const [checkin, metrics, appointments, previousSessions, profile, planning] = await Promise.all([
       prisma.dailyCheckin.findUnique({
         where: { userId_date: { userId: user.id, date: start } },
@@ -76,7 +78,7 @@ export async function GET(req: Request) {
         },
         select: { title: true, startTime: true, endTime: true },
       }),
-      prisma.workout.findMany({ where: { userId: user.id, date: { gte: feedbackStart, lt: feedbackEnd } }, orderBy: [{ startTime: "asc" }, { createdAt: "asc" }], select: { id: true, title: true, sport: true, durationMin: true, date: true, feedbackStatus: true, actualDurationMin: true, rpe: true, feedbackNote: true, feedbackAt: true, actualSport: true, actualDetails: true } }),
+      prisma.workout.findMany({ where: { AND: [currentOrReportedWorkoutWhere(user.id, activePlan?.id ?? null), { date: { gte: feedbackStart, lt: feedbackEnd } }] }, orderBy: [{ startTime: "asc" }, { createdAt: "asc" }], select: { id: true, title: true, sport: true, durationMin: true, date: true, feedbackStatus: true, actualDurationMin: true, rpe: true, feedbackNote: true, feedbackAt: true, actualSport: true, actualDetails: true } }),
       prisma.athleteProfile.findUnique({ where: { userId: user.id } }),
       readPlanningSetup(user.id),
     ]);
@@ -172,6 +174,7 @@ export async function POST(req: Request) {
     await ensureStarterWorkout(user.id,actor.id);
     const syncFreshness = checkinSyncFreshness(deviceProviders, syncResults, syncAttempted);
     const { start, end, key } = dayBounds(user.timezone);
+    const activePlan = await prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
     const [metrics, profile, appointments, prefs, feedback, planning, sameDayReports,activityDecisions] = await Promise.all(
       [
         prisma.dailyMetrics.findMany({
@@ -193,8 +196,7 @@ export async function POST(req: Request) {
         prisma.supplementProfile.findUnique({ where: { userId: user.id } }),
         prisma.workout.findMany({
           where: {
-            userId: user.id,
-            date: { gte: new Date(start.getTime() - 3 * 86400000), lt: start },
+            AND: [currentOrReportedWorkoutWhere(user.id, activePlan?.id ?? null), { date: { gte: new Date(start.getTime() - 3 * 86400000), lt: start } }],
           },
           orderBy: { date: "desc" },
         }),
@@ -242,9 +244,12 @@ export async function POST(req: Request) {
     const busyHrs = busyHours(appointments, key, user.timezone);
     const busyNote = `${appointments.length} calendar commitments, ${busyHrs.toFixed(1)} hours busy.`;
     const saved = await prisma.$transaction(async (tx) => {
-      const sessions = await tx.workout.findMany({
+      // Read the authoritative current plan in the same transaction that
+      // allocates today's minutes. Replaced suggestions cannot spend them.
+      const currentPlan = await tx.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+      const candidates = await tx.workout.findMany({
         where: {
-          userId: user.id,
+          AND: [currentWorkoutWhere(user.id, currentPlan?.id ?? null)],
           date: { gte: start, lt: end },
           planned: true,
           completed: false,
@@ -257,6 +262,7 @@ export async function POST(req: Request) {
         include: { planDay: true },
         orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
       });
+      const sessions = candidates.filter(workout => !hasWorkoutReport(workout));
       const prescriptions = [];
       const rejectedSessions: { sessionId: string; reason: string }[] = [];
       let remaining = Math.min(checkin.availableMin ?? 0, dailyBudgetRemaining);
@@ -416,7 +422,7 @@ export async function POST(req: Request) {
         },
       });
       return { checkin: check, prescriptions, rejectedSessions };
-    });
+    }, { isolationLevel: "Serializable" });
     const prescription = saved.prescriptions[0] || null;
     const session = prescription || {
       sport: "recovery",
@@ -500,6 +506,7 @@ export async function POST(req: Request) {
       tomorrowAdjustment: null,
     });
   } catch (e) {
+    if ((e as { code?: string })?.code === "P2034") return errorResponse(new ApiError("Your plan changed while saving the check-in. Review the current plan and submit again.", 409));
     return errorResponse(e);
   }
 }
