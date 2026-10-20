@@ -47,7 +47,7 @@ function fixture(records:any[], failAt?:number) {
     "./activity-store":{storeActivity:async(user:string,_tz:string,w:any)=>{assert.equal(user,"athlete");if(w.externalId===`strava:${failAt}`)throw Error("Database unavailable");writes.push(w);return true;}},
     "./profile-import-review":{importStravaProfileWeight:async()=>{}},
     "./telemetry":{meterUsage:async()=>{}},
-    "./manual-workout-calendar":{},"./manual-workout-email-locale":{},"./manual-workout-email":{},"./manual-workout-email-content":{},"./effective-prescription":{},"./canonical-session":{},"./capabilities":{},
+    "./manual-workout-calendar":{},"./calendar-workouts":{},"./manual-workout-email-locale":{},"./manual-workout-email":{},"./manual-workout-email-content":{},"./effective-prescription":{},"./canonical-session":{},"./capabilities":{},
   };
   const mod:any={exports:{}};
   const compiled=ts.transpileModule(fs.readFileSync("src/lib/sync.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;

@@ -12,6 +12,7 @@ import * as api from "./importers";
 import { effectivePrescription } from "./effective-prescription";
 import { SessionResolutionError } from "./canonical-session";
 import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "./capabilities";
+import { currentOrReportedWorkoutWhere } from "./calendar-workouts";
 
 export interface SyncResult {
   provider: string;
@@ -65,7 +66,11 @@ export async function syncUserConnectors(
     const lease = await prisma.connector.updateMany({
       where: {
         id: conn.id,
-        ...(conn.provider === "intervals" ? { tokenEnc: conn.tokenEnc, status: { in: ["connected", "error"] } } : {}),
+        userId,
+        provider: conn.provider,
+        tokenEnc: conn.tokenEnc,
+        refreshEnc: conn.refreshEnc,
+        status: { in: ["connected", "error"] },
         OR: [
           { syncStartedAt: null },
           { syncStartedAt: { lt: new Date(Date.now() - 10 * 60000) } },
@@ -83,11 +88,21 @@ export async function syncUserConnectors(
       continue;
     }
     let imported = 0;
+    // Disconnect, reconnect and an expired-lease takeover must all win over
+    // this worker. After rotation the local snapshot follows only our CAS.
+    const identity = () => ({ id: conn.id, userId, provider: conn.provider,
+      tokenEnc: conn.tokenEnc, refreshEnc: conn.refreshEnc, syncStartedAt,
+      status: { in: ["connected", "error"] } });
+    const requireConnection = async () => {
+      const current = await prisma.connector.updateMany({ where: identity(), data: { syncStartedAt } });
+      if (current.count !== 1) throw new Error("Connection changed during sync. Review the current connection status.");
+    };
     try {
       let access = decryptSecret(conn.tokenEnc);
       if (conn.expiresAt && conn.expiresAt <= new Date()) {
         if (!conn.refreshEnc)
           throw new Error("Authorization expired. Reconnect this provider.");
+        await requireConnection();
         const token: any = await cfg.refresh(
           {
             clientId: process.env[`${cfg.env}_CLIENT_ID`]!,
@@ -99,20 +114,22 @@ export async function syncUserConnectors(
           decryptSecret(conn.refreshEnc),
         );
         access = token.access_token;
-        await prisma.connector.update({
-          where: { id: conn.id },
-          data: {
-            tokenEnc: encryptSecret(access),
-            ...(token.refresh_token
-              ? { refreshEnc: encryptSecret(token.refresh_token) }
-              : {}),
-            expiresAt: new Date(
-              token.expires_at
-                ? token.expires_at * 1000
-                : Date.now() + token.expires_in * 1000,
-            ),
-          },
+        const rotated = {
+          tokenEnc: encryptSecret(access),
+          ...(token.refresh_token
+            ? { refreshEnc: encryptSecret(token.refresh_token) }
+            : {}),
+          expiresAt: new Date(
+            token.expires_at
+              ? token.expires_at * 1000
+              : Date.now() + token.expires_in * 1000,
+          ),
+        };
+        const refreshed = await prisma.connector.updateMany({
+          where: identity(), data: rotated,
         });
+        if (refreshed.count !== 1) throw new Error("Connection changed during authorization refresh. Review the current connection status.");
+        Object.assign(conn, rotated);
       }
       // INITIAL BACKFILL vs incremental: the first sync after connecting pulls
       // a full year of Strava activities (the endpoint paginates far beyond
@@ -121,13 +138,15 @@ export async function syncUserConnectors(
       // history real on day one instead of a 30-day sliver.
       const since = conn.lastSyncAt
         ? new Date(conn.lastSyncAt.getTime() - 86400000)
-        : new Date(Date.now() - (conn.provider === "strava" ? 365 : 180) * 86400000);
+        : new Date(syncStartedAt.getTime() - (conn.provider === "strava" ? 365 : 180) * 86400000);
       let rejectedActivities = 0;
+      await requireConnection();
       if (conn.provider === "intervals") {
         const { ingestIntervals } = await import("./intervals-ingest");
         imported = await ingestIntervals(userId, user.timezone, conn);
       } else if (conn.provider === "strava") {
         const activities = await api.stravaGetActivities(access, since, 100);
+        await requireConnection();
         for (const a of activities) {
           let activity: api.ImportedWorkout;
           try { activity = api.stravaActivityToWorkout(a); }
@@ -140,11 +159,13 @@ export async function syncUserConnectors(
           if (await storeActivity(userId, user.timezone, activity)) imported++;
         }
         const { importStravaProfileWeight } = await import("./profile-import-review");
+        await requireConnection();
         await importStravaProfileWeight(userId, conn.id, conn.externalRef, access);
       } else if (conn.provider === "google_cal") {
         const start = dayBounds(user.timezone).start,
           end = new Date(start.getTime() + 14 * 86400000);
         const events = await api.googleCalGetEvents(access, 14, start);
+        await requireConnection();
         const live: string[] = [];
         for (const e of events) {
           const externalId = `google_cal:${e.id}`;
@@ -203,9 +224,10 @@ export async function syncUserConnectors(
             externalId: { startsWith: "google_cal:", notIn: live },
           },
         });
+        const activePlan = await prisma.trainingPlan.findFirst({ where: { userId, status: "active" }, orderBy: { createdAt: "desc" }, select: { id: true } });
         const planned = await prisma.workout.findMany({
-          where: { userId, planned: true, date: { gte: start, lt: end } },
-          include: { planDay: { select: { dayOff: true } } },
+          where: { AND: [currentOrReportedWorkoutWhere(userId, activePlan?.id ?? null), { planned: true, date: { gte: start, lt: end } }] },
+          include: { planDay: { include: { plan: { select: { id: true, status: true, userId: true } } } } },
         });
         const links = await prisma.calendarEvent.findMany({
           where: {
@@ -218,9 +240,10 @@ export async function syncUserConnectors(
         for (const l of links.filter((l) => l.workoutId)) {
           const w = await prisma.workout.findFirst({
             where: { id: l.workoutId!, userId },
-            include: { planDay: { select: { dayOff: true } } },
+            include: { planDay: { include: { plan: { select: { id: true, status: true, userId: true } } } } },
           });
-          if (retireWorkoutCalendarLink(w, l.date, start, end)) {
+          if (retireWorkoutCalendarLink(w, l.date, start, end, { ownerId: userId, activePlanId: activePlan?.id ?? null })) {
+            await requireConnection();
             await api.googleCalDeleteEvent(access, l.notes!.slice(9));
             await prisma.calendarEvent.delete({ where: { id: l.id } });
           }
@@ -265,6 +288,7 @@ export async function syncUserConnectors(
             durationMin: session?.durationMin ?? w.durationMin,
             canonicalRevision: resolved?.canonical.revision ?? null, ready: !!ready, description,
           });
+          await requireConnection();
           const gid = await api.googleCalUpsertEvent(access, {
             summary: placeholder.summary,
             description,
@@ -292,72 +316,86 @@ export async function syncUserConnectors(
             });
         }
       } else {
-        // Biometrics backfill: up to 180 days on first connect (Both APIs
-        // paginate), capped at 90 per incremental run — enough for the daily
-        // loop while staying far from rate limits.
+        // WHOOP wellness and workouts cover the same explicit windows. Only
+        // advance the shared cursor when every window completes; a failed
+        // page retains the cursor so idempotent imports can be retried.
         const days = Math.min(
           conn.lastSyncAt ? 90 : 180,
-          Math.max(1, Math.ceil((Date.now() - since.getTime()) / 86400000)),
+          Math.max(1, Math.ceil((syncStartedAt.getTime() - since.getTime()) / 86400000)),
         );
-        const daily: any[] =
-          conn.provider === "oura"
-            ? await api.ouraGetDaily(access, days)
-            : await api.whoopGetDaily(access, days, user.timezone);
-        for (const d of daily) {
-          const date = localDate(d.date, user.timezone);
-          const values = {
-            hrv: d.hrv,
-            restingHr: d.restingHr,
-            sleepScore: d.sleepScore,
-            sleepHours: d.sleepHours,
-            recoveryScore: d.readiness ?? d.recoveryScore,
-          };
-          for (const field of [
-            "restingHr",
-            "sleepScore",
-            "recoveryScore",
-          ] as const)
-            if (values[field] != null)
-              values[field] = Math.round(values[field]);
-          const data = {
-            ...Object.fromEntries(
-              Object.entries(values).filter(([, v]) => v != null),
-            ),
-            ...(values.hrv != null ? { hrvType: "rmssd" } : {}),
-            source: conn.provider,
-          };
-          // Retain the latest daily snapshot per provider, separately from
-          // the legacy summary row used by existing coaching screens.
-          const snapshot=deviceMetricSnapshot(userId,date,conn.provider,data);
-          if(snapshot.observations.length) await prisma.$transaction(async tx => {
-            await persistDeviceDay(tx, userId, date, conn.provider, snapshot.data, snapshot.observations);
-          });
-          imported++;
-        }
-        // WHOOP completed workouts — the activity half of WHOOP ingestion
-        // (review finding: only daily metrics were imported). Each workout
-        // becomes a completed activity row keyed whoop:<id>, so the daily
-        // prescription can reference real training that Whoop recorded.
+        const windows: Array<{ start: Date; end: Date }> = [];
         if (conn.provider === "whoop") {
-          try {
-            const whoopWorkouts = await api.whoopGetWorkouts(access, Math.min(days, 30));
-            for (const wk of whoopWorkouts) {
-              const storedW = await storeActivity(userId, user.timezone, {
-                externalId: wk.externalId,
-                sport: wk.sport,
-                date: wk.start,
-                durationMin: wk.durationMin,
-                avgHr: wk.avgHr,
-                maxHr: wk.maxHr,
-                calories: wk.calories,
-                title: wk.title,
-                source: "whoop",
-              });
-              if (storedW) imported++;
+          for (let cursor = since.getTime(); cursor < syncStartedAt.getTime();) {
+            const end = Math.min(cursor + 30 * 86400000, syncStartedAt.getTime());
+            windows.push({ start: new Date(cursor), end: new Date(end) });
+            cursor = end;
+          }
+        } else windows.push({ start: since, end: syncStartedAt });
+        for (const window of windows) {
+          await requireConnection();
+          const daily: any[] =
+            conn.provider === "oura"
+              ? await api.ouraGetDaily(access, days)
+              : await api.whoopGetDaily(access, days, user.timezone, window);
+          await requireConnection();
+          for (const d of daily) {
+            const date = localDate(d.date, user.timezone);
+            const values = {
+              hrv: d.hrv,
+              restingHr: d.restingHr,
+              sleepScore: d.sleepScore,
+              sleepHours: d.sleepHours,
+              recoveryScore: d.readiness ?? d.recoveryScore,
+            };
+            for (const field of [
+              "restingHr",
+              "sleepScore",
+              "recoveryScore",
+            ] as const)
+              if (values[field] != null)
+                values[field] = Math.round(values[field]);
+            const data = {
+              ...Object.fromEntries(
+                Object.entries(values).filter(([, v]) => v != null),
+              ),
+              ...(values.hrv != null ? { hrvType: "rmssd" } : {}),
+              source: conn.provider,
+            };
+            // Retain the latest daily snapshot per provider, separately from
+            // the legacy summary row used by existing coaching screens.
+            const snapshot=deviceMetricSnapshot(userId,date,conn.provider,data);
+            if(snapshot.observations.length) await prisma.$transaction(async tx => {
+              await persistDeviceDay(tx, userId, date, conn.provider, snapshot.data, snapshot.observations);
+            });
+            imported++;
+          }
+          // WHOOP completed workouts — the activity half of WHOOP ingestion
+          // (review finding: only daily metrics were imported). Each workout
+          // becomes a completed activity row keyed whoop:<id>, so the daily
+          // prescription can reference real training that Whoop recorded.
+          if (conn.provider === "whoop") {
+            try {
+              await requireConnection();
+              const whoopWorkouts = await api.whoopGetWorkouts(access, days, window);
+              await requireConnection();
+              for (const wk of whoopWorkouts) {
+                const storedW = await storeActivity(userId, user.timezone, {
+                  externalId: wk.externalId,
+                  sport: wk.sport,
+                  date: wk.start,
+                  durationMin: wk.durationMin,
+                  avgHr: wk.avgHr,
+                  maxHr: wk.maxHr,
+                  calories: wk.calories,
+                  title: wk.title,
+                  source: "whoop",
+                });
+                if (storedW) imported++;
+              }
+            } catch (wkErr) {
+              // Missing workout permission or provider failure must remain visible.
+              throw wkErr;
             }
-          } catch (wkErr) {
-            // Missing workout permission or provider failure must remain visible.
-            throw wkErr;
           }
         }
       }
@@ -366,16 +404,16 @@ export async function syncUserConnectors(
         ? `Strava activity data needs review: ${rejectedActivities} record(s) have invalid ID, date or duration. Valid records imported; sync window retained for retry. No reconnect required for this data error.`
         : null;
       const saved = await prisma.connector.updateMany({
-        where: { id: conn.id, ...(conn.provider === "intervals" ? { tokenEnc: conn.tokenEnc, syncStartedAt, status: { in: ["connected", "error"] } } : {}) },
+        where: identity(),
         data: {
-          ...(activityWarning ? {} : { lastSyncAt: new Date() }),
+          ...(activityWarning ? {} : { lastSyncAt: syncStartedAt }),
           lastSyncCount: imported,
           status: activityWarning ? "error" : "connected",
           lastError: activityWarning,
           syncStartedAt: null,
         },
       });
-      if (conn.provider === "intervals" && !saved.count) throw new Error("Intervals connection changed during sync");
+      if (saved.count !== 1) throw new Error("Connection changed during sync. Review the current connection status.");
       // Usage metering: rows synced per user (feeds the admin cost panel).
       if (imported > 0) {
         const { meterUsage } = await import("./telemetry");
@@ -387,7 +425,7 @@ export async function syncUserConnectors(
         .replace(/Bearer\s+\S+/gi, "[redacted]")
         .slice(0, 250);
       await prisma.connector.updateMany({
-        where: { id: conn.id, ...(conn.provider === "intervals" ? { tokenEnc: conn.tokenEnc, syncStartedAt, status: { in: ["connected", "error"] } } : {}) },
+        where: identity(),
         data: { status: "error", lastError: error, syncStartedAt: null },
       });
       results.push({ provider: conn.provider, ok: false, imported, error });

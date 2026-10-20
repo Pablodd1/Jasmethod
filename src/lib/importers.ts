@@ -886,11 +886,14 @@ export async function whoopGetDaily(
   accessToken: string,
   days = 30,
   timezone = DEFAULT_TIMEZONE,
+  window?: { start: Date; end: Date },
 ): Promise<WhoopDaily[]> {
+  const start = (window?.start ?? new Date(Date.now() - days * 86400000)).toISOString();
+  const end = (window?.end ?? new Date()).toISOString();
   const get = async (path: string) => {
     const params = new URLSearchParams({
-        start: new Date(Date.now() - days * 86400000).toISOString(),
-        end: new Date().toISOString(),
+        start,
+        end,
         limit: "25",
       }),
       out: any[] = [];
@@ -980,13 +983,16 @@ export function whoopSport(name: unknown): WhoopWorkout["sport"] {
 export async function whoopGetWorkouts(
   accessToken: string,
   days = 30,
+  window?: { start: Date; end: Date },
 ): Promise<WhoopWorkout[]> {
   const out: WhoopWorkout[] = [];
+  const start = (window?.start ?? new Date(Date.now() - days * 86400000)).toISOString();
+  const end = (window?.end ?? new Date()).toISOString();
   let nextToken: string | undefined;
   for (let i = 0; i < 20; i++) {
     const params = new URLSearchParams({
-      start: new Date(Date.now() - days * 86400000).toISOString(),
-      end: new Date().toISOString(),
+      start,
+      end,
       limit: "25",
     });
     if (nextToken) params.set("nextToken", nextToken);
@@ -1017,7 +1023,7 @@ export async function whoopGetWorkouts(
     if (!d.next_token) return out;
     nextToken = d.next_token;
   }
-  return out;
+  throw new Error("Whoop workout pagination limit exceeded; history is incomplete.");
 }
 
 // ---------- Garmin Connect "Activities.csv" (activity export) ----------

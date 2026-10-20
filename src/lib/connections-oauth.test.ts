@@ -110,6 +110,17 @@ for (const provider of ['oura', 'strava', 'google-cal', 'google_cal', 'whoop', '
     if(provider === 'whoop') assert.match(result.requestedScopes, /read:workout/);
   });
 }
+test('connections: explicit WHOOP reconnect resets history markers and preserves its issued refresh credential', async () => {
+  const f = fixture(original, {previousConnection:{provider:'whoop',lastSyncAt:new Date(),lastSyncCount:50,syncStartedAt:new Date()}});
+  await f.authorize(new Request('https://app.example/api/connectors/whoop/authorize'), 'whoop');
+  const state = f.getTxn().state;
+  const response = await f.callback(new Request(`https://app.example/api/connectors/whoop/callback?state=${state}&code=fake-code`), 'whoop');
+  assert.match(response.headers.get('location'), /ok=whoop/);
+  const saved = f.log.writes[0].update;
+  assert.equal(saved.lastSyncAt, null); assert.equal(saved.lastSyncCount, null); assert.equal(saved.syncStartedAt, null);
+  assert.equal(saved.refreshEnc, 'enc:v1:fixture:fake-refresh');
+  assert.equal(f.log.queued.length, 1); assert.equal(JSON.parse(f.log.queued[0].data.payload).provider, 'whoop');
+});
 test('connections: losing atomic state claim never exchanges credentials', async () => {
   const result = await roundTrip(original, 'oura', {forcedClaimCount:0});
   assert.equal(result.writes, 0); assert.equal(result.exchangeRequests, 0);

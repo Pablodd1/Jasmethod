@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { hasWorkoutReport, isCurrentOrReportedWorkout } from "./calendar-workouts";
 
 /** Minimal scheduling copy, never personalized medical/training instructions. */
 export function manualWorkoutCalendarPlaceholder(language: string, ready: boolean, appUrl: string) {
@@ -30,10 +31,15 @@ export function manualWorkoutCalendarRevision(input: {
 
 /** Keep historical entries, but remove invalid plans and stale moved placeholders. */
 export function retireWorkoutCalendarLink(
-  workout: { planned: boolean; durationMin: number; date: Date; feedbackStatus: string | null; planDay?: { dayOff: boolean } | null } | null,
+  workout: { planned: boolean; durationMin: number; date: Date; feedbackStatus: string | null; userId?: string; source?: string | null; planDay?: { dayOff: boolean; plan?: { id: string; status: string; userId: string } } | null; [key:string]:any } | null,
   linkedDate: Date, start: Date, end: Date,
+  visibility?: { ownerId: string; activePlanId: string | null },
 ) {
-  if (!workout || !workout.planned || workout.durationMin <= 0 || workout.planDay?.dayOff || workout.feedbackStatus === "skipped") return true;
+  if (!workout) return true;
+  // An old plan's actual history must survive retirement of its suggestions.
+  if (workout.date < start && workout.date.getTime() === linkedDate.getTime() && hasWorkoutReport(workout)) return false;
+  if (visibility && !isCurrentOrReportedWorkout(workout, visibility.ownerId, visibility.activePlanId)) return true;
+  if (!workout.planned || workout.durationMin <= 0 || workout.planDay?.dayOff || workout.feedbackStatus === "skipped") return true;
   const outsideWindow = workout.date < start || workout.date >= end;
   return outsideWindow && (workout.date.getTime() !== linkedDate.getTime() || linkedDate >= start);
 }

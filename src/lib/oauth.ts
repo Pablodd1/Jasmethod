@@ -264,6 +264,9 @@ export async function callback(req: Request, provider: string) {
         ? { refreshEnc: encryptSecret(token.refresh_token) }
         : {}),
       ...(p.key === "intervals" ? { refreshEnc: null, lastSyncAt: null, lastSyncCount: null, syncStartedAt: null } : {}),
+      // Explicit WHOOP reauthorization also requests a fresh bounded history
+      // import, including records an older workout window may have missed.
+      ...(p.key === "whoop" ? { lastSyncAt: null, lastSyncCount: null, syncStartedAt: null } : {}),
       expiresAt: p.key === "intervals" ? null : new Date(
         token.expires_at
           ? token.expires_at * 1000
