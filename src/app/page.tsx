@@ -158,6 +158,12 @@ export default function Home() {
             <Link href="/science" className="btn-secondary">
               <FlaskConical className="w-4 h-4" /> {pick(COPY.hero.cta2)}
             </Link>
+            <Link href="/book" className="btn-editorial">
+              {es(language) ? "Conoce el calendario" : "Book a conversation"} →
+            </Link>
+            <Link href="/contact" className="text-sm underline font-semibold text-ocean-700">
+              {es(language) ? "Enviar consulta" : "Ask a question"}
+            </Link>
             {user && (
               <Link href="/today" className="btn-editorial">
                 {es(language) ? "Abrir mi entrenamiento" : "Open my training"} →
@@ -320,6 +326,26 @@ export default function Home() {
                 {label}
               </Link>
             ))}
+          </div>
+        </section>
+
+        {/* Research-led explainers, FAQ and contact: honest, available public routes. */}
+        <section className="mt-16" aria-labelledby="visitor-resources">
+          <p className="kicker">{es(language) ? "Para conocer más" : "Understand the method"}</p>
+          <h2 id="visitor-resources" className="display-xl mt-3">{es(language) ? "Ciencia aplicable a tu vida real." : "Science applied to your actual day."}</h2>
+          <p className="text-sm text-ink-600 mt-3 max-w-3xl leading-relaxed">{es(language)
+            ? "Explora por qué el historial, el sueño, la VFC y tus respuestas del día pueden informar el entrenamiento. Las publicaciones incluyen fuentes y límites: ningún dato aislado garantiza rendimiento."
+            : "Explore how history, sleep, HRV and today's answers can inform training decisions. Every guide names its evidence and limits: no single number guarantees performance."}</p>
+          <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { href: "/blog", en: "Read the science guides", es: "Leer guías científicas", descEn: "Daily decisions, HRV and sleep.", descEs: "Decisiones diarias, VFC y sueño." },
+              { href: "/faq", en: "Frequently asked questions", es: "Preguntas frecuentes", descEn: "What the app can and cannot do.", descEs: "Qué puede y qué no puede hacer la app." },
+              { href: "/book", en: "Consultation calendar", es: "Calendario de consultas", descEn: "Live booking when configured.", descEs: "Reservas si están configuradas." },
+              { href: "/contact", en: "Contact our team", es: "Contactar al equipo", descEn: "Ask about JMM or a demonstration.", descEs: "Pregunta por JMM o una demostración." },
+            ].map(card => <Link href={card.href} key={card.href} className="card p-5 group hover:border-ocean-500 focus-visible:outline focus-visible:outline-2">
+              <h3 className="font-display font-bold text-ink-900 group-hover:text-ocean-700">{es(language) ? card.es : card.en} →</h3>
+              <p className="mt-2 text-sm text-ink-500">{es(language) ? card.descEs : card.descEn}</p>
+            </Link>)}
           </div>
         </section>
 
