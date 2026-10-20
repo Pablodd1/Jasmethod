@@ -8,9 +8,9 @@
  * src/lib/oauth-redirect-check.ts, where it is unit-tested; this file only wires the process.
  */
 import { readFileSync } from "node:fs";
-import { runRedirectCheck } from "../src/lib/oauth-redirect-check";
+import { runRedirectCheck, type GoogleEnv } from "../src/lib/oauth-redirect-check";
 
-const run = runRedirectCheck(process.argv.slice(2), process.env, (path) => readFileSync(path, "utf8"));
+const run = runRedirectCheck(process.argv.slice(2), process.env as unknown as GoogleEnv, (path) => readFileSync(path, "utf8"));
 if (run.stdout) console.log(run.stdout);
 if (run.stderr) console.error(run.stderr);
 process.exit(run.exitCode);
