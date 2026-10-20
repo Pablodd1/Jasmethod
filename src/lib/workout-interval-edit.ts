@@ -10,7 +10,7 @@ import { FIT_STEP_LIMIT } from "./canonical-session";
  * human-readable before/after preview, and (3) refuses edits that would exceed a limit.
  *
  * Direction rule (safety): changes that reduce load apply as soon as the athlete confirms the preview; changes
- * that RAISE load (higher zone, > +20% hard time) are flagged `requiresConfirmation` and the UI must send an
+ * that RAISE load (higher zone, any added hard time or shorter recovery) are flagged `requiresConfirmation` and the UI must send an
  * explicit second confirmation. A chat edit can never raise the work zone above the check-in's intensity cap,
  * never above Z5 unless the session already contains that zone, never past the reviewed time budget and never
  * past the 50-step device limit. Safety holds are enforced by the PATCH route (non-"ready" sessions are
@@ -29,7 +29,7 @@ export interface EditableStep {
 }
 export interface IntervalPatch { repeats?: number; repeatsDelta?: number; workSeconds?: number; restSeconds?: number; workZone?: number }
 
-export const LIMITS = { minRepeats: 1, maxRepeats: 30, minWorkSeconds: 10, maxWorkSeconds: 3600, minRestSeconds: 5, maxRestSeconds: 1800, maxChatZone: 5, hardTimeIncreasePct: 20 } as const;
+export const LIMITS = { minRepeats: 1, maxRepeats: 30, minWorkSeconds: 10, maxWorkSeconds: 3600, minRestSeconds: 5, maxRestSeconds: 1800, maxChatZone: 5 } as const;
 
 // ───────────────────────────── parsing ─────────────────────────────
 const fold = (text: string) => text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();

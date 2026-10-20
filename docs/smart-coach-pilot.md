@@ -1,3 +1,5 @@
+> **CTO audit update — 2026-10-20:** New regression and real-PostgreSQL acceptance run in the existing PR CI; the original environment limitations and counts below are historical. New stream suggestions require `ENABLE_SMART_COACH_SUGGESTIONS=1` (default off), the same sport, non-reduced streams and external power for fade. Detected efforts are not verified completion. Every hard-time increase, higher zone or shorter recovery requires confirmation.
+
 # Smart Coach pilot: interval edits, revision history, activity analysis
 
 Branch `feat/jmm-connectivity-smart-coach`, 2026-10-20. Pilot scope, **not** the full 13-phase Smart Coach 2.0 brief
@@ -35,7 +37,7 @@ athlete says "make it 5 x 4 min, 2 min rest"
 ## Safety rules the code enforces
 
 - **Direction rule.** Load-reducing edits need the athlete's normal confirmation. Edits that **raise** load (higher
-  work zone, or more than +20% Z4+ time over the whole workout) return `requiresConfirmation` and the server refuses
+  work zone, any increase in Z4+ time, shorter recovery or added duration) return `requiresConfirmation` and the server refuses
   to apply them without `confirmed: true`. A suggestion that raises load always requires it.
 - **Caps.** The work zone can never exceed today's check-in intensity cap (an unknown cap means no raises), is never
   raised above Z5 from chat, the workout never exceeds its reviewed time budget, and never exceeds the 50-step device
@@ -81,7 +83,7 @@ These thresholds are common rules of thumb, **not validated prescriptions**. The
 Opt-in at four levels: operator flag `ENABLE_ACTIVITY_STREAMS=1` (default off) → athlete ticks consent on that upload
 → origin must be known and not Strava → retention `ACTIVITY_STREAM_RETENTION_DAYS` (default 180, max 365). Data kept:
 heart rate, power, cadence, speed, altitude, distance, at most 3,600 points per activity. **No GPS is ever read.**
-Expired rows are invisible immediately; `purgeExpired` deletes them (not yet scheduled, see owner actions). The athlete can delete one
+Expired rows are invisible immediately; `purgeExpired` deletes them through the authenticated existing worker cron (including while storage is off). The athlete can delete one
 activity or all of it from the Connectors page; deletion also works with the flag off. Deleting a workout or the
 account cascades. Reads are scoped by athlete; a coach viewing an athlete receives no stream analysis.
 
@@ -89,10 +91,9 @@ account cascades. Reads are scoped by athlete; a coach viewing an athlete receiv
 
 1. Review and apply `prisma/migrations/20261020120000_activity_streams/migration.sql` (additive: one table; rollback =
    `DROP TABLE "ActivityStream"`). It enables RLS with no policies like the other new tables; verify the deployed
-   Prisma role can read/write it. **Not applied, and Prisma could not validate the schema in this environment.**
+   Prisma role can read/write it. **Not applied to production. Prisma validation now passes; migration behavior is tested only on the disposable CI PostgreSQL instance.**
 2. Decide the consent text/retention with counsel (health data), then set `ENABLE_ACTIVITY_STREAMS=1`.
-3. Schedule `purgeExpired` (for example inside the existing worker cron). Deliberately **not** added: changing cron
-   behaviour is a deployment decision.
+3. Verify the existing worker cron reports successful cleanup in the isolated environment before enabling collection. The cleanup implementation is included; this task changes no production cron or flags.
 4. Coach sign-off on the thresholds above and on the LTHR policy.
 
 ## Not built (and why)

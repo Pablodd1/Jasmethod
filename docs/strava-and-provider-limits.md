@@ -1,3 +1,6 @@
+> **CTO audit update — 2026-10-20:** Official COROS documentation now describes MCP workout/plan creation and editing for running and cycling. The earlier read-only characterization below is superseded. That provider capability is not a verified JMM integration: OAuth registration, token handling, consent, per-athlete acceptance and device confirmation remain necessary. Unknown file manufacturers/authors now stay `uploaded_unknown`; CSV distances require explicit metric/imperial units. All direct uploads are limited to 4 MB.
+> Sources: [COROS official MCP update log](https://coros.com/stories/coros-metrics/c/mcp-testing), [Vercel request limits](https://vercel.com/docs/functions/limitations), [Strava API agreement](https://www.strava.com/legal/api).
+
 # Provider limits, import verification and what is deliberately not done
 
 Branch `feat/jmm-connectivity-smart-coach`, written 2026-10-20. Nothing here was deployed, no OAuth/security setting
@@ -31,7 +34,7 @@ Two official routes exist (see also `docs/coros-direct.md`, verified 2026-10-09)
 
 | Route | Access | Fit for JMM |
 |---|---|---|
-| COROS MCP (OAuth 2.0) | Permitted without partner approval; per authorizing user; reads are polled (no webhooks). | Workable for athlete-authorized **reads**. |
+| COROS MCP (OAuth 2.0) | Permitted without partner approval; per authorizing user; reads are polled (no webhooks). | Provider documents athlete-authorized reads plus running/cycling workout and plan creation/editing; JMM adapter is not externally verified. |
 | COROS Partner API | Application by email to api@coros.com; manual approval; documented rate limits, webhooks, workout push. | The route for scheduled workout delivery; requires COROS approval. |
 
 **Status: BLOCKED for adapter completion.** The repository keeps COROS writes hard-gated
@@ -39,7 +42,7 @@ Two official routes exist (see also `docs/coros-direct.md`, verified 2026-10-09)
 adapter needs a client registration/credentials, which this task was not allowed to create. Owner steps: choose the
 route; for MCP register a public OAuth client through COROS' dynamic registration with the production redirect URI
 and set `COROS_CLIENT_ID`/`COROS_ISSUER`; for the Partner API email api@coros.com. Until then COROS athletes use the
-file import (TCX/FIT) and the manual FIT download.
+file import (TCX/FIT) and follow the JMM workout screen. Check device-specific file compatibility; a FIT download alone does not establish COROS workout import support.
 
 ## 3. Garmin
 

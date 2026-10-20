@@ -1,3 +1,5 @@
+> **CTO audit update — 2026-10-20:** This document preserves the initial import review below. Its original test counts and blocked-environment findings are historical, not current release evidence. Use the latest PR #67/#68 checks and the final CTO audit report in their descriptions. Neither PR is authorized to merge or deploy in this task.
+
 # Release notes, owner actions, deployment and rollback
 
 Branch `feat/jmm-connectivity-smart-coach` (stacked on `fix/jmm-p1-onboarding-diagnostics`), 2026-10-20, verified against
@@ -56,9 +58,10 @@ Server logic is covered by the unit and route-level tests above.
 | Flag | Default | Effect |
 |---|---|---|
 | `ENABLE_ACTIVITY_STREAMS` | off | Without it nothing second-by-second is stored, no consent box appears, analysis/proposal routes return "nothing to analyse". Deleting stored streams works either way |
-| `ACTIVITY_STREAM_RETENTION_DAYS` | 180 (max 365) | Expiry applied at read time; deletion by `purgeExpired` (not scheduled) |
+| `ENABLE_SMART_COACH_SUGGESTIONS` | off | Experimental stream-based proposals are unavailable unless explicitly enabled after evidence review |
+| `ACTIVITY_STREAM_RETENTION_DAYS` | 180 (max 365) | Expired rows are unreadable immediately; authenticated `/api/cron/worker` purges them every five minutes when the existing cron runs, including while collection is disabled. Cleanup failures return 503. |
 
-With the flag off, the only behavior change is the importer corrections in the table above and the new setup screen.
+With stream storage off, importer corrections, setup status, revision history and explicit run/bike interval editing remain available. No new streams are collected; existing data can still be deleted. The separate suggestions flag remains off by default.
 
 ## Owner actions (exact, in order)
 
@@ -76,14 +79,13 @@ With the flag off, the only behavior change is the importer corrections in the t
    `prisma/migrations/20261020120000_activity_streams/migration.sql` through your normal migration process, confirm the
    deployed Prisma role can read/write the table, then run `prisma generate` in CI.
 6. **Consent and retention text** for second-by-second health data, with counsel; then set
-   `ENABLE_ACTIVITY_STREAMS=1`. Schedule `purgeExpired` (for example in the existing worker cron).
+   `ENABLE_ACTIVITY_STREAMS=1` only after isolated acceptance and an explicitly approved production migration. Verify the existing worker cron runs and reports successful stream cleanup. This audit does not enable collection.
 7. **Coach sign-off** on the proposal thresholds (`next-workout-suggestion.ts` `THRESHOLDS`) and on the LTHR policy
    (heart-rate zones are not computed in production today because LTHR is never treated as validated).
 8. **Legal decision on Strava rows** that still appear in older local load analytics (AI paths already exclude them).
 9. **COROS:** choose MCP (OAuth, no approval) or the Partner API (email api@coros.com); registration/credentials are
    yours to create. Until then COROS athletes use TCX/FIT file import.
-10. **Request-size check:** the UI allows 40 MB uploads; Vercel serverless request bodies are documented at 4.5 MB.
-    Lower the cap or move to direct-to-storage upload after testing a large real file.
+10. **Request-size correction implemented:** the file cap is 4,000,000 bytes and the actual multipart body is bounded to 4,100,000 bytes, below Vercel's 4.5 MB limit. Both EN/ES screens explain the cap; larger exports need a smaller date range. Direct-to-storage upload is not implemented.
 11. **Real samples:** a Spanish-language `Activities.csv` and a real Garmin FIT/TCX export are needed to add header
     aliases and confirm device dialects.
 
@@ -104,5 +106,5 @@ This work does not deploy itself and nothing in the repository was run against p
 |---|---|
 | Code | Revert the merge commit (or redeploy the previous Vercel deployment). Importers, setup screen and routes disappear together; no data written by them blocks the old code |
 | Streams | Set `ENABLE_ACTIVITY_STREAMS` off (stops storing and reading immediately). Athletes can still delete their data from `/connectors`; remaining rows are inert |
-| Migration | `DROP TABLE "ActivityStream";` (data is a derived copy of files the athlete uploaded; nothing else references it). Run only after the code is reverted or the flag is off |
+| Migration | `DROP TABLE "ActivityStream";` (data is a derived copy of files the athlete uploaded; nothing else references it). Run only after the code is reverted and erasure/retention obligations have been completed; disabling collection alone does not authorize deletion of the table |
 | Re-imported activities | Importer corrections update existing rows in place by `externalId`; the pre-change values are not kept. Restore from your database backup if an exact earlier state is required |
