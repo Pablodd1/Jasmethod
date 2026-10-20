@@ -206,6 +206,10 @@ async function main() {
     const event = await db.appEvent.findFirstOrThrow({ where: { userId: a.id, source: "client" }, orderBy: { createdAt: "desc" } });
     const text = JSON.stringify(event); assert.doesNotMatch(text, /fixture-private-name|Fixture Private|HRV|private stack|userAgent/);
   });
+  await scenario("legacy fitness API never invents numeric race predictions", async () => {
+    const result = await json("/api/fitness", a);
+    assert.equal(Object.prototype.hasOwnProperty.call(result, "predictions"), false);
+  });
 }
 main().catch(error => { results.push({ name: "acceptance setup", status: "FAIL", detail: String(error) }); }).finally(async () => {
   await db.user.deleteMany({ where: { id: { in: createdIds } } });

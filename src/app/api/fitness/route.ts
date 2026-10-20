@@ -5,7 +5,7 @@ import { computeJMetrics } from "@/lib/j-metrics";
 import { groupActivityEvidence,publicActivityReconciliation } from "@/lib/activity-evidence";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { addDaysKey, dateKey, localDate } from "@/lib/dates";
-import { computePmc, executionScore, predictRace } from "@/lib/fitness";
+import { computePmc, executionScore } from "@/lib/fitness";
 
 // Owner-only JMetrics and legacy estimates retained for history compatibility.
 export async function GET() {
@@ -82,27 +82,12 @@ export async function GET() {
     })),
   );
 
-  // Race predictions for every distance (and flag the goal distance)
-  const predictions = ["sprint", "olympic", "half", "full"]
-    .map((d) =>
-      predictRace(
-        {
-          ftp,
-          runPaceBase: profile?.runPaceBase ?? null,
-          swimPaceBase: profile?.swimPaceBase ?? null,
-        },
-        d,
-      ),
-    )
-    .filter(Boolean);
-
   return NextResponse.json({
     pmc,
     jMetrics,
     activityReconciliation:publicActivityReconciliation(completed,activityDecisions),
     execution,
     executionUnavailableReason,
-    predictions,
     goalDistance: profile?.goal ?? null,
     physiology: { ftp, lthr },
   });
