@@ -28,7 +28,9 @@
       "review/account-smoke-test": false,
       "fix/coach-onboarding-reconciled": false,
       "fix/jmm-experience-integration": false,
-      "fix/live-coach-training-recovery-20261014": false
+      "fix/live-coach-training-recovery-20261014": false,
+      "fix/jmm-p1-onboarding-diagnostics": false,
+      "feat/jmm-connectivity-smart-coach": false
     }
   }
 }
