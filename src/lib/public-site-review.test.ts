@@ -18,6 +18,9 @@ test("public consultation routes are reachable from navigation and indexed", () 
 test("public inquiry does not mistake SMTP acceptance for verified inbox delivery", () => {
   const api = read("src/app/api/public-inquiry/route.ts");
   assert.ok(api.includes("receipt.accepted"));
+  assert.ok(api.includes("supportTelegramConfigured()"));
+  assert.ok(api.includes("receipt !== null"));
+  assert.ok(api.includes('channel: "telegram"'));
   assert.ok(api.includes("does not confirm it has reached the inbox"));
   assert.ok(api.includes("INQUIRY_MAX_BYTES"));
   assert.ok(api.includes("same") === false || api.includes('req.headers.get("origin")'));
