@@ -6,8 +6,8 @@
  * crash such as the reported Safari one can be traced to a real cause instead of being guessed at.
  *
  * Privacy rules, enforced here and tested in client-error-diagnostics.test.ts:
- *  - Nothing is sent anywhere. The text is built in the browser and shown on screen; the athlete chooses
- *    whether to copy and share it.
+ *  - Detailed text stays in the browser; automatic reporting uses only a closed error category and route
+ *    shape (client-error-payload.ts). The athlete chooses whether to copy and share details.
  *  - The route keeps only the path shape: no query string, no fragment, and anything that looks like an
  *    id, token or e-mail address is replaced by ":id".
  *  - The message and the stack have URLs reduced to a same-site path (query and host removed), and e-mail
@@ -257,7 +257,7 @@ export function crashScreenCopy(es: boolean, kind: ErrorKind) {
         reload: "Recargar la página",
         home: "Ir a Hoy",
         details: "Detalles técnicos",
-        detailsHint: "Texto técnico sin identificadores ni claves. Revísalo antes de compartirlo con soporte.",
+        detailsHint: "Los filtros pueden omitir datos personales dentro del texto. Revisa y elimina esos datos antes de compartirlo.",
         copy: "Copiar detalles",
         copied: "Copiado",
         copyFailed: "No se pudo copiar. Selecciona el texto y cópialo manualmente.",
@@ -271,7 +271,7 @@ export function crashScreenCopy(es: boolean, kind: ErrorKind) {
         reload: "Reload the page",
         home: "Go to Today",
         details: "Technical details",
-        detailsHint: "Technical text with identifiers and keys removed. Review it before sharing it with support.",
+        detailsHint: "Filters may miss personal information inside error text. Review and remove it before sharing with support.",
         copy: "Copy details",
         copied: "Copied",
         copyFailed: "Couldn't copy. Select the text and copy it manually.",

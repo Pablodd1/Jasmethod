@@ -11,9 +11,12 @@ import { buildClientDiagnostics, crashScreenCopy, formatDiagnostics, type Client
  *  - once, a sanitized report to the existing owner-side intake (/api/telemetry/error), the same
  *    destination ErrorTelemetry already uses. Without this the boundary would swallow errors that
  *    previously reached that ledger.
- * Only sanitized fields are shown or sent: never error.message or error.stack as received.
+ * Automatic reporting sends only an error category and static route shape. Filtered details stay local;
+ * arbitrary prose cannot be reliably redacted, so the athlete is asked to review it before sharing.
  * Inline styles only: this also renders from global-error.tsx, where the site stylesheet is not loaded.
  */
+
+import { clientErrorPayload } from "@/lib/client-error-payload";
 
 type CrashError = Error & { digest?: string };
 interface Collected { diagnostics: ClientDiagnostics; es: boolean }
@@ -36,7 +39,7 @@ function collect(error: unknown): Collected {
       online: nav.onLine,
       standalone,
     }),
-    es: (nav.language || "").toLowerCase().startsWith("es"),
+    es: (document.documentElement.lang || nav.language || "").toLowerCase().startsWith("es"),
   };
 }
 
@@ -47,11 +50,7 @@ function reportCrash(d: ClientDiagnostics) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       keepalive: true,
-      body: JSON.stringify({
-        message: `Render crash (${d.kind}): ${d.errorName}${d.message ? `: ${d.message}` : ""}`,
-        stack: d.stack.join("\n"),
-        route: d.route,
-      }),
+      body: JSON.stringify(clientErrorPayload({ name: d.errorName, message: d.kind === "hydration" ? "Hydration failed" : d.kind === "chunk-load" ? "Loading chunk asset failed" : "" }, d.route)),
     }).catch(() => {});
   } catch { /* reporting must never break the crash screen */ }
 }
@@ -62,6 +61,7 @@ const primary = { ...button, background: "#0369a1", borderColor: "#0369a1", colo
 export function CrashScreen({ error, reset, bare = false }: { error: CrashError; reset: () => void; bare?: boolean }) {
   const [info, setInfo] = useState<Collected | null>(null);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+  const reported = useRef<CrashError | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export function CrashScreen({ error, reset, bare = false }: { error: CrashError;
     try {
       const next = collect(error);
       setInfo(next);
-      reportCrash(next.diagnostics);
+      if (reported.current !== error) { reported.current = error; reportCrash(next.diagnostics); }
     } catch { /* The screen works without diagnostics. */ }
   }, [error]);
 
