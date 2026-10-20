@@ -23,7 +23,7 @@ export async function ensureStarterWorkout(userId:string,actorId=userId) {
     const elapsed=firstStarter ? Math.round((Date.parse(day.key)-Date.parse(dateKey(firstStarter.date,user.timezone)))/86400000) : 0;
     const cycleDay=((elapsed%7)+7)%7;
     const level=user.profile?.experience;
-    const rest=level === "pro" ? false : level === "amateur" || level === "advanced" ? cycleDay===6 : cycleDay===2 || cycleDay===6;
+    const rest=setup.setup?.restPreference === "no_fixed_rest" || level === "pro" ? false : level === "amateur" || level === "advanced" ? cycleDay===6 : cycleDay===2 || cycleDay===6;
     const available=!setup.setup?.trainingDays.length || setup.setup.trainingDays.includes(new Date(`${day.key}T12:00Z`).getUTCDay());
     const recoveryDay=rest || !available;
     const base=recoveryDay ? {...starterSession(user.profile?.goal,recent?.sport),title:"Starter recovery day",sport:"recovery",durationMin:0,description:"Planned recovery: no compulsory workout or catch-up work. Prioritize sleep, familiar meals and recovery. Optional gentle movement is reviewed separately after today's check-in; a planned rest day is not a completed-rest report."} : starterSession(user.profile?.goal,recent?.sport);
