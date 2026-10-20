@@ -210,6 +210,33 @@ async function main() {
     const result = await json("/api/fitness", a);
     assert.equal(Object.prototype.hasOwnProperty.call(result, "predictions"), false);
   });
+  await scenario("current-plan selectors exclude retired suggestions before limits and retain reported history", async () => {
+    await db.trainingPlan.updateMany({ where: { userId: a.id }, data: { status: "archived" } });
+    const old = await db.trainingPlan.create({ data: { userId: a.id, name: "Synthetic replaced plan", distance: "cycle", level: "amateur", weeks: 2, startDate: day, status: "active", createdAt: new Date(Date.now() - 1000) } });
+    const current = await db.trainingPlan.create({ data: { userId: a.id, name: "Synthetic current plan", distance: "cycle", level: "amateur", weeks: 2, startDate: day, status: "active", createdAt: new Date(Date.now() + 1000) } });
+    const [oldDay, currentDay] = await Promise.all([old, current].map(plan => db.planDay.create({ data: { planId: plan.id, date: day, week: 1, dayOfWeek: day.getUTCDay() } })));
+    const pending = { userId: a.id, date: day, sport: "bike", type: "endurance", title: "Synthetic pending choice", durationMin: 30, planned: true, completed: false, source: "plan" };
+    await db.workout.createMany({ data: Array.from({ length: 85 }, () => ({ ...pending, planDayId: oldDay.id })) });
+    const selected = await db.workout.create({ data: { ...pending, planDayId: currentDay.id } });
+    const reported = await db.workout.create({ data: { ...pending, planDayId: oldDay.id, calories: 123 } });
+    const retired = await db.workout.create({ data: { ...pending, source: "superseded-starter", planned: false } });
+    const foreign = await db.workout.create({ data: { ...pending, userId: b.id } });
+    const before = await db.workout.count({ where: { userId: a.id } });
+    const feedResponse = await request("/api/workouts?days=14", a);
+    assert.match(feedResponse.headers.get("cache-control") || "", /no-store/);
+    const feed = await feedResponse.json();
+    assert.equal(feed.workouts.some((w: any) => w.id === selected.id), true);
+    assert.equal(feed.workouts.some((w: any) => w.id === reported.id), true);
+    assert.equal(feed.workouts.some((w: any) => w.planDayId === oldDay.id && w.id !== reported.id), false);
+    assert.equal(feed.workouts.some((w: any) => [retired.id, foreign.id].includes(w.id)), false);
+    const chat = await json("/api/assistant", a);
+    assert.equal(chat.sessions.some((w: any) => w.id === selected.id), true, "85 replaced rows must not crowd out the active plan");
+    assert.equal(chat.sessions.some((w: any) => w.id === reported.id), true, "Calorie-only actual evidence is retained");
+    assert.equal(chat.sessions.filter((w: any) => w.title === pending.title).length, 2);
+    assert.equal(chat.sessions.some((w: any) => [retired.id, foreign.id].includes(w.id)), false);
+    assert.equal(await db.workout.count({ where: { userId: a.id } }), before, "Visibility never deletes history");
+    await request(`/api/workouts?athleteId=${a.id}`, b, { status: 403 });
+  });
 }
 main().catch(error => { results.push({ name: "acceptance setup", status: "FAIL", detail: String(error) }); }).finally(async () => {
   await db.user.deleteMany({ where: { id: { in: createdIds } } });

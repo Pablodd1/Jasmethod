@@ -19,11 +19,22 @@ async function main() {
       daily.language = lang; daily.workoutCard = card;
       daily.session = { ...daily.session, id: card.session.id, sourceRevision: card.session.revision, verdict: 'ready', totalMinutes: card.session.durationMin };
       let saves = 0;
+      const feedbackWrites = [];
       page.on('pageerror', e => errors.push(e.message));
       await page.route('**/api/**', async route => {
         const path = new URL(route.request().url()).pathname;
         if (path === '/api/auth/me') return route.fulfill({ json: { user: { id: card.session.athleteId, name: 'Synthetic athlete', email: 'fixture@example.invalid', role: 'athlete', timezone: 'UTC', language: lang, onboarded: true, profile: { goal: 'run-only' } } } });
         if (path === '/api/v1/training/today') return route.fulfill({ json: daily });
+        if (path.endsWith('/completion')) {
+          const body = route.request().postDataJSON();
+          assert.equal(body.expectedRevision, daily.session.sourceRevision, 'Corrections use the refreshed revision');
+          feedbackWrites.push(body);
+          daily.completion = { ...daily.completion, submittedAt: new Date().toISOString(), actual: { ...body.actual, actualFueling: body.actual.actualFueling ? { schemaVersion: 1, ...body.actual.actualFueling } : null } };
+          const revision = (feedbackWrites.length === 1 ? 'a' : 'b').repeat(64);
+          daily.session = { ...daily.session, revision: daily.session.revision + 1, sourceRevision: revision };
+          daily.workoutCard.session = { ...daily.workoutCard.session, revision };
+          return route.fulfill({ json: { ok: true } });
+        }
         if (path === '/api/workout/history') return route.fulfill({ json: { history: [], approval: { approved: false, reason: 'never_approved' }, canRestoreLatestStepEdit: false } });
         if (path === '/api/workout/next-suggestion') return route.fulfill({ json: { suggestion: null, reason: 'pilot_disabled' } });
         if (path === '/api/workout/interval-edit') {
@@ -54,6 +65,24 @@ async function main() {
       await editor.getByRole('button', { name: lang === 'es' ? 'Guardar cambio' : 'Save change' }).click();
       await page.waitForFunction(() => !document.querySelector('[aria-label="Change preview"], [aria-label="Vista previa del cambio"]'));
       assert.equal(saves, 1);
+      const feedbackHeading = lang === 'es' ? 'Cuéntanos cómo fue' : 'Close the loop';
+      const outcomeLabel = lang === 'es' ? /^¿Qué ocurrió/ : /^What happened/;
+      const effortLabel = lang === 'es' ? /^Esfuerzo/ : /^Session effort/;
+      const saveFeedback = lang === 'es' ? 'Guardar comentario del entrenamiento' : 'Save workout feedback';
+      for (const rating of ['0', '3']) {
+        const outcome = page.getByLabel(outcomeLabel);
+        if (!await outcome.isVisible()) await page.getByText(feedbackHeading, { exact: true }).click();
+        await outcome.selectOption('completed');
+        await page.getByLabel(effortLabel).fill(rating);
+        await page.getByRole('button', { name: saveFeedback, exact: true }).click();
+        await page.getByRole('button', { name: saveFeedback, exact: true }).waitFor({ state: 'hidden' });
+        await page.getByText(feedbackHeading, { exact: true }).waitFor();
+        if (!await page.getByLabel(outcomeLabel).isVisible()) await page.getByText(feedbackHeading, { exact: true }).click();
+        assert.equal(await page.getByLabel(effortLabel).inputValue(), rating, 'Saved effort survives authoritative refresh');
+      }
+      assert.equal(feedbackWrites.length, 2);
+      assert.equal(feedbackWrites[0].actual.sessionRpe, 0);
+      assert.equal(feedbackWrites[1].expectedRevision, 'a'.repeat(64));
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'No horizontal overflow');
       await page.screenshot({ path: `${dir}/training-${lang}-${width}.png` });
       await page.goto(`${base}/connectors`);
