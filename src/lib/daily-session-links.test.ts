@@ -11,6 +11,7 @@ import { canonicalBlocks, planningDensity } from "../components/daily-training/t
 import { readActualFueling } from "./actual-fueling";
 import { readSessionObservations } from './session-observations';
 import * as visibility from './calendar-workouts';
+import * as disclosure from './activity-disclosure';
 
 function fixture(dateLocal: string, timezone = "America/New_York") {
   const workout = { id: "synthetic-session", userId: "synthetic-athlete", date: localDate(dateLocal, timezone), sport: "bike", title: "Synthetic ride", durationMin: 30, startTime: null, planned: true, completed: false };
@@ -22,6 +23,7 @@ function fixture(dateLocal: string, timezone = "America/New_York") {
   class ApiError extends Error { constructor(public status: number) { super("Unavailable"); } }
   class NextResponse extends Response { static json(data: unknown, init?: ResponseInit) { return new Response(JSON.stringify(data), { ...init, headers: { "Content-Type": "application/json", ...init?.headers } }); } }
   const deps: Record<string, any> = {
+    "@/lib/activity-disclosure": disclosure,
     "@/lib/universal-workout-card-server": {buildUniversalWorkoutCard},
     "@/lib/actual-fueling": {readActualFueling},
     "@/lib/session-observations": {readSessionObservations},
@@ -30,7 +32,7 @@ function fixture(dateLocal: string, timezone = "America/New_York") {
     "@/lib/dates": { dayBounds, dateKey },
     "@/lib/calendar-workouts": visibility,
     "@/components/daily-training/training-contract": { canonicalBlocks, planningDensity },
-    "@/lib/access": { trainingAccess: async () => { if (!state.authenticated) throw new ApiError(401); return { athlete: { id: workout.userId, timezone, language: "en", profile: {} } }; }, errorResponse: (e: ApiError) => Response.json({ error: e.message }, { status: e.status || 500 }) },
+    "@/lib/access": { ApiError, trainingAccess: async () => { if (!state.authenticated) throw new ApiError(401); return { actor: { id: workout.userId, role: "athlete" }, athlete: { id: workout.userId, timezone, language: "en", profile: {} } }; }, errorResponse: (e: ApiError) => Response.json({ error: e.message }, { status: e.status || 500 }) },
     "@/lib/db": { prisma: {
       trainingPlan: { findFirst: async () => ({id:"current"}) },
       workout: {
