@@ -94,6 +94,21 @@ test("time budget uses the remaining plan plus actual work and blocks unknown ef
   assert.equal(candidate({ recentActivity: [{ ...actual, date: new Date("2026-10-20T00:00:00Z"), rpe: 9 }] }).eligible, false);
 });
 
+test("short review reuses the full review's incomplete-execution rule for earlier recent activity", () => {
+  const earlier = workout({ id:"earlier", source:"manual", planned:false, completed:true,
+    date:new Date("2026-10-20T12:00:00Z"), createdAt:new Date("2026-10-20T13:00:00Z"),
+    feedbackAt:new Date("2026-10-20T13:00:00Z"), feedbackStatus:"completed", actualDurationMin:120, rpe:3 });
+  assert.equal(candidate({recentActivity:[earlier]}).eligible,true);
+  for (const patch of [{rpe:null},{actualDurationMin:null},{feedbackStatus:"unknown"},{feedbackStatus:null}]) {
+    const result=candidate({recentActivity:[{...earlier,...patch}]});
+    assert.equal(result.eligible,false,JSON.stringify(patch));assert.match(result.reason,/recent actual minutes, effort and outcome/);
+  }
+  assert.equal(candidate({recentActivity:[{...earlier,feedbackStatus:"skipped",actualDurationMin:null,rpe:null}]}).eligible,true,"a skipped report does not invent actual load");
+  assert.equal(candidate({recentActivity:[{...earlier,rpe:0}]}).eligible,true,"reported zero effort remains explicit");
+  const input=records({reportedActivity:[{...earlier,rpe:null}]});
+  assert.equal(effectiveSessionFromRecords(input).existingReview.eligible,false,"the effective prescription exposes the same hold before saving a short review");
+});
+
 test("confirmation requires explicit denials, strict flags, current local day and exact source snapshot", () => {
   const c = candidate(), valid = answers(c);
   assert.ok(confirmedExistingReview(valid, c, "UTC", now));
