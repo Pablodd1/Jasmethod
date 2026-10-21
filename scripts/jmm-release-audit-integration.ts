@@ -210,6 +210,71 @@ async function main() {
     const result = await json("/api/fitness", a);
     assert.equal(Object.prototype.hasOwnProperty.call(result, "predictions"), false);
   });
+  await scenario("saved plan precedes check-in; scoped easy review preserves unknown answers, exact instructions and separate approval", async () => {
+    const owner = await actor("short-review"), saved = await fixture(owner);
+    await db.workout.update({ where: { id: saved.historical.id }, data: { source: "garmin", externalId: `garmin:synthetic-${owner.id}`, planned: false, rpe: null, feedbackStatus: null } });
+    await db.metricObservation.createMany({ data: [
+      { userId: owner.id, metricType: "sleep_hours", value: 8, unit: "h", source: "whoop", observedAt: new Date(), measurementMethod: "device_sync", qualityFlag: "ok" },
+      { userId: owner.id, metricType: "resting_hr", value: 50, unit: "bpm", source: "whoop", observedAt: new Date(), measurementMethod: "device_sync", qualityFlag: "ok" },
+    ] });
+    const count = await db.workout.count({ where: { userId: owner.id } });
+    const quickPlan = await json("/api/today?view=plan", owner);
+    assert.equal(quickPlan.kind, "saved_today_plan"); assert.equal(quickPlan.readOnly, true);
+    assert.deepEqual(quickPlan.sessions.map((s: any) => s.durationMin), [20, 30]);
+    assert.equal(await db.dailyCheckin.count({ where: { userId: owner.id } }), 0, "Viewing a plan creates no answers");
+    const inputs = await json("/api/checkin", owner);
+    assert.equal(inputs.inputContext.metrics.sleepHours.selected.value, 8);
+    assert.equal(inputs.inputContext.objectiveFields.sleepHours, false);
+    const actual = inputs.inputContext.completedWorkouts.find((w: any) => w.recordIds.includes(saved.historical.id));
+    assert.equal(actual.durationMinutes, 28); assert.equal(actual.questions.durationMinutes, false); assert.equal(actual.questions.rpe, true);
+    let today = await json("/api/today", owner), session = today.sessions.find((s: any) => s.id === saved.run.id);
+    assert.equal(session.verdict, "blocked"); assert.equal(session.existingReview.eligible, true);
+    const body = () => ({ mode: "review_existing", sessionId: session.id, expectedRevision: session.revision,
+      contextRevision: session.existingReview.contextRevision, noSymptoms: true, recoveryUnchanged: true, timeConfirmed: true, confirmed: true });
+    await request("/api/checkin", owner, { body: { ...body(), noSymptoms: "true" }, status: 400 });
+    const before = await db.workout.findUniqueOrThrow({ where: { id: saved.run.id } });
+    await json("/api/checkin", owner, { body: body() });
+    assert.deepEqual(await db.workout.findUniqueOrThrow({ where: { id: saved.run.id } }), before, "Short review never regenerates instructions");
+    const recorded = await db.dailyCheckin.findFirstOrThrow({ where: { userId: owner.id } });
+    const answers = JSON.parse(recorded.answers!);
+    for (const key of ["sleep", "soreness", "motivation", "energy", "stress"]) assert.equal(answers[key], null);
+    assert.equal(answers.availableMin, 50); assert.equal(JSON.parse(recorded.adaptation!).scoreAvailable, false);
+    today = await json("/api/today", owner); session = today.sessions.find((s: any) => s.id === saved.run.id);
+    assert.equal(session.verdict, "ready"); assert.equal(session.durationMin, 20);
+    assert.equal(today.sessions.find((s: any) => s.id === saved.bike.id).verdict, "blocked", "Short review is scoped to its selected session");
+    assert.equal((await json("/api/checkin", owner, { body: body() })).duplicate, true);
+    await request(`/api/workout/approve?sessionId=${session.id}&expectedRevision=${session.revision}`, owner, { method: "POST", status: 200 });
+    assert.equal((await json("/api/today", owner)).sessions.find((s: any) => s.id === saved.run.id).verdict, "ready", "Approval receipt does not revoke unchanged instructions");
+    const report = (await json("/api/checkin", owner)).previousSessions.find((w: any) => w.id === saved.historical.id);
+    await json("/api/plan", owner, { method: "PUT", body: { sessionId: report.id, expectedRevision: report.feedbackRevision,
+      feedbackStatus: "completed", actualDurationMin: 28, actualSport: "run", rpe: 9 } });
+    today = await json("/api/today", owner); session = today.sessions.find((s: any) => s.id === saved.run.id);
+    assert.notEqual(session.verdict, "ready", "Changed actual effort reaches the existing decision boundary");
+    assert.equal(session.existingReview.eligible, false, "Very hard actual work cannot be waived by a short review");
+    await request("/api/checkin", owner, { body: body(), status: 422 });
+    assert.equal(await db.workout.count({ where: { userId: owner.id } }), count, "Reads, review, approval and feedback never duplicate training");
+  });
+  await scenario("reset preserves a known symptom hold until a fresh full review, including a surviving saved prescription", async () => {
+    const owner = await actor("reset-known-hold");
+    const saved = await fixture(owner);
+    await json("/api/checkin", owner, { body: { ...validAnswers, urgentSymptoms: true } });
+    // A saved source can survive reset without originalPlan metadata. It must
+    // not evade the athlete's already reported same-day symptom restriction.
+    const source = prescription("run", 20);
+    await db.workout.update({ where: { id: saved.run.id }, data: { originalPlan: null, prescription: JSON.stringify(source),
+      title: source.title, type: source.type, intensity: source.intensity, durationMin: source.durationMin } });
+    await json("/api/checkin", owner, { method: "DELETE" });
+    const today = await json("/api/today", owner);
+    const session = today.sessions.find((row: any) => row.id === saved.run.id);
+    assert.notEqual(session.verdict, "ready"); assert.equal(session.existingReview.eligible, false);
+    await request("/api/checkin", owner, { body: { mode: "review_existing", sessionId: session.id,
+      expectedRevision: session.revision, contextRevision: session.existingReview.contextRevision,
+      noSymptoms: true, recoveryUnchanged: true, timeConfirmed: true, confirmed: true }, status: 422 });
+    assert.equal(await db.dailyCheckin.count({ where: { userId: owner.id } }), 0);
+    await json("/api/checkin", owner, { body: validAnswers });
+    const refreshed = await json("/api/today", owner);
+    assert.equal(refreshed.sessions.find((row: any) => row.id === saved.run.id).verdict, "ready");
+  });
   await scenario("current-plan selectors exclude retired suggestions before limits and retain reported history", async () => {
     await db.trainingPlan.updateMany({ where: { userId: a.id }, data: { status: "archived" } });
     const old = await db.trainingPlan.create({ data: { userId: a.id, name: "Synthetic replaced plan", distance: "cycle", level: "amateur", weeks: 2, startDate: day, status: "active", createdAt: new Date(Date.now() - 1000) } });

@@ -18,7 +18,7 @@ async function main(){
  const baseWorkout={userId:owner.id,sport:"bike",type:"endurance",completed:true,planned:false,feedbackStatus:"completed",feedbackAt:new Date(Date.now()-60000),actualSport:"bike",rpe:4,intensity:"z2"};
  const start=new Date(Math.max(day.start.getTime(),Date.now()-2*3600000));
  const provider=(name:string,source:string,minutes:number,offset:number,distanceKm:number|null)=>db.workout.create({data:{...baseWorkout,title:`Synthetic ${name}`,source,externalId:`${source}:${randomUUID()}`,date:new Date(start.getTime()+offset),durationMin:minutes,actualDurationMin:minutes,distanceKm}});
- const a=await provider("corroborated Garmin","garmin",40,0,20),b=await provider("corroborated Strava","strava",40,20000,20.02);
+ const a=await provider("corroborated Garmin","garmin",40,0,20),b=await provider("corroborated Coros","coros",40,20000,20.02);
  const c=await provider("ambiguous Garmin","garmin",30,3600000,15),d=await provider("ambiguous Whoop","whoop",20,3620000,null);
  const workout=await db.workout.create({data:{userId:owner.id,date:day.start,sport:"bike",title:"Synthetic pending easy ride",type:"endurance",durationMin:20,intensity:"z1",planned:true,completed:false,source:"plan",originalPlan:JSON.stringify({title:"Synthetic pending easy ride",sport:"bike",type:"endurance",durationMin:20,intensity:"z1"})}});
  const snapshots=await db.workout.findMany({where:{id:{in:[a.id,b.id,c.id,d.id]}},orderBy:{id:"asc"}});
@@ -56,7 +56,7 @@ async function main(){
  await db.workout.update({where:{id:d.id},data:{actualDurationMin:21}});review=await api("/api/activities/reconcile");assert.equal(review.unresolvedGroups,1);await api("/api/activities/reconcile",request,409);checks.push("Corrected provider evidence invalidates its old choice and rejects stale confirmation409");
  const fresh=review.pending[0];await api("/api/activities/reconcile",{kind:"different_sessions",ids:fresh.records.map((r:any)=>r.id),primaryId:null,revision:fresh.revision,confirmed:true});fitness=await api("/api/fitness");assert.equal(fitness.jMetrics.totalSessions,3);assert.equal(fitness.jMetrics.totalJStress,364);checks.push("Explicit separate-sessions decision retains each actual session and its own effort");
  assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:owner.id}})).weeklyHours,p.profile.weeklyHours);assert.equal((await db.workout.findUniqueOrThrow({where:{id:workout.id}})).completed,false);checks.push("No profile capacity increase or invented activity completion");
- const [e,f,g]=await Promise.all([provider("subset Garmin","garmin",30,5400000,null),provider("subset Strava","strava",31,5410000,null),provider("subset Whoop","whoop",20,5420000,null)]);
+ const [e,f,g]=await Promise.all([provider("subset Garmin","garmin",30,5400000,null),provider("subset Coros","coros",31,5410000,null),provider("subset Whoop","whoop",20,5420000,null)]);
  review=await api("/api/activities/reconcile");const triple=review.pending.find((p:any)=>p.records.some((r:any)=>r.id===e.id));assert.equal(triple.records.length,3);
  await api("/api/activities/reconcile",{kind:"same_session",ids:[e.id,f.id],primaryId:f.id,revision:triple.revision,confirmed:true});
  const subsetDecision=JSON.parse((await db.auditLog.findFirstOrThrow({where:{subjectId:owner.id,action:"activity.reconcile",entityId:f.id},orderBy:{createdAt:"desc"}})).after!);assert.deepEqual(subsetDecision.members.map((m:any)=>m.id).sort(),[e.id,f.id].sort());
@@ -75,6 +75,13 @@ async function main(){
  fitness=await api("/api/fitness");assert.equal(fitness.jMetrics.totalJStress,444); // original40min + separate30/21min + newest20min, each RPE4
  assert.deepEqual(await db.workout.findMany({where:{id:{in:tripleIds}},orderBy:{id:"asc"}}),tripleSnapshots);
  checks.push("Reopened three-source review accepts and actually applies subset AB, leaves C pending, then overlapping AC resolves the remainder using newest selected20min primary without touching source rows");
+ // Simulate an old stored record; this does not enable or call Strava ingestion.
+ const restricted=await provider("retained restricted Strava history","strava",25,6300000,12);
+ const restrictedSnapshot=await db.workout.findUniqueOrThrow({where:{id:restricted.id}});
+ fitness=await api("/api/fitness");assert.equal(fitness.jMetrics.totalJStress,null);assert.equal(fitness.jMetrics.derivedActivityPolicy.status,"insufficient");assert.equal(fitness.jMetrics.derivedActivityPolicy.restrictedRecords.strava,1);assert.equal(fitness.pmc,null);assert.equal(fitness.execution,null);assert.match(fitness.pmcUnavailableReason,/Strava-origin/);assert.match(fitness.executionUnavailableReason,/Strava-origin/);
+ checkin=await api("/api/checkin",answer);assert.equal(checkin.adaptation.verdict,"rest");assert.equal(checkin.adaptation.safetyStatus,"unknown");assert.equal(checkin.adaptation.durationFactor,0);assert.match(checkin.adaptation.message,/Strava-origin/);assert.deepEqual(checkin.executionFeedback.inputs,[]);
+ review=await api("/api/activities/reconcile");assert.equal(review.rawRecords,8);assert.deepEqual(await db.workout.findUniqueOrThrow({where:{id:restricted.id}}),restrictedSnapshot);assert.deepEqual(await db.workout.findMany({where:{id:{in:tripleIds}},orderBy:{id:"asc"}}),tripleSnapshots);
+ checks.push("Retained restricted history stays owner-readable and unchanged while load, execution, comparisons and new training remain unavailable; exclusion never becomes zero work or extra capacity");
  mkdirSync(".local/athlete-qa",{recursive:true});writeFileSync(".local/athlete-qa/activity-reconciliation-report.json",JSON.stringify({status:"passed",synthetic:true,checks},null,2));console.log("ACTIVITY_RECONCILIATION_ACCEPTANCE_PASSED",JSON.stringify({checks:checks.length}));
 }
 main().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{await db.user.deleteMany({where:{id:{in:ids}}});await db.$disconnect();});

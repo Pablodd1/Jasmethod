@@ -29,6 +29,8 @@ jobs:
       PORT: 3220
       NEXT_TELEMETRY_DISABLED: "1"
       ENABLE_INTERVALS_CONNECTOR: "false"
+      # Synthetic integration fixtures only; production defaults remain off.
+      ENABLE_STRAVA_CONNECTOR: "true"
       ENABLE_AUTOMATED_DELIVERY: "false"
       # Disposable localhost database only. Production collection remains opt-in/off.
       ENABLE_ACTIVITY_STREAMS: "1"
@@ -151,6 +153,11 @@ jobs:
           JMM_UI_TEST_BASE: http://127.0.0.1:3220
         run: node --import tsx scripts/jmm-live-repair-browser.cjs
 
+      - name: EN and ES saved Today and check-in mobile acceptance
+        env:
+          JMM_UI_TEST_BASE: http://127.0.0.1:3220
+        run: node --import tsx scripts/jmm-daily-flow-browser.cjs
+
       - name: J Metrics authenticated data and rest-day acceptance
         run: npx tsx scripts/jmm-metrics-integration.ts
 
@@ -196,6 +203,9 @@ jobs:
             .local/jmm-conversation-integration/report.json
             .local/jmm-live-repair-browser/report.json
             .local/jmm-live-repair-browser/*.png
+            .local/jmm-daily-flow-browser/report.json
+            .local/jmm-daily-flow-browser/reproduced-stale-card-report.json
+            .local/jmm-daily-flow-browser/*.png
             .local/jmm-metrics-integration/report.json
             .local/jmm-recovery-integration/report.json
             .local/jmm-race-scenario-integration/report.json

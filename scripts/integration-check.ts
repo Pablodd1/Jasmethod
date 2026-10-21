@@ -7,6 +7,7 @@ import { Decoder, Stream } from "@garmin/fitsdk";
 import { dayBounds, addDaysKey, localDate } from "../src/lib/dates";
 import { workoutRevision } from "../src/lib/workout-update";
 import { TRAINING_PROTOCOLS } from "../src/lib/protocols";
+import { stravaConnectorEnabled } from "../src/lib/capabilities";
 const db = new PrismaClient(),
   base = process.env.TEST_BASE_URL || "http://localhost:3000";
 const database = new URL(process.env.DATABASE_URL || "");
@@ -379,7 +380,13 @@ async function main() {
     undefined,
     307,
   );
-  assert.ok(oauth.response.headers.get("location")?.includes("invalid_state"));
+  assert.ok(oauth.response.headers.get("location")?.includes(stravaConnectorEnabled() ? "invalid_state" : "provider_disabled"));
+  if (!stravaConnectorEnabled()) {
+    const paused = await request("/api/connectors/strava/authorize", a.cookie, "GET", undefined, 503);
+    assert.equal(paused.data.code, "provider_disabled");
+    await request("/api/connectors/sync", a.cookie, "POST", { provider: "strava" }, 503);
+    assert.equal(await db.connector.count({where:{userId:a.id,provider:"strava",status:"connected"}}),1,"pausing new imports preserves the saved connection");
+  }
   await request(
     "/api/cron/sync",
     "",
