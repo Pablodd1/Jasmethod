@@ -17,6 +17,7 @@ import * as doubleDay from "./double-day";
 import * as anchors from "./anchor-evidence";
 import * as cycleEvents from "./cycle-events";
 import * as cycleReview from "./cycle-review";
+import * as calendarWorkouts from "./calendar-workouts";
 function fixture(timezone="UTC") {
   const today=dates.dateKey(new Date(),timezone);
   const profile={goal:"run-only",experience:"beginner",weeklyHours:3,trainingWindow:"any"};
@@ -34,6 +35,7 @@ function fixture(timezone="UTC") {
     "next/server":{NextResponse:Response},"@/lib/profile-service":{profileRevision:(p:any)=>JSON.stringify(p)},"@/lib/planning-setup-store":{readPlanningSetup:async()=>({setup,revision:"setup-v1"})},
     "@/lib/access":{ApiError,trainingAccess:async()=>({athlete:{id:"athlete",timezone,profile},actor:{id:"athlete"}}),errorResponse:(error:any)=>Response.json({error:error.message},{status:error.status??500})},
     "@/lib/db":{prisma:{...tx,race:{findMany:async()=>state.races},workout:{...tx.workout,findMany:async()=>state.activity},$transaction:async(fn:any)=>{if(state.transactionConflict)throw {code:"P2034"};return fn(tx)}}}};
+  deps["@/lib/calendar-workouts"]=calendarWorkouts;
   const source=ts.transpileModule(fs.readFileSync("src/app/api/plan/generate/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const output:any={exports:{}};
   vm.runInNewContext(source,{module:output,exports:output.exports,require:(name:string)=>{if(name in deps)return deps[name];throw Error(`Unmocked ${name}`)},Response,Request,console:{error:()=>{}}});

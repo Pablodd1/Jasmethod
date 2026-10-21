@@ -7,6 +7,12 @@ const retiredSources = ['superseded-plan','superseded-starter','superseded-start
 export function hasWorkoutReport(workout:Record<string,any>) {
  return workout.completed===true||reportFields.some(key=>workout[key]!=null);
 }
+/** Only untouched suggestions may be retired. Keep this database predicate in
+ * lockstep with hasWorkoutReport so partial reports and zero-valued actuals
+ * retain their original provenance when a cycle is replaced. */
+export function unreportedWorkoutWhere():Prisma.WorkoutWhereInput {
+ return {completed:false,...Object.fromEntries(reportFields.map(field=>[field,null]))};
+}
 export function isCurrentWorkout(workout:{userId?:string;source?:string|null;planDay?:{plan?:{id:string;status:string;userId:string}}|null;[key:string]:any},ownerId:string,activePlanId:string|null) {
  if(workout.userId!==ownerId)return false;
  if(retiredSources.includes(workout.source||''))return false;

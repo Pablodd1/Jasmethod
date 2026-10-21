@@ -401,6 +401,9 @@ async function main() {
     undefined,
     process.env.CRON_SECRET ? 401 : 503,
   );
+  const reportedBeforeReplacement=await db.workout.findUniqueOrThrow({where:{id:w.id}});
+  assert.equal(reportedBeforeReplacement.feedbackStatus,"partial");
+  assert.equal(reportedBeforeReplacement.completed,false);
   await reviewedPlan(`/api/plan/generate?athleteId=${a.id}`, admin.cookie, {
     distance: "olympic",
     weeks: 4,
@@ -410,9 +413,10 @@ async function main() {
     await db.trainingPlan.count({ where: { userId: a.id, status: "active" } }),
     1,
   );
-  assert.ok(
-    await db.workout.findUnique({ where: { id: w.id } }),
-    "Completed history survives plan replacement",
+  assert.deepEqual(
+    await db.workout.findUniqueOrThrow({ where: { id: w.id } }),
+    reportedBeforeReplacement,
+    "Partial reported history and original provenance survive plan replacement unchanged",
   );
   const overview = (await request(`/api/admin/athletes/${a.id}`, admin.cookie))
     .data;

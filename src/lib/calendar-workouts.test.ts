@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {calendarWorkoutView,currentOrReportedWorkoutWhere} from './calendar-workouts';
+import {calendarWorkoutView,currentOrReportedWorkoutWhere,hasWorkoutReport,unreportedWorkoutWhere} from './calendar-workouts';
 import {activityFingerprint,type ActivityDecision} from './activity-evidence';
 const row=(id:string,extra:any={})=>({id,userId:'owner',date:new Date('2026-10-19T12:00Z'),sport:'run',title:'Synthetic run',source:'manual',planned:true,completed:false,durationMin:30,...extra});
 const plan=(id:string,status='active')=>({plan:{id,status,userId:'owner'}});
@@ -17,6 +17,16 @@ function matches(row:any,where:any):boolean {
   return row[key]===value;
  });
 }
+test('retirement predicate preserves every report or source field including zero-valued actuals',()=>{
+ const predicate=unreportedWorkoutWhere();
+ const untouched=row('untouched');assert.equal(matches(untouched,predicate),true);assert.equal(hasWorkoutReport(untouched),false);
+ for(const key of Object.keys(predicate)) {
+  const reported={...untouched,[key]:key==='completed'?true:0};
+  assert.equal(hasWorkoutReport(reported),true,key);
+  assert.equal(matches(reported,predicate),false,key);
+ }
+});
+
 test('database visibility matches calendar before limiting; old report and source evidence remain selectable',()=>{
  const rows=[...Array.from({length:100},(_,i)=>row(`old-${i}`,{planDay:plan('old','archived')})),row('current1',{planDay:plan('current')}),row('current2',{planDay:plan('current')}),row('other-active',{planDay:plan('older-active')}),row('starter',{source:'superseded-starter'}),row('actual-old',{planDay:plan('old','archived'),actualDurationMin:0}),row('energy-old',{planDay:plan('old','archived'),calories:0}),row('provider-old',{planDay:plan('old','archived'),externalId:'source-record'}),row('unknown-old',{planDay:plan('old','archived'),feedbackStatus:'unknown'}),row('foreign',{userId:'someone-else',completed:true}),row('standalone',{source:null})];
  const where=currentOrReportedWorkoutWhere('owner','current');
