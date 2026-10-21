@@ -18,11 +18,11 @@ import * as anchors from "./anchor-evidence";
 import * as cycleEvents from "./cycle-events";
 import * as cycleReview from "./cycle-review";
 import * as calendarWorkouts from "./calendar-workouts";
-function fixture(timezone="UTC") {
+function fixture(timezone="UTC",actorId="athlete") {
   const today=dates.dateKey(new Date(),timezone);
   const profile={goal:"run-only",experience:"beginner",weeklyHours:3,trainingWindow:"any"};
   const setup=setupHelpers.parsePlanningSetup({adultConfirmed:true,profileConfirmed:true,goalDescription:"Comfortable running",baselineWeeklyMinutes:120,baselineObservedAt:today,interruptions:"none",restrictions:"none",qualifiedReview:"none_needed",trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:45,equipmentAccess:"Running shoes and a path",planWeeks:12},new Date(),timezone);
-  const state:any={plans:[],activity:[],races:[],created:[],superseded:[],audits:[],txActivity:null,txRaces:null,transactionConflict:false};
+  const state:any={plans:[],activity:[],races:[],created:[],superseded:[],audits:[],txActivity:null,txRaces:null,txPlans:null,planReads:[],transactionConflict:false};
   class ApiError extends Error {constructor(message:string,public status=400){super(message)}}
   const tx={
     race:{findMany:async()=>state.txRaces??state.races},
@@ -30,11 +30,11 @@ function fixture(timezone="UTC") {
     workout:{findMany:async()=>state.txActivity??state.activity,updateMany:async(query:any)=>{state.superseded.push(query);return{count:0}}},
     benchmarkTest:{findMany:async()=>[]},
     auditLog:{findMany:async()=>[],create:async({data}:any)=>{state.audits.push(data);return data}},
-    trainingPlan:{findMany:async()=>state.plans,updateMany:async()=>({count:state.plans.length}),create:async({data}:any)=>{state.created.push(data);state.plans=[{id:"saved-cycle"}];return {...data,id:"saved-cycle",days:data.days.create.map((day:any)=>({...day,sessions:day.sessions.create}))}}}};
+    trainingPlan:{findMany:async(query:any)=>{assert.equal(query.where.userId,"athlete");state.planReads.push(query);return state.txPlans??state.plans;},updateMany:async()=>({count:state.plans.length}),create:async({data}:any)=>{state.created.push(data);state.plans=[{id:"saved-cycle",easyPct:data.easyPct}];return {...data,id:"saved-cycle",days:data.days.create.map((day:any)=>({...day,sessions:day.sessions.create}))}}}};
   const deps:Record<string,any>={"@/lib/activity-evidence":activityEvidence,"@/lib/activity-reconciliation":{readActivityDecisions:(id:string,db:any)=>{assert.equal(id,"athlete");return readActivityDecisions(id,db||{auditLog:tx.auditLog} as any);}},"@/lib/training-cycle":cycle,"@/lib/cycle-events":cycleEvents,"@/lib/cycle-review":cycleReview,"@/lib/planning-bounds":bounds,"@/lib/planning-setup":setupHelpers,"@/lib/planning-target":target,"@/lib/dates":dates,"@/lib/science":science,"@/lib/adaptive":adaptive,"@/lib/double-day":doubleDay,"@/lib/anchor-evidence":anchors,"node:crypto":crypto,
     "next/server":{NextResponse:Response},"@/lib/profile-service":{profileRevision:(p:any)=>JSON.stringify(p)},"@/lib/planning-setup-store":{readPlanningSetup:async()=>({setup,revision:"setup-v1"})},
-    "@/lib/access":{ApiError,trainingAccess:async()=>({athlete:{id:"athlete",timezone,profile},actor:{id:"athlete"}}),errorResponse:(error:any)=>Response.json({error:error.message},{status:error.status??500})},
-    "@/lib/db":{prisma:{...tx,race:{findMany:async()=>state.races},workout:{...tx.workout,findMany:async()=>state.activity},$transaction:async(fn:any)=>{if(state.transactionConflict)throw {code:"P2034"};return fn(tx)}}}};
+    "@/lib/access":{ApiError,trainingAccess:async()=>({athlete:{id:"athlete",timezone,profile},actor:{id:actorId}}),errorResponse:(error:any)=>Response.json({error:error.message},{status:error.status??500})},
+    "@/lib/db":{prisma:{...tx,trainingPlan:{...tx.trainingPlan,findMany:async(query:any)=>{assert.equal(query.where.userId,"athlete");state.planReads.push(query);return state.plans;}},race:{findMany:async()=>state.races},workout:{...tx.workout,findMany:async()=>state.activity},$transaction:async(fn:any)=>{if(state.transactionConflict)throw {code:"P2034"};return fn(tx)}}}};
   deps["@/lib/calendar-workouts"]=calendarWorkouts;
   const source=ts.transpileModule(fs.readFileSync("src/app/api/plan/generate/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const output:any={exports:{}};
@@ -49,6 +49,28 @@ test("preview makes no writes; confirmation persists structured cycle and repeat
   assert.ok(rows.length>0);for(const row of rows){const p=JSON.parse(row.prescription);assert.equal(p.planningStatus,"provisional");assert.ok(p.steps.length);assert.equal(JSON.parse(row.originalPlan).cycleVersion,cycle.TRAINING_CYCLE_VERSION);assert.equal(row.completed,false)}
   assert.equal(JSON.parse(state.audits[0].after).cycle.baseline.source,"athlete_reported");
   assert.equal((await run({preview:false,previewToken:draft.previewToken})).status,409);assert.equal(state.created.length,1);
+});
+
+test("easy-training preference changes invalidate the actual route preview before or during its transaction",async()=>{
+  for(const duringTransaction of [false,true]) {
+    const {state,run}=fixture();state.plans=[{id:"existing-cycle",easyPct:70}];
+    const draft=await(await run({easyPct:80})).json();assert.equal(state.created.length,0);
+    if(duringTransaction)state.txPlans=[{id:"existing-cycle",easyPct:75}];else state.plans[0].easyPct=75;
+    const response=await run({preview:false,easyPct:80,previewToken:draft.previewToken});
+    assert.equal(response.status,409);assert.equal(state.created.length,0);assert.equal(state.audits.length,0);assert.equal(state.superseded.length,0);
+    assert.ok(state.planReads.every((query:any)=>query.select.id===true&&query.select.easyPct===true),"both current and transactional reads bind the preference");
+  }
+});
+
+test("actual confirmed plan audit preserves actor, athlete, old preference and saved preference/revision identity",async()=>{
+  for(const actorId of ["athlete","assigned-coach"]) {
+    const {state,run}=fixture("UTC",actorId);state.plans=[{id:"existing-cycle",easyPct:65}];
+    const draft=await(await run({easyPct:80})).json();const response=await run({preview:false,easyPct:80,previewToken:draft.previewToken});assert.equal(response.status,200);
+    const audit=state.audits.find((row:any)=>row.action==="plan.generate");assert.equal(audit.actorId,actorId);assert.equal(audit.subjectId,"athlete");assert.equal(audit.entityId,"saved-cycle");
+    assert.deepEqual(JSON.parse(audit.before),{activePlans:[{id:"existing-cycle",easyPct:65}]});
+    const after=JSON.parse(audit.after);assert.equal(after.planId,"saved-cycle");assert.equal(after.easyPct,80);assert.equal(after.previewToken,draft.previewToken);assert.deepEqual(after.previousPlanIds,["existing-cycle"]);
+    assert.equal(state.created[0].easyPct,80);assert.equal(state.created.length,1);
+  }
 });
 test("past start cannot reset history, and performed dates never receive duplicate replacement workouts",async()=>{
   const {state,run,today}=fixture();assert.equal((await run({startDate:dates.addDaysKey(today,-1)})).status,422);

@@ -40,6 +40,7 @@ export interface TrainingExportData {
     lthr?: number | null;
     ftp?: number | null;
     weightKg?: number | null;
+    units?:string|null;
     sweatRateMlH?: number | null;
     sodiumMgPerL?: number | null;
     gutTrained?: boolean | null;
@@ -119,7 +120,7 @@ export function buildTrainingCalendar(data: TrainingExportData): string {
         ru: "Скачанная копия календаря: для последующих изменений нужен новый экспорт; файл не синхронизируется автоматически.",
       };
       const description = resolved?.verdict === "ready" && language
-        ? manualWorkoutCalendarDescription(resolved, data.resolvedNutrition?.[session.id] ?? null, startTime, language) + `\n${language === "es" ? "Plan actual y gráfico (requiere iniciar sesión)" : "Current plan and workout graphic (sign-in required)"}: ${appUrl}`
+        ? manualWorkoutCalendarDescription(resolved, data.resolvedNutrition?.[session.id] ?? null, startTime, language, data.profile?.units) + `\n${language === "es" ? "Plan actual y gráfico (requiere iniciar sesión)" : "Current plan and workout graphic (sign-in required)"}: ${appUrl}`
         : placeholder.description;
       const durationMin = resolved?.verdict === "ready" ? resolved.durationMin : session.durationMin;
       const timing = start

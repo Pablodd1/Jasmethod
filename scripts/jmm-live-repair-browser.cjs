@@ -127,6 +127,51 @@ async function main() {
       results.push({language,width,coach:'pass',heldCard:'pass',delayedPlanAndProfileFailure:'pass'});
       await context.close();
     }
+    for (const language of ['en','es']) {
+      const context=await browser.newContext({viewport:{width:390,height:900}}),page=await context.newPage(),f=fixtures(language);
+      page.on('pageerror',error=>errors.push(String(error)));
+      const es=language==='es',units=es?'metric':'imperial',messages=[];
+      let proposal=null,savedReceipt=null,weight=70,writes=0,sends=0;
+      const payload=()=>({ok:true,conversation:{id:'synthetic-profile-chat',messages},proposal,receipt:savedReceipt,savedReceipt,displayUnits:units,unitPreference:'auto',capabilities:{externalAi:false,imageUnderstanding:false},sessions:[]});
+      await page.route('**/api/**',async route=>{
+        const req=route.request(),path=new URL(req.url()).pathname;
+        if(path==='/api/auth/me')return route.fulfill({json:{user:f.user}});
+        if(path==='/api/assistant'&&req.method()==='GET')return route.fulfill({json:payload()});
+        if(path==='/api/assistant'&&req.method()==='POST'){
+          const input=req.postDataJSON();sends++;assert.equal(input.externalConsent,false);
+          const proposed=Number(/(\d+) kg/.exec(input.message)[1]);
+          messages.push({id:`profile-user-${sends}`,role:'user',content:input.message,source:'text',createdAt:new Date().toISOString(),clientRequestId:input.clientRequestId},{id:`profile-reply-${sends}`,role:'assistant',content:es?'Revisa los valores. Todavía no se ha guardado nada.':'Review the values. Nothing has been saved.',source:'local',createdAt:new Date().toISOString()});
+          proposal={id:`profile-proposal-${sends}`,revision:1,status:'pending',beforeValues:{weightKg:weight},candidates:[{id:`profile-weight-${sends}`,kind:'profile',field:'weightKg',value:proposed,unit:'kg',observedDate:today,source:'text',evidence:input.message,status:'proposed'}]};
+          return route.fulfill({json:payload()});
+        }
+        if(path==='/api/assistant/confirm'){
+          const input=req.postDataJSON();assert.equal(input.confirmed,true);assert.equal(input.expectedRevision,1);assert.equal(input.proposalId,proposal.id);assert.ok(input.idempotencyKey);assert.equal(input.candidates.length,1);assert.equal(input.candidates[0].unit,'kg');assert.ok(Math.abs(input.candidates[0].value-80)<0.00001);
+          writes++;savedReceipt={id:'synthetic-profile-receipt',proposalId:proposal.id,confirmedAt:new Date().toISOString(),applied:[{candidateId:proposal.candidates[0].id,kind:'profile',field:'weightKg',previousValue:weight,value:input.candidates[0].value,source:'text',observedDate:today}],pendingActions:['review_checkin']};
+          weight=input.candidates[0].value;proposal={...proposal,status:'confirmed',revision:2};return route.fulfill({json:{...payload(),applied:true}});
+        }
+        if(path==='/api/assistant/cancel'){
+          assert.equal(req.postDataJSON().proposalId,proposal.id);proposal={...proposal,status:'cancelled',revision:2};return route.fulfill({json:{...payload(),applied:false,cancelled:true}});
+        }
+        if(req.method()==='GET')return route.fulfill({json:{ok:true}});
+        unexpected.push(`${req.method()} ${path}`);return route.fulfill({status:500,json:{error:'Unexpected synthetic mutation'}});
+      });
+      await page.goto(`${base}/coach`);
+      const send=page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}),message=page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true});
+      await message.fill('My weight is 75 kg');await send.click();
+      const card=page.getByRole('group',{name:es?'Peso corporal':'Body weight',exact:true});await card.waitFor();
+      assert.match(await card.innerText(),es?/70\.0 kg/:/154\.3 lb/);assert.match(await card.innerText(),es?/75\.0 kg/:/165\.3 lb/);assert.equal(writes,0);
+      const edit=card.getByLabel(es?'Valor (kg)':'Value (lb)',{exact:true});assert.equal(await edit.isDisabled(),true);
+      await card.getByRole('button',{name:es?'Editar':'Edit',exact:true}).click();await edit.fill(es?'80':'176.3696');
+      await card.getByRole('checkbox',{name:es?'Incluir al confirmar':'Include in confirmation',exact:true}).check();
+      assert.equal(writes,0);await page.getByRole('button',{name:es?'Aprobar cambios (1)':'Approve changes (1)',exact:true}).click();
+      await page.getByText(es?'Cambios guardados con comprobante':'Saved changes with receipt',{exact:true}).waitFor();assert.equal(writes,1);
+      await page.reload();await page.getByText(es?'Cambios guardados con comprobante':'Saved changes with receipt',{exact:true}).waitFor();assert.equal(writes,1);
+      await message.fill('My weight is 81 kg');await send.click();await page.getByRole('button',{name:es?'Cancelar':'Cancel',exact:true}).click();
+      await page.getByText(es?'Propuesta descartada. Tus datos no han cambiado.':'Proposal dismissed. Your facts have not changed.',{exact:true}).waitFor();
+      assert.equal(writes,1);assert.ok(Math.abs(weight-80)<0.00001);await page.getByRole('link',{name:es?'Revisar perfil guardado':'Revise saved profile',exact:true}).waitFor();
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${dir}/profile-proposal-${language}-390.png`});
+      results.push({language,width:390,profileProposalChosenUnits:'pass',noWriteBeforeApproval:'pass',editedExactApproval:'pass',savedReceiptReloadAndCancel:'pass'});await context.close();
+    }
     for(const width of [390,412]) {
       const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),f=fixtures('en');
       page.on('pageerror',e=>errors.push(String(e)));
@@ -160,8 +205,8 @@ async function main() {
       await page.getByRole('textbox',{name:'Your message',exact:true}).fill('Make this session half an hour');
       await page.getByRole('button',{name:'Send message',exact:true}).click();
       await page.getByText('Review 1 proposed facts · Not saved',{exact:true}).waitFor({state:'visible'});
-      assert.equal(await page.getByRole('button',{name:'Confirm 0 selected facts',exact:true}).isDisabled(),true);
-      assert.equal(await page.getByLabel('Value',{exact:true}).isVisible(),true,'Proposal is expanded without another click');
+      assert.equal(await page.getByRole('button',{name:'Approve changes (0)',exact:true}).isDisabled(),true);
+      assert.equal(await page.getByLabel('Value (min)',{exact:true}).isVisible(),true,'Proposal is expanded without another click');
       assert.equal(await ai.isChecked(),true,'Page permission persists after a send');
       await memory.check();
       await page.getByRole('textbox',{name:'Your message',exact:true}).fill('Why do you recommend that?');await page.getByRole('button',{name:'Send message',exact:true}).click();

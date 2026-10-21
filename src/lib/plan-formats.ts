@@ -1,6 +1,7 @@
 import { dailyEnvironmentSummary, type DailyEnvironmentAssessment } from "./daily-environment";
 import { trustedCycleMovementGuidance } from "./cycle-movement-guidance";
 import { endpointText } from "./universal-workout-card";
+import { unitsOf } from "./units";
 // JasMiamiMethod — Creative plan formats
 //
 // One training plan, three skins: Telegram text (emoji-dense, scannable in a
@@ -24,6 +25,7 @@ export interface PlanFormatSession {
   appUrl?: string;
   environment?: DailyEnvironmentAssessment;
   language?: string;
+  units?: string | null;
   steps?: {
     name: string;
     seconds: number;
@@ -124,7 +126,7 @@ export function telegramPlan(
         `   ⛽ ${s.fuel.carbsPerHourG}g/h + up to ${s.fuel.fluidMlPerHour}ml/h as general examples. Drink to need; never force fluids or overdrink.`,
       );
     if (s.post) lines.push(`   🍚 post: ${postFuelLabel(s.post)}`);
-    if (s.environment) lines.push(`   ${dailyEnvironmentSummary(s.environment, s.language)}`);
+    if (s.environment) lines.push(`   ${dailyEnvironmentSummary(s.environment, s.language, unitsOf(s.units,s.language))}`);
     if (s.appUrl) lines.push(`   Full instructions and feedback: ${s.appUrl}`);
     if (s.revision) lines.push(`   Plan revision: ${s.revision.slice(0, 12)}`);
   }
@@ -173,7 +175,7 @@ export function gmailPlanHtml(
     </div>
     ${steps ? `<div style="margin-top:8px">${steps}</div>` : ""}
     ${fuelLine}${postLine}
-    ${s.environment ? `<p>${esc(dailyEnvironmentSummary(s.environment, s.language))}</p>` : ""}
+    ${s.environment ? `<p>${esc(dailyEnvironmentSummary(s.environment, s.language, unitsOf(s.units,s.language)))}</p>` : ""}
     ${s.appUrl ? `<p><a href="${esc(s.appUrl)}">Full instructions and feedback</a></p>` : ""}
     ${s.revision ? `<small>Plan revision: ${esc(s.revision.slice(0, 12))}</small>` : ""}
   </div>`;
@@ -214,7 +216,7 @@ export function calendarDescription(
       `⛽ During: ${s.fuel.carbsPerHourG}g/h + up to ${s.fuel.fluidMlPerHour}ml/h as general examples. Drink to need; never force fluids or overdrink.`,
     );
   if (s.post) lines.push(`🍚 Post: ${postFuelLabel(s.post)}`);
-  if (s.environment) lines.push(dailyEnvironmentSummary(s.environment, s.language));
+  if (s.environment) lines.push(dailyEnvironmentSummary(s.environment, s.language, unitsOf(s.units,s.language)));
   lines.push(s.environment ? (s.language === "es" ? "Preparación: revisa el material y las condiciones locales actuales. El pronóstico no es una medición ni autorización para entrenar." : "Preparation: check equipment and current local conditions. A forecast is not a measurement or clearance to train.") : "Preparation: check equipment, route and current local conditions. Weather is not verified here. In heat, plan cooling and water access. Optional: a comfortable breathing pause to focus.");
   lines.push("— JasMiamiMethod · check in before training");
   return lines.join("\n");

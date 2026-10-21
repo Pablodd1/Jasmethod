@@ -111,7 +111,7 @@ export async function GET(req: Request) {
     const metric = unitsOf(user.profile?.units, user.language);
 
     const plan: DailyTraining = {
-      workoutCard: buildUniversalWorkoutCard(canonical,resolved.nutrition,user.language==="es"?"es":"en",workout.startTime),
+      workoutCard: buildUniversalWorkoutCard(canonical,resolved.nutrition,user.language==="es"?"es":"en",workout.startTime,resolved.targetProfile?.units),
       schemaVersion: 2,
       environment: canonical.environment,
       language: user.language,

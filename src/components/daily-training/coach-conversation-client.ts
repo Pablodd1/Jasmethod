@@ -1,4 +1,5 @@
 /** Browser-only interaction helpers. No athlete facts are inferred here. */
+import { fmtHeight, fmtWeight, heightFromFeetInches, heightToFeetInches, weightFromDisplay, weightToDisplay, type UnitSystem } from "@/lib/units";
 export type CoachMessage = { id: string; role: string; content: string; createdAt: string; source: string; clientRequestId?: string;needsHumanReview?:boolean;localContextSummary?:string };
 export type CoachCandidate = {
   id: string;
@@ -13,11 +14,11 @@ export type CoachCandidate = {
   status: string;
   warnings?: string[];
 };
-export type CoachProposal = { id: string; revision: number; status: string; candidates: CoachCandidate[]; pendingActions?: string[] };
+export type CoachProposal = { id: string; revision: number; status: string; candidates: CoachCandidate[]; beforeValues?: Record<string, CoachCandidate["value"]>; pendingActions?: string[] };
 export type CoachSession = { id: string; title: string; sport: string; date: string };
 export type CoachReceipt = {
   id: string; proposalId: string; confirmedAt: string;
-  applied: Array<{ candidateId: string; kind: string; field: string; value: CoachCandidate["value"]; source: string; observedDate: string | null; sessionId?: string | null }>;
+  applied: Array<{ candidateId: string; kind: string; field: string; value: CoachCandidate["value"]; previousValue?: CoachCandidate["value"]; source: string; observedDate: string | null; sessionId?: string | null }>;
   pendingActions: string[];
   checkinDraft?: CoachCandidate[];
   planDraft?: CoachCandidate[];
@@ -30,7 +31,10 @@ export type CoachPayload = {
   sessions?: CoachSession[];
   defaultSessionId?:string|null;
   receipt?: CoachReceipt | null;
+  savedReceipt?: CoachReceipt | null;
   capabilities?: CoachCapabilities;
+  displayUnits?: UnitSystem;
+  unitPreference?: string;
   mode?: string;
   disclosure?: string;
   externalStatus?: string;
@@ -97,11 +101,49 @@ export class CoachRequestGate {
   cancel() { this.epoch += 1; this.controller?.abort(); this.controller = null; }
 }
 
-export function editedCoachCandidate(candidate: CoachCandidate, raw: string): CoachCandidate {
+export function coachCandidateInput(candidate: CoachCandidate, units: UnitSystem): string {
+  if (candidate.value === null) return "";
+  if (typeof candidate.value === "number" && coachWeightCandidate(candidate)) return String(Number(weightToDisplay(candidate.value, units).toFixed(3)));
+  if (candidate.kind === "profile" && typeof candidate.value === "number") {
+    if (candidate.field === "heightCm" && units === "imperial") {
+      const height = heightToFeetInches(candidate.value);
+      return `${height.feet} ft ${Number(height.inches.toFixed(3))} in`;
+    }
+  }
+  return String(candidate.value);
+}
+
+function coachWeightCandidate(candidate: CoachCandidate): boolean {
+  return ["profile", "checkin"].includes(candidate.kind) && candidate.field === "weightKg" || candidate.kind === "workout_feedback" && ["preWeightKg", "postWeightKg"].includes(candidate.field);
+}
+
+export function coachCandidateUnit(candidate: CoachCandidate, units: UnitSystem): string | null {
+  if (coachWeightCandidate(candidate)) return units === "imperial" ? "lb" : "kg";
+  if (candidate.kind === "profile" && candidate.field === "heightCm") return units === "imperial" ? "ft / in" : "cm";
+  return candidate.unit;
+}
+
+export function coachDisplayValue(field: string, value: CoachCandidate["value"] | undefined, unit: string | null, units: UnitSystem, es = false): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number" && ["weightKg", "preWeightKg", "postWeightKg"].includes(field)) return fmtWeight(value, units);
+  if (typeof value === "number" && field === "heightCm") return fmtHeight(value, units);
+  if (typeof value === "boolean") return value ? (es ? "Sí" : "Yes") : "No";
+  return `${value}${unit ? ` ${unit}` : ""}`;
+}
+
+export function editedCoachCandidate(candidate: CoachCandidate, raw: string, units?: UnitSystem): CoachCandidate {
+  // Display rounding must not rewrite an unchanged canonical value.
+  if (units && raw === coachCandidateInput(candidate, units)) return { ...candidate };
+  if (units && candidate.kind === "profile" && candidate.field === "heightCm" && units === "imperial") {
+    const match = /^(\d+)\s*(?:ft|')\s*(\d+(?:\.\d+)?)\s*(?:in|")$/i.exec(raw.trim());
+    if (!match || Number(match[2]) >= 12) throw new Error("height");
+    return { ...candidate, value: heightFromFeetInches(Number(match[1]), Number(match[2])) };
+  }
   let value: CoachCandidate["value"] = raw.trim();
   if (typeof candidate.value === "number") {
     if (!value || !Number.isFinite(Number(value))) throw new Error("number");
     value = Number(value);
+    if (units && coachWeightCandidate(candidate)) value = weightFromDisplay(value, units);
   } else if (typeof candidate.value === "boolean") {
     if (value !== "true" && value !== "false") throw new Error("boolean");
     value = value === "true";
@@ -116,7 +158,7 @@ export function verifiedCoachReceipt(payload: CoachPayload, proposalId?: string,
   if (!receipt.applied.every(entry => entry && typeof entry === "object" && typeof entry.candidateId === "string" && typeof entry.field === "string" && (entry.value === null || ["string", "boolean"].includes(typeof entry.value) || (typeof entry.value === "number" && Number.isFinite(entry.value))))) return null;
   if (!receipt.pendingActions.every(action => ["review_checkin", "review_plan"].includes(action))) return null;
   if (proposalId && receipt.proposalId !== proposalId) return null;
-  if (payload.applied !== undefined && payload.applied !== (receipt.applied.length > 0)) return null;
+  if (payload.applied !== undefined && (!payload.proposal || payload.proposal.id === receipt.proposalId) && payload.applied !== (receipt.applied.length > 0)) return null;
   if (new Set(receipt.applied.map(entry => entry.candidateId)).size !== receipt.applied.length) return null;
   if (selected && receipt.applied.length !== selected.filter(candidate => ["profile", "workout_feedback", "workout_plan"].includes(candidate.kind)).length) return null;
   if (!receipt.applied.every(entry =>

@@ -60,6 +60,7 @@ export async function GET(req: Request) {
       resolved.nutrition,
       athlete.language === "es" ? "es" : "en",
       resolved.workout.startTime,
+      resolved.targetProfile?.units,
     );
     const headers = {
       "Cache-Control": "private, no-store",
@@ -233,6 +234,7 @@ export async function PATCH(req: Request) {
           resolved.nutrition,
           athlete.language === "es" ? "es" : "en",
           w.startTime,
+          resolved.targetProfile?.units,
         );
       },
       { isolationLevel: "Serializable" },

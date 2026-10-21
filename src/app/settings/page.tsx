@@ -7,7 +7,8 @@ import Link from "next/link";
 import { settingsProfileForm, settingsProfilePatch } from "@/lib/settings-profile";
 import { saveReviewedProfile } from "@/lib/profile-client";
 import { PLANNABLE_GOALS, planningGoal } from "@/lib/planning-setup";
-import { fmtWeight, fmtHeight } from "@/lib/units";
+import { unitsOf, fmtSwimPace } from "@/lib/units";
+import { ProfileMeasurementInput, type MeasurementField } from "@/components/ProfileMeasurementInput";
 import { EstimateBanner } from "@/components/estimate-banner";
 import { PrsCard } from "@/components/prs-card";
 import {
@@ -39,6 +40,7 @@ export default function SettingsPage() {
   const [nutritionDraft, setNutritionDraft] = useState<any>(null);
   const [nutritionDirty, setNutritionDirty] = useState(false);
   const [form, setForm] = useState(()=>settingsProfileForm(null));
+  const [unitErrors,setUnitErrors]=useState<Record<string,string|null>>({});
   const loadedForm = useRef(settingsProfileForm(null));
   const loadRequest = useRef(0);
   const savingRef = useRef(false);
@@ -47,6 +49,8 @@ export default function SettingsPage() {
   const [vo2Estimate, setVo2Estimate] = useState<any>(null);
   const [vo2Source, setVo2Source] = useState<string | null>(null);
   const [modules, setModules] = useState<any>({});
+  const displayUnits=unitsOf(form.units,user?.language);
+  const measurement=(field:MeasurementField,label:string)=><ProfileMeasurementInput field={field} value={form[field]} units={displayUnits} label={label} id={`profile-${field}`} es={lang==="es"} onChange={canonical=>setForm(current=>({...current,[field]:canonical}))} onValidityChange={(field,message)=>setUnitErrors(current=>({...current,[field]:message}))}/>;
 
   const load = useCallback(async () => {
     const requestId = ++loadRequest.current;
@@ -115,6 +119,7 @@ export default function SettingsPage() {
     if (savingRef.current) return;
     setSaved(false); setNotice(""); setError("");
     try {
+      if(Object.values(unitErrors).some(Boolean))throw Error(lang==="es"?"Revisa el formato de las medidas antes de guardar.":"Review the measurement format before saving.");
       const body = settingsProfilePatch(form, loadedForm.current);
       if (nutritionDirty) body.nutritionContext = nutritionDraft;
       if (!Object.keys(body).length) { setNotice(lang === "es" ? "No hay cambios para guardar." : "No changes to save."); return; }
@@ -234,34 +239,8 @@ export default function SettingsPage() {
                     <option value="female">Female</option>
                   </select>
                 </div>
-                <div>
-                  <label htmlFor="profile-heightCm" className="label">Height (cm)</label>
-                  <input
-                    id="profile-heightCm"
-                    className="input"
-                    type="number"
-                    step="0.1"
-                    value={form.heightCm}
-                    onChange={(e) =>
-                      setForm({ ...form, heightCm: e.target.value })
-                    }
-                    placeholder="175"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="profile-weightKg" className="label">Weight (kg)</label>
-                  <input
-                    id="profile-weightKg"
-                    className="input"
-                    type="number"
-                    step="0.1"
-                    value={form.weightKg}
-                    onChange={(e) =>
-                      setForm({ ...form, weightKg: e.target.value })
-                    }
-                    placeholder="70"
-                  />
-                </div>
+                {measurement("heightCm",lang==="es"?"Altura":"Height")}
+                {measurement("weightKg",lang==="es"?"Peso":"Weight")}
                 <div>
                   <label htmlFor="profile-experience" className="label">Experience</label>
                   <select
@@ -365,9 +344,7 @@ export default function SettingsPage() {
                   </select>
                   <p className="text-[11px] text-slate-400 mt-1">
                     Saved choices override the language default. Training distance and pace use
-                    this preference; profile reference inputs keep their labeled storage units. {form.units === "imperial" && form.weightKg
-                      ? `Your weight: ${fmtWeight(Number(form.weightKg), "imperial")} · height: ${fmtHeight(Number(form.heightCm), "imperial")}.`
-                      : ""}
+                    this preference, including profile measurements. Automatic units use imperial for English and metric for other languages; explicit overrides remain selected when language changes. Storage stays metric.
                   </p>
                 </div>
               </div>
@@ -456,33 +433,13 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="profile-runPaceBase" className="label">Run T-pace (sec/km)</label>
-                    <input
-                      id="profile-runPaceBase"
-                    className="input"
-                      type="number"
-                      value={form.runPaceBase}
-                      onChange={(e) =>
-                        setForm({ ...form, runPaceBase: e.target.value })
-                      }
-                      placeholder="e.g. 285"
-                    />
+                    {measurement("runPaceBase",lang==="es"?"Ritmo umbral de carrera":"Run threshold pace")}
                     <div className="text-[11px] text-slate-400">
                       T-pace = the pace you could race for about one hour.
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="profile-swimPaceBase" className="label">Swim T-pace (sec/100m)</label>
-                    <input
-                      id="profile-swimPaceBase"
-                    className="input"
-                      type="number"
-                      value={form.swimPaceBase}
-                      onChange={(e) =>
-                        setForm({ ...form, swimPaceBase: e.target.value })
-                      }
-                      placeholder="e.g. 95"
-                    />
+                    {measurement("swimPaceBase",lang==="es"?"Ritmo umbral de natación":"Swim threshold pace")}
                     <div className="text-[11px] text-slate-400">
                       Your CSS pace — from the 400 m + 200 m test in{" "}
                       <a href="/labs" className="underline">
@@ -555,12 +512,7 @@ export default function SettingsPage() {
                   })}
                   {zones.swim && (
                     <div className="border-t border-sand-200 pt-2 mt-2 text-xs text-slate-500">
-                      Swim (sec/100m): Z1 {zones.swim.z1.high}-
-                      {zones.swim.z1.low} · Z2 {zones.swim.z2.high}-
-                      {zones.swim.z2.low} · Z3 {zones.swim.z3.high}-
-                      {zones.swim.z3.low} · Z4 {zones.swim.z4.high}-
-                      {zones.swim.z4.low} · Z5 {zones.swim.z5.high}-
-                      {zones.swim.z5.low} (threshold {zones.anchorSwim}s)
+                      Swim: {["z1","z2","z3","z4","z5"].map(zone=>`${zone.toUpperCase()} ${fmtSwimPace(zones.swim[zone].low,displayUnits)}–${fmtSwimPace(zones.swim[zone].high,displayUnits)}`).join(" · ")} (threshold {fmtSwimPace(zones.anchorSwim,displayUnits)}). Pool length is set on the session; pace units do not change its measured length.
                     </div>
                   )}
                   {zones.power && (

@@ -20,7 +20,8 @@ test("a Strava activity relayed through Intervals.icu stays Strava, however the 
 });
 
 test("Intervals rows are allowed only with a recorded, whitelisted upstream; otherwise unknown", () => {
-  assert.equal(provenanceOf({ source: "intervals", notes: "Imported via Intervals.icu. Original source: GARMIN_CONNECT." }), "allowed");
+  assert.equal(provenanceOf({ source: "intervals", notes: "Imported via Intervals.icu. Original source: COROS." }), "allowed");
+  assert.equal(provenanceOf({ source: "intervals", notes: "Imported via Intervals.icu. Original source: GARMIN_CONNECT." }), "unknown", "Onward Garmin permission must be separately verified");
   assert.equal(provenanceOf({ source: "intervals", notes: "Imported via Intervals.icu." }), "unknown");
   assert.equal(provenanceOf({ source: "intervals", notes: "Original source: SOMETHING_NEW." }), "unknown");
   assert.equal(provenanceOf({ source: "intervals" }), "unknown");

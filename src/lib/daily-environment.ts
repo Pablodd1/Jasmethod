@@ -2,6 +2,7 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { dateKey, localDate } from "./dates";
 import type { RaceWeatherResult } from "./race-weather";
+import { fmtTemp, fmtSpeed, unitsOf, type UnitSystem } from "./units";
 
 export const DAILY_ENVIRONMENT_VERSION = "daily-environment-v1";
 // Product freshness/coverage limits, not physiological or weather safety thresholds.
@@ -141,12 +142,12 @@ export function environmentRevisionContext(assessment: DailyEnvironmentAssessmen
   const { forecastAgeMinutes: _age, ...stable } = assessment;
   return stable;
 }
-export function dailyEnvironmentGuidance(environment: DailyEnvironmentAssessment, lang = "en"): string {
+export function dailyEnvironmentGuidance(environment: DailyEnvironmentAssessment, lang = "en", units:UnitSystem=unitsOf("auto",lang)): string {
   const es = lang === "es";
   if (environment.status === "indoor") return es ? "Interior confirmado. La temperatura, ventilación y refrigeración del lugar no están medidas; ajusta por esfuerzo y comodidad. El pronóstico exterior no describe el interior." : "Indoor venue confirmed. Indoor temperature, ventilation and cooling are unmeasured; adjust by effort and comfort. Outdoor forecasts do not describe indoor conditions.";
   if (environment.status === "forecast" && environment.conditions) {
     const c = environment.conditions;
-    return es ? `Pronóstico, no medición: ${c.temperatureC} °C, humedad ${c.humidityPct}%, viento ${c.windMs} m/s. Guíate por esfuerzo; si las condiciones son incómodas, elige una hora más fresca o un lugar más seguro y vuelve a confirmar. Revisa las alertas locales; el pronóstico no confirma seguridad.` : `Forecast, not a measurement: ${c.temperatureC} °C, humidity ${c.humidityPct}%, wind ${c.windMs} m/s. Follow effort; if conditions are uncomfortable, choose a cooler time or safer venue and confirm again. Check local alerts; a forecast does not establish safety.`;
+    return es ? `Pronóstico, no medición: ${fmtTemp(c.temperatureC,units)}, humedad ${c.humidityPct}%, viento ${fmtSpeed(c.windMs*3.6,units)}. Guíate por esfuerzo; si las condiciones son incómodas, elige una hora más fresca o un lugar más seguro y vuelve a confirmar. Revisa las alertas locales; el pronóstico no confirma seguridad.` : `Forecast, not a measurement: ${fmtTemp(c.temperatureC,units)}, humidity ${c.humidityPct}%, wind ${fmtSpeed(c.windMs*3.6,units)}. Follow effort; if conditions are uncomfortable, choose a cooler time or safer venue and confirm again. Check local alerts; a forecast does not establish safety.`;
   }
   const reasons: Record<EnvironmentReason, [string, string]> = {
     offline: ["This is an offline snapshot; current venue conditions cannot be verified.", "Esta es una copia sin conexión; no se pueden verificar las condiciones actuales del lugar."],
@@ -166,10 +167,10 @@ export function dailyEnvironmentGuidance(environment: DailyEnvironmentAssessment
   return `${reasons[environment.reason][es ? 1 : 0]} ${es ? "Confirma el lugar y la hora; revisa las condiciones locales antes de empezar. No se asumen condiciones favorables." : "Confirm venue and time; check local conditions before starting. Favorable conditions are not assumed."}`;
 }
 /** Safe channel summary deliberately excludes precise location and saved free text. */
-export function dailyEnvironmentSummary(environment: DailyEnvironmentAssessment, lang = "en"): string {
+export function dailyEnvironmentSummary(environment: DailyEnvironmentAssessment, lang = "en", units:UnitSystem=unitsOf("auto",lang)): string {
   const es = lang === "es";
   const timing = environment.fetchedAt ? `${es ? "Obtenido" : "Retrieved"}: ${environment.fetchedAt}; ${es ? "válido para" : "valid at"}: ${environment.validAt ?? "—"}.` : "";
-  return [dailyEnvironmentGuidance(environment, lang), timing].filter(Boolean).join(" ");
+  return [dailyEnvironmentGuidance(environment, lang, units), timing].filter(Boolean).join(" ");
 }
 
 /** Runtime response guard: malformed server/cache payloads never become evidence. */

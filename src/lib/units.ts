@@ -8,12 +8,25 @@ export type UnitSystem = "metric" | "imperial";
 
 export function unitsOf(v: string | null | undefined, language?: string | null): UnitSystem {
   if (v === "imperial" || v === "metric") return v;
-  return language?.toLowerCase().split("-")[0] === "en" ? "imperial" : "metric";
+  return language?.trim().toLowerCase().split(/[-_]/)[0] === "en" ? "imperial" : "metric";
 }
 
 const LB_PER_KG = 2.20462;
 const KM_PER_MI = 1.609344;
 const CM_PER_IN = 2.54;
+
+// Numeric edit adapters. Callers still validate physiological ranges at save.
+export const weightToDisplay = (kg: number, units: UnitSystem) => units === "imperial" ? kg * LB_PER_KG : kg;
+export const weightFromDisplay = (value: number, units: UnitSystem) => units === "imperial" ? value / LB_PER_KG : value;
+export const heightToDisplay = (cm: number, units: UnitSystem) => units === "imperial" ? cm / CM_PER_IN : cm;
+export const heightFromDisplay = (value: number, units: UnitSystem) => units === "imperial" ? value * CM_PER_IN : value;
+export const distanceToDisplay = (km:number, units:UnitSystem) => units === "imperial" ? km / KM_PER_MI : km;
+export const distanceFromDisplay = (value:number, units:UnitSystem) => units === "imperial" ? value * KM_PER_MI : value;
+export function heightToFeetInches(cm: number) {
+  const total = heightToDisplay(cm, "imperial"), feet = Math.floor(total / 12);
+  return { feet, inches: total - feet * 12 };
+}
+export const heightFromFeetInches = (feet: number, inches: number) => heightFromDisplay(feet * 12 + inches, "imperial");
 
 export function fmtWeight(kg: number | null | undefined, units: UnitSystem): string {
   if (kg == null || !Number.isFinite(kg)) return "—";
@@ -25,7 +38,7 @@ export function fmtWeight(kg: number | null | undefined, units: UnitSystem): str
 export function fmtHeight(cm: number | null | undefined, units: UnitSystem): string {
   if (cm == null || !Number.isFinite(cm)) return "—";
   if (units === "metric") return `${Math.round(cm)} cm`;
-  const totalIn = cm / CM_PER_IN;
+  const totalIn = Math.round(cm / CM_PER_IN);
   const ft = Math.floor(totalIn / 12);
   const inch = Math.round(totalIn - ft * 12);
   return `${ft}'${inch}"`;
@@ -78,4 +91,15 @@ export function fmtPace(
   const m = Math.floor(rounded / 60);
   const sec = rounded % 60;
   return `${m}:${String(sec).padStart(2, "0")}/${units === "imperial" ? "mi" : "km"}`;
+}
+
+export function fmtSwimPace(secPer100m: number | null | undefined, units: UnitSystem): string {
+  if(secPer100m==null||!Number.isFinite(secPer100m))return "—";
+  const seconds=Math.round(secPer100m*(units==="imperial"?.9144:1));
+  return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}/100 ${units==="imperial"?"yd":"m"}`;
+}
+
+export function fmtSpeed(kmh: number | null | undefined, units: UnitSystem): string {
+  if(kmh==null||!Number.isFinite(kmh))return "—";
+  return `${(units==="imperial"?kmh/KM_PER_MI:kmh).toFixed(1)} ${units==="imperial"?"mph":"km/h"}`;
 }

@@ -3,6 +3,7 @@ import { localDate, addDaysKey } from "./dates";
 import { effectivePrescription } from "./effective-prescription";
 import { telegramPlan, gmailPlanHtml, calendarDescription, stepEndpointLabel, type PlanFormatSession } from "./plan-formats";
 import { renderDayPng, type GraphicStep } from "./workout-graphic";
+import { unitsOf } from "./units";
 
 function appBase() {
   const configured = process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit";
@@ -40,7 +41,7 @@ export async function trainingReminder(user: { id: string; name: string; timezon
       startTime: w.startTime, appUrl: `${base}/daily?sessionId=${encodeURIComponent(c.id)}`,
       steps: c.steps.map(st => ({ name: st.name, seconds: st.seconds, reps: st.reps,
         endpoint: st.endpoint, targetLabel: st.target.label, zone: st.zone, phase: st.phase, note: st.note })),
-      fuel, post, environment: c.environment, language: user.language };
+      fuel, post, environment: c.environment, language: user.language, units:unitsOf(item.targetProfile?.units??user.profile?.units,user.language) };
     fmt.push(s);
     details.push([`${c.title} · revision ${c.revision.slice(0, 12)}`,
       ...(s.steps || []).map(st => `${st.phase}: ${st.name} · ${stepEndpointLabel(st)} · ${st.targetLabel}${st.note ? `\n${st.note}` : ""}`),

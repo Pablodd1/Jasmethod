@@ -36,6 +36,7 @@ import {
   TRAINING_WINDOWS,
 } from "@/lib/adaptive";
 import { buildSessionDetail, HR_ZONES } from "@/lib/science";
+import { plannedAerobicDistribution } from "@/lib/training-distribution";
 
 const SPORT_ICON: Record<string, any> = {
   swim: Waves,
@@ -272,11 +273,8 @@ function TrainingPageContent() {
   const sessions = plan?.days?.flatMap((d: any) => d.sessions) || [];
   const completedCount = sessions.filter((s: any) => s.completed).length;
   const totalCount = sessions.length;
-  const easyMin = sessions
-    .filter((s: any) => s.intensity === "z1" || s.intensity === "z2")
-    .reduce((a: number, s: any) => a + s.durationMin, 0);
-  const totalMin = sessions.reduce((a: number, s: any) => a + s.durationMin, 0);
-  const actualEasy = totalMin ? Math.round((easyMin / totalMin) * 100) : null;
+  const plannedDistribution=plannedAerobicDistribution(sessions);
+  const actualEasy = plannedDistribution.easyPct;
   const targetEasy = plan?.easyPct ?? 70;
 
   return (
@@ -404,21 +402,20 @@ function TrainingPageContent() {
             </div>
             <div>
               <label htmlFor="plan-split" className="label">
-                Easy / quality split: {form.easyPct}% /{" "}
-                {100 - Number(form.easyPct)}%
+                Minimum easy aerobic minutes: {form.easyPct}%
               </label>
               <input
                 id="plan-split"
                 type="range"
-                min={50}
-                max={85}
+                min={45}
+                max={90}
                 step={5}
                 className="w-full accent-cyan-600"
                 value={form.easyPct}
                 onChange={(e) => updatePlanForm({ ...form, easyPct: e.target.value })}
               />
               <div className="text-[10px] text-slate-400 mt-0.5">
-                % of weekly minutes in Z1-Z2 (easy). 70 = 70/30.
+                Minimum planned aerobic minutes in Z1–Z2. The remainder is a ceiling for quality, not a hard-session quota; recovery and safety can require more easy work.
               </div>
             </div>
             {planningReadiness && !planningReadiness.ready ? <a href={setupHref} className="btn-primary justify-center">Complete setup to preview</a> : <button
@@ -529,13 +526,13 @@ function TrainingPageContent() {
         {plan && actualEasy !== null && (
           <div className="card">
             <h2 className="font-display font-bold text-lg mb-1">
-              Intensity Distribution
+              Planned aerobic allocation
             </h2>
             <p className="text-xs text-slate-400 mb-3">
-              Your target: {targetEasy}% easy / {100 - targetEasy}% quality ·
-              Actual in this plan: {actualEasy}% easy / {100 - actualEasy}%
-              quality (peak/taper weeks keep race-specific work).
+              Minimum easy preference: {targetEasy}% · Planned allocation: {actualEasy}% easy / {100 - actualEasy}% quality.
+              {" "}Entire saved cycle: {plan.days?.[0]?.date?.slice(0,10)} – {plan.days?.at(-1)?.date?.slice(0,10)}; denominator {plannedDistribution.totalMinutes} planned aerobic minutes across {plannedDistribution.sessionCount} sessions. Strength and station work are excluded.
             </p>
+            <p className="text-xs text-slate-600 mb-3">Achieved physiological zone distribution: —. These are prescribed session labels, not measured completed time in zones. No achieved ratio is inferred from this plan.</p>
             <div className="flex gap-1 h-6 rounded-full overflow-hidden">
               <div
                 className="bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white"
@@ -561,7 +558,7 @@ function TrainingPageContent() {
               />
             </div>
             <div className="text-[10px] text-slate-400 mt-1">
-              ▁ target marker
+              ▁ minimum easy preference
             </div>
           </div>
         )}

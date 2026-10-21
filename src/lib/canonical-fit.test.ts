@@ -5,6 +5,7 @@ import { canonicalSession, normalizeSteps, requireSessionRevision, fitFilename, 
 import { buildFitWorkout, fitWorkoutName, workoutToFitSpec } from "./fit-export";
 import { effectiveSessionFromRecords } from "./effective-prescription";
 import { evidencedTargetProfile } from "./anchor-evidence";
+import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
 
 const now = new Date("2026-10-02T12:00:00Z");
 const step = (extra: Record<string, any> = {}) => ({ name: "Work", seconds: 60, phase: "active", zone: "z2", ...extra });
@@ -32,6 +33,26 @@ const answers = { sleep: 3, soreness: 3, motivation: 3, energy: 3, stress: 3, si
 const record = (extra: Record<string, any> = {}) => ({ planning: { ready: true, missing: [], review: [], ruleId: "fixture" }, userId: "athlete-a", timezone: "UTC", now,
   workout: { id: "workout-a", userId: "athlete-a", date: new Date("2026-10-02T00:00:00Z"), title: "Bike", sport: "bike", durationMin: 1, intensity: "z2", type: "endurance", prescription: JSON.stringify({ sport: "bike", verdict: "full", durationMin: 1, steps: [step()] }) },
   profile: { ftp: 200 }, checkin: { date: new Date("2026-10-02T00:00:00Z"), answers: JSON.stringify(answers), adaptation: JSON.stringify({ verdict: "full", intensityCap: "z7", durationFactor: 1 }) }, ...extra });
+
+test("a previously zeroed adaptation stays review-needed under unknown safety, preserving its saved identity through the card",()=>{
+  const original=record().workout;
+  const zeroed={...original,title:"Rest and recover",type:"recovery",intensity:"z1",durationMin:0,
+    originalPlan:JSON.stringify(original),prescription:JSON.stringify({title:"Rest and recover",sport:"bike",verdict:"rest",durationMin:0,steps:[]})};
+  const before=JSON.stringify(zeroed);
+  const resolved=effectiveSessionFromRecords(record({workout:zeroed,checkin:null}));
+  assert.equal(resolved.canonical.verdict,"blocked");assert.equal(resolved.canonical.title,"Bike");
+  assert.notEqual(resolved.canonical.reason,"Rest day has no workout to export.");
+  assert.equal(resolved.prescription.title,"Bike");assert.equal(resolved.prescription.type,"endurance");
+  assert.equal(resolved.prescription.verdict,"blocked");assert.equal(resolved.prescription.intensity,null);
+  assert.equal(resolved.canonical.durationMin,0);assert.deepEqual(resolved.canonical.steps,[]);assert.equal(resolved.canonical.capability.available,false);
+  const card=buildUniversalWorkoutCard(resolved.canonical,resolved.nutrition,"en");
+  assert.equal(card.session.title,"Bike");assert.equal(card.session.verdict,"blocked");assert.deepEqual(card.content.steps,[]);
+  assert.equal(JSON.stringify(zeroed),before,"reading never restores or rewrites saved instructions");
+  const rest=effectiveSessionFromRecords(record({workout:{...zeroed,planDay:{dayOff:true}},checkin:null}));
+  assert.equal(rest.canonical.verdict,"rest");assert.match(rest.canonical.reason,/Rest day/);
+  const injured=effectiveSessionFromRecords(record({workout:zeroed,profile:{injured:true},checkin:null}));
+  assert.equal(injured.canonical.verdict,"rest");assert.match(injured.canonical.reason,/injury/);
+});
 
 test("FIT run pace bounds invert to speed, distance stays distance and lap stays open", () => {
   const c = make("run", [step({ endpoint: { type: "distance", meters: 1609.344 }, target: { type: "pace", low: 240, high: 300 } }), step({ name: "Lap recovery", seconds: undefined, phase: "recovery", endpoint: { type: "lap" }, target: { type: "open" } })]);

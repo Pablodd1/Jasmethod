@@ -102,7 +102,58 @@ test("retries reuse the exact confirmation key; changed facts require a new revi
 
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CoachConversation } from "./coach-conversation";
+import { CoachConversation, ProfileProposalComparison } from "./coach-conversation";
+import { coachCandidateInput, coachCandidateUnit, coachDisplayValue } from "./coach-conversation-client";
+
+test("profile before/after cards and edits use chosen units without rounding canonical values", () => {
+  const weight: CoachCandidate = { ...candidate, kind: "profile", field: "weightKg", unit: "kg", value: 75, sessionId: undefined };
+  const imperial = renderToStaticMarkup(React.createElement(ProfileProposalComparison, { candidate: weight, beforeValue: 70, afterValue: 75, units: "imperial", es: false }));
+  assert.match(imperial, /Before/); assert.match(imperial, /After approval/);
+  assert.match(imperial, /154\.3 lb/); assert.match(imperial, /165\.3 lb/); assert.doesNotMatch(imperial, /75 kg/);
+  const metric = renderToStaticMarkup(React.createElement(ProfileProposalComparison, { candidate: weight, beforeValue: null, afterValue: 75, units: "metric", es: true }));
+  assert.match(metric, /Antes/); assert.match(metric, /75\.0 kg/); assert.match(metric, /—/);
+  assert.equal(editedCoachCandidate(weight, coachCandidateInput(weight, "imperial"), "imperial").value, 75);
+  assert.ok(Math.abs(Number(editedCoachCandidate(weight, "165.3465", "imperial").value) - 75) < 0.001);
+  const height = { ...weight, field: "heightCm", value: 172.72321, unit: "cm" };
+  assert.equal(editedCoachCandidate(height, coachCandidateInput(height, "imperial"), "imperial").value, height.value);
+  assert.equal(editedCoachCandidate(height, "5 ft 8 in", "imperial").value, 172.72);
+  for (const raw of ["5", "5 ft 12 in", "5 ft -1 in", "NaN", "5 ft 8 in extra"]) assert.throws(() => editedCoachCandidate(height, raw, "imperial"));
+  assert.match(coachDisplayValue("heightCm", 172.72, "cm", "imperial"), /5'8/);
+  assert.equal(coachDisplayValue("ftp", 250, "W", "imperial"), "250 W");
+  assert.equal(coachDisplayValue("weeklyHours", 6, "h/week", "metric"), "6 h/week");
+});
+
+test("an older verified receipt remains displayable after cancelling a later proposal", () => {
+  assert.equal(verifiedCoachReceipt({ ...payload, applied: false, proposal: { id: "later-proposal", revision: 2, status: "cancelled", candidates: [] } })?.id, "receipt-one");
+  assert.equal(verifiedCoachReceipt({ ...payload, applied: false, proposal: { id: "proposal-one", revision: 2, status: "confirmed", candidates: [] } }), null);
+});
+
+test("feedback before/after body weights edit and confirm in the same chosen units as receipts", () => {
+  for (const field of ["preWeightKg", "postWeightKg"]) for (const units of ["metric", "imperial"] as const) {
+    const feedback: CoachCandidate = { ...candidate, field, value: 70.123456, unit: "kg" };
+    const input = coachCandidateInput(feedback, units);
+    assert.equal(coachCandidateUnit(feedback, units), units === "imperial" ? "lb" : "kg");
+    assert.equal(editedCoachCandidate(feedback, input, units).value, feedback.value, "Unchanged presentation preserves every canonical digit");
+    assert.equal(Number(input) > 100, units === "imperial", "Pounds are displayed for imperial feedback inputs");
+    const edited = editedCoachCandidate(feedback, units === "imperial" ? "176.3696" : "80", units);
+    assert.ok(Math.abs(Number(edited.value) - 80) < 0.00001);
+    assert.equal(edited.unit, "kg"); assert.equal(edited.sessionId, feedback.sessionId);
+    assert.equal(coachDisplayValue(field, edited.value, "kg", units), units === "imperial" ? "176.4 lb" : "80.0 kg");
+  }
+});
+
+test("check-in weight drafts use the same chosen-unit presentation without changing canonical kg", () => {
+  const draft: CoachCandidate = { ...candidate, kind: "checkin", field: "weightKg", value: 70.123456, unit: "kg", sessionId: undefined };
+  for (const units of ["metric", "imperial"] as const) {
+    const input = coachCandidateInput(draft, units);
+    assert.equal(Number(input) > 100, units === "imperial");
+    assert.equal(coachCandidateUnit(draft, units), units === "imperial" ? "lb" : "kg");
+    assert.equal(editedCoachCandidate(draft, input, units).value, draft.value);
+    const edited = editedCoachCandidate(draft, units === "imperial" ? "176.3696" : "80", units);
+    assert.ok(Math.abs(Number(edited.value) - 80) < 0.00001); assert.equal(edited.unit, "kg");
+    assert.equal(coachDisplayValue(edited.field, edited.value, edited.unit, units), units === "imperial" ? "176.4 lb" : "80.0 kg");
+  }
+});
 for (const es of [false, true]) test(`conversation first render is labeled, consent-off, and safe (${es ? "ES" : "EN"})`, () => {
   const markup = renderToStaticMarkup(React.createElement(CoachConversation, { es, athleteId: "test-athlete", onConfirmed: () => undefined }));
   assert.ok(markup.includes(`lang="${es ? "es" : "en"}"`));

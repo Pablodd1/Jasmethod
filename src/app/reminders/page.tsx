@@ -5,6 +5,7 @@ import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import type { ReplyCandidate, MissingQuestion } from "@/lib/coaching-communication";
 import { reminderBlockers } from "@/lib/reminder-readiness";
+import {WorkoutEmailReadiness,isWorkoutEmailHealth,type WorkoutEmailHealth} from "@/components/workout-email-readiness";
 
 type Preferences = { primaryChannel: string; paused: boolean; dailyPlan: boolean; sessionFeedback: boolean; missingData: boolean;
   timezone: string; minuteOfDay: number; quietStart: number; quietEnd: number; declinedOptional: string[]; consentVersion?: string | null;
@@ -43,6 +44,9 @@ function ReplyEditor({ prompt, es, disabled, onSubmit }: { prompt: Prompt; es: b
   </section>;
 }
 export default function RemindersPage() {
+  const {user}=useAuth();return <RemindersPageContent key={user?.id||"signed-out"}/>;
+}
+function RemindersPageContent() {
   const { user } = useAuth(); const es = user?.language === "es";
   const label = (en: string, spanish: string) => es ? spanish : en;
   const [prefs, setPrefs] = useState<Preferences>(blank), [enabled, setEnabled] = useState(false), [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -52,11 +56,17 @@ export default function RemindersPage() {
   const [reviewedConsent, setReviewedConsent] = useState(false);
   const [sessionId, setSessionId] = useState(""), [purpose, setPurpose] = useState("sessionFeedback"), [syntheticId, setSyntheticId] = useState("");
   const [outgoing, setOutgoing] = useState<{ prompt: Prompt; replyToken: string | null } | null>(null), [reply, setReply] = useState("");
+  const [emailHealth,setEmailHealth]=useState<WorkoutEmailHealth|null>(null),[emailHealthUnavailable,setEmailHealthUnavailable]=useState(false);
+  const loadEmailHealth=useCallback(async(signal?:AbortSignal)=>{
+    try{const response=await api("/api/reminders/health","GET",undefined,signal);if(signal?.aborted)return;if(!isWorkoutEmailHealth(response.workoutEmail))throw Error("Invalid email health");setEmailHealth(response.workoutEmail);setEmailHealthUnavailable(false);}
+    catch{if(!signal?.aborted){setEmailHealth(null);setEmailHealthUnavailable(true);}}
+  },[]);
   const load = useCallback(async (signal?: AbortSignal) => {
     const [p, q, w] = await Promise.all([api("/api/coaching/preferences", "GET", undefined, signal), api("/api/coaching/prompts", "GET", undefined, signal), api("/api/workouts?days=14", "GET", undefined, signal)]);
     setPrefs(p.preferences); setEnabled(p.enabled); setTransport(p.transport); setConsentVersion(p.consentVersion); setPrompts(q.prompts); setWorkouts(w.workouts); setLoaded(true);
   }, []);
   useEffect(() => { if (!user) return; const controller = new AbortController(); load(controller.signal).catch(e => { if (!controller.signal.aborted) setError(e.message); }); return () => controller.abort(); }, [user, load]);
+  useEffect(()=>{if(!user)return;const controller=new AbortController();void loadEmailHealth(controller.signal);return()=>controller.abort();},[user,loadEmailHealth]);
   async function action(work: () => Promise<void>) { setBusy(true); setError(""); setNotice(""); try { await work(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   async function save(pause = prefs.paused) {
     if (!pause && transport === "telegram" && prefs.consentVersion !== consentVersion && !reviewedConsent) throw new Error(label("Review and accept the Telegram contents below first.", "Revisa y acepta primero el contenido de Telegram."));
@@ -100,10 +110,11 @@ export default function RemindersPage() {
     <p><Link className="underline" href="/workout-email/settings">{label("Manual Garmin email preferences (separate opt-in)", "Preferencias de correo Garmin manual (consentimiento separado)")}</Link></p>
     <p className="rounded-xl border border-amber-300 bg-amber-50 p-4">{transport === "telegram" && enabled ? label("Telegram delivery is enabled only for your verified private chat and selected purposes. Provider acceptance does not establish reading. Workout email has separate verification and consent settings.", "Telegram solo está activo para tu chat privado verificado y los fines elegidos. La aceptación del proveedor no prueba lectura. El correo de entrenamientos tiene sus propios ajustes de verificación y consentimiento.") : label("Telegram delivery is disabled or unconfigured here. The isolated test mode below simulates acceptance only; it never sends Telegram or email, or claims a read receipt. Workout email has separate settings.", "Telegram está desactivado o sin configurar aquí. El modo de prueba solo simula aceptación; no envía Telegram ni correo ni confirma lectura. El correo de entrenamientos tiene ajustes separados.")}</p>
     <p><a href="/workout-email/settings" className="underline">{label("Verify and schedule my workout email", "Verificar y programar mi correo de entrenamientos")}</a></p>
+    <WorkoutEmailReadiness health={emailHealth} unavailable={emailHealthUnavailable} es={es} onRetry={()=>void loadEmailHealth()}/>
     {error && <p role="alert" className="text-red-700">{error}</p>}{notice && <p role="status" className="text-emerald-800">{notice}</p>}
     {!loaded ? <p role="status">{label("Loading preferences…", "Cargando preferencias…")}</p> : <>
     <section className="card space-y-2" aria-label={label("Morning delivery readiness", "Estado del envío matutino")}>
-      <h2 className="font-bold">{label("Will my morning reminder arrive?", "¿Llegará mi aviso matutino?")}</h2>
+      <h2 className="font-bold">{label("Telegram reminder readiness", "Estado de los avisos de Telegram")}</h2>
       <p>{clockText(prefs.minuteOfDay)} · {prefs.timezone}</p>
       {blockers.length ? <ul className="list-disc pl-5">{blockers.map(k => <li key={k}>{blockerCopy[k]}</li>)}</ul> : <p>{label("Settings allow an attempt. Check the receipts below; this does not confirm delivery.", "La configuración permite un intento. Revisa los recibos abajo; esto no confirma la entrega.")}</p>}
       <button className="btn-secondary" disabled={busy} onClick={() => setPrefs({ ...prefs, minuteOfDay: 300, quietStart: 1260, quietEnd: 300 })}>{label("Use 5 a.m. with quiet hours ending at 5 a.m.", "Usar las 5 a. m. y terminar el silencio a esa hora")}</button>

@@ -10,11 +10,14 @@ import { useAuth } from "@/components/auth";
 import { AdminCoachEditor } from "@/components/admin-coach-editor";
 import { CoachAssignmentsCard } from "@/components/coach-assignments-card";
 import { AdminPasswordReset } from "@/components/password-recovery";
+import { unitsOf } from "@/lib/units";
+import { profileUnitFormValues, profileUnitPatch } from "@/lib/profile-unit-fields";
+import { endpointText } from "@/lib/universal-workout-card";
+import { intensityDistribution } from "@/lib/science";
+const formatDuration=(seconds:number)=>endpointText({endpoint:{type:"time",seconds}});
 
 const FIELDS: [string, string][] = [
   ["birthYear", "Birth year"],
-  ["heightCm", "Height (cm)"],
-  ["weightKg", "Weight (kg)"],
   ["weeklyHours", "Hours / week"],
   ["ftp", "FTP (W)"],
   ["cp", "Critical power (W)"],
@@ -23,8 +26,6 @@ const FIELDS: [string, string][] = [
   ["restingHr", "Resting HR (bpm)"],
   ["maxHr", "Maximum HR (bpm)"],
   ["vo2max", "VO₂max"],
-  ["runPaceBase", "Run threshold (sec/km)"],
-  ["swimPaceBase", "Swim threshold (sec/100m)"],
   ["hrvBaseline", "HRV baseline (ms)"],
 ];
 const GOALS = [
@@ -61,6 +62,7 @@ export default function AthletePage() {
     [profile, setProfile] = useState<any>({}),
     [edit, setEdit] = useState<any>(null),
     [generate, setGenerate] = useState(false);
+  const [planPreview,setPlanPreview]=useState<any>(null);
   const load = useCallback(async () => {
     const r = await fetch(`/api/admin/athletes/${params.id}?days=${days}`);
     const d = await r.json();
@@ -96,6 +98,18 @@ export default function AthletePage() {
       setBusy(false);
     }
   }
+  async function previewPlan(form: HTMLFormElement) {
+    setBusy(true);setError("");setPlanPreview(null);
+    try {
+      const request=Object.fromEntries(new FormData(form));
+      const response=await fetch(`/api/plan/generate?athleteId=${encodeURIComponent(params.id)}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...request,preview:true})});
+      const result=await response.json();if(!response.ok)throw Error(result.error||"Plan preview failed");
+      if(!result.previewToken||!result.preview)throw Error("Plan preview is unavailable. Reload and retry.");
+      setPlanPreview({request,result});
+    }catch(error:any){setError(error.message);}finally{setBusy(false);}
+  }
+  const displayUnits=unitsOf(profile.units,data?.athlete.language);
+  const unitFields=profileUnitFormValues(profile,displayUnits);
   return (
     <ProtectedPage>
       <div className="space-y-5">
@@ -179,6 +193,9 @@ export default function AthletePage() {
                   profile={data.athlete.profile}
                   workouts={data.workouts || []}
                   onRefresh={load}
+                  easyPct={data.plan?.easyPct}
+                  onPreviewPlan={()=>{setTab("Training");setGenerate(true);setPlanPreview(null);}}
+                  onReviewBaselines={()=>setTab("Profile")}
                 />
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   {[
@@ -276,13 +293,13 @@ export default function AthletePage() {
                     className="card space-y-3"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      const f = new FormData(e.currentTarget);
-                      save("/api/plan/generate", Object.fromEntries(f), "POST");
+                      void previewPlan(e.currentTarget);
                     }}
+                    onChange={()=>setPlanPreview(null)}
                   >
                     <p className="text-sm">
-                      This replaces future, unfinished sessions from the current
-                      active plan. Completed history is preserved.
+                      Preview the proposed cycle before replacing future suggestions.
+                      Reported history is preserved. Saved workouts still require their normal review and approval.
                     </p>
                     <div className="grid sm:grid-cols-3 gap-3">
                       <label>
@@ -319,10 +336,21 @@ export default function AthletePage() {
                           required
                         />
                       </label>
+                      <label>
+                        Minimum easy training (% of planned minutes)
+                        <input name="easyPct" type="number" min="45" max="90" step="1" defaultValue={data.plan?.easyPct ?? intensityDistribution(profile.experience).zone1} className="input" required />
+                        <span className="block text-xs text-slate-600">Z1–Z2 minimum; not a quota for hard training. Extra quality sessions are never created to fill the remainder.</span>
+                      </label>
                     </div>
                     <button disabled={busy} className="btn-primary">
-                      {busy ? "Generating…" : "Generate and save"}
+                      {busy ? "Preparing preview…" : "Preview proposed plan"}
                     </button>
+                    {planPreview && <div className="space-y-3 border-t pt-3" role="status">
+                      <p>{planPreview.result.preview.weeks} weeks · {planPreview.result.preview.weeklyBudgetMin} min/week · {planPreview.request.easyPct}% minimum easy. Review all proposed sessions before confirmation.</p>
+                      <details><summary className="cursor-pointer">Proposed sessions</summary>{planPreview.result.preview.weeksPreview.map((week:any)=><div className="py-2" key={week.week}><strong>Week {week.week} · {week.phase}</strong>{week.sessions.map((session:any,index:number)=><p key={index} className="text-sm">{session.title} · {session.minutes} min · {session.zone}</p>)}</div>)}</details>
+                      <button type="button" className="btn-primary" disabled={busy || planPreview.result.doubleDayAgreementRequired || planPreview.result.eventTradeoffAgreementRequired} onClick={()=>void save("/api/plan/generate",{...planPreview.request,previewToken:planPreview.result.previewToken},"POST")}>Confirm preview and save proposed cycle</button>
+                      {(planPreview.result.doubleDayAgreementRequired || planPreview.result.eventTradeoffAgreementRequired) && <p>The athlete must review and confirm optional session pairs or event tradeoffs in their own training page.</p>}
+                    </div>}
                   </form>
                 )}
                 {edit && (
@@ -458,12 +486,12 @@ export default function AthletePage() {
                         </p>
                         <h3 className="font-semibold">{w.title}</h3>
                         <p className="text-sm">
-                          {w.durationMin} {w.planned ? "planned" : "recorded"}{" "}
-                          min · {w.intensity?.toUpperCase()} ·{" "}
+                          {formatDuration(w.durationMin * 60)} {w.planned ? "planned" : "recorded"}{" "}
+                          · {w.intensity?.toUpperCase()} ·{" "}
                           {w.feedbackStatus ||
                             (w.completed ? "completed" : "planned")}
                           {w.actualDurationMin != null
-                            ? ` · ${w.actualDurationMin} actual min`
+                            ? ` · ${formatDuration(w.actualDurationMin * 60)} actual`
                             : ""}
                         </p>
                         {w.feedbackNote && (
@@ -510,11 +538,12 @@ export default function AthletePage() {
                 <CoachAssignmentsCard athleteId={params.id} onChanged={load} />
               )}
               <form
+                key={data.profileRevision}
                 className="card space-y-5"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const f = new FormData(e.currentTarget);
-                  const p: any = Object.fromEntries(f);
+                  let p:any;try{p=profileUnitPatch(Object.fromEntries(f),profile,displayUnits);}catch(error:any){setError(error.message);return;}
                   if (!p.sex) p.sex = null;
                   for (const k of [...equipment, "injured"]) p[k] = f.has(k);
                   save("/api/profile", p);
@@ -524,6 +553,7 @@ export default function AthletePage() {
                 <p className="text-sm text-slate-500">
                   Empty optional values mean unknown. Changes update the same
                   profile the athlete uses.
+                  {" "}Values below use {displayUnits === "imperial" ? "imperial" : "metric"} units. Changing the display preference applies after saving; measurements retain their current labels while editing.
                 </p>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {FIELDS.map(([k, l]) => (
@@ -538,6 +568,11 @@ export default function AthletePage() {
                       />
                     </label>
                   ))}
+                  <label>Display units<select name="units" className="input" defaultValue={profile.units || "auto"}><option value="auto">Automatic ({data.athlete.language?.startsWith("en")?"imperial":"metric"})</option><option value="imperial">Imperial (explicit override)</option><option value="metric">Metric (explicit override)</option></select></label>
+                  <label>Weight ({displayUnits === "imperial" ? "lb" : "kg"})<input name="weightKg" type="number" step="any" className="input" defaultValue={unitFields.weightKg ?? ""}/></label>
+                  {displayUnits === "imperial" ? <fieldset><legend>Height (feet and inches)</legend><div className="flex gap-2"><label>Feet<input className="input" name="heightFeet" type="number" min="0" step="1" defaultValue={unitFields.heightFeet ?? ""}/></label><label>Inches<input className="input" name="heightInches" type="number" min="0" max="11.99" step="any" defaultValue={unitFields.heightInches ?? ""}/></label></div></fieldset> : <label>Height (cm)<input name="heightCm" type="number" step="any" className="input" defaultValue={unitFields.heightCm ?? ""}/></label>}
+                  <label>Run threshold (min:sec/{displayUnits === "imperial"?"mi":"km"})<input name="runPaceBase" type="text" inputMode="decimal" className="input" placeholder="8:03" defaultValue={unitFields.runPaceBase ?? ""}/></label>
+                  <label>Swim threshold (min:sec/100 {displayUnits === "imperial"?"yd":"m"})<input name="swimPaceBase" type="text" inputMode="decimal" className="input" placeholder="1:30" defaultValue={unitFields.swimPaceBase ?? ""}/><span className="text-xs text-slate-600">Reference pace only; actual pool length remains specified on each swim session.</span></label>
                   <label>
                     Sex
                     <select

@@ -7,6 +7,7 @@ import type { ManualWorkoutEmailReadyPlan } from "./manual-workout-email-templat
 import { manualEmailLanguage, type ManualWorkoutEmailLanguage } from "./manual-workout-email-locale";
 import { renderDayPng } from "./workout-graphic";
 import { endpointText } from "./universal-workout-card";
+import { unitsOf } from "./units";
 
 const SPORTS_ES: Record<SessionSport, string> = {
   run: "carrera", bike: "ciclismo", swim: "natación", strength: "fuerza", mobility: "movilidad",
@@ -148,7 +149,7 @@ function gapEs(gap: string): string {
 }
 
 /** Canonical values only; never infer HR, VO2max, power or calories from zones. */
-export function manualWorkoutEmailContent(session: CanonicalSession, nutrition: SessionNutrition, startTime: string | null, includeGraphic = true, language: ManualWorkoutEmailLanguage = "en"): { plan: ManualWorkoutEmailReadyPlan; graphic: Buffer | null } {
+export function manualWorkoutEmailContent(session: CanonicalSession, nutrition: SessionNutrition, startTime: string | null, includeGraphic = true, language: ManualWorkoutEmailLanguage = "en", units?:string|null): { plan: ManualWorkoutEmailReadyPlan; graphic: Buffer | null } {
   if (!manualEmailLanguage(language)) throw Error("Manual workout email language is unavailable");
   if (session.verdict !== "ready") throw Error("Only a ready canonical session can include instructions");
   const es = language === "es";
@@ -169,7 +170,7 @@ export function manualWorkoutEmailContent(session: CanonicalSession, nutrition: 
       before: nutrition ? beforeEs(nutrition) : ["La orientación personalizada de alimentación no está disponible; consulta el plan actual."],
       during: nutrition ? duringEs(nutrition) : ["No hay cantidades verificadas de alimentación e hidratación disponibles."],
       after: nutrition ? afterEs(nutrition) : ["La orientación nutricional de recuperación no está disponible."],
-      preparation: ["Carga el dispositivo y comprueba que llevas el entrenamiento correcto, el material necesario y acceso a agua antes de salir.", session.environment ? dailyEnvironmentSummary(session.environment, "es") : "No se han verificado el tiempo ni la ubicación. Consulta las condiciones locales actuales; si hace calor, planifica sombra y medidas para refrescarte, y considera llevar una toalla u otros elementos para enfriarte cuando sea práctico.", "Opcional: haz una pausa breve y cómoda para respirar y concentrarte. Sin retener la respiración ni prometer efectos sobre el sistema nervioso autónomo."],
+      preparation: ["Carga el dispositivo y comprueba que llevas el entrenamiento correcto, el material necesario y acceso a agua antes de salir.", session.environment ? dailyEnvironmentSummary(session.environment, "es",unitsOf(units,language)) : "No se han verificado el tiempo ni la ubicación. Consulta las condiciones locales actuales; si hace calor, planifica sombra y medidas para refrescarte, y considera llevar una toalla u otros elementos para enfriarte cuando sea práctico.", "Opcional: haz una pausa breve y cómoda para respirar y concentrarte. Sin retener la respiración ni prometer efectos sobre el sistema nervioso autónomo."],
       limitations: [...new Set([...(fuel?.measurementGaps.map(gapEs) || []), ...(nutrition ? [`Contexto nutricional: ${statuses[nutrition.contextStatus]}. La orientación es educativa, no una necesidad medida.`] : []), "Esta exportación no ofrece un porcentaje de VO2max. La frecuencia cardíaca, el ritmo, la potencia y la energía son magnitudes distintas; utiliza solo el objetivo respaldado que se muestra en cada paso.", ...(timed ? ["La anchura de las barras del gráfico representa el tiempo prescrito; los colores identifican zonas de entrenamiento, no una respuesta fisiológica medida."] : ["No hay un gráfico a escala temporal para pasos de distancia, repeticiones o vuelta manual; utiliza la lista exacta de pasos."]), "La compatibilidad y la transferencia al dispositivo siguen sin verificarse."])],
       ...(graphic ? { graphicCid: "workout-profile@jmm", graphicAlt: steps.join("; ") } : {}),
     } };
@@ -180,15 +181,15 @@ export function manualWorkoutEmailContent(session: CanonicalSession, nutrition: 
     before: fuel ? [fuel.preSession.note] : ["Personalized fueling guidance is unavailable; review the current plan."],
     during: fuel ? [`General planning example: ${fuel.carbsPerHourG} g TOTAL carbohydrate/hour; ${fuel.fluidMlPerHour} ml fluid/hour (${fuel.fluidSource}); ${fuel.sodiumMgPerHour} mg sodium/hour.`, fuel.notes, ...(fuel.carbsPerHourG > 60 ? ["Higher carbohydrate intake requires previously tolerated practice. Above 90 g/h requires individualized review and rehearsal; never make a first attempt on race day."] : [])] : ["No verified fueling quantities are available."],
     after: nutrition ? [nutrition.post.note] : ["Recovery nutrition guidance is unavailable."],
-    preparation: ["Charge your device and check the correct workout, equipment and water access before leaving.", session.environment ? dailyEnvironmentSummary(session.environment, "en") : "Weather and location are not verified here. Check current local conditions; in heat, plan shade/cooling and consider a towel or cooling supplies when practical.", "Optional: take a brief, comfortable breathing pause to focus. No breath holds or promised autonomic effect."],
+    preparation: ["Charge your device and check the correct workout, equipment and water access before leaving.", session.environment ? dailyEnvironmentSummary(session.environment, "en",unitsOf(units,language)) : "Weather and location are not verified here. Check current local conditions; in heat, plan shade/cooling and consider a towel or cooling supplies when practical.", "Optional: take a brief, comfortable breathing pause to focus. No breath holds or promised autonomic effect."],
     limitations: [...new Set([...(fuel?.measurementGaps || []), ...(nutrition ? [`Nutrition context: ${nutrition.contextStatus}. Guidance is educational, not a measured requirement.`] : []), "No VO2max percentage is available from this export. Heart rate, pace, power and energy are different quantities; use only the supported target shown for each step.", ...(timed ? ["Graphic widths show prescribed time; colors identify workout zones, not measured physiological response."] : ["A time-scaled graphic is unavailable for distance, repetition or manual-lap steps; use the exact step list."]), "Compatibility and transfer to your device remain unverified."])] ,
     ...(graphic ? { graphicCid: "workout-profile@jmm", graphicAlt: steps.join("; ") } : {}),
   } };
 }
 
 /** Explicitly consented calendar details only. No free-text notes or safety answers. */
-export function manualWorkoutCalendarDescription(session: CanonicalSession, nutrition: SessionNutrition, startTime: string | null, language: ManualWorkoutEmailLanguage = "en") {
-  const { plan } = manualWorkoutEmailContent(session, nutrition, startTime, false, language);
+export function manualWorkoutCalendarDescription(session: CanonicalSession, nutrition: SessionNutrition, startTime: string | null, language: ManualWorkoutEmailLanguage = "en", units?:string|null) {
+  const { plan } = manualWorkoutEmailContent(session, nutrition, startTime, false, language, units);
   return language === "es"
     ? [plan.summary, "Entrenamiento (referencias del plan actual):", ...plan.steps, "Preparación:", ...plan.preparation,
       "Antes:", ...plan.before, "Durante:", ...plan.during, "Después:", ...plan.after, "Limitaciones:", ...plan.limitations,

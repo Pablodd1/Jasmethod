@@ -8,6 +8,7 @@ import { prisma } from "./db";
 import { ApiError, trainingAccess } from "./access";
 import { dateKey, dayBounds, localDate, addDaysKey } from "./dates";
 import { profileRevision, saveProfile } from "./profile-service";
+import { unitsOf } from "./units";
 import { updateWorkout, workoutRevision } from "./workout-update";
 import { readPlanningSetup } from "./planning-setup-store";
 import { assessPlanningSetup } from "./planning-setup";
@@ -36,7 +37,7 @@ export interface ConversationReceipt {
   id: string;
   proposalId: string;
   confirmedAt: string;
-  applied: Array<{ candidateId: string; kind: string; field: string; value: CoachCandidate["value"]; sourceValue: CoachCandidate["value"]; source: string; observedDate: string | null; sessionId?: string; entityId: string; evidence: string }>;
+  applied: Array<{ candidateId: string; kind: string; field: string; value: CoachCandidate["value"]; previousValue?: CoachCandidate["value"]; sourceValue: CoachCandidate["value"]; source: string; observedDate: string | null; sessionId?: string; entityId: string; evidence: string }>;
   pendingActions: PendingAction[];
   checkinDraft: CoachCandidate[];
   planDraft: CoachCandidate[];
@@ -64,7 +65,18 @@ function publicProposal(proposal: CoachConversationProposal | null) {
   if (!proposal) return null;
   const candidates = parsed<CoachCandidate[]>(proposal.candidates, "proposal");
   const receipt = proposal.receipt ? parsed<ConversationReceipt>(proposal.receipt, "receipt") : null;
-  return { id: proposal.id, revision: proposal.revision, status: proposal.status, candidates, pendingActions: ["cancelled", "superseded"].includes(proposal.status) ? [] : receipt?.pendingActions ?? pendingActions(candidates), receipt, createdAt: proposal.createdAt };
+  const bases = parsed<{ beforeProfile?: Record<string, CoachCandidate["value"]> }>(proposal.baseRevisions, "revisions");
+  // Older proposals have no stored snapshot: show unknown rather than today's value as "before".
+  const beforeValues = Object.fromEntries(candidates.filter(c => c.kind === "profile").map(c => [c.field, bases.beforeProfile?.[c.field] ?? null]));
+  return { id: proposal.id, revision: proposal.revision, status: proposal.status, candidates, beforeValues, pendingActions: ["cancelled", "superseded"].includes(proposal.status) ? [] : receipt?.pendingActions ?? pendingActions(candidates), receipt, createdAt: proposal.createdAt };
+}
+
+function profileBeforeValues(profile: unknown, candidates?: CoachCandidate[]) {
+  const values = profile && typeof profile === "object" ? profile as Record<string, unknown> : {};
+  return Object.fromEntries((candidates ? candidates.filter(c => c.kind === "profile").map(c => c.field) : mutationFields.profile).map(field => {
+    const value = values[field];
+    return [field, typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : null];
+  }));
 }
 
 /** trainingAccess is still the standard authentication boundary; even an assigned
@@ -107,18 +119,24 @@ function publicMessage({metadata,...message}:{id:string;role:string;content:stri
   return {...message,...(clientRequestId?{clientRequestId}:{}),...(needsHumanReview?{needsHumanReview:true}:{}),...(localContextSummary?{localContextSummary}:{})};
 }
 async function readConversation(actor: ConversationActor, db: DB = prisma) {
-  const conversation = await db.coachConversation.findUnique({ where: { userId: actor.id } });
-  if (!conversation) return { conversation: { id: null, messages: [] }, proposal: null, receipt: null, pendingActions: [] as PendingAction[] };
-  const [messages, proposal] = await Promise.all([
+  const [conversation, profile] = await Promise.all([
+    db.coachConversation.findUnique({ where: { userId: actor.id } }),
+    db.athleteProfile.findUnique({ where: { userId: actor.id } }),
+  ]);
+  const preferences = { displayUnits: unitsOf(profile?.units, actor.language), unitPreference: profile?.units ?? "auto" };
+  if (!conversation) return { ...preferences, conversation: { id: null, messages: [] }, proposal: null, receipt: null, savedReceipt: null, pendingActions: [] as PendingAction[] };
+  const [messages, proposal, savedProposal] = await Promise.all([
     db.coachConversationMessage.findMany({ where: { userId: actor.id, conversationId: conversation.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: CONVERSATION_MESSAGE_LIMIT,
       select: { id: true, role: true, content: true, source: true, createdAt: true, metadata: true } }),
     db.coachConversationProposal.findFirst({ where: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }),
+    db.coachConversationProposal.findFirst({ where: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation, status: "confirmed" }, orderBy: [{ confirmedAt: "desc" }, { id: "desc" }] }),
   ]);
   const proposalView = publicProposal(proposal);
   let suggested: PendingAction[] = [];
   const latestAssistant = messages.find(message => message.role === "assistant");
   try { const metadata = JSON.parse(latestAssistant?.metadata || "{}"); if (Array.isArray(metadata.pendingActions)) suggested = metadata.pendingActions.filter((action: unknown): action is PendingAction => action === "review_checkin" || action === "review_plan"); } catch { /* Unverified metadata grants no action. */ }
-  return { conversation: { id: conversation.id, messages: messages.reverse().map(publicMessage) }, proposal: proposalView, receipt: proposalView?.receipt ?? null, pendingActions: [...new Set([...suggested, ...(proposalView?.pendingActions || [])])] };
+  const savedReceipt = savedProposal?.receipt ? parsed<ConversationReceipt>(savedProposal.receipt, "receipt") : null;
+  return { ...preferences, conversation: { id: conversation.id, messages: messages.reverse().map(publicMessage) }, proposal: proposalView, receipt: proposalView?.receipt ?? savedReceipt, savedReceipt, pendingActions: [...new Set([...suggested, ...(proposalView?.pendingActions || [])])] };
 }
 export async function getConversation(actor: ConversationActor) {
   const today = dateKey(new Date(), actor.timezone);
@@ -329,10 +347,10 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       if (candidates.length) {
         await tx.coachConversationProposal.updateMany({ where: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation, status: "pending" }, data: { status: "superseded", revision: { increment: 1 } } });
         await tx.coachConversationProposal.create({ data: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation, sourceMessageId: userMessage.id, timezone: actor.timezone,
-          candidates: JSON.stringify(candidates), baseRevisions: JSON.stringify({ profile: profileRevision(profile), workouts: selected ? { [selected.id]: { revision: workoutRevision(selected), date: sessionDate } } : {} }) } });
+          candidates: JSON.stringify(candidates), baseRevisions: JSON.stringify({ profile: profileRevision(profile), beforeProfile: profileBeforeValues(profile, candidates), workouts: selected ? { [selected.id]: { revision: workoutRevision(selected), date: sessionDate } } : {} }) } });
       }
       const assistantMessage = await tx.coachConversationMessage.create({ data: { conversationId: conversation.id, userId: actor.id, role: "assistant", content: answer, source: "local", metadata: JSON.stringify({ ruleId: reply.ruleId, sourceIds: reply.sourceIds ?? [],needsHumanReview:suggestedActions.length>0||reply.ruleId==='coach-conversation-v1:ask-next-detail', requiresCheckinReview: unreviewedCurrentCheckin, pendingActions: suggestedActions, imageStatus: image?.status ?? null }) } });
-      return { ok: true, answer, mode: "coach_local", trainingModified: false, externalStatus: input.externalConsent ? "not_configured" : "not_requested", imageStatus: image?.status ?? "not_requested", capabilities: coachCapabilities(), ...await readConversation(actor, tx), _context: context, _guard: { conversationId: conversation.id, revision: conversation.revision, generation: conversation.generation, messageId: assistantMessage.id,sourceMessageId:userMessage.id,baseRevisions:{profile:profileRevision(profile),workouts:selected?{[selected.id]:{revision:workoutRevision(selected),date:sessionDate}}:{}} }, _ruleId: reply.ruleId, _hasCandidates: candidates.length > 0 };
+      return { ok: true, answer, mode: "coach_local", trainingModified: false, externalStatus: input.externalConsent ? "not_configured" : "not_requested", imageStatus: image?.status ?? "not_requested", capabilities: coachCapabilities(), ...await readConversation(actor, tx), _context: context, _guard: { conversationId: conversation.id, revision: conversation.revision, generation: conversation.generation, messageId: assistantMessage.id,sourceMessageId:userMessage.id,baseRevisions:{profile:profileRevision(profile),beforeProfile:profileBeforeValues(profile),workouts:selected?{[selected.id]:{revision:workoutRevision(selected),date:sessionDate}}:{}} }, _ruleId: reply.ruleId, _hasCandidates: candidates.length > 0 };
     }, { isolationLevel: "Serializable", timeout: 20000 });
     const { _context, _guard, _ruleId, _hasCandidates, ...result } = local;
     // Network work never runs inside a database transaction. A concurrent clear,
@@ -446,6 +464,7 @@ export async function confirmConversation(actor: ConversationActor, raw: unknown
           workoutFields.set(candidate.sessionId!, fields);
         }
       }
+      const beforeProfileValues = profileBeforeValues(profile, selected);
       const entityIds = new Map<string, string>();
       const reason = `Athlete confirmed private assistant proposal ${proposal.id}; source message ${proposal.sourceMessageId}; immutable provenance in coach.conversation.confirmed audit`;
       if (Object.keys(profileFields).length) {
@@ -463,7 +482,7 @@ export async function confirmConversation(actor: ConversationActor, raw: unknown
         const saved = await updateWorkout(actor.id, actor, { ...fields, sessionId, expectedRevision: base.revision, protectHistory:edits, reason }, tx);
         entityIds.set(sessionId, saved.id);
       }
-      const applied = selected.filter(c => c.kind === "profile" || c.kind === "workout_feedback" || c.kind === "workout_plan").map(candidate => ({ candidateId: candidate.id, kind: candidate.kind, field: candidate.field, value: candidate.value, sourceValue: stored.find(c => c.id === candidate.id)!.value, source: candidate.source, observedDate: candidate.observedDate, ...(candidate.sessionId ? { sessionId: candidate.sessionId } : {}), entityId: entityIds.get(candidate.kind === "profile" ? "profile" : candidate.sessionId!)!, evidence: candidate.evidence }));
+      const applied = selected.filter(c => c.kind === "profile" || c.kind === "workout_feedback" || c.kind === "workout_plan").map(candidate => ({ candidateId: candidate.id, kind: candidate.kind, field: candidate.field, value: candidate.value, ...(candidate.kind === "profile" ? { previousValue: beforeProfileValues[candidate.field] } : {}), sourceValue: stored.find(c => c.id === candidate.id)!.value, source: candidate.source, observedDate: candidate.observedDate, ...(candidate.sessionId ? { sessionId: candidate.sessionId } : {}), entityId: entityIds.get(candidate.kind === "profile" ? "profile" : candidate.sessionId!)!, evidence: candidate.evidence }));
       const trainingModified=applied.some(c=>c.kind==="workout_plan");
       const actions = pendingActions(selected.filter(c=>c.kind!=="workout_plan"), applied.length > 0);
       const receipt: ConversationReceipt = { id: randomUUID(), proposalId, confirmedAt: new Date().toISOString(), applied, pendingActions: actions, checkinDraft: selected.filter(c => c.kind === "checkin"), planDraft: [],

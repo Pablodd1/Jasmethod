@@ -113,9 +113,9 @@ export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?
           continue;
         }
         const actionable = (kind === "ready" || kind === "revised") && fresh.resolved;
-        const content = actionable ? manualWorkoutEmailContent(actionable.canonical, actionable.nutrition, fresh.workout?.startTime || null, false, language) : null;
+        const content = actionable ? manualWorkoutEmailContent(actionable.canonical, actionable.nutrition, fresh.workout?.startTime || null, false, language, actionable.targetProfile?.units) : null;
         if(content && actionable){
-          content.graphic=renderUniversalWorkoutPng(buildUniversalWorkoutCard(actionable.canonical,actionable.nutrition,language,fresh.workout?.startTime||null));
+          content.graphic=renderUniversalWorkoutPng(buildUniversalWorkoutCard(actionable.canonical,actionable.nutrition,language,fresh.workout?.startTime||null,actionable.targetProfile?.units));
           content.plan.graphicCid="workout-profile@jmm";
           content.plan.graphicAlt=content.plan.steps.join("; ");
         }

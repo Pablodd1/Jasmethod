@@ -224,7 +224,7 @@ export async function POST(req: Request) {
       }
     }
     const doubleDayAgreementRequired=generated.some(w=>w.sessions.some(s=>s.doubleDayRole));
-    const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true}});
+    const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true,easyPct:true}});
     const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated, storedRaces, recentActivity, activityDecisions, benchmarkTests, appliedAnchors })).digest("hex");
     if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated, recoveryPolicy, cycle}, previewToken,
       planningBasis: setup.baselinePlanOptIn ? "baseline_only" : "baseline", targetReview: readiness.targetReview ?? [],
@@ -252,7 +252,7 @@ export async function POST(req: Request) {
         const oldPlans = await tx.trainingPlan.findMany({
           where: { userId: user.id, status: "active" },
           orderBy: {id: "asc"},
-          select: { id: true },
+          select: { id: true, easyPct: true },
         });
         if (JSON.stringify(oldPlans) !== JSON.stringify(currentPlans)) throw new ApiError("Your active plan changed. Preview again before replacing it.", 409);
         if (oldPlans.length) {
@@ -351,7 +351,10 @@ export async function POST(req: Request) {
             subjectId: user.id,
             action: "plan.generate",
             entityId: plan.id,
+            before:JSON.stringify({activePlans:oldPlans}),
             after: JSON.stringify({
+              planId:plan.id,
+              easyPct:plan.easyPct,
               name: plan.name,
               cycle,
               eventTradeoffAgreement:eventReview.requiresChoice ? {confirmedBy:actor.id,previewToken,events} : null,

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { endpointText } from "@/lib/universal-workout-card";
+import { intensityDistribution } from "@/lib/science";
 import {
   GripVertical,
   Trash2,
@@ -57,6 +59,9 @@ export function AdminCoachEditor({
   profileRevision,
   workouts,
   onRefresh,
+  easyPct,
+  onPreviewPlan,
+  onReviewBaselines,
 }: {
   athleteId: string;
   timezone: string;
@@ -65,6 +70,9 @@ export function AdminCoachEditor({
   profileRevision?: string;
   workouts: W[];
   onRefresh: () => void;
+  easyPct?: number | null;
+  onPreviewPlan?: () => void;
+  onReviewBaselines?: () => void;
 }) {
   const [editRevision, setEditRevision] = useState(profileRevision);
   const [goal, setGoal] = useState(profile?.goal || "");
@@ -200,9 +208,9 @@ export function AdminCoachEditor({
             </select>
           </div>
           <div>
-            <label className="label">Intensity %</label>
-            <input type="number" min={50} max={130} step={5} className="input" value={pct} onChange={(e) => setPct(e.target.value)} />
-            <div className="text-[10px] text-slate-400 mt-1">100 = as planned · 80 eases · 120 sharpens</div>
+            <label className="label" htmlFor={`dose-${athleteId}`}>Workout dose scale (%)</label>
+            <input id={`dose-${athleteId}`} type="number" min={50} max={130} step={5} className="input" value={pct} onChange={(e) => setPct(e.target.value)} />
+            <div className="text-xs text-slate-600 mt-1">100 = saved dose. Scales workout dose within safety limits; does not set easy/quality distribution or physiological thresholds.</div>
           </div>
           <div>
             <label className="label">Weekly hours</label>
@@ -211,6 +219,13 @@ export function AdminCoachEditor({
           <button onClick={saveProfile} disabled={savingProfile || busy || !editRevision} className="btn-primary justify-center">
             <Save className="w-4 h-4" /> {savingProfile ? "Saving…" : "Save profile"}
           </button>
+        </div>
+        <div className="mt-4 space-y-2 text-sm">
+          <p>Planned easy-training preference: {easyPct ?? intensityDistribution(profile?.experience ?? "beginner").zone1}% minimum of aerobic minutes (Z1–Z2). {easyPct == null ? "Experience-based starting preference; no cycle preference saved." : "Saved on this athlete's active cycle."} The remainder is a ceiling, never a quota for harder sessions.</p>
+          {onPreviewPlan && <button type="button" className="btn-secondary" onClick={onPreviewPlan}>Preview cycle and easy-training preference</button>}
+          <p>Achieved physiological zone distribution: —. This board does not contain verified time in zones; planned labels and recorded duration cannot establish measured intensity distribution.</p>
+          {onReviewBaselines && <button type="button" className="btn-secondary" onClick={onReviewBaselines}>Review physiological thresholds and profile</button>}
+          <p className="text-xs text-slate-600">Profile settings do not rewrite calendar instructions. Preview cycle changes separately; revised sessions require the usual review and approval.</p>
         </div>
         {profileMsg && <div className="text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-3">{profileMsg}</div>}
       </div>
@@ -298,7 +313,7 @@ export function AdminCoachEditor({
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-semibold truncate">{w.title}</div>
                           <div className="text-[10px] text-slate-500">
-                            {w.durationMin} min · {(w.intensity || "z2").toUpperCase()} · {w.sport}
+                            {endpointText({endpoint:{type:"time",seconds:w.durationMin*60}},lang)} · {w.intensity?.toUpperCase() || "zone unknown"} · {w.sport}
                             {w.completed ? " · ✓" : ""}
                           </div>
                         </div>

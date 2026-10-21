@@ -8,6 +8,7 @@ import { canonicalSession } from "./canonical-session";
 import { workoutRevision } from "./workout-update";
 import { parseSessionObservations, observationsFromForm } from "./session-observations";
 import { actualFuelingFromForm } from "./actual-fueling";
+import * as units from "./units";
 
 function compile(path: string, deps: Record<string, unknown>, globals: Record<string, unknown> = {}) {
   const compiled = ts.transpileModule(fs.readFileSync(path, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
@@ -73,6 +74,7 @@ test("daily feedback refresh waits for verified saving, uses the new revision, a
   const readGate = new Promise<void>(resolve => { releaseRead = resolve; });
   const DailyTrainingScreen = "daily-screen";
   const { default: Page } = compile("src/app/daily/page.tsx", {
+    "@/lib/units": units,
     react: { useState: (value: any) => value?.kind === "loading" ? [current, (next: any) => { current = next; }] : [value, () => {}], useRef: (value: unknown) => ({ current: value }), useEffect: () => {}, useCallback: (callback: unknown) => callback },
     "@/components/auth": { useAuth: () => ({ user: { language: "en" } }) }, "next/link": { default: "a" },
     "@/components/daily-training/DailyEnvironmentCard": { DailyEnvironmentCard: "environment" },

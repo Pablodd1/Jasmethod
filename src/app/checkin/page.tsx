@@ -14,6 +14,10 @@ import { checkinAdaptationView } from "@/components/daily-training/checkin-resul
 import { DailyInputSummary } from "@/components/daily-training/DailyInputSummary";
 import type { DailyInputContext } from "@/lib/daily-input-context";
 import { readinessReasonText } from "@/components/daily-training/readiness-copy";
+import { checkinDraftKey, emptyCheckinAnswers, hydrateCheckinDraft, restoreCheckinDraft, savedCheckinAnswers } from "@/lib/checkin-draft";
+import { unitsOf, distanceToDisplay, weightToDisplay } from "@/lib/units";
+import { actualActivityFormValues, actualActivityUnitPatch } from "@/lib/activity-unit-fields";
+import { ProfileMeasurementInput } from "@/components/ProfileMeasurementInput";
 
 const QUESTIONS = [
   { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great — hours matter but how you FEEL matters more" },
@@ -66,8 +70,19 @@ const VERDICT_COLOR: Record<string, string> = { full: "text-emerald-600", trim: 
 
 export default function CheckinPage() {
   const { user } = useAuth();
+  return <CheckinPageContent key={user?.id || "signed-out"} />;
+}
+
+function CheckinPageContent() {
+  const { user } = useAuth();
   const lang = (user?.language || "es") as Lang;
-  const [answers, setAnswers] = useState<any>({ sleep: "", mood: "", soreness: "", motivation: "", energy: "", stress: "", sick: "", newPain: "", urgentSymptoms: "", menstrual: "", weightKg: "", rhr: "", hrv: "", sleepHours: "", availableMinutes: "" });
+  const displayUnits=unitsOf(user?.profile?.units,user?.language);
+  const [unitErrors,setUnitErrors]=useState<Record<string,string|null>>({});
+  const [answers, setAnswers] = useState<any>(emptyCheckinAnswers);
+  const currentAnswers=useRef(answers);currentAnswers.current=answers;
+  const dirtyAnswers = useRef(new Set<string>());
+  const draftScope = useRef<{dateLocal:string;savedBasis:string|null}|null>(null);
+  const [draftNotice,setDraftNotice] = useState("");
   const [result, setResult] = useState<any>(null);
   const [inputContext, setInputContext] = useState<DailyInputContext | null>(null);
   const [correctImported, setCorrectImported] = useState(false);
@@ -129,11 +144,13 @@ export default function CheckinPage() {
   }
 
   function applyHeard() {
+    if(unitErrors.voiceWeight){setErr(unitErrors.voiceWeight);return;}
     if (!heard || !heard.supportedLanguage) return;
     const fields = ["sleep", "soreness", "energy", "motivation", "stress", "weightKg", "rhr", "hrv", "sleepHours", "availableMinutes", "sick", "menstrual", "newPain", "urgentSymptoms"] as const;
     setAnswers((a: any) => {
       const next = { ...a, voiceReviewConfirmed: true };
-      for (const field of fields) if (heard[field] !== undefined) next[field] = heard[field];
+      for (const field of fields) if (heard[field] !== undefined) { next[field] = heard[field]; dirtyAnswers.current.add(field); }
+      dirtyAnswers.current.add("voiceReviewConfirmed");
       return next;
     });
     setHeard(null); setTranscript("");
@@ -144,16 +161,18 @@ export default function CheckinPage() {
     const d = await res.json();
     if (!res.ok) throw new Error(d.error || "Could not load check-in");
     setInputContext(d.inputContext || null);
-    if (d.checkin?.answers) {
+    if (user?.id && typeof d.localToday === "string") {
       try {
-        const saved = JSON.parse(d.checkin.answers), manual = { ...saved };
-        // Imported observations stay in their source-aware summary. In
-        // particular, a saved SDNN value must never prefill an rMSSD correction.
-        for (const [field, source] of [["rhr", "rhrSource"], ["hrv", "hrvSource"], ["sleepHours", "sleepHoursSource"]]) {
-          if (saved.inputMetadata?.[source] && saved.inputMetadata[source] !== "athlete-reported") manual[field] = "";
-        }
-        if (saved.inputMetadata?.hrvType === "sdnn") manual.hrv = "";
-        setAnswers((current: any) => ({ ...current, ...Object.fromEntries(Object.entries(manual).map(([k, v]) => [k, v ?? ""])), availableMinutes: saved.availableMin ?? "" }));
+        const savedBasis=d.checkin?.answers ?? null,manual=savedCheckinAnswers(savedBasis);
+        const firstLoad=!draftScope.current;
+        if(draftScope.current && draftScope.current.dateLocal !== d.localToday)dirtyAnswers.current.clear();
+        draftScope.current={dateLocal:d.localToday,savedBasis};
+        let rawDraft:string|null=null;
+        try {if(firstLoad)rawDraft=sessionStorage.getItem(checkinDraftKey(user.id));}catch{setDraftNotice(lang === "es" ? "Este navegador no conserva el borrador. Envía las respuestas antes de salir." : "This browser cannot retain your draft. Submit your answers before leaving.");}
+        const restored=firstLoad ? restoreCheckinDraft(rawDraft,user.id,d.localToday,savedBasis) : null;
+        const liveDirty=[...dirtyAnswers.current];
+        if(restored){for(const field of restored.dirty)dirtyAnswers.current.add(field);setCorrectImported(restored.correctImported);setDraftNotice(lang === "es" ? "Borrador de hoy restaurado. Aún no se ha enviado." : "Today's unfinished draft was restored. It has not been submitted.");}
+        setAnswers((current:any)=>hydrateCheckinDraft(restored ? hydrateCheckinDraft(manual,restored.answers,restored.dirty) : manual,current,liveDirty));
       } catch { setErr("Saved answers could not be read. Please answer again."); }
     }
     if (d.checkin?.adaptation) setResult({ adaptation: JSON.parse(d.checkin.adaptation) });
@@ -167,6 +186,13 @@ export default function CheckinPage() {
     }
   }
   useEffect(() => { if (user) void load().catch((e) => setErr(e.message)); }, [user]);
+  useEffect(()=>{
+    if(!user?.id||!draftScope.current)return;
+    try {
+      if(dirtyAnswers.current.size)sessionStorage.setItem(checkinDraftKey(user.id),JSON.stringify({version:1,userId:user.id,...draftScope.current,answers,dirty:[...dirtyAnswers.current],correctImported}));
+      else sessionStorage.removeItem(checkinDraftKey(user.id));
+    }catch{setDraftNotice(lang === "es" ? "Este navegador no conserva el borrador. Envía las respuestas antes de salir." : "This browser cannot retain your draft. Submit your answers before leaving.");}
+  },[answers,correctImported,user?.id,lang]);
   useEffect(() => {
     if (!focusRequest) return;
     const element = document.getElementById(focusRequest.id);
@@ -242,13 +268,11 @@ export default function CheckinPage() {
     event.preventDefault(); setFeedbackBusy(sessionId); setErr(""); setFeedbackMessage("");
     const form = new FormData(event.currentTarget);
     const fields = Object.fromEntries(form);
-    const actualDetails = {
-      distanceKm: fields.actualDistanceKm ? Number(fields.actualDistanceKm) : null,
-      reps: fields.actualReps ? Number(fields.actualReps) : null,
-      loadKg: fields.actualLoadKg ? Number(fields.actualLoadKg) : null,
-    };
+    const reps=fields.actualReps ? Number(fields.actualReps) : null;
     delete fields.actualDistanceKm; delete fields.actualReps; delete fields.actualLoadKg;
     try {
+      const original=actualDetailValues(previousSessions.find(session=>session.id===sessionId));
+      const actualDetails={...actualActivityUnitPatch(Object.fromEntries(form),{distanceKm:original.distanceKm??null,loadKg:original.loadKg??null},displayUnits),reps};
       const actualFueling = actualFuelingFromForm(form);
       const expectedRevision = previousSessions.find(session => session.id === sessionId)?.feedbackRevision;
       const res = await fetch("/api/plan", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, expectedRevision, ...fields, actualSport: fields.actualSport || null, actualDetails, actualFueling }) });
@@ -263,6 +287,7 @@ export default function CheckinPage() {
     e.preventDefault();
     setBusy(true); setErr("");
     try {
+      if(unitErrors.morningWeight)throw Error(unitErrors.morningWeight);
       const submitted = { ...answers };
       if (!correctImported) {
         if (inputContext?.metrics.restingHr.selected) delete submitted.rhr;
@@ -272,6 +297,11 @@ export default function CheckinPage() {
       const res = await fetch("/api/checkin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submitted) });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed");
+      for(const field of dirtyAnswers.current)if(Object.is(currentAnswers.current[field],answers[field]))dirtyAnswers.current.delete(field);
+      draftScope.current={dateLocal:localToday,savedBasis:d.checkin?.answers ?? null};
+      try { if(user?.id)sessionStorage.removeItem(checkinDraftKey(user.id)); }catch{}
+      setDraftNotice("");
+      setAnswers((current:any)=>({...current}));
       setResult(d); setDownloaded(false); setSelectedSessionId(d.prescriptions?.[0]?.sessionId || "");
       // An unanswered question is explained in the result card and its input receives focus.
       const view = checkinAdaptationView(d.adaptation, lang === "es");
@@ -279,7 +309,7 @@ export default function CheckinPage() {
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
-  const setQ = (k: string, v: any) => setAnswers((a: any) => ({ ...a, [k]: v, voiceReviewConfirmed: false }));
+  const setQ = (k: string, v: any) => {dirtyAnswers.current.add(k);dirtyAnswers.current.add("voiceReviewConfirmed");setAnswers((a: any) => ({ ...a, [k]: v, voiceReviewConfirmed: false }));};
   // Only render the adaptation card when a REAL verdict exists — on a fresh
   // day (no submitted check-in yet) `result` holds loading data (recovery,
   // fuel brands, readiness) but no adaptation, and verdict would be undefined.
@@ -302,6 +332,7 @@ export default function CheckinPage() {
           <a className="btn-primary mt-3" href="/today">{lang === "es" ? "Omitir cuestionario y ver mi sesión" : "Skip questionnaire and view my session"}</a>
         </div>
         <DailyInputSummary context={inputContext} es={lang === "es"} />
+        {draftNotice && <p role="status" className="text-sm">{draftNotice}</p>}
 
         {err && <div role="alert" className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
 
@@ -373,7 +404,7 @@ export default function CheckinPage() {
           <label className="block text-sm">{lang === "es" ? "Fecha local observada" : "Local observation date"}<input className="input" type="date" max={localToday || undefined} value={feedbackDate} onChange={(e) => void loadFeedbackDate(e.target.value)} /></label>
           {previousSessions.length === 0 && <p className="text-sm text-slate-600">{lang === "es" ? "No hay sesiones registradas para esta fecha. No se supone que descansaste ni que tu carga fue cero." : "No sessions are recorded for this date. This does not mean you rested or had zero activity."}</p>}
           {previousSessions.map((session: any) => (
-            <form key={`${session.id}:${session.feedbackAt || "new"}`} onSubmit={(e) => void saveSessionFeedback(e, session.id)} className="rounded-xl border border-sand-200 p-3 space-y-3">
+            <form key={`${session.id}:${session.feedbackAt || "new"}:${displayUnits}`} onSubmit={(e) => void saveSessionFeedback(e, session.id)} className="rounded-xl border border-sand-200 p-3 space-y-3">
               <h3 className="font-semibold">{session.title}</h3>
               <p className="text-xs text-slate-600">{session.planned === false ? (lang === "es" ? "Actividad registrada" : "Recorded activity") : (lang === "es" ? "Planificado" : "Planned")}: {session.sport} · {session.durationMin} min · {feedbackDate}</p>
               <div className="grid sm:grid-cols-2 gap-3">
@@ -383,9 +414,9 @@ export default function CheckinPage() {
                 <SessionObservationInput name="rpe" value={session.rpe} label={lang === "es" ? "Esfuerzo de toda la sesión, 0–10" : "Whole-session exertion, 0–10"} max={10} es={lang === "es"} hint={lang === "es" ? "0 sin esfuerzo · 1 muy fácil · 3 fácil · 5 moderado · 7 duro · 10 máximo" : "0 no effort · 1 very easy · 3 easy · 5 moderate · 7 hard · 10 maximal"} />
               </div>
               <div className="grid sm:grid-cols-3 gap-3">
-                <label className="text-sm">{lang === "es" ? "Distancia real (km, opcional)" : "Actual distance (km, optional)"}<input name="actualDistanceKm" className="input" type="number" min={0} max={1500} step="any" placeholder="—" defaultValue={actualDetailValues(session).distanceKm ?? ""} /></label>
+                <label className="text-sm">{lang === "es" ? "Distancia real" : "Actual distance"} ({displayUnits==="imperial"?"mi":"km"}, {lang==="es"?"opcional":"optional"})<input name="actualDistanceKm" className="input" type="number" min={0} max={distanceToDisplay(1500,displayUnits)} step="any" placeholder="—" defaultValue={actualActivityFormValues({distanceKm:actualDetailValues(session).distanceKm??null,loadKg:null},displayUnits).actualDistanceKm} /></label>
                 <label className="text-sm">{lang === "es" ? "Repeticiones reales (opcional)" : "Actual repetitions (optional)"}<input name="actualReps" className="input" type="number" min={0} max={100000} step={1} placeholder="—" defaultValue={actualDetailValues(session).reps ?? ""} /></label>
-                <label className="text-sm">{lang === "es" ? "Carga realizada (kg, opcional)" : "Actual load (kg, optional)"}<input name="actualLoadKg" className="input" type="number" min={0} max={1500} step="any" placeholder="—" defaultValue={actualDetailValues(session).loadKg ?? ""} /></label>
+                <label className="text-sm">{lang === "es" ? "Carga realizada" : "Actual load"} ({displayUnits==="imperial"?"lb":"kg"}, {lang==="es"?"opcional":"optional"})<input name="actualLoadKg" className="input" type="number" min={0} max={weightToDisplay(1500,displayUnits)} step="any" placeholder="—" defaultValue={actualActivityFormValues({distanceKm:null,loadKg:actualDetailValues(session).loadKg??null},displayUnits).actualLoadKg} /></label>
               </div>
               <ActualFuelingFields details={session.actualDetails} actualDurationMin={session.knownActualDurationMin ?? session.actualDurationMin} es={lang === "es"} />
               <label className="block text-sm">{lang === "es" ? "Cambios en intervalos/descansos, distancia/repeticiones/carga si se conocen; tolerancia, dolor y cuándo ocurrió" : "Interval/recovery changes, distance/reps/load if known; tolerance, pain and when it occurred"}<textarea name="feedbackNote" maxLength={4000} className="input" defaultValue={session.feedbackNote || ""} /></label>
@@ -402,7 +433,7 @@ export default function CheckinPage() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h2 className="font-display font-bold text-lg flex items-center gap-2"><Mic className="w-5 h-5 text-ocean-600" /> Voice Check-In</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{lang === "es" ? "Español e inglés. Ejemplo: sueño 4, agujetas 2, energía 3, motivación 4, estrés 2, peso 74 kilos. Revisa y edita todo antes de aplicar." : "English and Spanish. Example: sleep 4, soreness 2, energy 3, motivation 4, stress 2, weight 74 kilograms. Review and edit every answer before applying."}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{lang === "es" ? "Español e inglés. Ejemplo: sueño 4, agujetas 2, energía 3, motivación 4, estrés 2, peso con libras o kilos explícitos. Revisa y edita todo antes de aplicar." : "English and Spanish. State weight with explicit pounds or kilograms, for example weight 163 pounds. Review and edit every answer before applying."}</p>
             </div>
             <button onClick={() => listening ? recognition.current?.stop() : startVoice()} disabled={!voiceSupported} className={`btn-primary ${listening ? "opacity-70" : ""}`}>
               <Mic className="w-4 h-4" /> {listening ? (lang === "es" ? "Detener y revisar" : "Stop and review") : (lang === "es" ? "Iniciar voz" : "Start Voice")}
@@ -413,7 +444,7 @@ export default function CheckinPage() {
           <details className="mt-2">
             <summary className="text-xs font-semibold text-ocean-700 cursor-pointer select-none">📋 Question script — read these in order (tap to expand)</summary>
             <ol className="text-xs text-slate-600 mt-2 space-y-1 list-decimal list-inside">
-              {(lang === "es" ? ["Sueño, agujetas, energía, motivación y estrés: de uno a cinco.", "Peso en kilos, pulso en reposo, VFC y horas de sueño, solo si los sabes.", "¿Enfermedad, dolor nuevo o síntomas de alarma hoy?", "Minutos disponibles hoy. Revisa las respuestas antes de enviar."] : VOICE_SCRIPT).map((q) => <li key={q}>{q}</li>)}
+              {(lang === "es" ? ["Sueño, agujetas, energía, motivación y estrés: de uno a cinco.", displayUnits==="imperial"?"Peso en libras, pulso en reposo, VFC y horas de sueño, solo si los sabes.":"Peso en kilos, pulso en reposo, VFC y horas de sueño, solo si los sabes.", "¿Enfermedad, dolor nuevo o síntomas de alarma hoy?", "Minutos disponibles hoy. Revisa las respuestas antes de enviar."] : VOICE_SCRIPT.map(q=>displayUnits==="imperial"?q.replace("kilograms","pounds"):q)).map((q) => <li key={q}>{q}</li>)}
             </ol>
             <p className="text-[11px] text-slate-400 mt-1.5">One breath, one number. The full transcript gets parsed automatically — you&apos;ll confirm before it applies.</p>
           </details>
@@ -426,9 +457,10 @@ export default function CheckinPage() {
               <h3 className="font-semibold text-sm mb-2">{lang === "es" ? "Revisa y edita las respuestas propuestas" : "Review and edit candidate answers"}</h3>
               {heard.warnings.length > 0 && <ul role="alert" className="text-xs text-amber-800 mb-3">{heard.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
               <div className="grid grid-cols-2 gap-3 text-xs">
-                {([ ["sleep", "Sleep / Sueño (1–5)"], ["soreness", "Soreness / Agujetas (1–5)"], ["energy", "Energy / Energía (1–5)"], ["motivation", "Motivation / Motivación (1–5)"], ["stress", "Stress / Estrés (1–5)"], ["weightKg", "Weight / Peso (kg)"], ["rhr", "Resting HR / Pulso (bpm)"], ["hrv", "HRV / VFC (ms)"], ["sleepHours", "Sleep / Sueño (h)"], ["availableMinutes", "Available / Disponible (min)"] ] as const).map(([key, label]) => (
+                {([ ["sleep", "Sleep / Sueño (1–5)"], ["soreness", "Soreness / Agujetas (1–5)"], ["energy", "Energy / Energía (1–5)"], ["motivation", "Motivation / Motivación (1–5)"], ["stress", "Stress / Estrés (1–5)"], ["rhr", "Resting HR / Pulso (bpm)"], ["hrv", "HRV / VFC (ms)"], ["sleepHours", "Sleep / Sueño (h)"], ["availableMinutes", "Available / Disponible (min)"] ] as const).map(([key, label]) => (
                   <label key={key}>{label}<input type="number" step="any" className="input" value={heard[key] ?? ""} placeholder="—" onChange={(e) => setHeard({ ...heard, [key]: e.target.value === "" ? undefined : Number(e.target.value) })} /></label>
                 ))}
+                <ProfileMeasurementInput field="weightKg" id="voice-weightKg" value={heard.weightKg} units={displayUnits} label={lang==="es"?"Peso propuesto":"Proposed weight"} es={lang==="es"} onChange={canonical=>setHeard({...heard,weightKg:canonical===""?undefined:Number(canonical)})} onValidityChange={(_,message)=>setUnitErrors(current=>({...current,voiceWeight:message}))}/>
                 {([ ["sick", "Illness / Enfermedad"], ["newPain", "New pain / Dolor nuevo"], ["urgentSymptoms", "Urgent symptoms / Síntomas de alarma"], ["menstrual", "Menstrual phase / Fase menstrual"] ] as const).map(([key, label]) => (
                   <label key={key}>{label}<select className="input" value={heard[key] === undefined ? "" : String(heard[key])} onChange={(e) => setHeard({ ...heard, [key]: e.target.value === "" ? undefined : e.target.value === "true" })}><option value="">Unknown / No sé</option><option value="false">No</option><option value="true">Yes / Sí</option></select></label>
                 ))}
@@ -530,8 +562,7 @@ export default function CheckinPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Morning weight (kg)</label>
-                  <input type="number" step="0.1" className="input" value={answers.weightKg} onChange={(e) => setQ("weightKg", e.target.value)} placeholder="e.g. 74.0" />
+                  <ProfileMeasurementInput field="weightKg" id="answer-weightKg" value={answers.weightKg} units={displayUnits} label={lang==="es"?"Peso de la mañana":"Morning weight"} es={lang==="es"} onChange={canonical=>setQ("weightKg",canonical)} onValidityChange={(_,message)=>setUnitErrors(current=>({...current,morningWeight:message}))}/>
                   <div className="text-[11px] text-slate-400">Same scale, after bathroom, before food — trend matters more than the number.</div>
                 </div>
                 {(correctImported || !inputContext?.metrics.restingHr.selected) && <div>

@@ -37,10 +37,12 @@ test("profile race dates round-trip in the athlete timezone without an unrelated
 });
 test("Profile navigation offers guided setup, saved plan, associated basic labels and truthful status",()=>{
   const page=readFileSync("src/app/settings/page.tsx","utf8");
-  for(const field of ["birthYear","sex","heightCm","weightKg","experience","goal","weeklyHours","raceDate","trainingWindow","units"]) {
+  for(const field of ["birthYear","sex","experience","goal","weeklyHours","raceDate","trainingWindow","units"]) {
     assert.match(page,new RegExp(`htmlFor="profile-${field}"`));
     assert.match(page,new RegExp(`id="profile-${field}"`));
   }
+  for(const field of ["heightCm","weightKg"])assert.match(page,new RegExp(`measurement\\("${field}"`));
+  assert.match(page,/id=\{`profile-\$\{field\}`\}/,"shared measurement component receives the same accessible field id");
   assert.match(page,/href="\/onboard\?redo=1&step=race&return=training"/);
   assert.match(page,/View my saved plan/);
   assert.match(page,/settingsProfilePatch\(form, loadedForm.current\)/);

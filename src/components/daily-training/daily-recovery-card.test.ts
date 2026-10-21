@@ -7,6 +7,12 @@ import { DailyRecoveryCard, type DailyRecoveryView } from "../daily-recovery-car
 const rest: DailyRecoveryView = { mode: "planned-rest", allowMovement: true, safetyStatus: "clear", recoveryNeedsReview: false, noAdditionalTraining: true, optionalMovementMinutes: 20 };
 const render = (recovery?: DailyRecoveryView | null, es = false, offline = false) => renderToStaticMarkup(React.createElement(DailyRecoveryCard, { recovery, es, offline }));
 
+test("current scoped review shows daily support without asking the same selected session's full scales again",()=>{
+  const scoped={...rest,mode:"training" as const,safetyStatus:"unknown" as const,allowMovement:false,optionalMovementMinutes:null,reviewedSessionId:"selected"};
+  const html=render(scoped);assert.match(html,/Only the selected easy session/);assert.match(html,/Subjective scales remain unanswered/);assert.doesNotMatch(html,/Check-in needed|not yet cleared to follow/);
+  assert.match(render({...scoped,mode:"review-needed"}),/Review training/);assert.match(render(scoped,false,true),/Reconnect and update/);
+});
+
 test("Planned recovery remains visible without a workout and allows only explicitly cleared optional movement", () => {
   const html = render(rest);
   assert.match(html, /Recovery day/);

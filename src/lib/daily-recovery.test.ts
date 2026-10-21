@@ -3,6 +3,25 @@ import assert from "node:assert/strict";
 import { dailyRecoveryContext } from "./daily-recovery";
 const answers = { sleep: 4, soreness: 1, energy: 4, stress: 1, motivation: 4, sick: false, newPain: false, urgentSymptoms: false, availableMin: 20 };
 const rest = { plannedRest: true, sessions: [], answers };
+
+test("presentation keeps planned rest, easy training, ordinary training, no plan and multi-session review separate",()=>{
+  const base={plannedRest:false,answers};
+  assert.equal(dailyRecoveryContext({...base,sessions:[{durationMin:30,intensity:"z2",verdict:"ready"}]}).mode,"training");
+  assert.equal(dailyRecoveryContext({...base,sessions:[{durationMin:20,intensity:"z1",verdict:"ready"}]}).mode,"easy-day");
+  assert.equal(dailyRecoveryContext({...base,sessions:[]}).mode,"unplanned");
+  assert.equal(dailyRecoveryContext({...base,plannedRest:true,sessions:[]}).mode,"planned-rest");
+  assert.equal(dailyRecoveryContext({...base,sessions:[{durationMin:30,intensity:"z2",verdict:"ready"},{durationMin:20,intensity:"z1",verdict:"ready"}]}).mode,"training");
+  assert.equal(dailyRecoveryContext({...base,sessions:[{durationMin:30,intensity:"z2",verdict:"ready"},{durationMin:0,verdict:"blocked"}]}).mode,"review-needed");
+});
+
+test("verified canonical short review changes presentation only for its current ready session",()=>{
+  const scoped={plannedRest:false,answers:null,reviewedSessionId:"selected",sessions:[{id:"selected",durationMin:30,intensity:"z2",verdict:"ready"}]};
+  const ready=dailyRecoveryContext(scoped);assert.equal(ready.mode,"training");assert.equal(ready.safetyStatus,"unknown");assert.equal(ready.reviewedSessionId,"selected");assert.equal(ready.allowMovement,false);
+  assert.equal(dailyRecoveryContext({...scoped,sessions:[...scoped.sessions,{id:"other",durationMin:0,intensity:null,verdict:"blocked"}]}).mode,"review-needed");
+  assert.equal(dailyRecoveryContext({...scoped,reviewedSessionId:"stale"}).mode,"checkin-needed");
+  assert.equal(dailyRecoveryContext({...scoped,sessions:[{...scoped.sessions[0],verdict:"blocked"}]}).mode,"checkin-needed");
+  assert.equal(dailyRecoveryContext({...scoped,answers:{sick:true}}).mode,"hold");
+});
 test("optional recovery movement needs a planned rest day, current answers and enough time", () => {
   assert.equal(dailyRecoveryContext(rest).optionalMovementMinutes, 20);
   assert.equal(dailyRecoveryContext({ ...rest, performedToday: true }).allowMovement, false);

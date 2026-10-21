@@ -18,6 +18,9 @@ import { useAuth } from "@/components/auth";
 import type { importedTrainingReview } from "@/lib/imported-training-review";
 import {ActivityReconciliationReview} from "@/components/ActivityReconciliationReview";
 import type {publicActivityReconciliation} from "@/lib/activity-evidence";
+import { ProfileMeasurementInput, type MeasurementField } from "@/components/ProfileMeasurementInput";
+import { unitsOf, fmtPace, fmtSwimPace } from "@/lib/units";
+import { convertProgressValue } from "@/lib/target-progress";
 
 const LANGS = [
   { code: "en", label: "English" },
@@ -60,6 +63,7 @@ export function DetailedAthleteSetup() {
   const [setupRevision, setSetupRevision] = useState<string | null>(null);
   const savedOnboarding = useRef<SavedOnboarding>({ profile: {}, setup: null });
   const [profile, setProfile] = useState({...EMPTY_PROFILE});
+  const [unitErrors,setUnitErrors]=useState<Record<string,string|null>>({});
   const [setup, setSetup] = useState({...EMPTY_SETUP});
   const [lang, setLang] = useState(user?.language || "es");
   const [checking, setChecking] = useState(true);
@@ -205,6 +209,8 @@ export function DetailedAthleteSetup() {
   }
 
   async function saveProfile(section: OnboardingSection) {
+    const relevant=section==="profile"?["weightKg","heightCm"]:section==="zones"||section==="essentials"?["runPaceBase","swimPaceBase"]:section==="goals"?["targetGoal"]:[];
+    if(relevant.some(field=>unitErrors[field])){setError(t("Review the measurement format before saving.","Revisa el formato de las medidas antes de guardar."));return false;}
     if (savingRef.current) return false;
     savingRef.current = true; setSaving(true); setError(""); setNotice("");
     try {
@@ -229,6 +235,8 @@ export function DetailedAthleteSetup() {
     } catch(e) { setError((e as Error).message); return false; }
     finally { savingRef.current = false; setSaving(false); }
   }
+  const displayUnits=unitsOf(savedOnboarding.current.profile.units as string|undefined,lang);
+  const measurement=(field:MeasurementField,label:string,id?:string)=><ProfileMeasurementInput key={field} field={field} value={profile[field]} units={displayUnits} label={label} id={id} es={lang==="es"} onChange={canonical=>{setProfile(current=>({...current,[field]:canonical}));if(field==="weightKg")setReviewedWeightId(null);}} onValidityChange={(field,message)=>setUnitErrors(current=>({...current,[field]:message}))}/>;
 
   async function saveRace() {
     const existingRace = races.find(item=>item.id === raceId);
@@ -364,13 +372,14 @@ export function DetailedAthleteSetup() {
               {connectionError && <p role="alert" className="text-sm">{connectionError}</p>}<button disabled={refreshing} className="underline min-h-11" onClick={()=>void reviewImports()}>{refreshing ? "…" : t("Refresh imported information", "Actualizar datos importados")}</button>
             </section>
 
-            <section className="space-y-3" aria-label={t("Saved and missing thresholds", "Umbrales guardados y pendientes")}>
-              <h3 className="font-semibold">{t("Thresholds and training references", "Umbrales y referencias de entrenamiento")}</h3>
+            <details open={advanced || ONBOARDING_ANCHORS.some(({field})=>profile[field] !== savedAnswers.profile[field]) || undefined} className="space-y-3 border rounded-xl p-4" aria-label={t("Saved and missing thresholds", "Umbrales guardados y pendientes")}>
+              <summary className="font-semibold min-h-11 cursor-pointer content-center">{t("Thresholds and training references (optional)", "Umbrales y referencias de entrenamiento (opcional)")}</summary>
+              <p className="text-sm">{t("You can start without a device or threshold test. Add known references when reviewing a session that needs them; missing values stay unknown.", "Puedes empezar sin dispositivo ni prueba de umbral. Añade las referencias que conozcas al revisar una sesión que las necesite; lo que falta sigue desconocido.")}</p>
               <p className="text-sm">{t("We keep your saved references. Add only a missing value you actually know, or leave it unknown. A personal best is not a threshold test.", "Conservamos tus referencias guardadas. Añade solo un valor que conozcas o déjalo desconocido. Una marca personal no es una prueba de umbral.")}</p>
-              {ONBOARDING_ANCHORS.filter(({field})=>savedAnswers.profile[field] !== "").map(({field,en,es,unit})=><p key={field} className="rounded-lg border p-3 text-sm">{t(en,es)}: {savedAnswers.profile[field]} {unit} · {t("Saved reference; source and test date unverified", "Referencia guardada; fuente y fecha de prueba sin verificar")}</p>)}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{missingOnboardingAnchors({...savedOnboarding.current.profile,goal:profile.goal}).map(({field,en,es,unit,min,max})=><label className="block text-sm" key={field}>{t(en,es)} ({unit})<input id={`onboard-anchor-${field}`} className="input" type="number" min={min} max={max} step={field === "lthr" || field === "maxHr" ? "1" : "any"} placeholder={t("Unknown · optional", "Desconocido · opcional")} value={profile[field]} onChange={e=>setProfile({...profile,[field]:e.target.value})}/></label>)}</div>
+              {ONBOARDING_ANCHORS.filter(({field})=>savedAnswers.profile[field] !== "").map(({field,en,es,unit})=><p key={field} className="rounded-lg border p-3 text-sm">{t(en,es)}: {field==="runPaceBase"?fmtPace(Number(savedAnswers.profile[field]),displayUnits):field==="swimPaceBase"?fmtSwimPace(Number(savedAnswers.profile[field]),displayUnits):`${savedAnswers.profile[field]} ${unit}`} · {t("Saved reference; source and test date unverified", "Referencia guardada; fuente y fecha de prueba sin verificar")}</p>)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{missingOnboardingAnchors({...savedOnboarding.current.profile,goal:profile.goal}).map(({field,en,es,unit,min,max})=>field==="runPaceBase"||field==="swimPaceBase"?measurement(field,t(en,es),`onboard-anchor-${field}`):<label className="block text-sm" key={field}>{t(en,es)} ({unit})<input id={`onboard-anchor-${field}`} className="input" type="number" min={min} max={max} step={field === "lthr" || field === "maxHr" ? "1" : "any"} placeholder={t("Unknown · optional", "Desconocido · opcional")} value={profile[field]} onChange={e=>setProfile({...profile,[field]:e.target.value})}/></label>)}</div>
               <p className="text-xs">{t("New entries are recorded as athlete-reported references, not verified measurements. You can edit saved thresholds later in Profile & Zones.", "Los nuevos valores son referencias declaradas, no mediciones verificadas. Puedes editar los umbrales guardados después en Perfil y zonas.")}</p>
-            </section>
+            </details>
 
             <section className="space-y-3" aria-label={t("Personal bests and recorded results", "Marcas personales y resultados guardados")}>
               <h3 className="font-semibold">{t("Personal bests and race results", "Marcas personales y resultados de carreras")}</h3>
@@ -395,8 +404,8 @@ export function DetailedAthleteSetup() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="block text-sm">{t("Birth year", "Año de nacimiento")}<input id="onboard-field-1" className="input" type="number" value={profile.birthYear} onChange={e=>setProfile({...profile,birthYear:e.target.value})}/></label>
                 <label className="block text-sm">{t("Sex", "Sexo")}<select id="onboard-field-2" className="input" value={profile.sex} onChange={e=>setProfile({...profile,sex:e.target.value})}><option value="">—</option><option value="male">{t("Male", "Masculino")}</option><option value="female">{t("Female", "Femenino")}</option></select></label>
-                <label className="block text-sm">{t("Height (cm)", "Altura (cm)")}<input id="onboard-field-3" className="input" type="number" value={profile.heightCm} onChange={e=>setProfile({...profile,heightCm:e.target.value})}/></label>
-                <label className="block text-sm">{t("Weight (kg)", "Peso (kg)")}<input id="onboard-field-4" className="input" type="number" step="0.1" value={profile.weightKg} onChange={e=>{setProfile({...profile,weightKg:e.target.value});setReviewedWeightId(null);}}/></label>
+                {measurement("heightCm",t("Height","Altura"),"onboard-field-3")}
+                {measurement("weightKg",t("Weight","Peso"),"onboard-field-4")}
               </div>
               <button className="btn-secondary mt-3" disabled={saving || !revision} onClick={()=>void saveProfile("profile")}>{t("Save personal details", "Guardar datos personales")}</button>
             </details>
@@ -424,7 +433,9 @@ export function DetailedAthleteSetup() {
         {step === ONBOARDING_STEP.zones && <section className="space-y-4">
           <h2 className="font-display text-2xl">{t("Review your training anchors", "Revisa tus referencias de entrenamiento")}</h2>
           <p>{t("Saved values are prefilled for explicit edits. Enter only known references; no test or device is required to continue. Unknown zones stay unknown. These entries do not verify a laboratory test or establish HYROX station ability.", "Los datos guardados aparecen aquí. Introduce solo referencias conocidas; puedes continuar sin pruebas ni dispositivos. Las zonas desconocidas siguen desconocidas. No se verifica una prueba de laboratorio ni la capacidad en estaciones HYROX.")}</p>
-          {([['lthr','Threshold heart rate (bpm)','FC umbral (lpm)'],['maxHr','Maximum heart rate reference (bpm)','Referencia de FC máxima (lpm)'],['ftp','Cycling FTP (W)','FTP ciclismo (W)'],['runPaceBase','Running threshold pace (seconds/km)','Ritmo umbral carrera (segundos/km)'],['swimPaceBase','Swimming threshold pace (seconds/100 m)','Ritmo umbral natación (segundos/100 m)']] as const).map(([field,en,esp]) => <label className="block" key={field}>{t(en,esp)}<input type="number" className="input" value={profile[field]} onChange={e=>setProfile({...profile,[field]:e.target.value})}/></label>)}
+          {([['lthr','Threshold heart rate (bpm)','FC umbral (lpm)'],['maxHr','Maximum heart rate reference (bpm)','Referencia de FC máxima (lpm)'],['ftp','Cycling FTP (W)','FTP ciclismo (W)']] as const).map(([field,en,esp]) => <label className="block" key={field}>{t(en,esp)}<input type="number" className="input" value={profile[field]} onChange={e=>setProfile({...profile,[field]:e.target.value})}/></label>)}
+          {measurement("runPaceBase",t("Running threshold pace","Ritmo umbral de carrera"))}
+          {measurement("swimPaceBase",t("Swimming threshold pace","Ritmo umbral de natación"))}
           <p className="text-sm">{t("Running power from Stryd requires a separate reviewed running-power reference; cycling FTP must not be reused. You can continue with perceived effort and reviewed pace/heart-rate guidance.", "La potencia de carrera de Stryd requiere su propia referencia revisada; no se reutiliza el FTP ciclista. Puedes continuar con esfuerzo percibido y ritmo/FC revisados.")}</p>
           <button className="btn-primary" disabled={saving || !revision} onClick={async()=>{if(await saveProfile("zones")) setStep(ONBOARDING_STEP.race);}}>{t("Save and continue", "Guardar y continuar")}</button>
         </section>}
@@ -487,8 +498,8 @@ export function DetailedAthleteSetup() {
               {setup.targetGoal && <div className="space-y-2 border p-3 rounded-lg">
                 <label className="block">{t("Target sport", "Deporte del objetivo")}<select className="input" value={setup.targetGoal.sport} onChange={e=>setSetup({...setup,baselinePlanOptIn:false,targetGoal:{...setup.targetGoal!,sport:e.target.value,context:undefined,contextDescription:undefined}})}><option value="">{t("Choose sport", "Elige deporte")}</option>{["run","bike","swim","strength","mobility","recovery","brick","hyrox"].map(sport=><option key={sport} value={sport}>{sport}</option>)}</select></label>
                 {["pace","power","speed"].includes(setup.targetGoal.metric) && <>
-                  <label className="block">{t("Target value", "Valor objetivo")}<input className="input" type="number" step="any" value={setup.targetGoal.value ?? ""} onChange={e=>setSetup({...setup,targetGoal:{...setup.targetGoal!,value:e.target.value}})}/></label>
-                  <label className="block">{t("Units (pace in seconds)", "Unidades (ritmo en segundos)")}<select className="input" value={setup.targetGoal.unit ?? ""} onChange={e=>setSetup({...setup,targetGoal:{...setup.targetGoal!,unit:e.target.value}})}><option value="">{t("Choose units", "Elige unidades")}</option>{(setup.targetGoal.metric==="pace"?["sec/km","sec/100m"]:setup.targetGoal.metric==="power"?["W"]:["km/h"]).map(unit=><option key={unit} value={unit}>{unit}</option>)}</select></label>
+                  <label className="block">{t("Target units", "Unidades del objetivo")}<select className="input" value={setup.targetGoal.unit ?? ""} onChange={e=>{setUnitErrors(current=>({...current,targetGoal:null}));setSetup({...setup,targetGoal:{...setup.targetGoal!,unit:e.target.value,value:""}});}}><option value="">{t("Choose units", "Elige unidades")}</option>{(setup.targetGoal.metric==="pace"?["sec/km","sec/100m"]:setup.targetGoal.metric==="power"?["W"]:["km/h"]).map(unit=><option key={unit} value={unit}>{unit==="sec/km"?`min:sec/${displayUnits==="imperial"?"mi":"km"}`:unit==="sec/100m"?`min:sec/100 ${displayUnits==="imperial"?"yd":"m"}`:unit==="km/h"&&displayUnits==="imperial"?"mph":unit}</option>)}</select></label>
+                  {setup.targetGoal.metric==="pace"&&setup.targetGoal.unit?<ProfileMeasurementInput key={`target-${setup.targetGoal.unit}`} field={setup.targetGoal.unit==="sec/100m"?"swimPaceBase":"runPaceBase"} value={setup.targetGoal.value} units={displayUnits} label={t("Target pace","Ritmo objetivo")} es={lang==="es"} onChange={canonical=>setSetup(current=>({...current,targetGoal:{...current.targetGoal!,value:canonical}}))} onValidityChange={(_,message)=>setUnitErrors(current=>({...current,targetGoal:message}))}/>:setup.targetGoal.metric!=="pace"&&<label className="block">{t("Target value", "Valor objetivo")}<input className="input" type="number" step="any" value={setup.targetGoal.value==null||setup.targetGoal.value===""?"":setup.targetGoal.metric==="speed"&&displayUnits==="imperial"&&Number(setup.targetGoal.value)>0?convertProgressValue(Number(setup.targetGoal.value),"km/h","mph"):setup.targetGoal.value} onChange={e=>setSetup({...setup,targetGoal:{...setup.targetGoal!,value:e.target.value===""?"":setup.targetGoal!.metric==="speed"&&displayUnits==="imperial"&&Number(e.target.value)>0?convertProgressValue(Number(e.target.value),"mph","km/h"):e.target.value}})}/></label>}
                 </>}
                 {["pace","power","speed"].includes(setup.targetGoal.metric) && <>
                   <label className="block">{t("Comparison context", "Contexto para comparar")}<select className="input" value={setup.targetGoal.context ?? ""} onChange={e=>setSetup({...setup,baselinePlanOptIn:false,targetGoal:{...setup.targetGoal!,context:e.target.value,contextDescription:undefined}})}>
