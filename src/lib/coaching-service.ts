@@ -1,6 +1,8 @@
 import { telegramWorkoutActionable, telegramWorkoutAttachments } from "./telegram-workout-attachments";
 import { dailyEnvironmentSummary } from "./daily-environment";
 import { deliveryWorkoutPreview } from "./delivery-workout-preview";
+import { readDeliveryWorkout } from "./delivery-session";
+import { currentOrReportedWorkoutWhere, isCurrentWorkout } from "./calendar-workouts";
 import { sendTelegramCoaching, telegramCoachingConfigured, parseTelegramUpdate, boundedTelegramMessage } from "./telegram-coaching-transport";
 import type { CommunicationPreference, CoachingPrompt, Prisma } from "@prisma/client";
 import { prisma } from "./db";
@@ -124,7 +126,7 @@ function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effective
     else lines.push("Before: review equipment, venue and full preparation/fueling guidance in the app.",
       "During: follow the selected session's exact blocks; stop if unwell or in pain.",
       ...(c.environment ? [dailyEnvironmentSummary(c.environment)] : []),
-      ...c.steps.slice(0, 12).map((s, i) => `${i + 1}. ${s.phase}: ${stepEndpointLabel(s)} · ${s.target.label}`),
+      ...c.steps.slice(0, 12).map((s, i) => `${i + 1}. ${s.phase}: ${stepEndpointLabel(s, language === "es" ? "es" : "en")} · ${s.target.label}`),
       ...(c.steps.length > 12 ? [`${c.steps.length - 12} further blocks are shown in the app; this is a concise summary, not the complete workout.`] : []),
       "After: cool down as prescribed, choose familiar food/fluid according to need, and report actual minutes and effort. Avoid overdrinking.");
   } else {
@@ -148,6 +150,8 @@ export async function createCoachingPrompt(actor: CoachingActor, input: { sessio
     if (inQuietHours(localMinute(now, pref.timezone), pref.quietStart, pref.quietEnd)) throw new ApiError("Quiet hours are active; this prompt was not delivered", 409);
     const resolved = await (dependencies.resolve || effectivePrescription)(actor.id, input.sessionId, tx);
     if (!resolved) throw new ApiError("Session not found", 404);
+    const selected = await readDeliveryWorkout(tx, actor.id, input.sessionId, input.purpose === "sessionFeedback");
+    if (!selected || (input.purpose !== "sessionFeedback" && (!selected.planned || selected.completed || selected.feedbackStatus === "skipped"))) throw new ApiError("Select an incomplete session from your current plan. Replaced plans remain available as activity history.", 409);
     const observationDate = dateKey(resolved.workout.date, actor.timezone);
     if (input.purpose === "sessionFeedback" && observationDate > dateKey(now, actor.timezone)) throw new ApiError("A future session cannot have an execution report yet", 422);
     const approval = transport === "telegram" && input.purpose === "dailyPlan"
@@ -213,6 +217,8 @@ export async function createCoachingPrompt(actor: CoachingActor, input: { sessio
       input.purpose === "dailyPlan" ? tx.auditLog.findFirst({ where: { subjectId: actor.id, entityId: created.prompt.sessionId, action: "workout.approved" }, orderBy: { createdAt: "desc" } }) : Promise.resolve(null),
     ]);
     assertConsent(pref, input.purpose, "telegram");
+    const selected = await readDeliveryWorkout(tx, actor.id, created.prompt.sessionId, input.purpose === "sessionFeedback");
+    if (!selected || (input.purpose !== "sessionFeedback" && (!selected.planned || selected.completed || selected.feedbackStatus === "skipped"))) throw new ApiError("The selected session is no longer in your current plan. No further request was sent.", 409);
     if (!pending || pending.status !== "pending" || pref!.primaryChannel !== "telegram" || pref!.verifiedChatId !== created.privateRecipient || pref!.verifiedActorId !== created.privateRecipient || !fresh || fresh.canonical.revision !== created.prompt.sourceRevision || pref!.timezone !== fresh.canonical.timezone || inQuietHours(localMinute((dependencies.clock || (() => new Date()))(), pref!.timezone), pref!.quietStart, pref!.quietEnd)) throw new ApiError("Pending delivery changed or quiet hours started. No further external request was sent.", 409);
     const approvedRevision = parseStored<{ revision?: string }>(approval?.after, {}).revision || null;
     const actionable = input.purpose === "dailyPlan" && telegramWorkoutActionable(fresh.canonical, fresh.workout, approvedRevision, (dependencies.clock || (() => new Date()))());
@@ -343,15 +349,15 @@ export async function runMockCoachingSchedule(now = new Date(), dependencies: {
         results.push({ userId: pref.userId, status: refreshIncomplete ? "sync-incomplete" : refreshed.results.length ? "sync-complete" : "no-connected-data" });
       } catch { refreshIncomplete = true; results.push({ userId: pref.userId, status: "sync-incomplete", error: "Connected data refresh failed. Review freshness and check-in in the app." }); }
     }
-    const workouts = await prisma.workout.findMany({ where: { userId: pref.userId,
-      OR: [{ planned: false }, { planDay: null }, { planDay: { plan: { status: "active" } } }], date: {
-      gte: localDate(addDaysKey(schedule.day, -1), pref.user.timezone), lt: localDate(addDaysKey(schedule.day, 1), pref.user.timezone) } }, orderBy: [{ date: "asc" }, { id: "asc" }] });
+    const activePlan = await prisma.trainingPlan.findFirst({ where: { userId: pref.userId, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+    const workouts = await prisma.workout.findMany({ where: { AND: [currentOrReportedWorkoutWhere(pref.userId, activePlan?.id ?? null), { date: {
+      gte: localDate(addDaysKey(schedule.day, -1), pref.user.timezone), lt: localDate(addDaysKey(schedule.day, 1), pref.user.timezone) } }] }, include: { planDay: { include: { plan: { select: { id: true, status: true, userId: true } } } } }, orderBy: [{ date: "asc" }, { id: "asc" }] });
     // Today's guidance/questions take priority over yesterday's reports when
     // the per-athlete daily prompt limit is reached.
     for (const purpose of ["dailyPlan", "missingData", "sessionFeedback"] as const) for (const w of workouts) {
       if (purpose === "missingData" && pref.dailyPlan) continue; // daily plan already links the private check-in
       if (!pref[purpose] || (purpose === "sessionFeedback" ? dateKey(w.date, pref.user.timezone) === schedule.day : dateKey(w.date, pref.user.timezone) !== schedule.day)) continue;
-      if (purpose !== "sessionFeedback" && (!w.planned || w.completed || w.feedbackStatus === "skipped")) continue;
+      if (purpose !== "sessionFeedback" && (!isCurrentWorkout(w, pref.userId, activePlan?.id ?? null) || !w.planned || w.completed || w.feedbackStatus === "skipped")) continue;
       try { const result = await (dependencies.prompt || createCoachingPrompt)(pref.user, { sessionId: w.id, purpose }, now, { refreshIncomplete });
         results.push({ userId: pref.userId, sessionId: w.id, purpose, status: result.duplicate ? "duplicate-skipped" : result.prompt.status });
       } catch (e) { results.push({ userId: pref.userId, sessionId: w.id, purpose, status: "blocked", error: (e as Error).message }); }

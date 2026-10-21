@@ -1,5 +1,6 @@
 import { dailyEnvironmentSummary, type DailyEnvironmentAssessment } from "./daily-environment";
 import { trustedCycleMovementGuidance } from "./cycle-movement-guidance";
+import { endpointText } from "./universal-workout-card";
 // JasMiamiMethod — Creative plan formats
 //
 // One training plan, three skins: Telegram text (emoji-dense, scannable in a
@@ -46,14 +47,14 @@ export interface PlanFormatSession {
 }
 
 // A repetition/distance/open endpoint must never be turned into a timed block.
-export function stepEndpointLabel(step: NonNullable<PlanFormatSession["steps"]>[number]): string {
+export function stepEndpointLabel(step: NonNullable<PlanFormatSession["steps"]>[number], language: "en" | "es" = "en"): string {
   const end = step.endpoint;
   if (end?.type === "distance") return `${end.meters} m`;
   if (end?.type === "lap") return "Lap/manual end";
   if (end?.type === "reps") return `${end.reps} reps`;
   if (step.reps) return `${step.reps} reps`;
   const seconds = end?.type === "time" ? end.seconds : step.seconds;
-  return seconds % 60 === 0 ? `${seconds / 60} min` : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return endpointText({ endpoint: { type: "time", seconds } }, language);
 }
 
 export function postFuelLabel(post: NonNullable<PlanFormatSession["post"]>): string {
@@ -65,7 +66,7 @@ export function postFuelLabel(post: NonNullable<PlanFormatSession["post"]>): str
 
 function sessionTimeLabel(session: PlanFormatSession): string {
   const estimated = session.steps?.some(step => Boolean(step.reps) || (step.endpoint && step.endpoint.type !== "time"));
-  return `${session.durationMin} min${estimated ? " estimated" : ""}`;
+  return `${endpointText({ endpoint: { type: "time", seconds: session.durationMin * 60 } }, session.language === "es" ? "es" : "en")}${estimated ? " estimated" : ""}`;
 }
 
 // ---- Iconography ----
@@ -116,7 +117,7 @@ export function telegramPlan(
     const key = (s.steps || []).filter((x) => x.phase === "active").slice(0, 2);
     for (const st of key)
       lines.push(
-        `   • ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}${trustedCycleMovementGuidance(st) ? ` · ${trustedCycleMovementGuidance(st)}` : ""}`,
+        `   • ${stepEndpointLabel(st, s.language === "es" ? "es" : "en")} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}${trustedCycleMovementGuidance(st) ? ` · ${trustedCycleMovementGuidance(st)}` : ""}`,
       );
     if (s.fuel?.carbsPerHourG || s.fuel?.fluidMlPerHour)
       lines.push(
@@ -153,7 +154,7 @@ export function gmailPlanHtml(
               (st) =>
                 `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px dashed #e2e8f0;font-size:13px;color:#334155">
                    <span>${esc(st.name)}${st.note ? ` <span style="color:#94a3b8">— ${esc(st.note)}</span>` : ""}</span>
-                   <strong style="white-space:nowrap">${esc(stepEndpointLabel(st))}</strong>
+                   <strong style="white-space:nowrap">${esc(stepEndpointLabel(st, s.language === "es" ? "es" : "en"))}</strong>
                  </div>`,
             )
             .join("");
@@ -204,7 +205,7 @@ export function calendarDescription(
   const key = (s.steps || []).filter((x) => x.phase === "active").slice(0, 4);
   for (const st of key)
     lines.push(
-      `• ${stepEndpointLabel(st)} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}${trustedCycleMovementGuidance(st) ? ` · ${trustedCycleMovementGuidance(st)}` : ""}`,
+      `• ${stepEndpointLabel(st, s.language === "es" ? "es" : "en")} ${st.name}${st.targetLabel ? ` · ${st.targetLabel}` : ""}${trustedCycleMovementGuidance(st) ? ` · ${trustedCycleMovementGuidance(st)}` : ""}`,
     );
   if (s.fuel?.preSession?.carbsG)
     lines.push(`⛽ Pre: ${s.fuel.preSession.carbsG}g ${s.fuel.preSession.timingLabel}`);

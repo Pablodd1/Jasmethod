@@ -124,7 +124,7 @@ test("unknown nutrition prose stays unavailable in Spanish and never leaks free-
 
 test("Spanish localized target sources and exact units cover power, HR, pace and speed", () => {
   const source = (target: Record<string, unknown>, profile: TargetProfile = {}) => spanish(null, session("run", profile, [{ name: "Original name", phase: "warmup", zone: "z2", seconds: 5400, target }])).steps[0];
-  assert.match(source({ type: "power", low: 125, high: 160 }), /Paso 1: calentamiento.*Nombre original: Original name.*5400 s.*Potencia: 125–160 W.*prescripción explícita/);
+  assert.match(source({ type: "power", low: 125, high: 160 }), /Paso 1: calentamiento.*Nombre original: Original name.*90 min.*Potencia: 125–160 W.*prescripción explícita/);
   assert.match(source({ type: "heartRate", low: 120, high: 140 }), /Frecuencia cardíaca: 120–140 latidos\/min/);
   assert.match(source({ type: "speed", low: 2.5, high: 3 }), /Velocidad: 2,5–3 m\/s/);
   assert.match(source({ type: "pace", low: 240, high: 300 }), /Ritmo: 4:00–5:00 min\/km/);
@@ -140,10 +140,10 @@ test("Spanish decimal presentation keeps full source precision and original iden
     target: { type: "speed" as const, source: "explicit" as const, low: 2.123456789, high: 3.987654321, label: "2.123456789–3.987654321 m/s" },
     sportDetail: { kind: "set" as const, exerciseId: "lift.2.5", exerciseName: "Original 2.5 lift", setNumber: 1, load: { value: 12.75, unit: "kg" as const } } }] };
   const plan = spanish(null, fractional);
-  assert.match(plan.summary, /90,5 min de duración planificada estimada/);
+  assert.match(plan.summary, /90 min 30 s de duración planificada estimada/);
   assert.match(plan.steps[0], /1609,344 m.*2,123456789–3,987654321 m\/s.*Original 2\.5 lift.*lift\.2\.5.*12,75 kg/);
   const timed = spanish(null, { ...current, exactTimeSeconds: 5430 });
-  assert.match(timed.summary, /90,5 min de tiempo estructurado/);
+  assert.match(timed.summary, /90 min 30 s de tiempo estructurado/);
 });
 
 test("Spanish pool, strength, station and transition details preserve authored metadata and endpoint meaning", () => {
@@ -159,7 +159,7 @@ test("Spanish pool, strength, station and transition details preserve authored m
   ];
   const { plan, graphic } = manualWorkoutEmailContent({ ...current, steps: details, exactTimeSeconds: null }, null, null, true, "es");
   assert.equal(graphic, null);
-  assert.match(plan.steps[0], /100 m.*Estilo: libre.*4 largos × 25 m; libre; salida cada 120 s.*no es un descanso fijo/);
+  assert.match(plan.steps[0], /100 m.*Estilo: libre.*4 largos × 25 m; libre; salida cada 2 min.*no es un descanso fijo/);
   assert.match(plan.steps[1], /8 repeticiones.*nombre original.*Original lift.*identificador original: squat; serie 2; carga 35 kg/);
   assert.doesNotMatch(plan.steps[1], /set 2/);
   assert.match(plan.steps[2], /Estación.*identificador original.*sled; carga 80 lb/);

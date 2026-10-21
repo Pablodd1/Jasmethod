@@ -14,6 +14,7 @@ datasource db {
 // ---------- IDENTITY ----------
 
 model User {
+  activityStreams ActivityStream[]
   accountSmokeReceipts AccountSmokeReceipt[]
   accountSmokeTelegram AccountSmokeTelegram?
   manualWorkoutEmail ManualWorkoutEmailPreference?
@@ -387,9 +388,31 @@ model Workout {
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   planDay    PlanDay? @relation(fields: [planDayId], references: [id], onDelete: SetNull)
+  stream     ActivityStream?
 
   @@index([userId, date])
   @@index([userId, source, externalId])
+}
+
+// Second-by-second data of ONE imported activity (heart rate, power, cadence, speed, altitude, distance — no GPS).
+// Stored only with the athlete's consent at upload, never for Strava-origin or unknown-origin activities
+// (src/lib/activity-stream-store.ts), only while ENABLE_ACTIVITY_STREAMS=1, and deleted at expiresAt or on request.
+model ActivityStream {
+  id            String   @id @default(cuid())
+  userId        String
+  workoutId     String   @unique
+  schemaVersion Int      @default(1)
+  data          String   // JSON: ActivityStreams (activity-streams.ts)
+  sampleCount   Int
+  durationSec   Int
+  consentAt     DateTime
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workout       Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
 }
 
 // ---------- METRICS: SLEEP / HRV / RECOVERY ----------

@@ -29,7 +29,11 @@ jobs:
       PORT: 3220
       NEXT_TELEMETRY_DISABLED: "1"
       ENABLE_INTERVALS_CONNECTOR: "false"
+      # Synthetic integration fixtures only; production defaults remain off.
+      ENABLE_STRAVA_CONNECTOR: "true"
       ENABLE_AUTOMATED_DELIVERY: "false"
+      # Disposable localhost database only. Production collection remains opt-in/off.
+      ENABLE_ACTIVITY_STREAMS: "1"
       ENABLE_MOCK_COACHING: "false"
       COACHING_TRANSPORT: mock
       TOKEN_ENCRYPTION_KEY: isolated-ci-token-key
@@ -87,6 +91,11 @@ jobs:
       - name: Authenticated race scenario boundaries
         run: npx tsx scripts/jmm-race-scenario-integration.ts
 
+      - name: Release audit PostgreSQL import, editing, erasure and privacy acceptance
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-release-audit-integration.ts
+
       - name: Actual fueling persistence and owner boundaries
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
@@ -131,6 +140,9 @@ jobs:
       - name: Install Chromium for synthetic UI acceptance
         run: npx playwright install --with-deps chromium
 
+      - name: EN and ES mobile Smart Coach and upload limit acceptance
+        run: node --import tsx scripts/jmm-release-audit-browser.cjs
+
       - name: Mobile feedback persistence and single-panel browser acceptance
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
@@ -140,6 +152,11 @@ jobs:
         env:
           JMM_UI_TEST_BASE: http://127.0.0.1:3220
         run: node --import tsx scripts/jmm-live-repair-browser.cjs
+
+      - name: EN and ES saved Today and check-in mobile acceptance
+        env:
+          JMM_UI_TEST_BASE: http://127.0.0.1:3220
+        run: node --import tsx scripts/jmm-daily-flow-browser.cjs
 
       - name: J Metrics authenticated data and rest-day acceptance
         run: npx tsx scripts/jmm-metrics-integration.ts
@@ -171,6 +188,9 @@ jobs:
           name: jmm-launch-acceptance
           path: |
             .local/jmm-launch-integration/report.json
+            .local/jmm-release-audit/report.json
+            .local/jmm-release-audit-browser/report.json
+            .local/jmm-release-audit-browser/*.png
             .local/jmm-launch-integration/*.fit
             .local/jmm-launch-integration/*-decoded.json
             .local/jmm-followup-integration/report.json
@@ -180,9 +200,13 @@ jobs:
             .local/jmm-telegram-webhook-integration/report.json
             .local/jmm-mobile-workflow/report.json
             .local/jmm-mobile-workflow/browser/report.json
+            .local/jmm-mobile-workflow/browser/*.png
             .local/jmm-conversation-integration/report.json
             .local/jmm-live-repair-browser/report.json
             .local/jmm-live-repair-browser/*.png
+            .local/jmm-daily-flow-browser/report.json
+            .local/jmm-daily-flow-browser/reproduced-stale-card-report.json
+            .local/jmm-daily-flow-browser/*.png
             .local/jmm-metrics-integration/report.json
             .local/jmm-recovery-integration/report.json
             .local/jmm-race-scenario-integration/report.json

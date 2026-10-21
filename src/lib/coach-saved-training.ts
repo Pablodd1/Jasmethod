@@ -1,5 +1,6 @@
 import type { CoachReply, CoachReplyContext } from "./coach-conversation";
 import { resolveCheckinSafety } from "./checkin-safety";
+import { endpointText } from "./universal-workout-card";
 
 /** Read-only navigation and saved-plan context, never a training clearance. */
 export function savedTrainingReply(message: string, context: CoachReplyContext): CoachReply | null {
@@ -20,7 +21,7 @@ export function savedTrainingReply(message: string, context: CoachReplyContext):
   const sessions = (context.savedTodaySessions ?? []).filter(session => session.date === context.localToday);
   const lines = sessions.map(session => {
     const title = session.title.replace(/\s+/g, " ").trim().slice(0, 200);
-    const duration = Number.isFinite(session.durationMin) && session.durationMin >= 0 ? `${session.durationMin} min` : es ? "duración desconocida" : "duration unknown";
+    const duration = Number.isFinite(session.durationMin) && session.durationMin >= 0 ? endpointText({ endpoint: { type: "time", seconds: session.durationMin * 60 } }, es ? "es" : "en") : es ? "duración desconocida" : "duration unknown";
     return `• ${title || session.sport}: ${duration}${session.completed ? (es ? " (marcada como completada)" : " (marked completed)") : ""}`;
   });
   const checkin = context.checkin?.observedDate === context.localToday ? context.checkin : null;

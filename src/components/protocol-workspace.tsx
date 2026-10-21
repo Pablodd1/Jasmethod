@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./auth";
 import { ProtectedPage } from "./gate";
+import { endpointText } from "@/lib/universal-workout-card";
 import {
   TRAINING_PROTOCOLS,
   PROTOCOL_SOURCES,
@@ -360,7 +361,7 @@ export default function ProtocolWorkspace({
                         <strong className="shrink-0">
                           {s.reps
                             ? `${s.reps} reps`
-                            : `${Math.floor(s.seconds / 60)}:${String(s.seconds % 60).padStart(2, "0")}`}
+                            : endpointText({ endpoint: s.endpoint?.type === "time" ? s.endpoint : { type: "time", seconds: s.seconds } }, user?.language === "es" ? "es" : "en")}
                         </strong>
                       </li>
                     ))}

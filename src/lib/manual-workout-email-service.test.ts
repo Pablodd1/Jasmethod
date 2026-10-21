@@ -5,6 +5,7 @@ import { canonicalSession } from "./canonical-session";
 import { MANUAL_EMAIL_CONSENT } from "./manual-workout-email";
 import { reconcileManualWorkoutEmails } from "./manual-workout-email-service";
 import type { ManualEmailMessage, ManualEmailReceipt } from "./manual-workout-email-transport";
+import { isCurrentWorkout } from "./calendar-workouts";
 
 type Dependencies = NonNullable<Parameters<typeof reconcileManualWorkoutEmails>[2]>;
 type Snapshot = Awaited<ReturnType<Dependencies["resolve"]>>;
@@ -70,6 +71,7 @@ function makeHarness() {
   let userReads = 0;
   const h = {
     user, preference, rows, dispatch, sends, writes,
+    activePlanId: "current-plan",
     state: snapshot(),
     failAcceptedWrite: false,
     sendTime: now,
@@ -98,8 +100,14 @@ function makeHarness() {
     return h.readUser(++userReads);
   });
   replace(prisma.workout, "findMany", async ({ where }: Row) => {
-    assert.equal(where.userId, user.id);
-    return [{ id: "session-a" }];
+    assert.equal(where.AND[0].userId, user.id);
+    return h.state?.workout && isCurrentWorkout(h.state.workout, user.id, h.activePlanId) ? [{ id: "session-a" }] : [];
+  });
+  replace(prisma.trainingPlan, "findFirst", async ({where}:Row) => { assert.equal(where.userId,user.id); return {id:h.activePlanId}; });
+  replace(prisma.workout, "findFirst", async ({where}:Row) => {
+    assert.equal(where.AND[0].userId,user.id);
+    const workout=h.state?.workout;
+    return workout && isCurrentWorkout(workout,user.id,h.activePlanId) ? structuredClone(workout) : null;
   });
   replace(prisma.manualWorkoutEmailOutbox, "findMany", async ({ where }: Row) => structuredClone(rows.filter(row => matches(row, where)).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())));
   replace(prisma.manualWorkoutEmailOutbox, "upsert", async ({ where, create }: Row) => {
@@ -138,6 +146,23 @@ function makeHarness() {
   });
   return h;
 }
+
+test("old active-plan approved email is never selected as a current daily workout",async()=>withHarness(async h=>{
+  (h.state!.workout as Row).planDay={plan:{id:"older-active",status:"active",userId:h.user.id}};
+  await h.run();assert.equal(h.sends.length,0);assert.equal(h.rows.length,0);
+}));
+
+test("queued email for a replaced plan is superseded without a cancellation send or executable file",async()=>withHarness(async h=>{
+  (h.state!.workout as Row).planDay={plan:{id:"older-active",status:"active",userId:h.user.id}};
+  h.rows.push({id:"old-queued",userId:h.user.id,sessionId:"session-a",revision:h.state!.revision,kind:"ready",dedupeKey:"synthetic-old-queued",recipient:h.user.email,status:"queued",createdAt:now});
+  await h.run();assert.equal(h.sends.length,0);assert.equal(h.rows[0].status,"superseded");
+}));
+
+test("plan replacement during email preparation prevents sending the old approved revision",async()=>withHarness(async h=>{
+  (h.state!.workout as Row).planDay={plan:{id:"current-plan",status:"active",userId:h.user.id}};
+  h.resolve=read=>{if(read===2)h.activePlanId="replacement-plan";return structuredClone(h.state);};
+  await h.run();assert.equal(h.sends.length,0);assert.equal(h.rows[0].status,"superseded");
+}));
 
 test("same-revision held/approved/held transitions each send once with correct attachment boundary", async () => {
   await withHarness(async h => {

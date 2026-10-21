@@ -485,9 +485,11 @@ export function generatePlan(opts: {
   const { level, distance, weeks, startDate, weeklyHours, easyPct, raceDate, extraRaces } = opts;
   const splitTarget = easyPct ?? 70; // 70/30 default, manual-adjustable
   const baseWeekly = weeklyHours ?? (level === "pro" ? 20 : level === "advanced" ? 14 : level === "amateur" ? 10 : 6);
-  // Distance multipliers for weekly hours
+  // Distance multipliers shape legacy volume suggestions. An explicitly
+  // reviewed tolerated weekly dose is already athlete-specific; changing the
+  // event distance must not discount it again or increase its ceiling.
   const distFactor: Record<string, number> = { sprint: 0.6, olympic: 0.8, half: 1.0, full: 1.3 };
-  const targetHours = baseWeekly * (distFactor[distance] ?? 1);
+  const targetHours = baseWeekly * (opts.reviewedCycle && weeklyHours != null ? 1 : distFactor[distance] ?? 1);
   // 6-week mesocycles: week 6 = taper + baseline test, each block +5-10%
   const races: PlanRace[] = [
     ...(raceDate ? [{ date: raceDate, priority: 1 }] : []),
@@ -635,7 +637,9 @@ export function generatePlan(opts: {
         const factor = Math.max(0, 1 - excess / trimmableTotal);
         finalSessions = finalSessions.map((s) =>
           trimmable.includes(s) && s.minutes > 25
-            ? { ...s, minutes: Math.max(20, Math.round(s.minutes * factor)) }
+            // Scale only minutes above the retained 20-minute allocation.
+            // Scaling the entire bout removes more than the computed excess.
+            ? { ...s, minutes: Math.max(20, Math.round(20 + (s.minutes - 20) * factor)) }
             : s,
         );
       }

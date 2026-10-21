@@ -480,7 +480,7 @@ export function illustrativeRaceScenario(input: ForecastInput): ForecastResult |
   }
   const altInfo = venue.baseElevM != null ? altitudeFactor(venue.baseElevM) : null;
   if (altInfo && venue.baseElevM != null && venue.baseElevM > 150) {
-    factors.push(`Altitude ${venue.baseElevM}m → sustainable aerobic power ~${Math.round((1 - altInfo.vo2factor) * 100)}% lower (Wehrlin-linear, tunable). ${altInfo.advice}`);
+    factors.push(`Altitude ${venue.baseElevM}m → group VO2max context ~${Math.round((1 - altInfo.vo2factor) * 100)}% lower within the study range (Wehrlin-linear); not a personal race-power estimate. ${altInfo.advice}`);
   }
   if (venue.windKph != null && venue.windKph > 10) {
     factors.push(`Wind ${venue.windKph} kph (loop-course mean projection) is inside the bike physics solve — expect more time loss than the tailwind gives back.`);

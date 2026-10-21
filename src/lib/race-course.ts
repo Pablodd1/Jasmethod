@@ -1,6 +1,7 @@
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 
-export const RACE_GPX_MAX_BYTES = 5 * 1024 * 1024;
+import { MAX_UPLOAD_BYTES } from "./upload-limits";
+export const RACE_GPX_MAX_BYTES = MAX_UPLOAD_BYTES;
 export const RACE_GPX_MAX_POINTS = 100_000;
 export interface RaceCoursePoint {
   distanceM: number; latitude: number; longitude: number;
@@ -36,7 +37,7 @@ export function raceCourseDistanceM(a: Pick<RaceCoursePoint, "latitude" | "longi
 }
 /** Local, bounded course-only parser. Does not fetch URLs or retain athlete extensions. */
 export function parseRaceCourseGpx(xml: string): RaceCourseResult {
-  if (typeof xml !== "string" || Buffer.byteLength(xml, "utf8") > RACE_GPX_MAX_BYTES) throw new Error("Course file must be at most 5 MiB.");
+  if (typeof xml !== "string" || Buffer.byteLength(xml, "utf8") > RACE_GPX_MAX_BYTES) throw new Error("Course file must be at most 4 MB.");
   if (/<!\s*(?:DOCTYPE|ENTITY)/i.test(xml)) throw new Error("Course files cannot contain document types or entities.");
   // Guard deeply nested hostile input before invoking the XML parser.
   let depth = 0;

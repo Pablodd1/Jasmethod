@@ -1,4 +1,4 @@
-import { intervalsConnectorEnabled, trainingCapabilities } from "@/lib/capabilities";
+import { intervalsConnectorEnabled, trainingCapabilities, stravaConnectorEnabled, STRAVA_DISABLED_MESSAGE } from "@/lib/capabilities";
 import { intervalsOAuthConfigured } from "@/lib/intervals-oauth";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -24,7 +24,7 @@ export async function GET() {
       id: "strava",
       name: "Strava",
       env: "STRAVA",
-      description: "Import recorded activities. Sync after connecting.",
+      description: stravaConnectorEnabled() ? "Import recorded activities. Sync after connecting." : STRAVA_DISABLED_MESSAGE,
     },
     {
       id: "google_cal",
@@ -50,7 +50,7 @@ export async function GET() {
   const providers: any[] = configs.map((p) => {
     const configured = !!(
       process.env[`${p.env}_CLIENT_ID`] && process.env[`${p.env}_CLIENT_SECRET`]
-    );
+    ) && (p.id !== "strava" || stravaConnectorEnabled());
     return {
       id: p.id,
       name: p.name,
@@ -65,7 +65,7 @@ export async function GET() {
       connectUrl: configured
         ? `/api/connectors/${p.path || p.id}/authorize`
         : null,
-      capabilities: { imports: true, publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
+      capabilities: { imports: p.id !== "strava" || stravaConnectorEnabled(), publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
       status:
         connectors.find((c) => c.provider === p.id)?.status || "disconnected",
     };
@@ -76,14 +76,14 @@ export async function GET() {
         id: "garmin",
         name: "Garmin / COROS",
         description:
-          "Upload completed TCX or Garmin activities CSV. Automatic Garmin/COROS imports and structured workout delivery are not implemented.",
+          "Upload completed TCX, FIT or Garmin activities CSV. Automatic Garmin/COROS imports and structured workout delivery are not implemented.",
         capabilities: { imports: "file", publishesStructuredWorkouts: false, automaticDeviceDelivery: false },
       },
       {
         id: "apple",
         name: "Apple Health",
         description:
-          "Upload export.xml from your Apple Health export (maximum 40 MB).",
+          "Upload export.xml from your Apple Health export (maximum 4 MB).",
       },
       {
         id: "athlinks",

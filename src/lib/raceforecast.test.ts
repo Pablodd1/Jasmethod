@@ -39,7 +39,7 @@ import { REJECTED_CLAIMS, allConstants } from "./forecast-constants";
   assert.ok(bikeHeatPowerFactorFromWbgt(40) >= 0.85, "bike derate capped at 15%");
 }
 
-// --- altitude (Conflict 1: Wehrlin-linear ≈4.4%/1000ft, tunable) ---
+// --- Group VO2max context cannot be converted into individual running pace. ---
 {
   const alt = forecastRace(
     { athlete: { ftp: 250, runPaceBase: 300 }, fitness: null, distance: "10k", venue: { targetTempC: 18, baseElevM: 1524 } },
@@ -47,7 +47,7 @@ import { REJECTED_CLAIMS, allConstants } from "./forecast-constants";
   const sea = forecastRace(
     { athlete: { ftp: 250, runPaceBase: 300 }, fitness: null, distance: "10k", venue: { targetTempC: 18, baseElevM: 0 } },
   )!;
-  assert.ok(alt.totalMin > sea.totalMin, `5,000 ft must be slower than sea level (${alt.totalMin} vs ${sea.totalMin})`);
+  assert.equal(alt.totalMin, sea.totalMin, "No unvalidated VO2max-to-running-pace transmission");
   assert.ok(alt.factors.some((f) => f.includes("Wehrlin-linear")), "altitude factor cites the model");
 }
 

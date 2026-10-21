@@ -9,7 +9,7 @@ const decision=(rows:ReturnType<typeof row>[],kind:ActivityDecision["kind"],prim
 test("corroborated cross-provider copies count once, retain observations and never borrow a missing metric",()=>{
  const a=row("a"),b=row("b","strava",{date:new Date("2026-10-16T07:00:20Z"),actualDurationMin:60.5,durationMin:60.5,distanceKm:30.05,rpe:null});
  const before=JSON.stringify([a,b]);const grouped=groupActivityEvidence([a,b]);assert.equal(grouped.groups.length,1);assert.equal(grouped.groupedCopies,1);assert.equal(grouped.unresolvedGroups,0);assert.equal(grouped.groups[0].budgetMinutes,60.5);assert.equal(grouped.groups[0].primary.id,"a");assert.equal(grouped.groups[0].members.length,2);assert.equal(JSON.stringify([a,b]),before);
- const metrics=computeJMetrics([a,b] as any,now,"UTC",[],1);assert.equal(metrics.totalSessions,1);assert.equal(metrics.totalJStress,240);assert.equal(metrics.coveragePct,100);
+ const metrics=computeJMetrics([a,b] as any,now,"UTC",[],1);assert.equal(metrics.totalSessions,1);assert.equal(metrics.totalJStress,null);assert.equal(metrics.coveragePct,0);assert.match(metrics.derivedActivityPolicy!.reason!,/Strava-origin/);
  const missing=computeJMetrics([{...a,rpe:null},{...b,rpe:null}] as any,now,"UTC",[],1);assert.equal(missing.totalJStress,null);assert.equal(missing.coveragePct,0);
 });
 test("start alone and mismatched duration or distance never verify identity; ambiguity stays unknown with conservative budget",()=>{
@@ -35,8 +35,8 @@ test("explicit same-session choice uses selected actual duration without max/ave
 });
 test("local-day boundaries count one source while protecting every performed date; linked plan copies preserve max safety budget",()=>{
  const rows=[row("a","garmin",{date:new Date("2026-10-16T03:59:45Z")}),row("b","strava",{date:new Date("2026-10-16T04:00:15Z")})];
- const metrics=computeJMetrics(rows as any,now,"America/New_York",[],2);assert.equal(metrics.totalSessions,1);assert.equal(metrics.totalJStress,240);
- const cycle=cycleActivityEvidence(rows as any,"2026-10-16","America/New_York");assert.deepEqual(cycle.protectedDays,["2026-10-15","2026-10-16"]);assert.equal(cycle.reportedMinutes,60);
+ const metrics=computeJMetrics(rows as any,now,"America/New_York",[],2);assert.equal(metrics.totalSessions,1);assert.equal(metrics.totalJStress,null);assert.match(metrics.derivedActivityPolicy!.reason!,/Strava-origin/);
+ const cycle=cycleActivityEvidence(rows as any,"2026-10-16","America/New_York");assert.deepEqual(cycle.protectedDays,["2026-10-15","2026-10-16"]);assert.equal(cycle.reportedMinutes,null);assert.match(cycle.derivedActivityPolicy.reason!,/Strava-origin/);
  const linked=[row("a","garmin",{matchedPlanId:"missing",actualDurationMin:40}),row("b","strava",{matchedPlanId:"missing",actualDurationMin:60})];assert.equal(groupActivityEvidence(linked).groups[0].budgetMinutes,60);
  const summary=publicActivityReconciliation([row("a"),row("b","whoop",{distanceKm:null})]);assert.equal(summary.pending[0].records.length,2);assert.match(summary.pending[0].revision,/^[a-f0-9]{64}$/);
 });
@@ -64,7 +64,7 @@ test("conflicting reported efforts never silently pick an easy automatic primary
  const rows=[row("a","garmin",{rpe:2}),row("b","strava",{rpe:9})];
  const grouped=groupActivityEvidence(rows);assert.equal(grouped.groups.length,2);assert.equal(grouped.unresolvedGroups,1);
  assert.equal(computeJMetrics(rows as any,now,"UTC",[],1).totalJStress,null);
- assert.equal(cycleActivityEvidence(rows as any,"2026-10-16","UTC").recoveryReview,true);
+ const cycle=cycleActivityEvidence(rows as any,"2026-10-16","UTC");assert.equal(cycle.recoveryReview,false);assert.match(cycle.derivedActivityPolicy.reason!,/Strava-origin/);
 });
 
 test("explicit same and separate decisions can reopen without source edits, and corroboration cannot bypass the review",()=>{
@@ -97,7 +97,7 @@ test("new subset choices resolve reopened pairs and newest explicit primary wins
  assert.equal(partial.groupedCopies,1);assert.equal(partial.unresolvedGroups,1);assert.equal(partial.groups.find(g=>g.members.some(r=>r.id==="a"))?.primary.id,"b");
  const ac=decision([rows[0],rows[2]],"same_session","c"),resolved=groupActivityEvidence(rows,[ac,ab,reopen,old]);
  assert.equal(resolved.groups.length,1);assert.equal(resolved.unresolvedGroups,0);assert.equal(resolved.groups[0].primary.id,"c");assert.equal(resolved.groups[0].budgetMinutes,20);
- assert.equal(computeJMetrics(rows as any,now,"UTC",[],1,[ac,ab,reopen,old]).totalJStress,80);
+ const metrics=computeJMetrics(rows as any,now,"UTC",[],1,[ac,ab,reopen,old]);assert.equal(metrics.totalJStress,null);assert.match(metrics.derivedActivityPolicy!.reason!,/Strava-origin/);
  const newest=decision(rows.slice(1),"same_session","c"),older=decision(rows.slice(0,2),"same_session","a");
  const overlapping=groupActivityEvidence(rows,[newest,older]);assert.equal(overlapping.groups[0].primary.id,"c");assert.equal(overlapping.groups[0].budgetMinutes,20);
  const distinct=decision([rows[0],rows[2]],"different_sessions",null),separated=groupActivityEvidence(rows,[distinct,ab,reopen,old]);

@@ -7,6 +7,7 @@ import { Decoder, Stream } from "@garmin/fitsdk";
 import { dayBounds, addDaysKey, localDate } from "../src/lib/dates";
 import { workoutRevision } from "../src/lib/workout-update";
 import { TRAINING_PROTOCOLS } from "../src/lib/protocols";
+import { stravaConnectorEnabled } from "../src/lib/capabilities";
 const db = new PrismaClient(),
   base = process.env.TEST_BASE_URL || "http://localhost:3000";
 const database = new URL(process.env.DATABASE_URL || "");
@@ -320,6 +321,10 @@ async function main() {
     restingHr: 51,
   });
   await request("/api/metrics", a.cookie, "POST", { hrv: -1 }, 400);
+  // A completed fixture must be in the past regardless of CI's time of day;
+  // capture once so repeating the file retains the same external identity.
+  const activityStart=new Date(Date.now()-60*60_000).toISOString();
+  const activityEnd=new Date(Date.now()-30*60_000).toISOString();
   const upload = () => {
     const f = new FormData();
     f.set("source", "apple");
@@ -327,7 +332,7 @@ async function main() {
       "file",
       new Blob(
         [
-          `<HealthData><Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN" value="41" startDate="${day.key} 08:00:00 -0400"/><Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="30" durationUnit="min" startDate="${day.key} 11:00:00 -0400" endDate="${day.key} 11:30:00 -0400"/></HealthData>`,
+          `<HealthData><Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN" value="41" startDate="${day.key} 08:00:00 -0400"/><Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="30" durationUnit="min" startDate="${activityStart}" endDate="${activityEnd}"/></HealthData>`,
         ],
         { type: "text/xml" },
       ),
@@ -379,7 +384,13 @@ async function main() {
     undefined,
     307,
   );
-  assert.ok(oauth.response.headers.get("location")?.includes("invalid_state"));
+  assert.ok(oauth.response.headers.get("location")?.includes(stravaConnectorEnabled() ? "invalid_state" : "provider_disabled"));
+  if (!stravaConnectorEnabled()) {
+    const paused = await request("/api/connectors/strava/authorize", a.cookie, "GET", undefined, 503);
+    assert.equal(paused.data.code, "provider_disabled");
+    await request("/api/connectors/sync", a.cookie, "POST", { provider: "strava" }, 503);
+    assert.equal(await db.connector.count({where:{userId:a.id,provider:"strava",status:"connected"}}),1,"pausing new imports preserves the saved connection");
+  }
   await request(
     "/api/cron/sync",
     "",
@@ -394,6 +405,9 @@ async function main() {
     undefined,
     process.env.CRON_SECRET ? 401 : 503,
   );
+  const reportedBeforeReplacement=await db.workout.findUniqueOrThrow({where:{id:w.id}});
+  assert.equal(reportedBeforeReplacement.feedbackStatus,"partial");
+  assert.equal(reportedBeforeReplacement.completed,false);
   await reviewedPlan(`/api/plan/generate?athleteId=${a.id}`, admin.cookie, {
     distance: "olympic",
     weeks: 4,
@@ -403,9 +417,10 @@ async function main() {
     await db.trainingPlan.count({ where: { userId: a.id, status: "active" } }),
     1,
   );
-  assert.ok(
-    await db.workout.findUnique({ where: { id: w.id } }),
-    "Completed history survives plan replacement",
+  assert.deepEqual(
+    await db.workout.findUniqueOrThrow({ where: { id: w.id } }),
+    reportedBeforeReplacement,
+    "Partial reported history and original provenance survive plan replacement unchanged",
   );
   const overview = (await request(`/api/admin/athletes/${a.id}`, admin.cookie))
     .data;
@@ -417,6 +432,7 @@ async function main() {
   assert.ok(
     overview.analysis.insights.some((x: any) => x.title.includes("partial")),
   );
+  assert.equal(overview.analysis.minutes,55,"the partial 25-minute report and one 30-minute Apple activity both reach the coach summary once");
   assert.equal(await db.workout.count({ where: { userId: b.id } }), 0);
   // Protocol assignment uses an isolated athlete and existing session identity.
   const c = await account("athlete", "protocol");

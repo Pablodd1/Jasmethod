@@ -1,7 +1,7 @@
 import { isDailyEnvironmentAssessment, type DailyEnvironmentAssessment } from "@/lib/daily-environment";
 import type { CanonicalStep } from "@/lib/canonical-session";
 import type { UniversalWorkoutCard } from "@/lib/universal-workout-card";
-import { isUniversalWorkoutCard } from "@/lib/universal-workout-card";
+import { endpointText, isUniversalWorkoutCard } from "@/lib/universal-workout-card";
 import { parseActualFueling, type ActualFueling } from "@/lib/actual-fueling";
 import { parseSessionObservations, type SessionObservations } from '@/lib/session-observations';
 
@@ -98,7 +98,7 @@ export function endpointLabel(endpoint: Endpoint | undefined, metric = true, spo
   if (endpoint.type === "lap") return es ? "Hasta pulsar vuelta / finalizar manualmente" : "Until lap button / manual end";
   if (endpoint.type === "reps") return `${endpoint.reps} reps`;
   if (endpoint.type === "distance") return metric ? `${Number(endpoint.meters.toFixed(2))} m` : sport === "swim" ? `${Number((endpoint.meters / 0.9144).toFixed(2))} yd` : `${Number((endpoint.meters / 1609.344).toFixed(3))} mi`;
-  return endpoint.seconds % 60 === 0 ? `${endpoint.seconds / 60} min` : `${endpoint.seconds} s`;
+  return endpointText({ endpoint }, lang);
 }
 export function canonicalBlocks(steps: CanonicalStep[]): Block[] {
   return steps.map((step, i) => ({

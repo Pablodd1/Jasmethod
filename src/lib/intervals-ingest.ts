@@ -78,7 +78,13 @@ export async function ingestIntervals(userId: string, timezone: string, conn: { 
   const { authorization, athleteId } = await getIntervalsAuthorization(userId, []);
   const activity = intervalsScopesAllow(conn.scope, ["ACTIVITY:READ"]), wellness = intervalsScopesAllow(conn.scope, ["WELLNESS:READ"]);
   if (!activity && !wellness) throw new Error("Intervals activity or wellness read permission required. Reconnect this provider.");
-  const newest = dateKey(new Date(), timezone), oldest = addDaysKey(newest, !conn.lastSyncAt || fullHistory ? -179 : -7);
+  const newest = dateKey(new Date(), timezone);
+  // Keep the ordinary seven-day correction overlap, but never skip a retained
+  // cursor after a longer outage. All range reads must finish before sync.ts
+  // advances that cursor; provider failures therefore remain recoverable.
+  const overlap = addDaysKey(newest, -7);
+  const retained = conn.lastSyncAt ? addDaysKey(dateKey(conn.lastSyncAt, timezone), -1) : null;
+  const oldest = !retained || fullHistory ? addDaysKey(newest, -179) : retained < overlap ? retained : overlap;
   const rows = await fetchIntervalsRange(authorization, oldest, newest, activity, wellness);
   const current = await getIntervalsAuthorization(userId, []);
   if (current.authorization !== authorization || current.athleteId !== athleteId) throw new Error("Intervals connection changed during sync");

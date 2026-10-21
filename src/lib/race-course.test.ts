@@ -33,8 +33,10 @@ test("route GPX and namespace work, athlete extensions are not retained", () => 
 
 import { courseToScenarioSegments } from "./race-course";
 test("profile stays within 2000 samples even with many track boundaries",()=>{
-  const groups=Array.from({length:100},(_,j)=>`<trkseg>${Array.from({length:800},(_,i)=>`<trkpt lat="${(10+j*.01+i*.000001).toFixed(6)}" lon="10"><ele>1</ele></trkpt>`).join("")}</trkseg>`).join("");
-  const r=parseRaceCourseGpx(`<gpx version="1.1"><trk>${groups}</trk></gpx>`);assert.ok(r.profile.length<=2000);
+  const groups=Array.from({length:100},(_,j)=>`<trkseg>${Array.from({length:600},(_,i)=>`<trkpt lat="${(10+j*.01+i*.000001).toFixed(6)}" lon="10"><ele>1</ele></trkpt>`).join("")}</trkseg>`).join("");
+  const xml=`<gpx version="1.1"><trk>${groups}</trk></gpx>`;
+  assert.ok(Buffer.byteLength(xml,"utf8")<=RACE_GPX_MAX_BYTES,"60,000-point reduction fixture remains inside the supported upload boundary");
+  const r=parseRaceCourseGpx(xml);assert.ok(r.profile.length<=2000);
 });
 test("model conversion retains separate uphill/downhill runs and path distance",()=>{
   const r=parseRaceCourseGpx(wrap(point(0,0,0)+point(0,0.01,10)+point(0,0.02,20)+point(0,0.03,5)));

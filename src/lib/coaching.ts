@@ -1,6 +1,9 @@
 import { estimateTss, computePmc } from "./fitness";
 import { dateKey } from "./dates";
-import {groupActivityEvidence,type ActivityDecision} from "./activity-evidence";
+import {activityActualMinutes,groupActivityEvidence,type ActivityDecision} from "./activity-evidence";
+import { derivedActivityPolicy } from "./derived-activity-policy";
+import { isUnperformedSupersededWorkout } from "./superseded-workout";
+import { hasPerformedTraining } from "./j-metrics";
 
 // Explain observations and their data coverage. Missing data is not a diagnosis.
 export function coachingSummary(
@@ -11,15 +14,28 @@ export function coachingSummary(
   now = new Date(),
   decisions:readonly ActivityDecision[]=[],
 ) {
-  const past = workouts.filter((w) => new Date(w.date) <= now);
-  const activity=groupActivityEvidence(past.filter((w)=>w.completed&&!w.matchedPlanId),decisions);
+  const past = workouts.filter((w) => new Date(w.date) <= now && !isUnperformedSupersededWorkout(w));
+  const policy = derivedActivityPolicy([...past, ...metrics]);
+  if (policy.status !== "allowed") return {
+    completed: null, planned: null, fulfillmentPct: null, minutes: null, measuredSessions: null, estimatedLoad: null, pmc: null,
+    reconciliation: { rawRecords: past.length, groupedCopies: null, unresolvedGroups: null },
+    daily: [] as { date: string; minutes: number | null; load: number | null }[],
+    insights: [{ level: "attention" as const, title: "Training analysis unavailable", detail: policy.reason! }],
+    coverage: { firstDay: past[0]?.date || null, metricsDays: null, latestMetric: metrics.at(-1)?.date || null },
+    derivedActivityPolicy: policy,
+  };
+  const activity=groupActivityEvidence(past.filter((w)=>hasPerformedTraining(w)&&!w.matchedPlanId),decisions);
   const completed=activity.effective;
+  const missingActualDuration=completed.filter(w=>activityActualMinutes(w)===null).length;
+  const incomplete=activity.unresolvedGroups>0||missingActualDuration>0;
   const planned = past.filter((w) => w.planned);
   const measured = completed.filter(
     (w) => w.avgHr != null || w.avgPower != null || w.np != null,
   );
   const input = (w: any) => ({
-    durationMin: w.actualDurationMin ?? w.durationMin,
+    // Only called after actual-duration validation. Never use prescribed
+    // minutes as evidence of a reported partial/substituted session.
+    durationMin: activityActualMinutes(w)!,
     avgPower: w.np ?? w.avgPower,
     avgHr: w.avgHr,
     rpe: w.rpe,
@@ -28,20 +44,21 @@ export function coachingSummary(
     ftp: profile?.ftp,
     lthr: profile?.lthr,
   });
-  const pmc = activity.unresolvedGroups?null:computePmc(
+  const pmc = incomplete?null:computePmc(
     completed.map((w) => ({ date: new Date(w.date), tssInput: input(w) })),
     now,
     timezone,
   );
   const daily = new Map<
     string,
-    { date: string; minutes: number; load: number }
+    { date: string; minutes: number | null; load: number | null }
   >();
   for (const w of completed) {
     const key = dateKey(new Date(w.date), timezone);
     const d = daily.get(key) || { date: key, minutes: 0, load: 0 };
-    d.minutes += w.actualDurationMin ?? w.durationMin;
-    d.load += estimateTss(input(w));
+    const minutes=activityActualMinutes(w);
+    d.minutes=minutes===null||d.minutes===null?null:d.minutes+minutes;
+    d.load=minutes===null||d.load===null?null:d.load+estimateTss(input(w));
     daily.set(key, d);
   }
   const latest = metrics[metrics.length - 1];
@@ -51,6 +68,7 @@ export function coachingSummary(
     detail: string;
   }[] = [];
   if(activity.unresolvedGroups)insights.push({level:"attention",title:"Imported activity needs reconciliation",detail:"Possible cross-provider copies remain separate observations. Review them before treating activity totals or load as known; no extra capacity is inferred."});
+  if(missingActualDuration)insights.push({level:"attention",title:"Actual training duration is missing",detail:"Reported training remains recorded, but complete time and load totals are unavailable until its actual duration is known. Planned minutes are not performed minutes."});
   if (!completed.length)
     insights.push({
       level: "info",
@@ -108,17 +126,18 @@ export function coachingSummary(
     (w) => (w.completed || w.matchedPlanId) && !["partial", "skipped"].includes(w.feedbackStatus),
   ).length;
   return {
+    derivedActivityPolicy: policy,
     completed: completed.length,
     planned: planned.length,
     fulfillmentPct: planned.length
       ? Math.round((100 * fulfilled) / planned.length)
       : null,
-    minutes: activity.unresolvedGroups?null:completed.reduce(
-      (s, w) => s + (w.actualDurationMin ?? w.durationMin),
+    minutes: incomplete?null:completed.reduce(
+      (s, w) => s + activityActualMinutes(w)!,
       0,
     ),
     measuredSessions: measured.length,
-    estimatedLoad: activity.unresolvedGroups?null:Math.round(
+    estimatedLoad: incomplete?null:Math.round(
       completed.reduce((s, w) => s + estimateTss(input(w)), 0),
     ),
     pmc,

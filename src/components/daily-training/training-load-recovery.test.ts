@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readTrainingJson, TrainingReadError, isSavedPlanResponse, isTrainingProfileResponse, isTodayTrainingResponse } from "./training-read";
+import { athleteDayReview } from "../../lib/athlete-day-review";
 import { readinessReasonText } from "./readiness-copy";
 import { UniversalWorkoutCard, WorkoutHeader } from "./UniversalWorkoutCard";
 import { universalWorkoutExample } from "../../lib/universal-workout-example";
@@ -97,6 +98,20 @@ test("today response rejects malformed data instead of treating it as no session
     { date: "2026-10-14", sessions: [{id:"a",title:"Ride",sport:"bike",durationMin:"0"}] }]) assert.equal(isTodayTrainingResponse(value), false);
 });
 
+test("Today accepts unavailable copy analysis with an explicit provenance reason while preserving owner activity",async()=>{
+ for(const source of ["strava","unknown_import"]) {
+  const review=athleteDayReview([{id:"actual",userId:"owner",date:new Date("2026-10-21T09:00Z"),sport:"bike",title:"Synthetic actual ride",source,completed:true,planned:false,durationMin:60,avgHr:128}],"owner","2026-10-21","UTC",null);
+  assert.equal(review.possibleCopies,null);assert.equal(review.derivedActivityPolicy.status,"insufficient");
+  const response={date:"2026-10-21",timezone:"UTC",sessions:[],connectors:[],athleteReview:review};
+  assert.equal(isTodayTrainingResponse(response),true);
+  const accepted=await readTrainingJson("/api/today",{signal:new AbortController().signal,label:"Today's training",validate:isTodayTrainingResponse,fetcher:async()=>jsonResponse(response)});
+  assert.equal(accepted.athleteReview.records[0].minutes,60);
+  assert.equal(accepted.athleteReview.possibleCopies,null,"unavailable analysis is not converted to zero");
+  assert.equal(isTodayTrainingResponse({...response,athleteReview:{...review,derivedActivityPolicy:null}}),false);
+  assert.equal(isTodayTrainingResponse({...response,athleteReview:{...review,derivedActivityPolicy:{status:"allowed",reason:null}}}),false);
+ }
+});
+
 test("nested missing days, sessions and prescription data fail closed instead of crashing rendering", () => {
   const summary = { id: "s", title: "Saved ride", sport: "bike", durationMin: 10, intensity: null };
   const plan = { id: "p", name: "Saved plan", startDate: "2026-10-14", weeks: 12, days: [{ id:"d", date:"2026-10-14", sessions:[summary] }] };
@@ -123,12 +138,12 @@ test("held headers use an unknown executable duration and readable missing check
     const before = JSON.stringify(card);
     const html = render(React.createElement(WorkoutHeader, { card }));
     assert.match(html, es ? /EN ESPERA/ : /ON HOLD/);
-    assert.doesNotMatch(html, /newPain|urgentSymptoms|availableMin|~?0<small>MIN/);
+    assert.doesNotMatch(html, /newPain|urgentSymptoms|availableMin|~?0 min<small>DURATION/);
     assert.match(html, es ? /dolor nuevo|síntomas urgentes|tiempo disponible/ : /new or worsening pain|urgent symptoms|available training time/);
     assert.equal(JSON.stringify(card), before);
   }
   const ready = render(React.createElement(WorkoutHeader, { card: universalWorkoutExample() }));
-  assert.match(ready, /56<small>MIN/);
+  assert.match(ready, /56 min<small>DURATION/);
   assert.match(ready, /READY/);
 });
 

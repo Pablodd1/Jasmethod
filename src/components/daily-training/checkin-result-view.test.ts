@@ -135,6 +135,6 @@ test("the check-in page wires the view, the input ids and the focus request", ()
   assert.match(source, /adaptationView\?\.kind !== "incomplete"/);
   // The raw safety message and the "— unavailable" label are only rendered for the standard presentation.
   assert.equal((source.match(/adaptation\.message/g) ?? []).length, 1);
-  assert.match(source, /adaptationView\?\.kind === "no-time" \? adaptationView\.summary : adaptation\.message/);
+  assert.match(source, /adaptationView\?\.kind === "no-time" \? adaptationView\.summary : readinessReasonText\(adaptation\.message/);
   assert.match(source, /adaptationView\?\.kind === "no-time" \? adaptationView\.heading : adaptation\.scoreAvailable === false/);
 });

@@ -6,6 +6,7 @@ import type { SessionNutrition } from "./session-nutrition";
 import type { ManualWorkoutEmailReadyPlan } from "./manual-workout-email-template";
 import { manualEmailLanguage, type ManualWorkoutEmailLanguage } from "./manual-workout-email-locale";
 import { renderDayPng } from "./workout-graphic";
+import { endpointText } from "./universal-workout-card";
 
 const SPORTS_ES: Record<SessionSport, string> = {
   run: "carrera", bike: "ciclismo", swim: "natación", strength: "fuerza", mobility: "movilidad",
@@ -53,7 +54,7 @@ function targetEs(target: ResolvedTarget): string {
 
 function sportDetailEs(detail: SportStepDetail | undefined): string {
   if (!detail) return "";
-  if (detail.kind === "pool") return `${numberEs(detail.lengths)} largos × ${numberEs(detail.displayLength)} ${detail.displayUnit}; ${STROKES_ES[detail.stroke]}${detail.sendOffSeconds !== undefined ? `; salida cada ${numberEs(detail.sendOffSeconds)} s desde el inicio del intervalo (no es un descanso fijo)` : ""}.`;
+  if (detail.kind === "pool") return `${numberEs(detail.lengths)} largos × ${numberEs(detail.displayLength)} ${detail.displayUnit}; ${STROKES_ES[detail.stroke]}${detail.sendOffSeconds !== undefined ? `; salida cada ${endpointText({ endpoint: { type: "time", seconds: detail.sendOffSeconds } }, "es")} desde el inicio del intervalo (no es un descanso fijo)` : ""}.`;
   if (detail.kind === "set") return `Ejercicio (nombre original): ${detail.exerciseName}; identificador original: ${detail.exerciseId}; serie ${numberEs(detail.setNumber)}${detail.load ? `; carga ${numberEs(detail.load.value)} ${detail.load.unit}` : "; carga no indicada"}.`;
   if (detail.kind === "station") return `Estación (identificador original): ${detail.stationId}${detail.load ? `; carga ${numberEs(detail.load.value)} ${detail.load.unit}` : "; carga no indicada"}.`;
   if (detail.kind === "transition") return `Transición tras el componente (identificador original): ${detail.afterComponentId}. Consulta las instrucciones de transición en la aplicación.`;
@@ -62,7 +63,7 @@ function sportDetailEs(detail: SportStepDetail | undefined): string {
 
 function stepEs(step: CanonicalStep, index: number): string {
   const e = step.endpoint;
-  const endpoint = e.type === "time" ? `${numberEs(e.seconds)} s` : e.type === "distance" ? `${numberEs(e.meters)} m` : e.type === "reps" ? `${numberEs(e.reps)} repeticiones` : "vuelta manual (botón LAP)";
+  const endpoint = e.type === "time" ? endpointText(step, "es") : e.type === "distance" ? `${numberEs(e.meters)} m` : e.type === "reps" ? `${numberEs(e.reps)} repeticiones` : "vuelta manual (botón LAP)";
   const generatedIdentity = ["rest", "set", "transition"].includes(step.sportDetail?.kind || "");
   return [`Paso ${index + 1}: ${PHASES_ES[step.phase]}`, ...(generatedIdentity ? [] : [`Nombre original: ${step.name}`]), endpoint,
     `Zona ${step.zone.toUpperCase()}`, targetEs(step.target), ...(step.componentSport ? [`Componente: ${SPORTS_ES[step.componentSport]}`] : []), sportDetailEs(step.sportDetail), trustedCycleMovementGuidance(step, "es")].filter(Boolean).join(" · ");
@@ -154,7 +155,7 @@ export function manualWorkoutEmailContent(session: CanonicalSession, nutrition: 
   const steps = session.steps.map((s, index) => {
     if (es) return stepEs(s, index);
     const e = s.endpoint;
-    const end = e.type === "time" ? `${e.seconds} s` : e.type === "distance" ? `${e.meters} m` : e.type === "reps" ? `${e.reps} reps` : "manual lap";
+    const end = e.type === "time" ? endpointText(s) : e.type === "distance" ? `${e.meters} m` : e.type === "reps" ? `${e.reps} reps` : "manual lap";
     return `${s.phase}: ${s.name} · ${end} · ${s.zone.toUpperCase()} · ${s.target.label} [${s.target.source}]${s.sportDetail ? ` · ${sportStepInstruction(s.sportDetail)}` : ""}${trustedCycleMovementGuidance(s) ? ` · ${trustedCycleMovementGuidance(s)}` : ""}`;
   });
   const timed = session.steps.length > 0 && session.steps.every(s => s.endpoint.type === "time");
@@ -163,7 +164,7 @@ export function manualWorkoutEmailContent(session: CanonicalSession, nutrition: 
   if (es) {
     const statuses = { missing: "sin registrar", invalid: "no válido", current: "vigente", review_required: "requiere revisión" };
     return { graphic, plan: {
-      summary: `${session.dateLocal} · ${startTime || "Hora de inicio sin indicar"} (${session.timezone}) · ${SPORTS_ES[session.sport]} · ${session.exactTimeSeconds === null ? `${numberEs(session.durationMin)} min de duración planificada estimada` : `${numberEs(session.exactTimeSeconds / 60)} min de tiempo estructurado`}`,
+      summary: `${session.dateLocal} · ${startTime || "Hora de inicio sin indicar"} (${session.timezone}) · ${SPORTS_ES[session.sport]} · ${endpointText({ endpoint: { type: "time", seconds: session.exactTimeSeconds ?? session.durationMin * 60 } }, "es")} ${session.exactTimeSeconds === null ? "de duración planificada estimada" : "de tiempo estructurado"}`,
       steps,
       before: nutrition ? beforeEs(nutrition) : ["La orientación personalizada de alimentación no está disponible; consulta el plan actual."],
       during: nutrition ? duringEs(nutrition) : ["No hay cantidades verificadas de alimentación e hidratación disponibles."],
@@ -174,7 +175,7 @@ export function manualWorkoutEmailContent(session: CanonicalSession, nutrition: 
     } };
   }
   return { graphic, plan: {
-    summary: `${session.dateLocal} · ${startTime || "Start time not set"} (${session.timezone}) · ${session.sport} · ${session.exactTimeSeconds === null ? `${session.durationMin} min planned estimate` : `${session.exactTimeSeconds / 60} min structured time`}`,
+    summary: `${session.dateLocal} · ${startTime || "Start time not set"} (${session.timezone}) · ${session.sport} · ${endpointText({ endpoint: { type: "time", seconds: session.exactTimeSeconds ?? session.durationMin * 60 } })} ${session.exactTimeSeconds === null ? "planned estimate" : "structured time"}`,
     steps,
     before: fuel ? [fuel.preSession.note] : ["Personalized fueling guidance is unavailable; review the current plan."],
     during: fuel ? [`General planning example: ${fuel.carbsPerHourG} g TOTAL carbohydrate/hour; ${fuel.fluidMlPerHour} ml fluid/hour (${fuel.fluidSource}); ${fuel.sodiumMgPerHour} mg sodium/hour.`, fuel.notes, ...(fuel.carbsPerHourG > 60 ? ["Higher carbohydrate intake requires previously tolerated practice. Above 90 g/h requires individualized review and rehearsal; never make a first attempt on race day."] : [])] : ["No verified fueling quantities are available."],

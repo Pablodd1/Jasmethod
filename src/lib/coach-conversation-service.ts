@@ -18,6 +18,7 @@ import { coachTextAnswer, coachTextConfigured } from "./coach-text-provider";
 import { personalCoachFacts } from "./coach-personal-context";
 import { coachVisionConfiguration, createCoachVisionProvider } from "./coach-vision-provider";
 import { coachAutoSessionDay,coachPlanChangeWarnings } from './coach-intent';
+import { currentOrReportedWorkoutWhere } from './calendar-workouts';
 
 export type ConversationActor = { id: string; timezone: string; language?: string };
 type DB = Prisma.TransactionClient;
@@ -121,11 +122,12 @@ async function readConversation(actor: ConversationActor, db: DB = prisma) {
 }
 export async function getConversation(actor: ConversationActor) {
   const today = dateKey(new Date(), actor.timezone);
-  const [history, sessions] = await Promise.all([
+  const [history, activePlan] = await Promise.all([
     readConversation(actor),
-    prisma.workout.findMany({ where: { userId: actor.id, date: { gte: localDate(addDaysKey(today, -30), actor.timezone), lt: localDate(addDaysKey(today, 8), actor.timezone) } },
-      orderBy: [{ date: "desc" }, { id: "desc" }], take: 80, select: { id: true, title: true, sport: true, date: true, planned:true, completed: true, feedbackStatus: true } }),
+    prisma.trainingPlan.findFirst({ where: { userId: actor.id, status: 'active' }, orderBy: { createdAt: 'desc' }, select: { id: true } }),
   ]);
+  const sessions = await prisma.workout.findMany({ where: { ...currentOrReportedWorkoutWhere(actor.id, activePlan?.id ?? null), date: { gte: localDate(addDaysKey(today, -30), actor.timezone), lt: localDate(addDaysKey(today, 8), actor.timezone) } },
+      orderBy: [{ date: "desc" }, { id: "desc" }], take: 80, select: { id: true, title: true, sport: true, date: true, planned:true, completed: true, feedbackStatus: true } });
   const todayOptions=sessions.filter(s=>s.planned&&!s.completed&&dateKey(s.date,actor.timezone)===today);
   return { ok: true, ...history, capabilities: coachCapabilities(), localToday: today,defaultSessionId:todayOptions.length===1?todayOptions[0].id:null, sessions: sessions.map(session => ({ ...session, date: dateKey(session.date, actor.timezone) })) };
 }
@@ -167,11 +169,13 @@ export async function appendConversation(actor: ConversationActor, raw: unknown)
   try {
     claim = await prisma.$transaction(async tx => {
       const now = new Date();
-      const explicit=selectedSessionId?await tx.workout.findFirst({where:{id:selectedSessionId,userId:actor.id}}):null;
+      const activePlan = await tx.trainingPlan.findFirst({ where: { userId: actor.id, status: 'active' }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+      const visible = currentOrReportedWorkoutWhere(actor.id, activePlan?.id ?? null);
+      const explicit=selectedSessionId?await tx.workout.findFirst({where:{...visible,id:selectedSessionId}}):null;
       if(selectedSessionId&&!explicit)throw new ApiError('Session not found',404);
       const requestedDay=coachAutoSessionDay(input.message,dateKey(now,actor.timezone));
       const resolveDate=!!requestedDay&&(!explicit||dateKey(explicit.date,actor.timezone)!==requestedDay);
-      const automatic=resolveDate?await tx.workout.findMany({where:{userId:actor.id,planned:true,completed:false,date:{gte:localDate(requestedDay!,actor.timezone),lt:localDate(addDaysKey(requestedDay!,1),actor.timezone)}},take:2}):[];
+      const automatic=resolveDate?await tx.workout.findMany({where:{...visible,planned:true,completed:false,feedbackAt:null,feedbackStatus:null,feedbackNote:null,actualDurationMin:null,actualSport:null,actualDetails:null,rpe:null,avgHr:null,maxHr:null,avgPower:null,np:null,distanceKm:null,calories:null,preWeightKg:null,postWeightKg:null,externalId:null,matchedPlanId:null,date:{gte:localDate(requestedDay!,actor.timezone),lt:localDate(addDaysKey(requestedDay!,1),actor.timezone)}},take:2}):[];
       const selected=resolveDate?(automatic.length===1?automatic[0]:null):explicit;
       await tx.coachConversationRequest.updateMany({ where: { userId: actor.id, status: "processing", createdAt: { lt: new Date(now.getTime() - 90000) } }, data: { status: "unknown", activeKey: null, finishedAt: now } });
       const existing = await tx.coachConversationRequest.findFirst({ where: { userId: actor.id, clientRequestId } });
@@ -448,8 +452,9 @@ export async function confirmConversation(actor: ConversationActor, raw: unknown
         const saved = await saveProfile(actor.id, actor, { ...profileFields, expectedRevision: bases.profile, reason }, tx);
         entityIds.set("profile", saved.id);
       }
+      const activePlan = workoutFields.size ? await tx.trainingPlan.findFirst({ where: { userId: actor.id, status: 'active' }, orderBy: { createdAt: 'desc' }, select: { id: true } }) : null;
       for (const [sessionId, fields] of workoutFields) {
-        const existing = await tx.workout.findFirst({ where: { id: sessionId, userId: actor.id },include:{planDay:true} });
+        const existing = await tx.workout.findFirst({ where: { ...currentOrReportedWorkoutWhere(actor.id, activePlan?.id ?? null), id: sessionId },include:{planDay:true} });
         const base = bases.workouts[sessionId];
         if (!existing || dateKey(existing.date, actor.timezone) !== base.date || workoutRevision(existing) !== base.revision) throw new ApiError("The session changed since this proposal. Send a new message and review it again.", 409);
         const edits=selected.some(c=>c.kind==="workout_plan" && c.sessionId===sessionId);

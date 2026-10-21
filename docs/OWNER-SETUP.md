@@ -4,14 +4,18 @@ One-time, **owner-only** steps. Athletes NEVER do any of this — they only
 click "Connect <device>" in the app and authorize. Each provider is activated
 once for the whole platform.
 
-## Already live on production
+## Evidence before activation
+
+The [2026-10-21 capability matrix](integrations/2026-10-21-capabilities.md) records the fresh deployment commit,
+production environment-name inventory and remaining real-provider acceptance. A credential name or a historical
+owner-account success is not proof that a new athlete can connect, sync or receive a workout.
 
 | Provider | Status |
 |---|---|
-| **Whoop** (OAuth + webhook) | ✅ **ACTIVE** — `WHOOP_CLIENT_ID/SECRET` set in Vercel (Sep 2026). Dev mode: 10 Whoop members; "Open Request" in the Whoop dashboard to lift. |
-| Telegram bot | ✅ Active (`@JasMiamiMethodbot`). |
+| **Whoop** (OAuth + webhook) | OAuth/webhook code and production configuration names are present. Current provider approval, account validity and a separate athlete's complete history/refresh remain unverified in this audit. |
+| Telegram bot | Production token/username configuration names are present. Bot configuration, pairing, consent and real transport acceptance require separate authorized verification. |
 
-## The activation pattern (same 4 steps every provider)
+## OAuth setup checklist (provider-specific approval and gates still apply)
 
 1. **Provider dashboard** → create app → set:
    - Privacy policy: `https://jasmiamimethod.fit/privacy`
@@ -29,15 +33,16 @@ once for the whole platform.
    ```
    (`printf '%s'` rather than `echo`, which appends a newline that can be stored with the value.
    Stray whitespace in a client ID, secret or URL is a common cause of a mismatch that looks correct.)
-4. **Redeploy** (`vercel deploy --prod --yes`) → the Connect button appears on every athlete's Connectors page automatically.
+4. Complete source/tests/build and the provider's permission review before a separately authorized release. Capability
+   flags and provider-specific configuration also gate connection; setting credentials alone does not activate every provider.
 
 ## Remaining providers
 
 | Provider | Where to create the app | Cost / gate |
 |---|---|---|
-| **Strava** | strava.com/settings/api | Needs YOUR Strava subscription ($79.99/yr; student $39.99; medical 25% off). Standard tier = 10 athletes; apply beyond. Athletes themselves pay nothing, free accounts work. |
-| **Oura** | cloud.ouraring.com | Free dev account. Redirect `…/api/connectors/oura/callback`. |
-| **Google Calendar** | console.cloud.google.com (Calendar API + OAuth client) | Free. Redirect `…/api/connectors/google-cal/callback`. |
+| **Strava** | Existing owner app in strava.com/settings/api | New imports default off. Review the current [API Policy](https://www.strava.com/legal/api_policy), app eligibility, analytics and retention/deletion blockers before considering `ENABLE_STRAVA_CONNECTOR=true`. Do not infer permission from a subscription or stored credentials. |
+| **Oura** | cloud.ouraring.com | Confirm app/user eligibility and granted scope. Redirect `…/api/connectors/oura/callback`. |
+| **Google Calendar** | console.cloud.google.com (Calendar API + OAuth client) | Exact existing client/redirect and consent verification below. |
 
 ### Google (Calendar connection and Google sign-in)
 
@@ -119,19 +124,19 @@ Apple Calendar. The athlete imports that file themselves; it is not a live
 subscription, automatic sync, or evidence of watch delivery. Review the target
 calendar's sharing before importing workout details.
 
-WHOOP's generated OAuth `state` value is eight characters, as required by its
-developer documentation. After either provider returns, the Connections page
-runs one real sync and reports whether the token was verified and how many rows
-were imported.
-| **Garmin (direct)** | developer.garmin.com | ❌ Program paused (no reopening date). Use: Garmin CSV/TCX/FIT upload (live today) or the Strava bridge once Strava is active. |
-| **COROS (direct)** | email api@coros.com | Free but manual approval. Otherwise Strava bridge / file upload. |
+WHOOP's generated OAuth `state` value is eight characters. An ordinary successful callback queues an initial durable
+sync; callback success alone does not prove that job ran or any history was imported. Review sync results and the
+provider's own measurement dates after connecting.
+| **Garmin (direct)** | developer.garmin.com | JMM direct callback is disabled; current program admission is not verified. Supported file import is separate. [Official eligibility FAQ](https://developer.garmin.com/gc-developer-program/program-faq/). |
+| **COROS (direct)** | Official COROS MCP registration or partner program | JMM has a gated OAuth lifecycle, without normalized sync or enabled writes. Public MCP capability is not a completed JMM adapter. See `docs/coros-oauth.md`. |
 
 ## Also set in Vercel when hardening for public launch
 
 `TOKEN_ENCRYPTION_KEY` (openssl rand -hex 32 — encrypts OAuth tokens),
-`CRON_SECRET` (protects the 5 AM sync + hourly reminder crons),
+`CRON_SECRET` (protects the hourly sync and every-five-minute reminder/worker crons),
 `STRAVA_VERIFY_TOKEN` (when Strava webhook is subscribed),
-`GEMINI_API_KEY` (AI coach/briefings).
+`DEEPSEEK_API_KEY` (optional J Koach text; the external-AI gate and athlete opt-in remain separate).
+`GEMINI_API_KEY` is used only by the separate optional photo/vision paths; it does not configure the current DeepSeek text coach.
 
 ## Public contact email
 

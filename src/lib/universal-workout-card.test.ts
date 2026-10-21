@@ -1,9 +1,10 @@
 import test from "node:test";
-import { isUniversalWorkoutCard } from "./universal-workout-card";
+import { endpointText, isUniversalWorkoutCard } from "./universal-workout-card";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import React, { createElement } from "react";
 import { Decoder, Stream } from "@garmin/fitsdk";
+import type { CanonicalStep } from "./canonical-session";
 import { universalWorkoutExample } from "./universal-workout-example";
 import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
 import {
@@ -13,6 +14,13 @@ import {
 import { buildFitWorkout } from "./fit-export";
 import { UniversalWorkoutCard } from "../components/daily-training/UniversalWorkoutCard";
 import { parseWorkoutCardEdit } from "./workout-card-edit";
+
+test("non-whole-minute step endpoints are readable without changing the execution duration", () => {
+  for (const [seconds, label] of [[20, "20 sec"], [60, "1 min"], [414, "6 min 54 sec"], [2070, "34 min 30 sec"], [276, "4 min 36 sec"], [90.5, "1 min 30.5 sec"]] as const) {
+    const step = { endpoint: { type: "time", seconds } } as CanonicalStep;
+    assert.equal(endpointText(step), label); assert.equal(step.endpoint.type === "time" && step.endpoint.seconds, seconds);
+  }
+});
 
 test("56-minute example has exactly five main efforts and four main recoveries in the authoritative steps", () => {
   const card = universalWorkoutExample(),
@@ -55,7 +63,7 @@ test("SVG, PNG and EN/ES interactive markup reflect the same snapshot with no in
     const card = universalWorkoutExample(lang),
       svg = renderUniversalWorkoutSvg(card),
       png = renderUniversalWorkoutPng(card);
-    assert.match(svg, /56 MIN/);
+    assert.match(svg, /56 min/);
     assert.equal((svg.match(/<title>5K effort [1-5]/g) || []).length, 5);
     assert.equal(png.toString("hex", 0, 8), "89504e470d0a1a0a");
     assert.equal(png.readUInt32BE(16), 1024);

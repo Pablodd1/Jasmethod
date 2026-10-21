@@ -111,7 +111,7 @@ async function main() {
       geometry.push({language,width,stats});
       const visibleLabels = stats.text.map(item=>item.label);
       assert.ok(visibleLabels.includes(language === 'es' ? 'REVISAR' : 'REVIEW')
-        && visibleLabels.includes(language === 'es' ? 'MIN · EN ESPERA' : 'MIN · ON HOLD'),
+        && visibleLabels.includes(language === 'es' ? 'DURACIÓN · EN ESPERA' : 'DURATION · ON HOLD'),
         `Held duration and review labels remain visible: ${JSON.stringify(stats)}`);
       assert.ok(stats.text.length > 0 && stats.text.every(item=>item.lines === 1 && !item.clipped && item.fontSize >= 11),
         `Status labels must be readable single lines without clipping: ${JSON.stringify(stats)}`);
