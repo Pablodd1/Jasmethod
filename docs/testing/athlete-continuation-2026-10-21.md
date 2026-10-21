@@ -30,7 +30,10 @@ before any supervised athlete test; do not deploy as a testing shortcut.
    It also filled missing actual duration with planned duration. It now reuses
    `hasPerformedTraining` and `activityActualMinutes`, preserves reconciliation
    and provenance gates, and makes load/execution unavailable when actual
-   duration is missing or invalid. Substitutions use reported actual sport.
+   duration is missing or invalid. The legacy completion score cannot represent
+   partial/substituted outcomes, so it is explicitly unavailable for those
+   reports while their actual work remains counted in load. It must not label a
+   half-completed session as 100% completed or "Excellent execution."
 2. **Bounded measurements hid conflicting sources.** One hundred current
    observations could hide a conflicting 101st reading while still selecting a
    usable value and suppressing the numeric question. A sentinel distinguishes

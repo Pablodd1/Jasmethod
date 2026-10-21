@@ -72,7 +72,9 @@ export async function GET() {
   ]);
   const executionPolicy=derivedActivityPolicy([...planned7,...completed7]);
   const executionEvidence=groupActivityEvidence(completed7.filter(w=>hasPerformedTraining(w)&&!w.matchedPlanId),activityDecisions);
-  const executionUnavailableReason=executionPolicy.reason ?? (executionEvidence.unresolvedGroups?"Possible activity copies need explicit review before execution and duration compliance can be calculated.":executionEvidence.effective.some(w=>activityActualMinutes(w)===null)?missingDurationReason:null);
+  // The legacy matching score treats any matched activity as fully completed.
+  // Keep partial/substituted work in load without claiming full execution.
+  const executionUnavailableReason=executionPolicy.reason ?? (executionEvidence.unresolvedGroups?"Possible activity copies need explicit review before execution and duration compliance can be calculated.":executionEvidence.effective.some(w=>activityActualMinutes(w)===null)?missingDurationReason:completed7.some(w=>["partial","substituted"].includes(w.feedbackStatus ?? ""))?"Legacy execution scoring cannot represent partial or substituted outcomes. Actual work remains counted in training load; full completion is not inferred.":null);
   const execution = executionUnavailableReason?null:executionScore(
     planned7.map((w) => ({
       date: w.date,
