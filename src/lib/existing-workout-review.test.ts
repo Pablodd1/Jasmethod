@@ -99,7 +99,7 @@ test("short review reuses the full review's incomplete-execution rule for earlie
     date:new Date("2026-10-20T12:00:00Z"), createdAt:new Date("2026-10-20T13:00:00Z"),
     feedbackAt:new Date("2026-10-20T13:00:00Z"), feedbackStatus:"completed", actualDurationMin:120, rpe:3 });
   assert.equal(candidate({recentActivity:[earlier]}).eligible,true);
-  for (const patch of [{rpe:null},{actualDurationMin:null},{feedbackStatus:"unknown"},{feedbackStatus:null}]) {
+  for (const patch of [{rpe:null},{actualDurationMin:null,durationMin:null},{feedbackStatus:"unknown"},{feedbackStatus:null,completed:false}]) {
     const result=candidate({recentActivity:[{...earlier,...patch}]});
     assert.equal(result.eligible,false,JSON.stringify(patch));assert.match(result.reason,/recent actual minutes, effort and outcome/);
   }
@@ -107,6 +107,24 @@ test("short review reuses the full review's incomplete-execution rule for earlie
   assert.equal(candidate({recentActivity:[{...earlier,rpe:0}]}).eligible,true,"reported zero effort remains explicit");
   const input=records({reportedActivity:[{...earlier,rpe:null}]});
   assert.equal(effectiveSessionFromRecords(input).existingReview.eligible,false,"the effective prescription exposes the same hold before saving a short review");
+});
+
+test("recent completed imports retain stored outcome, actual duration fallback and explicit zero effort", () => {
+  const imported=workout({id:"imported",source:"garmin",planned:false,completed:true,
+    date:new Date("2026-10-20T12:00:00Z"),createdAt:new Date("2026-10-20T13:00:00Z"),
+    feedbackStatus:null,feedbackAt:null,actualDurationMin:20,durationMin:20,rpe:4});
+  assert.equal(candidate({recentActivity:[imported]}).eligible,true,"stored completion is a known outcome");
+  assert.equal(candidate({recentActivity:[{...imported,actualDurationMin:null}]}).eligible,true,"completed imported duration is actual evidence");
+  assert.equal(candidate({recentActivity:[{...imported,actualDurationMin:0,rpe:0}]}).eligible,true,"explicit zero actual duration and effort remain zero");
+  assert.equal(candidate({recentActivity:[{...imported,actualDurationMin:null,durationMin:0,rpe:0}]}).eligible,true,"zero imported duration stays known");
+  for(const patch of [{actualDurationMin:null,durationMin:null},{rpe:null},{feedbackStatus:"unknown"}]) {
+    assert.equal(candidate({recentActivity:[{...imported,...patch}]}).eligible,false,JSON.stringify(patch));
+  }
+  for(const feedbackStatus of ["partial","substituted"]) {
+    assert.equal(candidate({recentActivity:[{...imported,feedbackStatus,completed:false}]}).eligible,true,"explicit known outcomes retain precedence");
+    assert.equal(candidate({recentActivity:[{...imported,feedbackStatus,completed:false,actualDurationMin:null,durationMin:null}]}).eligible,false,"known outcome cannot invent minutes");
+  }
+  assert.equal(candidate({recentActivity:[{...imported,planned:true,actualDurationMin:null}]}).eligible,false,"planned duration is never substituted for performed duration");
 });
 
 test("confirmation requires explicit denials, strict flags, current local day and exact source snapshot", () => {

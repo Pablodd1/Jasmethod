@@ -45,7 +45,8 @@ before any supervised athlete test; do not deploy as a testing shortcut.
    applies the existing conservative execution rule. The short path now reuses
    that service over reconciled recent evidence. Unknown duration, effort or
    outcome requires the full review. Explicit RPE zero and skipped reports
-   remain distinct from missing information.
+   remain distinct from missing information. Stored completion and reconciled
+   imported duration remain known even when optional feedback fields are empty.
 4. **In-flight Strava event fetch outlived its binding.** Both by-ID fetch paths
    could persist after disconnect/deauthorization or reconnect. They now
    revalidate capability, athlete/provider identity, status and token snapshot
@@ -61,7 +62,7 @@ The continuation branch explicitly inhibits Vercel Git deployments.
 
 ## Verification scope
 
-Corrected source passes 1,867 unit tests with zero failures/skips, 27 follow-up
+The first corrected source passed 1,867 unit tests with zero failures/skips, 27 follow-up
 boundary/transport tests, TypeScript and lint. Lint retains the two documented
 hook warnings. Focused regressions cover partial/substituted actuals, missing
 duration, linked copies, restricted provenance, observation overflow, recent
