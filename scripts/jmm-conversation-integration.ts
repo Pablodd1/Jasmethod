@@ -76,7 +76,7 @@ async function main() {
     const report=context.previousSessions.find((row:any)=>row.id===imported.id);assert.ok(report?.feedbackRevision);
     await json("/api/plan",a,{method:"PUT",body:{sessionId:imported.id,expectedRevision:report.feedbackRevision,feedbackStatus:"completed",actualDurationMin:30,actualSport:"run",rpe:3}});
     await reviewPlanningSetup(a);await json("/api/checkin",a,{body:validAnswers});
-    const first=await json(`/api/workout/card?id=${starter.id}`,a);assert.equal(first.session.verdict,"ready");
+    const first=await json(`/api/workout/card?id=${starter.id}`,a);assert.equal(first.session.verdict,"ready",JSON.stringify({stage:"starter after imported feedback and full current review",sessionId:starter.id,reason:first.session.reason}));
     await request(`/api/workout/approve?sessionId=${starter.id}&expectedRevision=${first.session.revision}`,a,{method:"POST",status:200});
     const beforeProfileApproval=await db.workout.findMany({where:{userId:a.id},orderBy:{id:"asc"}});
     const proposed=pending(await ask(a,"My weight is 72 kg."));assert.equal(proposed.beforeValues.weightKg,70);
@@ -97,7 +97,12 @@ async function main() {
     const audit=await db.auditLog.findFirstOrThrow({where:{actorId:coach.id,subjectId:a.id,entityId:plan.id,action:"plan.generate"}});
     assert.equal(JSON.parse(audit.after!).previewToken,preview.previewToken);
     const selected=await db.workout.findFirstOrThrow({where:{userId:a.id,planned:true,date:day,planDay:{planId:plan.id},sport:"run"},orderBy:{id:"asc"}});
-    const card=await json(`/api/workout/card?id=${selected.id}`,a);assert.equal(card.session.verdict,"ready");
+    const provisional=await json(`/api/workout/card?id=${selected.id}`,a);
+    assert.notEqual(provisional.session.verdict,"ready","The starter's earlier review does not clear a newly generated provisional cycle");
+    // Cycle confirmation saves provisional prescriptions; the athlete must review
+    // the newly saved session today rather than reuse the starter's check-in.
+    await json("/api/checkin",a,{body:validAnswers});
+    const card=await json(`/api/workout/card?id=${selected.id}`,a);assert.equal(card.session.verdict,"ready",JSON.stringify({stage:"new coach-reviewed cycle after fresh session-day check-in",sessionId:selected.id,reason:card.session.reason}));
     assert.equal((await db.workout.findUniqueOrThrow({where:{id:selected.id}})).approved,false);
     await request(`/api/workout/approve?sessionId=${selected.id}&expectedRevision=${first.session.revision}`,a,{method:"POST",status:409});
     const approved=await request(`/api/workout/approve?sessionId=${selected.id}&expectedRevision=${card.session.revision}`,a,{method:"POST",status:200});

@@ -4,6 +4,8 @@ Base reviewed: `8f0291b68f9225385f75e907a6f7d2278b954d98`. The production servin
 
 Follow-up: PR 72 was merged externally as `59969383ce63b0c5fd9c17d6c08f4260f4110d6d` while CI `39653163023` had failed a mobile-browser timing check. The resulting production deployment was observed READY; the agent did not merge or deploy it. Unit tests (1,909), build and the preceding database acceptance steps passed, but the run as a whole failed. Read-only serving verification confirmed email health, and exposed the stored-unknown-rest promotion still described in the companion recovery review. The acceptance follow-up fixes that resolver path, synchronizes the browser test with the authoritative refresh, and adds a continuous single-owner HTTP/database journey. Those follow-up changes need their own exact-head CI and serving verification; the first run is not a release pass.
 
+PR 73 was also merged externally, as `6c8915857ff73fb0550f606b37967e8addcbb20a`. Its CI `39665091295` passed 1,911 unit tests and the build, then the new continuous journey expected a new provisional cycle to be ready without a fresh check-in. The fixture now verifies that initial block and explicitly performs the required athlete review before approval; no application safety rule was weakened. Read-only verification of the resulting serving version confirmed both original session names with blocked verdicts, missing-answer explanations and unavailable exports, while daily recovery remains check-in-needed. Existing saved rows remain unchanged. These two failed runs are preserved; the final journey-verification run must be reported separately.
+
 ## Demonstrated defects and changes
 
 | Task | What worked at the base | Reproduced defect / smallest change | Acceptance boundary |

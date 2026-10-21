@@ -19,6 +19,7 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "codex/jmm-journey-verification": false,
       "codex/jmm-acceptance-followup": false,
       "codex/jmm-nine-task-acceptance": false,
       "codex/athlete-testing-continuation": false,
