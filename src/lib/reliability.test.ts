@@ -23,6 +23,31 @@ test("retired untouched suggestions do not hide partial feedback, while reported
  }
 });
 test("partial sessions retain actual work without counting as a fully fulfilled plan",()=>{const now=new Date("2026-09-06T16:00Z");const summary=coachingSummary([{date:now,source:"manual",completed:true,planned:true,feedbackStatus:"partial",durationMin:60,actualDurationMin:25,rpe:5}],[],{},"UTC",now);assert.equal(summary.minutes,25);assert.equal(summary.completed,1);assert.equal(summary.fulfillmentPct,0)});
+test("partial and substituted reports count actual work even when not marked completed",()=>{
+ const now=new Date("2026-10-21T12:00Z");
+ for(const feedbackStatus of ["partial","substituted"]) {
+  const summary=coachingSummary([{date:now,source:"plan",completed:false,planned:true,feedbackStatus,durationMin:60,actualDurationMin:25,rpe:8}],[],{},"UTC",now);
+  assert.equal(summary.minutes,25);assert.equal(summary.completed,1);assert.equal(summary.estimatedLoad,33);
+  assert.equal(summary.fulfillmentPct,0);assert.equal(summary.daily[0].minutes,25);
+ }
+});
+test("reported work with unknown actual duration makes aggregate and affected day unavailable instead of borrowing planned minutes",()=>{
+ const now=new Date("2026-10-21T12:00Z");
+ const rows=[{date:now,source:"plan",completed:false,planned:true,feedbackStatus:"partial",durationMin:60,actualDurationMin:null,rpe:8},
+  {date:now,source:"garmin",completed:true,planned:false,durationMin:30,actualDurationMin:30,rpe:4}];
+ const summary=coachingSummary(rows,[],{},"UTC",now);
+ assert.equal(summary.completed,2);assert.equal(summary.minutes,null);assert.equal(summary.estimatedLoad,null);assert.equal(summary.pmc,null);
+ assert.equal(summary.daily[0].minutes,null);assert.equal(summary.daily[0].load,null);
+ assert.ok(summary.insights.some(item=>item.title==="Actual training duration is missing"));
+});
+test("coaching actual totals keep corroborated provider copies and their linked plan counted once",()=>{
+ const now=new Date("2026-10-21T12:00Z");
+ const actual={userId:"owner",date:now,sport:"run",completed:true,planned:false,durationMin:25,actualDurationMin:25,rpe:8,distanceKm:5};
+ const summary=coachingSummary([{...actual,id:"a",source:"garmin"},{...actual,id:"b",source:"whoop"},
+  {...actual,id:"plan",source:"plan",planned:true,matchedPlanId:"a",durationMin:60,actualDurationMin:null}],[],{},"UTC",now);
+ assert.equal(summary.minutes,25);assert.equal(summary.completed,1);assert.equal(summary.reconciliation.groupedCopies,1);
+ assert.equal(summary.fulfillmentPct,100);assert.equal(summary.daily[0].minutes,25);
+});
 import {
   parseAppleHealth,
   googleCalGetEvents,

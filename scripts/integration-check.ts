@@ -321,6 +321,10 @@ async function main() {
     restingHr: 51,
   });
   await request("/api/metrics", a.cookie, "POST", { hrv: -1 }, 400);
+  // A completed fixture must be in the past regardless of CI's time of day;
+  // capture once so repeating the file retains the same external identity.
+  const activityStart=new Date(Date.now()-60*60_000).toISOString();
+  const activityEnd=new Date(Date.now()-30*60_000).toISOString();
   const upload = () => {
     const f = new FormData();
     f.set("source", "apple");
@@ -328,7 +332,7 @@ async function main() {
       "file",
       new Blob(
         [
-          `<HealthData><Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN" value="41" startDate="${day.key} 08:00:00 -0400"/><Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="30" durationUnit="min" startDate="${day.key} 11:00:00 -0400" endDate="${day.key} 11:30:00 -0400"/></HealthData>`,
+          `<HealthData><Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN" value="41" startDate="${day.key} 08:00:00 -0400"/><Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="30" durationUnit="min" startDate="${activityStart}" endDate="${activityEnd}"/></HealthData>`,
         ],
         { type: "text/xml" },
       ),
@@ -428,6 +432,7 @@ async function main() {
   assert.ok(
     overview.analysis.insights.some((x: any) => x.title.includes("partial")),
   );
+  assert.equal(overview.analysis.minutes,55,"the partial 25-minute report and one 30-minute Apple activity both reach the coach summary once");
   assert.equal(await db.workout.count({ where: { userId: b.id } }), 0);
   // Protocol assignment uses an isolated athlete and existing session identity.
   const c = await account("athlete", "protocol");
