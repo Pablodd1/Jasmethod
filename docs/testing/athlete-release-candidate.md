@@ -29,11 +29,11 @@ or an external provider's availability. Merging main may trigger production.
 | Devices first | Connect an authorized source or skip; missing profile fields remain optional/unknown; imported values have source/date | Asking for a known imported value without explaining why, or inventing a measurement |
 | Day zero | Incomplete profile can view a conservative saved session; current safety answers are distinct from profile completeness | Empty schedule presented as confirmed rest, or exercise clearance inferred from missing answers |
 | Training cycle | Preview uses the confirmed tolerated baseline, sport, goal, available days, double-day preference and race schedule; creation requires review | Distance discounts the reviewed baseline again, old cycle appears as extra required work, or available hours are treated as proven tolerance |
-| Today | Visible purpose, total duration, steps, effort and supported HR/pace/power targets; unavailable targets have a reason | Six-minute accidental scaling, no saved preview during review, or cycling FTP used as running watts |
+| Today | Saved plan appears before richer context/check-in; visible purpose, duration, steps and supported HR/pace/power targets; unavailable targets have a reason | Six-minute accidental scaling, blank questionnaire gate, stale and ready cards shown together, or cycling FTP used as running watts |
 | Coaching | Try “Update today's workout to 30 minutes”, “Switch today's workout to bike”, and “I have 12 hours a week, no day off” | Unsupported request silently saved, bare yes edits data, missing proposal, or recurring schedule preference falsely reported as changed |
 | Confirmation | Review selected values and units; confirm; receive persisted receipt; reopen after reload | Stale/foreign proposal succeeds, approval survives a workout change, or retry duplicates a write |
 | Calendar / selectors | One current plan; actual old sessions retained; multiple real sessions selectable; source copies explicitly reviewable | Retired suggestions crowd out current sessions, provider copies summed, or actual history erased |
-| Workout approval / file | Fresh session-day check-in and exact current revision required; supported artifact decodes | Export of a held, stale or unapproved prescription, or file success labeled watch receipt |
+| Workout approval / file | Fresh full review or validated, session-scoped easy confirmation and exact current revision required; supported artifact decodes | Export of a held, stale or unapproved prescription, invented symptom answers, or file success labeled watch receipt |
 | After training | Optional actual minutes, RPE 0–10, HR/power/calories, fuel and pre/post weight; unknown remains unknown; edit saved feedback a second time | RPE zero rejected, data lost on failure, stale-revision loop after the first save |
 | Next day | Prior actual work, recovery answers, missing data and current cycle inform review; no catch-up debt | Old duplicate history increases load or an availability request silently increases tolerated volume |
 
@@ -43,6 +43,22 @@ no-fixed-rest preference, a deliberate recovery day and a current symptom hold.
 Keep sport-specific equipment, pace units, pool lengths and unsupported exports
 explicit. A generic conversation or timed bike interval editor does not prove
 that swim, HYROX stations, bricks and full cycles can all be edited by chat.
+
+For the short review, verify three unchecked explicit confirmations, null
+subjective scales, no readiness score, unchanged saved instructions and a
+separate approval. Change actual effort, context, date or profile and retry:
+stale review must fail without writes. Reset a positive symptom/recovery/time
+restriction; the shorter path must stay blocked until a newer full review.
+Known imported duration and effort display with explicit correction controls;
+only missing values need an input. Saved SDNN must never prefill an rMSSD
+correction. Restricted/unknown source readings cannot produce a legacy HRV
+score, shadow score or load comparison. Cross-person views need their separate
+provider disclosure check as well as the coach assignment/administrator gate.
+
+Course GPX uploads share the 4,000,000-byte file boundary; the JSON request is
+limited to 4,100,000 bytes. Check encoded size before sending, including quote
+escaping and multibyte text. A 5 MiB GPX must not be advertised as supported on
+the current hosting path.
 
 Include at least 85 pending suggestions on an older plan still marked active,
 plus an old skipped report with zero actual minutes and RPE zero. These must
