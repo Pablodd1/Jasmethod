@@ -135,7 +135,8 @@ provider's own measurement dates after connecting.
 `TOKEN_ENCRYPTION_KEY` (openssl rand -hex 32 — encrypts OAuth tokens),
 `CRON_SECRET` (protects the hourly sync and every-five-minute reminder/worker crons),
 `STRAVA_VERIFY_TOKEN` (when Strava webhook is subscribed),
-`GEMINI_API_KEY` (AI coach/briefings).
+`DEEPSEEK_API_KEY` (optional J Koach text; the external-AI gate and athlete opt-in remain separate).
+`GEMINI_API_KEY` is used only by the separate optional photo/vision paths; it does not configure the current DeepSeek text coach.
 
 ## Public contact email
 
