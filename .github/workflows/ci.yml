@@ -200,6 +200,7 @@ jobs:
             .local/jmm-telegram-webhook-integration/report.json
             .local/jmm-mobile-workflow/report.json
             .local/jmm-mobile-workflow/browser/report.json
+            .local/jmm-mobile-workflow/browser/*.png
             .local/jmm-conversation-integration/report.json
             .local/jmm-live-repair-browser/report.json
             .local/jmm-live-repair-browser/*.png
