@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { computeJMetrics } from "@/lib/j-metrics";
-import { groupActivityEvidence,publicActivityReconciliation } from "@/lib/activity-evidence";
+import { computeJMetrics, hasPerformedTraining } from "@/lib/j-metrics";
+import { activityActualMinutes,groupActivityEvidence,publicActivityReconciliation } from "@/lib/activity-evidence";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { addDaysKey, dateKey, localDate } from "@/lib/dates";
 import { computePmc, executionScore } from "@/lib/fitness";
@@ -31,14 +31,15 @@ export async function GET() {
   const ftp = profile?.ftp ?? null;
   const lthr = profile?.lthr ?? null;
   const policy=derivedActivityPolicy(completed);
-  const reconciled=groupActivityEvidence(completed.filter(w=>!w.matchedPlanId),activityDecisions);
+  const reconciled=groupActivityEvidence(completed.filter(w=>hasPerformedTraining(w)&&!w.matchedPlanId),activityDecisions);
   const jMetrics = computeJMetrics(completed, asOf, user.timezone, rest.map(r => dateKey(r.observedAt, user.timezone)),90,activityDecisions);
-  const pmcUnavailableReason=policy.reason ?? (reconciled.unresolvedGroups ? "Possible activity copies need explicit review before legacy load can be calculated." : null);
+  const missingDurationReason="Actual training duration is missing or invalid; planned minutes are not performed minutes. No extra training capacity is inferred.";
+  const pmcUnavailableReason=policy.reason ?? (reconciled.unresolvedGroups ? "Possible activity copies need explicit review before legacy load can be calculated." : reconciled.effective.some(w=>activityActualMinutes(w)===null)?missingDurationReason:null);
   const pmc = pmcUnavailableReason?null:computePmc(
-    reconciled.effective.filter(w => w.completed).map((w) => ({
+    reconciled.effective.map((w) => ({
       date: w.date,
       tssInput: {
-        durationMin: w.actualDurationMin ?? w.durationMin,
+        durationMin: activityActualMinutes(w)!,
         avgPower: w.np ?? w.avgPower,
         avgHr: w.avgHr,
         rpe: w.rpe,
@@ -64,14 +65,14 @@ export async function GET() {
     prisma.workout.findMany({
       where: {
         userId: user.id,
-        completed: true,
+        OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }],
         date: { gte: since7, lte: new Date() },
       },
     }),
   ]);
   const executionPolicy=derivedActivityPolicy([...planned7,...completed7]);
-  const executionEvidence=groupActivityEvidence(completed7.filter(w=>!w.matchedPlanId),activityDecisions);
-  const executionUnavailableReason=executionPolicy.reason ?? (executionEvidence.unresolvedGroups?"Possible activity copies need explicit review before execution and duration compliance can be calculated.":null);
+  const executionEvidence=groupActivityEvidence(completed7.filter(w=>hasPerformedTraining(w)&&!w.matchedPlanId),activityDecisions);
+  const executionUnavailableReason=executionPolicy.reason ?? (executionEvidence.unresolvedGroups?"Possible activity copies need explicit review before execution and duration compliance can be calculated.":executionEvidence.effective.some(w=>activityActualMinutes(w)===null)?missingDurationReason:null);
   const execution = executionUnavailableReason?null:executionScore(
     planned7.map((w) => ({
       date: w.date,
@@ -80,8 +81,8 @@ export async function GET() {
     })),
     executionEvidence.effective.map((w) => ({
       date: w.date,
-      sport: w.sport,
-      durationMin: w.actualDurationMin ?? w.durationMin,
+      sport: w.actualSport ?? w.sport,
+      durationMin: activityActualMinutes(w)!,
     })),
   );
 

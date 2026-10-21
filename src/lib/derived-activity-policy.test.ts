@@ -80,3 +80,44 @@ test("fitness route keeps known allowed behavior and owner boundaries; unauthent
   assert.equal(response.status,200);assert.equal(result.jMetrics.totalJStress,180);assert.notEqual(result.pmc,null);assert.notEqual(result.execution,null);assert.equal(result.derivedActivityPolicy.load.status,"allowed");
   const unauthorized=fitnessFixture(routeRows(),false);assert.equal((await unauthorized.run()).status,401);assert.equal(unauthorized.queries.length,0);
 });
+
+test("fitness route counts partial and substituted actuals in load and duration compliance",async()=>{
+  for(const feedbackStatus of ["partial","substituted"]) {
+    const date=new Date(Date.now()-3600000);
+    const rows=[session({id:"plan",date,source:"plan",externalId:null,planned:true,completed:false,actualDurationMin:null,durationMin:60,rpe:null}),
+      session({id:"report",date,source:"manual",externalId:null,completed:false,feedbackStatus,actualDurationMin:20,durationMin:60})];
+    const before=JSON.stringify(rows),result=await (await fitnessFixture(rows).run()).json();
+    assert.equal(result.pmcUnavailableReason,null);assert.equal(result.pmc.series.at(-1).tss,13);
+    assert.equal(result.jMetrics.totalJStress,80);assert.equal(result.execution.completed,1);
+    assert.equal(result.execution.durationCompliance,0.33);assert.equal(result.executionUnavailableReason,null);
+    assert.equal(JSON.stringify(rows),before);
+  }
+});
+
+test("fitness route never fills missing or invalid reported actual durations with the prescription",async()=>{
+  for(const feedbackStatus of ["completed","partial","substituted"]) for(const actualDurationMin of [null,-1,1441]) {
+    const date=new Date(Date.now()-3600000);
+    const row=session({date,source:"manual",externalId:null,planned:true,completed:feedbackStatus==="completed",feedbackStatus,actualDurationMin,durationMin:60});
+    const result=await (await fitnessFixture([row]).run()).json();
+    assert.equal(result.pmc,null);assert.match(result.pmcUnavailableReason,/Actual training duration/);
+    assert.equal(result.execution,null);assert.match(result.executionUnavailableReason,/planned minutes are not performed/);
+  }
+});
+
+test("fitness route gates restricted partial actuals before computing permitted remainder",async()=>{
+  for(const source of ["strava","uploaded_unknown"]) {
+    const rows=[...routeRows(),session({id:"partial",source,externalId:null,date:new Date(Date.now()-3600000),completed:false,feedbackStatus:"partial",actualDurationMin:20})];
+    const result=await (await fitnessFixture(rows).run()).json();
+    assert.equal(result.pmc,null);assert.equal(result.execution,null);
+    assert.match(result.pmcUnavailableReason,/origin/);assert.match(result.executionUnavailableReason,/origin/);
+  }
+});
+
+test("fitness execution uses the reported substitute sport and counts linked activity once",async()=>{
+  const date=new Date(Date.now()-3600000);
+  const rows=[session({id:"plan",date,source:"plan",externalId:null,planned:true,completed:true,matchedPlanId:"activity",durationMin:60,actualDurationMin:20}),
+    session({id:"activity",date,source:"manual",externalId:null,sport:"run",actualSport:"bike",completed:false,feedbackStatus:"substituted",durationMin:60,actualDurationMin:20})];
+  const result=await (await fitnessFixture(rows).run()).json();
+  assert.equal(result.pmc.series.at(-1).tss,13);assert.equal(result.execution.completed,1);
+  assert.equal(result.execution.matched,1);assert.equal(result.execution.durationCompliance,0.33);
+});
