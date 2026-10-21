@@ -79,7 +79,7 @@ function fixture(providers: Record<string,unknown>[] = []) {
     vm.runInNewContext(code,{module:loadedModule,exports:loadedModule.exports,URLSearchParams,AbortSignal,AbortController,fetch:request,sessionStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)},document:{get visibilityState(){return visibility.state;}},window:{location:{reload:()=>{}},setInterval:(fn:()=>void,ms:number)=>{assert.equal(ms,15000);poll=fn;return 1;},clearInterval:()=>{poll=undefined;},addEventListener:(type:string,fn:()=>void)=>listeners.set(type,fn),removeEventListener:(type:string)=>listeners.delete(type)},require:(name:string)=>name in dependencies?dependencies[name]:requireModule(name.startsWith("@/")?`${process.cwd()}/src/${name.slice(2)}`:name)});
     async function flush(){for(let attempts=0;attempts<20;attempts++){if(dirty){dirty=false;cursor=0;tree=loadedModule.exports.DetailedAthleteSetup();}while(pending.length)pending.shift()!();await new Promise(resolve=>setImmediate(resolve));if(!dirty&&!pending.length)return;}throw Error("Unstable fixture render");}
     const find=(predicate:(node:Node)=>boolean)=>{const node=nodes(tree).find(predicate);assert.ok(node,"Expected control not found");return node;};
-    return {flush,destination,visibility,async events(events:string[]){for(const name of events){if(name==="poll")poll?.();else listeners.get(name)?.();}await flush();},find,async focus(){listeners.get("focus")?.();await flush();},text:()=>content(tree),input:(id:string)=>find(node=>node.props.id===id),button:(label:string)=>find(node=>node.type==="button"&&content(node.props.children).includes(label)),async click(label:string){await this.button(label).props.onClick();await flush();},async edit(id:string,value:string){this.input(id).props.onChange({target:{value}});await flush();},unmount(){for(const cell of cells)if(cell&&typeof cell.cleanup==="function")cell.cleanup();}};
+    return {flush,destination,visibility,async events(events:string[]){for(const name of events){if(name==="poll")poll?.();else listeners.get(name)?.();}await flush();},find,async focus(){listeners.get("focus")?.();await flush();},text:()=>content(tree),input:(id:string)=>find(node=>node.props.id===id),button:(label:string)=>find(node=>node.type==="button"&&content(node.props.children).includes(label)),async click(label:string){await this.button(label).props.onClick();await flush();},async edit(id:string,value:string){const input=this.input(id);input.props.onChange(input.props.field ? value : {target:{value}});await flush();},unmount(){for(const cell of cells)if(cell&&typeof cell.cleanup==="function")cell.cleanup();}};
   }
   return {mount,server,writes,storage,reads};
 }
@@ -156,6 +156,15 @@ test("short onboarding asks only for missing goals and never submits untouched p
   assert.deepEqual(request.setup,{goalDescription:"Build consistent endurance",planWeeks:"12"});
   assert.equal("experience" in request,false);assert.equal("ftp" in request,false);assert.equal(f.server.setup?.adultConfirmed,false);
   assert.match(ui.text(),/Your workspace is ready/);
+});
+
+test("short entry defers optional thresholds while a draft or advanced review keeps them inspectable",async()=>{
+  const f=fixture();let ui=f.mount("redo=1&step=profile");await ui.flush();
+  const references=()=>ui.find(node=>node.type==="details"&&node.props["aria-label"]==="Saved and missing thresholds");
+  assert.equal(references().props.open,undefined);assert.match(ui.text(),/start without a device or threshold test/);
+  await ui.edit("onboard-anchor-runPaceBase","280");assert.equal(references().props.open,true);
+  ui.unmount();ui=f.mount("redo=1&step=profile");await ui.flush();assert.equal(references().props.open,true);assert.equal(ui.input("onboard-anchor-runPaceBase").props.value,"280");
+  ui.unmount();f.storage.clear();ui=f.mount("redo=1&step=profile&advanced=1");await ui.flush();assert.equal(references().props.open,true);
 });
 
 test("a legacy draft without manualPrs inherits verified saved PBs before appending a new one", async()=>{
