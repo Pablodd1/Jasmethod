@@ -3,6 +3,8 @@ import "@/components/daily-training/universal-workout-card.css";
 import { DailyEnvironmentCard } from "@/components/daily-training/DailyEnvironmentCard";
 import { readinessReasonText } from "@/components/daily-training/readiness-copy";
 import { SavedWorkoutPreviewCard } from "@/components/daily-training/SavedWorkoutPreviewCard";
+import { ExistingWorkoutReview } from "@/components/daily-training/ExistingWorkoutReview";
+import { DailyInputSummary } from "@/components/daily-training/DailyInputSummary";
 import { readTrainingJson, TrainingReadError, isTodayTrainingResponse } from "@/components/daily-training/training-read";
 import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
 import { JMetricsCard } from "@/components/j-metrics-card";
@@ -51,6 +53,20 @@ function TodayPageContent() {
     [busy, setBusy] = useState(false),
     [feedback, setFeedback] = useState(false),
     [message, setMessage] = useState("");
+  const [savedPlan, setSavedPlan] = useState<any>(null);
+  const [syncStatus, setSyncStatus] = useState("");
+  useEffect(() => {
+    setSavedPlan(null);
+    if (!user?.id || user.onboarded === false) return;
+    const controller = new AbortController();
+    fetch("/api/today?view=plan", { cache: "no-store", signal: controller.signal }).then(async response => {
+      const value = await response.json();
+      if (controller.signal.aborted) return;
+      if (response.ok && value.kind === "saved_today_plan" && value.readOnly === true && Array.isArray(value.sessions) &&
+        value.sessions.every((s: any) => typeof s.id === "string" && typeof s.title === "string" && Number.isFinite(s.durationMin))) setSavedPlan(value);
+    }).catch(() => { /* Main request retains the visible error/retry path. */ });
+    return () => controller.abort();
+  }, [user?.id, user?.onboarded]);
   useEffect(() => {
     const onHistory = () => { setSelected(new URLSearchParams(window.location.search).get("sessionId")); setReportActivityId(null); setFeedback(false); setMessage(""); setError(""); };
     window.addEventListener("popstate", onHistory);
@@ -126,9 +142,16 @@ function TodayPageContent() {
     );
     if (!stale) return;
     setAutoSynced(true);
+    setSyncStatus("refreshing");
     fetch("/api/connectors/sync", { method: "POST" })
-      .then(() => load())
-      .catch(() => {});
+      .then(async response => {
+        const value = await response.json();
+        if (!response.ok) throw Error("sync failed");
+        const results = Array.isArray(value.synced) ? value.synced : [];
+        setSyncStatus(results.length && results.every((r: any) => r.ok === true) ? "complete" : "partial");
+        await load();
+      })
+      .catch(() => setSyncStatus("failed"));
   }, [user, data, autoSynced, load]);
   const session = selected
     ? data?.sessions.find((s: any) => s.id === selected)
@@ -190,6 +213,20 @@ function TodayPageContent() {
             ? "No necesitas reloj ni pruebas para registrar tu entrenamiento. Si faltan referencias válidas, sigue los objetivos de esfuerzo del plan."
             : "No watch or benchmark test is required to report training. When usable benchmarks are missing, follow the plan's effort instructions."}</p>
         </div>
+        {!data && savedPlan?.sessions?.length > 0 && <section className="space-y-3" aria-label={es ? "Plan guardado mientras cargan los datos" : "Saved plan while context loads"}>
+          <p role="status" className="text-sm">{es ? "Tu sesión guardada ya está disponible. El contexto y los datos se están revisando; esta vista no autoriza el ejercicio." : "Your saved session is available. Context and data are still being reviewed; this preview does not authorize exercise."}</p>
+          {savedPlan.sessions.map((s: any) => <div key={s.id}><p className="font-semibold">{s.title} · {s.durationMin} min</p><SavedWorkoutPreviewCard sessionId={s.id} es={es} /></div>)}
+        </section>}
+        {data?.sessions.length > 0 && (data.sessions.length > 1 || !session) && <label className="block text-sm">{es ? "Sesión de hoy" : "Today's session"}<select className="input" value={session?.id ?? ""} onChange={event => {
+            const id = event.target.value; const url = new URL(window.location.href); url.searchParams.set("sessionId", id); window.history.pushState({}, "", url);
+            setSelected(id); setFeedback(false); setMessage(""); setError("");
+          }}>{!session && <option value="" disabled>{es ? "Elige una sesión actual" : "Choose a current session"}</option>}{data.sessions.map((s: any) => <option key={s.id} value={s.id}>{s.title} · {s.plannedDurationMin ?? s.durationMin} min</option>)}</select></label>}
+        {session && <section id="today-workout" className="space-y-3 scroll-mt-4">
+          <UniversalWorkoutCardLoader key={`card:${session.id}-${session.revision}`} sessionId={session.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={session.id} es={es} />} onSaved={() => load()} />
+          {session.verdict === "blocked" && session.existingReview && <ExistingWorkoutReview key={`review:${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} candidate={session.existingReview} es={es} disabled={busy || offline} onSaved={load} />}
+        </section>}
+        {syncStatus && <p role="status" className="text-sm text-slate-600">{syncStatus === "refreshing" ? (es ? "Actualizando conexiones en segundo plano. Tu plan guardado sigue visible." : "Refreshing connections in the background. Your saved plan stays visible.") : syncStatus === "complete" ? (es ? "La actualización terminó. Revisa las fechas de las mediciones." : "Refresh completed. Check measurement dates.") : (es ? "No se confirmó una actualización completa. El plan guardado está disponible; no asumimos datos nuevos." : "A complete refresh was not confirmed. The saved plan remains available; no new data is assumed.")}</p>}
+        <DailyInputSummary context={data?.inputContext} es={es} />
         <section className="card space-y-2" aria-label={es ? "Tu ciclo guardado" : "Your saved cycle"}>
           <h2 className="font-semibold">{data?.cycle ? (es ? "Ciclo guardado" : "Saved training cycle") : (es ? "Tu plan de entrenamiento" : "Your training plan")}</h2>
           {data?.cycle && <p className="text-sm">{data.cycle.currentWeek ? `${es ? "Semana" : "Week"} ${data.cycle.currentWeek} / ${data.cycle.weeks} · ` : ""}{data.cycle.start} – {data.cycle.end}{data.cycle.status === "ended" ? (es ? " · Ciclo finalizado; revisa tu progreso antes del siguiente." : " · Cycle ended; review your progress before the next one.") : ""}</p>}
@@ -219,10 +256,8 @@ function TodayPageContent() {
           </p>
         )}
         <nav className="grid grid-cols-1 sm:grid-cols-3 gap-3" aria-label={es ? "Acciones de hoy" : "Today actions"}>
-          <Link href="/checkin" className="btn-primary min-h-12 justify-center">
-            {es ? "Chequeo de hoy" : "Daily check-in"}
-          </Link>
-          <a href={session ? "#today-workout" : "/training"} className="btn-secondary min-h-12 justify-center">{es ? "Ver entrenamiento" : "View workout"}</a>
+          <a href={session ? "#today-workout" : "/training"} className="btn-primary min-h-12 justify-center">{es ? "Ver entrenamiento" : "View workout"}</a>
+          <Link href="/checkin" className="btn-secondary min-h-12 justify-center">{es ? "Algo cambió / check-in" : "Something changed / check-in"}</Link>
           <button className="btn-secondary min-h-12 justify-center" disabled={!session || !!session.matchedPlanId || busy || offline} onClick={() => { setReportActivityId(null); setFeedback(true); requestAnimationFrame(() => document.getElementById("workout-feedback")?.scrollIntoView({ behavior:"smooth", block:"start" })); }}>{es ? "¿Cómo te sentiste?" : "Log how it felt"}</button>
         </nav>
         {data?.athleteReview && <AthleteDayReview review={data.athleteReview} plannedMinutes={session?.prescription?.scaled?.originalMin ?? session?.durationMin} es={es} onReport={id => { setReportActivityId(id); setFeedback(true); requestAnimationFrame(() => document.getElementById('workout-feedback')?.scrollIntoView({behavior:'smooth',block:'start'})); }} />}
@@ -336,35 +371,11 @@ function TodayPageContent() {
             </Link>
           </div>
         )}
-        {selected && data && !session && <p role="alert" className="card">{es ? "La sesión seleccionada no está disponible hoy. Elige una sesión de la lista o abre el plan." : "The selected session is not available today. Choose a session below or open your plan."} <Link href="/training">{es ? "Abrir plan" : "Open plan"}</Link></p>}
-        {data?.sessions.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {data.sessions.map((s: any) => (
-              <button
-                key={s.id}
-                className={
-                  s.id === session?.id ? "btn-primary" : "btn-secondary"
-                }
-                aria-pressed={s.id === session?.id}
-                onClick={() => {
-                  setError(""); setMessage("");
-                  const url = new URL(window.location.href); url.searchParams.set("sessionId", s.id);
-                  window.history.pushState({}, "", url);
-                  setSelected(s.id);
-                  setFeedback(false);
-                }}
-              >
-                {s.feedbackStatus === "partial" ? "◐ " : s.feedbackStatus === "skipped" ? "× " : s.completed ? "✓ " : ""}
-                {s.title} · {s.verdict === "blocked" ? (es ? "Pendiente de revisión" : "Pending review") : `${s.durationMin} min`}
-              </button>
-            ))}
-          </div>
-        )}
+        {selected && data && !session && <p role="alert" className="card">{es ? "La sesión seleccionada no está disponible hoy. Elige una sesión de la lista o abre el plan." : "The selected session is not available today. Choose a current session from the list or open your plan."} <Link href="/training">{es ? "Abrir plan" : "Open plan"}</Link></p>}
         {session && (
           <>
-            <UniversalWorkoutCardLoader key={`${session.id}-${session.revision}`} sessionId={session.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={session.id} es={es} />} onSaved={() => load()}/>
             <details><summary className="my-4 cursor-pointer underline">{es ? "Herramientas de la sesión y seguimiento" : "Session tools & feedback"}</summary>
-            <div id="today-workout" className="card !p-0 overflow-hidden scroll-mt-4">
+            <div id="session-tools" className="card !p-0 overflow-hidden scroll-mt-4">
               <div className="bg-ocean-800 text-white p-5">
                 <p className="text-xs uppercase">
                   {session.feedbackStatus === "partial" ? (es ? "Parcial" : "Partially completed") : session.feedbackStatus === "skipped" ? (es ? "Omitido" : "Skipped") : session.completed

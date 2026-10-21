@@ -7,6 +7,7 @@ import { canCoach, canAccessAthlete, ApiError, errorResponse } from "@/lib/acces
 import { coachingSummary } from "@/lib/coaching";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { dayBounds } from "@/lib/dates";
+import { activityDisclosure, activityAuditDisclosure } from "@/lib/activity-disclosure";
 
 export async function GET(
   req: Request,
@@ -113,19 +114,23 @@ export async function GET(
         orderBy: { createdAt: "desc" },
       }),
     ]);
+    const disclosed = activityDisclosure(workouts, actor.id, athlete.id);
+    const metricView = activityDisclosure(metrics, actor.id, athlete.id);
+    const auditView = activityAuditDisclosure(audit, actor.id, athlete.id);
     return Response.json({
       athlete,
       profileRevision: profileRevision(athlete.profile),
-      workouts: workouts.map(w=>({...w,revision:workoutRevision(w)})),
-      metrics,
-      checkins,
+      workouts: disclosed.records.map(w=>({...w, ...(actor.id !== athlete.id ? { insights: null } : {}), revision:workoutRevision(w)})),
+      metrics: metricView.records,
+      checkins: actor.id !== athlete.id && (disclosed.limited || metricView.limited) ? checkins.map(row=>({ id:row.id,date:row.date,answers:null,adaptation:null,fuel:null,ergos:null,shadowV2:null })) : checkins,
       races,
       benchmarks,
       blood,
       nutrition,
       sleep,
       connectors,
-      audit,
+      audit: auditView.records,
+      disclosure: { workoutsUnavailableReason: disclosed.reason, metricsUnavailableReason: metricView.reason, auditUnavailableReason: auditView.reason },
       plan,
       days,
       today: dayBounds(athlete.timezone).key,

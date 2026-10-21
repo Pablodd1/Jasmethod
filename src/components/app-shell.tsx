@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import {
   Home,
@@ -124,6 +124,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const lang = (user?.language || "es") as Lang;
   const canManage = user?.role === "admin" || user?.role === "coach";
   const mobileMenu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    // Keep screen-reader language and crash recovery aligned with the selected UI language.
+    document.documentElement.lang = lang;
+    document.documentElement.dataset.jmmLanguage = lang;
+  }, [lang]);
 
   async function setLanguage(l: Lang) {
     await fetch("/api/language", {

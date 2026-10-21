@@ -37,22 +37,20 @@ const ex2 = executionScore(planned, [])!;
 assert.equal(ex2.completionPct, 0);
 assert.equal(ex2.score, 0);
 
-// race prediction scales with distance
-const p = predictRace({ ftp: 250, runPaceBase: 280, swimPaceBase: 100 }, "olympic")!;
-const half = predictRace({ ftp: 250, runPaceBase: 280, swimPaceBase: 100 }, "half")!;
-assert.ok(half.totalMin > p.totalMin, "half > olympic time");
-assert.ok(p.bikeSpeedKmh > 25 && p.bikeSpeedKmh < 40, "plausible bike speed");
-assert.ok(p.runPaceSecPerKm > 200 && p.runPaceSecPerKm < 400, "plausible run pace");
-assert.equal(predictRace({ ftp: 250 }, "nonsense"), null, "unknown distance → null");
+// Unvalidated legacy forecasts remain retired even with populated anchors.
+assert.equal(predictRace({}, "olympic"), null);
+assert.equal(predictRace({ ftp: 250, runPaceBase: 280, swimPaceBase: 100 }, "half"), null);
 
 // heat index + altitude
 assert.ok(heatIndex(30, 80) > 30, "humidity raises feels-like");
 assert.equal(heatIndex(15, 50), 15, "cool temps unchanged");
 const alt = altitudeFactor(2500);
-assert.ok(alt.vo2factor < 1 && alt.paceFactor > 1, "altitude reduces VO2, slows pace");
+assert.ok(alt.vo2factor < 1 && alt.paceFactor === 1, "group VO2 context must not prescribe race pace");
 assert.ok(altitudeFactor(100).vo2factor === 1, "below threshold no effect");
 assert.ok(altitudeFactor(500).vo2factor < 1, "Wehrlin-linear starts near sea level (adjudication Conflict 1)");
 const alt5000ft = altitudeFactor(1524); // ~5,000 ft
-assert.ok(alt5000ft.vo2factor > 0.72 && alt5000ft.vo2factor < 0.82, "5,000 ft ≈ 20%+ aerobic power loss per adjudication");
+assert.ok(Math.abs(alt5000ft.vo2factor - 0.923) < .01);
+assert.ok(Math.abs(altitudeFactor(1500).vo2factor - 0.924) < .01);
+assert.ok(Math.abs(altitudeFactor(2000).vo2factor - 0.893) < .01);
 
 console.log("✓ fitness.test.ts — all assertions passed");

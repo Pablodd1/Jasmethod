@@ -27,6 +27,9 @@ test('auto binding is restricted to a unique dated session chosen by the service
   for(const message of ['Make it 30 minutes','How was today’s run?','Change next Friday’s run','Change 10/18 workout','Change today or tomorrow training'])assert.equal(coachAutoSessionDay(message,context.localToday),null,message);
   assert.equal(coachRequestedDay('Today and 2026-10-18',context.localToday),null);
 });
+test('negated ordinary edit verbs cannot become provider-proposed workout changes',()=>{
+  for(const message of ["Don't switch this session to 30 minutes",'Do not shorten this session to 30 minutes','Do not reduce this session to 30 minutes','Do not extend this session to 30 minutes','Do not correct this session to 30 minutes'])assert.deepEqual(groundCoachChanges([change({evidence:message})],message,context),[],message);
+});
 test('common explicit profile and workout changes also work locally without external AI',()=>{
   assert.equal(extractLocalCandidates('Change my weight to 75 kg',context).find(c=>c.field==='weightKg')?.value,75);
   const candidates=extractLocalCandidates("Make today's run 45 minutes at zone 2",context);

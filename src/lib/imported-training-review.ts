@@ -1,6 +1,7 @@
 /** Read-only import review. Possible cross-provider copies are never asserted to be one verified activity. */
 import { addDaysKey, dateKey } from './dates';
 import {groupActivityEvidence,type ActivityDecision,type ActivityEvidenceRow} from './activity-evidence';
+import { derivedActivityPolicy } from './derived-activity-policy';
 export type ImportedTrainingRow = ActivityEvidenceRow & { id: string; date: Date; sport: string; source: string | null; durationMin: number | null; actualDurationMin: number | null };
 export function importedTrainingWindow(timezone: string, now = new Date()) {
  const today = dateKey(now, timezone);
@@ -18,6 +19,20 @@ export function importedTrainingReview(rows: ImportedTrainingRow[], timezone: st
  };
  const eligible = rows.filter(row => Number.isFinite(row.date.getTime()) && dateKey(row.date, timezone) >= window.startKey && dateKey(row.date, timezone) < window.endKey)
   .sort((a,b)=>a.date.getTime()-b.date.getTime() || a.id.localeCompare(b.id));
+ const policy = derivedActivityPolicy(eligible);
+ if (policy.status !== 'allowed') return {
+  version:'imported-training-review-v1',timezone,...window,rawRecordCount:eligible.length,truncated,
+  weeks:Array.from({length:4},(_,i)=>{
+   const startKey=addDaysKey(window.startKey,i*7),endKey=addDaysKey(startKey,7);
+   const records=eligible.filter(row=>dateKey(row.date,timezone)>=startKey&&dateKey(row.date,timezone)<endKey);
+   return {startKey,endKey:addDaysKey(endKey,-1),rawRecordCount:records.length,recordedDays:null,
+    unknownDurationRecords:null,possibleOverlapGroups:null,recordsInPossibleOverlap:null,
+    minutesRange:{minimum:null,maximum:null},sources:[...new Set(records.map(row=>row.source??'unknown'))].sort(),
+    overlaps:[] as {sport:string;startAt:string;records:{id:string;source:string|null;startedAt:string;minutes:number|null}[]}[]};
+  }),possibleOverlapGroups:null,unknownDurationRecords:null,recordedWeeklyAverageMinutes:null,
+  requiresAthleteReview:true,derivedActivityPolicy:policy,
+  note:policy.reason+' Empty weeks, unrecorded days and unavailable durations are unknown, never confirmed rest. No profile or training is changed.'
+ };
  const effective=groupActivityEvidence(eligible,decisions);
  const globalOverlaps=effective.pending;
  const weeks = Array.from({length:4},(_,i)=>{
@@ -42,6 +57,7 @@ export function importedTrainingReview(rows: ImportedTrainingRow[], timezone: st
  const reviewableAverage=!truncated&&!possibleOverlapGroups&&!unknownDurationRecords&&weeks.every(week=>week.rawRecordCount>0)
   ? Math.round(weeks.reduce((sum,week)=>sum+week.minutesRange.minimum!,0)/4) : null;
  return {version:'imported-training-review-v1',timezone,...window,rawRecordCount:eligible.length,truncated,weeks,possibleOverlapGroups,unknownDurationRecords,
+  derivedActivityPolicy:policy,
   recordedWeeklyAverageMinutes:reviewableAverage,requiresAthleteReview:true,
   note:'Recorded volume only, not training capacity or a prescription. Corroborated copies and current explicit choices count once; unresolved near-start records show possible-overlap ranges, not verified session counts. Empty weeks, unrecorded days and missing durations are unknown, never confirmed rest. Confirm completeness, tolerability and recovery before explicitly editing your baseline. No profile or training is changed.'};
 }

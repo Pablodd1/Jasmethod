@@ -5,7 +5,7 @@ import { prisma } from "./db";
 import { ApiError } from "./access";
 import { profileRevision } from "./profile-service";
 import { workoutRevision } from "./workout-update";
-import { confirmConversation, cancelConversationProposal, clearConversation, readConversationBody, validateSelectedCandidates, parseAssistantInput, appendConversation } from "./coach-conversation-service";
+import { confirmConversation, cancelConversationProposal, clearConversation, readConversationBody, validateSelectedCandidates, parseAssistantInput, appendConversation, getConversation } from "./coach-conversation-service";
 import type { CoachCandidate } from "./coach-conversation";
 import { addDaysKey, dayBounds, localDate } from "./dates";
 
@@ -37,18 +37,22 @@ function fixture(candidates = [candidate()]) {
   const profile = { id: "profile-a", userId: actor.id, weightKg: 70, weeklyHours: 6, goal: "5k", experience: "amateur" };
   const workout = { id: "session-a", userId: actor.id, date: new Date(`${today}T12:00Z`), title: "Original interval", sport: "run", type: "interval", durationMin: 40, intensity: "z4", notes: "Keep historical prescription", planned: true, completed: true, approved: true, feedbackStatus: "completed", actualDurationMin: 40, rpe: 5, originalPlan: '{"title":"Original interval","durationMin":40}', prescription: '{"steps":[]}', planDay: null };
   const proposal = { id: "proposal-a", userId: actor.id, conversationId: "conversation-a", generation: 0, revision: 1, status: "pending", timezone: "UTC", sourceMessageId: "message-source", candidates: JSON.stringify(candidates), baseRevisions: JSON.stringify({ profile: profileRevision(profile), workouts: { "session-a": { revision: workoutRevision(workout), date: today } } }), idempotencyKey: null, requestHash: null, receipt: null, createdAt: new Date(), updatedAt: new Date(), confirmedAt: null };
-  let state: any = { profile, workout, proposal, conversation: { id: "conversation-a", userId: actor.id, generation: 0, revision: 0 }, messages: [{ id: "message-source", userId: actor.id, conversationId: "conversation-a", role: "user", source: "text", content: "report", createdAt: new Date() }], audits: [], writes: [], requests: [] };
+  let state: any = { profile, workout, activePlan: { id: 'active-plan', userId: actor.id, status: 'active' }, proposal, conversation: { id: "conversation-a", userId: actor.id, generation: 0, revision: 0 }, messages: [{ id: "message-source", userId: actor.id, conversationId: "conversation-a", role: "user", source: "text", content: "report", createdAt: new Date() }], audits: [], writes: [], requests: [] };
   const originalTransaction = prisma.$transaction;
-  const matches = (row: any, where: any) => !where || Object.entries(where).every(([key, value]: any) => {
+  const matches = (row: any, where: any): boolean => !where || Object.entries(where).every(([key, value]: any): boolean => {
     if (key === "OR") return value.some((condition: any) => matches(row, condition));
+    if (key === "AND") return value.every((condition: any) => matches(row, condition));
     if (value && typeof value === "object" && !(value instanceof Date)) {
       if (value.in) return value.in.includes(row[key]);
+      if (value.notIn) return row[key] != null && !value.notIn.includes(row[key]);
       if (Object.hasOwn(value, "not")) return row[key] !== value.not && row[key] !== undefined;
       if (value.contains !== undefined) return typeof row[key] === "string" && row[key].includes(value.contains);
       if (value.gte !== undefined && !(row[key] >= value.gte)) return false;
       if (value.lt !== undefined && !(row[key] < value.lt)) return false;
       if (value.gte !== undefined || value.lt !== undefined) return true;
+      return row[key] != null && matches(row[key], value);
     }
+    if (value === null) return row[key] == null;
     return row[key] === value;
   });
   const update = (row: any, data: any) => { for (const [key, value] of Object.entries(data)) row[key] = value && typeof value === "object" && "increment" in value ? row[key] + (value as any).increment : value; return row; };
@@ -78,10 +82,12 @@ function fixture(candidates = [candidate()]) {
         deleteMany: async ({ where }: any) => { draft.messages = draft.messages.filter((row: any) => !matches(row, where)); },
       },
       athleteProfile: { findUnique: async ({ where }: any) => matches(draft.profile, where) ? draft.profile : null, upsert: async ({ where, update: data }: any) => { assert.equal(where.userId, actor.id); draft.writes.push("profile"); return update(draft.profile, data); } },
+      trainingPlan: { findFirst: async ({ where }: any) => { assert.equal(where.userId, actor.id); assert.equal(where.status, 'active'); return draft.activePlan; } },
       workout: {
         findMany: async (query: any) => {
           const { where, select, take } = query;
           assert.equal(where.userId, actor.id);
+          if (!select && where.planned === true) { draft.selectionRead = query; return [draft.workout, ...(draft.choiceWorkouts || [])].filter((row: any) => matches(row, where)).slice(0, take); }
           if (where.source === "manual") { draft.externalRead = query; return (draft.externalHistory || []).filter((row: any) => matches(row, where)); }
           if (select?.matchedPlanId === true) {
             assert.equal(where.matchedPlanId, null); assert.equal(select.tss, undefined);
@@ -111,8 +117,55 @@ function fixture(candidates = [candidate()]) {
     };
     const result = await callback(tx); state = draft; return result;
   };
-  return { get state() { return state; }, restore() { (prisma as any).$transaction = originalTransaction; }, input: { proposalId: proposal.id, expectedRevision: 1, candidates, idempotencyKey: "confirmation-a", confirmed: true } };
+  return { get state() { return state; }, matches, restore() { (prisma as any).$transaction = originalTransaction; }, input: { proposalId: proposal.id, expectedRevision: 1, candidates, idempotencyKey: "confirmation-a", confirmed: true } };
 }
+
+test('assistant workout choices filter replaced plans before the cap and retain owner history and current doubles', async () => {
+  const f = fixture([]);
+  const originals = { conversation: prisma.coachConversation.findUnique, plan: prisma.trainingPlan.findFirst, workouts: prisma.workout.findMany };
+  const day = new Date(`${today}T12:00Z`), previous = localDate(addDaysKey(today,-1),'UTC');
+  const pending = (id:string, planId='active-plan', status='active') => ({id,userId:actor.id,title:id,sport:'run',date:day,planned:true,completed:false,feedbackStatus:null,source:'plan',planDay:{plan:{id:planId,status,userId:actor.id}}});
+  const rows = [...Array.from({length:100},(_,i)=>pending(`retired-${i}`,'archived','archived')),pending('current-a'),pending('current-b'),{...pending('old-report','archived','archived'),date:previous,feedbackStatus:'partial',actualDurationMin:0},{...pending('foreign'),userId:'other',completed:true}];
+  try {
+    (prisma.coachConversation as any).findUnique = async () => null;
+    (prisma.trainingPlan as any).findFirst = async (q:any) => { assert.equal(q.where.userId,actor.id); assert.equal(q.where.status,'active'); return f.state.activePlan; };
+    (prisma.workout as any).findMany = async (q:any) => { assert.equal(q.where.userId,actor.id); assert.equal(q.take,80); return rows.filter(row=>f.matches(row,q.where)).slice(0,q.take).map(row=>Object.fromEntries(Object.keys(q.select).map(key=>[key,(row as any)[key]]))); };
+    const result = await getConversation(actor);
+    assert.deepEqual(result.sessions.map(s=>s.id),['current-a','current-b','old-report']); assert.equal(result.defaultSessionId,null);
+    assert.equal(rows.length,104,'no source records are removed');
+  } finally { (prisma.coachConversation as any).findUnique=originals.conversation; (prisma.trainingPlan as any).findFirst=originals.plan; (prisma.workout as any).findMany=originals.workouts; f.restore(); }
+});
+
+test('dated auto binding ignores archived suggestions and cannot choose between current double sessions',async()=>{
+  for(const double of [false,true]) {
+    const f=fixture([]);
+    try {
+      Object.assign(f.state.workout,{completed:false,approved:false,feedbackStatus:null,feedbackAt:null,actualDurationMin:null,rpe:null,source:'plan',planDay:{plan:{id:'active-plan',status:'active',userId:actor.id}}});
+      f.state.choiceWorkouts=[...Array.from({length:100},(_,i)=>({...f.state.workout,id:`old-${i}`,planDay:{plan:{id:'archived',status:'archived',userId:actor.id}}})),...(double?[{...f.state.workout,id:'current-b'}]:[])];
+      const result=await appendConversation(actor,{message:"Update today's workout to 30 minutes"});
+      const candidate=result.proposal?.candidates.find((c:CoachCandidate)=>c.kind==='workout_plan'&&c.field==='durationMin');
+      if(double)assert.equal(candidate,undefined);else assert.equal(candidate?.sessionId,'session-a');
+      assert.deepEqual(f.state.writes,[]); assert.equal(f.state.selectionRead.take,2);
+    } finally {f.restore();}
+  }
+});
+
+test('explicit retired pending selection and retirement after a proposal cannot rewrite a replaced plan; historical feedback remains correctable',async()=>{
+  const edit=candidate({kind:'workout_plan',field:'durationMin',value:25,unit:'min',sessionId:'session-a'});
+  const f=fixture([edit]);
+  try {
+    Object.assign(f.state.workout,{completed:false,feedbackStatus:null,feedbackAt:null,actualDurationMin:null,rpe:null,source:'plan',planDay:{plan:{id:'archived',status:'archived',userId:actor.id}}});
+    f.state.proposal.baseRevisions=JSON.stringify({profile:profileRevision(f.state.profile),workouts:{'session-a':{date:today,revision:workoutRevision(f.state.workout)}}});
+    await assert.rejects(appendConversation(actor,{message:'Update my workout to 30 minutes',sessionId:'session-a'}),(error:unknown)=>error instanceof ApiError&&error.status===404);
+    await assert.rejects(confirmConversation(actor,f.input),(error:unknown)=>error instanceof ApiError&&error.status===409);
+    assert.deepEqual(f.state.writes,[]);
+  } finally {f.restore();}
+  const history=fixture([candidate({kind:'workout_feedback',field:'actualDurationMin',value:25,unit:'min',sessionId:'session-a'})]);
+  try {
+    history.state.workout.planDay={plan:{id:'archived',status:'archived',userId:actor.id}};
+    const saved=await confirmConversation(actor,history.input); assert.equal(saved.actualsModified,true); assert.equal(history.state.workout.actualDurationMin,25);
+  } finally {history.restore();}
+});
 
 test("real service confirmation saves atomically, records provenance, and replays original receipt only", async () => {
   const feedback = candidate({ id: "candidate-minutes", kind: "workout_feedback", field: "actualDurationMin", value: 25, unit: "min", sessionId: "session-a" });
@@ -421,7 +474,7 @@ test("conversation reads owner-only actual JStress and explicit rest without leg
   const f = fixture();
   try {
     const recordedAt = new Date(); recordedAt.setUTCDate(recordedAt.getUTCDate() - 1);
-    const recorded = { id: "actual-a", userId: actor.id, date: recordedAt, completed: true, planned: false, matchedPlanId: null, durationMin: 25, actualDurationMin: null, rpe: 4, tss: 999 };
+    const recorded = { id: "actual-a", userId: actor.id, source:"manual", date: recordedAt, completed: true, planned: false, matchedPlanId: null, durationMin: 25, actualDurationMin: null, rpe: 4, tss: 999 };
     f.state.loadWorkouts = [recorded, { ...recorded, id: "other", userId: "athlete-b" }, { ...recorded, id: "matched-plan", matchedPlanId: "actual-a" }, { ...recorded, id: "incomplete", completed: false }, { ...recorded, id: "partial", completed: false, feedbackStatus: "partial", actualDurationMin: 10, rpe: 3 }];
     f.state.restObservations = [{ userId: actor.id, metricType: "jmm_rest_day", source: "manual", value: 1, qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: new Date(`${today}T00:00Z`) }];
     const result = await appendConversation(actor, { message: "What is my JStress?" });
@@ -661,6 +714,7 @@ test('chat workout confirmation protects recovery, event sessions and stale revi
    const plan=candidate({kind:'workout_plan',field:'durationMin',value:25,unit:'min',sessionId:'session-a'});const f=fixture([plan]);
    try {
      Object.assign(f.state.workout,{completed:false,feedbackStatus:null,feedbackAt:null,actualDurationMin:null,rpe:null},change);
+   if(f.state.workout.planDay)f.state.workout.planDay.plan={id:'active-plan',userId:actor.id,status:'active'};
      f.state.proposal.baseRevisions=JSON.stringify({profile:profileRevision(f.state.profile),workouts:{'session-a':{date:today,revision:workoutRevision(f.state.workout)}}});
      await assert.rejects(confirmConversation(actor,f.input),/separate cycle review/);assert.deepEqual(f.state.writes,[]);
    } finally {f.restore();}

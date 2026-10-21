@@ -2,14 +2,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { parseManualWorkout } from "@/lib/manual-workout";
+import { currentOrReportedWorkoutWhere } from "@/lib/calendar-workouts";
 
 export async function GET(req: Request) {
   try {
     const { athlete } = await trainingAccess(req);
     const days = Number(new URL(req.url).searchParams.get("days") || "14");
     if (!Number.isInteger(days) || days < 1 || days > 90) throw new ApiError("days must be 1–90");
-    const workouts = await prisma.workout.findMany({ where: { userId: athlete.id, date: { gte: new Date(Date.now() - days * 86400000) } }, orderBy: { date: "asc" } });
-    return NextResponse.json({ workouts });
+    const plan = await prisma.trainingPlan.findFirst({ where: { userId: athlete.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+    const workouts = await prisma.workout.findMany({ where: { AND: [currentOrReportedWorkoutWhere(athlete.id, plan?.id ?? null), { date: { gte: new Date(Date.now() - days * 86400000) } }] }, orderBy: [{ date: "asc" }, { id: "asc" }] });
+    return NextResponse.json({ workouts }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return errorResponse(error); }
 }
 

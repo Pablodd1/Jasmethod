@@ -10,6 +10,10 @@ const fields: Record<string, { en: string; es: string }> = {
   urgentSymptoms: { en: "urgent symptoms", es: "síntomas urgentes" },
   availableMin: { en: "available training time", es: "tiempo disponible para entrenar" },
 };
+/** Friendly name of a check-in question, or null when the key is not a known check-in question. */
+export function readinessFieldLabel(key: string, es: boolean): string | null {
+  return fields[key]?.[es ? "es" : "en"] ?? null;
+}
 const missingInputReason = /^Training is on hold until today's safety, recovery and available-time answers are known\. Missing: ([^.]+)\. Unknown or skipped answers are not evidence of readiness\. No device data is required\.$/;
 
 export function readinessReasonText(reason: string, es: boolean): string {

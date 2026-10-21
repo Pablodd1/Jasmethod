@@ -24,6 +24,6 @@ test('missing weeks/durations and truncated history remain unknown; zero never b
  assert.equal(importedTrainingReview(four().slice(1),'UTC',now).recordedWeeklyAverageMinutes,null);
 });
 test('possible copies crossing a calendar-week boundary still block a misleading average and preserve dates',()=>{
- const review=importedTrainingReview([...four(),row('sunday','2026-09-20T23:59:45Z','strava',50),row('monday','2026-09-21T00:00:15Z','whoop',55)],'UTC',now);
+ const review=importedTrainingReview([...four(),row('sunday','2026-09-20T23:59:45Z','coros',50),row('monday','2026-09-21T00:00:15Z','whoop',55)],'UTC',now);
  assert.equal(review.possibleOverlapGroups,1);assert.equal(review.recordedWeeklyAverageMinutes,null);assert.equal(review.weeks[0].possibleOverlapGroups,1);assert.equal(review.weeks[1].possibleOverlapGroups,1);assert.deepEqual(review.weeks[0].overlaps[0].records.map(r=>r.startedAt),['2026-09-20T23:59:45.000Z','2026-09-21T00:00:15.000Z']);
 });

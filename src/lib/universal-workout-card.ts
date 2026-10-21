@@ -134,13 +134,21 @@ export function stepColor(
     return "#f7c84a";
   return Number(step.zone.slice(1)) >= 4 ? "#ff5938" : Number(step.zone.slice(1)) <= 2 ? "#6fb6d5" : "#dcae48";
 }
-export function endpointText(step: CanonicalStep): string {
+export function endpointText(step: Pick<CanonicalStep, "endpoint">, language: "en" | "es" = "en"): string {
   const e = step.endpoint;
-  return e.type === "time"
-    ? e.seconds % 60 === 0
-      ? `${e.seconds / 60} min`
-      : `${e.seconds} s`
-    : e.type === "distance"
+  if (e.type === "time") {
+    if (!Number.isFinite(e.seconds) || e.seconds < 0) return "—";
+    // Display only: remove floating-point multiplication noise without changing
+    // the canonical seconds, short intervals or FIT duration fields.
+    const seconds = Number(e.seconds.toPrecision(15));
+    const minutes = Math.floor(seconds / 60);
+    const decimals = (String(seconds).split(".")[1] || "").length;
+    const remainder = Number((seconds - minutes * 60).toFixed(decimals));
+    const unit = language === "es" ? "s" : "sec";
+    const shown = language === "es" ? String(remainder).replace(".", ",") : String(remainder);
+    return remainder === 0 ? `${minutes} min` : minutes ? `${minutes} min ${shown} ${unit}` : `${shown} ${unit}`;
+  }
+  return e.type === "distance"
       ? `${e.meters} m`
       : e.type === "reps"
         ? `${e.reps} reps`

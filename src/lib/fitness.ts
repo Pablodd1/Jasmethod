@@ -6,10 +6,9 @@ import { dateKey, addDaysKey, DEFAULT_TIMEZONE } from "./dates";
 
 import { exponentialMovingAverage } from "./science";
 import {
-  ALTITUDE_PCT_PER_1000FT,
+  ALTITUDE_VO2_PCT_PER_1000M,
   ALTITUDE_THRESHOLD_M,
   ALTITUDE_CAP,
-  ALTITUDE_PACE_TRANSMISSION,
 } from "./forecast-constants";
 
 // ---------- TSS estimation from a completed workout ----------
@@ -233,33 +232,10 @@ export function predictRace(
   },
   distance: string,
 ): RacePrediction | null {
-  const leg = LEGS[distance];
-  if (!leg) return null;
-  // run: threshold pace → race pace (longer = slower than threshold)
-  const runFactor =
-    { sprint: 0.97, olympic: 1.0, half: 1.05, full: 1.1 }[distance] ?? 1;
-  const runPaceSecPerKm = (profile.runPaceBase ?? 300) * runFactor; // default 5:00/km
-  // bike: rough flat-aero speed from FTP
-  const ftp = profile.ftp ?? 220;
-  const bikeSpeedKmh = Math.round((ftp * 0.05 + 20) * 10) / 10;
-  // swim: threshold pace + open-water factor
-  const swimPaceSecPer100m = Math.round((profile.swimPaceBase ?? 100) * 1.08);
-  const swimMin = ((leg.swimM / 100) * swimPaceSecPer100m) / 60;
-  const bikeMin = (leg.bikeKm / bikeSpeedKmh) * 60;
-  const runMin = (leg.runKm * runPaceSecPerKm) / 60;
-  const totalMin = swimMin + bikeMin + runMin + leg.transitionMin;
-  return {
-    distance,
-    swimMin: Math.round(swimMin),
-    bikeMin: Math.round(bikeMin),
-    runMin: Math.round(runMin),
-    transitionsMin: leg.transitionMin,
-    totalMin: Math.round(totalMin),
-    runPaceSecPerKm: Math.round(runPaceSecPerKm),
-    bikeSpeedKmh,
-    swimPaceSecPer100m,
-    note: "Heuristic estimate from your FTP/run/swim thresholds — flat-course, no wind/heat. Re-run after each benchmark test to tighten.",
-  };
+  // Retired: this unvalidated heuristic invented missing athlete anchors.
+  // Preserve the legacy call signature, but never return a personalized race time.
+  void profile; void distance;
+  return null;
 }
 
 // ---------- Environmental context: heat index and altitude ----------
@@ -286,30 +262,26 @@ export function altitudeFactor(elevM: number): {
   paceFactor: number;
   advice: string;
 } {
-  // Wehrlin-linear model per the 2026-09-08 adjudication (Conflict 1):
-  // VO2max/aerobic power falls linearly with altitude — ~4.4% per 1,000 ft —
-  // from low altitude. The previous "~1% per 100m above 1500m" rule and the
-  // industry "1% per 1,000 ft" rule of thumb were REJECTED as ~4x
-  // underestimates. Constants are tunable defaults in forecast-constants.ts.
+  // Descriptive group VO2max context only (PMID 16311764), not a personal
+  // capacity measurement or a formula for reducing prescribed power/pace.
+  if (!Number.isFinite(elevM)) return { vo2factor: 1, paceFactor: 1, advice: "Elevation unavailable; no numerical altitude adjustment applied." };
   if (elevM <= ALTITUDE_THRESHOLD_M.value)
     return {
       vo2factor: 1,
       paceFactor: 1,
-      advice: "Low elevation — no meaningful altitude effect.",
+      advice: "Below the 300 m study reference; no numerical altitude correction is inferred.",
     };
-  const metersPer1000ft = 304.8;
+  const metersPerUnit = 1000;
   const drop = Math.min(
     ALTITUDE_CAP.value,
-    ((ALTITUDE_PCT_PER_1000FT.value / 100) * (elevM - ALTITUDE_THRESHOLD_M.value)) /
-      metersPer1000ft,
+    ((ALTITUDE_VO2_PCT_PER_1000M.value / 100) * (elevM - ALTITUDE_THRESHOLD_M.value)) /
+      metersPerUnit,
   );
   const vo2factor = Math.round((1 - drop) * 1000) / 1000;
-  // Pace degrades less than VO2max falls at sub-threshold speeds (slower
-  // speed = lower absolute O2 cost) — transmission factor is a tunable default.
-  const paceFactor = Math.round((1 / (1 - drop * ALTITUDE_PACE_TRANSMISSION.value)) * 1000) / 1000;
+  const paceFactor = 1; // No validated transmission from group VO2max loss to individual race pace.
   return {
     vo2factor,
     paceFactor,
-    advice: `Race at ${elevM}m (~${Math.round(elevM * 3.28084)} ft) — aerobic power ~${Math.round(drop * 100)}% lower (Wehrlin-linear model, tunable default). Arrive 7-14+ days early, or plan power/pace off these derated numbers, not off sea-level thresholds.`,
+    advice: `Elevation ${elevM} m: group VO2max context (Wehrlin-linear, 300-2800 m study range), not your measured capacity. Acclimatization and individual response are unknown. No power or pace reduction is prescribed from this estimate.`,
   };
 }

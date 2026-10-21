@@ -2,6 +2,8 @@ import { environmentRevisionContext, type DailyEnvironmentAssessment } from "./d
 // Server-side canonical workout boundary. Consumers must not infer steps from prose.
 import { createHash } from "node:crypto";
 import { sessionPurposeTitle } from './session-purpose-title';
+import { HR_ZONE_UPPER_FACTORS, POWER_ZONE_UPPER_FACTORS } from "./zone-factors";
+export { HR_ZONE_UPPER_FACTORS, POWER_ZONE_UPPER_FACTORS } from "./zone-factors";
 import type { WorkoutStep } from "./prescription";
 import { normalizeSportStructure, sportStructureSteps, sportStepInstruction, SportStructureError, type SportStructure, type SportStepDetail, type SwimStroke } from "./sport-structure";
 
@@ -92,7 +94,7 @@ export function resolveStepTarget(step: Pick<WorkoutStep, "zone" | "target">, sp
   if (!["run", "bike"].includes(sport)) return { type: "open", source: "effort", label: `Open effort · RPE ${rpe}/10` };
   if (sport === "bike" && profile?.ftp != null) {
     const ftp = positive(profile.ftp, 1000, "FTP anchor");
-    const high = Math.round(ftp * [0, .55, .75, .9, 1.05, 1.2, 1.5, 1.5][z]);
+    const high = Math.round(ftp * POWER_ZONE_UPPER_FACTORS[z]);
     return { type: "power", low: 0, high, source: "profile_reference", label: `${label("power", 0, high)} (FTP plan reference)` };
   }
   if (sport === "run" && profile?.runPaceBase != null) {
@@ -100,7 +102,7 @@ export function resolveStepTarget(step: Pick<WorkoutStep, "zone" | "target">, sp
     return { type: "pace", low: pace, high: pace, source: "profile_reference", label: label("pace", pace, pace) };
   }
   if (profile?.lthr != null) {
-    const high = Math.round(positive(profile.lthr, 240, "LTHR anchor") * [0, .8, .89, .94, 1, 1.05, 1.1, 1.1][z]);
+    const high = Math.round(positive(profile.lthr, 240, "LTHR anchor") * HR_ZONE_UPPER_FACTORS[z]);
     if (high > 250) fail("Resolved heart-rate target exceeds the supported range.");
     return { type: "heartRate", low: 1, high, source: "profile_reference", label: `≤${high} bpm (LTHR plan reference)` };
   }

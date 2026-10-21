@@ -13,7 +13,7 @@ import { parseActualFueling, readActualFueling } from './actual-fueling';
 import { analyzeHydration } from './adaptive';
 import { TrainingTargetSelector } from '../components/daily-training/UniversalWorkoutCard';
 import { universalWorkoutExample } from './universal-workout-example';
-const row = {id:'synthetic-ride',userId:'athlete-a',date:new Date('2026-10-17T10:00:00Z'),completed:true,planned:false,source:'strava',sport:'bike',title:'Recorded ride',durationMin:138,avgHr:140,avgPower:180,calories:1200,distanceKm:79.54};
+const row = {id:'synthetic-ride',userId:'athlete-a',date:new Date('2026-10-17T10:00:00Z'),completed:true,planned:false,source:'garmin',sport:'bike',title:'Recorded ride',durationMin:138,avgHr:140,avgPower:180,calories:1200,distanceKm:79.54};
 test('day review scopes athlete/local day, retains actuals, never substitutes planned duration',()=>{
  const review=athleteDayReview([row,{...row,id:'foreign',userId:'athlete-b'},{...row,id:'tomorrow',date:new Date('2026-10-18T10:00:00Z')},{...row,id:'reported-plan',planned:true,actualDurationMin:null}], 'athlete-a','2026-10-17','America/New_York',parsePlanningSetup({baselineWeeklyMinutes:90}));
  assert.equal(review.records.length,2);assert.equal(review.baselineWeeklyMinutes,90);

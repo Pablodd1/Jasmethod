@@ -27,6 +27,7 @@ test('durable worker retries errors, fences completion by lease, and caps interr
 });
 
 test('webhook acknowledges only durable enqueue and scopes job to matched athlete',async()=>{
+  const flag=process.env.ENABLE_STRAVA_CONNECTOR;process.env.ENABLE_STRAVA_CONNECTOR='true';
   const originals={findFirst:prisma.connector.findFirst,upsert:prisma.syncJob.upsert};
   const writes:any[]=[];
   (prisma.connector as any).findFirst=async()=>({id:'conn',userId:'athlete'});
@@ -41,5 +42,5 @@ test('webhook acknowledges only durable enqueue and scopes job to matched athlet
     (prisma.syncJob as any).upsert=async()=>{throw Error('storage unavailable')};
     await assert.rejects(queueVerifiedProviderEvent('strava',body),/storage unavailable/);
     await assert.rejects(enqueueSyncJob('athlete','sync','initial',{provider:'oura'}),/storage unavailable/);
-  }finally{(prisma.connector as any).findFirst=originals.findFirst;(prisma.syncJob as any).upsert=originals.upsert;}
+  }finally{(prisma.connector as any).findFirst=originals.findFirst;(prisma.syncJob as any).upsert=originals.upsert;if(flag===undefined)delete process.env.ENABLE_STRAVA_CONNECTOR;else process.env.ENABLE_STRAVA_CONNECTOR=flag;}
 });

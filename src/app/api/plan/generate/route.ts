@@ -1,4 +1,5 @@
 import {ACTIVITY_EVIDENCE_SELECT} from "@/lib/activity-evidence";
+import {unreportedWorkoutWhere} from "@/lib/calendar-workouts";
 import { normalizeCycleEvents, assessCycleEvents } from "@/lib/cycle-events";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { buildCycleBaselineReviews, requiredCycleSports } from "@/lib/cycle-review";
@@ -114,6 +115,8 @@ export async function POST(req: Request) {
     const allRaces = storedRaces.map(row => ({ ...row, date: toLocalMidnight(row.date.toISOString().slice(0,10)) }));
     const activityDecisions=await readActivityDecisions(user.id);
     const activityEvidence = cycleActivityEvidence(recentActivity, todayKey, user.timezone, activityDecisions);
+    if (activityEvidence.derivedActivityPolicy.status !== "allowed")
+      throw new ApiError(activityEvidence.derivedActivityPolicy.reason || "Activity origin needs review before generating training. Unknown load is not zero.", 409);
     const anchors = evidencedTargetProfile(profile, benchmarkTests, appliedAnchors.flatMap(row => row.entityId ? [row.entityId] : []));
     const needsAssessment = dist === "cycle" ? !anchors.ftp : dist === "swim-only" ? !anchors.swimPaceBase : ["track-sprint", "hyrox"].includes(dist) ? true : dist === "run-only" ? !anchors.runPaceBase : !anchors.ftp || !anchors.runPaceBase || !anchors.swimPaceBase;
     const upcomingRaces = allRaces.filter(r => dateKey(r.date, user.timezone) >= startKey);
@@ -232,8 +235,8 @@ export async function POST(req: Request) {
     if (body.previewToken !== previewToken) throw new ApiError("Preview the current plan and confirm it before replacing future training.", 409);
 
     // Persist plan + plan days + planned workouts
-    // Archive the previous plan and mark its uncompleted future rows superseded.
-    // Original prescriptions and completed history remain retrievable.
+    // Archive the previous plan and retire only untouched future suggestions.
+    // Partial reports and other actual/source evidence keep their provenance.
     const plan = await prisma.$transaction(
       async (tx) => {
         const [latestProfile, latestSetup, latestActivity, latestBenchmarks, latestAnchors, latestRaces,latestActivityDecisions] = await Promise.all([
@@ -257,7 +260,7 @@ export async function POST(req: Request) {
             where: {
               userId: user.id,
               planned: true,
-              completed: false,
+              ...unreportedWorkoutWhere(),
               date: { gte: dayBounds(user.timezone).start },
               planDay: { planId: { in: oldPlans.map((p) => p.id) } },
             },
@@ -270,7 +273,7 @@ export async function POST(req: Request) {
         }
         // An explicitly confirmed cycle replaces pending starter suggestions in
         // its date range. Preserve every performed/reported starter as history.
-        await tx.workout.updateMany({where:{userId:user.id,planned:true,source:{in:["starter","starter-rest"]},completed:false,feedbackAt:null,feedbackStatus:null,actualDurationMin:null,actualSport:null,actualDetails:null,rpe:null,date:{gte:start}},data:{planned:false,approved:false,source:"superseded-starter"}});
+        await tx.workout.updateMany({where:{userId:user.id,planned:true,source:{in:["starter","starter-rest"]},...unreportedWorkoutWhere(),date:{gte:start}},data:{planned:false,approved:false,source:"superseded-starter"}});
         const plan = await tx.trainingPlan.create({
           data: {
             userId: user.id,

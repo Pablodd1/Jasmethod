@@ -10,7 +10,7 @@ test("unperformed retired suggestions never become actual or unknown execution e
     for (const recorded of [{ completed: true }, { feedbackStatus: "unknown" }, { feedbackStatus: "skipped" },
       { feedbackAt: new Date() }, { feedbackNote: "" }, { actualDurationMin: 0 }, { actualSport: "swim" },
       { actualDetails: "{}" }, { rpe: 0 }, { avgHr: 120 }, { maxHr: 150 }, { avgPower: 0 }, { np: 0 },
-      { distanceKm: 0 }, { distanceKm: 12 }, { preWeightKg: 64 }, { postWeightKg: 64 }, { externalId: "imported" }, { matchedPlanId: "actual" }]) {
+      { distanceKm: 0 }, { distanceKm: 12 }, { calories: 0 }, { calories: 320 }, { preWeightKg: 64 }, { postWeightKg: 64 }, { externalId: "imported" }, { matchedPlanId: "actual" }]) {
       assert.equal(isUnperformedSupersededWorkout({ ...retired, ...recorded }), false, JSON.stringify(recorded));
     }
   }
@@ -27,7 +27,7 @@ test("retiring an unperformed starter after check-in does not invalidate the rep
     checkin:{date,answers:JSON.stringify(answers),adaptation:JSON.stringify({verdict:"full",intensityCap:"z7",durationFactor:1})} };
   const baseline = effectiveSessionFromRecords(input).canonical;
   assert.equal(baseline.verdict, "ready");
-  const retired = {id:"old",userId:"athlete",date,createdAt:new Date("2026-10-15T10:00:00Z"),source:"superseded-starter",planned:false,completed:false,durationMin:20};
+  const retired = {id:"old",userId:"athlete",date,createdAt:new Date("2026-10-15T10:00:00Z"),source:"superseded-starter",originalSource:"MANUAL",planned:false,completed:false,durationMin:20};
   const unperformed = effectiveSessionFromRecords({...input,reportedActivity:[retired]}).canonical;
   assert.equal(unperformed.verdict,"ready"); assert.equal(unperformed.revision,baseline.revision);
   const actual = effectiveSessionFromRecords({...input,reportedActivity:[{...retired,feedbackAt:new Date("2026-10-15T10:00:00Z"),feedbackStatus:"unknown"}]}).canonical;

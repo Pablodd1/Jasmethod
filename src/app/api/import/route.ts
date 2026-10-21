@@ -1,3 +1,4 @@
+import { boundedUploadForm, MAX_UPLOAD_BYTES, UploadLimitError } from "@/lib/upload-limits";
 import { deviceMetricSnapshot } from "@/lib/device-metric-snapshot";
 import { persistDeviceDay } from "@/lib/sync";
 import { storeActivity } from "@/lib/activity-store";
@@ -7,23 +8,29 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseOuraExport } from "@/lib/oura-import";
 import {
-  parseTcx,
   parseAppleHealth,
   parseWhoopCsv,
-  parseGarminActivitiesCsv,
+  type ImportedWorkout,
 } from "@/lib/importers";
+import { parseTcxActivities } from "@/lib/tcx-import";
+import { parseGarminActivitiesCsvDetailed } from "@/lib/garmin-activities-csv";
+import { decodeFitActivity } from "@/lib/fit-import";
+import { sniffUpload, uploadProblem } from "@/lib/import-files";
+import type { ActivityStreams } from "@/lib/activity-streams";
+import { prismaStreamRepo, storeStreams, streamStorageEnabled, type StreamDelegate } from "@/lib/activity-stream-store";
 
-// POST /api/import — multipart upload. source: tcx | garmin | coros (all parsed
-// as TCX), apple | applehealth (Apple Health export.xml), whoop (cycle CSV).
+// POST /api/import — multipart upload. source: tcx | garmin | coros (TCX, Garmin Activities.csv or a FIT
+// activity file, told apart by the file's BYTES), apple | applehealth (Apple Health export.xml), whoop (cycle
+// CSV). ZIP archives are refused with an explanation; nothing is imported from a file that fails validation.
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const form = await req.formData();
+    const form = await boundedUploadForm(req);
     const source = String(form.get("source") || "");
     const file = form.get("file") as File | null;
-    if (!file)
+    if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function")
       return NextResponse.json({ error: "No file provided." }, { status: 400 });
 
     // Normalize: the Connectors page posts the provider id as the source.
@@ -34,35 +41,63 @@ export async function POST(req: Request) {
           ? "applehealth"
           : source;
 
-    if (file.size > 40 * 1024 * 1024)
+    if (file.size > MAX_UPLOAD_BYTES)
       return NextResponse.json(
-        { error: "File exceeds 40 MB. Export a smaller date range." },
+        { error: "File exceeds 4 MB. Export a smaller date range." },
         { status: 413 },
       );
-    const text = await file.text();
-    let workouts: any[] = [];
+    const lang = user.language === "es" ? "es" : "en";
+    const refuse = (key: string, status = 422, extra: Record<string, unknown> = {}) =>
+      NextResponse.json({ error: uploadProblem(key, lang), code: key, ...extra }, { status });
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const kind = sniffUpload(bytes);
+    if (kind === "empty" || kind === "zip" || kind === "binary") return refuse(kind, kind === "empty" ? 400 : 415);
+    if (kind === "fit" && src !== "tcx") return refuse("fit_for_other_source", 415);
+    const text = kind === "fit" ? "" : new TextDecoder("utf-8").decode(bytes);
+    let workouts: ImportedWorkout[] = [];
     let extra: Record<string, any> = {};
+    let skipped: Record<string, number> = {};
+    let unsupportedTypes: Record<string, number> = {};
+    // Second-by-second data decoded from TCX/FIT, keyed by the activity's external id. It is stored only after the
+    // summary is saved, only when the operator enabled it, the athlete consented on this upload, and the activity's
+    // origin is known not to be Strava (activity-stream-store.ts). Otherwise it is discarded.
+    const streamsByExternalId = new Map<string, ActivityStreams | null>();
 
     if (src === "tcx") {
-      // Garmin uploads can be .tcx (single activity) OR the Activities.csv
-      // bulk export — detect by content so either file just works.
-      workouts = text.trimStart().startsWith("<")
-        ? parseTcx(text)
-        : parseGarminActivitiesCsv(text).map((a) => ({
-            date: a.date,
-            sport: a.sport,
-            title: a.title,
-            durationMin: a.durationMin,
-            distanceKm: a.distanceKm ?? undefined,
-            avgHr: a.avgHr ?? undefined,
-            maxHr: a.maxHr ?? undefined,
-            avgPower: a.avgPower ?? undefined,
-            np: a.np ?? undefined,
-            tss: a.tss ?? undefined,
-            calories: a.calories ?? undefined,
-            source: "garmin",
-            externalId: a.externalId,
-          }));
+      // Garmin/COROS uploads can be a .tcx (one activity), the Activities.csv bulk export, or a .fit activity.
+      if (kind === "fit") {
+        const fit = decodeFitActivity(bytes);
+        if (!fit.ok) return refuse(fit.error);
+        workouts = fit.activities.map((a) => a.workout);
+        for (const a of fit.activities) streamsByExternalId.set(a.workout.externalId, a.streams);
+        skipped = { sessionsSkipped: fit.sessionsSkipped };
+      } else if (kind === "tcx" || kind === "xml") {
+        const tcx = parseTcxActivities(text);
+        if (!tcx.ok) return refuse(tcx.error);
+        workouts = tcx.activities.map((a) => a.workout);
+        for (const a of tcx.activities) streamsByExternalId.set(a.workout.externalId, a.streams);
+        skipped = { ...tcx.skipped };
+      } else {
+        const csv = parseGarminActivitiesCsvDetailed(text, user.timezone, form.get("distanceUnits") === "metric" ? "metric" : form.get("distanceUnits") === "imperial" ? "imperial" : undefined);
+        if (!csv.ok) return refuse(csv.error === "empty" ? "empty_csv" : (csv.error ?? "unrecognized_columns"), 422, { foundColumns: csv.foundColumns });
+        workouts = csv.activities.map((a) => ({
+          date: a.date,
+          sport: a.sport,
+          title: a.title,
+          durationMin: a.durationMin,
+          distanceKm: a.distanceKm ?? undefined,
+          avgHr: a.avgHr ?? undefined,
+          maxHr: a.maxHr ?? undefined,
+          avgPower: a.avgPower ?? undefined,
+          np: a.np ?? undefined,
+          tss: a.tss ?? undefined,
+          calories: a.calories ?? undefined,
+          source: "garmin",
+          externalId: a.externalId,
+        }));
+        skipped = { ...csv.skipped, ambiguousNumbers: csv.ambiguousNumbers, implausibleValues: csv.implausibleValues };
+        unsupportedTypes = csv.unsupportedTypes;
+      }
     } else if (src === "applehealth") {
       const ah = parseAppleHealth(text);
       workouts = ah.workouts;
@@ -142,6 +177,26 @@ export async function POST(req: Request) {
       metricsImported = 0;
     for (const w of workouts)
       if (await storeActivity(user.id, user.timezone, w)) imported++;
+    const streamReport: { enabled: boolean; stored: number; workoutIds: string[]; refused: Record<string, number>; error?: true } = { enabled: streamStorageEnabled(), stored: 0, workoutIds: [], refused: {} };
+    if (streamReport.enabled && streamsByExternalId.size) {
+      // Best effort: a failure here (for example the optional table not being migrated yet) never fails the import.
+      try {
+        const consent = form.get("streamConsent") === "1";
+        const repo = prismaStreamRepo((prisma as unknown as { activityStream: StreamDelegate }).activityStream);
+        for (const w of workouts) {
+          const streams = streamsByExternalId.get(w.externalId);
+          if (!streams) continue;
+          const row = await prisma.workout.findFirst({ where: { userId: user.id, source: w.source, externalId: w.externalId }, select: { id: true } });
+          if (!row) continue;
+          const outcome = await storeStreams(repo, { athleteId: user.id, workoutId: row.id, streams, provenance: w, consent });
+          if (outcome === "stored") { streamReport.stored++; if (streamReport.workoutIds.length < 20) streamReport.workoutIds.push(row.id); }
+          else streamReport.refused[outcome] = (streamReport.refused[outcome] ?? 0) + 1;
+        }
+      } catch (error) {
+        console.error("activity stream storage unavailable");
+        streamReport.error = true;
+      }
+    }
     if (src === "applehealth") {
       // The file is athlete-supplied: preserve its recorded date, never label it
       // a device measurement or overwrite the canonical profile without review.
@@ -190,6 +245,8 @@ export async function POST(req: Request) {
         {
           error:
             "No supported records found. Check the source and file format.",
+          skipped,
+          unsupportedTypes,
         },
         { status: 400 },
       );
@@ -198,8 +255,13 @@ export async function POST(req: Request) {
       ok: true,
       source,
       workoutsImported: imported,
+      // Records already stored (same source and id) are refreshed in place, so a re-import never duplicates.
+      workoutsAlreadyStored: workouts.length - imported,
       metricsImported,
       workoutsFound: workouts.length,
+      skipped,
+      unsupportedTypes,
+      streams: streamReport,
       extra: Object.fromEntries(
         Object.entries(extra).map(([k, v]) => [
           k,
@@ -208,9 +270,10 @@ export async function POST(req: Request) {
       ),
     });
   } catch (e: any) {
-    console.error("import error:", e);
+    if (e instanceof UploadLimitError) return NextResponse.json({ error: uploadProblem("too_large", user.language === "es" ? "es" : "en"), code: "too_large" }, { status: 413 });
+    console.error("activity import failed");
     return NextResponse.json(
-      { error: e.message || "Import failed" },
+      { error: "Import failed. Please check the file format and retry." },
       { status: 500 },
     );
   }

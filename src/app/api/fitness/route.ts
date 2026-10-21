@@ -5,7 +5,8 @@ import { computeJMetrics } from "@/lib/j-metrics";
 import { groupActivityEvidence,publicActivityReconciliation } from "@/lib/activity-evidence";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { addDaysKey, dateKey, localDate } from "@/lib/dates";
-import { computePmc, executionScore, predictRace } from "@/lib/fitness";
+import { computePmc, executionScore } from "@/lib/fitness";
+import { derivedActivityPolicy } from "@/lib/derived-activity-policy";
 
 // Owner-only JMetrics and legacy estimates retained for history compatibility.
 export async function GET() {
@@ -18,7 +19,7 @@ export async function GET() {
   const [profile, completed, rest,activityDecisions] = await Promise.all([
     prisma.athleteProfile.findUnique({ where: { userId: user.id } }),
     prisma.workout.findMany({
-      where: { userId: user.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], matchedPlanId: null, date: { gte: since90, lte: asOf } },
+      where: { userId: user.id, OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }], date: { gte: since90, lte: asOf } },
       orderBy: { date: "asc" },
     }),
     prisma.metricObservation.findMany({
@@ -29,9 +30,11 @@ export async function GET() {
   ]);
   const ftp = profile?.ftp ?? null;
   const lthr = profile?.lthr ?? null;
-  const reconciled=groupActivityEvidence(completed,activityDecisions);
+  const policy=derivedActivityPolicy(completed);
+  const reconciled=groupActivityEvidence(completed.filter(w=>!w.matchedPlanId),activityDecisions);
   const jMetrics = computeJMetrics(completed, asOf, user.timezone, rest.map(r => dateKey(r.observedAt, user.timezone)),90,activityDecisions);
-  const pmc = reconciled.unresolvedGroups?null:computePmc(
+  const pmcUnavailableReason=policy.reason ?? (reconciled.unresolvedGroups ? "Possible activity copies need explicit review before legacy load can be calculated." : null);
+  const pmc = pmcUnavailableReason?null:computePmc(
     reconciled.effective.filter(w => w.completed).map((w) => ({
       date: w.date,
       tssInput: {
@@ -62,13 +65,13 @@ export async function GET() {
       where: {
         userId: user.id,
         completed: true,
-        matchedPlanId: null,
         date: { gte: since7, lte: new Date() },
       },
     }),
   ]);
-  const executionEvidence=groupActivityEvidence(completed7,activityDecisions);
-  const executionUnavailableReason=executionEvidence.unresolvedGroups?"Possible activity copies need explicit review before execution and duration compliance can be calculated.":null;
+  const executionPolicy=derivedActivityPolicy([...planned7,...completed7]);
+  const executionEvidence=groupActivityEvidence(completed7.filter(w=>!w.matchedPlanId),activityDecisions);
+  const executionUnavailableReason=executionPolicy.reason ?? (executionEvidence.unresolvedGroups?"Possible activity copies need explicit review before execution and duration compliance can be calculated.":null);
   const execution = executionUnavailableReason?null:executionScore(
     planned7.map((w) => ({
       date: w.date,
@@ -82,27 +85,14 @@ export async function GET() {
     })),
   );
 
-  // Race predictions for every distance (and flag the goal distance)
-  const predictions = ["sprint", "olympic", "half", "full"]
-    .map((d) =>
-      predictRace(
-        {
-          ftp,
-          runPaceBase: profile?.runPaceBase ?? null,
-          swimPaceBase: profile?.swimPaceBase ?? null,
-        },
-        d,
-      ),
-    )
-    .filter(Boolean);
-
   return NextResponse.json({
     pmc,
+    pmcUnavailableReason,
+    derivedActivityPolicy: { load:policy, execution:executionPolicy },
     jMetrics,
     activityReconciliation:publicActivityReconciliation(completed,activityDecisions),
     execution,
     executionUnavailableReason,
-    predictions,
     goalDistance: profile?.goal ?? null,
     physiology: { ftp, lthr },
   });

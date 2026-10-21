@@ -1,4 +1,5 @@
 "use client";
+import { MAX_UPLOAD_BYTES } from "@/lib/upload-limits";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -15,13 +16,23 @@ import { NativeDeviceStatus } from "@/components/daily-training/NativeDeviceStat
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
+import { SetupPaths } from "@/components/setup-paths";
+import { StoredStreamsPanel, StreamConsentCheckbox, useStreamStatus } from "@/components/activity-streams";
+import { IMPORT_FILE_FORMATS } from "@/lib/athlete-setup-paths";
+import { STRAVA_AI_NOTICE } from "@/lib/strava-provenance";
+import { importResultMessage } from "@/lib/import-result-message";
 
 export default function ConnectorsPage() {
   const { user } = useAuth();
   const lang = (user?.language || "es") as Lang;
   const [providers, setProviders] = useState<any[]>([]);
+  const [intervalsConnector, setIntervalsConnector] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState<string | null>(null);
+  const { status: streamStatus, reload: reloadStreams } = useStreamStatus();
+  const [streamConsent, setStreamConsent] = useState(false);
+  const [recentStreamIds, setRecentStreamIds] = useState<string[]>([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -151,6 +162,8 @@ export default function ConnectorsPage() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Could not load connections");
       setProviders(d.providers || []);
+      setIntervalsConnector(d.capabilities?.intervalsConnector === true);
+      setRefreshKey((k) => k + 1);
     } catch {
       setErr(lang === "es" ? "No se pudieron cargar las conexiones. Puedes volver a la configuración sin conectar un dispositivo." : "Could not load connections. You can return to setup without connecting a device.");
     } finally { setLoading(false); }
@@ -233,8 +246,8 @@ export default function ConnectorsPage() {
       setMsg("");
       return;
     }
-    if (file.size > 40 * 1024 * 1024) {
-      setErr(lang === "es" ? "El archivo supera 40 MB. Exporta un intervalo menor." : "The file exceeds 40 MB. Export a smaller date range.");
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setErr(lang === "es" ? "El archivo supera 4 MB. Exporta un intervalo menor." : "The file exceeds 4 MB. Export a smaller date range.");
       return;
     }
     setImporting(source);
@@ -243,16 +256,19 @@ export default function ConnectorsPage() {
     const fd = new FormData();
     fd.append("source", source);
     fd.append("file", file);
+    const units = (document.getElementById(`csv-units-${source}`) as HTMLSelectElement | null)?.value;
+    if (units === "metric" || units === "imperial") fd.append("distanceUnits", units);
+    // Second-by-second data is kept only when the operator enabled it AND the athlete ticked the box for this upload.
+    if (streamStatus.enabled && streamConsent && (source === "garmin" || source === "coros")) fd.append("streamConsent", "1");
     try {
       const res = await fetch("/api/import", { method: "POST", body: fd });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ error: res.status === 413 ? (lang === "es" ? "Archivo demasiado grande. Usa un archivo menor de 4 MB." : "Upload too large. Use a file smaller than 4 MB.") : t(lang, "conn.importFailed") }));
       if (!res.ok) throw new Error(data.error || t(lang, "conn.importFailed"));
-      setMsg(
-        lang === "es"
-          ? `${source}: ${data.workoutsImported ?? 0} actividades importadas${data.metricsImported ? `, ${data.metricsImported} días de métricas` : ""}. Revisa los datos disponibles en la configuración; importar no completa los campos que faltan.`
-          : `${source}: ${data.workoutsImported ?? 0} workouts imported${data.metricsImported ? `, ${data.metricsImported} days of metrics` : ""}. Review available data in setup; importing does not fill missing fields.`,
-      );
+      setMsg(importResultMessage(source, data, lang === "es" ? "es" : "en"));
+      setRecentStreamIds(Array.isArray(data.streams?.workoutIds) ? data.streams.workoutIds : []);
+      void reloadStreams();
       input.value = "";
+      setStreamConsent(false);
       load();
     } catch (e: any) {
       setErr(e.message);
@@ -295,33 +311,22 @@ export default function ConnectorsPage() {
               "The first sync requests up to 365 days of available activities; later syncs request activities from one day before the last sync onward.",
             ];
       case "garmin":
-        return p.method === "oauth" && p.configured
-          ? es
-            ? [
-                "Pulsa «Conectar Garmin» e inicia sesión en Garmin Connect.",
-                "Autoriza el acceso de lectura a tus actividades.",
-                "Los entrenamientos sincronizan solos tras cada subida del reloj.",
-              ]
-            : [
-                'Click "Connect Garmin" and log in to Garmin Connect.',
-                "Authorize read access to your activities.",
-                "Workouts sync after each watch upload.",
-              ]
-          : es
-            ? [
-                "Abre connect.garmin.com en Safari o en el navegador de un ordenador e inicia sesión. La exportación se hace en la web de Garmin Connect.",
-                "Para varias actividades: abre Actividades → Todas las actividades y elige Exportar CSV. El archivo contiene las actividades incluidas en esa exportación; no confirma todo tu historial.",
-                "Abre una actividad y elige «Exportar a TCX» en el menú de exportación. «Exportar original» puede generar un FIT, que este importador no acepta.",
-                "Guarda el .tcx o Activities.csv en Archivos/Descargas. Vuelve aquí, elige el archivo y pulsa Importar. Límite: 40 MB; no subas ZIP ni FIT.",
-                "Revisa el resultado de la importación y vuelve a la configuración para revisar los datos disponibles. Un archivo de actividades no incluye necesariamente peso, zonas ni datos de recuperación.",
-              ]
-            : [
-                "Open connect.garmin.com in Safari or a computer browser and sign in. Export from the Garmin Connect website.",
-                "For several activities: open Activities → All Activities and choose Export CSV. This includes the activities in that export, not necessarily your complete history.",
-                'Open an activity and choose "Export to TCX" from its export menu. "Export Original" may produce a FIT file, which this importer does not accept.',
-                "Save the .tcx or Activities.csv in Files/Downloads. Return here, choose that file and press Import. Maximum 40 MB; ZIP and FIT are not accepted.",
-                "Check the import result, then return to setup to review available data. Activity files do not necessarily include weight, zones or recovery data.",
-              ];
+        // Manual file import only. JMM has no Garmin Connect authorization and cannot deliver workouts to a watch.
+        return es
+          ? [
+              "Abre connect.garmin.com en Safari o en el navegador de un ordenador e inicia sesión. La exportación se hace en la web de Garmin Connect.",
+              "Para varias actividades: abre Actividades → Todas las actividades y elige Exportar CSV. El archivo contiene las actividades incluidas en esa exportación; no confirma todo tu historial.",
+              "Abre una actividad y elige «Exportar a TCX» en el menú de exportación. «Exportar original» descarga un ZIP con el archivo .fit: descomprímelo y sube el .fit (el ZIP no se acepta).",
+              "Guarda el .tcx, .fit o Activities.csv en Archivos/Descargas. Vuelve aquí, elige el archivo y pulsa Importar. Límite: 4 MB; no se aceptan ZIP. El Activities.csv debe tener las columnas en inglés; si tu cuenta de Garmin está en otro idioma, exporta cada actividad como TCX.",
+              "Revisa el resultado de la importación y vuelve a la configuración para revisar los datos disponibles. Un archivo de actividades no incluye necesariamente peso, zonas ni datos de recuperación.",
+            ]
+          : [
+              "Open connect.garmin.com in Safari or a computer browser and sign in. Export from the Garmin Connect website.",
+              "For several activities: open Activities → All Activities and choose Export CSV. This includes the activities in that export, not necessarily your complete history.",
+              'Open an activity and choose "Export to TCX" from its export menu. "Export Original" downloads a ZIP containing the .fit file: unzip it and upload the .fit (the ZIP itself is not accepted).',
+              "Save the .tcx, .fit or Activities.csv in Files/Downloads. Return here, choose that file and press Import. Maximum 4 MB; ZIP archives are not accepted. Activities.csv needs the English column names; if your Garmin account is in another language, export each activity as TCX.",
+              "Check the import result, then return to setup to review available data. Activity files do not necessarily include weight, zones or recovery data.",
+            ];
       case "google_cal":
         return es
           ? [
@@ -423,53 +428,11 @@ export default function ConnectorsPage() {
         </div>
 
         <NativeDeviceStatus es={lang === "es"} />
-        <section className="card border-ocean-200 space-y-3" aria-labelledby="watch-setup-heading">
-          <h2 id="watch-setup-heading" className="font-display text-lg font-bold">
-            {lang === "es" ? "¿Quieres el entrenamiento en tu Garmin?" : "Want your workout on Garmin?"}
-          </h2>
-          <p className="text-sm text-slate-700">{lang === "es"
-            ? "Usa tus propias cuentas de Intervals.icu y Garmin Connect. Conecta Garmin dentro de Intervals.icu; después conecta Intervals.icu aquí. Revisa y aprueba tu sesión en Hoy antes de publicarla."
-            : "Use your own Intervals.icu and Garmin Connect accounts. Connect Garmin inside Intervals.icu, then connect Intervals.icu here. Review and approve your workout in Today before publishing it."}</p>
-          <p className="text-sm text-slate-700">{lang === "es"
-            ? "JMM puede publicar carrera y bicicleta cuando esta conexión está habilitada. Comprueba el entrenamiento en Garmin Connect y en el reloj antes de empezar. La confirmación de Intervals.icu no confirma recepción en el reloj."
-            : "JMM can publish run and bike workouts when this connection is enabled. Check the workout in Garmin Connect and on your watch before starting. Confirmation from Intervals.icu does not confirm watch receipt."}</p>
-          <div className="flex flex-wrap gap-3">
-            {providers.some(p => p.id === "intervals") && <a href="#intervals-connection" className="btn-primary">{lang === "es" ? "Configurar Intervals.icu" : "Set up Intervals.icu"}</a>}
-            <a href="/today" className="btn-secondary">{lang === "es" ? "Ver mi entrenamiento" : "See my workout"}</a>
-            <a href={`/help/pilot?lang=${lang === "es" ? "es" : "en"}`} className="self-center underline text-sm">{lang === "es" ? "Guía paso a paso" : "Step-by-step guide"}</a>
-          </div>
-          {!loading && !providers.some(p => p.id === "intervals") && <p className="text-sm text-amber-800">{lang === "es" ? "Intervals.icu aún no está disponible aquí. Puedes seguir el entrenamiento en Hoy y revisar las opciones de descarga FIT allí." : "Intervals.icu is not available here yet. Follow your workout in Today and review its FIT download options there."}</p>}
-        </section>
-
-        {/* How it works — 3 steps, always visible */}
-        <div className="grid sm:grid-cols-3 gap-3">
-          {[
-            {
-              n: "1",
-              es: "Conecta y autoriza tu cuenta",
-              en: "Connect & authorize your account",
-            },
-            {
-              n: "2",
-              es: "Revisa la última importación y sus errores",
-              en: "Check the last import and any errors",
-            },
-            {
-              n: "3",
-              es: "Sin conexión: sube tu historial o usa Hoy",
-              en: "No connection: upload history or use Today",
-            },
-          ].map((s) => (
-            <div key={s.n} className="card flex items-center gap-3 !py-3">
-              <span className="w-8 h-8 rounded-full bg-ocean-600 text-white font-display font-bold flex items-center justify-center shrink-0">
-                {s.n}
-              </span>
-              <span className="text-sm font-medium text-slate-700">
-                {lang === "es" ? s.es : s.en}
-              </span>
-            </div>
-          ))}
-        </div>
+        <SetupPaths lang={lang === "es" ? "es" : "en"} providers={providers} intervalsConnector={intervalsConnector} loading={loading} refreshKey={refreshKey} />
+        <p className="text-sm">
+          <a href={`/help/pilot?lang=${lang === "es" ? "es" : "en"}`} className="underline min-h-11 inline-flex items-center">{lang === "es" ? "Guía paso a paso" : "Step-by-step guide"}</a>
+        </p>
+        <h2 className="font-display text-lg font-bold" id="manage-connections">{lang === "es" ? "Gestionar conexiones e importar archivos" : "Manage connections and import files"}</h2>
 
         {msg && (
           <div role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
@@ -482,6 +445,7 @@ export default function ConnectorsPage() {
             ✗ {err}
           </div>
         )}
+        <StoredStreamsPanel lang={lang === "es" ? "es" : "en"} status={streamStatus} reload={reloadStreams} recentIds={recentStreamIds} />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <button
@@ -590,7 +554,7 @@ export default function ConnectorsPage() {
             return (
               <div
                 key={p.id}
-                id={p.id === "intervals" ? "intervals-connection" : undefined}
+                id={p.id === "intervals" ? "intervals-connection" : `provider-${p.id}`}
                 className={`card ${connected ? "border-emerald-300" : ""}`}
               >
                 <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
@@ -693,6 +657,14 @@ export default function ConnectorsPage() {
                   )}
                   {p.method === "upload" && (
                     <div className="space-y-2">
+                      {p.id === "garmin" && <label className="block text-xs">
+                        {lang === "es" ? "Solo CSV: unidades de distancia de la exportación" : "CSV only: distance units in your export"}
+                        <select id={`csv-units-${p.id}`} className="input text-xs" defaultValue="">
+                          <option value="">{lang === "es" ? "No sé — omitir distancia" : "Not sure — omit distance"}</option>
+                          <option value="metric">{lang === "es" ? "Kilómetros / metros en natación" : "Kilometres / metres for swimming"}</option>
+                          <option value="imperial">{lang === "es" ? "Millas / yardas en natación" : "Miles / yards for swimming"}</option>
+                        </select>
+                      </label>}
                       <div className="flex flex-col sm:flex-row gap-2">
                         <input
                           id={`file-${p.id}`}
@@ -701,11 +673,11 @@ export default function ConnectorsPage() {
                           aria-label={lang === "es" ? `Archivo de ${p.name}` : `${p.name} file`}
                           disabled={importing !== null}
                           accept={
-                            p.id === "garmin"
-                              ? ".tcx,.xml,.csv"
+                            (p.id === "garmin"
+                              ? IMPORT_FILE_FORMATS.garmin
                               : p.id === "apple"
-                                ? ".xml"
-                                : ".csv,.txt"
+                                ? IMPORT_FILE_FORMATS.apple
+                                : IMPORT_FILE_FORMATS.whoop).join(",")
                           }
                         />
                         <button
@@ -724,16 +696,19 @@ export default function ConnectorsPage() {
                       <div className="text-[10px] text-slate-400">
                         {lang === "es"
                           ? p.id === "garmin"
-                            ? "Acepta TCX o Activities.csv de Garmin Connect (hasta 40 MB). Solo se importan las actividades válidas incluidas en el archivo; no confirma un historial completo."
+                            ? "Acepta TCX, FIT (actividad) o Activities.csv de Garmin Connect (hasta 4 MB; sin ZIP). Solo se importan las actividades válidas incluidas en el archivo; no confirma un historial completo."
                             : p.id === "apple"
                               ? "Acepta el export.xml de Apple Health."
                               : "Acepta el CSV exportado de Whoop."
                           : p.id === "garmin"
-                            ? "Accepts TCX or Garmin Connect Activities.csv (up to 40 MB). Only valid activities included in the file are imported; this does not confirm a complete history."
+                            ? "Accepts TCX, FIT (activity) or Garmin Connect Activities.csv (up to 4 MB; no ZIP). Only valid activities included in the file are imported; this does not confirm a complete history."
                             : p.id === "apple"
                               ? "Accepts the Apple Health export.xml."
                               : "Accepts the CSV exported from Whoop."}
                       </div>
+                      {p.id === "garmin" && streamStatus.enabled && (
+                        <StreamConsentCheckbox lang={lang === "es" ? "es" : "en"} retentionDays={streamStatus.retentionDays} checked={streamConsent} onChange={setStreamConsent} />
+                      )}
                     </div>
                   )}
                   {p.id === "oura" && !p.configured && (
@@ -798,8 +773,8 @@ export default function ConnectorsPage() {
                   : "Garmin or COROS: import activities through Strava"}
               </strong>{" "}
               {lang === "es"
-                ? "Conecta tu cuenta de Garmin o COROS a Strava y después autoriza Strava aquí, si está disponible. Esto permite importar actividades completadas que Strava autorice compartir. No envía entrenamientos estructurados de JMM a Garmin Connect ni al reloj."
-                : "Connect your Garmin or COROS account to Strava, then authorize Strava here if available. This imports completed activities that Strava permits sharing. It does not send JMM structured workouts to Garmin Connect or your watch."}
+                ? `Conecta tu cuenta de Garmin o COROS a Strava y después autoriza Strava aquí, si está disponible. Esto permite importar actividades completadas que Strava autorice compartir. No envía entrenamientos estructurados de JMM a Garmin Connect ni al reloj. ${STRAVA_AI_NOTICE.es}`
+                : `Connect your Garmin or COROS account to Strava, then authorize Strava here if available. This imports completed activities that Strava permits sharing. It does not send JMM structured workouts to Garmin Connect or your watch. ${STRAVA_AI_NOTICE.en}`}
             </div>
           </div>
         </div>
@@ -810,8 +785,8 @@ export default function ConnectorsPage() {
             <div className="text-sm text-ocean-900">
               <strong>{t(lang, "conn.which")}</strong>{" "}
               {lang === "es"
-                ? "Strava consulta hasta 365 días de actividades disponibles en la primera sincronización. Los archivos TCX y Garmin CSV permiten añadir historial anterior. Whoop y Oura aportan recuperación y sueño; Apple Health acepta export.xml hasta 40 MB."
-                : "Strava requests up to 365 days of available activities on first sync. TCX and Garmin CSV imports can add earlier history. Whoop and Oura supply recovery and sleep; Apple Health accepts export.xml up to 40 MB."}
+                ? "Strava consulta hasta 365 días de actividades disponibles en la primera sincronización. Los archivos TCX y Garmin CSV permiten añadir historial anterior. Whoop y Oura aportan recuperación y sueño; Apple Health acepta export.xml hasta 4 MB."
+                : "Strava requests up to 365 days of available activities on first sync. TCX and Garmin CSV imports can add earlier history. Whoop and Oura supply recovery and sleep; Apple Health accepts export.xml up to 4 MB."}
             </div>
           </div>
         </div>

@@ -15,7 +15,7 @@ export async function GET() {
   const recent = {gte:new Date(now.getTime()-30*86400000),lte:now};
   const historyWhere = {userId:user.id,planned:false,completed:true,externalId:{not:null},source:{notIn:["manual","plan"]}};
   const trainingWindow = importedTrainingWindow(user.timezone, now);
-  const [rows, weights, connectors, totals, sports, raceResults, trainingRows,activityDecisions] = await Promise.all([
+  const [rows, weights, connectors, totals, sports, raceResults, trainingRows,activityDecisions, bySource] = await Promise.all([
     prisma.metricObservation.findMany({
       where:{userId:user.id,metricType:{in:ONBOARDING_METRICS},observedAt:recent,qualityFlag:"ok"},
       select:{id:true,metricType:true,value:true,unit:true,source:true,observedAt:true,qualityFlag:true,measurementMethod:true},
@@ -33,11 +33,13 @@ export async function GET() {
     prisma.workout.findMany({where:{...historyWhere,date:{gte:localDate(trainingWindow.startKey,user.timezone),lte:now}},
       select:ACTIVITY_EVIDENCE_SELECT,orderBy:[{date:"desc"},{id:"asc"}],take:2001}),
     readActivityDecisions(user.id),
+    // Per-source stored counts for the setup screen. A source with no rows is absent here, which the client reads as 0 only because this list loaded.
+    prisma.workout.groupBy({by:["source"],where:historyWhere,_count:{_all:true},_max:{date:true},orderBy:{source:"asc"}}),
   ]);
   return Response.json({
     observations:onboardingObservations(rows,now),
     suggestions:importedWeightSuggestions(weights,connectors.filter(c=>c.status==="connected"||c.status==="error").map(c=>c.provider),now),
-    history:{count:totals._count._all,earliestAt:totals._min.date?.toISOString()??null,latestAt:totals._max.date?.toISOString()??null,sports:sports.map(s=>({sport:s.sport,count:s._count._all}))},
+    history:{count:totals._count._all,earliestAt:totals._min.date?.toISOString()??null,latestAt:totals._max.date?.toISOString()??null,sports:sports.map(s=>({sport:s.sport,count:s._count._all})),bySource:bySource.map(s=>({source:s.source,count:s._count._all,latestAt:s._max.date?.toISOString()??null}))},
     raceResults:onboardingRaceResults(raceResults,now),
     connectors,
     trainingReview:importedTrainingReview(trainingRows.slice(0,2000),user.timezone,now,trainingRows.length>2000,activityDecisions),

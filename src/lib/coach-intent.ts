@@ -44,7 +44,7 @@ export function groundCoachChanges(raw:unknown,message:string,context:CandidateC
   if(!Array.isArray(raw)||raw.length>12||!message.trim()||/[<>]|ignore (?:all|previous|system)|system prompt|developer message|exfiltrate/i.test(message))return [];
   if(/\b(?:maybe|hypothetically|suppose|not sure|quizás|quizas|tal vez|supongamos)\b/i.test(message))return [];
   if(/\b(?:my (?:friend|partner|wife|husband|coach)|mi (?:amig[oa]|pareja|espos[oa]|entrenador)|what if|if i|if my|used to|last year|last month|previously|el año pasado|antes pesaba)\b/i.test(message))return [];
-  if(/\b(?:do not|don't|not|no|nunca)\s+(?:change|set|update|make|log|record|save|cambies|cambiar|guardes|registres)|\bnot\s+\d/i.test(message))return [];
+  if(/\b(?:do not|don't|not|no|nunca)\s+(?:change|set|update|correct|make|shorten|reduce|extend|switch|log|record|save|cambies|cambiar|actualices|ajustes|guardes|registres)|\bnot\s+\d/i.test(message))return [];
   if(!edit.test(message)&&(/[?¿]/.test(message)||/\b(?:should|would|what|why|how|debería|deberia|que|cómo)\b/i.test(message)))return [];
   const ownsFact=/\b(?:i am|i'm|i weigh|my|mi|peso|soy|mido|i did|i ran|i rode|i swam)\b/i.test(message);
   const availableTime=/\b(?:i (?:only )?have|i can spare|tengo|solo tengo|dispongo de)\b/i.test(message)&&/\b(?:minutes?|mins?|hours?|hour|minutos?|horas?)\b/i.test(message);

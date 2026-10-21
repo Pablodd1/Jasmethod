@@ -13,6 +13,7 @@
     "db:deploy": "prisma migrate deploy",
     "admin:grant": "tsx scripts/grant-admin.ts",
     "test": "node --import tsx --test src/lib/*.test.ts src/components/daily-training/*.test.ts",
+    "check:google-calendar": "node --import tsx scripts/check-google-calendar-redirect.ts",
     "test:integration": "node --import tsx scripts/integration-check.ts",
     "test:sync": "node --import tsx scripts/sync-check.ts",
     "db:migrate-production": "node scripts/migrate-production.mjs",
@@ -37,7 +38,7 @@
     "fast-xml-parser": "^5.11.1",
     "jose": "^5.10.0",
     "lucide-react": "^0.454.0",
-    "next": "15.5.26",
+    "next": "15.5.28",
     "nodemailer": "^10.0.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -53,7 +54,7 @@
     "@typesafe-ai/sdk": "^0.6.0",
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
-    "eslint-config-next": "^15.5.26",
+    "eslint-config-next": "15.5.28",
     "playwright": "1.62.1",
     "postcss": "^8.5.23",
     "prisma": "^5.22.0",
@@ -62,6 +63,9 @@
     "typescript": "^5.6.3"
   },
   "overrides": {
-    "postcss": "^8.5.23"
+    "postcss": "^8.5.23",
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2",
+    "postcss-selector-parser": "7.1.7"
   }
 }

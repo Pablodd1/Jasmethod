@@ -1,15 +1,21 @@
-# Athlete launch workflow and verification — 15 October 2026
+# Athlete daily-flow contract and verification
 
-This change closes specific athlete workflow gaps. It does not establish validated race predictions, device receipt, or unrestricted AI coaching.
+Confirmed product contract reviewed 21 October 2026. This document records the user's daily-flow requirements for future maintainers; it is repository memory, not a claim that draft changes are deployed. It does not establish validated race predictions, device receipt, or unrestricted AI coaching.
 
 ## Daily training: saved plan versus execution
 
-1. Owner-scoped Today reads the athlete-local day, saved cycle, planned sessions, imported activity and check-in.
-2. Missing check-in answers produce a compact **Check-in needed** notice. The saved workout remains visible as a read-only preview. Missing answers do not establish illness or a rest day.
-3. A canonical block after an otherwise complete check-in produces **Review training**, for example when activity was recorded after the previous review.
-4. Actual illness, pain, injury and urgent holds retain their priority. Neither presentation change clears a workout, creates performed activity, or enables optional movement.
-5. The daily cue asks for review instead of calling a zero-minute held prescription a recovery-day decision.
-6. Existing session-day check-in and budget calculations remain authoritative for executable targets and FIT eligibility. A saved cycle is not replaced by changing a race.
+1. Open Today: read the owner-scoped current plan for the athlete-local day first. Show its saved sessions while richer context loads. Viewing a plan does not require a questionnaire and does not approve exercise.
+2. Refresh supported providers in the background, with visible failure/partial status. A successful sync means provider contact, not proof of current measurements, complete history or watch receipt.
+3. Use current, quality-checked, permitted observations before asking for numbers. Keep provider, units, observation/import dates and limitations. Conflicting readings, unknown provenance and stale data remain unresolved. Sleep hours do not answer sleep quality; wearables do not answer illness, new pain or urgent symptoms.
+4. The full check-in remains available. An eligible, unchanged, timed easy session can instead use a **short review**: the athlete explicitly confirms current symptoms, unchanged recovery concerns and displayed remaining daily time. The five subjective scales stay null; no readiness score or additional training is invented. This is a scoped confirmation for one session, not medical clearance or a new coaching engine.
+5. Hard or uncertain sessions, setup gaps, insufficient activity provenance, actual-work uncertainty, known safety/recovery/time restrictions and changed context require the fuller review. Resetting a form must not erase a known restriction. Zero available minutes is an explicit no-training-time answer; an unanswered field is unknown.
+6. Review/edit the existing session, then separately approve the exact current canonical revision. Editing, reconciliation or new actual feedback can invalidate approval. Repeated reads, confirmations and retries must not create another workout. Supported FIT/file export is distinct from automatic delivery and destination receipt.
+7. For imported completion, show known actual duration and ask only for missing effort/outcome. Corrections use the shared revision-aware writer. Never substitute planned duration for performed duration. Feed permitted actual work through the existing execution/readiness services; no automatic intensity increase or catch-up debt follows a completion.
+8. Keep one authoritative plan, existing cycles and canonical instructions across Today, coach, calendar, messages and exports. Preserve real multiple sessions, bricks and reported history. Duplicate review starts with a dry run; ambiguous records require explicit review, not deletion or added capacity.
+
+Executable boundaries: `daily-input-context.ts`, `effective-prescription.ts`, `existing-workout-review.ts`, `checkin-review-service.ts`, the shared workout writer and existing canonical/export services. These additions retrieve evidence and authorize an existing easy session; they do not replace generation, safety scoring or the workout store.
+
+See [acceptance lanes](testing/athlete-release-candidate.md), [input evidence and limitations](testing/daily-input-evidence-2026-10-21.md) and [dated integration capabilities](integrations/2026-10-21-capabilities.md). Re-evaluate those dated facts before enabling an external path. Preserve the bilingual contact/FAQ/booking flow and the supplied booking destination: https://cal.com/videocall-intro/15-minutes-overview.
 
 ## Explicit sport authoring
 
@@ -44,7 +50,7 @@ Recorded-minute ranges show overlap interpretations. Missing weeks/durations rem
 
 An explicitly reported weekly baseline is never silently replaced by raw import counts. The athlete reviews completeness, tolerability and recovery, then edits and confirms the existing setup if appropriate.
 
-## Verification
+## Earlier verification — 15 October 2026
 
 - 1,423 unit/contract tests passed; TypeScript passed.
 - Production build passed against the isolated database and sanitized configuration.

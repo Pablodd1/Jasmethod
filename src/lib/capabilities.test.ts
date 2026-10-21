@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { intervalsConnectorEnabled, automatedDeliveryEnabled } from "./capabilities";
+import { intervalsConnectorEnabled, stravaConnectorEnabled, automatedDeliveryEnabled } from "./capabilities";
 import { intervalsUpsertFit, intervalsDeleteOwnedEvent } from "./intervals";
 import { allDeliveryGuides } from "./device-delivery";
 
@@ -9,9 +9,11 @@ import { allDeliveryGuides } from "./device-delivery";
 test("optional capabilities fail closed; only explicit true enables them", () => {
   for (const value of [undefined, "", "false", "1", "TRUE", " true "]) {
     assert.equal(intervalsConnectorEnabled({ ENABLE_INTERVALS_CONNECTOR: value }), false);
+    assert.equal(stravaConnectorEnabled({ ENABLE_STRAVA_CONNECTOR: value }), false);
     assert.equal(automatedDeliveryEnabled({ ENABLE_AUTOMATED_DELIVERY: value }), false);
   }
   assert.equal(intervalsConnectorEnabled({ ENABLE_INTERVALS_CONNECTOR: "true" }), true);
+  assert.equal(stravaConnectorEnabled({ ENABLE_STRAVA_CONNECTOR: "true" }), true);
   assert.equal(automatedDeliveryEnabled({ ENABLE_AUTOMATED_DELIVERY: "true" }), true);
 });
 

@@ -7,6 +7,7 @@ import * as api from "./importers";
 import { createOAuthState } from "./oauth-state";
 import { appMutationOriginAllowed } from "./request-origin";
 import { intervalsAuthUrl, intervalsExchangeToken, intervalsOAuthConfigured, IntervalsOAuthError } from "./intervals-oauth";
+import { stravaConnectorEnabled, STRAVA_DISABLED_MESSAGE } from "./capabilities";
 
 const providers = {
   intervals: { env: "INTERVALS", key: "intervals", auth: intervalsAuthUrl, exchange: intervalsExchangeToken },
@@ -115,6 +116,8 @@ export async function authorizeSmokeCalendar(req: Request) {
 export async function authorize(req: Request, provider: string, options?: { mode: "smoke" }) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
+  if (provider === "strava" && !stravaConnectorEnabled())
+    return Response.json({ error: STRAVA_DISABLED_MESSAGE, code: "provider_disabled" }, { status: 503 });
   const params = new URL(req.url).searchParams;
   const smoke = options?.mode === "smoke";
   if (smoke) {
@@ -192,6 +195,7 @@ export async function callback(req: Request, provider: string) {
   let base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const redirect = (error: string) =>
     NextResponse.redirect(`${base}/connectors?error=${error}`);
+  if (canonical === "strava" && !stravaConnectorEnabled()) return redirect("provider_disabled");
   const u = new URL(req.url), state = u.searchParams.get("state") || "";
   if (!state) return redirect("invalid_state");
   // The initiating athlete is bound by a durable transaction, not by the
@@ -264,6 +268,9 @@ export async function callback(req: Request, provider: string) {
         ? { refreshEnc: encryptSecret(token.refresh_token) }
         : {}),
       ...(p.key === "intervals" ? { refreshEnc: null, lastSyncAt: null, lastSyncCount: null, syncStartedAt: null } : {}),
+      // Explicit WHOOP reauthorization also requests a fresh bounded history
+      // import, including records an older workout window may have missed.
+      ...(p.key === "whoop" ? { lastSyncAt: null, lastSyncCount: null, syncStartedAt: null } : {}),
       expiresAt: p.key === "intervals" ? null : new Date(
         token.expires_at
           ? token.expires_at * 1000

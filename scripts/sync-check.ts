@@ -51,7 +51,7 @@ async function main() {
     sport: "bike",
     title: "Imported ride",
     durationMin: 60,
-    source: "strava",
+    source: "garmin",
     externalId: "test-ride",
   };
   const imports = await Promise.all([

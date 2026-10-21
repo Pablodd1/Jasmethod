@@ -5,11 +5,13 @@
 import { prisma } from "./db";
 import { dateKey, dayBounds, addDaysKey, localDate } from "./dates";
 import { estimateTss } from "./fitness";
+import { derivedActivityPolicy, type DerivedActivityPolicy } from "./derived-activity-policy";
 
 export interface WeeklyReview {
   subject: string;
   text: string;
   hasData: boolean;
+  derivedActivityPolicy?: DerivedActivityPolicy;
 }
 
 export async function buildWeeklyReview(
@@ -24,7 +26,7 @@ export async function buildWeeklyReview(
   const [planned, completed, profile] = await Promise.all([
     prisma.workout.findMany({
       where: { userId, planned: true, date: { gte: start, lt: end } },
-      select: { id: true, durationMin: true, completed: true, feedbackStatus: true, title: true, date: true },
+      select: { id: true, durationMin: true, completed: true, feedbackStatus: true, title: true, date: true, source: true, externalId: true, notes: true },
     }),
     prisma.workout.findMany({
       where: { userId, completed: true, date: { gte: start, lt: end } },
@@ -32,6 +34,7 @@ export async function buildWeeklyReview(
         title: true, date: true, sport: true, durationMin: true,
         actualDurationMin: true, avgHr: true, np: true, avgPower: true,
         rpe: true, intensity: true, distanceKm: true, tss: true, matchedPlanId: true,
+        source: true, externalId: true, notes: true,
       },
       orderBy: { date: "desc" },
     }),
@@ -40,6 +43,14 @@ export async function buildWeeklyReview(
       select: { ftp: true, lthr: true },
     }),
   ]);
+
+  const policy = derivedActivityPolicy([...planned, ...completed]);
+  if (policy.status !== "allowed") return {
+    subject: es ? "Tu semana — revisión pendiente" : "Your week — review needed",
+    hasData: planned.length > 0 || completed.length > 0, derivedActivityPolicy: policy,
+    text: es ? "El resumen de entrenamiento no está disponible porque incluye datos de origen Strava o desconocido. Los registros se conservan. Excluir ese trabajo subestimaría el entrenamiento; no se infiere descanso ni capacidad para entrenar más."
+      : "Training summary is unavailable because records include Strava or unknown origin. Source records are preserved. Excluding that work would understate training; no rest or additional training capacity is inferred.",
+  };
 
   const plannedCount = planned.filter((p) => p.durationMin > 0).length;
   const donePlanned = planned.filter(

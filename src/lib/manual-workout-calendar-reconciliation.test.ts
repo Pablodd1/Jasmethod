@@ -6,24 +6,30 @@ import vm from "node:vm";
 import ts from "typescript";
 import * as dates from "./dates";
 import * as calendar from "./manual-workout-calendar";
+import * as visibility from "./calendar-workouts";
 import { googleCalUpsertEvent, googleCalDeleteEvent } from "./importers";
 
-function syntheticSync(options: { moved?: boolean; failDelete?: boolean; approved?: boolean; approvalRevision?: string; startTime?: string | null } = {}) {
+function syntheticSync(options: { moved?: boolean; failDelete?: boolean; approved?: boolean; approvalRevision?: string; startTime?: string | null; retired?: boolean; nonLatestActive?: boolean; reportedHistory?: boolean; retiredSource?: boolean } = {}) {
   const start = dates.dayBounds("UTC").start;
-  const workout = { id: "synthetic-session", userId: "athlete", date: new Date(start.getTime() + (options.moved ? 20 : 1) * 86400000), startTime: options.startTime ?? null, durationMin: 45, planned: true, approved: options.approved ?? false, title: "Synthetic workout", feedbackStatus: null, planDay: null };
-  const link = { id: "synthetic-link", userId: "athlete", workoutId: workout.id, date: new Date(start.getTime() + 86400000), notes: "gcalPush:synthetic-event" };
+  const workout = { id: "synthetic-session", userId: "athlete", date: new Date(start.getTime() + (options.reportedHistory ? -1 : options.moved ? 20 : 1) * 86400000), startTime: options.startTime ?? null, durationMin: 45, planned: !options.reportedHistory, completed: !!options.reportedHistory, source: options.retiredSource ? "superseded-starter" : "plan", approved: options.approved ?? false, title: "Synthetic workout", feedbackStatus: null, planDay: options.retired || options.nonLatestActive ? { dayOff: false, plan: { id: "old-plan", status: options.nonLatestActive ? "active" : "archived", userId: "athlete" } } : null };
+  const link = { id: "synthetic-link", userId: "athlete", workoutId: workout.id, date: options.reportedHistory ? workout.date : new Date(start.getTime() + 86400000), notes: "gcalPush:synthetic-event" };
   const calls: { published: any[]; deleted: string[]; localDeleted: any[]; updates: any[] } = { published: [], deleted: [], localDeleted: [], updates: [] };
   const user = { timezone: "UTC", language: "en", email: "athlete@example.invalid", profile: null };
   const prisma = {
     user: { findUniqueOrThrow: async () => user },
     connector: { findMany: async () => [{ id: "synthetic-connector", provider: "google_cal", tokenEnc: "synthetic" }], updateMany: async (arg: any) => { calls.updates.push(arg); return { count: 1 }; } },
-    workout: { findMany: async ({ where }: any) => { assert.equal(where.userId, "athlete"); return workout.date < where.date.lt ? [workout] : []; }, findFirst: async ({ where }: any) => { assert.equal(where.userId, "athlete"); return workout; } },
-    calendarEvent: { findMany: async ({ where }: any) => { assert.equal(where.userId, "athlete"); return [link]; }, deleteMany: async () => ({ count: 0 }), update: async () => ({}), delete: async (arg: any) => { calls.localDeleted.push(arg); } },
+    trainingPlan: { findFirst: async ({where}:any) => { assert.equal(where.userId,"athlete"); assert.equal(where.status,"active"); return {id:"current-plan"}; } },
+    workout: { findMany: async ({ where }: any) => {
+      assert.equal(JSON.stringify(where.AND[0]),JSON.stringify(visibility.currentOrReportedWorkoutWhere("athlete","current-plan")));
+      const range=where.AND[1].date;
+      return workout.planned && workout.date>=range.gte && workout.date<range.lt && visibility.isCurrentOrReportedWorkout(workout,"athlete","current-plan") ? [workout] : [];
+    }, findFirst: async ({ where }: any) => { assert.equal(where.userId, "athlete"); return workout; } },
+    calendarEvent: { findMany: async ({ where }: any) => { assert.equal(where.userId, "athlete"); assert.equal(where.type,"workout"); assert.equal(where.notes.startsWith,"gcalPush:"); return [link]; }, deleteMany: async () => ({ count: 0 }), update: async () => ({}), delete: async (arg: any) => { calls.localDeleted.push(arg); } },
     auditLog: { findFirst: async () => options.approvalRevision ? { after: JSON.stringify({ revision: options.approvalRevision }) } : null },
     $transaction: async (fn: any) => fn({ $executeRaw: async () => 1, athleteProfile: { findUnique: async () => null } }),
   };
   const deps: Record<string, unknown> = {
-    "./manual-workout-calendar": calendar, "./dates": dates, "./device-metric-snapshot":deviceMetricSnapshot,
+    "./manual-workout-calendar": calendar, "./calendar-workouts": visibility, "./dates": dates, "./device-metric-snapshot":deviceMetricSnapshot,
     "./db": { prisma },
     "./manual-workout-email-locale": { manualEmailLanguage: () => "en" },
     "./manual-workout-email": { eligibleManualEmail: () => false, manualEmailConfigured: () => false },
@@ -51,6 +57,20 @@ test("calendar sync retracts a workout moved past the 14-day horizon", async () 
   assert.equal(fixture.calls.published.length, 0);
   assert.deepEqual(fixture.calls.deleted, ["synthetic-event"]);
   assert.equal(fixture.calls.localDeleted.length, 1);
+});
+
+for (const retired of [{retired:true},{retiredSource:true},{nonLatestActive:true}]) test(`calendar sync cannot publish a retired suggestion and retracts its owned future placeholder: ${JSON.stringify(retired)}`, async () => {
+  const fixture=syntheticSync(retired);
+  assert.equal((await fixture.run()).results[0].ok,true);
+  assert.equal(fixture.calls.published.length,0);
+  assert.deepEqual(fixture.calls.deleted,["synthetic-event"]);
+  assert.deepEqual(fixture.calls.localDeleted.map(call=>call.where.id),["synthetic-link"]);
+});
+
+test("calendar sync retains actual historical activity from an archived plan",async()=>{
+  const fixture=syntheticSync({retired:true,reportedHistory:true});
+  assert.equal((await fixture.run()).results[0].ok,true);
+  assert.equal(fixture.calls.published.length,0);assert.deepEqual(fixture.calls.deleted,[]);assert.deepEqual(fixture.calls.localDeleted,[]);
 });
 
 test("failed remote removal retains the mapping and reports failure for retry", async () => {

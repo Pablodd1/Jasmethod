@@ -96,25 +96,25 @@ export const RIEGEL_B_DEFAULT = C(
 );
 
 // ---------------------------------------------------------------------------
-// Altitude (adjudication Conflict 1: Wehrlin-linear, NOT 1%/1000ft)
+// Altitude: distinguish published VO2max response from time-to-exhaustion and race pace.
 // ---------------------------------------------------------------------------
 
-export const ALTITUDE_PCT_PER_1000FT = C(
-  "power_loss_percent_per_1000ft_altitude", 4.4, "TUNED_DEFAULT",
-  "Wehrlin & Hallén 2006 linear VO2max decrease (~14.5%/1000m ≈ 4.4%/1000ft)",
-  "Exact figure UNVERIFIED in training data; the 1%/1000ft rule of thumb was REJECTED as ~4x underestimate",
+export const ALTITUDE_VO2_PCT_PER_1000M = C(
+  "vo2max_loss_percent_per_1000m_altitude", 6.3, "VERIFIED",
+  "Wehrlin & Hallen 2006, PMID 16311764, https://pubmed.ncbi.nlm.nih.gov/16311764/",
+  "Reported group mean: 6.3% per 1000 m from 300 to 2800 m (individual range 4.6-7.5%). This is VO2max, not sustainable watts or race pace. The 14.5% result describes time to exhaustion.",
 );
 export const ALTITUDE_THRESHOLD_M = C(
-  "altitude_threshold_m", 150, "TUNED_DEFAULT",
-  "Negligible below this venue elevation (linear model has no hard threshold)",
+  "altitude_reference_m", 300, "VERIFIED",
+  "Wehrlin & Hallen 2006 study reference altitude, PMID 16311764; not a physiological threshold.",
 );
 export const ALTITUDE_CAP = C(
-  "altitude_cap_fraction", 0.35, "TUNED_DEFAULT",
-  "Sanity cap on total aerobic-power loss",
+  "altitude_context_cap_fraction", 0.1575, "TUNED_DEFAULT",
+  "6.3% x 2.5 km: restrict descriptive interpolation to the reported 300-2800 m range; no extrapolation.",
 );
 export const ALTITUDE_PACE_TRANSMISSION = C(
-  "altitude_pace_transmission", 0.85, "TUNED_DEFAULT",
-  "Sub-threshold pace degrades less than VO2max falls (slower speed = lower absolute O2 cost)",
+  "altitude_pace_transmission", 0, "UNVERIFIED",
+  "Disabled: VO2max loss does not validate an individual race-pace correction.",
 );
 
 // ---------------------------------------------------------------------------
@@ -236,7 +236,7 @@ export function allConstants(): ForecastConstant[] {
     DRIVETRAIN_EFFICIENCY, RHO_SEA_LEVEL_15C, CRR_RANGE, CDA_DEFAULT_TRI,
     WIND_LOOP_HEADWIND_FRACTION, GROSS_EFFICIENCY, CP_VALID_RANGE_MIN,
     IF_BANDS_CONST, RIEGEL_B_DEFAULT,
-    ALTITUDE_PCT_PER_1000FT, ALTITUDE_THRESHOLD_M, ALTITUDE_CAP, ALTITUDE_PACE_TRANSMISSION,
+    ALTITUDE_VO2_PCT_PER_1000M, ALTITUDE_THRESHOLD_M, ALTITUDE_CAP, ALTITUDE_PACE_TRANSMISSION,
     WBGT_WEIGHTS, GLOBE_TEMP_EST_COEFFS, WBGT_REDFLAG_RANGE, WBGT_BLACKFLAG_GT,
     HEAT_RUN_CURVE, HEAT_BIKE_CURVE,
     SWIM_DRAFT_ENERGY_SAVINGS_MAX, SWIM_DRAFT_TIME_TRANSMISSION,
@@ -269,7 +269,7 @@ export interface RejectedClaim {
 export const REJECTED_CLAIMS: RejectedClaim[] = [
   {
     claim: "Altitude costs ~1% power per 1,000 ft",
-    why: "Underestimates ~4x vs the Wehrlin-linear model (≈4.4%/1000ft). Conflates perceived exertion with VO2max decline.",
+    why: "Not established as a universal race-power rule. Wehrlin & Hallen report 6.3% VO2max decline per 1000 m, not 4.4% per 1000 ft and not race-power loss.",
   },
   {
     claim: "Heat slows pace 0.4%/°F above 60°F + 0.2%/humidity-% above 60%",

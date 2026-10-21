@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 /** Every projected reader of a reconciliation fingerprint must use this contract. */
-export const ACTIVITY_EVIDENCE_SELECT={id:true,userId:true,date:true,sport:true,actualSport:true,source:true,externalId:true,planned:true,completed:true,durationMin:true,actualDurationMin:true,distanceKm:true,rpe:true,feedbackStatus:true,feedbackAt:true,matchedPlanId:true} as const;
+export const ACTIVITY_EVIDENCE_SELECT={id:true,userId:true,date:true,sport:true,actualSport:true,source:true,externalId:true,notes:true,planned:true,completed:true,durationMin:true,actualDurationMin:true,distanceKm:true,rpe:true,feedbackStatus:true,feedbackAt:true,matchedPlanId:true} as const;
 
 /** Provider rows stay immutable. Grouping changes only how evidence is counted. */
 export interface ActivityEvidenceRow {
   id?: string; userId?: string; date: Date | string; sport?: string; actualSport?: string | null;
   source?: string | null; externalId?: string | null; planned?: boolean; completed?: boolean;
+  notes?: string | null; originalSource?: string | null;
   durationMin?: number | null; actualDurationMin?: number | null; distanceKm?: number | null;
   rpe?: number | null; feedbackStatus?: string | null; feedbackAt?: Date | string | null;
   matchedPlanId?: string | null;
