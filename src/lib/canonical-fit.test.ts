@@ -54,6 +54,27 @@ test("a previously zeroed adaptation stays review-needed under unknown safety, p
   assert.equal(injured.canonical.verdict,"rest");assert.match(injured.canonical.reason,/injury/);
 });
 
+test("stored unknown rest adaptation cannot turn missing or unresolved evidence into a recovery prescription",()=>{
+  const original=record().workout;
+  for(const durationMin of [0,1])for(const reported of [null,answers])for(const safetyStatus of ["unknown",undefined]) {
+    const checkin={date:original.date,answers:JSON.stringify(reported),adaptation:JSON.stringify({verdict:"rest",durationFactor:0,intensityCap:"z1",safetyStatus,message:"Current evidence needs review."})};
+    const workout={...original,durationMin,originalPlan:JSON.stringify(original),title:durationMin?original.title:"Rest and recover"};
+    const resolved=effectiveSessionFromRecords(record({workout,checkin}));
+    assert.equal(resolved.canonical.verdict,"blocked",JSON.stringify({durationMin,reported:!!reported,safetyStatus}));
+    assert.equal(resolved.prescription.verdict,"blocked");assert.equal(resolved.canonical.title,"Bike");assert.equal(resolved.prescription.intensity,null);assert.equal(resolved.canonical.capability.available,false);assert.deepEqual(resolved.canonical.steps,[]);
+  }
+});
+
+test("known current rest and positive symptoms retain their separate safety severity",()=>{
+  const base=record(),rest={verdict:"rest",durationFactor:0,intensityCap:"z1",safetyStatus:"clear",message:"No available training time."};
+  const known=effectiveSessionFromRecords(record({checkin:{date:base.workout.date,answers:JSON.stringify({...answers,availableMin:0}),adaptation:JSON.stringify(rest)}}));
+  assert.equal(known.canonical.verdict,"rest");assert.equal(known.canonical.reason,rest.message);
+  for(const [symptom,match] of [["sick",/illness symptoms/],["urgentSymptoms",/urgent medical assessment/]] as const) {
+    const resolved=effectiveSessionFromRecords(record({checkin:{date:base.workout.date,answers:JSON.stringify({...answers,[symptom]:true}),adaptation:JSON.stringify(rest)}}));
+    assert.equal(resolved.canonical.verdict,"rest");assert.match(resolved.canonical.reason,match,"stored rest does not replace current symptom guidance");
+  }
+});
+
 test("FIT run pace bounds invert to speed, distance stays distance and lap stays open", () => {
   const c = make("run", [step({ endpoint: { type: "distance", meters: 1609.344 }, target: { type: "pace", low: 240, high: 300 } }), step({ name: "Lap recovery", seconds: undefined, phase: "recovery", endpoint: { type: "lap" }, target: { type: "open" } })]);
   const m = decode(c), [s, lap] = m.workoutStepMesgs;
