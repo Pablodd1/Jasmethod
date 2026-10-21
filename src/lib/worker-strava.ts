@@ -149,6 +149,18 @@ export async function processVerifiedEvent(req: Request, expectedUserId: string)
         },
       });
       if (conn && conn.userId === expectedUserId) {
+        // Match the token snapshot as well as the saved owner binding. A
+        // disconnect/deauthorization or reconnect while a fetch is in flight
+        // must win over this worker, just as it does over a windowed sync.
+        const requireConnection = async (snapshot: typeof conn) => {
+          if (!stravaConnectorEnabled()) throw new Error("Strava ingestion is paused");
+          const current = await prisma.connector.updateMany({
+            where: { id: snapshot.id, userId: expectedUserId, provider: "strava", externalRef: ownerId,
+              tokenEnc: snapshot.tokenEnc, refreshEnc: snapshot.refreshEnc, status: { in: ["connected", "error"] } },
+            data: { tokenEnc: snapshot.tokenEnc },
+          });
+          if (current.count !== 1) throw new Error("Connection changed during event processing");
+        };
         // Targeted processing: fetch just the changed activity by ID so
         // updates to older activities (outside the sync window) survive.
         const athlete = await prisma.user.findUnique({
@@ -161,20 +173,21 @@ export async function processVerifiedEvent(req: Request, expectedUserId: string)
           : null;
         let stored = false;
         if (accessToken) {
+          await requireConnection(conn);
+          let activity;
           try {
-            const activity = await api.stravaGetActivity(accessToken, String(body.object_id ?? ""));
-            if (activity && !activity.deleted) {
-              await storeActivity(conn.userId, tz, {
-                ...api.stravaActivityToWorkout(activity),
-                source: "strava",
-              });
-              stored = true;
-            }
+            activity = await api.stravaGetActivity(accessToken, String(body.object_id ?? ""));
           } catch (fetchErr) {
             console.warn("[strava webhook] by-ID fetch failed, falling back to sync:", String(fetchErr).slice(0, 120));
           }
+          await requireConnection(conn);
+          if (activity && !activity.deleted) {
+            await storeActivity(conn.userId, tz, { ...api.stravaActivityToWorkout(activity), source: "strava" });
+            stored = true;
+          }
         }
         if (!stored) {
+          await requireConnection(conn);
           // Fallback: bounded reconciliation (token refresh, windowed pull).
           const sync = await syncUserConnectors(conn.userId, "strava");
           if (sync.results.some((r) => !r.ok)) {
@@ -183,10 +196,15 @@ export async function processVerifiedEvent(req: Request, expectedUserId: string)
           }
           // A windowed sync is not evidence that this historical event was
           // processed. Refresh the connector and fetch the exact activity again.
-          const refreshed = await prisma.connector.findUnique({ where: { id: conn.id } });
+          const refreshed = await prisma.connector.findFirst({ where: {
+            id: conn.id, userId: expectedUserId, provider: "strava", externalRef: ownerId,
+            status: { in: ["connected", "error"] }, tokenEnc: { not: null },
+          } });
           const freshToken = refreshed?.tokenEnc ? decryptSecret(refreshed.tokenEnc) : null;
           if (!freshToken) return NextResponse.json({ error: "Reconnect required" }, { status: 503 });
+          await requireConnection(refreshed!);
           const activity = await api.stravaGetActivity(freshToken, String(body.object_id ?? ""));
+          await requireConnection(refreshed!);
           if (!activity || activity.deleted) return NextResponse.json({ error: "Activity unavailable" }, { status: 503 });
           await storeActivity(conn.userId, tz, { ...api.stravaActivityToWorkout(activity), source: "strava" });
         }
