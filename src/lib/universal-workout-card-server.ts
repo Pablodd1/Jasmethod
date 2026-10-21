@@ -9,6 +9,7 @@ export function buildUniversalWorkoutCard(
   nutrition: SessionNutrition,
   language: "en" | "es" = "en",
   startTime: string | null = null,
+  units?:string|null,
 ): UniversalWorkoutCard {
   const es = language === "es";
   const held = es
@@ -22,6 +23,7 @@ export function buildUniversalWorkoutCard(
           startTime,
           false,
           language,
+          units,
         ).plan
       : {
           summary: held,

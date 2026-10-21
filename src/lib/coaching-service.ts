@@ -1,5 +1,6 @@
 import { telegramWorkoutActionable, telegramWorkoutAttachments } from "./telegram-workout-attachments";
 import { dailyEnvironmentSummary } from "./daily-environment";
+import { unitsOf } from "./units";
 import { deliveryWorkoutPreview } from "./delivery-workout-preview";
 import { readDeliveryWorkout } from "./delivery-session";
 import { currentOrReportedWorkoutWhere, isCurrentWorkout } from "./calendar-workouts";
@@ -125,7 +126,7 @@ function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effective
     }
     else lines.push("Before: review equipment, venue and full preparation/fueling guidance in the app.",
       "During: follow the selected session's exact blocks; stop if unwell or in pain.",
-      ...(c.environment ? [dailyEnvironmentSummary(c.environment)] : []),
+      ...(c.environment ? [dailyEnvironmentSummary(c.environment,language??"en",unitsOf(resolved.targetProfile?.units,language??"en"))] : []),
       ...c.steps.slice(0, 12).map((s, i) => `${i + 1}. ${s.phase}: ${stepEndpointLabel(s, language === "es" ? "es" : "en")} · ${s.target.label}`),
       ...(c.steps.length > 12 ? [`${c.steps.length - 12} further blocks are shown in the app; this is a concise summary, not the complete workout.`] : []),
       "After: cool down as prescribed, choose familiar food/fluid according to need, and report actual minutes and effort. Avoid overdrinking.");
@@ -229,7 +230,7 @@ export async function createCoachingPrompt(actor: CoachingActor, input: { sessio
   try {
     const checked = await currentDelivery(created.workoutCleared);
     const language = actor.language === "es" ? "es" : "en";
-    attachments = created.workoutCleared && checked.actionable ? telegramWorkoutAttachments(checked.fresh.canonical,checked.fresh.nutrition,language) : [];
+    attachments = created.workoutCleared && checked.actionable ? telegramWorkoutAttachments(checked.fresh.canonical,checked.fresh.nutrition,language,checked.fresh.targetProfile?.units) : [];
   } catch {
     // No provider request has begun: record a definitive cancellation rather
     // than leaving a pending claim that reconciliation would call uncertain.

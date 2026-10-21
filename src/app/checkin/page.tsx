@@ -433,7 +433,7 @@ function CheckinPageContent() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <h2 className="font-display font-bold text-lg flex items-center gap-2"><Mic className="w-5 h-5 text-ocean-600" /> Voice Check-In</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{lang === "es" ? "Español e inglés. Ejemplo: sueño 4, agujetas 2, energía 3, motivación 4, estrés 2, peso 74 kilos. Revisa y edita todo antes de aplicar." : "English and Spanish. State weight with explicit pounds or kilograms, for example weight 163 pounds. Review and edit every answer before applying."}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{lang === "es" ? "Español e inglés. Ejemplo: sueño 4, agujetas 2, energía 3, motivación 4, estrés 2, peso con libras o kilos explícitos. Revisa y edita todo antes de aplicar." : "English and Spanish. State weight with explicit pounds or kilograms, for example weight 163 pounds. Review and edit every answer before applying."}</p>
             </div>
             <button onClick={() => listening ? recognition.current?.stop() : startVoice()} disabled={!voiceSupported} className={`btn-primary ${listening ? "opacity-70" : ""}`}>
               <Mic className="w-4 h-4" /> {listening ? (lang === "es" ? "Detener y revisar" : "Stop and review") : (lang === "es" ? "Iniciar voz" : "Start Voice")}
@@ -444,7 +444,7 @@ function CheckinPageContent() {
           <details className="mt-2">
             <summary className="text-xs font-semibold text-ocean-700 cursor-pointer select-none">📋 Question script — read these in order (tap to expand)</summary>
             <ol className="text-xs text-slate-600 mt-2 space-y-1 list-decimal list-inside">
-              {(lang === "es" ? ["Sueño, agujetas, energía, motivación y estrés: de uno a cinco.", "Peso en kilos, pulso en reposo, VFC y horas de sueño, solo si los sabes.", "¿Enfermedad, dolor nuevo o síntomas de alarma hoy?", "Minutos disponibles hoy. Revisa las respuestas antes de enviar."] : VOICE_SCRIPT.map(q=>displayUnits==="imperial"?q.replace("kilograms","pounds"):q)).map((q) => <li key={q}>{q}</li>)}
+              {(lang === "es" ? ["Sueño, agujetas, energía, motivación y estrés: de uno a cinco.", displayUnits==="imperial"?"Peso en libras, pulso en reposo, VFC y horas de sueño, solo si los sabes.":"Peso en kilos, pulso en reposo, VFC y horas de sueño, solo si los sabes.", "¿Enfermedad, dolor nuevo o síntomas de alarma hoy?", "Minutos disponibles hoy. Revisa las respuestas antes de enviar."] : VOICE_SCRIPT.map(q=>displayUnits==="imperial"?q.replace("kilograms","pounds"):q)).map((q) => <li key={q}>{q}</li>)}
             </ol>
             <p className="text-[11px] text-slate-400 mt-1.5">One breath, one number. The full transcript gets parsed automatically — you&apos;ll confirm before it applies.</p>
           </details>

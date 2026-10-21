@@ -6,6 +6,7 @@ import "@/components/daily-training/universal-workout-card.css";
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/auth";
+import { unitsOf } from "@/lib/units";
 import { DailyEnvironmentCard } from "@/components/daily-training/DailyEnvironmentCard";
 import { DailyTrainingScreen } from "@/components/daily-training/DailyTrainingScreen";
 import { readTrainingJson, TrainingReadError } from "@/components/daily-training/training-read";
@@ -121,7 +122,7 @@ export default function DailyTrainingPage() {
     <>
     {displayNavigation}
     {state.plan.sessions && state.plan.sessions.length > 1 && <nav aria-label={es ? "Sesiones de hoy" : "Today's sessions"} className="jmm-screen jmm-session-switcher"><label>{es ? "Elige la sesión de hoy " : "Select today's session "}<select value={session.id} onChange={e => selectSession(e.target.value)}>{state.plan.sessions.map(s => <option key={s.id} value={s.id}>{s.startTime ? `${s.startTime} · ` : ""}{s.title} · {s.sport}</option>)}</select></label></nav>}
-    <div className="mx-auto max-w-[540px] px-4 py-3"><DailyEnvironmentCard key={`environment-${session.id}-${session.sourceRevision}`} sessionId={session.id} dateLocal={session.dateLocal} timezone={session.timezone} startTime={state.plan.sessions?.find(s => s.id === session.id)?.startTime} environment={state.plan.environment} es={state.plan.language === "es"} onSaved={() => load()} /></div>
+    <div className="mx-auto max-w-[540px] px-4 py-3"><DailyEnvironmentCard key={`environment-${session.id}-${session.sourceRevision}`} sessionId={session.id} dateLocal={session.dateLocal} timezone={session.timezone} startTime={state.plan.sessions?.find(s => s.id === session.id)?.startTime} environment={state.plan.environment} units={unitsOf(user?.profile?.units,user?.language)} es={state.plan.language === "es"} onSaved={() => load()} /></div>
     <DailyTrainingScreen
       key={`${session.id}-${session.revision}`}
       plan={state.plan}

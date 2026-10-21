@@ -3,6 +3,7 @@
 
 import { sendEmail } from "./email";
 import { buildSessionDetail } from "./science";
+import { fmtTemp, unitsOf } from "./units";
 
 export async function sendTelegram(
   chatId: string,
@@ -89,11 +90,12 @@ export function buildReminder(
     recovery?: string;
   } | null,
   tempC?: number,
+  display?: {units?:string|null;language?:string|null},
 ): ReminderMessage {
   const sessionLine = session
     ? `Today's session: ${session.title} — ${session.durationMin} min${session.intensity ? ` (${session.intensity})` : ""}.`
     : "Rest day — recovery is a training session too.";
-  const tempLine = tempC !== undefined ? `Race-day temp ~${tempC}°C — ` : "";
+  const tempLine = tempC !== undefined ? `Race-day temp ~${fmtTemp(tempC,unitsOf(display?.units,display?.language??"en"))} — ` : "";
   const recoveryLine = session?.recovery
     ? `\nAfter the session: ${session.recovery}`
     : "";

@@ -2,13 +2,15 @@
 import { useEffect, useRef, useState } from "react";
 import { assessDailyEnvironment, dailyEnvironmentGuidance, isDailyEnvironmentAssessment, parseDailyEnvironmentInput, type DailyEnvironmentAssessment, type DailyEnvironmentInput } from "@/lib/daily-environment";
 import { isTrainingLocation, type TrainingLocation } from "@/lib/training-location";
+import { fmtTemp, unitsOf, type UnitSystem } from "@/lib/units";
 
-type Props = { sessionId: string; dateLocal: string; timezone: string; startTime?: string | null; environment?: DailyEnvironmentAssessment; es?: boolean; disabled?: boolean; offline?: boolean; onSaved: () => void | Promise<void> };
+type Props = { sessionId: string; dateLocal: string; timezone: string; startTime?: string | null; environment?: DailyEnvironmentAssessment; units?:UnitSystem; es?: boolean; disabled?: boolean; offline?: boolean; onSaved: () => void | Promise<void> };
 function draftFor(environment: DailyEnvironmentAssessment | undefined, dateLocal: string, timezone: string, startTime?: string | null) {
   const c = environment?.context;
   return { setting: c?.setting ?? "unknown", venueName: c?.venueName ?? "", latitude: c?.latitude == null ? "" : String(c.latitude), longitude: c?.longitude == null ? "" : String(c.longitude), plannedLocal: c?.plannedLocal ?? (startTime ? `${dateLocal}T${startTime}` : ""), timeZone: c?.timeZone ?? timezone, venueConfirmed: c?.venueConfirmed ?? false };
 }
-export function DailyEnvironmentCard({ sessionId, dateLocal, timezone, startTime, environment, es = false, disabled = false, offline = false, onSaved }: Props) {
+export function DailyEnvironmentCard({ sessionId, dateLocal, timezone, startTime, environment, units, es = false, disabled = false, offline = false, onSaved }: Props) {
+  const displayUnits=units??unitsOf("auto",es?"es":"en");
   const [saved, setSaved] = useState(environment);
   const [draft, setDraft] = useState(() => draftFor(environment, dateLocal, timezone, startTime));
   const [busy, setBusy] = useState(false);
@@ -105,9 +107,9 @@ export function DailyEnvironmentCard({ sessionId, dateLocal, timezone, startTime
   }
   return <section className="rounded-xl border border-slate-300 bg-white p-4 text-slate-800" aria-label={es ? "Lugar y condiciones" : "Venue and conditions"}>
     <details>
-      <summary className="cursor-pointer font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-600">{es ? "Lugar y condiciones" : "Venue & conditions"} · {displayed.status === "indoor" ? (es ? "Interior" : "Indoor") : displayed.status === "forecast" ? (es ? "Pronóstico" : "Forecast") : (es ? "Desconocidos" : "Unknown")}{displayed.conditions ? ` · ${displayed.conditions.temperatureC} °C` : ""}</summary>
+      <summary className="cursor-pointer font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-600">{es ? "Lugar y condiciones" : "Venue & conditions"} · {displayed.status === "indoor" ? (es ? "Interior" : "Indoor") : displayed.status === "forecast" ? (es ? "Pronóstico" : "Forecast") : (es ? "Desconocidos" : "Unknown")}{displayed.conditions ? ` · ${fmtTemp(displayed.conditions.temperatureC,displayUnits)}` : ""}</summary>
       {dirty && <p className="mt-2 text-sm">{es ? "Cambios sin guardar: el pronóstico anterior no se aplica a los datos editados." : "Unsaved changes: the previous forecast does not apply to these edited details."}</p>}
-      <p className="mt-3 text-sm" role="status">{dailyEnvironmentGuidance(displayed, es ? "es" : "en")}</p>
+      <p className="mt-3 text-sm" role="status">{dailyEnvironmentGuidance(displayed, es ? "es" : "en",displayUnits)}</p>
       {displayed.fetchedAt && <p className="mt-2 text-xs">{es ? "Obtenido" : "Retrieved"}: {displayed.fetchedAt} · {displayed.forecastAgeMinutes == null ? "—" : `${displayed.forecastAgeMinutes} min`} · {es ? "Válido para" : "Valid at"}: {displayed.validAt ?? "—"}. {es ? "Caduca" : "Fresh until"}: {displayed.freshUntil ?? "—"}.</p>}
       {displayed.fetchedAt && <p className="mt-1 text-xs"><a className="underline" href="https://api.met.no/" target="_blank" rel="noreferrer">MET Norway</a> · <a className="underline" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>. {es ? "Muestra de pronóstico seleccionada; no es una observación del lugar." : "Selected forecast sample; not a venue observation."}</p>}
       <form className="mt-3 space-y-3" onSubmit={event => { event.preventDefault(); void save(false); }}>

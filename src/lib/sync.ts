@@ -285,7 +285,7 @@ export async function syncUserConnectors(
           const appUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit").replace(/\/$/, "")}/daily?sessionId=${encodeURIComponent(w.id)}&date=${workoutDate}`;
           const placeholder = manualWorkoutCalendarPlaceholder(deliveryUser.language, !!ready, appUrl);
           const description = (ready && shareGuidance
-              ? manualWorkoutCalendarDescription(session!, resolved!.nutrition, w.startTime, language!) + `\n${language === "es" ? "Plan actual y gráfico" : "Current plan and workout graphic"}: ${appUrl}\n${language === "es" ? "Revisión" : "Plan revision"}: ${session!.revision}`
+              ? manualWorkoutCalendarDescription(session!, resolved!.nutrition, w.startTime, language!, resolved!.targetProfile?.units) + `\n${language === "es" ? "Plan actual y gráfico" : "Current plan and workout graphic"}: ${appUrl}\n${language === "es" ? "Revisión" : "Plan revision"}: ${session!.revision}`
               : placeholder.description) + (w.startTime ? "" : `\n${calendarUnscheduledCopy(deliveryUser.language)}`);
           const revision = manualWorkoutCalendarRevision({
             workoutId: w.id, date: workoutDate, startTime: w.startTime,

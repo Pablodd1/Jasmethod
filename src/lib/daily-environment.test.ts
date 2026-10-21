@@ -4,6 +4,8 @@ import { assessDailyEnvironment, DAILY_ENVIRONMENT_VERSION, dailyForecastSnapsho
 import { canonicalSession } from "./canonical-session";
 import { effectiveSessionFromRecords } from "./effective-prescription";
 import { calendarDescription, gmailPlanHtml, telegramPlan } from "./plan-formats";
+import { manualWorkoutEmailContent, manualWorkoutCalendarDescription } from "./manual-workout-email-content";
+import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
 
 const now = new Date("2026-10-10T12:00:00Z");
 const input = { setting: "outdoor", venueName: "PRIVATE_ACTUAL_VENUE", latitude: 25.7617, longitude: -80.1918, plannedLocal: "2026-10-10T09:00", timeZone: "America/New_York", venueConfirmed: true, requestForecast: true };
@@ -12,6 +14,19 @@ export function environmentFixture(patch: Partial<DailyEnvironmentRecord> = {}):
     forecast: { status: "fresh", requestedAt: "2026-10-10T13:00:00.000Z", fetchedAt: "2026-10-10T11:59:00Z", sourceUpdatedAt: "2026-10-10T11:00:00Z", coverageStart: "2026-10-10T12:00:00Z", coverageEnd: "2026-10-10T18:00:00Z", validAt: "2026-10-10T13:00:00Z", temperatureC: 30, humidityPct: 80, windMs: 4 }, ...patch };
 }
 const assess = (record: unknown = environmentFixture(), overrides: object = {}) => assessDailyEnvironment({ record, revision: "venue-1", athleteId: "athlete", sessionId: "workout", dateLocal: "2026-10-10", timezone: "UTC", startTime: "13:00", now, ...overrides });
+
+test("channel and card weather summaries preserve an explicit units override independently of language",()=>{
+  const environment=assess(),session=canonical(environment),before=JSON.stringify(session);
+  for(const [language,units,expected,excluded] of [["en","metric","30°C","86°F"],["es","imperial","86°F","30°C"]] as const) {
+    const formatted={title:"Easy",sport:"bike",durationMin:1,environment,language,units};
+    const email=manualWorkoutEmailContent(session,null,null,false,language,units).plan;
+    const card=buildUniversalWorkoutCard(session,null,language,null,units);
+    for(const text of [email.preparation.join(" "),card.content.preparation.join(" "),manualWorkoutCalendarDescription(session,null,null,language,units),calendarDescription(formatted),telegramPlan("Synthetic","Oct10",[formatted]),gmailPlanHtml("Synthetic","Oct10",[formatted]).html]) {
+      assert.ok(text.includes(expected),`${language}/${units} omits its chosen temperature unit`);assert.ok(!text.includes(excluded));
+    }
+  }
+  assert.equal(JSON.stringify(session),before,"format preferences never alter forecast evidence or canonical workout instructions");
+});
 test("explicit venue/time contract rejects inferred, forged, invalid and ambiguous inputs", () => {
   assert.equal(plannedEnvironmentInstant(parseDailyEnvironmentInput(input)), "2026-10-10T13:00:00.000Z");
   for (const change of [{ setting: false }, { venueConfirmed: "true" }, { venueName: "" }, { latitude: null }, { latitude: "25" }, { latitude: Infinity }, { plannedLocal: "2026-02-30T09:00" }, { timeZone: "Mars/City" }, { phoneLocation: { lat: 1 } }, { forecast: { temperatureC: 20 } }, { plannedLocal: null }, { timeZone: null }]) assert.throws(() => parseDailyEnvironmentInput({ ...input, ...change }), JSON.stringify(change));
