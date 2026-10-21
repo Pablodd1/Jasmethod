@@ -19,6 +19,7 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "codex/athlete-testing-continuation": false,
       "dot/device-free-launch-20261002": false,
       "dot/device-free-followup-20261002": false,
       "dot/truthful-home-delivery-20261002": false,

@@ -228,10 +228,19 @@ async function main() {
     const actual = inputs.inputContext.completedWorkouts.find((w: any) => w.recordIds.includes(saved.historical.id));
     assert.equal(actual.durationMinutes, 28); assert.equal(actual.questions.durationMinutes, false); assert.equal(actual.questions.rpe, true);
     let today = await json("/api/today", owner), session = today.sessions.find((s: any) => s.id === saved.run.id);
-    assert.equal(session.verdict, "blocked"); assert.equal(session.existingReview.eligible, true);
+    assert.equal(session.verdict, "blocked"); assert.equal(session.existingReview.eligible, false, "Missing recent effort requires the full review");
     const body = () => ({ mode: "review_existing", sessionId: session.id, expectedRevision: session.revision,
       contextRevision: session.existingReview.contextRevision, noSymptoms: true, recoveryUnchanged: true, timeConfirmed: true, confirmed: true });
     await request("/api/checkin", owner, { body: { ...body(), noSymptoms: "true" }, status: 400 });
+    const heldBefore = await db.workout.findMany({ where: { userId: owner.id }, orderBy: { id: "asc" } });
+    await request("/api/checkin", owner, { body: body(), status: 422 });
+    assert.equal(await db.dailyCheckin.count({ where: { userId: owner.id } }), 0, "Rejected short review creates no answers");
+    assert.deepEqual(await db.workout.findMany({ where: { userId: owner.id }, orderBy: { id: "asc" } }), heldBefore, "Missing effort cannot mutate saved training");
+    const pendingReport = inputs.previousSessions.find((w: any) => w.id === saved.historical.id);
+    await json("/api/plan", owner, { method: "PUT", body: { sessionId: pendingReport.id, expectedRevision: pendingReport.feedbackRevision,
+      feedbackStatus: "completed", actualDurationMin: 28, actualSport: "run", rpe: 3 } });
+    today = await json("/api/today", owner); session = today.sessions.find((s: any) => s.id === saved.run.id);
+    assert.equal(session.existingReview.eligible, true, "Explicit easy effort resolves the known missing information");
     const before = await db.workout.findUniqueOrThrow({ where: { id: saved.run.id } });
     await json("/api/checkin", owner, { body: body() });
     assert.deepEqual(await db.workout.findUniqueOrThrow({ where: { id: saved.run.id } }), before, "Short review never regenerates instructions");
@@ -253,6 +262,20 @@ async function main() {
     assert.equal(session.existingReview.eligible, false, "Very hard actual work cannot be waived by a short review");
     await request("/api/checkin", owner, { body: body(), status: 422 });
     assert.equal(await db.workout.count({ where: { userId: owner.id } }), count, "Reads, review, approval and feedback never duplicate training");
+  });
+  await scenario("bounded observations cannot answer current numeric questions or hide unread conflicts", async () => {
+    const owner = await actor("bounded-observations");
+    await db.metricObservation.createMany({ data: Array.from({ length: 101 }, (_, i) => ({ userId: owner.id,
+      metricType: "resting_hr", value: i === 100 ? 90 : 50, unit: "bpm", source: i === 100 ? "oura" : "garmin",
+      observedAt: new Date(Date.now() - (i + 1) * 1000), measurementMethod: "device_sync", qualityFlag: "ok" })) });
+    const before = await db.metricObservation.count({ where: { userId: owner.id, metricType: "resting_hr" } });
+    const result = await json("/api/checkin", owner);
+    assert.equal(result.inputContext.bounded.observationsTruncated, true);
+    assert.equal(result.inputContext.metrics.restingHr.selected, null);
+    assert.equal(result.inputContext.objectiveFields.restingHr, true);
+    assert.match(result.inputContext.metrics.restingHr.reason, /read limit|unread/i);
+    assert.equal(await db.metricObservation.count({ where: { userId: owner.id, metricType: "resting_hr" } }), before, "A bounded read preserves all source measurements");
+    assert.equal(await db.dailyCheckin.count({ where: { userId: owner.id } }), 0);
   });
   await scenario("reset preserves a known symptom hold until a fresh full review, including a surviving saved prescription", async () => {
     const owner = await actor("reset-known-hold");

@@ -120,3 +120,46 @@ test("Strava privacy ingress byte-bounds multibyte/stream bodies and rejects mal
   const f = fixture(); const unlinked = { ...deletion, owner_id: 999 };
   assert.equal((await f.post(unlinked)).status, 200); assert.equal(f.state.jobs.length, 0);
 });
+
+function inFlightFixture(fallback=false) {
+  const state={connection:{id:"connection",userId:"owner",provider:"strava",externalRef:"123",status:"connected",tokenEnc:"token-v1",refreshEnc:"refresh-v1"} as Record<string,any>,enabled:true,fetches:0,syncs:0,writes:0,processed:false};
+  let release!:()=>void,started!:()=>void;
+  const fetched=new Promise<void>(resolve=>{started=resolve;}),resume=new Promise<void>(resolve=>{release=resolve;});
+  const matches=(where:any)=>Object.entries(where).every(([key,value]:[string,any])=>{
+    if(value&&typeof value==="object")return "in" in value?value.in.includes(state.connection[key]):"not" in value?state.connection[key]!==value.not:false;
+    return state.connection[key]===value;
+  });
+  const prisma={connector:{findFirst:async({where}:any)=>matches(where)?{...state.connection}:null,
+    updateMany:async({where,data}:any)=>{if(!matches(where))return {count:0};Object.assign(state.connection,data);return {count:1};}},
+    user:{findUnique:async()=>({timezone:"UTC"})},
+    webhookEvent:{createMany:async()=>({count:1}),updateMany:async()=>{state.processed=true;return {count:1};}}};
+  const worker=load("src/lib/worker-strava.ts",{"next/server":{NextResponse},"./db":{prisma},"./strava-privacy-event":privacy,
+    "./capabilities":{stravaConnectorEnabled:()=>state.enabled},"./crypto":{decryptSecret:(value:string)=>value},
+    "./sync":{syncUserConnectors:async()=>{state.syncs++;state.connection.tokenEnc="token-v2";state.connection.refreshEnc="refresh-v2";return {results:[{ok:true}]};}},
+    "./importers":{stravaGetActivity:async()=>{state.fetches++;if(fallback&&state.fetches===1)return null;started();await resume;return {id:456};},stravaActivityToWorkout:()=>({externalId:"strava:456"})},
+    "./activity-store":{storeActivity:async()=>{state.writes++;}}});
+  return {state,fetched,release,run:()=>worker.processVerifiedEvent(new Request("https://app.example/internal",{method:"POST",body:JSON.stringify(update)}),"owner")};
+}
+
+for(const fallback of [false,true]) test(`Strava ${fallback?"refreshed fallback":"direct"} fetch cannot persist after connection or capability changes`,async()=>{
+  for(const change of ["disconnect","deauthorize","reconnect","owner","pause"]) {
+    const f=inFlightFixture(fallback),pending=f.run();await f.fetched;
+    if(change==="disconnect")f.state.connection.status="disconnected";
+    if(change==="deauthorize")Object.assign(f.state.connection,{status:"disconnected",tokenEnc:null,refreshEnc:null});
+    if(change==="reconnect")Object.assign(f.state.connection,{tokenEnc:"new-authorization",refreshEnc:"new-refresh"});
+    if(change==="owner")f.state.connection.externalRef="other-provider-owner";
+    if(change==="pause")f.state.enabled=false;
+    f.release();assert.equal((await pending).status,503,change);
+    assert.equal(f.state.writes,0,change);assert.equal(f.state.processed,false,change);
+    assert.equal(f.state.syncs,fallback?1:0,"stale direct fetch must not start a fallback sync");
+    assert.equal(f.state.fetches,fallback?2:1);
+  }
+});
+
+test("Strava direct and refreshed fallback retain successful owner-bound processing",async()=>{
+  for(const fallback of [false,true]) {
+    const f=inFlightFixture(fallback),pending=f.run();await f.fetched;f.release();
+    assert.equal((await pending).status,200);assert.equal(f.state.writes,1);assert.equal(f.state.processed,true);
+    assert.equal(f.state.connection.tokenEnc,fallback?"token-v2":"token-v1");
+  }
+});

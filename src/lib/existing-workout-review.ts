@@ -6,6 +6,7 @@ import { hasWorkoutReport } from "./calendar-workouts";
 import { groupActivityEvidence, activityActualMinutes, type ActivityDecision, type ActivityEvidenceRow } from "./activity-evidence";
 import { dateKey } from "./dates";
 import { derivedActivityPolicy } from "./derived-activity-policy";
+import { applyExecutionFeedback } from "./execution-feedback";
 
 export const EXISTING_REVIEW_VERSION = "existing-workout-review-v1";
 export interface ExistingReviewCandidate {
@@ -41,6 +42,15 @@ export function existingReviewCandidate(input: {
   const policy = derivedActivityPolicy(history);
   if (policy.status !== "allowed") return no(policy.reason || "Activity provenance must be reviewed before coaching analysis.");
   if (history.some(row => typeof row.rpe === "number" && row.rpe >= 9)) return no("Recent very hard effort needs the full recovery review before continuing training.");
+  const recentEvidence = groupActivityEvidence(history as ActivityEvidenceRow[], input.activityDecisions);
+  if (recentEvidence.unresolvedGroups) return no("Review ambiguous recent activity copies before continuing training.");
+  const recentExecution = applyExecutionFeedback({ verdict:"full", score:0, scoreAvailable:false, durationFactor:1,
+    intensityCap:"z7", safetyStatus:"clear", ruleId:"existing-review-history", message:"" }, recentEvidence.groups.map(group => ({
+      ...group.primary, id:String(group.primary.id), durationMin:group.primary.durationMin ?? undefined,
+      actualDurationMin:group.budgetMinutes,
+      feedbackStatus:group.primary.feedbackStatus ?? (group.members.some(row => row.completed) ? "completed" : "unknown"),
+    })));
+  if (recentExecution.adaptation.ruleId === "execution-feedback-v1:incomplete-load") return no("Review recent actual minutes, effort and outcome in the full check-in before continuing training.");
   try {
     const session = canonicalSession({ athleteId: input.athleteId, workout: w, prescription: w.prescription,
       profile: input.profile, dateLocal: dateKey(w.date, input.timezone), timezone: input.timezone });

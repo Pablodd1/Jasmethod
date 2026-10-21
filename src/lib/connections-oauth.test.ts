@@ -173,15 +173,19 @@ test('connections: WHOOP v2 workout sport, energy units and invalid timestamps',
 
 function webhookFixture({failRefetch=false, deletion=false, enabled=true}={}) {
   const log={fetches:[],stored:[],deleted:[],processed:0};
+  const connection={id:'connector',userId:'athlete-A',provider:'strava',externalRef:'123',status:'connected',tokenEnc:'expired',refreshEnc:'refresh'};
   const db={
-    connector:{findFirst:async()=>({id:'connector',userId:'athlete-A',tokenEnc:'expired'}),findUnique:async()=>({tokenEnc:'fresh'})},
+    connector:{findFirst:async()=>({...connection}),updateMany:async({where,data})=>{
+      const matches=Object.entries(where).every(([key,value])=>value&&typeof value==='object'&&'in' in value?value.in.includes(connection[key]):connection[key]===value);
+      if(!matches)return {count:0};Object.assign(connection,data);return {count:1};
+    }},
     user:{findUnique:async()=>({timezone:'UTC'})},
     webhookEvent:{createMany:async()=>({count:1}),updateMany:async()=>{log.processed++;return{count:1}}},
     auditLog:{create:async()=>({})},
   };
   const route=load(original,'src/lib/worker-strava.ts',{
     'next/server':{NextResponse},'@/lib/db':{prisma:db},
-    '@/lib/sync':{syncUserConnectors:async()=>({results:[{ok:true}]})},
+    '@/lib/sync':{syncUserConnectors:async()=>{connection.tokenEnc='fresh';return {results:[{ok:true}]};}},
     '@/lib/crypto':{decryptSecret:x=>x},
     '@/lib/activity-store':{storeActivity:async(...x)=>{log.stored.push(x);return true;},deleteImportedActivities:async(...x)=>{log.deleted.push(x);return{count:1}}},
     '@/lib/importers':{stravaGetActivity:async(token,id)=>{log.fetches.push([token,id]);if(token==='expired'||failRefetch)throw Error('401');return{id};},stravaActivityToWorkout:a=>({externalId:`strava:${a.id}`})},
