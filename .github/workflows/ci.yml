@@ -70,6 +70,9 @@ jobs:
       - name: Follow-up boundaries and injected Telegram transport
         run: npm run test:followup:boundaries
 
+      - name: Race evaluation leakage and CLI filesystem boundaries
+        run: npm run test:race-evaluate
+
       - name: Database sync and reminder tests
         run: npm run test:sync
 

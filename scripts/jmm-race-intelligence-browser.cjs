@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { mkdirSync, writeFileSync } = require('node:fs');
 const { chromium } = require('playwright');
 const { parseEventCandidates } = require('../src/lib/race-event-lookup.ts');
-const { parseHourlyEnvironment } = require('../src/lib/race-environment.ts');
+const { parseHourlyEnvironment, summarizeSeasonalEnvironment } = require('../src/lib/race-environment.ts');
 const base = process.env.JMM_UI_TEST_BASE || 'http://127.0.0.1:3220';
 assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/);
 const dir = '.local/jmm-race-intelligence-browser';
@@ -13,6 +13,7 @@ const raw = { races: [{ race: { race_id: 1, name: 'Synthetic public race', is_pr
 const candidates = parseEventCandidates(raw, '2026-10-21T12:00:00Z');
 const point = parseHourlyEnvironment({ header: { time_standard: 'UTC', fill_value: -999, sources: ['Synthetic fixture'] }, parameters: { T2M: { units: 'C' }, RH2M: { units: '%' }, WS10M: { units: 'm/s' } }, properties: { parameter: { T2M: { '2026102211': 30 }, RH2M: { '2026102211': 75 }, WS10M: { '2026102211': 3 } } } }, { latitude: 25, longitude: -80, at: '2026-10-22T11:30:00Z', timeZone: 'America/New_York' }, 'historical', '2026-10-21T12:00:00Z')[0];
 const environment = { status: 'available', label: 'live_forecast', requestedAtUTC: '2026-10-22T11:30:00Z', snapshot: { ...point, dataType: 'forecast', source: 'MET Norway', sourceUpdatedAtUTC: '2026-10-21T10:00:00Z' }, samples: [], ranges: {}, baselineYears: [], sourceUrl: 'https://api.met.no/', licenseUrl: 'https://creativecommons.org/licenses/by/4.0/', attribution: 'Based on data from MET Norway (synthetic test copy)', warnings: ['Synthetic forecast, not actual venue weather.'] };
+const seasonal = summarizeSeasonalEnvironment({latitude:25,longitude:-80,at:'2027-10-22T07:30:00-04:00',timeZone:'America/New_York'},[2023,2024,2025].flatMap(y=>Array.from({length:15},(_,i)=>({...point,timestampUTC:new Date(Date.UTC(y,9,15+i,11)).toISOString(),dataType:'climatology',source:'Synthetic fixture'}))),[2023,2024,2025]);
 async function main() {
     const browser = await chromium.launch({ headless: true });
     try {
@@ -43,10 +44,10 @@ async function main() {
                     if (u.pathname === '/api/race-scenarios/environment') {
                         conditions++;
                         const body = req.postDataJSON();
-                        assert.equal(body.at, '2026-10-22T07:30:00-04:00');
+                        assert.equal(body.at, conditions===1?'2026-10-22T07:30:00-04:00':'2027-10-22T07:30:00-04:00');
                         assert.equal(body.latitude, 25);
                         assert.deepEqual(Object.keys(body).sort(), ['at', 'latitude', 'longitude', 'timeZone']);
-                        return route.fulfill({ json: environment });
+                        return route.fulfill({ json: conditions===1?environment:seasonal });
                     }
                     if (req.method() !== 'GET') {
                         unexpected.push(req.method() + ' ' + u.pathname);
@@ -63,6 +64,7 @@ async function main() {
                 assert.equal(await page.getByLabel(es ? 'Nombre del escenario / evento' : 'Scenario / event name', { exact: true }).inputValue(), 'Synthetic public race · 10K');
                 assert.equal(await page.getByLabel(es ? 'Hora local' : 'Local time', { exact: true }).inputValue(), '');
                 await page.getByLabel(es ? 'Hora local' : 'Local time', { exact: true }).fill('07:30');
+                assert.equal(await card.getByText(es ? 'Salida desconocida' : 'Start time unknown', {exact:false}).count(),0);
                 await card.getByRole('button', { name: es ? 'Buscar dirección del lugar' : 'Find venue address', exact: true }).click();
                 await card.getByRole('button', { name: es ? 'Confirmar coordenadas' : 'Confirm venue coordinates', exact: true }).click();
                 await card.getByRole('button', { name: es ? 'Consultar condiciones' : 'Get race conditions', exact: true }).click();
@@ -81,10 +83,17 @@ async function main() {
                 assert.equal(lookups, 2);
                 assert.equal(await page.locator('#conditions').getByLabel(es ? 'Temperatura (°C)' : 'Temperature (°C)', { exact: true }).inputValue(), '30');
                 await page.screenshot({ path: `${dir}/${lang}-${width}.png`, fullPage: true });
+                await page.getByLabel(es?'Fecha del evento':'Event date',{exact:true}).fill('2027-10-22');
+                await card.getByRole('button',{name:es?'Consultar condiciones':'Get race conditions',exact:true}).click();
+                await card.getByRole('heading',{name:es?'Estimación histórica estacional':'Historical seasonal estimate',exact:true}).waitFor();
+                assert.ok(await card.getByText(es?'Mediana de punto de rocío':'Dew point median',{exact:true}).isVisible());
+                assert.ok(await card.getByText(es?'Mediana de viento':'Wind median',{exact:true}).isVisible());
+                await page.screenshot({path:`${dir}/${lang}-${width}-seasonal.png`,fullPage:true});
                 const geometry = await page.evaluate(() => ({ viewport: innerWidth, scroll: document.documentElement.scrollWidth }));
                 assert.ok(geometry.scroll <= geometry.viewport + 1, JSON.stringify(geometry));
                 await page.getByLabel(es ? 'Carrera guardada' : 'Saved race',{exact:true}).selectOption('other-race');
-                assert.equal(await card.getByRole('heading',{name:es ? 'Pronóstico disponible' : 'Live forecast',exact:true}).count(),0);
+                await card.getByRole('heading',{name:es ? 'Estimación histórica estacional' : 'Historical seasonal estimate',exact:true}).waitFor({state:'hidden'});
+                assert.equal(await card.getByRole('heading',{name:es ? 'Estimación histórica estacional' : 'Historical seasonal estimate',exact:true}).count(),0);
                 results.push({ switchedRaceClearsWeather:true, lang, width, units, ambiguousSelection: true, missingTimeNotInvented: true, venueConfirmed: true, manualCorrectionRetained: true, contextAttached: true, geometry });
                 await context.close();
             }

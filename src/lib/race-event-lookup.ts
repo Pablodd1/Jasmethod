@@ -158,6 +158,8 @@ export async function lookupRaceEvents(input: ReturnType<typeof eventLookupInput
 }
 /** US registry address matching, not proof of the start line. No city centroid is silently selected. */
 export async function lookupRaceVenue(address: string, fetcher: typeof fetch = fetch) {
+    if (process.env.RACE_PUBLIC_LOOKUP_ENABLED === 'false')
+        throw Error('Public event lookup disabled by operator.');
     if (typeof address !== 'string' || address.length < 5 || address.length > 300 || /[\u0000-\u001f]/.test(address))
         throw Error('A public US event street address is required.');
     const u = new URL('https://geocoding.geo.census.gov/geocoder/locations/onelineaddress');

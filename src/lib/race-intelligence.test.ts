@@ -56,6 +56,7 @@ test('operator flags disable public lookup and weather before any provider call'
     const r = await getRaceEnvironment(request, { fetcher: async () => { calls++; throw Error('unexpected'); } });
     assert.equal(r.status, 'unavailable');
     await assert.rejects(lookupRaceEvents({ query: 'Fixture', mode: 'name' }), /disabled/);
+    await assert.rejects(lookupRaceVenue('100 Main Street, Miami'), /disabled/);
     assert.equal(calls, 0);
 }
 finally {
