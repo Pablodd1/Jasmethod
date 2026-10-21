@@ -29,7 +29,7 @@ export function RaceIntelligenceCard({ draft, onEvent, onVenue, onContext, es, u
     const [weather, setWeather] = useState<RaceEnvironment | null>(null), [manual, setManual] = useState<WeatherSnapshot | null>(null), [temp, setTemp] = useState(''), [dew, setDew] = useState(''), [wind, setWind] = useState('');
     const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
     const active = useRef<AbortController | null>(null), generation = useRef(0);
-    const basis = JSON.stringify([draft.date, draft.startTime, draft.offset, draft.timeZone, draft.latitude, draft.longitude, draft.coordinatesReviewed]);
+    const basis = JSON.stringify([draft.raceId, draft.date, draft.startTime, draft.offset, draft.timeZone, draft.latitude, draft.longitude, draft.coordinatesReviewed]);
     useEffect(() => { generation.current++; active.current?.abort(); setBusy(false); setWeather(null); setManual(null); setError(''); }, [basis]);
     useEffect(() => { if (draft.environment) {
         setWeather(draft.environment.original);
