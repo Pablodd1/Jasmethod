@@ -483,6 +483,9 @@ test('explicit selected workout changes and reported profile values become propo
  const edit=extractLocalCandidates('Change my selected workout to 25 minutes.',{...context,sessionId:'session',sessionDate:context.localToday});
  assert.equal(edit.find(c=>c.field==='durationMin')?.kind,'workout_plan');assert.equal(edit.find(c=>c.field==='durationMin')?.value,25);
  assert.equal(value('My height is 180 cm','heightCm'),180);
+ assert.equal(value('My height is 5 ft 8 in','heightCm'),172.72);
+ assert.equal(value('My height is 5 ft 12 in','heightCm'),undefined);
+ assert.equal(value('My height is 5 ft 8 in; my height is 5 ft 9 in','heightCm'),undefined);
  assert.equal(value('My FTP is 250 W','ftp'),250);
  assert.match(extractLocalCandidates('My FTP is 250 W',context)[0].warnings?.[0]??'',/reported/);
  assert.equal(value('My goal FTP is 350 W','ftp'),undefined);

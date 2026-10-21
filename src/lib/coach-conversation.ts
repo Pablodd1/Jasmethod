@@ -6,6 +6,7 @@ import type { dailyRecoveryContext } from "./daily-recovery";
 import type { JMetrics } from "./j-metrics";
 import { resolveCheckinSafety, type CheckinSafetyInput } from "./checkin-safety";
 import { isGeneralCoachEducationQuestion, localCoachEducation, wantsCoachDetail } from "./coach-conversation-education";
+import { heightFromFeetInches } from "./units";
 
 /** Proposals only. The authenticated review service owns binding and all writes. */
 export interface CoachCandidate {
@@ -200,6 +201,10 @@ export function extractLocalCandidates(message: string, context: CandidateContex
   const weights = [...text.matchAll(/\b(?:i weigh|my weight is|(?:change|set|update|correct)\s+my\s+weight\s*(?:to|as|:)|weight\s*:|peso(?: actual)?\s*(?:es|:)?|mi peso es)\s*(\d+(?:[.,]\d+)?)\s*(kg|kilograms?|kilos?|lb|lbs|pounds?|libras?)\b/g)].map(m => ({ value: Number(m[1].replace(",", ".")) * (/^(lb|pound|libra)/.test(m[2]) ? 0.45359237 : 1), unit: m[2] }));
   if (!historicalProfile && !uncertainNumber && weights.length && unique(weights.map(w => w.value)).length === 1 && !/\b(goal weight|target weight|want to weigh|quiero pesar|peso objetivo|peso deseado)\b/.test(text) && !globalDate.ambiguous) add("profile", "weightKg", Math.round(weights[0].value * 100) / 100, globalDate.date, message, /^(lb|pound|libra)/.test(weights[0].unit) ? "Converted from explicitly reported pounds to kg; review the conversion." : undefined);
   if(!historicalProfile && !uncertainNumber && !globalDate.ambiguous) {
+    const heights = [...text.matchAll(/\b(?:my height is|i am|height:|mi altura es|mido)\s*(\d+)\s*(?:ft|feet|foot|')\s*(\d+(?:[.,]\d+)?)\s*(?:inches|inch|in|")/g)]
+      .filter(match => Number(match[2].replace(",", ".")) < 12)
+      .map(match => heightFromFeetInches(Number(match[1]), Number(match[2].replace(",", "."))));
+    if (heights.length && unique(heights).length === 1) add("profile", "heightCm", heights[0], globalDate.date, message);
     for(const [field,pattern] of [
       ["heightCm",/\b(?:my height is|i am|height:|mi altura es|mido)\s*(\d+(?:[.,]\d+)?)\s*cm\b/g],
       ["birthYear",/\b(?:my birth year is|i was born in|ano de nacimiento:|naci en)\s*(\d{4})\b/g],

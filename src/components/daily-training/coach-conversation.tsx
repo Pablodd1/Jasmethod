@@ -2,6 +2,7 @@
 import { CoachAiConsent } from "./CoachAiConsent";
 import { CoachReviewRequest } from './CoachReviewRequest';
 import { COACH_REFERRALS } from "@/lib/coach-referrals";
+import { unitsOf, type UnitSystem } from "@/lib/units";
 
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
@@ -9,7 +10,7 @@ import Link from "next/link";
 import { coachDictationError } from "./coach-dictation-client";
 import {
   COACH_MESSAGE_LIMIT, COACH_REQUEST_TIMEOUT, COACH_SEND_TIMEOUT, COACH_VOICE_TIMEOUT,
-  CoachRequestGate, readCoachResponse, coachExternalPermissions, coachTextStatusMessage, coachConfirmationAttempt, coachSendAttempt, coachSendWasRecorded, coachPendingActions, editedCoachCandidate, mergeCoachSessions, validateCoachImage, verifiedCoachReceipt,
+  CoachRequestGate, readCoachResponse, coachExternalPermissions, coachTextStatusMessage, coachConfirmationAttempt, coachSendAttempt, coachSendWasRecorded, coachPendingActions, coachCandidateInput, coachCandidateUnit, coachDisplayValue, editedCoachCandidate, mergeCoachSessions, validateCoachImage, verifiedCoachReceipt,
   type CoachCandidate, type CoachCapabilities, type CoachConfirmationAttempt, type CoachMessage, type CoachPayload, type CoachProposal, type CoachReceipt, type CoachSession, type CoachSendAttempt, type CoachSendBody,
 } from "./coach-conversation-client";
 
@@ -46,12 +47,22 @@ VALUE_CHOICES.sport = VALUE_CHOICES.actualSport;
 const sourceLabel = (source: string, es: boolean) => source === "deepseek" ? "DeepSeek" : source === "gemini" ? (es ? "Google Gemini (anterior)" : "Google Gemini (previous)") : source === "voice" ? (es ? "Voz revisada" : "Reviewed voice") : source === "image" ? (es ? "Captura" : "Screenshot") : (es ? "Texto" : "Text");
 const fieldLabel = (field: string, es: boolean) => FIELD_LABELS[field]?.[es ? 1 : 0] || field;
 const isSaveable = (candidate: CoachCandidate) => candidate.kind === "profile" || candidate.kind === "workout_feedback" || (candidate.kind === "workout_plan" && !!candidate.sessionId);
+const displayValue = (candidate: Pick<CoachCandidate, "field" | "unit">, value: CoachCandidate["value"] | undefined, units: UnitSystem, es: boolean) =>
+  VALUE_CHOICES[candidate.field]?.find(([key]) => key === value)?.[es ? 2 : 1] ?? coachDisplayValue(candidate.field, value, candidate.unit, units, es);
+
+export function ProfileProposalComparison({ candidate, beforeValue, afterValue, units, es }: { candidate: CoachCandidate; beforeValue?: CoachCandidate["value"]; afterValue?: CoachCandidate["value"]; units: UnitSystem; es: boolean }) {
+  return <dl className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 text-sm" aria-label={es ? "Cambio de perfil propuesto" : "Proposed profile change"}>
+    <div><dt className="font-medium">{es ? "Antes" : "Before"}</dt><dd>{displayValue(candidate, beforeValue, units, es)}</dd></div>
+    <div><dt className="font-medium">{es ? "Después de aprobar" : "After approval"}</dt><dd>{afterValue === undefined ? (es ? "Valor no válido" : "Invalid value") : displayValue(candidate, afterValue, units, es)}</dd></div>
+  </dl>;
+}
 
 export function CoachConversation({ es, athleteId, offline = false, sessions: todaySessions = NO_SESSIONS, onConfirmed }: Props) {
   const id = useId();
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [proposal, setProposal] = useState<CoachProposal | null>(null);
   const [receipt, setReceipt] = useState<CoachReceipt | null>(null);
+  const [savedReceipt, setSavedReceipt] = useState<CoachReceipt | null>(null);
   const [serverActions, setServerActions] = useState<string[]>([]);
   const [serverSessions, setServerSessions] = useState<CoachSession[]>([]);
   const [capabilities, setCapabilities] = useState<CoachCapabilities>({ externalAi: false, imageUnderstanding: false, textProvider: null, imageProvider: null });
@@ -65,6 +76,9 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const [imageBusy, setImageBusy] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState<Record<string, boolean>>({});
+  const [displayUnits, setDisplayUnits] = useState<UnitSystem>(unitsOf(null, es ? "es" : "en"));
+  const [unitPreference, setUnitPreference] = useState("auto");
   const [operation, setOperation] = useState<"load" | "send" | "confirm" | "cancel" | "clear" | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [needsReload, setNeedsReload] = useState(false);
@@ -136,8 +150,11 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     if(proposedSessions.length===1)setSessionId(proposedSessions[0]);
     else if(payload.defaultSessionId)setSessionId(current=>current||payload.defaultSessionId!);
     setSelected({});
-    setEdits(Object.fromEntries((next?.candidates || []).map(candidate => [candidate.id, candidate.value === null ? "" : String(candidate.value)])));
-    setReceipt(next && ["cancelled", "superseded"].includes(next.status) ? null : verifiedCoachReceipt(payload));
+    const units = payload.displayUnits ?? unitsOf(null, es ? "es" : "en");
+    setDisplayUnits(units); setUnitPreference(payload.unitPreference ?? "auto"); setEditing({});
+    setEdits(Object.fromEntries((next?.candidates || []).map(candidate => [candidate.id, coachCandidateInput(candidate, units)])));
+    setReceipt(verifiedCoachReceipt(payload));
+    setSavedReceipt(verifiedCoachReceipt({ ok: payload.ok, receipt: payload.savedReceipt }));
     if (Array.isArray(payload.sessions)) setServerSessions(payload.sessions);
     if (payload.capabilities) setCapabilities(payload.capabilities);
     if (payload.mode) setMode(payload.mode);
@@ -188,7 +205,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
       const attempt = confirmationAttempt.current;
       if (attempt && payload.proposal?.id === attempt.proposalId && payload.proposal.revision === attempt.revision && ["pending", "proposed"].includes(payload.proposal.status)) {
         setSelected(Object.fromEntries(attempt.candidates.map(candidate => [candidate.id, true])));
-        setEdits(current => ({ ...current, ...Object.fromEntries(attempt.candidates.map(candidate => [candidate.id, String(candidate.value ?? "")])) }));
+        setEdits(current => ({ ...current, ...Object.fromEntries(attempt.candidates.map(candidate => [candidate.id, coachCandidateInput(candidate, payload.displayUnits ?? unitsOf(null, es ? "es" : "en"))])) }));
       } else confirmationAttempt.current = null;
     }
     catch (cause) { setError((cause as Error).message); }
@@ -242,7 +259,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     if (busy.current || blocked || !activeProposal) return;
     let candidates: CoachCandidate[];
     try {
-      candidates = activeProposal.candidates.filter(candidate => selected[candidate.id]).map(candidate => editedCoachCandidate(candidate, edits[candidate.id] ?? ""));
+      candidates = activeProposal.candidates.filter(candidate => selected[candidate.id]).map(candidate => editedCoachCandidate(candidate, edits[candidate.id] ?? "", displayUnits));
       if (!candidates.length || candidates.some(candidate => candidate.kind === "workout_feedback" && !candidate.sessionId)) throw new Error("selection");
     } catch { setError(es ? "Selecciona los datos que deseas confirmar e introduce valores válidos. Los resultados requieren una sesión concreta." : "Select the facts to confirm and enter valid values. Workout results require a specific session."); return; }
     confirmationAttempt.current = coachConfirmationAttempt(confirmationAttempt.current, activeProposal, candidates, () => crypto.randomUUID());
@@ -344,6 +361,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   }
 
   const pendingActions = [...new Set([...serverActions, ...(receipt?.pendingActions || []), ...(proposal && !["cancelled", "superseded"].includes(proposal.status) ? proposal.pendingActions || [] : [])])];
+  const confirmationReceipt = receipt?.applied.length ? receipt : savedReceipt;
   const pendingDrafts = [...(receipt?.checkinDraft || []), ...(receipt?.planDraft || [])];
   const selectedCount = activeProposal?.candidates.filter(candidate => selected[candidate.id]).length || 0;
 
@@ -417,18 +435,27 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     {activeProposal && <details open key={activeProposal.id} className="rounded-xl border border-ocean-300 p-4 space-y-3">
       <summary className={`cursor-pointer font-semibold ${focus}`}>{es ? `Revisar ${activeProposal.candidates.length} datos propuestos · Sin guardar` : `Review ${activeProposal.candidates.length} proposed facts · Not saved`}</summary>
       <p className="text-sm text-slate-700">{es ? "Selecciona solo los datos correctos. Puedes editar el valor o dejarlo sin seleccionar. El perfil, los resultados y los cambios de una sesión seleccionada se guardan al confirmar. El check-in mantiene su revisión; editar retira la aprobación anterior." : "Select only correct facts. Edit a value or leave it unselected. Profile facts, workout results and selected unfinished workout edits save on confirmation. Check-in keeps its own review; an edit removes previous approval."}</p>
+      {activeProposal.candidates.some(c => c.kind === "profile") && <>
+        <p className="text-sm">{es ? "Los cambios del perfil no reescriben un plan aprobado. Una propuesta de plan se revisa por separado y cada sesión mantiene su aprobación." : "Profile changes do not rewrite an approved plan. A plan preview is reviewed separately, and each workout keeps its own approval."}</p>
+        <p className="text-xs">{es ? "Unidades del perfil" : "Profile display units"}: {displayUnits === "imperial" ? (es ? "Imperiales" : "Imperial") : (es ? "Métricas" : "Metric")} · {unitPreference === "auto" ? (es ? "automáticas por idioma" : "automatic by language") : (es ? "elección guardada" : "saved choice")}. <Link href="/settings" className="underline">{es ? "Cambiar unidades" : "Change display units"}</Link></p>
+      </>}
       {activeProposal.candidates.map(candidate => {
         const target = allSessions.find(session => session.id === candidate.sessionId);
         const ambiguous = (candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") && !candidate.sessionId;
         const candidateId = `${id}-${candidate.id}`;
+        let previewValue: CoachCandidate["value"] | undefined;
+        try { previewValue = editedCoachCandidate(candidate, edits[candidate.id] ?? "", displayUnits).value; } catch { /* Invalid edits cannot be approved by the service. */ }
+        const displayUnit = coachCandidateUnit(candidate, displayUnits);
         return <fieldset key={candidate.id} disabled={blocked || ambiguous} className="rounded-lg border p-3 space-y-2 min-w-0">
           <legend className="px-1 font-semibold">{fieldLabel(candidate.field, es)}</legend>
           <label className="flex items-center gap-2 min-h-8"><input type="checkbox" className={`h-5 w-5 ${focus}`} checked={!!selected[candidate.id]} onChange={event => setSelected(current => ({ ...current, [candidate.id]: event.target.checked }))} />{es ? "Incluir al confirmar" : "Include in confirmation"}</label>
-          <label htmlFor={candidateId} className="block text-sm font-medium">{es ? "Valor" : "Value"}</label>
-          {typeof candidate.value === "boolean" ? <select id={candidateId} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}><option value="true">{es ? "Sí" : "Yes"}</option><option value="false">{es ? "No" : "No"}</option></select> : VALUE_CHOICES[candidate.field] ? <select id={candidateId} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}>{VALUE_CHOICES[candidate.field].map(([value, en, spanish]) => <option key={value} value={value}>{es ? spanish : en}</option>)}</select> : <input id={candidateId} className={inputClass} type={typeof candidate.value === "number" ? "number" : "text"} step="any" maxLength={500} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))} />}
+          {candidate.kind === "profile" && <ProfileProposalComparison candidate={candidate} beforeValue={activeProposal.beforeValues?.[candidate.field]} afterValue={previewValue} units={displayUnits} es={es} />}
+          <button type="button" className={secondaryClass} onClick={() => setEditing(current => ({ ...current, [candidate.id]: true }))}>{es ? "Editar" : "Edit"}</button>
+          <label htmlFor={candidateId} className="block text-sm font-medium">{es ? "Valor" : "Value"}{displayUnit ? ` (${displayUnit})` : ""}</label>
+          {typeof candidate.value === "boolean" ? <select id={candidateId} disabled={!editing[candidate.id]} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}><option value="true">{es ? "Sí" : "Yes"}</option><option value="false">{es ? "No" : "No"}</option></select> : VALUE_CHOICES[candidate.field] ? <select id={candidateId} disabled={!editing[candidate.id]} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}>{VALUE_CHOICES[candidate.field].map(([value, en, spanish]) => <option key={value} value={value}>{es ? spanish : en}</option>)}</select> : <input id={candidateId} disabled={!editing[candidate.id]} className={inputClass} type={typeof candidate.value === "number" && !(candidate.field === "heightCm" && displayUnits === "imperial") ? "number" : "text"} step="any" maxLength={500} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))} />}
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-slate-700">
             <div><dt className="inline font-medium">{es ? "Campo: " : "Field: "}</dt><dd className="inline break-words">{candidate.field}</dd></div>
-            <div><dt className="inline font-medium">{es ? "Unidad: " : "Unit: "}</dt><dd className="inline">{candidate.unit || (es ? "No aplica" : "Not applicable")}</dd></div>
+            <div><dt className="inline font-medium">{es ? "Unidad: " : "Unit: "}</dt><dd className="inline">{displayUnit || (es ? "No aplica" : "Not applicable")}</dd></div>
             <div><dt className="inline font-medium">{es ? "Fecha: " : "Date: "}</dt><dd className="inline">{candidate.observedDate || (es ? "Perfil, sin fecha" : "Profile, no date")}</dd></div>
             <div><dt className="inline font-medium">{es ? "Fuente: " : "Source: "}</dt><dd className="inline">{sourceLabel(candidate.source, es)}</dd></div>
           </dl>
@@ -439,7 +466,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
           {candidate.warnings?.map((warning, index) => <p key={index} className="text-sm text-amber-900">{warning}</p>)}
         </fieldset>;
       })}
-      <div className="flex flex-wrap gap-2"><button type="button" className={primaryClass} disabled={blocked || selectedCount === 0} onClick={() => void confirm()}>{es ? `Confirmar ${selectedCount} datos seleccionados` : `Confirm ${selectedCount} selected facts`}</button><button type="button" className={secondaryClass} disabled={blocked} onClick={() => void dismissProposal()}>{es ? "Descartar propuesta" : "Dismiss proposal"}</button></div>
+      <div className="flex flex-wrap gap-2"><button type="button" className={primaryClass} disabled={blocked || selectedCount === 0} onClick={() => void confirm()}>{es ? `Aprobar cambios (${selectedCount})` : `Approve changes (${selectedCount})`}</button><button type="button" className={secondaryClass} disabled={blocked} onClick={() => void dismissProposal()}>{es ? "Cancelar" : "Cancel"}</button></div>
       <p className="text-xs text-slate-700">{es ? "Si la fecha, unidad o sesión no es correcta, descarta la propuesta y aclárala en un mensaje nuevo." : "If the date, unit or workout is wrong, dismiss the proposal and clarify it in a new message."}</p>
     </details>}
     <details className="rounded-lg border p-3 space-y-2">
@@ -449,15 +476,16 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
       <p className="text-sm">{es ? "Para orientación o entrenamiento personal, contacta con Jasmel." : "For guidance or personal coaching, contact Jasmel."}</p>
       <a className={secondaryClass} href={COACH_REFERRALS.coaching.href}>{es ? "Llamar a Jasmel" : "Call Jasmel"} · {COACH_REFERRALS.coaching.phone}</a>
     </details>
-    {receipt && <details className="rounded-lg border border-green-700 bg-green-50 p-3 space-y-2">
-      <summary className={`cursor-pointer font-semibold ${focus}`}>{receipt.applied.length ? (es ? "Cambios guardados con comprobante" : "Saved changes with receipt") : (es ? "Revisión registrada; cambios pendientes" : "Review recorded; changes pending")}</summary>
-      {receipt.applied.length > 0 && <ul className="text-sm list-disc pl-5">{receipt.applied.map(entry => <li key={entry.candidateId}>{fieldLabel(entry.field, es)}: {typeof entry.value === "boolean" ? (entry.value ? (es ? "Sí" : "Yes") : "No") : String(entry.value ?? "—")}{entry.observedDate ? ` · ${entry.observedDate}` : ""}</li>)}</ul>}
-      <p className="text-xs text-slate-700 break-all">{es ? "Comprobante" : "Receipt"}: {receipt.id} · <time dateTime={receipt.confirmedAt}>{new Date(receipt.confirmedAt).toLocaleString(es ? "es" : "en")}</time></p>
+    {confirmationReceipt && <details open className="rounded-lg border border-green-700 bg-green-50 p-3 space-y-2" role="status">
+      <summary className={`cursor-pointer font-semibold ${focus}`}>{confirmationReceipt.applied.length ? (es ? "Cambios guardados con comprobante" : "Saved changes with receipt") : (es ? "Revisión registrada; cambios pendientes" : "Review recorded; changes pending")}</summary>
+      {confirmationReceipt.applied.length > 0 && <ul className="text-sm list-disc pl-5">{confirmationReceipt.applied.map(entry => <li key={entry.candidateId}>{fieldLabel(entry.field, es)}: {entry.kind === "profile" ? `${displayValue({ field: entry.field, unit: entry.field === "ftp" ? "W" : entry.field === "weeklyHours" ? "h/week" : null }, entry.previousValue, displayUnits, es)} → ` : ""}{displayValue({ field: entry.field, unit: entry.field === "ftp" ? "W" : entry.field === "weeklyHours" ? "h/week" : null }, entry.value, displayUnits, es)}{entry.observedDate ? ` · ${entry.observedDate}` : ""}</li>)}</ul>}
+      {confirmationReceipt.applied.some(entry => entry.kind === "profile") && <p className="text-sm">{es ? "El perfil se guardó; el plan aprobado no se reescribió. Para corregir un valor, revisa el perfil actual y guarda una nueva revisión." : "Profile saved; the approved plan was not rewritten. To correct a value, review the current profile and save a new revision."} <Link href="/settings" className="underline">{es ? "Revisar perfil guardado" : "Revise saved profile"}</Link> <Link href="/training" className="underline">{es ? "Revisar una propuesta de plan por separado" : "Review a separate plan preview"}</Link></p>}
+      <p className="text-xs text-slate-700 break-all">{es ? "Comprobante" : "Receipt"}: {confirmationReceipt.id} · <time dateTime={confirmationReceipt.confirmedAt}>{new Date(confirmationReceipt.confirmedAt).toLocaleString(es ? "es" : "en")}</time></p>
     </details>}
     {!!pendingActions.length && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2">
       <h3 className="font-semibold">{es ? "Siguiente paso pendiente" : "Pending next step"}</h3>
       <p className="text-sm">{es ? "Los valores del check-in aún requieren revisión. Después de guardar cambios de entrenamiento, revisa el check-in y la estructura antes de entrenar o publicar." : "Check-in values still need review. After saving workout changes, review your check-in and the structure before training or publishing."}</p>
-      {pendingDrafts.length > 0 && <><p className="text-sm">{es ? "Valores revisados para introducir en esa pantalla:" : "Reviewed values to enter in that screen:"}</p><ul className="list-disc pl-5 text-sm">{pendingDrafts.map(candidate => <li key={candidate.id}>{fieldLabel(candidate.field, es)}: {typeof candidate.value === "boolean" ? (candidate.value ? (es ? "Sí" : "Yes") : "No") : String(candidate.value ?? "—")}{candidate.unit ? ` ${candidate.unit}` : ""} · {candidate.observedDate || "—"} · {sourceLabel(candidate.source, es)}</li>)}</ul></>}
+      {pendingDrafts.length > 0 && <><p className="text-sm">{es ? "Valores revisados para introducir en esa pantalla:" : "Reviewed values to enter in that screen:"}</p><ul className="list-disc pl-5 text-sm">{pendingDrafts.map(candidate => <li key={candidate.id}>{fieldLabel(candidate.field, es)}: {displayValue(candidate, candidate.value, displayUnits, es)} · {candidate.observedDate || "—"} · {sourceLabel(candidate.source, es)}</li>)}</ul></>}
       <div className="flex flex-wrap gap-2">{pendingActions.includes("review_checkin") && <Link className={secondaryClass} href="/checkin">{es ? "Completar check-in actual" : "Complete current check-in"}</Link>}{pendingActions.includes("review_plan") && <Link className={secondaryClass} href="/training">{es ? "Revisar plan" : "Review plan"}</Link>}</div>
     </div>}
 

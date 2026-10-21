@@ -69,7 +69,7 @@ function fixture(candidates = [candidate()]) {
       coachConversation: { upsert: async ({ where, update: data }: any) => { assert.ok(matches(draft.conversation, where)); return update(draft.conversation, data); }, findUnique: async ({ where }: any) => matches(draft.conversation, where) ? draft.conversation : null, update: async ({ where, data }: any) => { assert.ok(matches(draft.conversation, where)); return update(draft.conversation, data); } },
       coachConversationProposal: {
         create: async ({ data }: any) => { draft.proposal = { id: "new-image-proposal", status: "pending", revision: 1, receipt: null, idempotencyKey: null, requestHash: null, createdAt: new Date(), updatedAt: new Date(), ...data }; return draft.proposal; },
-        findFirst: async ({ where }: any) => matches(draft.proposal, where) ? draft.proposal : null,
+        findFirst: async ({ where }: any) => [draft.proposal, ...(draft.proposalHistory || [])].find(row => matches(row, where)) ?? null,
         findMany: async ({ where }: any) => matches(draft.proposal, where) ? [draft.proposal] : [],
         update: async ({ where, data }: any) => { assert.ok(matches(draft.proposal, where)); return update(draft.proposal, data); },
         updateMany: async ({ where, data }: any) => { if (matches(draft.proposal, where)) update(draft.proposal, data); },
@@ -122,18 +122,40 @@ function fixture(candidates = [candidate()]) {
 
 test('assistant workout choices filter replaced plans before the cap and retain owner history and current doubles', async () => {
   const f = fixture([]);
-  const originals = { conversation: prisma.coachConversation.findUnique, plan: prisma.trainingPlan.findFirst, workouts: prisma.workout.findMany };
+  const originals = { conversation: prisma.coachConversation.findUnique, profile: prisma.athleteProfile.findUnique, plan: prisma.trainingPlan.findFirst, workouts: prisma.workout.findMany };
   const day = new Date(`${today}T12:00Z`), previous = localDate(addDaysKey(today,-1),'UTC');
   const pending = (id:string, planId='active-plan', status='active') => ({id,userId:actor.id,title:id,sport:'run',date:day,planned:true,completed:false,feedbackStatus:null,source:'plan',planDay:{plan:{id:planId,status,userId:actor.id}}});
   const rows = [...Array.from({length:100},(_,i)=>pending(`retired-${i}`,'archived','archived')),pending('current-a'),pending('current-b'),{...pending('old-report','archived','archived'),date:previous,feedbackStatus:'partial',actualDurationMin:0},{...pending('foreign'),userId:'other',completed:true}];
   try {
     (prisma.coachConversation as any).findUnique = async () => null;
+    (prisma.athleteProfile as any).findUnique = async () => f.state.profile;
     (prisma.trainingPlan as any).findFirst = async (q:any) => { assert.equal(q.where.userId,actor.id); assert.equal(q.where.status,'active'); return f.state.activePlan; };
     (prisma.workout as any).findMany = async (q:any) => { assert.equal(q.where.userId,actor.id); assert.equal(q.take,80); return rows.filter(row=>f.matches(row,q.where)).slice(0,q.take).map(row=>Object.fromEntries(Object.keys(q.select).map(key=>[key,(row as any)[key]]))); };
     const result = await getConversation(actor);
     assert.deepEqual(result.sessions.map(s=>s.id),['current-a','current-b','old-report']); assert.equal(result.defaultSessionId,null);
     assert.equal(rows.length,104,'no source records are removed');
-  } finally { (prisma.coachConversation as any).findUnique=originals.conversation; (prisma.trainingPlan as any).findFirst=originals.plan; (prisma.workout as any).findMany=originals.workouts; f.restore(); }
+  } finally { (prisma.coachConversation as any).findUnique=originals.conversation; (prisma.athleteProfile as any).findUnique=originals.profile; (prisma.trainingPlan as any).findFirst=originals.plan; (prisma.workout as any).findMany=originals.workouts; f.restore(); }
+});
+
+test("profile proposals expose saved before values and chosen units without profile writes", async () => {
+  const f = fixture();
+  try {
+    f.state.profile.units = "metric";
+    const result = await appendConversation(actor, { message: "My weight is 75 kg", clientRequestId: "profile-before-review" });
+    assert.deepEqual(result.proposal?.beforeValues, { weightKg: 70 });
+    assert.equal(result.displayUnits, "metric", "Explicit override wins over English default");
+    assert.equal(f.state.profile.weightKg, 70);
+    assert.deepEqual(f.state.writes, []);
+    const saved = await confirmConversation(actor, { ...f.input, proposalId: result.proposal!.id, candidates: result.proposal!.candidates });
+    assert.equal(saved.receipt.applied[0].previousValue, 70);
+    assert.equal(saved.receipt.applied[0].value, 75);
+    const confirmed = structuredClone(f.state.proposal);
+    f.state.proposalHistory = [confirmed];
+    f.state.proposal = { ...confirmed, id: "next-proposal", status: "pending", receipt: null, idempotencyKey: null };
+    const dismissed = await cancelConversationProposal(actor, { proposalId: "next-proposal" });
+    assert.equal(dismissed.proposal?.status, "cancelled");
+    assert.equal(dismissed.receipt?.id, saved.receipt.id, "Last saved confirmation survives a later proposal/cancel and a fresh read");
+  } finally { f.restore(); }
 });
 
 test('dated auto binding ignores archived suggestions and cannot choose between current double sessions',async()=>{
