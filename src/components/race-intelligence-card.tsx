@@ -36,6 +36,7 @@ export function RaceIntelligenceCard({ draft, onEvent, onVenue, onContext, es, u
         setManual(draft.environment.manual);
     } }, [draft.environment]);
     useEffect(() => { setTemp(''); setDew(''); setWind(''); }, [units]);
+    useEffect(() => { setSelected(null); setCandidates([]); setVenues([]); }, [draft.raceId]);
     useEffect(() => () => { active.current?.abort(); }, []);
     async function request(path: string, body: unknown) { active.current?.abort(); const c = new AbortController(); active.current = c; setBusy(true); setError(''); setNotice(''); const id = ++generation.current; try {
         const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: c.signal, cache: 'no-store' });

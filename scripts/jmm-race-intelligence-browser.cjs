@@ -93,6 +93,7 @@ async function main() {
                 assert.ok(geometry.scroll <= geometry.viewport + 1, JSON.stringify(geometry));
                 await page.getByLabel(es ? 'Carrera guardada' : 'Saved race',{exact:true}).selectOption('other-race');
                 await card.getByRole('heading',{name:es ? 'Estimación histórica estacional' : 'Historical seasonal estimate',exact:true}).waitFor({state:'hidden'});
+                assert.equal(await card.getByRole('button',{name:es?'Buscar dirección del lugar':'Find venue address',exact:true}).count(),0);
                 assert.equal(await card.getByRole('heading',{name:es ? 'Estimación histórica estacional' : 'Historical seasonal estimate',exact:true}).count(),0);
                 results.push({ switchedRaceClearsWeather:true, lang, width, units, ambiguousSelection: true, missingTimeNotInvented: true, venueConfirmed: true, manualCorrectionRetained: true, contextAttached: true, geometry });
                 await context.close();
