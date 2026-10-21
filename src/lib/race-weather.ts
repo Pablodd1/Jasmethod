@@ -6,6 +6,7 @@ export interface RaceWeatherPoint {
   at: string; temperatureC: number | null; humidityPct: number | null;
   windMs: number | null; windFromDeg: number | null;
   precipitation: { amountMm: number; intervalStart: string; intervalEnd: string } | null;
+  cloudCoverPct?: number | null; surfacePressureHpa?: number | null;
 }
 export interface RaceWeatherAttribution { text: string; sourceUrl: string; licenseUrl: string; modifications: string }
 export interface RaceWeatherResult {
@@ -76,7 +77,10 @@ export function parseRaceWeatherForecast(raw: unknown, input: RaceWeatherRequest
     points.push({ at, temperatureC: unitOk("air_temperature") ? numeric(instant.air_temperature, -100, 70) : null,
       humidityPct: unitOk("relative_humidity") ? numeric(instant.relative_humidity, 0, 100) : null,
       windMs: unitOk("wind_speed") ? numeric(instant.wind_speed, 0, 150) : null,
-      windFromDeg: unitOk("wind_from_direction") ? numeric(instant.wind_from_direction, 0, 360) : null, precipitation });
+      windFromDeg: unitOk("wind_from_direction") ? numeric(instant.wind_from_direction, 0, 360) : null, precipitation,
+      cloudCoverPct: units.cloud_area_fraction === '%' ? numeric(instant.cloud_area_fraction, 0, 100) : null,
+      // Sea-level pressure is not venue surface pressure.
+      surfacePressureHpa: null });
   }
   if (!points.length || points.some((p, i) => i > 0 && p.at <= points[i - 1].at)) throw new Error("Forecast timestamps must increase.");
   const result: RaceWeatherResult = { kind: "forecast", status: "fresh", requestedAt: request.at, timeZone: request.timeZone,
@@ -136,7 +140,7 @@ export async function getRaceScenarioWeather(input: RaceWeatherRequest, options:
           const headers: Record<string, string> = { "User-Agent": userAgent, Accept: "application/json" };
           if (previous?.lastModified) headers["If-Modified-Since"] = previous.lastModified;
           const response = await (options.fetcher ?? fetch)(url.toString(), { headers, signal: AbortSignal.timeout(8000), redirect: "error", cache: "no-store" });
-          if (response.status === 429) { nextFetchAt = now() + 60000; throw new Error("Throttled"); }
+          if (response.status === 429) { const retry=response.headers.get('retry-after')??'',seconds=Number(retry),retryAt=Number.isFinite(seconds)&&seconds>0?now()+seconds*1000:Date.parse(retry);nextFetchAt = Number.isFinite(retryAt)?Math.max(now()+60000,retryAt):now()+60000; throw new Error("Throttled"); }
           if (response.status !== 200 && response.status !== 304) throw new Error("Forecast unavailable");
           const raw = response.status === 304 && previous ? previous.raw : await boundedJson(response);
           const fetchedAt = new Date(now()).toISOString();

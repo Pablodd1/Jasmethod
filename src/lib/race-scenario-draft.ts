@@ -4,6 +4,8 @@ import type { RaceScenarioAnchor } from "./race-scenario-evidence";
 import type { RaceScenarioMetadata } from "./race-scenario-metadata";
 import { courseToScenarioSegments, type RaceCourseResult } from "./race-course";
 import type { RaceHistoryResult, RaceWeatherResult } from "./race-weather";
+import type { EventCandidate } from './race-event-lookup';
+import { localRaceOffsets } from "./race-local-time";
 const numberOrNull = (value: string) => value.trim() === "" ? null : Number(value);
 const str = (value: number | null | undefined) => value == null ? "" : String(value);
 function safeUrl(value: string) { try { const url = new URL(value); return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password ? url.href : null; } catch { return null; } }
@@ -15,6 +17,7 @@ export type LegDraft = {
   hrLow: string; hrHigh: string; hrObservedAt: string; hrContext: string; intensityConfirmed: boolean; runPowerTargetW: string; runPowerDevice: string;
 };
 export type Draft = {
+  environment?:RaceScenarioMetadata['environment'];
   name: string; raceId: string; eventType: RaceScenarioInput["eventType"]; date: string; startTime: string; offset: string; timeZone: string; location: string; officialUrl: string;
   latitude: string; longitude: string; coordinatesReviewed: boolean; altitudeM: string;
   weatherKind: ScenarioWeather["kind"]; temperatureC: string; humidityPct: string; windMps: string; weatherSource: string; weather: RaceWeatherResult | null; history: RaceHistoryResult | null; weatherRequest: { latitude: number; longitude: number; at: string; timeZone: string } | null; savedWeatherEvidence: RaceScenarioMetadata["weatherEvidence"];
@@ -22,6 +25,14 @@ export type Draft = {
 };
 export function freshLeg(sport: ScenarioSport): LegDraft { return { id: sport, sport, distanceKm: "", anchorId: "manual", baselineValue: "", observedAt: "", protocol: "", context: "", target: "", targetConfirmed: false, timeChangePct: "0", courseMode: "unknown", manualProfile: "", course: null, savedSegments: [], savedProfile: [], savedCourseSource: "manual", courseImportedAt: null, courseWarnings: [], headwindMps: "0", speedCapMps: "", totalMassKg: "", cdaM2: "", crr: "", airDensityKgM3: "", drivetrainEfficiency: "", grossEfficiency: "", hrLow: "", hrHigh: "", hrObservedAt: "", hrContext: "", intensityConfirmed: false, runPowerTargetW: "", runPowerDevice: "" }; }
 export function freshDraft(): Draft { return { name: "", raceId: "", eventType: "run_road", date: "", startTime: "", offset: "", timeZone: "", location: "", officialUrl: "", latitude: "", longitude: "", coordinatesReviewed: false, altitudeM: "", weatherKind: "unknown", temperatureC: "", humidityPct: "", windMps: "", weatherSource: "", weather: null, history: null, weatherRequest: null, savedWeatherEvidence: null, legs: [freshLeg("run")], transitionMinutes: "0", practicedCarbsGph: "", fuelObservedAt: "", fuelContext: "", fuelTolerated: false, sensitivityPercent: "0" }; }
+/** A provider refresh fills missing fields only; explicit corrections always win. */
+export function applyEventToDraft(current:Draft,event:EventCandidate):Draft {
+  const date=current.date||event.date||'',startTime=current.startTime||event.localTime||'',timeZone=current.timeZone||event.timeZone||'';
+  const offsets=localRaceOffsets(date,startTime,timeZone),eventType=current.name?current.eventType:event.discipline??current.eventType;
+  const sports:ScenarioSport[]=eventType==='triathlon'?['swim','bike','run']:eventType.startsWith('bike')?['bike']:eventType==='swim'?['swim']:['run'];
+  const legs=eventType===current.eventType?current.legs:sports.map(freshLeg);
+  return {...current,name:current.name||event.name,date,startTime,timeZone,offset:current.offset||(offsets.length===1?offsets[0]:''),location:current.location||event.location,officialUrl:current.officialUrl||event.sourceUrl,eventType,legs:legs.map(l=>({...l,distanceKm:l.distanceKm||(legs.length===1&&event.distanceM!==null?String(event.distanceM/1000):'')}))};
+}
 export function parseProfile(text: string): { points: ProfilePoint[]; error: string | null } {
   if (!text.trim()) return { points: [], error: null };
   const lines = text.trim().split(/\n/);
@@ -38,7 +49,8 @@ export function parseProfile(text: string): { points: ProfilePoint[]; error: str
 }
 export function pointsFor(leg: LegDraft) { return leg.courseMode === "saved" ? leg.savedProfile : leg.courseMode === "gpx" ? leg.course?.profile ?? [] : leg.courseMode === "manual" ? parseProfile(leg.manualProfile).points : []; }
 export function buildInput(draft: Draft, anchors: RaceScenarioAnchor[]): RaceScenarioInput {
-  const startAt = draft.date && draft.startTime && draft.offset ? `${draft.date}T${draft.startTime}:00${draft.offset}` : null;
+  const offsets=localRaceOffsets(draft.date,draft.startTime,draft.timeZone),offset=draft.offset||(offsets.length===1?offsets[0]:'');
+  const startAt = draft.date && draft.startTime && offset ? `${draft.date}T${draft.startTime}:00${offset}` : null;
   if (!draft.date) throw Error("Enter the event date.");
   if ((draft.startTime || draft.offset) && !startAt) throw Error("Enter both local start time and its UTC offset.");
   if (draft.officialUrl && !safeUrl(draft.officialUrl)) throw Error("Use an ordinary HTTP or HTTPS event link.");
@@ -87,7 +99,7 @@ export function buildInput(draft: Draft, anchors: RaceScenarioAnchor[]): RaceSce
 }
 export function buildMetadata(draft: Draft): RaceScenarioMetadata {
   const credit = draft.weather?.attribution[0];
-  return { eventDate: draft.date || null, raceId: draft.raceId || null, location: draft.location || null, officialUrl: draft.officialUrl || null, timeZone: draft.timeZone || null, latitude: numberOrNull(draft.latitude), longitude: numberOrNull(draft.longitude),
+  return { environment:draft.environment??null,eventDate: draft.date || null, raceId: draft.raceId || null, location: draft.location || null, officialUrl: draft.officialUrl || null, timeZone: draft.timeZone || null, latitude: numberOrNull(draft.latitude), longitude: numberOrNull(draft.longitude),
     course: null,
     courses: draft.legs.filter(leg => leg.sport !== "swim" && leg.courseMode !== "unknown").map(leg => ({ legId: leg.id, source: leg.courseMode === "saved" ? leg.savedCourseSource : leg.courseMode === "gpx" ? "gpx" : leg.courseMode === "flat" ? "flat" : "manual", sourceUrl: draft.officialUrl || null, label: `${leg.sport}: ${leg.courseMode === "saved" ? "Saved course profile" : leg.courseMode === "gpx" ? "User-uploaded GPX; official status unverified" : leg.courseMode === "flat" ? "Explicit flat-course assumption" : "Manually entered profile"}`, importedAt: leg.courseImportedAt, profile: pointsFor(leg).map(point => ({distanceM: point.distanceM, elevationM: point.elevationM, segmentIndex: point.segmentIndex ?? 0})), warnings: leg.course?.warnings ?? leg.courseWarnings })),
     weatherEvidence: draft.weather ? { requestLatitude: draft.weatherRequest?.latitude, requestLongitude: draft.weatherRequest?.longitude, requestedAt: draft.weatherRequest?.at, timeZone: draft.weatherRequest?.timeZone, provider: "MET Norway", sourceUrl: credit?.sourceUrl ?? null, licenseUrl: credit?.licenseUrl ?? null, retrievedAt: draft.weather.fetchedAt, validAt: draft.weather.point?.at ?? null, kind: draft.weather.kind, attribution: draft.weather.attribution.map(item => `${item.text}. ${item.modifications}`).join(" ") } : draft.history ? { provider: "NASA POWER", sourceUrl: draft.history.attribution[0]?.sourceUrl ?? null, licenseUrl: draft.history.attribution[0]?.licenseUrl ?? null, retrievedAt: draft.history.fetchedAt, validAt: null, kind: "historical_summary", attribution: draft.history.attribution.map(item => `${item.text}. ${item.modifications}`).join(" ") } : draft.savedWeatherEvidence,
@@ -96,7 +108,7 @@ export function buildMetadata(draft: Draft): RaceScenarioMetadata {
 export function draftFromSnapshot(snapshot: { input: RaceScenarioInput; metadata: RaceScenarioMetadata | null }): Draft {
   const saved = snapshot.input, metadata = snapshot.metadata, initial = freshDraft(), time = saved.startAt;
   return { ...initial, name: saved.name, raceId: metadata?.raceId ?? "", eventType: saved.eventType, date: metadata?.eventDate ?? time?.slice(0, 10) ?? "", startTime: time?.includes("T") ? time.slice(11, 16) : "", offset: time?.endsWith("Z") ? "Z" : time?.match(/[+-]\d{2}:\d{2}$/)?.[0] ?? "", timeZone: metadata?.timeZone ?? "", location: metadata?.location ?? "", officialUrl: metadata?.officialUrl ?? "", latitude: str(metadata?.latitude), longitude: str(metadata?.longitude), coordinatesReviewed: false, savedWeatherEvidence: metadata?.weatherEvidence ?? null,
-    weatherKind: saved.weather.kind === "unknown" ? "unknown" : "manual", temperatureC: str(saved.weather.temperatureC), humidityPct: str(saved.weather.humidityPct), windMps: str(saved.weather.windMps), weatherSource: saved.weather.kind !== "unknown" ? `Saved scenario assumptions: ${saved.weather.source}` : saved.weather.source,
+    environment:metadata?.environment??null,weatherKind: saved.weather.kind === "unknown" ? "unknown" : "manual", temperatureC: str(saved.weather.temperatureC), humidityPct: str(saved.weather.humidityPct), windMps: str(saved.weather.windMps), weatherSource: saved.weather.kind !== "unknown" ? `Saved scenario assumptions: ${saved.weather.source}` : saved.weather.source,
     transitionMinutes: String(saved.transitionSeconds / 60), practicedCarbsGph: str(saved.practicedCarbsGph), fuelObservedAt: saved.fuelEvidence?.observedAt?.slice(0, 10) ?? "", fuelContext: saved.fuelEvidence?.context ?? "", fuelTolerated: saved.fuelEvidence?.confirmed ?? false, sensitivityPercent: String(saved.sensitivityPercent),
     legs: saved.legs.map(leg => ({ ...freshLeg(leg.sport), id: leg.id, distanceKm: String(leg.distanceM / 1000), anchorId: leg.baseline?.sourceId ?? "manual", baselineValue: str(leg.baseline?.value), observedAt: leg.baseline?.observedAt.slice(0, 10) ?? "", protocol: leg.baseline?.protocol ?? "", context: leg.baseline?.context ?? "", target: str(leg.target), targetConfirmed: false, timeChangePct: String((leg.timeMultiplier - 1) * 100), courseMode: leg.segments.length > 0 ? "saved" : leg.flatCourseConfirmed ? "flat" : "unknown", savedSegments: leg.segments, savedProfile: metadata?.courses?.find(course => course.legId === leg.id)?.profile ?? [], savedCourseSource: metadata?.courses?.find(course => course.legId === leg.id)?.source ?? "manual", courseImportedAt: metadata?.courses?.find(course => course.legId === leg.id)?.importedAt ?? null, courseWarnings: metadata?.courses?.find(course => course.legId === leg.id)?.warnings ?? [], headwindMps: str(leg.segments[0]?.headwindMps ?? 0), speedCapMps: str(leg.segments[0]?.speedCapMps), totalMassKg: str(leg.bike?.totalMassKg), cdaM2: str(leg.bike?.cdaM2), crr: str(leg.bike?.crr), airDensityKgM3: str(leg.bike?.airDensityKgM3), drivetrainEfficiency: str(leg.bike?.drivetrainEfficiency), grossEfficiency: str(leg.bike?.grossEfficiency), hrLow: str(leg.hrTargetBpm?.[0]), hrHigh: str(leg.hrTargetBpm?.[1]), hrObservedAt: leg.intensityEvidence?.observedAt.slice(0, 10) ?? "", hrContext: leg.intensityEvidence?.context ?? "", intensityConfirmed: false, runPowerTargetW: str(leg.runPowerTargetW), runPowerDevice: leg.runPowerDevice ?? "" })),
   };
