@@ -9,8 +9,8 @@ deployment or environment change was made. Provider documentation describes prov
 | Evidence level | Finding |
 |---|---|
 | Previously reported | Calendar redirect override/checker, obsolete-plan guards, refresh fencing and long-gap history fixes were reported in PR work. Source and the executed tests below confirm the listed code paths. |
-| Code inspected | Branch `feat/jmm-connectivity-smart-coach`, starting HEAD `2b519b3d49c1862142e1141d4267e740503a19dd`, plus the explicitly listed uncommitted Oct 21 changes. |
-| GitHub checked by coordinating reviewer | PR 67 OPEN, head `31abeabccc8b62f0fd47a4c5b4ca0ce2f2e3e0a2`, based on main; PR 68 OPEN, head `2b519b3d49c1862142e1141d4267e740503a19dd`, based on PR 67. Neither is merged. PR 48 is unrelated and was preserved. |
+| Code inspected | Branch `feat/jmm-connectivity-smart-coach`, starting HEAD `2b519b3d49c1862142e1141d4267e740503a19dd`, plus the committed Oct 21 follow-ups on this branch. The final reviewed head and matching CI evidence are recorded in [PR 68](https://github.com/Pablodd1/Jasmethod/pull/68); this document does not claim a deployment. |
+| GitHub checked by coordinating reviewer | PR 67 OPEN, head `31abeabccc8b62f0fd47a4c5b4ca0ce2f2e3e0a2`, based on main; PR 68 OPEN, based on PR 67, updated with this review's isolated commits. Neither is merged. PR 48 is unrelated and was preserved. |
 | Production checked afresh | Vercel READY production deployment created `2026-10-20T21:44:58.212Z`, main commit `38c43a44df8744cb877545825a25d83f3cc5511c`, serving `jasmiamimethod.fit`. It is not the feature HEAD. |
 | Public metadata only | `GET /api/auth/providers` returned 200 and Google availability `true`. This establishes sign-in configuration availability only; it does not identify the Google client or prove Calendar authorization. |
 | Real integration acceptance | Not performed in this audit. New-athlete Google consent/refresh, provider import, actual transport acceptance and watch receipt remain unverified. |

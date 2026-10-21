@@ -8,6 +8,20 @@ import { computePmc, estimateTss } from "./fitness";
 import { verifyWhoopWebhook } from "./webhook-auth";
 import { createHmac } from "crypto";
 import { coachingSummary } from "./coaching";
+test("retired untouched suggestions do not hide partial feedback, while reported unknown or restricted history still blocks analytics",()=>{
+ const now=new Date("2026-10-21T12:00Z");
+ const partial={date:now,source:"plan",completed:false,planned:true,feedbackStatus:"partial",durationMin:60,actualDurationMin:25,rpe:8};
+ const retired={date:now,source:"superseded-plan",completed:false,planned:false,durationMin:30};
+ const rows=[partial,retired],before=JSON.stringify(rows);
+ const summary=coachingSummary(rows,[],{},"UTC",now);
+ assert.equal(summary.derivedActivityPolicy.status,"allowed");
+ assert.ok(summary.insights.some(item=>item.title.includes("partial")));
+ assert.equal(JSON.stringify(rows),before);
+ for(const evidence of [{calories:0},{feedbackStatus:"unknown"},{actualDurationMin:0},{source:"strava"}]) {
+  const blocked=coachingSummary([partial,{...retired,...evidence}],[],{},"UTC",now);
+  assert.equal(blocked.derivedActivityPolicy.status,"insufficient");assert.equal(blocked.minutes,null);
+ }
+});
 test("partial sessions retain actual work without counting as a fully fulfilled plan",()=>{const now=new Date("2026-09-06T16:00Z");const summary=coachingSummary([{date:now,source:"manual",completed:true,planned:true,feedbackStatus:"partial",durationMin:60,actualDurationMin:25,rpe:5}],[],{},"UTC",now);assert.equal(summary.minutes,25);assert.equal(summary.completed,1);assert.equal(summary.fulfillmentPct,0)});
 import {
   parseAppleHealth,

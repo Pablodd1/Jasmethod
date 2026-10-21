@@ -2,6 +2,7 @@ import { estimateTss, computePmc } from "./fitness";
 import { dateKey } from "./dates";
 import {groupActivityEvidence,type ActivityDecision} from "./activity-evidence";
 import { derivedActivityPolicy } from "./derived-activity-policy";
+import { isUnperformedSupersededWorkout } from "./superseded-workout";
 
 // Explain observations and their data coverage. Missing data is not a diagnosis.
 export function coachingSummary(
@@ -12,7 +13,7 @@ export function coachingSummary(
   now = new Date(),
   decisions:readonly ActivityDecision[]=[],
 ) {
-  const past = workouts.filter((w) => new Date(w.date) <= now);
+  const past = workouts.filter((w) => new Date(w.date) <= now && !isUnperformedSupersededWorkout(w));
   const policy = derivedActivityPolicy([...past, ...metrics]);
   if (policy.status !== "allowed") return {
     completed: null, planned: null, fulfillmentPct: null, minutes: null, measuredSessions: null, estimatedLoad: null, pmc: null,

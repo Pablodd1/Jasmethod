@@ -10,7 +10,7 @@ test("unperformed retired suggestions never become actual or unknown execution e
     for (const recorded of [{ completed: true }, { feedbackStatus: "unknown" }, { feedbackStatus: "skipped" },
       { feedbackAt: new Date() }, { feedbackNote: "" }, { actualDurationMin: 0 }, { actualSport: "swim" },
       { actualDetails: "{}" }, { rpe: 0 }, { avgHr: 120 }, { maxHr: 150 }, { avgPower: 0 }, { np: 0 },
-      { distanceKm: 0 }, { distanceKm: 12 }, { preWeightKg: 64 }, { postWeightKg: 64 }, { externalId: "imported" }, { matchedPlanId: "actual" }]) {
+      { distanceKm: 0 }, { distanceKm: 12 }, { calories: 0 }, { calories: 320 }, { preWeightKg: 64 }, { postWeightKg: 64 }, { externalId: "imported" }, { matchedPlanId: "actual" }]) {
       assert.equal(isUnperformedSupersededWorkout({ ...retired, ...recorded }), false, JSON.stringify(recorded));
     }
   }
