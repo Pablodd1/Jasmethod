@@ -2,6 +2,8 @@
 
 Base reviewed: `8f0291b68f9225385f75e907a6f7d2278b954d98`. The production serving deployment was independently checked against this base. This branch is a review candidate, not a production deployment. The final run identifiers and artifact inventory belong in the dated release evidence report after CI finishes.
 
+Follow-up: PR 72 was merged externally as `59969383ce63b0c5fd9c17d6c08f4260f4110d6d` while CI `39653163023` had failed a mobile-browser timing check. The resulting production deployment was observed READY; the agent did not merge or deploy it. Unit tests (1,909), build and the preceding database acceptance steps passed, but the run as a whole failed. Read-only serving verification confirmed email health, and exposed the stored-unknown-rest promotion still described in the companion recovery review. The acceptance follow-up fixes that resolver path, synchronizes the browser test with the authoritative refresh, and adds a continuous single-owner HTTP/database journey. Those follow-up changes need their own exact-head CI and serving verification; the first run is not a release pass.
+
 ## Demonstrated defects and changes
 
 | Task | What worked at the base | Reproduced defect / smallest change | Acceptance boundary |

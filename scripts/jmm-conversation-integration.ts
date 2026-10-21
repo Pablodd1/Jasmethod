@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { PrismaClient, type User } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { Decoder, Stream } from "@garmin/fitsdk";
 import { hashToken } from "../src/lib/auth";
 import { dayBounds, addDaysKey, localDate } from "../src/lib/dates";
 import { isTodayTrainingResponse, isSavedPlanResponse, isTrainingProfileResponse } from "../src/components/daily-training/training-read";
@@ -30,13 +31,17 @@ async function request(path:string, actor?:Actor, options:{method?:string;body?:
 }
 async function json(path:string, actor?:Actor, options:Parameters<typeof request>[2]={}) {return (await request(path,actor,{status:200,...options})).json();}
 async function scenario(name:string, task:()=>Promise<void>) {try {await task();results.push({name,status:"PASS"});console.log(`PASS ${name}`);} catch(e) {const detail=e instanceof Error?e.message:String(e);results.push({name,status:"FAIL",detail});console.error(`FAIL ${name}: ${detail}`);}}
-async function actor(label:string, language="en"):Promise<Actor> {
-  const user=await db.user.create({data:{email:`coach-${label}-${randomUUID()}@example.invalid`,name:`Synthetic conversational ${label}`,passwordHash:bcrypt.hashSync(randomBytes(24).toString("base64url"),10),role:"athlete",timezone:"UTC",language,onboarded:true,
+async function actor(label:string, language="en", minimal=false):Promise<Actor> {
+  const user=await db.user.create({data:{email:`coach-${label}-${randomUUID()}@example.invalid`,name:`Synthetic conversational ${label}`,passwordHash:bcrypt.hashSync(randomBytes(24).toString("base64url"),10),role:"athlete",timezone:"UTC",language,onboarded:!minimal,
     profile:{create:{goal:"run-only",experience:"amateur",weeklyHours:3,birthYear:1990,weightKg:70}},reminder:{create:{emailEnabled:false,telegramEnabled:false}}}});
   created.push(user.id);const token=randomBytes(32).toString("hex");await db.authSession.create({data:{userId:user.id,tokenHash:hashToken(token),expiresAt:new Date(Date.now()+3600000)}});
-  const a={...user,cookie:`jmm_session=${token}`};const p=await json("/api/profile",a);
-  await json("/api/profile",a,{method:"PUT",body:{expectedRevision:p.revision,expectedSetupRevision:p.setupRevision??null,experience:"amateur",weeklyHours:3,setup:{adultConfirmed:true,profileConfirmed:true,goalDescription:"Run comfortably for general fitness",baselineWeeklyMinutes:120,baselineObservedAt:today,interruptions:"none",restrictions:"none",qualifiedReview:"none_needed",trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:60,equipmentAccess:"Shoes and outdoor path",planWeeks:4}}});
+  const a={...user,cookie:`jmm_session=${token}`};
+  if (!minimal) await reviewPlanningSetup(a);
   return a;
+}
+async function reviewPlanningSetup(a:Actor) {
+  const p=await json("/api/profile",a);
+  await json("/api/profile",a,{method:"PUT",body:{expectedRevision:p.revision,expectedSetupRevision:p.setupRevision??null,experience:"amateur",weeklyHours:3,setup:{adultConfirmed:true,profileConfirmed:true,goalDescription:"Run comfortably for general fitness",baselineWeeklyMinutes:120,baselineObservedAt:today,interruptions:"none",restrictions:"none",qualifiedReview:"none_needed",trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:60,equipmentAccess:"Shoes and outdoor path",planWeeks:4}}});
 }
 async function fixture(a:Actor, offset=0, historic=false) {
   const date=localDate(addDaysKey(today,offset),"UTC");
@@ -48,6 +53,70 @@ async function ask(a:Actor,message:string,extra:Record<string,unknown>={}) {retu
 function pending(result:any) {assert.ok(result.proposal?.id,"Expected a reviewable saved proposal");assert.ok(result.proposal.candidates?.length,"Expected explicit candidates");return result.proposal;}
 function confirmBody(p:any,candidates=p.candidates) {return {proposalId:p.id,expectedRevision:p.revision,candidates,idempotencyKey:randomUUID(),confirmed:true};}
 async function main() {
+  await scenario("One athlete continues minimal onboarding, manual import, check-in, profile approval and coach-reviewed cycle through permitted FIT/ICS exports",async()=>{
+    const a=await actor("continuous-journey","en",true),other=await actor("continuous-foreign"),coach=await actor("continuous-coach");
+    const foreignBefore={profile:await db.athleteProfile.findUniqueOrThrow({where:{userId:other.id}}),workouts:await db.workout.findMany({where:{userId:other.id},orderBy:{id:"asc"}})};
+    assert.equal((await json("/api/onboard",a)).onboarded,false);
+    await json("/api/onboard",a,{body:{}});assert.equal((await json("/api/onboard",a)).onboarded,true);
+    const saved=await json("/api/today?view=plan",a);assert.equal(saved.kind,"saved_today_plan");assert.equal(saved.readOnly,true);assert.ok(saved.sessions.length);
+    assert.equal(await db.dailyCheckin.count({where:{userId:a.id}}),0,"Saved workout is visible before answering check-in");
+    const starter=await db.workout.findFirstOrThrow({where:{userId:a.id,source:"starter",planned:true}});
+    // Supported manual file ingestion, not a simulated OAuth grant or automatic provider import.
+    const upload=async()=>{
+      const form=new FormData();form.set("source","garmin");form.set("distanceUnits","metric");
+      form.set("file",new File([`Activity Type,Date,Time,Title,Distance\nRunning,${yesterday} 07:30:00,00:30:00,Synthetic continuous activity,5`],"continuous.csv"));
+      const response=await fetch(new URL("/api/import",base),{method:"POST",headers:{cookie:a.cookie},body:form,signal:AbortSignal.timeout(120000)});
+      const body=await response.json();assert.equal(response.status,200,JSON.stringify(body));return body;
+    };
+    assert.equal((await upload()).workoutsImported,1);assert.equal((await upload()).workoutsImported,0);
+    const imported=await db.workout.findFirstOrThrow({where:{userId:a.id,planned:false,completed:true}});
+    assert.equal(await db.workout.count({where:{userId:a.id,externalId:imported.externalId}}),1);
+    const context=await json("/api/checkin",a),actual=context.inputContext.completedWorkouts.find((row:any)=>row.recordIds.includes(imported.id));
+    assert.equal(actual.durationMinutes,30);assert.equal(actual.questions.durationMinutes,false);assert.equal(actual.questions.rpe,true);
+    const report=context.previousSessions.find((row:any)=>row.id===imported.id);assert.ok(report?.feedbackRevision);
+    await json("/api/plan",a,{method:"PUT",body:{sessionId:imported.id,expectedRevision:report.feedbackRevision,feedbackStatus:"completed",actualDurationMin:30,actualSport:"run",rpe:3}});
+    await reviewPlanningSetup(a);await json("/api/checkin",a,{body:validAnswers});
+    const first=await json(`/api/workout/card?id=${starter.id}`,a);assert.equal(first.session.verdict,"ready");
+    await request(`/api/workout/approve?sessionId=${starter.id}&expectedRevision=${first.session.revision}`,a,{method:"POST",status:200});
+    const beforeProfileApproval=await db.workout.findMany({where:{userId:a.id},orderBy:{id:"asc"}});
+    const proposed=pending(await ask(a,"My weight is 72 kg."));assert.equal(proposed.beforeValues.weightKg,70);
+    assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:a.id}})).weightKg,70);
+    const approval=confirmBody(proposed);await json("/api/assistant/confirm",a,{body:approval});await json("/api/assistant/confirm",a,{body:approval});
+    assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:a.id}})).weightKg,72);
+    assert.deepEqual(await db.workout.findMany({where:{userId:a.id},orderBy:{id:"asc"}}),beforeProfileApproval,"Profile approval cannot rewrite saved workouts");
+    assert.equal((await json("/api/assistant",a)).savedReceipt.applied[0].value,72);
+    await db.user.update({where:{id:coach.id},data:{role:"coach"}});
+    const generate=`/api/plan/generate?athleteId=${a.id}`;
+    await request(generate,coach,{body:{preview:true,easyPct:80},status:403});
+    await db.coachAssignment.create({data:{coachId:coach.id,athleteId:a.id,status:"active",consent:"granted"}});
+    const preview=await json(generate,coach,{body:{preview:true,easyPct:80}});assert.ok(preview.previewToken);
+    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),0,"Coach preview creates no plan");
+    await json(generate,coach,{body:{preview:false,easyPct:80,previewToken:preview.previewToken}});
+    await request(generate,coach,{body:{preview:false,easyPct:80,previewToken:preview.previewToken},status:409});
+    const plan=await db.trainingPlan.findFirstOrThrow({where:{userId:a.id,status:"active"}});assert.equal(plan.easyPct,80);
+    const audit=await db.auditLog.findFirstOrThrow({where:{actorId:coach.id,subjectId:a.id,entityId:plan.id,action:"plan.generate"}});
+    assert.equal(JSON.parse(audit.after!).previewToken,preview.previewToken);
+    const selected=await db.workout.findFirstOrThrow({where:{userId:a.id,planned:true,date:day,planDay:{planId:plan.id},sport:"run"},orderBy:{id:"asc"}});
+    const card=await json(`/api/workout/card?id=${selected.id}`,a);assert.equal(card.session.verdict,"ready");
+    assert.equal((await db.workout.findUniqueOrThrow({where:{id:selected.id}})).approved,false);
+    await request(`/api/workout/approve?sessionId=${selected.id}&expectedRevision=${first.session.revision}`,a,{method:"POST",status:409});
+    const approved=await request(`/api/workout/approve?sessionId=${selected.id}&expectedRevision=${card.session.revision}`,a,{method:"POST",status:200});
+    assert.equal(approved.headers.get("x-workout-revision"),card.session.revision);assert.equal(approved.headers.get("x-delivered-email"),"0");
+    const decoder=new Decoder(Stream.fromByteArray(new Uint8Array(await approved.arrayBuffer())));assert.equal(decoder.checkIntegrity(),true);
+    const decoded=decoder.read();assert.deepEqual(decoded.errors,[]);assert.ok(decoded.messages.workoutStepMesgs);assert.equal(decoded.messages.workoutStepMesgs.length,card.session.steps.length);
+    for(const [index,step] of card.session.steps.entries()) {
+      assert.equal(step.endpoint.type,"time");assert.equal(decoded.messages.workoutStepMesgs[index].durationValue,step.endpoint.seconds*1000);
+    }
+    const reloaded=await json(`/api/workout/card?id=${selected.id}`,a);assert.equal(reloaded.session.revision,card.session.revision);
+    await request(`/api/workout/card?id=${selected.id}`,other,{status:404});
+    const ics=await request("/api/training/export?format=ics",a,{status:200});const calendar=(await ics.text()).replace(/\r\n /g,"");
+    assert.match(calendar,/BEGIN:VCALENDAR/);assert.ok(calendar.includes(`UID:${selected.id}@jasmiamimethod`));assert.ok(calendar.includes(card.session.title));
+    const health=await json("/api/reminders/health",a);assert.ok(health.workoutEmail.blockers.length);assert.equal(health.workoutEmail.statuses.providerAccepted,0);
+    assert.equal(health.recentProviderAcceptances,0);assert.equal(await db.sentEmail.count({where:{userId:a.id}}),0);
+    const connections=await json("/api/connectors",a);assert.equal(connections.providers.find((provider:any)=>provider.id==="google_cal").status,"disconnected");
+    assert.equal(await db.calendarEvent.count({where:{userId:a.id}}),0,"ICS download does not publish an external calendar event");
+    assert.deepEqual({profile:await db.athleteProfile.findUniqueOrThrow({where:{userId:other.id}}),workouts:await db.workout.findMany({where:{userId:other.id},orderBy:{id:"asc"}})},foreignBefore);
+  });
   await scenario('Dated natural workout edits bind one owner session, save only on confirmation, and ask when ambiguous',async()=>{
     const a=await actor('natural-edit'),w=await fixture(a);
     assert.equal((await json('/api/assistant',a)).defaultSessionId,w.id);
