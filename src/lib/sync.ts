@@ -11,7 +11,7 @@ import * as api from "./importers";
 
 import { effectivePrescription } from "./effective-prescription";
 import { SessionResolutionError } from "./canonical-session";
-import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE } from "./capabilities";
+import { intervalsConnectorEnabled, INTERVALS_DISABLED_MESSAGE, stravaConnectorEnabled, STRAVA_DISABLED_MESSAGE } from "./capabilities";
 import { currentOrReportedWorkoutWhere } from "./calendar-workouts";
 
 export interface SyncResult {
@@ -58,6 +58,10 @@ export async function syncUserConnectors(
   for (const conn of connections) {
     const cfg = configs[conn.provider as keyof typeof configs];
     if (!cfg) continue;
+    if (conn.provider === "strava" && !stravaConnectorEnabled()) {
+      if (onlyProvider === "strava") results.push({ provider: "strava", ok: false, imported: 0, error: STRAVA_DISABLED_MESSAGE });
+      continue;
+    }
     if (conn.provider === "intervals" && !intervalsConnectorEnabled()) {
       if (onlyProvider === "intervals") results.push({ provider: "intervals", ok: false, imported: 0, error: INTERVALS_DISABLED_MESSAGE });
       continue;

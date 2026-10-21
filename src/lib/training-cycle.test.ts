@@ -47,7 +47,7 @@ test("performed dates and actual race dates are protected without shifting or ma
   assert.ok(cycle[4].totalMinutes<shapeTrainingCycle(bounded,options)[4].totalMinutes);
 });
 test("unknown actual duration is retained and recent difficult work reduces the opening week",()=>{
-  const evidence=cycleActivityEvidence([{id:"reported",date:localDate(options.startKey,"UTC"),completed:true,actualDurationMin:null,rpe:9,feedbackStatus:"completed"}],options.startKey,"UTC");
+  const evidence=cycleActivityEvidence([{id:"reported",source:"manual",date:localDate(options.startKey,"UTC"),completed:true,actualDurationMin:null,rpe:9,feedbackStatus:"completed"}],options.startKey,"UTC");
   assert.equal(evidence.reportedMinutes,null);assert.equal(evidence.unknownDurationSessions,1);assert.equal(evidence.recoveryReview,true);
   const cycle=shapeTrainingCycle(bounded,{...options,recoveryReview:evidence.recoveryReview});
   assert.ok(cycle[0].totalMinutes<shapeTrainingCycle(bounded,options)[0].totalMinutes);
@@ -178,8 +178,8 @@ test("saved calendar-only cycle dates remain calendar days in western timezones"
 test("an unperformed planned match never hides a completed imported session", () => {
   const date = localDate(options.startKey, "UTC");
   const rows = [
-    { id: "plan", date, completed: false, actualDurationMin: null, feedbackStatus: "unknown", rpe: null },
-    { id: "import", matchedPlanId: "plan", date, completed: true, actualDurationMin: 45, feedbackStatus: "completed", rpe: 9 },
+    { id: "plan", source:"plan", date, completed: false, actualDurationMin: null, feedbackStatus: "unknown", rpe: null },
+    { id: "import", source:"garmin", matchedPlanId: "plan", date, completed: true, actualDurationMin: 45, feedbackStatus: "completed", rpe: 9 },
   ];
   const evidence = cycleActivityEvidence(rows, options.startKey, "UTC");
   assert.equal(evidence.reportedSessions, 1); assert.equal(evidence.reportedMinutes, 45);
@@ -192,9 +192,9 @@ test("an unperformed planned match never hides a completed imported session", ()
 test("matched partial and completed reports merge known duration without duplicate sessions and retain all actual dates", () => {
   const previous = addDaysKey(options.startKey, -1);
   const rows = [
-    { id: "plan", date: localDate(previous, "UTC"), completed: false, actualDurationMin: null, feedbackStatus: "partial", rpe: 9 },
-    { id: "import", matchedPlanId: "plan", date: localDate(options.startKey, "UTC"), completed: true, actualDurationMin: 45, feedbackStatus: "completed", rpe: 3 },
-    { id: "duplicate", matchedPlanId: "plan", date: localDate(options.startKey, "UTC"), completed: true, actualDurationMin: 40, feedbackStatus: "completed", rpe: 4 },
+    { id: "plan", source:"plan", date: localDate(previous, "UTC"), completed: false, actualDurationMin: null, feedbackStatus: "partial", rpe: 9 },
+    { id: "import", source:"garmin", matchedPlanId: "plan", date: localDate(options.startKey, "UTC"), completed: true, actualDurationMin: 45, feedbackStatus: "completed", rpe: 3 },
+    { id: "duplicate", source:"whoop", matchedPlanId: "plan", date: localDate(options.startKey, "UTC"), completed: true, actualDurationMin: 40, feedbackStatus: "completed", rpe: 4 },
   ];
   const evidence = cycleActivityEvidence(rows, options.startKey, "UTC");
   assert.equal(evidence.reportedSessions, 1); assert.equal(evidence.reportedMinutes, 45);
@@ -207,9 +207,9 @@ test("matched partial and completed reports merge known duration without duplica
 test("matching chains and missing planned rows still count one actual session and keep unrelated work separate", () => {
   const date = localDate(options.startKey, "UTC");
   const rows = [
-    { id: "a", matchedPlanId: "missing-plan", date, completed: true, actualDurationMin: 30, feedbackStatus: "completed", rpe: 3 },
-    { id: "b", matchedPlanId: "a", date, completed: true, actualDurationMin: 30, feedbackStatus: "completed", rpe: 3 },
-    { id: "c", date, completed: false, actualDurationMin: null, feedbackStatus: "substituted", rpe: 8 },
+    { id: "a", source:"manual", matchedPlanId: "missing-plan", date, completed: true, actualDurationMin: 30, feedbackStatus: "completed", rpe: 3 },
+    { id: "b", source:"manual", matchedPlanId: "a", date, completed: true, actualDurationMin: 30, feedbackStatus: "completed", rpe: 3 },
+    { id: "c", source:"manual", date, completed: false, actualDurationMin: null, feedbackStatus: "substituted", rpe: 8 },
   ];
   const evidence = cycleActivityEvidence(rows, options.startKey, "UTC");
   assert.equal(evidence.reportedSessions, 2); assert.equal(evidence.reportedMinutes, 30);

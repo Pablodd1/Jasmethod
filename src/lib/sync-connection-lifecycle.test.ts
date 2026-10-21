@@ -11,7 +11,7 @@ const compiled = ts.transpileModule(fs.readFileSync("src/lib/sync.ts", "utf8"), 
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 type Row = Record<string, any>;
-function fixture(provider = "strava", expired = false, lastSyncAt: Date | null = null) {
+function fixture(provider = "strava", expired = false, lastSyncAt: Date | null = null, stravaEnabled = true) {
   const row: Row = { id: "connection", userId: "athlete", provider, status: "connected", tokenEnc: "synthetic-old", refreshEnc: "synthetic-refresh", expiresAt: expired ? new Date(0) : null, syncStartedAt: null, lastSyncAt };
   const calls: string[] = [], windows: Array<{ kind: string; start: Date; end: Date }> = [], writes: Row[] = [], daysRequested: number[] = [];
   const hooks: { refresh?: () => void; read?: () => void; fail?: boolean; windowFailure?: number; final?: () => void } = {};
@@ -57,10 +57,11 @@ function fixture(provider = "strava", expired = false, lastSyncAt: Date | null =
       whoopGetWorkouts: async (_: string, _days: number, window: any) => windowRead("workout", window),
     },
     "./profile-import-review": { importStravaProfileWeight: async () => { calls.push("profile"); } },
+    "./intervals-ingest": { ingestIntervals: async () => { await read(); return 0; } },
     "./telemetry": { meterUsage: async () => {} },
     "./activity-store": {}, "./device-metric-snapshot": {}, "./manual-workout-calendar": {}, "./calendar-workouts": { currentOrReportedWorkoutWhere },
     "./manual-workout-email-locale": {}, "./manual-workout-email": {}, "./manual-workout-email-content": {},
-    "./effective-prescription": {}, "./canonical-session": {}, "./capabilities": {},
+    "./effective-prescription": {}, "./canonical-session": {}, "./capabilities": { intervalsConnectorEnabled: () => true, stravaConnectorEnabled: () => stravaEnabled, STRAVA_DISABLED_MESSAGE: "Strava imports paused" },
   };
   const mod: any = { exports: {} };
   vm.runInNewContext(compiled, { module: mod, exports: mod.exports, Date, console, process: { env: {} }, require: (id: string) => {
@@ -69,6 +70,22 @@ function fixture(provider = "strava", expired = false, lastSyncAt: Date | null =
   return { row, calls, windows, writes, daysRequested, hooks, run: () => mod.exports.syncUserConnectors("athlete", provider),
     disconnect: () => Object.assign(row, { status: "disconnected", tokenEnc: null, refreshEnc: null, expiresAt: null, syncStartedAt: null }) };
 }
+
+test("disabled Strava sync preserves credentials and cursor without provider calls or lease writes", async () => {
+  const f = fixture("strava", true, new Date("2026-10-01"), false);
+  const before = { ...f.row };
+  const result = await f.run();
+  assert.equal(result.results[0].ok, false); assert.match(result.results[0].error, /paused/);
+  assert.deepEqual(f.calls, []); assert.deepEqual(f.writes, []); assert.deepEqual(f.row, before);
+});
+
+test("Intervals incomplete range preserves its retained cursor for the next reconciliation", async () => {
+  const cursor = new Date("2026-06-23T12:00:00Z"), f = fixture("intervals", false, cursor);
+  f.hooks.fail = true;
+  assert.equal((await f.run()).results[0].ok, false);
+  assert.equal(f.row.lastSyncAt, cursor); assert.equal(f.row.status, "error");
+  assert.ok(f.writes.every(write => !("lastSyncAt" in write)));
+});
 
 test("disconnect during OAuth rotation cannot restore credentials or start an activity request", async () => {
   const f = fixture("strava", true); f.hooks.refresh = f.disconnect;

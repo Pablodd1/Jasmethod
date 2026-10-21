@@ -216,7 +216,7 @@ test("new same-day activity immediately holds other sessions until check-in reas
   const checkin = { ...base.checkin, answers: JSON.stringify({ ...answers, inputMetadata: { recordedAt: "2026-10-02T09:00:00Z" } }) };
   const initial = effectiveSessionFromRecords(record({ checkin, reportedActivity: [] }));
   assert.equal(initial.canonical.verdict, "ready");
-  const actual = { id: "manual-other", userId: "athlete-a", date: new Date("2026-10-02"), createdAt: new Date("2026-10-02T10:00:00Z"), feedbackAt: new Date("2026-10-02T10:00:00Z"), feedbackStatus: "completed", completed: true, planned: false, actualDurationMin: 40, actualSport: "run", rpe: 7 };
+  const actual = { id: "manual-other", userId: "athlete-a", source: "manual", date: new Date("2026-10-02"), createdAt: new Date("2026-10-02T10:00:00Z"), feedbackAt: new Date("2026-10-02T10:00:00Z"), feedbackStatus: "completed", completed: true, planned: false, actualDurationMin: 40, actualSport: "run", rpe: 7 };
   const held = effectiveSessionFromRecords(record({ checkin, reportedActivity: [actual] }));
   assert.equal(held.canonical.verdict, "blocked"); assert.deepEqual(held.canonical.steps, []); assert.match(held.canonical.reason, /after this check-in/);
   assert.notEqual(initial.canonical.revision, held.canonical.revision);

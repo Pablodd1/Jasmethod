@@ -33,6 +33,15 @@ test("unknown or missing provenance is restricted, never assumed safe", () => {
   assert.equal(isAiEligible({ source: "mystery-app" }), false);
 });
 
+test("verified JMM starter sources are allowed but never override an upstream Strava marker", () => {
+  for (const source of ["starter", "starter-rest"]) {
+    assert.equal(provenanceOf({ source }), "allowed");
+    assert.equal(provenanceOf({ source, notes: "Original source: STRAVA" }), "strava");
+    assert.equal(provenanceOf({ source, externalId: "strava:123" }), "strava");
+    assert.equal(provenanceOf({ source, originalSource: "STRAVA" }), "strava");
+  }
+});
+
 test("the athlete's own entries and file imports are eligible", () => {
   for (const source of ["manual", "garmin", "coros", "apple", "whoop", "fit", "tcx"]) assert.equal(provenanceOf({ source }), "allowed", source);
 });

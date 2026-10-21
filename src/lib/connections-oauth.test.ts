@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const original = process.cwd();
+const stravaPrivacy = require('./strava-privacy-event');
 const {test} = require('node:test');
 const ts = require(path.join(original, 'node_modules/typescript'));
 class NextResponse extends Response {
@@ -55,7 +56,7 @@ function fixture(root,options={}) {
     if(options.transactionFailure)throw Object.assign(new Error('fixture-database-secret'),{code:'P2034'});
     return work({...db, syncJob:{create:async args=>{log.queued.push(args);return{id:'job'}}}});
   };
-  const env={NEXT_PUBLIC_APP_URL:'https://app.example',ENABLE_INTERVALS_CONNECTOR:'true',TOKEN_ENCRYPTION_KEY:'fixture-key',
+  const env={NEXT_PUBLIC_APP_URL:'https://app.example',ENABLE_INTERVALS_CONNECTOR:'true',ENABLE_STRAVA_CONNECTOR:'true',TOKEN_ENCRYPTION_KEY:'fixture-key',
     INTERVALS_CLIENT_ID:'fixture-client',INTERVALS_CLIENT_SECRET:'fixture-client-secret',...options.env};
   for(const p of ['GOOGLE','OURA','STRAVA','WHOOP']) {env[p+'_CLIENT_ID']='fake-client';env[p+'_CLIENT_SECRET']='fake-secret';}
   const intervals=load(root,'src/lib/intervals-oauth.ts',{
@@ -74,6 +75,7 @@ function fixture(root,options={}) {
     './auth':{getCurrentUser:async()=>sessionUser?{id:sessionUser}:null},'./db':{prisma:db},
     './crypto':{encryptSecret:value=>'enc:v1:fixture:'+value},'./importers':importers,'./oauth-state':state,
     './intervals-oauth':intervals,
+    './capabilities':load(root,'src/lib/capabilities.ts',{}, {process:{env}}),
     './request-origin':load(root,'src/lib/request-origin.ts',{}, {process:{env}}),
     './sync':{syncUserConnectors:async()=>({total:0,results:[]})},
     './background-jobs':{enqueue:async(...args)=>log.queued.push(args)},
@@ -169,7 +171,7 @@ test('connections: WHOOP v2 workout sport, energy units and invalid timestamps',
   assert.equal(workouts[0].calories,100); assert.equal(workouts[1].sport,'other');
 });
 
-function webhookFixture({failRefetch=false, deletion=false}={}) {
+function webhookFixture({failRefetch=false, deletion=false, enabled=true}={}) {
   const log={fetches:[],stored:[],deleted:[],processed:0};
   const db={
     connector:{findFirst:async()=>({id:'connector',userId:'athlete-A',tokenEnc:'expired'}),findUnique:async()=>({tokenEnc:'fresh'})},
@@ -183,10 +185,32 @@ function webhookFixture({failRefetch=false, deletion=false}={}) {
     '@/lib/crypto':{decryptSecret:x=>x},
     '@/lib/activity-store':{storeActivity:async(...x)=>{log.stored.push(x);return true;},deleteImportedActivities:async(...x)=>{log.deleted.push(x);return{count:1}}},
     '@/lib/importers':{stravaGetActivity:async(token,id)=>{log.fetches.push([token,id]);if(token==='expired'||failRefetch)throw Error('401');return{id};},stravaActivityToWorkout:a=>({externalId:`strava:${a.id}`})},
+    '@/lib/capabilities':{stravaConnectorEnabled:()=>enabled,STRAVA_DISABLED_MESSAGE:'New Strava imports paused'},
+    '@/lib/strava-privacy-event':stravaPrivacy,
   },{process:{env:{STRAVA_SUBSCRIPTION_ID:'subscription'}},console:{warn:()=>{}}});
-  const req=new Request('https://app.example/webhook',{method:'POST',body:JSON.stringify({subscription_id:'subscription',owner_id:'owner',object_type:'activity',aspect_type:deletion?'delete':'update',object_id:'old-activity',event_time:123})});
+  const req=new Request('https://app.example/webhook',{method:'POST',body:JSON.stringify({subscription_id:'subscription',owner_id:123,object_type:'activity',aspect_type:deletion?'delete':'update',object_id:deletion?456:'old-activity',event_time:123})});
   return {route,req,log};
 }
+test('connections: Strava capability blocks authorization and callbacks without storage, tokens or jobs',async()=>{
+  for(const value of [undefined,'false','1','TRUE']) {
+    const f=fixture(original,{env:{ENABLE_STRAVA_CONNECTOR:value}});
+    const result=await f.authorize(new Request('https://app.example/api/connectors/strava/authorize'),'strava');
+    assert.equal(result.status,503);assert.equal(f.getTxn(),null);
+    const callback=await f.callback(new Request('https://app.example/api/connectors/strava/callback?state=old-state&code=fake-code'),'strava');
+    assert.match(callback.headers.get('location'),/error=provider_disabled/);
+    assert.equal(f.log.tokenRequests.length,0);assert.equal(f.log.writes.length,0);assert.equal(f.log.queued.length,0);
+  }
+});
+test('connections: already queued Strava updates cannot import when disabled',async()=>{
+  const {route,req,log}=webhookFixture({enabled:false});
+  assert.equal((await route.POST(req)).status,503);
+  assert.deepEqual(log,{fetches:[],stored:[],deleted:[],processed:0});
+});
+test('connections: disabled Strava still honors a queued owned activity deletion without provider reads',async()=>{
+  const {route,req,log}=webhookFixture({deletion:true,enabled:false});
+  assert.equal((await route.POST(req)).status,200);
+  assert.equal(log.deleted.length,1);assert.equal(log.fetches.length,0);assert.equal(log.stored.length,0);
+});
 test('connections: historical Strava update is fetched by ID with refreshed token before acknowledgment',async()=>{
   const {route,req,log}=webhookFixture(); const result=await route.POST(req);
   assert.equal(result.status,200);assert.deepEqual(log.fetches,[['expired','old-activity'],['fresh','old-activity']]);
@@ -200,7 +224,7 @@ test('connections: Strava deletion uses plan-aware activity deletion scoped to o
   const {route,req,log}=webhookFixture({deletion:true});const result=await route.POST(req);
   assert.equal(result.status,200);assert.equal(log.deleted.length,1);
   assert.equal(log.deleted[0][0],'athlete-A');assert.equal(log.deleted[0][1],'strava');
-  assert.equal(JSON.stringify(log.deleted[0][2]),JSON.stringify(['strava:old-activity','old-activity']));
+  assert.equal(JSON.stringify(log.deleted[0][2]),JSON.stringify(['strava:456','456']));
   assert.equal(log.processed,1);
 });
 

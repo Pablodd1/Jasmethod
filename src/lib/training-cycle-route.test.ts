@@ -50,13 +50,13 @@ test("preview makes no writes; confirmation persists structured cycle and repeat
 });
 test("past start cannot reset history, and performed dates never receive duplicate replacement workouts",async()=>{
   const {state,run,today}=fixture();assert.equal((await run({startDate:dates.addDaysKey(today,-1)})).status,422);
-  state.plans=[{id:"old-cycle"}];state.activity=[{id:"done",date:dates.localDate(today,"UTC"),completed:true,actualDurationMin:25,feedbackStatus:"completed",rpe:3,matchedPlanId:null}];
+  state.plans=[{id:"old-cycle"}];state.activity=[{id:"done",source:"manual",date:dates.localDate(today,"UTC"),completed:true,actualDurationMin:25,feedbackStatus:"completed",rpe:3,matchedPlanId:null}];
   const draft=await(await run()).json();const response=await run({preview:false,previewToken:draft.previewToken});assert.equal(response.status,200);
   const first=state.created[0].days.create.find((day:any)=>dates.dateKey(day.date,"UTC")===today);assert.equal(first.sessions.create.length,0);
   assert.equal(state.activity[0].actualDurationMin,25);assert.equal(state.superseded[0].where.completed,false);assert.equal(state.superseded[0].where.userId,"athlete");
 });
 test("new actual training between preview and commit rejects the stale schedule",async()=>{
-  const {state,run,today}=fixture();const draft=await(await run()).json();state.txActivity=[{id:"new",date:dates.localDate(today,"UTC"),completed:true,actualDurationMin:20,feedbackStatus:"completed",rpe:3}];
+  const {state,run,today}=fixture();const draft=await(await run()).json();state.txActivity=[{id:"new",source:"manual",date:dates.localDate(today,"UTC"),completed:true,actualDurationMin:20,feedbackStatus:"completed",rpe:3}];
   assert.equal((await run({preview:false,previewToken:draft.previewToken})).status,409);assert.equal(state.created.length,0);
 });
 test("stored UTC calendar-day race and explicitly entered race keep the intended Miami date",async()=>{
@@ -107,4 +107,14 @@ test("distinct profile, saved and explicit event dates all remain protected",asy
 test("serialization conflict reports actionable preview conflict without retrying or fabricated success",async()=>{
  const {state,run}=fixture();const draft=await(await run()).json();state.transactionConflict=true;
  const response=await run({preview:false,previewToken:draft.previewToken});assert.equal(response.status,409);assert.match((await response.json()).error,/fresh preview/);assert.equal(state.created.length,0);
+});
+
+test("restricted or unknown performed history blocks cycle generation without writes or invented zero capacity",async()=>{
+ for(const origin of [{source:"strava"},{source:"uploaded_unknown"},{source:"garmin",notes:"Original source: STRAVA"}]) {
+  const {state,run,today}=fixture();
+  state.activity=[{id:"reported",userId:"athlete",date:dates.localDate(today,"UTC"),completed:true,planned:false,actualDurationMin:45,durationMin:45,feedbackStatus:"completed",rpe:4,...origin}];
+  const before=JSON.stringify(state.activity),response=await run();
+  assert.equal(response.status,409); assert.match((await response.json()).error,/origin|understate training/);
+  assert.equal(state.created.length,0);assert.equal(state.superseded.length,0);assert.equal(state.audits.length,0);assert.equal(JSON.stringify(state.activity),before);
+ }
 });

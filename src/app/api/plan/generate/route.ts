@@ -114,6 +114,8 @@ export async function POST(req: Request) {
     const allRaces = storedRaces.map(row => ({ ...row, date: toLocalMidnight(row.date.toISOString().slice(0,10)) }));
     const activityDecisions=await readActivityDecisions(user.id);
     const activityEvidence = cycleActivityEvidence(recentActivity, todayKey, user.timezone, activityDecisions);
+    if (activityEvidence.derivedActivityPolicy.status !== "allowed")
+      throw new ApiError(activityEvidence.derivedActivityPolicy.reason || "Activity origin needs review before generating training. Unknown load is not zero.", 409);
     const anchors = evidencedTargetProfile(profile, benchmarkTests, appliedAnchors.flatMap(row => row.entityId ? [row.entityId] : []));
     const needsAssessment = dist === "cycle" ? !anchors.ftp : dist === "swim-only" ? !anchors.swimPaceBase : ["track-sprint", "hyrox"].includes(dist) ? true : dist === "run-only" ? !anchors.runPaceBase : !anchors.ftp || !anchors.runPaceBase || !anchors.swimPaceBase;
     const upcomingRaces = allRaces.filter(r => dateKey(r.date, user.timezone) >= startKey);

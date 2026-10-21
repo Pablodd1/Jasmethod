@@ -1,6 +1,8 @@
 > **CTO audit update — 2026-10-20:** Official COROS documentation now describes MCP workout/plan creation and editing for running and cycling. The earlier read-only characterization below is superseded. That provider capability is not a verified JMM integration: OAuth registration, token handling, consent, per-athlete acceptance and device confirmation remain necessary. Unknown file manufacturers/authors now stay `uploaded_unknown`; CSV distances require explicit metric/imperial units. All direct uploads are limited to 4 MB.
 > Sources: [COROS official MCP update log](https://coros.com/stories/coros-metrics/c/mcp-testing), [Vercel request limits](https://vercel.com/docs/functions/limitations), [Strava API agreement](https://www.strava.com/legal/api).
 
+> **2026-10-21 correction:** New Strava ingestion now requires the server-only `ENABLE_STRAVA_CONNECTOR=true`; unset or any other value stops OAuth, sync and queued/webhook imports without changing saved history or credentials. Authenticated, owner-bound activity deletion/deauthorization events remain processable without provider fetches, including after disconnect. This is an ingestion stop, not proof of compliance for stored data. The current [Strava API Policy](https://www.strava.com/legal/api_policy) §5.4 also restricts analytics and combining data, beyond AI training/context restrictions. Legacy calculations identified below remain a release blocker; do not simply remove their rows and infer unused training capacity. See the dated [capability and owner-action matrix](integrations/2026-10-21-capabilities.md).
+
 # Provider limits, import verification and what is deliberately not done
 
 Branch `feat/jmm-connectivity-smart-coach`, written 2026-10-20. Nothing here was deployed, no OAuth/security setting
@@ -23,10 +25,13 @@ shown to the athlete it belongs to. The restriction follows the data when anothe
 | Stream analysis, next-workout suggestions and the stream store refuse Strava-origin and unknown-origin activities **before reading any data**. | `stream-analysis.ts`, `activity-stream-store.ts`, `api/activity-analysis`, `api/workout/next-suggestion` | `stream-analysis.test.ts`, `activity-stream-store.test.ts` |
 | The athlete-facing setup screen states only what is enforced (Strava activities are kept for the athlete's own records; JMM's AI features do not receive them). | `STRAVA_AI_NOTICE`, `setup-paths.tsx` | `athlete-setup-paths.test.ts` (17) |
 
-**Not done, needs an owner/legal decision.** Older local analytics (training-load charts, legacy summaries computed
-from stored workouts) still include Strava-origin rows. AI paths already excluded them (`api/coach`,
-`coach-personal-context`). Whether non-AI local load maths on Strava rows is acceptable under the agreement is a legal
-question; excluding them would change athletes' load numbers (a safety-relevant trade-off), so it was not changed.
+**Remaining release review.** Oct 21 parallel work now holds restricted-data fitness/JMetrics and core daily dose
+decisions; new activity reports reject restricted/unknown activity and suppress historical comparisons when any
+contributor is restricted. Admin summary calculations, weekly/cycle/import-review totals and day-view derived pace
+now fail closed too. Already persisted insights, raw disclosure and retention still need separate review; the dated
+matrix lists exact consumers. Restricted records must make derived
+capacity unavailable without turning known performed work into zero or erasing history. Retention,
+revocation/deletion handling and permission for raw-record display remain owner/provider decisions.
 
 ## 2. COROS
 
@@ -70,9 +75,9 @@ Behavior changes athletes will notice (also in the release notes): walking is no
 is timer time; non-English CSV is refused with instructions; calories/duration/dates in old rows are corrected on
 re-import (same `externalId`, so re-importing updates instead of duplicating).
 
-**Body-size flag.** The upload UI allows 40 MB; Vercel's documented request-body limit for serverless functions is
-4.5 MB. Files above that fail at the platform before reaching the route. Not verified live; either lower the UI cap or
-use direct-to-storage upload. Not changed here.
+**Body-size limit (corrected 2026-10-21).** Direct-upload controls and handlers now cap files at 4 MB, below Vercel's
+documented 4.5 MB function request limit. This was verified in source and synthetic fixtures; large real-device
+exports and deployment acceptance remain unverified. Split or otherwise reduce the source export as instructed.
 
 ## 6. Outgoing artifacts and channels (tested separately, as asked)
 

@@ -1,5 +1,6 @@
 import { addDaysKey, dateKey } from "./dates";
 import {groupActivityEvidence,type ActivityDecision,type ActivityEvidenceRow} from "./activity-evidence";
+import { derivedActivityPolicy } from "./derived-activity-policy";
 import type { BoundedPlanSession } from "./planning-bounds";
 import type { GeneratedWeek, Sport, ZoneKey } from "./science";
 import { cycleEventDay, normalizeCycleEvents, type CycleEventInput } from "./cycle-events";
@@ -14,10 +15,18 @@ export interface CycleActivity extends ActivityEvidenceRow {
 /** Only records of performed work count. Missing reports are never zero training. */
 export function cycleActivityEvidence(rows: CycleActivity[], today: string, timezone: string,decisions:readonly ActivityDecision[]=[]) {
   const isPerformed = (row: CycleActivity) => row.completed || (row.actualDurationMin ?? 0) > 0 || ["partial", "substituted"].includes(row.feedbackStatus || "");
-  const performed=rows.filter(isPerformed),reconciled=groupActivityEvidence(rows,decisions);
+  const performed=rows.filter(isPerformed),policy=derivedActivityPolicy(rows);
+  if (policy.status !== "allowed") return {
+    reportedSessions:null,reportedMinutes:null,unknownDurationSessions:null,
+    protectedDays:[...new Set(performed.map(row=>dateKey(row.date,timezone)))].sort(),
+    reconciliation:{rawRecords:performed.length,groupedCopies:null,unresolvedGroups:null,requiresReview:true},
+    historyReview:true,recoveryReview:false,derivedActivityPolicy:policy,note:policy.reason!,
+  };
+  const reconciled=groupActivityEvidence(rows,decisions);
   const groups=reconciled.groups.filter(group=>group.members.some(isPerformed));
   const durations=groups.map(group=>group.budgetMinutes);
   return {
+    derivedActivityPolicy:policy,
     reportedSessions: groups.length,
     reportedMinutes: reconciled.unresolvedGroups ? null : durations.some(minutes=>minutes!==null)?durations.reduce<number>((sum,minutes)=>sum+(minutes??0),0):null,
     unknownDurationSessions: groups.filter(group=>group.unresolved||group.budgetMinutes===null).length,

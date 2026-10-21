@@ -4,6 +4,8 @@ import { syncUserConnectors } from "./sync";
 import { decryptSecret } from "./crypto";
 import { storeActivity, deleteImportedActivities } from "./activity-store";
 import * as api from "./importers";
+import { stravaConnectorEnabled, STRAVA_DISABLED_MESSAGE } from "./capabilities";
+import { isStravaPrivacyEvent, readStravaEvent, StravaWebhookBodyError } from "./strava-privacy-event";
 
 // Never prerender — webhook.
 export const dynamic = "force-dynamic";
@@ -19,6 +21,7 @@ export const dynamic = "force-dynamic";
 //
 // GET — Strava verification handshake (echo hub.challenge).
 export async function GET(req: Request) {
+  if (!stravaConnectorEnabled()) return NextResponse.json({ error: STRAVA_DISABLED_MESSAGE, code: "provider_disabled" }, { status: 503 });
   const url = new URL(req.url);
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
@@ -42,23 +45,30 @@ export async function GET(req: Request) {
 // connected strava user for that owner id) and sync immediately.
 export async function processVerifiedEvent(req: Request, expectedUserId: string) {
   try {
-    // Two accepted auth paths: the ?key= secret (legacy registration) OR the
-    // pinned subscription id on every event body (the live registration —
-    // Strava rejects callback URLs with query strings, so the key param
-    // cannot ride on the registered URL).
-    const body = await req.json();
+    // Only durable, authenticated ingress invokes this worker. Classification
+    // does not authenticate a request; persisted owner binding is rechecked.
+    const body = await readStravaEvent(req);
+    const privacy = isStravaPrivacyEvent(body);
+    if (!privacy && (body.aspect_type === "delete" || body.updates?.authorized === "false" || body.updates?.authorized === false))
+      return NextResponse.json({ error: "Invalid provider privacy event" }, { status: 400 });
+    if (!stravaConnectorEnabled() && !privacy) return NextResponse.json({ error: STRAVA_DISABLED_MESSAGE, code: "provider_disabled" }, { status: 503 });
+    const privacyConnection = privacy ? await prisma.connector.findFirst({
+      where: { userId: expectedUserId, provider: "strava", externalRef: String(body.owner_id) },
+    }) : null;
+    if (privacy && (!privacyConnection || privacyConnection.userId !== expectedUserId))
+      return NextResponse.json({ error: "Provider event owner is not linked to this athlete" }, { status: 403 });
     if (
-      body?.object_type === "athlete" &&
-      body?.updates?.authorized === "false"
+      privacy && body.object_type === "athlete"
     ) {
       const stravaId = String(body.owner_id ?? "");
-      await prisma.connector
+      const stopped = await prisma.connector
         .updateMany({
-          where: { userId: expectedUserId, provider: "strava", externalRef: stravaId },
-          data: { status: "disconnected" },
+          where: { id: privacyConnection!.id, userId: expectedUserId, provider: "strava", externalRef: stravaId },
+          data: { status: "disconnected", tokenEnc: null, refreshEnc: null, expiresAt: null, syncStartedAt: null },
         })
         ;
-      return NextResponse.json({ ok: true });
+      return stopped.count === 1 ? NextResponse.json({ ok: true, deauthorized: true })
+        : NextResponse.json({ error: "Provider event owner binding changed" }, { status: 403 });
     }
     if (
       body?.object_type === "activity" &&
@@ -69,7 +79,7 @@ export async function processVerifiedEvent(req: Request, expectedUserId: string)
       // retry re-runs the sync.
       // Strava webhook payloads carry NO event_id — derive a stable key from
       // the delivery identity: owner + object + aspect + event_time.
-      const eventId = String(
+      const eventId = (privacy ? `${expectedUserId}:` : "") + String(
         body.event_id ??
         (body.object_id && body.aspect_type && body.event_time
           ? `${body.owner_id}:${body.object_id}:${body.aspect_type}:${body.event_time}:${JSON.stringify(body.updates || {})}`
@@ -102,7 +112,7 @@ export async function processVerifiedEvent(req: Request, expectedUserId: string)
         // with PREFIXED externalId `strava:${id}` (importers.ts) — match both
         // prefixed and legacy unprefixed forms.
         const ownerId = String(body.owner_id ?? "");
-        const conn = await prisma.connector.findFirst({
+        const conn = privacyConnection || await prisma.connector.findFirst({
           where: { userId: expectedUserId, provider: "strava", externalRef: ownerId },
         });
         if (conn && conn.userId === expectedUserId) {
@@ -125,7 +135,8 @@ export async function processVerifiedEvent(req: Request, expectedUserId: string)
               data: { processedAt: new Date() },
             }).catch(() => {});
         }
-        return NextResponse.json({ ok: true, aspect: "delete", removed: true });
+        return conn && conn.userId === expectedUserId ? NextResponse.json({ ok: true, aspect: "delete", removed: true })
+          : NextResponse.json({ error: "Provider event owner is not linked to this athlete" }, { status: 403 });
       }
       // Match the athlete whether the connector is healthy OR in error state —
       // a transient failure must not make later webhook events invisible.
@@ -188,7 +199,8 @@ export async function processVerifiedEvent(req: Request, expectedUserId: string)
     }
     // Strava only needs a 200 — respond fast, process again if retried.
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (error) {
+    if (error instanceof StravaWebhookBodyError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json({ error: "Event processing failed; retry required" }, { status: 503 });
   }
 }

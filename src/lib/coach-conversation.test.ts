@@ -266,7 +266,7 @@ test("last recorded workout question uses reported actual minutes", () => {
 
 
 test("local JMetrics reply uses saved actual effort, preserves unknown trends and rest-day questions", () => {
-  const jMetrics = computeJMetrics([{ date: new Date("2026-10-03T12:00Z"), completed: true, planned: true, durationMin: 90, actualDurationMin: 30, rpe: 4 }], new Date("2026-10-03T18:00Z"), "UTC");
+  const jMetrics = computeJMetrics([{ date: new Date("2026-10-03T12:00Z"), source:"manual", completed: true, planned: true, durationMin: 90, actualDurationMin: 30, rpe: 4 }], new Date("2026-10-03T18:00Z"), "UTC");
   const result = buildCoachReply("What is my JStress?", { ...context, jMetrics, approvedSession: { id: "rest", date: context.localToday, approved: true, isRestDay: true } });
   assert.equal(result.ruleId, "coach-conversation-v1:jmetrics-recorded-summary");
   assert.match(result.answer, /JStress \(2026-10-03\): 120 AU/);

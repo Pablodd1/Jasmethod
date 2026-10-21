@@ -1,6 +1,7 @@
 import { estimateTss, computePmc } from "./fitness";
 import { dateKey } from "./dates";
 import {groupActivityEvidence,type ActivityDecision} from "./activity-evidence";
+import { derivedActivityPolicy } from "./derived-activity-policy";
 
 // Explain observations and their data coverage. Missing data is not a diagnosis.
 export function coachingSummary(
@@ -12,6 +13,15 @@ export function coachingSummary(
   decisions:readonly ActivityDecision[]=[],
 ) {
   const past = workouts.filter((w) => new Date(w.date) <= now);
+  const policy = derivedActivityPolicy(past);
+  if (policy.status !== "allowed") return {
+    completed: null, planned: null, fulfillmentPct: null, minutes: null, measuredSessions: null, estimatedLoad: null, pmc: null,
+    reconciliation: { rawRecords: past.length, groupedCopies: null, unresolvedGroups: null },
+    daily: [] as { date: string; minutes: number | null; load: number | null }[],
+    insights: [{ level: "attention" as const, title: "Training analysis unavailable", detail: policy.reason! }],
+    coverage: { firstDay: past[0]?.date || null, metricsDays: null, latestMetric: metrics.at(-1)?.date || null },
+    derivedActivityPolicy: policy,
+  };
   const activity=groupActivityEvidence(past.filter((w)=>w.completed&&!w.matchedPlanId),decisions);
   const completed=activity.effective;
   const planned = past.filter((w) => w.planned);
@@ -108,6 +118,7 @@ export function coachingSummary(
     (w) => (w.completed || w.matchedPlanId) && !["partial", "skipped"].includes(w.feedbackStatus),
   ).length;
   return {
+    derivedActivityPolicy: policy,
     completed: completed.length,
     planned: planned.length,
     fulfillmentPct: planned.length

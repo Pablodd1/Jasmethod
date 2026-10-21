@@ -30,7 +30,7 @@ export interface ProvenanceFields {
 
 /** Sources written by JMM's own importers whose origin is the athlete's own file/entry or a non-Strava API. */
 const DIRECT_NON_STRAVA = new Set([
-  "manual", "plan", "garmin", "coros", "apple", "apple_health", "whoop", "oura", "tcx", "fit", "garmin_csv", "file", "jmm", "app",
+  "manual", "plan", "starter", "starter-rest", "garmin", "coros", "apple", "apple_health", "whoop", "oura", "tcx", "fit", "garmin_csv", "file", "jmm", "app",
 ]);
 /** Same upstream whitelist as intervals-ingest.ts. Kept here so the two cannot silently drift (test asserts equality). */
 export const INTERVALS_ALLOWED_UPSTREAM = ["UPLOAD", "MANUAL", "GARMIN_CONNECT", "OAUTH_CLIENT", "DROPBOX", "POLAR", "SUUNTO", "COROS", "WAHOO", "ZWIFT", "ZEPP", "CONCEPT2", "HUAWEI"] as const;
@@ -98,6 +98,6 @@ export function assertAiEligible(row: ProvenanceFields): void {
  * load displays ignore Strava activities, because they do not (see docs/strava-and-provider-limits.md).
  */
 export const STRAVA_AI_NOTICE = {
-  en: "Strava activities are imported for your own records. JMM's AI features do not receive Strava-origin data.",
-  es: "Las actividades de Strava se importan para tus propios registros. Las funciones de IA de JMM no reciben datos de origen Strava.",
+  en: "Saved Strava activities remain in your own records; new imports may be paused. JMM's AI features do not receive Strava-origin data.",
+  es: "Las actividades guardadas de Strava permanecen en tus propios registros; las nuevas importaciones pueden estar pausadas. Las funciones de IA de JMM no reciben datos de origen Strava.",
 } as const;

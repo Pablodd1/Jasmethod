@@ -474,7 +474,7 @@ test("conversation reads owner-only actual JStress and explicit rest without leg
   const f = fixture();
   try {
     const recordedAt = new Date(); recordedAt.setUTCDate(recordedAt.getUTCDate() - 1);
-    const recorded = { id: "actual-a", userId: actor.id, date: recordedAt, completed: true, planned: false, matchedPlanId: null, durationMin: 25, actualDurationMin: null, rpe: 4, tss: 999 };
+    const recorded = { id: "actual-a", userId: actor.id, source:"manual", date: recordedAt, completed: true, planned: false, matchedPlanId: null, durationMin: 25, actualDurationMin: null, rpe: 4, tss: 999 };
     f.state.loadWorkouts = [recorded, { ...recorded, id: "other", userId: "athlete-b" }, { ...recorded, id: "matched-plan", matchedPlanId: "actual-a" }, { ...recorded, id: "incomplete", completed: false }, { ...recorded, id: "partial", completed: false, feedbackStatus: "partial", actualDurationMin: 10, rpe: 3 }];
     f.state.restObservations = [{ userId: actor.id, metricType: "jmm_rest_day", source: "manual", value: 1, qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: new Date(`${today}T00:00Z`) }];
     const result = await appendConversation(actor, { message: "What is my JStress?" });

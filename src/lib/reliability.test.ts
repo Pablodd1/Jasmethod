@@ -8,7 +8,7 @@ import { computePmc, estimateTss } from "./fitness";
 import { verifyWhoopWebhook } from "./webhook-auth";
 import { createHmac } from "crypto";
 import { coachingSummary } from "./coaching";
-test("partial sessions retain actual work without counting as a fully fulfilled plan",()=>{const now=new Date("2026-09-06T16:00Z");const summary=coachingSummary([{date:now,completed:true,planned:true,feedbackStatus:"partial",durationMin:60,actualDurationMin:25,rpe:5}],[],{},"UTC",now);assert.equal(summary.minutes,25);assert.equal(summary.completed,1);assert.equal(summary.fulfillmentPct,0)});
+test("partial sessions retain actual work without counting as a fully fulfilled plan",()=>{const now=new Date("2026-09-06T16:00Z");const summary=coachingSummary([{date:now,source:"manual",completed:true,planned:true,feedbackStatus:"partial",durationMin:60,actualDurationMin:25,rpe:5}],[],{},"UTC",now);assert.equal(summary.minutes,25);assert.equal(summary.completed,1);assert.equal(summary.fulfillmentPct,0)});
 import {
   parseAppleHealth,
   googleCalGetEvents,

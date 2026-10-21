@@ -110,3 +110,43 @@ test("Intervals event processor stops cross-tenant, disconnected and permission-
   const permission = eventWorkerFixture(403); await assert.rejects(permission.run(), /Reconnect/); assert.equal(permission.deletes.length, 0);
   const owner = eventWorkerFixture(200, { ...activity, icu_athlete_id: "other" }); await assert.rejects(owner.run(), /ownership/); assert.equal(owner.writes.length, 0);
 });
+
+test("Intervals long-gap reconciliation resumes at the retained cursor with complete bounded range reads", async () => {
+  const now = new Date("2026-10-21T12:00:00Z"), urls: URL[] = [], exports: any = {};
+  class FixedDate extends Date {
+    constructor(value?: string | number | Date) { super(value === undefined ? now.getTime() : value instanceof Date ? value.getTime() : value); }
+    static now() { return now.getTime(); }
+  }
+  let failAt = 0, writes = 0;
+  const code = ts.transpileModule(readFileSync(new URL("./intervals-ingest.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  vm.runInNewContext(code, { exports, Date: FixedDate, URLSearchParams, AbortSignal, fetch: async (url: any) => {
+    urls.push(new URL(url));
+    if (failAt === urls.length) return new Response("", { status: 500 });
+    return Response.json([]);
+  }, require: (id: string) => {
+    if (id === "node:crypto") return crypto;
+    if (id === "date-fns-tz") return { fromZonedTime };
+    if (id === "./dates") return dates;
+    if (id === "./capabilities") return { requireIntervalsConnector: () => {} };
+    if (id === "./db") return { prisma: {} };
+    if (id === "./intervals-oauth") return { getIntervalsAuthorization: async () => ({ authorization: "Bearer synthetic", athleteId: "a1" }), intervalsScopesAllow: () => true };
+    if (id === "./activity-store") return { storeActivity: async () => { writes++; return true; } };
+    throw Error(id);
+  } });
+  const connection = { scope: "ACTIVITY:READ,WELLNESS:READ", lastSyncAt: new Date("2026-06-23T12:00:00Z") };
+  assert.equal(await exports.ingestIntervals("u1", "America/New_York", connection), 0);
+  assert.equal(urls[0].searchParams.get("oldest"), "2026-06-22");
+  const activityUrls = urls.filter(url => url.pathname.endsWith("/activities"));
+  assert.equal(activityUrls.length, 5);
+  assert.equal(activityUrls.at(-1)!.searchParams.get("newest"), "2026-10-21");
+  assert.equal(connection.lastSyncAt.toISOString(), "2026-06-23T12:00:00.000Z");
+  urls.length = 0; failAt = 3;
+  await assert.rejects(exports.ingestIntervals("u1", "America/New_York", connection), /500/);
+  assert.equal(writes, 0); assert.equal(connection.lastSyncAt.toISOString(), "2026-06-23T12:00:00.000Z");
+  urls.length = 0; failAt = 0;
+  await exports.ingestIntervals("u1", "America/New_York", { ...connection, lastSyncAt: new Date("2026-10-20T12:00:00Z") });
+  assert.equal(urls[0].searchParams.get("oldest"), "2026-10-14");
+  urls.length = 0;
+  await exports.ingestIntervals("u1", "America/New_York", { ...connection, lastSyncAt: null });
+  assert.equal(urls[0].searchParams.get("oldest"), dates.addDaysKey("2026-10-21", -179));
+});

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { computeJMetrics, workoutJStress, type JStressWorkout } from "./j-metrics";
 import { addDaysKey, localDate } from "./dates";
 const at = new Date("2026-10-04T20:00:00Z");
-const session = (extra: Partial<JStressWorkout> = {}): JStressWorkout => ({ date: at, completed: true, planned: false, durationMin: 60, rpe: 5, ...extra });
+const session = (extra: Partial<JStressWorkout> = {}): JStressWorkout => ({ date: at, source:"manual", completed: true, planned: false, durationMin: 60, rpe: 5, ...extra });
 test("JStress uses actual reported effort and recorded duration only", () => {
   assert.equal(workoutJStress(session()).value, 300);
   assert.equal(workoutJStress(session({ actualDurationMin: 40 })).value, 200);

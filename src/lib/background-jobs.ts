@@ -1,10 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from './db';
+import { requireStravaConnector } from './capabilities';
+import { isStravaPrivacyEvent } from './strava-privacy-event';
 export async function enqueueSyncJob(userId: string, kind: 'sync'|'strava'|'whoop'|'intervals', dedupeKey: string, payload: unknown) {
+  if((kind==='strava'&&!isStravaPrivacyEvent(payload))||(kind==='sync'&&payload&&typeof payload==='object'&&'provider' in payload&&payload.provider==='strava')) requireStravaConnector();
   return prisma.syncJob.upsert({where:{dedupeKey},update:{},create:{userId,kind,dedupeKey,payload:JSON.stringify(payload)}});
 }
 export async function processSyncJob(job: { userId:string;kind:string;payload:string }) {
   const payload=JSON.parse(job.payload);
+  // Recheck already queued work after a capability is switched off. No provider
+  // call may occur just because the job predates the gate. Narrow privacy
+  // events remain available without provider fetches, including after disconnect.
+  if((job.kind==='strava'&&!isStravaPrivacyEvent(payload))||(job.kind==='sync'&&payload.provider==='strava')) requireStravaConnector();
   if(job.kind==='sync') {
     const {syncUserConnectors}=await import('./sync');
     if(!['oura','whoop','strava','google_cal','intervals'].includes(payload.provider)) throw new Error('Unsupported provider');

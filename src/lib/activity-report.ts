@@ -10,6 +10,7 @@
 
 import { prisma } from "./db";
 import { dateKey, dayBounds } from "./dates";import { unitsOf, type UnitSystem } from "./units";
+import { filterForAi, isAiEligible } from "./strava-provenance";
 
 // ---------- pure stat engine (unit-tested) ----------
 
@@ -235,7 +236,9 @@ export async function generateAndDeliverActivityReport(
     const activity = await prisma.workout.findFirst({
       where: { id: activityId, userId, planned: false, completed: true },
     });
-    if (!activity || activity.insights) return null;
+    // Restriction follows upstream provenance through files/relays. Stop before
+    // querying comparisons, persisting a narrative or contacting any transport.
+    if (!activity || activity.insights || !isAiEligible(activity)) return null;
     const [user, since30, anyDates, metric, plannedMatch, pref] =
       await Promise.all([
         prisma.user.findUnique({
@@ -250,7 +253,7 @@ export async function generateAndDeliverActivityReport(
             sport: activity.sport,
             date: { gte: new Date(activity.date.getTime() - 30 * 86400000), lt: activity.date },
           },
-          select: { id: true, date: true, durationMin: true, distanceKm: true, avgHr: true, tss: true },
+          select: { id: true, date: true, durationMin: true, distanceKm: true, avgHr: true, tss: true, source: true, externalId: true, notes: true },
         }),
         prisma.workout.findMany({
           where: {
@@ -259,7 +262,7 @@ export async function generateAndDeliverActivityReport(
             completed: true,
             date: { gte: new Date(activity.date.getTime() - 60 * 86400000) },
           },
-          select: { date: true },
+          select: { date: true, source: true, externalId: true, notes: true },
         }),
         prisma.dailyMetrics.findUnique({
           where: {
@@ -276,21 +279,29 @@ export async function generateAndDeliverActivityReport(
         }),
         prisma.reminderPref.findUnique({ where: { userId } }),
       ]);
-    const history = since30.filter((w) => w.id !== activity.id);
+    const history = filterForAi(since30.filter((w) => w.id !== activity.id));
+    const dates = filterForAi(anyDates);
+    const historyUnavailable = history.excluded.strava + history.excluded.unknown + dates.excluded.strava + dates.excluded.unknown > 0;
     const report = computeActivityReport(
       activity,
-      history,
+      // Do not turn excluded performed work into a shorter apparent baseline
+      // or claim a fastest/longest/streak result from incomplete permitted data.
+      historyUnavailable ? [] : history.kept,
       {
         units: unitsOf(user?.profile?.units, user?.language),
         recovery: metric,
         hrvBaseline: user?.profile?.hrvBaseline,
         planned: plannedMatch,
       },
-      computeStreak(activity.date, [
-        ...anyDates.map((d) => d.date),
+      historyUnavailable ? undefined : computeStreak(activity.date, [
+        ...dates.kept.map((d) => d.date),
         activity.date,
       ], timezone),
     );
+    if (historyUnavailable) {
+      report.headline = `${activity.title || "Your activity"} is logged.`;
+      report.body += " Historical comparisons and activity streak are unavailable because some stored records have restricted or unknown origin. This does not mean no training occurred.";
+    }
     await prisma.workout.update({
       where: { id: activity.id },
       data: { insights: JSON.stringify(report) },
