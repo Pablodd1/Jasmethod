@@ -11,6 +11,16 @@ const inputs = (over: Partial<SetupInputs> = {}): SetupInputs => ({ now: NOW, pr
 const find = (rows: SetupRow[], id: string) => { const row = rows.find(r => r.id === id); assert.ok(row, `row ${id} missing`); return row; };
 const all = (paths: ReturnType<typeof buildSetupPaths>) => [...paths.import, ...paths.receive];
 
+test("connection copy distinguishes WHOOP workout summaries and unverified Garmin relay rights", () => {
+  for (const language of ["en", "es"] as const) {
+    const paths = buildSetupPaths(inputs({ capabilities: { intervalsConnector: true } }));
+    const whoop = rowCopy(find(paths.import, "whoop"), language);
+    assert.doesNotMatch(whoop.limit, /Recovery data only|Solo datos de recuperación/);
+    assert.match(whoop.what, /Completed workout|entrenamientos completados/);
+    assert.match(rowCopy(find(paths.import, "intervals"), language).limit, /Garmin/);
+  }
+});
+
 test("there are exactly two sections and nothing is required to finish", () => {
   const paths = buildSetupPaths(inputs());
   assert.equal(paths.canFinishWithoutAnyConnection, true);

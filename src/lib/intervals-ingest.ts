@@ -8,7 +8,7 @@ import { requireIntervalsConnector } from "./capabilities";
 
 // Field contract: https://intervals.icu/api/v1/docs (Activity, Wellness).
 // Intervals hrv is RMSSD; hrvSDNN is retained separately, never converted.
-const allowedSources = new Set(["UPLOAD", "MANUAL", "GARMIN_CONNECT", "OAUTH_CLIENT", "DROPBOX", "POLAR", "SUUNTO", "COROS", "WAHOO", "ZWIFT", "ZEPP", "CONCEPT2", "HUAWEI"]);
+const allowedSources = new Set(["UPLOAD", "MANUAL", "OAUTH_CLIENT", "DROPBOX", "POLAR", "SUUNTO", "COROS", "WAHOO", "ZWIFT", "ZEPP", "CONCEPT2", "HUAWEI"]);
 const number = (v: unknown, min: number, max: number): number | null => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : null;
 export function mapIntervalsActivity(a: any, athleteId: string, timezone: string) {
   if (!a || !allowedSources.has(a.source)) return null; // Includes STRAVA and unknown provenance.
@@ -88,9 +88,11 @@ export async function ingestIntervals(userId: string, timezone: string, conn: { 
   const rows = await fetchIntervalsRange(authorization, oldest, newest, activity, wellness);
   const current = await getIntervalsAuthorization(userId, []);
   if (current.authorization !== authorization || current.athleteId !== athleteId) throw new Error("Intervals connection changed during sync");
+  const mappedActivities = rows.activities.sort((a, b) => String(a.start_date_local).localeCompare(String(b.start_date_local)))
+    .map(a => mapIntervalsActivity(a, athleteId, timezone));
+  if (mappedActivities.some(a => a === null)) throw new Error("Intervals returned activity with unverified onward permissions or source ancestry. Import is incomplete; history is preserved and the cursor is not advanced.");
   let imported = 0;
-  for (const a of rows.activities.sort((a, b) => String(a.start_date_local).localeCompare(String(b.start_date_local)))) {
-    const mapped = mapIntervalsActivity(a, athleteId, timezone);
+  for (const mapped of mappedActivities) {
     if (mapped && await storeActivity(userId, timezone, mapped)) imported++;
   }
   for (const w of rows.wellness) { await storeWellness(userId, timezone, w); imported++; }
@@ -109,6 +111,10 @@ export async function processIntervalsEvent(userId: string, payload: any) {
   const event = payload.event;
   const conn = await prisma.connector.findFirst({ where: { id: payload.connectorId, userId, provider: "intervals", externalRef: String(event.athlete_id), status: { in: ["connected", "error"] } } });
   if (!conn) return; // Revoked/replaced connection must not resume an old job.
+  const stillConnected = async () => {
+    const current = await prisma.connector.findFirst({ where: { id: payload.connectorId, userId, provider: "intervals", externalRef: String(event.athlete_id), status: { in: ["connected", "error"] } } });
+    if (!current) throw new Error("Intervals connection changed during event processing");
+  };
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { timezone: true } });
   if (event.type === "CALENDAR_UPDATED") {
     const { reconcileIntervalsPublications } = await import("./intervals-delivery");
@@ -122,18 +128,27 @@ export async function processIntervalsEvent(userId: string, payload: any) {
     try { activity = await intervalsRead(`/activity/${encodeURIComponent(id)}`, authorization); }
     catch (error: any) {
       if (error.status !== 404) throw error;
+      await stillConnected();
+      const current = await getIntervalsAuthorization(userId, ["ACTIVITY:READ"]);
+      if (current.authorization !== authorization || current.athleteId !== athleteId) throw new Error("Intervals connection changed during event processing");
       await deleteImportedActivities(userId, "intervals", [`intervals:${id}`]); return;
     }
+    await stillConnected();
+    const current = await getIntervalsAuthorization(userId, ["ACTIVITY:READ"]);
+    if (current.authorization !== authorization || current.athleteId !== athleteId) throw new Error("Intervals connection changed during event processing");
     if (String(activity.icu_athlete_id) !== athleteId || activity.id !== id) throw new Error("Activity ownership not verified");
     const mapped = mapIntervalsActivity(activity, athleteId, user.timezone);
     if (mapped) await storeActivity(userId, user.timezone, mapped);
-    else await deleteImportedActivities(userId, "intervals", [`intervals:${id}`]);
+    else throw new Error("Intervals activity source requires permission review. Existing history is preserved; a restricted source is not a deletion event.");
     return;
   }
   if (event.type === "WELLNESS_UPDATED") {
-    const { authorization } = await getIntervalsAuthorization(userId, ["WELLNESS:READ"]);
+    const { authorization, athleteId } = await getIntervalsAuthorization(userId, ["WELLNESS:READ"]);
     const newest = dateKey(new Date(), user.timezone);
     const rows = await fetchIntervalsRange(authorization, addDaysKey(newest, -7), newest, false, true);
+    await stillConnected();
+    const current = await getIntervalsAuthorization(userId, ["WELLNESS:READ"]);
+    if (current.authorization !== authorization || current.athleteId !== athleteId) throw new Error("Intervals connection changed during event processing");
     for (const row of rows.wellness) await storeWellness(userId, user.timezone, row);
   }
 }

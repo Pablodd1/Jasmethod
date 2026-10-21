@@ -769,12 +769,12 @@ export default function ConnectorsPage() {
             <div className="text-sm text-emerald-900">
               <strong>
                 {lang === "es"
-                  ? "Garmin o COROS: importar actividades mediante Strava"
-                  : "Garmin or COROS: import activities through Strava"}
+                  ? "Garmin y COROS: opciones de importación"
+                  : "Garmin and COROS: import options"}
               </strong>{" "}
               {lang === "es"
-                ? `Conecta tu cuenta de Garmin o COROS a Strava y después autoriza Strava aquí, si está disponible. Esto permite importar actividades completadas que Strava autorice compartir. No envía entrenamientos estructurados de JMM a Garmin Connect ni al reloj. ${STRAVA_AI_NOTICE.es}`
-                : `Connect your Garmin or COROS account to Strava, then authorize Strava here if available. This imports completed activities that Strava permits sharing. It does not send JMM structured workouts to Garmin Connect or your watch. ${STRAVA_AI_NOTICE.en}`}
+                ? `Importa un archivo de tu propia actividad. JMM no tiene una conexión directa autorizada de Garmin ni COROS. Un enlace personal en otro servicio no autoriza el reenvío a JMM; los datos de Strava no se usan para análisis de entrenamiento. ${STRAVA_AI_NOTICE.es}`
+                : `Import your own activity file. JMM has no authorized direct Garmin or COROS connection. A personal link in another service does not authorize onward sharing to JMM; Strava data is excluded from training analysis. ${STRAVA_AI_NOTICE.en}`}
             </div>
           </div>
         </div>
@@ -785,8 +785,8 @@ export default function ConnectorsPage() {
             <div className="text-sm text-ocean-900">
               <strong>{t(lang, "conn.which")}</strong>{" "}
               {lang === "es"
-                ? "Strava consulta hasta 365 días de actividades disponibles en la primera sincronización. Los archivos TCX y Garmin CSV permiten añadir historial anterior. Whoop y Oura aportan recuperación y sueño; Apple Health acepta export.xml hasta 4 MB."
-                : "Strava requests up to 365 days of available activities on first sync. TCX and Garmin CSV imports can add earlier history. Whoop and Oura supply recovery and sleep; Apple Health accepts export.xml up to 4 MB."}
+                ? "Los archivos TCX, FIT y Garmin CSV añaden las actividades incluidas. WHOOP autorizado aporta resúmenes de entrenamientos, recuperación y sueño; Oura aporta sueño y preparación. Apple Health acepta export.xml hasta 4 MB. Revisa los datos importados: conectado no significa historial completo."
+                : "TCX, FIT and Garmin CSV files add the activities they contain. Authorized WHOOP supplies workout summaries, recovery and sleep; Oura supplies sleep and readiness. Apple Health accepts export.xml up to 4 MB. Review imported records: connected does not mean complete history."}
             </div>
           </div>
         </div>
@@ -910,13 +910,13 @@ function IntervalsGarminHelp({ lang, configured }: { lang: Lang; configured: boo
   const es = lang === "es";
   const steps = es ? [
     "Cada atleta necesita sus propias cuentas de JMM, Intervals.icu y Garmin Connect. La conexión del coach no conecta a sus atletas.",
-    "En Ajustes de Intervals.icu, conecta Garmin Connect y activa la descarga de actividades y los datos de bienestar disponibles. Activa también «Upload planned workouts» para enviar sesiones al dispositivo compatible.",
+    "Para publicar hacia Garmin desde Intervals.icu, comprueba allí los permisos y la disponibilidad de «Upload planned workouts». Descargar datos de Garmin en Intervals.icu no autoriza su reenvío a JMM.",
     "Conecta Intervals.icu desde JMM y autoriza actividad, bienestar y calendario. Revisa la última sincronización y los datos importados aquí.",
     "Completa el chequeo diario y aprueba la versión actual de tu sesión de hoy. Publica desde Hoy o activa la publicación automática cuando esté disponible. Actualmente se envían sesiones estructuradas de carrera y bicicleta mediante FIT; no otros deportes.",
     "Comprueba la sesión y sus pasos en Garmin Connect, sincroniza el reloj y abre el entrenamiento en él antes de empezar. Si falta, revisa cada paso de la conexión; no vuelvas a crear la sesión para forzar el envío.",
   ] : [
     "Each athlete needs their own JMM, Intervals.icu and Garmin Connect accounts. Connecting the coach does not connect the athletes.",
-    "In Intervals.icu Settings, connect Garmin Connect and enable activity downloads and available wellness data. Also enable “Upload planned workouts” to forward sessions to your compatible device.",
+    "For onward Garmin publication from Intervals.icu, check its permissions and “Upload planned workouts” availability there. Downloading Garmin data into Intervals.icu does not authorize onward import into JMM.",
     "Connect Intervals.icu from JMM and authorize activity, wellness and calendar access. Review the last successful sync and imported data here.",
     "Complete your daily check-in and approve the current version of today's workout. Publish from Today or enable automatic publication when available. Structured run and bike workouts are currently sent as FIT; other sports are not supported yet.",
     "Check the workout and its steps in Garmin Connect, sync your watch, and open the workout on it before starting. If it is missing, check each connection step; do not create a duplicate workout to force delivery.",
@@ -930,8 +930,8 @@ function IntervalsGarminHelp({ lang, configured }: { lang: Lang; configured: boo
       : "This connection is not available in JMM yet. You can review these steps, but setup in Intervals.icu alone does not activate JMM synchronization."}</p>}
     <ol className="list-decimal pl-5 mt-3 space-y-2">{steps.map(step => <li key={step}>{step}</li>)}</ol>
     <p className="mt-3">{es
-      ? "Qué se importa: resúmenes de actividades y bienestar disponible, con una consulta inicial de hasta 180 días. Depende de los datos presentes en Intervals.icu y de tus permisos. No incluye el perfil completo de Garmin, zonas o umbrales, ni todos los puntos GPS, vueltas o muestras. Revisa tus zonas y objetivos en JMM; no se completan automáticamente mediante esta conexión. Se excluyen actividades de origen Strava o de origen desconocido."
-      : "What imports: activity summaries and available wellness data, with an initial lookback of up to 180 days. This depends on data present in Intervals.icu and your permissions. It does not include your complete Garmin profile, zones or thresholds, or all GPS points, laps and samples. Review your zones and goals in JMM; this connection does not fill them automatically. Strava-sourced and unknown-source activities are excluded."}</p>
+      ? "Qué se importa: resúmenes de actividades y bienestar disponible, con una consulta inicial de hasta 180 días. Depende de los datos presentes en Intervals.icu y de tus permisos. No incluye el perfil completo de Garmin, zonas o umbrales, ni todos los puntos GPS, vueltas o muestras. Revisa tus zonas y objetivos en JMM; no se completan automáticamente mediante esta conexión. Se bloquean actividades de Strava, de origen desconocido y reenviadas de Garmin Connect mientras el permiso para JMM siga sin verificar. Una respuesta con estas actividades deja la importación incompleta y conserva el historial."
+      : "What imports: activity summaries and available wellness data, with an initial lookback of up to 180 days. This depends on data present in Intervals.icu and your permissions. It does not include your complete Garmin profile, zones or thresholds, or all GPS points, laps and samples. Review your zones and goals in JMM; this connection does not fill them automatically. Strava, unknown-origin and Garmin Connect relay activities are blocked while onward JMM permission remains unverified. A response containing them leaves import incomplete and preserves history."}</p>
     <p className="mt-3 font-medium">{es
       ? "Una publicación aceptada confirma la recepción en Intervals.icu. JMM no recibe confirmación de entrega de Garmin Connect ni del reloj."
       : "An accepted publication confirms receipt by Intervals.icu. JMM does not receive delivery confirmation from Garmin Connect or your watch."}</p>

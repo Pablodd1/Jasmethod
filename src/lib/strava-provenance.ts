@@ -33,7 +33,10 @@ const DIRECT_NON_STRAVA = new Set([
   "manual", "plan", "starter", "starter-rest", "garmin", "coros", "apple", "apple_health", "whoop", "oura", "tcx", "fit", "garmin_csv", "file", "jmm", "app",
 ]);
 /** Same upstream whitelist as intervals-ingest.ts. Kept here so the two cannot silently drift (test asserts equality). */
-export const INTERVALS_ALLOWED_UPSTREAM = ["UPLOAD", "MANUAL", "GARMIN_CONNECT", "OAUTH_CLIENT", "DROPBOX", "POLAR", "SUUNTO", "COROS", "WAHOO", "ZWIFT", "ZEPP", "CONCEPT2", "HUAWEI"] as const;
+// Garmin -> Intervals permission does not establish onward rights for JMM.
+// Keep Garmin-API relay records unknown until that separate approval is verified.
+// Direct athlete-uploaded Garmin files retain their existing source contract.
+export const INTERVALS_ALLOWED_UPSTREAM = ["UPLOAD", "MANUAL", "OAUTH_CLIENT", "DROPBOX", "POLAR", "SUUNTO", "COROS", "WAHOO", "ZWIFT", "ZEPP", "CONCEPT2", "HUAWEI"] as const;
 const upstream = new Set<string>(INTERVALS_ALLOWED_UPSTREAM);
 
 const norm = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : "");

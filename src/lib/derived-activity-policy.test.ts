@@ -14,7 +14,7 @@ const at=new Date("2026-10-21T12:00Z");
 const session=(extra:Partial<JStressWorkout>={}):JStressWorkout=>({id:"allowed",userId:"owner",date:at,source:"garmin",externalId:"garmin:1",sport:"bike",planned:false,completed:true,durationMin:45,actualDurationMin:45,rpe:4,distanceKm:20,...extra});
 
 test("derived analytics use the existing positive origin whitelist and never mutate or filter away restricted work",()=>{
-  for(const row of [{source:"manual"},{source:"garmin"},{source:"intervals",notes:"Original source: GARMIN_CONNECT."}]) {
+  for(const row of [{source:"manual"},{source:"garmin"},{source:"intervals",notes:"Original source: COROS."}]) {
     assert.equal(isDerivedActivityEligible(row),true);assert.equal(derivedActivityPolicy([row]).status,"allowed");
   }
   const rows=[{source:"garmin"},{source:"strava"},{source:"intervals"},{},{source:"garmin",externalId:"strava:legacy"},{source:"intervals",notes:"Original source: STRAVA."}],before=JSON.stringify(rows);

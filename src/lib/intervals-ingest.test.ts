@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mapIntervalsActivity, mapIntervalsWellness, fetchIntervalsRange, intervalsRead, intervalsEventHash, intervalsSecretMatches } from "./intervals-ingest";
-const activity = { id: "i123", icu_athlete_id: "a1", source: "GARMIN_CONNECT", type: "Run", name: "Easy run", start_date: "2026-10-04T11:30:00Z", moving_time: 1800, distance: 5000, average_heartrate: 140, max_heartrate: 160, icu_average_watts: 250, calories: 320 };
+const activity = { id: "i123", icu_athlete_id: "a1", source: "COROS", type: "Run", name: "Easy run", start_date: "2026-10-04T11:30:00Z", moving_time: 1800, distance: 5000, average_heartrate: 140, max_heartrate: 160, icu_average_watts: 250, calories: 320 };
 test("Intervals maps documented activity units and preserves absent measurements", () => {
   const a = mapIntervalsActivity(activity, "a1", "America/New_York")!;
   assert.equal(a.durationMin, 30); assert.equal(a.distanceKm, 5); assert.equal(a.avgHr, 140); assert.equal(a.avgPower, 250); assert.equal(a.np, null); assert.equal(a.source, "intervals"); assert.equal(a.date.toISOString(), activity.start_date.replace("Z", ".000Z"));
@@ -12,6 +12,7 @@ test("Intervals maps documented activity units and preserves absent measurements
 test("Intervals rejects Strava/unknown provenance and mismatched athlete", () => {
   assert.equal(mapIntervalsActivity({ ...activity, source: "STRAVA" }, "a1", "UTC"), null);
   assert.equal(mapIntervalsActivity({ ...activity, source: undefined }, "a1", "UTC"), null);
+  assert.equal(mapIntervalsActivity({ ...activity, source: "GARMIN_CONNECT" }, "a1", "UTC"), null, "Garmin -> Intervals is not proof of onward JMM rights");
   assert.throws(() => mapIntervalsActivity(activity, "other", "UTC"), /mismatch/);
   assert.throws(() => mapIntervalsActivity({ ...activity, moving_time: 0 }, "a1", "UTC"), /duration/);
 });
@@ -84,16 +85,17 @@ test("Intervals webhook storage failures request redelivery instead of fabricate
 import * as dates from "./dates";
 import { fromZonedTime } from "date-fns-tz";
 import * as crypto from "node:crypto";
-function eventWorkerFixture(status: number, record: any = activity, connected = true) {
+function eventWorkerFixture(status: number, record: any = activity, connected = true, changeAfterFetch: "disconnect" | "replace" | null = null) {
   const writes: any[] = [], deletes: any[] = [], exports: any = {};
+  let fetched = false;
   const code = ts.transpileModule(readFileSync(new URL("./intervals-ingest.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(code, { exports, Date, URLSearchParams, AbortSignal, fetch: async () => new Response(status === 200 ? JSON.stringify(record) : "", { status, headers: { "Content-Type": "application/json" } }), require: (id: string) => {
+  vm.runInNewContext(code, { exports, Date, URLSearchParams, AbortSignal, fetch: async () => { fetched = true; return new Response(status === 200 ? JSON.stringify(record) : "", { status, headers: { "Content-Type": "application/json" } }); }, require: (id: string) => {
     if (id === "node:crypto") return crypto;
     if (id === "date-fns-tz") return { fromZonedTime };
     if (id === "./dates") return dates;
     if (id === "./capabilities") return { requireIntervalsConnector: () => {} };
-    if (id === "./db") return { prisma: { connector: { findFirst: async ({ where }: any) => connected && where.externalRef === "a1" && where.userId === "u1" ? { scope: "ACTIVITY:READ" } : null }, user: { findUniqueOrThrow: async () => ({ timezone: "UTC" }) } } };
-    if (id === "./intervals-oauth") return { getIntervalsAuthorization: async () => ({ authorization: "Bearer fixture", athleteId: "a1" }) };
+    if (id === "./db") return { prisma: { connector: { findFirst: async ({ where }: any) => connected && !(fetched && changeAfterFetch === "disconnect") && where.externalRef === "a1" && where.userId === "u1" ? { scope: "ACTIVITY:READ" } : null }, user: { findUniqueOrThrow: async () => ({ timezone: "UTC" }) } } };
+    if (id === "./intervals-oauth") return { getIntervalsAuthorization: async () => ({ authorization: fetched && changeAfterFetch === "replace" ? "Bearer replacement" : "Bearer fixture", athleteId: "a1" }) };
     if (id === "./activity-store") return { storeActivity: async (...args: any[]) => { writes.push(args); return true; }, deleteImportedActivities: async (...args: any[]) => { deletes.push(args); } };
     throw Error(id);
   } });
@@ -111,18 +113,34 @@ test("Intervals event processor stops cross-tenant, disconnected and permission-
   const owner = eventWorkerFixture(200, { ...activity, icu_athlete_id: "other" }); await assert.rejects(owner.run(), /ownership/); assert.equal(owner.writes.length, 0);
 });
 
+test("Intervals source restrictions preserve stored history instead of treating it as deleted", async () => {
+  for (const source of ["GARMIN_CONNECT", "STRAVA", "UNKNOWN"]) {
+    const fixture = eventWorkerFixture(200, { ...activity, source });
+    await assert.rejects(fixture.run(), /permission review/);
+    assert.equal(fixture.writes.length, 0); assert.equal(fixture.deletes.length, 0);
+  }
+});
+
+test("Intervals delayed reads cannot write or delete after disconnect or replacement", async () => {
+  for (const status of [200, 404]) for (const change of ["disconnect", "replace"] as const) {
+    const fixture = eventWorkerFixture(status, activity, true, change);
+    await assert.rejects(fixture.run(), /connection changed/);
+    assert.equal(fixture.writes.length, 0); assert.equal(fixture.deletes.length, 0);
+  }
+});
+
 test("Intervals long-gap reconciliation resumes at the retained cursor with complete bounded range reads", async () => {
   const now = new Date("2026-10-21T12:00:00Z"), urls: URL[] = [], exports: any = {};
   class FixedDate extends Date {
     constructor(value?: string | number | Date) { super(value === undefined ? now.getTime() : value instanceof Date ? value.getTime() : value); }
     static now() { return now.getTime(); }
   }
-  let failAt = 0, writes = 0;
+  let failAt = 0, writes = 0, records: any[] = [];
   const code = ts.transpileModule(readFileSync(new URL("./intervals-ingest.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   vm.runInNewContext(code, { exports, Date: FixedDate, URLSearchParams, AbortSignal, fetch: async (url: any) => {
     urls.push(new URL(url));
     if (failAt === urls.length) return new Response("", { status: 500 });
-    return Response.json([]);
+    return Response.json(String(url).includes("/activities?") ? records : []);
   }, require: (id: string) => {
     if (id === "node:crypto") return crypto;
     if (id === "date-fns-tz") return { fromZonedTime };
@@ -149,4 +167,8 @@ test("Intervals long-gap reconciliation resumes at the retained cursor with comp
   urls.length = 0;
   await exports.ingestIntervals("u1", "America/New_York", { ...connection, lastSyncAt: null });
   assert.equal(urls[0].searchParams.get("oldest"), dates.addDaysKey("2026-10-21", -179));
+  records = [activity, { ...activity, id: "restricted", source: "GARMIN_CONNECT" }]; urls.length = 0;
+  await assert.rejects(exports.ingestIntervals("u1", "America/New_York", connection), /Import is incomplete/);
+  assert.equal(writes, 0, "validate all origins before storing any part of this batch");
+  assert.equal(connection.lastSyncAt.toISOString(), "2026-06-23T12:00:00.000Z");
 });
