@@ -298,6 +298,13 @@ export async function POST(req: Request) {
       const rejectedSessions: { sessionId: string; reason: string }[] = [];
       let remaining = Math.min(checkin.availableMin ?? 0, dailyBudgetRemaining);
       for (const w of sessions) {
+        // Unknown evidence authorizes no replacement prescription. Keep the
+        // saved session visible for review and revoke its previous approval.
+        if (adaptation.safetyStatus === "unknown") {
+          rejectedSessions.push({ sessionId:w.id, reason:adaptation.message });
+          await tx.workout.update({ where:{id:w.id}, data:{approved:false} });
+          continue;
+        }
         const invalidBase = checkinPrescriptionInputError(w);
         if (invalidBase) { rejectedSessions.push({ sessionId: w.id, reason: invalidBase }); await tx.workout.update({ where: { id: w.id }, data: { approved: false } }); continue; }
         const base = baseWorkout(w);

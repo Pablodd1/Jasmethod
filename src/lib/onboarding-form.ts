@@ -85,5 +85,5 @@ export function restoreOnboardingDraft(raw: string | null, userId: string, revis
 /** Clear potentially sensitive drafts on confirmed sign-out, not transient network errors. */
 export function clearOnboardingDrafts(storage: Pick<Storage, "length" | "key" | "removeItem">) {
   const keys = Array.from({length:storage.length}, (_,index)=>storage.key(index));
-  for (const key of keys) if (key?.startsWith("jmm_setup_draft_v1_")) storage.removeItem(key);
+  for (const key of keys) if (key?.startsWith("jmm_setup_draft_v1_") || key?.startsWith("jmm_checkin_draft_v1_")) storage.removeItem(key);
 }

@@ -212,10 +212,12 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
   if (w.durationMin === 0) {
     try { const held = typeof p === "string" ? JSON.parse(p) : p; if (obj(held) && typeof held.structureReviewRequired === "string") structureHoldReason = held.structureReviewRequired; } catch { /* rest remains rest */ }
   }
-  if (profile?.injured || w.planDay?.dayOff || w.dayOff || w.durationMin === 0) {
-    verdict = "rest"; reason = profile?.injured ? "A current injury restriction blocks training." : w.planDay?.dayOff || w.dayOff ? "Rest day has no workout to export." : structureHoldReason || "Rest day has no workout to export.";
+  if (profile?.injured || w.planDay?.dayOff || w.dayOff) {
+    verdict = "rest"; reason = profile?.injured ? "A current injury restriction blocks training." : "Rest day has no workout to export.";
   } else if (safety && safety.status !== "clear") {
     verdict = safety.status === "unknown" ? "blocked" : "rest"; reason = safety.reason;
+  } else if (w.durationMin === 0) {
+    verdict = "rest"; reason = structureHoldReason || "Rest day has no workout to export.";
   } else {
     try {
       if (typeof p === "string") p = JSON.parse(p);
@@ -261,7 +263,13 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
       }
     } catch (error) { steps = []; sportStructure = undefined; components = undefined; verdict = "blocked"; reason = error instanceof SessionResolutionError || error instanceof SportStructureError ? error.message : "The saved prescription is malformed. Review it before training or export."; }
   }
-  const core = { schemaVersion: SESSION_SCHEMA_VERSION as 2, id: String(w.id || ""), athleteId: input.athleteId, dateLocal: input.dateLocal, timezone: input.timezone, title: sessionPurposeTitle(typeof p?.title === "string" ? p.title : w.title, steps), sport, durationMin: verdict === "ready" ? (p?.durationMin ?? w.durationMin) : 0, verdict, reason, steps, exactTimeSeconds: steps.length && steps.every(s => s.endpoint.type === "time") ? steps.reduce((sum, s) => sum + (s.endpoint.type === "time" ? s.endpoint.seconds : 0), 0) : null, capability: exportCapability(sport, steps, verdict, sportStructure, components), ...(sportStructure ? { sportStructure } : {}), ...(components ? { components } : {}) };
+  // Older adaptations may have replaced the row title with "Rest and recover".
+  // Recover only its saved identity for review, never executable instructions.
+  let displayTitle = typeof p?.title === "string" ? p.title : w.title;
+  if (verdict === "blocked" && typeof w.originalPlan === "string") {
+    try { const original = JSON.parse(w.originalPlan); if (obj(original) && typeof original.title === "string" && original.title.trim()) displayTitle = original.title; } catch { /* Keep the current saved title. */ }
+  }
+  const core = { schemaVersion: SESSION_SCHEMA_VERSION as 2, id: String(w.id || ""), athleteId: input.athleteId, dateLocal: input.dateLocal, timezone: input.timezone, title: sessionPurposeTitle(displayTitle, steps), sport, durationMin: verdict === "ready" ? (p?.durationMin ?? w.durationMin) : 0, verdict, reason, steps, exactTimeSeconds: steps.length && steps.every(s => s.endpoint.type === "time") ? steps.reduce((sum, s) => sum + (s.endpoint.type === "time" ? s.endpoint.seconds : 0), 0) : null, capability: exportCapability(sport, steps, verdict, sportStructure, components), ...(sportStructure ? { sportStructure } : {}), ...(components ? { components } : {}) };
   const revision = createHash("sha256").update(JSON.stringify({ core, environment: input.environment ? environmentRevisionContext(input.environment) : null, source: [w.prescription, w.originalPlan, w.intensity, w.notes, w.startTime], actuals: [w.feedbackStatus, w.feedbackAt, w.feedbackNote, w.actualDurationMin, w.actualSport, w.actualDetails, w.rpe, w.completed, w.distanceKm, w.avgHr, w.avgPower, w.calories, w.preWeightKg, w.postWeightKg], profile: [profile?.ftp, profile?.lthr, profile?.runPaceBase, profile?.swimPaceBase, profile?.intensityPct, profile?.injured, profile?.units, profile?.weightKg, profile?.sweatRateMlH, profile?.sodiumMgPerL, profile?.gutTrained, profile?.nutritionContext], safety, context: input.revisionContext })).digest("hex");
   return { ...core, ...(input.environment ? { environment: input.environment } : {}), revision, revisionNumber: parseInt(revision.slice(0, 12), 16) };
 }

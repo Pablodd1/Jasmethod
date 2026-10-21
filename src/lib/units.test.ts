@@ -9,6 +9,8 @@ import {
   fmtVolume,
   fmtVolumeDual,
   fmtPace,
+  fmtSwimPace,
+  fmtSpeed,
 } from "./units";
 
 test("units: preference defaults to metric for anything unknown", () => {
@@ -61,4 +63,12 @@ test("automatic display units follow language while explicit choices survive lan
   assert.equal(unitsOf("auto","es"),"metric");assert.equal(unitsOf(null,"en"),"imperial");
   assert.equal(unitsOf("metric","en"),"metric");assert.equal(unitsOf("imperial","es"),"imperial");
   assert.equal(fmtPace(359.8,"metric"),"6:00/km");
+  assert.equal(unitsOf("auto","fr"),"metric");assert.equal(unitsOf("auto"," en_US "),"imperial");
+  assert.equal(fmtHeight(182.8,"imperial"),`6'0"`,"rounded inches carry into the next foot");
+});
+
+test("swim pace converts the reference distance without inventing pool length, and cycling speed follows units",()=>{
+  assert.equal(fmtSwimPace(90,"metric"),"1:30/100 m");assert.equal(fmtSwimPace(90,"imperial"),"1:22/100 yd");
+  assert.equal(fmtSwimPace(null,"imperial"),"—");assert.equal(fmtSpeed(16.09344,"imperial"),"10.0 mph");
+  assert.equal(fmtSpeed(25,"metric"),"25.0 km/h");assert.equal(fmtSpeed(NaN,"metric"),"—");
 });

@@ -10,11 +10,13 @@ export interface DailyRecoveryView {
   recoveryNeedsReview: boolean;
   noAdditionalTraining: boolean;
   optionalMovementMinutes: number | null;
+  reviewedSessionId?:string|null;
 }
 
 export function DailyRecoveryCard({ recovery, es = false, offline = false }: { recovery?: DailyRecoveryView | null; es?: boolean; offline?: boolean }) {
   const mode = recovery?.mode ?? "unplanned";
-  const unknown = !recovery || recovery.safetyStatus === "unknown" || offline;
+  const scopedReview = !!recovery?.reviewedSessionId && ["training","easy-day"].includes(mode);
+  const unknown = !recovery || (recovery.safetyStatus === "unknown" && !scopedReview) || offline;
   const held = mode === "hold" || recovery?.safetyStatus === "hold" || recovery?.safetyStatus === "urgent";
   const urgent = recovery?.safetyStatus === "urgent";
   const reviewNeeded = mode === "review-needed";
@@ -38,6 +40,7 @@ export function DailyRecoveryCard({ recovery, es = false, offline = false }: { r
     : (es ? "Tu recuperación diaria" : "Your daily recovery");
   return <section id="daily-recovery" className="card space-y-4 border-ocean-200" aria-labelledby="daily-recovery-title">
     <h2 id="daily-recovery-title" className="font-display text-xl font-bold">{title}</h2>
+    {scopedReview && <p role="status" className="text-sm">{es ? "Solo la sesión fácil seleccionada tiene una revisión breve vigente. Las escalas subjetivas siguen sin responder; esto no autoriza otras sesiones." : "Only the selected easy session has a current short review. Subjective scales remain unanswered; this does not clear other sessions."}</p>}
     <p className="text-sm">{es ? "La recuperación forma parte de todos los días, incluso sin una sesión. El descanso completo es válido; no necesitas compensar entrenamientos perdidos." : "Recovery belongs in every day, including days without a workout. Complete rest is valid; you do not need to make up missed training."}</p>
     {urgent && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">{es ? "Detén el ejercicio. El malestar actual en el pecho, desmayo, falta de aire intensa sin explicación, confusión o colapso requieren evaluación médica urgente. Si los síntomas son intensos o continúan, contacta ahora con los servicios de emergencia locales. No se prescribe entrenamiento; esto no es un diagnóstico ni autorización para volver a entrenar." : resolveCheckinSafety({ urgentSymptoms: true }).message}</p>}
     {held ? <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{es ? "No se ofrece ejercicio. Sigue las indicaciones de seguridad de tu check-in y las restricciones de tu profesional; estas prácticas no autorizan volver a entrenar." : "No exercise is offered. Follow your check-in safety guidance and professional restrictions; these practices do not clear you to resume training."}</p>

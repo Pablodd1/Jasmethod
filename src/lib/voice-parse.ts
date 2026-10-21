@@ -1,4 +1,5 @@
 // Candidate extraction only. Never apply a transcript without editable review.
+import { weightFromDisplay } from "./units";
 export const VOICE_LANGUAGES = ["en", "es"] as const;
 export const WORD_NUM: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5 };
 export interface VoiceCheckinAnswers {
@@ -57,8 +58,9 @@ export function parseCheckinTranscript(text: string, language = "en"): VoiceChec
   if (hours && Number(hours[1]) <= 24) out.sleepHours = Number(hours[1]);
   extract("availableMinutes", "\\b(?:available minutes|minutos disponibles|tiempo disponible)", 0, 1440);
   const weight = /\b(?:weight|weigh|peso)\s*(?:(?:is|was|es|fue|de)\s+)?(\d+(?:\.\d+)?)\s*(kg|kilograms?|kilos?|pounds?|lbs?|libras?)\b/.exec(t);
-  if (weight && /^(kg|kilo)/.test(weight[2]) && Number(weight[1]) >= 20 && Number(weight[1]) <= 350) out.weightKg = Number(weight[1]);
-  else if (/\b(?:weight|weigh|peso)\b/.test(t)) out.warnings.push("Confirm weight and units manually in kilograms; no unit conversion was assumed.");
+  const canonicalWeight=weight?weightFromDisplay(Number(weight[1]),/^(kg|kilo)/.test(weight[2])?"metric":"imperial"):null;
+  if (canonicalWeight!=null && canonicalWeight >= 20 && canonicalWeight <= 350) out.weightKg = canonicalWeight;
+  else if (/\b(?:weight|weigh|peso)\b/.test(t)) out.warnings.push("Confirm weight and its explicit units manually; missing units are never assumed.");
   const seen: Partial<Record<"sick" | "newPain" | "urgentSymptoms" | "menstrual", boolean[]>> = {};
   const mentions = /\b(chest (?:pain|discomfort)|dolor (?:en el |de )pecho|faint(?:ing|ed)?|desmayo|severe (?:unexplained )?(?:breathlessness|shortness of breath)|falta de aire (?:grave|severa)|confusion|collapse|colapso|urgent symptoms|emergency symptoms|sintomas de alarma|sick|ill|fever|flu|cough|enferm[oa]|fiebre|gripe|tos|pain|injured|injury|dolor|lesion|period|menstrual|menstruating|menstruacion)\b/g;
   let previousEnd = 0;

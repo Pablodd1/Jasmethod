@@ -52,11 +52,11 @@ test("voice local negation cannot mask a later symptom or contradiction", () => 
   assert.equal(parseCheckinTranscript("not sick but fever").conflicts.includes("sick"), true);
   assert.equal(parseCheckinTranscript("no fever and no cough").sick, false);
 });
-test("voice contradictory scales, unsupported language and pounds fall back to review", () => {
+test("voice contradictory scales and missing units fall back to review, while explicit pounds convert to canonical weight", () => {
   assert.equal(parseCheckinTranscript("energy two, energy five").energy, undefined);
   assert.ok(parseCheckinTranscript("energy two, energy five").conflicts.includes("energy"));
   assert.equal(parseCheckinTranscript("sleep four", "fr").supportedLanguage, false);
-  assert.equal(parseCheckinTranscript("weight 150 pounds").weightKg, undefined);
+  assert.ok(Math.abs(parseCheckinTranscript("weight 150 pounds").weightKg!-150/2.20462)<1e-9);
   assert.equal(parseCheckinTranscript("weight 74").weightKg, undefined);
   assert.equal(parseCheckinTranscript("sleep six").sleep, undefined);
   assert.ok(parseCheckinTranscript("yesterday chest pain").warnings.length);
