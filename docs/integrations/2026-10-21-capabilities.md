@@ -154,8 +154,8 @@ Full retention, historical derivatives/insights and account-wide deletion obliga
 | Existing derived consumer requiring policy guard | Evidence in inspected source / minimal required behavior |
 |---|---|
 | `src/app/api/fitness/route.ts` → `j-metrics.ts`, `fitness.ts` | Parallel reviewer has added `derivedActivityPolicy` guards for JStress/EMA, legacy PMC and execution. Raw history remains; restricted input makes derived values unavailable. Final core regression coverage is reported by that reviewer. |
-| `src/lib/coaching.ts` → `src/app/api/admin/athletes/[id]/route.ts` | **Fixed summary guard here:** contaminated raw input returns unavailable totals/load/fulfillment/PMC and an explicit reason before grouping. Raw admin disclosure remains a separate security review; authentication as admin is not provider permission. |
-| `src/lib/activity-report.ts:generateAndDeliverActivityReport` ← `activity-store.ts` | **Fixed for new reports here:** restricted/unknown activity stops before history queries, writes or sends. Both history queries select provenance and pass `filterForAi`; any restricted historical contributor suppresses rank/average/streak and explains unavailable comparison. Already persisted `insights` are not recomputed or erased. |
+| `src/lib/coaching.ts` → `src/app/api/admin/athletes/[id]/route.ts` | **Fixed summary/disclosure guards:** contaminated raw workouts or metrics return unavailable totals/load/fulfillment/PMC before grouping. Another person's admin view withholds restricted/unknown activity/metrics, all free-form audit before/after snapshots and contaminated serialized checkins; analysis still receives the full raw input. Owner history stays intact. |
+| `src/lib/activity-report.ts:generateAndDeliverActivityReport` ← `activity-store.ts` | **Fixed for new reports here:** restricted/unknown activity stops before history queries, writes or sends. Any restricted historical contributor suppresses rank/average/streak. New insights use `schemaVersion:1`/`provenanceReviewed:true` envelope. Today shows only that reviewed envelope with currently permitted source; old/unversioned insights remain stored but are not displayed as reviewed reports, recomputed or erased. |
 | `src/lib/weekly-review.ts:buildWeeklyReview` | **Fixed guard here:** both queries select source/external ID/notes; restricted or unknown input returns an unavailable summary before duration/adherence/load calculations. No live caller found under `src`/`scripts`. |
 | `src/lib/imported-training-review.ts`, `training-cycle.ts:cycleActivityEvidence` | **Fixed guards here:** contaminated raw members suppress totals/ranges/averages/group counts and inferred recovery. Original records and every performed date remain. `plan/generate` returns explicit 409 before creating a dose; transaction rereads the same notes-inclusive activity query. |
 | `src/app/api/checkin/route.ts`, `src/lib/effective-prescription.ts`, `existing-workout-review.ts` | Coordinating reviewer has added central restriction holds: recent restricted/unknown activity cannot establish readiness, short review or extra training capacity. Root reviewer owns these paths and final regression evidence in this workstream. |
@@ -172,6 +172,17 @@ core guards above and remaining consumers must be reviewed independently.
 projections. The Prisma Workout model has no `originalSource` column; the in-memory type accepts it and stored upstream
 is read from notes. Verified JMM `starter`/`starter-rest` writers are explicitly allowed, with tests that any upstream
 Strava note/external ID/original-source marker still wins. No generic unknown-upload source was whitelisted.
+
+Final targeted-view correction: Today, checkin GET and the v1 daily adapter retain the actor and refuse another
+person's view with explicit 403 when relevant activity/metric/input context includes restricted or unknown origin.
+The lightweight Today plan query selects provenance for this decision, then removes source/notes from its response.
+The admin athlete route instead returns the permitted raw subset with explicit disclosure-unavailable reasons;
+restricted activity is never silently subtracted into an apparently complete load. Audit snapshots are metadata-only
+for every non-owner because their serialized contents have no reliable field-level provenance. No data was deleted.
+
+This is not a blanket provider-disclosure certification. Other profile/calendar/export/admin overview domains were
+not comprehensively reviewed in this final patch. In particular, canonical profile fields may have provider origin
+(e.g. saved Strava-reported weight); profile disclosure and historical retention still require release-owner review.
 
 ## Executed evidence and limits
 
@@ -190,6 +201,10 @@ Strava note/external ID/original-source marker still wins. No generic unknown-up
   manual/Garmin/COROS origin instead of relying on absent or restricted provenance.
 - `npx tsc --noEmit` and `git diff --check` passed after the final source/test edits. Final aggregate unit/build gates
   and the parallel core guard tests are owned by the coordinating reviewer.
+- Final disclosure/report follow-up: **30/30 passed** across `activity-disclosure`, `activity-report-provenance`,
+  `current-plan-daily`, `legacy-derived-activity`, `reliability`. Real route modules run with synthetic boundaries:
+  owner versus assigned/foreign admin access, metrics-only contamination, Today fast plan, checkin GET and v1 adapter;
+  versioned report storage/display and no removal of old records. Counts overlap earlier sets.
 - Tests use synthetic athletes, credentials and transport/DB mocks; they do not prove deployed flags, provider approval,
   new-athlete consent, pagination beyond fixture boundaries, actual SMTP/Telegram acceptance or physical watch delivery.
   No build/deploy/live-provider ladder completion is claimed; production changes and provider acceptance were outside

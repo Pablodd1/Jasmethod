@@ -11,7 +11,8 @@ import { SessionResolutionError } from "@/lib/canonical-session";
 // density is a planning score, not physiology; no fabricated calories.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { trainingAccess, errorResponse } from "@/lib/access";
+import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
+import { trainingViewDisclosureAllowed, ACTIVITY_DISCLOSURE_REASON } from "@/lib/activity-disclosure";
 import { dayBounds, dateKey } from "@/lib/dates";
 import { effectivePrescription } from "@/lib/effective-prescription";
 import { currentOrReportedWorkoutWhere, isCurrentWorkout } from "@/lib/calendar-workouts";
@@ -53,7 +54,7 @@ function paceRefs(runPaceBase: number | null | undefined): Record<PaceKey, PaceR
 
 export async function GET(req: Request) {
   try {
-    const { athlete: user } = await trainingAccess(req);
+    const { actor, athlete: user } = await trainingAccess(req);
     const selected = new URL(req.url).searchParams.get("sessionId");
     // Links may refer to another day or a rescheduled session. Resolve its date
     // from an athlete-owned record, never from an untrusted date parameter.
@@ -77,6 +78,14 @@ export async function GET(req: Request) {
       }),
     ]);
     const currentWorkouts = workouts.filter(w => isCurrentWorkout(w, user.id, activePlan?.id ?? null));
+    if (!trainingViewDisclosureAllowed(actor.id, user.id, workouts)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
+    if (actor.id !== user.id) {
+      const [actualContext, metricContext] = await Promise.all([
+        prisma.workout.findMany({ where: { userId: user.id, date: { gte: start, lt: end } }, select: { source: true, externalId: true, notes: true } }),
+        prisma.dailyMetrics.findMany({ where: { userId: user.id, date: { gte: new Date(start.getTime() - 14 * 86400000), lt: end } }, select: { source: true } }),
+      ]);
+      if (!trainingViewDisclosureAllowed(actor.id, user.id, [...actualContext, ...metricContext])) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
+    }
     const workout = selected ? workouts.find(w => w.id === selected) : currentWorkouts[0];
     if (!workout) return selected
       ? NextResponse.json({ error: "Session not found for this date" }, { status: 404 })

@@ -5,6 +5,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import * as dates from "./dates";
 import * as provenance from "./strava-provenance";
+import * as reportEnvelope from "./activity-report-envelope";
 
 function fixture(origin: Record<string, unknown> = { source: "garmin" }, restrictedHistory = false) {
   const queries: any[] = [], writes: any[] = [], sends: string[] = [];
@@ -23,7 +24,7 @@ function fixture(origin: Record<string, unknown> = { source: "garmin" }, restric
     dailyMetrics: { findUnique: async () => null }, reminderPref: { findUnique: async () => ({ telegramEnabled: true, telegramChatId: "synthetic" }) },
   };
   const deps: Record<string, unknown> = {
-    "./db": { prisma }, "./dates": dates, "./units": { unitsOf: () => "metric" }, "./strava-provenance": provenance,
+    "./db": { prisma }, "./dates": dates, "./units": { unitsOf: () => "metric" }, "./strava-provenance": provenance, "./activity-report-envelope": reportEnvelope,
     "./notify": { sendTelegram: async (_: string, text: string) => { sends.push(text); return { ok: true }; } }, "./telemetry": { logEvent: async () => {} },
   };
   const mod: any = { exports: {} };
@@ -53,4 +54,6 @@ test("known permitted history retains ordinary activity comparison behavior", as
   const f = fixture(), report = await f.run();
   assert.match(report.headline, /Fastest run pace/); assert.match(report.body, /30-day average/);
   assert.equal(f.writes.length, 1); assert.equal(f.sends.length, 1);
+  const stored = JSON.parse(f.writes[0].data.insights);
+  assert.equal(stored.schemaVersion, 1); assert.equal(stored.provenanceReviewed, true); assert.equal(JSON.stringify(stored.report), JSON.stringify(report));
 });

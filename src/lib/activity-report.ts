@@ -11,6 +11,7 @@
 import { prisma } from "./db";
 import { dateKey, dayBounds } from "./dates";import { unitsOf, type UnitSystem } from "./units";
 import { filterForAi, isAiEligible } from "./strava-provenance";
+import { activityReportEnvelope } from "./activity-report-envelope";
 
 // ---------- pure stat engine (unit-tested) ----------
 
@@ -304,7 +305,7 @@ export async function generateAndDeliverActivityReport(
     }
     await prisma.workout.update({
       where: { id: activity.id },
-      data: { insights: JSON.stringify(report) },
+      data: { insights: JSON.stringify(activityReportEnvelope(report)) },
     });
     // Telegram delivery — athlete's own bot, only if they opted in.
     if (pref?.telegramEnabled && pref.telegramChatId) {

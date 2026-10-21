@@ -13,7 +13,7 @@ export function coachingSummary(
   decisions:readonly ActivityDecision[]=[],
 ) {
   const past = workouts.filter((w) => new Date(w.date) <= now);
-  const policy = derivedActivityPolicy(past);
+  const policy = derivedActivityPolicy([...past, ...metrics]);
   if (policy.status !== "allowed") return {
     completed: null, planned: null, fulfillmentPct: null, minutes: null, measuredSessions: null, estimatedLoad: null, pmc: null,
     reconciliation: { rawRecords: past.length, groupedCopies: null, unresolvedGroups: null },

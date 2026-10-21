@@ -30,6 +30,8 @@ JasMiamiMethod is a science-backed triathlon/endurance coaching app targeting th
 
 Current state: a webapp with locally tested core workflows. See the release guide for test evidence and deployment requirements.
 
+Confirmed daily athlete requirements and terminology are maintained in [the daily-flow contract](docs/athlete-launch-workflow-2026-10-15.md). Check the dated [integration capability matrix](docs/integrations/2026-10-21-capabilities.md) before claiming a connection or delivery path is available.
+
 ---
 
 ## 2. What Was Requested vs. What Was Built

@@ -1,7 +1,7 @@
 import { isStarterSession, starterRestriction } from "@/lib/starter-session";
 import { isUnperformedSupersededWorkout } from "@/lib/superseded-workout";
 import { currentOrReportedWorkoutWhere, currentWorkoutWhere, hasWorkoutReport } from "@/lib/calendar-workouts";
-import { groupActivityEvidence } from "@/lib/activity-evidence";
+import { groupActivityEvidence, activityActualMinutes } from "@/lib/activity-evidence";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { ensureStarterWorkout } from "@/lib/starter-session-store";
 import { preserveSportStructure } from "@/lib/preserve-sport-structure";
@@ -32,6 +32,12 @@ import { cycleAdvice, youthPolicy, proteinPerKg } from "@/lib/cycle";
 import { fuelBrandsFor } from "@/lib/fuelbrands";
 import { sourcesFor } from "@/lib/research";
 import { checkinSyncFreshness, optionalCheckinBoolean, optionalCheckinNumber, SUBJECTIVE_FIELDS, SAFETY_FIELDS, CHECKIN_SAFETY_VERSION, type FreshnessResult, resolveCheckinSafety } from "@/lib/checkin-safety";
+import { reviewExistingWorkout } from "@/lib/checkin-review-service";
+import { readDailyInputContext } from "@/lib/daily-input-context";
+import { workoutRevision } from "@/lib/workout-update";
+import { derivedActivityPolicy } from "@/lib/derived-activity-policy";
+import { effectivePrescription } from "@/lib/effective-prescription";
+import { trainingViewDisclosureAllowed, ACTIVITY_DISCLOSURE_REASON } from "@/lib/activity-disclosure";
 
 const sources = () =>
   sourcesFor(["seiler2009", "buchheit2014", "jeukendrup2014", "thomas2016"]);
@@ -49,7 +55,7 @@ function array(value?: string | null) {
 }
 export async function GET(req: Request) {
   try {
-    const { athlete: user } = await trainingAccess(req);
+    const { actor, athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
     const feedbackDate = new URL(req.url).searchParams.get("feedbackDate") || addDaysKey(key, -1);
     let feedbackStart: Date;
@@ -78,14 +84,15 @@ export async function GET(req: Request) {
         },
         select: { title: true, startTime: true, endTime: true },
       }),
-      prisma.workout.findMany({ where: { AND: [currentOrReportedWorkoutWhere(user.id, activePlan?.id ?? null), { date: { gte: feedbackStart, lt: feedbackEnd } }] }, orderBy: [{ startTime: "asc" }, { createdAt: "asc" }], select: { id: true, title: true, sport: true, durationMin: true, date: true, feedbackStatus: true, actualDurationMin: true, rpe: true, feedbackNote: true, feedbackAt: true, actualSport: true, actualDetails: true } }),
+      prisma.workout.findMany({ where: { AND: [currentOrReportedWorkoutWhere(user.id, activePlan?.id ?? null), { date: { gte: feedbackStart, lt: feedbackEnd } }] }, orderBy: [{ startTime: "asc" }, { createdAt: "asc" }], take: 100 }),
       prisma.athleteProfile.findUnique({ where: { userId: user.id } }),
       readPlanningSetup(user.id),
     ]);
     const starter = await prisma.workout.findFirst({where:{userId:user.id,date:{gte:start,lt:end},source:"starter"},select:{source:true,originalPlan:true}});
     const starterReady = !!starter && isStarterSession(starter) && !starterRestriction(profile,planning.setup);
-    const sameType = metrics.filter(
-      (m) => Number.isFinite(m.hrv) && m.hrv! > 0 && m.hrv! <= 300 && (m.hrvType || "rmssd") === (metrics[0]?.hrvType || "rmssd"),
+    const biometricPolicy = derivedActivityPolicy(metrics);
+    const sameType = (biometricPolicy.status === "allowed" ? metrics : []).filter(
+      (m) => Number.isFinite(m.hrv) && m.hrv! > 0 && m.hrv! <= 300 && m.source === metrics[0]?.source && (m.hrvType || "rmssd") === (metrics[0]?.hrvType || "rmssd"),
     );
     let readiness: ReturnType<typeof hrvReadiness> | null = null;
     if (sameType.length >= 4 && sameType[0].date >= start && sameType[0].date < end) {
@@ -111,17 +118,30 @@ export async function GET(req: Request) {
       let savedAdaptation: any = null;
       try { savedAdaptation = JSON.parse(checkin.adaptation || "null"); } catch { /* Invalid stored output is not clearance. */ }
       const validSaved = savedAdaptation && typeof savedAdaptation.ruleId === "string" && ["full", "trim", "easy", "rest"].includes(savedAdaptation.verdict) && Number.isFinite(savedAdaptation.score) && savedAdaptation.score >= 0 && savedAdaptation.score <= 100 && typeof savedAdaptation.scoreAvailable === "boolean" && Number.isFinite(savedAdaptation.durationFactor) && savedAdaptation.durationFactor >= 0 && savedAdaptation.durationFactor <= 1 && /^z[1-7]$/.test(savedAdaptation.intensityCap);
-      if (safety.status !== "clear") displayedCheckin = { ...checkin, adaptation: JSON.stringify(adaptSession(profile?.injured ? { ...answers, newPain: true } : answers)) };
+      const selectedReviewId = (answers as any).inputMetadata?.existingReview?.sessionId;
+      const scoped = validSaved && savedAdaptation.ruleId === "existing-workout-review-v1:scoped" && typeof selectedReviewId === "string"
+        ? await effectivePrescription(user.id, selectedReviewId) : null;
+      // A limited saved confirmation must still resolve against current context;
+      // it never supplies the five missing subjective scale answers.
+      const currentScopedReview = scoped?.canonical.verdict === "ready" && scoped.existingReview.eligible;
+      if (safety.status !== "clear" && !currentScopedReview) displayedCheckin = { ...checkin, adaptation: JSON.stringify(adaptSession(profile?.injured ? { ...answers, newPain: true } : answers)) };
       else if (!validSaved) displayedCheckin = { ...checkin, adaptation: JSON.stringify({ score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "unknown", ruleId: "checkin-safety-v1:refresh-required", message: "The saved adaptation cannot be verified. Review and submit today's check-in to refresh it before training." }) };
       currentSafetyClear = currentSafetyClear && Boolean(validSaved);
       if (safety.status === "clear" && !setup.ready && !starterReady) displayedCheckin = { ...checkin, adaptation: JSON.stringify({ score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "unknown", ruleId: setup.ruleId, message: `Complete or review athlete setup before individualized training. ${[...setup.missing, ...setup.review].join("; ")}` }) };
     }
+    const inputContext = await readDailyInputContext(user.id, user.timezone, prisma);
+    if (!trainingViewDisclosureAllowed(actor.id, user.id, [...previousSessions, ...metrics], inputContext)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
     return NextResponse.json({
+      inputContext,
       checkin: displayedCheckin,
       feedbackDate,
-      previousSessions,
+      previousSessions: previousSessions.map(w => ({ id: w.id, title: w.title, sport: w.sport, durationMin: w.durationMin, date: w.date,
+        planned: w.planned, completed: w.completed, knownActualDurationMin: activityActualMinutes(w),
+        feedbackStatus: w.feedbackStatus, actualDurationMin: w.actualDurationMin, rpe: w.rpe, feedbackNote: w.feedbackNote,
+        feedbackAt: w.feedbackAt, actualSport: w.actualSport, actualDetails: w.actualDetails, feedbackRevision: workoutRevision(w) })),
       localToday: key,
       readiness: currentSafetyClear ? readiness : null,
+      readinessUnavailableReason: biometricPolicy.reason,
       recovery: currentSafetyClear ? recovery() : null,
       sources: sources(),
       fuelBrands: fuelBrandsFor(0),
@@ -139,6 +159,8 @@ export async function POST(req: Request) {
     const raw = await req.json().catch(() => { throw new ApiError("Invalid JSON"); });
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ApiError("Expected a check-in object");
     const b: Record<string, any> = { ...raw };
+    if (b.mode === "review_existing") return NextResponse.json(await reviewExistingWorkout(actor.id, user, b), { headers: { "Cache-Control": "private, no-store" } });
+    if (b.mode !== undefined) throw new ApiError("Unknown check-in mode");
     const checkin: Checkin = {};
     try {
       for (const field of SUBJECTIVE_FIELDS) checkin[field] = optionalCheckinNumber(b[field], field, 1, 5, true);
@@ -175,7 +197,7 @@ export async function POST(req: Request) {
     const syncFreshness = checkinSyncFreshness(deviceProviders, syncResults, syncAttempted);
     const { start, end, key } = dayBounds(user.timezone);
     const activePlan = await prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
-    const [metrics, profile, appointments, prefs, feedback, planning, sameDayReports,activityDecisions] = await Promise.all(
+    const [metrics, profile, appointments, prefs, feedback, planning, sameDayReports,activityDecisions,inputContext] = await Promise.all(
       [
         prisma.dailyMetrics.findMany({
           where: {
@@ -203,23 +225,29 @@ export async function POST(req: Request) {
         readPlanningSetup(user.id),
         prisma.workout.findMany({ where: { userId: user.id, date: { gte: start, lt: end }, OR: [{ feedbackAt: { not: null } }, { planned: false }, { completed: true }] } }),
         readActivityDecisions(user.id),
+        readDailyInputContext(user.id, user.timezone, prisma),
       ],
     );
     const history = metrics.filter((m) => m.date < start);
-    const rhrs = history
-      .filter((m) => m.restingHr != null)
+    const biometricPolicy = derivedActivityPolicy(metrics);
+    const importedRhr = inputContext.metrics.restingHr.selected;
+    const rhrSource = b.rhr != null ? "manual" : importedRhr?.source;
+    const rhrs = (biometricPolicy.status === "allowed" ? history : [])
+      .filter((m) => m.restingHr != null && rhrSource && m.source === rhrSource)
       .slice(-7)
       .map((m) => m.restingHr!);
     const current = metrics.find((m) => m.date.getTime() === start.getTime());
-    checkin.rhr ??= current?.restingHr ?? undefined;
+    checkin.rhr ??= importedRhr?.value;
     if (rhrs.length >= 3)
       checkin.rhrBaseline = rhrs.reduce((a, b) => a + b, 0) / rhrs.length;
     // Profile restriction influences the decision without rewriting the athlete's report.
     let adaptation = adaptSession(profile?.injured ? { ...checkin, newPain: true } : checkin);
-    const hrv = b.hrv != null && b.hrv !== "" ? Number(b.hrv) : current?.hrv;
-    const hrvType = b.hrv ? "rmssd" : current?.hrvType || "rmssd";
-    const hrvs = history
-      .filter((m) => m.hrv != null && Number.isFinite(m.hrv) && m.hrv > 0 && m.hrv <= 300 && (m.hrvType || "rmssd") === hrvType)
+    const importedHrv = inputContext.metrics.hrvRmssd.selected ?? inputContext.metrics.hrvSdnn.selected;
+    const hrv = b.hrv != null ? Number(b.hrv) : importedHrv?.value;
+    const hrvType = b.hrv != null ? "rmssd" : inputContext.metrics.hrvRmssd.selected ? "rmssd" : "sdnn";
+    const hrvSource = b.hrv != null ? "manual" : importedHrv?.source;
+    const hrvs = (biometricPolicy.status === "allowed" ? history : [])
+      .filter((m) => m.hrv != null && Number.isFinite(m.hrv) && m.hrv > 0 && m.hrv <= 300 && hrvSource && m.source === hrvSource && (m.hrvType || "rmssd") === hrvType)
       .slice(-7)
       .map((m) => m.hrv!);
     const hrvMean =
@@ -230,9 +258,12 @@ export async function POST(req: Request) {
     const setupGate = assessPlanningSetup(profile, planning.setup, new Date(), "daily");
     if (!setupGate.ready && !starterReady && adaptation.safetyStatus === "clear") adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", scoreAvailable: false, safetyStatus: "unknown", ruleId: setupGate.ruleId, missingFields: setupGate.missing, message: `Individual training is on hold until setup is complete or reviewed. ${[...setupGate.missing, ...setupGate.review].join("; ")}. Update athlete setup; no device benchmark is required.` };
     if (hrvLow && adaptation.verdict === "full") adaptation = { ...adaptation, verdict: "trim", durationFactor: 0.85, intensityCap: "z4", ruleId: "checkin-safety-v1:low-hrv", message: "HRV is below your recent baseline; today's plan is conservative. Review how you feel before training." };
-    const groupedHistory=groupActivityEvidence([...feedback,...sameDayReports].filter(w=>!isUnperformedSupersededWorkout(w)),activityDecisions);
+    const rawHistory = [...feedback, ...sameDayReports].filter(w => !isUnperformedSupersededWorkout(w));
+    const activityPolicy = derivedActivityPolicy(rawHistory.filter(w => hasWorkoutReport(w) || !w.planned));
+    if (activityPolicy.status !== "allowed" && adaptation.safetyStatus === "clear") adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", scoreAvailable: false, safetyStatus: "unknown", ruleId: "provider-provenance:insufficient", message: activityPolicy.reason || "Recent activity provenance needs review. Unknown load is not zero and no additional training is inferred." };
+    const groupedHistory=groupActivityEvidence(activityPolicy.status === "allowed" ? rawHistory : [],activityDecisions);
     const previousIds=new Set(feedback.map(w=>w.id)),todayIds=new Set(sameDayReports.map(w=>w.id));
-    const execution = applyExecutionFeedback(adaptation, groupedHistory.groups.filter(g=>g.members.some(w=>previousIds.has(w.id))).map(g=>g.primary));
+    const execution = activityPolicy.status === "allowed" ? applyExecutionFeedback(adaptation, groupedHistory.groups.filter(g=>g.members.some(w=>previousIds.has(w.id))).map(g=>g.primary)) : { adaptation, inputs: [], notes: [activityPolicy.reason || "Activity analysis unavailable."] };
     adaptation = execution.adaptation;
     if(groupedHistory.unresolvedGroups&&adaptation.safetyStatus==="clear"&&adaptation.verdict!=="rest")adaptation={...adaptation,verdict:"easy",durationFactor:Math.min(adaptation.durationFactor,.6),intensityCap:Number(adaptation.intensityCap.slice(1))>2?"z2":adaptation.intensityCap,message:"Possible copies of imported training need your explicit review. Keep conservative easy guidance; raw provider records are unchanged and no extra capacity is inferred.",ruleId:"checkin-safety-v1:activity-reconciliation"};
     const uniqueSameDayReports = groupedHistory.groups.filter(g=>g.members.some(w=>todayIds.has(w.id)));
@@ -326,7 +357,7 @@ export async function POST(req: Request) {
       // prescriptions until COACH_ENGINE_VERSION=v2).
       let shadowV2: string | null = null;
       try {
-        if (adaptation.scoreAvailable === false) throw new Error("Shadow score unavailable for incomplete or held check-in");
+        if (adaptation.scoreAvailable === false || biometricPolicy.status !== "allowed") throw new Error("Shadow score unavailable for incomplete, held or restricted-context check-in");
         const { compareShadow } = await import("@/lib/athlete-state-v2");
         const v2Input = {
           hrvToday: current?.hrv ?? undefined,
@@ -361,9 +392,12 @@ export async function POST(req: Request) {
         ...checkin,
         ...Object.fromEntries([...SUBJECTIVE_FIELDS, ...SAFETY_FIELDS].map((field) => [field, checkin[field] ?? null])),
         availableMin: checkin.availableMin ?? null,
-        sleepHours: b.sleepHours ?? null,
-        hrv: b.hrv ?? null,
-        inputMetadata: { version: CHECKIN_SAFETY_VERSION, source: b.voiceReviewConfirmed === true ? "athlete-confirmed-voice" : "athlete-reported", observedOn: key, recordedAt: new Date().toISOString(), missingFields: adaptation.missingFields || [], rhrSource: b.rhr != null ? "athlete-reported" : current?.restingHr != null ? current.source : "unknown" },
+        sleepHours: b.sleepHours ?? inputContext.metrics.sleepHours.selected?.value ?? null,
+        hrv: hrv ?? null,
+        inputMetadata: { version: CHECKIN_SAFETY_VERSION, source: actor.id !== user.id ? "coach-entered" : b.voiceReviewConfirmed === true ? "athlete-confirmed-voice" : "athlete-reported", observedOn: key, recordedAt: new Date().toISOString(), missingFields: adaptation.missingFields || [],
+          rhrSource: b.rhr != null ? "athlete-reported" : importedRhr?.source ?? "unknown",
+          hrvType: hrv == null ? null : hrvType, hrvSource: b.hrv != null ? "athlete-reported" : importedHrv?.source ?? "unknown",
+          sleepHoursSource: b.sleepHours != null ? "athlete-reported" : inputContext.metrics.sleepHours.selected?.source ?? "unknown" },
       };
       const check = await tx.dailyCheckin.upsert({
         where: { userId_date: { userId: user.id, date: start } },
@@ -471,6 +505,7 @@ export async function POST(req: Request) {
       prescription,
       adaptation,
       executionFeedback: { inputs: execution.inputs, notes: execution.notes },
+      biometricAnalysisUnavailableReason: biometricPolicy.reason,
       activityReconciliation:{rawRecords:groupedHistory.rawRecords,groupedCopies:groupedHistory.groupedCopies,unresolvedGroups:groupedHistory.unresolvedGroups,requiresReview:groupedHistory.unresolvedGroups>0},
       fuel,
       ergos,
@@ -495,7 +530,7 @@ export async function POST(req: Request) {
         note: "Daily target, adjusted to the saved profile.",
       },
       hydration: adaptation.safetyStatus !== "clear" ? null : {
-        weightTrend: morningWeightTrend(metrics),
+        weightTrend: biometricPolicy.status === "allowed" ? morningWeightTrend(metrics) : null,
         rhrNote: null,
         hrvNote: hrvLow
           ? "Below recent baseline; prescription adjusted conservatively."
@@ -516,6 +551,7 @@ export async function DELETE(req: Request) {
     const { actor, athlete } = await trainingAccess(req);
     const { start, end } = dayBounds(athlete.timezone);
     await prisma.$transaction(async (tx) => {
+      const previousCheckin = await tx.dailyCheckin.findUnique({ where: { userId_date: { userId: athlete.id, date: start } } });
       const activePlan = await tx.trainingPlan.findFirst({ where: { userId: athlete.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
       const candidates = await tx.workout.findMany({
         where: {
@@ -551,6 +587,7 @@ export async function DELETE(req: Request) {
           actorId: actor.id,
           subjectId: athlete.id,
           action: "checkin.undo",
+          before: previousCheckin ? JSON.stringify(previousCheckin) : null,
           after: JSON.stringify({ sessions: sessions.map((w) => w.id) }),
         },
       });

@@ -40,10 +40,10 @@ function checkinFixture(rows:any[], latest="current") {
   const tx={
     trainingPlan:{findFirst:async(q:any)=>{planReads.push(q);return {id:latest};}},
     workout:{findMany:async(q:any)=>{queries.push(q);return rows.filter(w=>matches(w,q.where));},update:async({where,data}:any)=>{updates.push({id:where.id,...data});const saved=rows.find(w=>w.id===where.id);Object.assign(saved,data);return saved;}},
-    dailyCheckin:{upsert:async({create}:any)=>create,deleteMany:async(q:any)=>{deletions.push(q);return {count:1};}},auditLog:{create:async({data}:any)=>{audits.push(data);return data;}},
+    dailyCheckin:{findUnique:async()=>null,upsert:async({create}:any)=>create,deleteMany:async(q:any)=>{deletions.push(q);return {count:1};}},auditLog:{findMany:async()=>[],create:async({data}:any)=>{audits.push(data);return data;}},
   };
   let serializationConflict=false;
-  const prisma={...tx,trainingPlan:{findFirst:async()=>({id:"stale-outer-snapshot"})},connector:{findMany:async()=>[]},workout:{findMany:async()=>[],findFirst:async()=>null},dailyMetrics:{findMany:async()=>[]},athleteProfile:{findUnique:async()=>profile},calendarEvent:{findMany:async()=>[]},supplementProfile:{findUnique:async()=>null},$transaction:async(fn:any,options:any)=>{assert.equal(options?.isolationLevel,"Serializable");if(serializationConflict)throw {code:"P2034"};return fn(tx);}};
+  const prisma={...tx,trainingPlan:{findFirst:async()=>({id:"stale-outer-snapshot"})},connector:{findMany:async()=>[]},metricObservation:{findMany:async()=>[]},workout:{findMany:async()=>[],findFirst:async()=>null},dailyMetrics:{findMany:async()=>[]},athleteProfile:{findUnique:async()=>profile},calendarEvent:{findMany:async()=>[]},supplementProfile:{findUnique:async()=>null},$transaction:async(fn:any,options:any)=>{assert.equal(options?.isolationLevel,"Serializable");if(serializationConflict)throw {code:"P2034"};return fn(tx);}};
   class ApiError extends Error {constructor(message:string,public status=400){super(message);}}
   const deps:Record<string,any>={
     "next/server":{NextResponse:Response},"@/lib/db":{prisma},

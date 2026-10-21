@@ -6,7 +6,7 @@ import { SessionResolutionError } from "@/lib/canonical-session";
 import { readIntervalsReceipt } from "@/lib/intervals-delivery";
 import {personalizedDailyMotivation} from "@/lib/reference";
 import { prisma } from "@/lib/db";
-import { trainingAccess, errorResponse } from "@/lib/access";
+import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { dayBounds, dateKey, addDaysKey } from "@/lib/dates";
 import { estimateIf, estimateDistanceKm } from "@/lib/prescription";
 import { estimateTss } from "@/lib/fitness";
@@ -20,13 +20,25 @@ import { athleteDayReview } from "@/lib/athlete-day-review";
 import { readPlanningSetup } from "@/lib/planning-setup-store";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { workoutRevision } from '@/lib/workout-update';
-import { currentOrReportedWorkoutWhere, isCurrentWorkout } from '@/lib/calendar-workouts';
+import { currentOrReportedWorkoutWhere, currentWorkoutWhere, isCurrentWorkout } from '@/lib/calendar-workouts';
+import { readDailyInputContext } from '@/lib/daily-input-context';
+import { trainingViewDisclosureAllowed, ACTIVITY_DISCLOSURE_REASON } from '@/lib/activity-disclosure';
+import { readVerifiedActivityReport } from '@/lib/activity-report-envelope';
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
-    const { athlete: user } = await trainingAccess(req);
+    const { actor, athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
     const currentPlan = await prisma.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id:true, name:true, startDate:true, weeks:true, raceDate:true } });
+    // A cheap read displays saved instructions while richer context resolves.
+    // It neither creates training nor grants execution/export permission.
+    if (new URL(req.url).searchParams.get("view") === "plan") {
+      const saved = await prisma.workout.findMany({ where: { AND: [currentWorkoutWhere(user.id, currentPlan?.id ?? null)], planned: true, date: { gte: start, lt: end } },
+        orderBy: [{ startTime: "asc" }, { createdAt: "asc" }], take: 30,
+        select: { id: true, title: true, sport: true, durationMin: true, startTime: true, completed: true, feedbackStatus: true, source: true, externalId: true, notes: true } });
+      if (!trainingViewDisclosureAllowed(actor.id, user.id, saved)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
+      return Response.json({ kind: "saved_today_plan", date: key, timezone: user.timezone, sessions: saved.map(({source,externalId,notes,...session})=>session), readOnly: true }, { headers: { "Cache-Control": "private, no-store" } });
+    }
   const [allWorkouts, race, connectors, checkin, restDay, activePlan, eventToday, setupState, activityDecisions] = await Promise.all([
     prisma.workout.findMany({
       where: {
@@ -74,7 +86,7 @@ export async function GET(req: Request) {
     },
     orderBy: { date: "desc" },
     take: 5,
-    select: { id: true, date: true, title: true, sport: true, insights: true },
+    select: { id: true, date: true, title: true, sport: true, insights: true, source: true, externalId: true, notes: true },
   });
 
     // GET is read-only. Missing plans require explicit setup/plan creation.
@@ -122,6 +134,8 @@ export async function GET(req: Request) {
         id: w.id,
         feedbackRevision: workoutRevision(w),
         revision: canonical.revision,
+        existingReview: resolved.existingReview,
+        plannedDurationMin: w.durationMin,
         environment: canonical.environment,
         intervalsPublication: w.deliveryProvider === "intervals" ? (() => {
           const receipt = readIntervalsReceipt(w.deliveryId);
@@ -166,7 +180,10 @@ export async function GET(req: Request) {
     const plannedRest = !eventDay && (allWorkouts.some(w=>w.source==="starter-rest") || !!restDay?.dayOff || (!!workouts.length && workouts.every(w => w.planDay?.dayOff)));
     const recovery = dailyRecoveryContext({ plannedRest, eventDay, sessions, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     const visibleConnectors = connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled());
+    const inputContext = await readDailyInputContext(user.id, user.timezone);
+    if (!trainingViewDisclosureAllowed(actor.id, user.id, [...allWorkouts, ...reported], inputContext)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
     return Response.json({
+      inputContext,
       athleteReview: athleteDayReview(allWorkouts.map(w=>({...w,feedbackRevision:workoutRevision(w)})), user.id, key, user.timezone, setupState.setup, activityDecisions),
       recovery,
       cycle: activePlan ? savedCycleSummary(activePlan, user.timezone, key) : null,
@@ -185,19 +202,17 @@ export async function GET(req: Request) {
         stale: visibleConnectors.some((c: any) => c.status === "connected" && c.lastSyncAt && Date.now() - new Date(c.lastSyncAt).getTime() > 12 * 3600000),
       },
       sessions,
-      activityReports: reported.map((w) => {
-        let parsed: { headline: string; body: string } | null = null;
-        try {
-          parsed = JSON.parse(w.insights!);
-        } catch {}
-        return {
+      activityReports: reported.flatMap((w) => {
+        const parsed = readVerifiedActivityReport(w.insights, w);
+        if (!parsed) return [];
+        return [{
           id: w.id,
           date: w.date,
           title: w.title,
           sport: w.sport,
           headline: parsed?.headline || "",
           body: parsed?.body || "",
-        };
+        }];
       }),
       connectors: visibleConnectors,
       checkin: checkin
