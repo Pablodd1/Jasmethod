@@ -116,6 +116,28 @@ test("pure context bounds records and never reports a complete total from trunca
   const value=context({observations:Array.from({length:110},(_,i)=>observation({id:String(i)})),completedWorkouts:Array.from({length:110},(_,i)=>workout({id:String(i),source:"manual"}))});
   assert.equal(value.bounded.observationsTruncated,true);assert.equal(value.bounded.workoutsTruncated,true);assert.equal(value.activity.rawRecordCount,100);assert.equal(value.activity.reportedMinutes,null);
 });
+
+test("a conflicting provider beyond the observation limit cannot produce usable numeric evidence",()=>{
+  const observations=Array.from({length:101},(_,i)=>observation({id:String(i),metricType:"resting_hr",unit:"bpm",source:i===100?"oura":"garmin",value:i===100?90:50,observedAt:new Date(now.getTime()-(i+1)*1000)}));
+  const before=JSON.stringify(observations),value=context({observations});
+  assert.equal(value.bounded.observationsTruncated,true);
+  assert.equal(value.metrics.restingHr.selected,null);assert.equal(value.metrics.restingHr.latest?.value,50);
+  assert.equal(value.metrics.restingHr.status,"invalid");assert.match(value.metrics.restingHr.reason,/read limit|unread/i);
+  assert.deepEqual(value.objectiveFields,{sleepHours:true,hrv:true,restingHr:true});
+  assert.equal(JSON.stringify(observations),before);
+  assert.equal(context({observations:observations.slice(0,100)}).metrics.restingHr.selected?.value,50,"exactly 100 complete records do not falsely imply truncation");
+  assert.equal(context({observations:[observation()],observationsTruncated:true}).metrics.sleepHours.selected,null,"a bounded reader's explicit incomplete signal also fails closed");
+});
+
+test("the DB observation sentinel distinguishes a complete boundary from unread conflicting evidence",async()=>{
+  let rows=Array.from({length:101},(_,i)=>observation({id:String(i),source:i===100?"garmin":"oura",value:i===100?2:7.5,observedAt:new Date(now.getTime()-(i+1)*1000)}));
+  const db:any={metricObservation:{findMany:async(q:any)=>rows.slice(0,q.take)},workout:{findMany:async()=>[]},connector:{findMany:async()=>[]},auditLog:{findMany:async()=>[]}};
+  const incomplete=await readDailyInputContext("owner","America/New_York",db,now);
+  assert.equal(incomplete.bounded.observationsTruncated,true);assert.equal(incomplete.metrics.sleepHours.selected,null);assert.equal(incomplete.objectiveFields.sleepHours,true);
+  rows=rows.slice(0,100);
+  const complete=await readDailyInputContext("owner","America/New_York",db,now);
+  assert.equal(complete.bounded.observationsTruncated,false);assert.equal(complete.metrics.sleepHours.selected?.value,7.5);
+});
 test("duplicate dry run flags repeated provider identity without removing records or treating uncertain totals as zero",()=>{
   const rows=[workout({id:"one"}),workout({id:"two"})],before=JSON.stringify(rows);
   const value=context({completedWorkouts:rows});
@@ -179,7 +201,7 @@ test("DB reader uses owner-scoped projected evidence with bounded observation an
   };
   const value=await readDailyInputContext("owner","America/New_York",db,now);assert.equal(value.metrics.sleepHours.selected?.value,7.5);
   const metrics=calls.find(([name])=>name==="metrics")[1],workouts=calls.find(([name])=>name==="workouts")[1];
-  assert.equal(metrics.where.userId,"owner");assert.equal(metrics.take,100);assert.equal(metrics.where.observedAt.gte.toISOString(),"2026-10-08T04:00:00.000Z");assert.equal(metrics.where.observedAt.lte,now);
+  assert.equal(metrics.where.userId,"owner");assert.equal(metrics.take,101);assert.equal(metrics.where.observedAt.gte.toISOString(),"2026-10-08T04:00:00.000Z");assert.equal(metrics.where.observedAt.lte,now);
   assert.equal(workouts.where.userId,"owner");assert.equal(workouts.take,100);assert.equal(workouts.where.date.gte.toISOString(),"2026-10-20T04:00:00.000Z");assert.equal(workouts.where.date.lt.toISOString(),"2026-10-22T04:00:00.000Z");
   assert.equal(workouts.select.feedbackNote,undefined);assert.equal(workouts.select.actualDetails,undefined);assert.equal(workouts.select.title,undefined);
   assert.equal(calls.find(([name])=>name==="decisions")[1].where.subjectId,"owner");

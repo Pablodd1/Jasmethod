@@ -64,7 +64,7 @@ function metricValue(row: DailyInputObservation, timezone: string, today: string
     ],
   };
 }
-function metricContext(key: DailyMetricKey, rows: DailyInputObservation[], timezone: string, today: string) {
+function metricContext(key: DailyMetricKey, rows: DailyInputObservation[], timezone: string, today: string, truncated = false) {
   const rule = rules[key], matching = rows.filter(row => row.metricType === rule.type);
   const rangeValid = matching.filter(row => row.qualityFlag === "ok" && row.unit === rule.unit && number(row.value, rule.min, rule.max) !== null);
   const valid = rangeValid.filter(row=>provenanceOf(row)==="allowed");
@@ -77,9 +77,10 @@ function metricContext(key: DailyMetricKey, rows: DailyInputObservation[], timez
     sources.add(key); return true;
   });
   const conflicting = new Set(fresh.map(row => row.value)).size > 1;
-  const status: MetricStatus = conflicting ? "conflicting" : fresh.length ? "usable" : valid.length ? "stale" : matching.length ? "invalid" : "missing";
+  const status: MetricStatus = conflicting ? "conflicting" : truncated ? "invalid" : fresh.length ? "usable" : valid.length ? "stale" : matching.length ? "invalid" : "missing";
   const provenanceRestricted = status === "invalid" && rangeValid.some(row=>provenanceOf(row)!=="allowed");
-  const reason = status === "usable" ? "A usable observation is available for today's local date. This does not answer subjective recovery or safety questions."
+  const reason = truncated ? "The observation read limit was reached. Unread measurements may disagree; current values require review and cannot answer numeric questions."
+    : status === "usable" ? "A usable observation is available for today's local date. This does not answer subjective recovery or safety questions."
     : status === "conflicting" ? "Current sources disagree. Review the readings or enter your correction; no average or preferred provider was invented."
     : status === "stale" ? "Only observations from an earlier local date are available. Refresh or optionally report a current value."
     : provenanceRestricted ? "The stored reading has Strava-origin or unknown-origin provenance. It remains raw history, but cannot support coaching analysis or answer this numeric question. Its removal is not evidence of normal recovery."
@@ -125,7 +126,8 @@ export function buildDailyInputContext(input: DailyInputContextOptions) {
   const ownObservations = [...(observationsUnavailable ? [] : input.observations ?? [])].filter(row => row.userId === input.athleteId && Number.isFinite(millis(row.observedAt)) && millis(row.observedAt) >= observationStart && millis(row.observedAt) <= now.getTime())
     .sort((a,b) => millis(b.observedAt) - millis(a.observedAt) || (millis(b.createdAt) || 0) - (millis(a.createdAt) || 0) || a.id.localeCompare(b.id));
   const observations = ownObservations.slice(0, DAILY_INPUT_LIMIT);
-  const metrics = Object.fromEntries((Object.keys(rules) as DailyMetricKey[]).map(key => [key, metricContext(key, observations, input.timezone, today)])) as Record<DailyMetricKey, ReturnType<typeof metricContext>>;
+  const observationsTruncated = input.observationsTruncated === true || ownObservations.length > DAILY_INPUT_LIMIT;
+  const metrics = Object.fromEntries((Object.keys(rules) as DailyMetricKey[]).map(key => [key, metricContext(key, observations, input.timezone, today, observationsTruncated)])) as Record<DailyMetricKey, ReturnType<typeof metricContext>>;
   const ownWorkouts = [...(input.completedWorkouts ?? [])].filter(row => row.userId === input.athleteId && Number.isFinite(millis(row.date)) && millis(row.date) >= workoutStart && millis(row.date) <= now.getTime()
     && (row.completed || row.actualDurationMin != null || row.feedbackStatus != null || row.feedbackAt != null))
     .sort((a,b) => millis(b.date) - millis(a.date) || a.id.localeCompare(b.id));
@@ -163,12 +165,11 @@ export function buildDailyInputContext(input: DailyInputContextOptions) {
   const executionFeedback: ExecutionFeedback[] = activityPolicy.status !== "allowed" ? [] : summaries.map(summary => ({ id: summary.id, feedbackStatus: summary.outcome,
     actualDurationMin: summary.durationMinutes, rpe: summary.rpe, date: summary.observedAt!,
     feedbackAt: workouts.find(row => row.id === summary.id)?.feedbackAt ?? null }));
-  const observationsTruncated = input.observationsTruncated === true || ownObservations.length > DAILY_INPUT_LIMIT;
   const workoutsTruncated = input.workoutsTruncated === true || ownWorkouts.length > DAILY_INPUT_LIMIT;
   return { version: DAILY_INPUT_CONTEXT_VERSION, dateLocal: today, timezone: input.timezone, metrics,
     readStatus: observationsUnavailable ? "unavailable" as const : "available" as const,
     dataAvailability: { observations: observationsUnavailable ? "unavailable" as const : "available" as const,
-      limitations: observationsUnavailable ? ["Optional measurement storage is unavailable. Saved workout history remains available; current measurements are unknown."] : [] },
+      limitations: observationsUnavailable ? ["Optional measurement storage is unavailable. Saved workout history remains available; current measurements are unknown."] : observationsTruncated ? ["The observation read limit was reached. Stored readings remain visible, but current numeric evidence is incomplete."] : [] },
     objectiveFields: { sleepHours: metrics.sleepHours.status !== "usable", hrv: metrics.hrvRmssd.status !== "usable" && metrics.hrvSdnn.status !== "usable", restingHr: metrics.restingHr.status !== "usable" },
     questions: { sleepQuality: true, soreness: true, energy: true, stress: true, motivation: true,
       illness: true, newPain: true, urgentSymptoms: true, availableMinutes: true,
@@ -205,7 +206,7 @@ type DailyInputReader = Pick<typeof prisma, "metricObservation" | "workout" | "c
 export async function readDailyInputContext(athleteId: string, timezone: string, db: DailyInputReader = prisma, now = new Date()) {
   const today = dateKey(now, timezone), end = localDate(addDaysKey(today,1), timezone);
   const [observationRead, completedWorkouts, connectors, activityDecisions] = await Promise.all([
-    db.metricObservation.findMany({ where: { userId: athleteId, metricType: { in: Object.values(rules).map(rule => rule.type) }, observedAt: { gte: localDate(addDaysKey(today,-13),timezone), lte: now } }, orderBy: [{ observedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }], take: DAILY_INPUT_LIMIT,
+    db.metricObservation.findMany({ where: { userId: athleteId, metricType: { in: Object.values(rules).map(rule => rule.type) }, observedAt: { gte: localDate(addDaysKey(today,-13),timezone), lte: now } }, orderBy: [{ observedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }], take: DAILY_INPUT_LIMIT + 1,
       select: { id:true,userId:true,observedAt:true,createdAt:true,metricType:true,value:true,unit:true,source:true,measurementMethod:true,qualityFlag:true } }).then(rows=>({rows,unavailable:false})).catch((error:unknown)=>{
         if (["P2021","P2022"].includes((error as {code?:string})?.code ?? "")) return {rows:[],unavailable:true};
         throw error;
@@ -217,5 +218,5 @@ export async function readDailyInputContext(athleteId: string, timezone: string,
   ]);
   return buildDailyInputContext({ athleteId, timezone, now, observations:observationRead.rows, completedWorkouts, connectors, activityDecisions,
     observationsUnavailable:observationRead.unavailable,
-    observationsTruncated: observationRead.rows.length === DAILY_INPUT_LIMIT, workoutsTruncated: completedWorkouts.length === DAILY_INPUT_LIMIT });
+    observationsTruncated: observationRead.rows.length > DAILY_INPUT_LIMIT, workoutsTruncated: completedWorkouts.length === DAILY_INPUT_LIMIT });
 }
