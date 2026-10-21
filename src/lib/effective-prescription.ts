@@ -96,7 +96,14 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
   // Historical answers cannot establish current readiness for a fresh download.
   if (key !== today && gate.status === "clear") safety = { ...safety, status: "unknown", reason: "This session is outside today's local date. Reassess safety and readiness on the session day before exporting." };
   if (gate.status === "clear" && !validAdaptation(adaptation)) safety = { ...safety, status: "unknown", reason: "The check-in adaptation is missing or invalid. Complete the check-in again before training or exporting." };
-  if (adaptation?.verdict === "rest") safety = { ...safety, status: "hold", reason: adaptation.message || "The current check-in requires rest." };
+  if (adaptation?.verdict === "rest" && !["hold","urgent"].includes(safety.status)) {
+    // The decision service also emits zero-dose rest for unknown inputs. That
+    // output is not a positive rest/symptom answer or permission to clear a hold.
+    const confirmedRest = safety.status === "clear" && adaptation.safetyStatus === "clear" && validAdaptation(adaptation);
+    safety = { ...safety, status: confirmedRest ? "hold" : "unknown", reason: confirmedRest
+      ? adaptation.message || "The current check-in requires rest."
+      : safety.status === "unknown" ? safety.reason : adaptation.message || "The saved rest adaptation cannot establish current safety. Review the check-in before training." };
+  }
   if (input.currentPrescription === false && !["hold", "urgent"].includes(safety.status)) safety = { ...safety, status: "unknown", reason: "This record belongs to replaced training and is retained as history. It is not a current workout prescription." };
   const activityStart = localDate(addDaysKey(today, -3), timezone).getTime();
   const activityEnd = localDate(addDaysKey(today, 1), timezone).getTime();

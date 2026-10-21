@@ -18,13 +18,38 @@ async function main() {
       const daily = JSON.parse(readFileSync('src/components/daily-training/sample-session.json', 'utf8'));
       daily.language = lang; daily.workoutCard = card;
       daily.session = { ...daily.session, id: card.session.id, sourceRevision: card.session.revision, verdict: 'ready', totalMinutes: card.session.durationMin };
-      let saves = 0;
+      let saves = 0, refreshGate = null;
+      const feedbackHeading = lang === 'es' ? 'Cuéntanos cómo fue' : 'Close the loop';
+      // Hold each authoritative refetch until React has removed the old screen.
+      // Preview disappearance alone can precede that unmount, leaving a stale,
+      // visible outcome control that is replaced by a newly collapsed <details>.
+      async function saveAndRefresh(save) {
+        let release;
+        const requestSeen = page.waitForRequest(request => request.method() === 'GET' && new URL(request.url()).pathname === '/api/v1/training/today');
+        const responseAllowed = new Promise(resolve => { release = resolve; });
+        assert.equal(refreshGate, null);
+        refreshGate = { responseAllowed };
+        try {
+          await save();
+          await requestSeen;
+          await page.getByRole('status').filter({ hasText: /Loading your plan|Cargando tu plan/ }).waitFor();
+        } finally { release(); }
+        await page.getByText(feedbackHeading, { exact: true }).waitFor();
+        assert.equal(refreshGate, null, 'Authoritative refetch completed before feedback is reopened');
+      }
       const feedbackWrites = [];
       page.on('pageerror', e => errors.push(e.message));
       await page.route('**/api/**', async route => {
         const path = new URL(route.request().url()).pathname;
         if (path === '/api/auth/me') return route.fulfill({ json: { user: { id: card.session.athleteId, name: 'Synthetic athlete', email: 'fixture@example.invalid', role: 'athlete', timezone: 'UTC', language: lang, onboarded: true, profile: { goal: 'run-only' } } } });
-        if (path === '/api/v1/training/today') return route.fulfill({ json: daily });
+        if (path === '/api/v1/training/today') {
+          if (refreshGate) {
+            const gate = refreshGate;
+            await gate.responseAllowed;
+            refreshGate = null;
+          }
+          return route.fulfill({ json: daily });
+        }
         if (path.endsWith('/completion')) {
           const body = route.request().postDataJSON();
           assert.equal(body.expectedRevision, daily.session.sourceRevision, 'Corrections use the refreshed revision');
@@ -62,19 +87,19 @@ async function main() {
       await editor.getByRole('button', { name: lang === 'es' ? /^Vista previa$/ : /^Preview$/ }).click();
       await editor.getByRole('region', { name: lang === 'es' ? 'Vista previa del cambio' : 'Change preview' }).waitFor();
       assert.equal(saves, 0, 'Preview never writes');
-      await editor.getByRole('button', { name: lang === 'es' ? 'Guardar cambio' : 'Save change' }).click();
+      await saveAndRefresh(() => editor.getByRole('button', { name: lang === 'es' ? 'Guardar cambio' : 'Save change' }).click());
       await page.waitForFunction(() => !document.querySelector('[aria-label="Change preview"], [aria-label="Vista previa del cambio"]'));
       assert.equal(saves, 1);
-      const feedbackHeading = lang === 'es' ? 'Cuéntanos cómo fue' : 'Close the loop';
       const outcomeLabel = lang === 'es' ? /^¿Qué ocurrió/ : /^What happened/;
       const effortLabel = lang === 'es' ? /^Esfuerzo/ : /^Session effort/;
       const saveFeedback = lang === 'es' ? 'Guardar comentario del entrenamiento' : 'Save workout feedback';
       for (const rating of ['0', '3']) {
         const outcome = page.getByLabel(outcomeLabel);
         if (!await outcome.isVisible()) await page.getByText(feedbackHeading, { exact: true }).click();
+        await outcome.waitFor({ state: 'visible' });
         await outcome.selectOption('completed');
         await page.getByLabel(effortLabel).fill(rating);
-        await page.getByRole('button', { name: saveFeedback, exact: true }).click();
+        await saveAndRefresh(() => page.getByRole('button', { name: saveFeedback, exact: true }).click());
         await page.getByRole('button', { name: saveFeedback, exact: true }).waitFor({ state: 'hidden' });
         await page.getByText(feedbackHeading, { exact: true }).waitFor();
         if (!await page.getByLabel(outcomeLabel).isVisible()) await page.getByText(feedbackHeading, { exact: true }).click();
