@@ -1,5 +1,6 @@
 import { coachReferral } from "./coach-referrals";
 import { savedTrainingReply } from "./coach-saved-training";
+import { endpointText } from "./universal-workout-card";
 import { dayOffProtocol, dayOffProtocolText } from "./day-off";
 import type { dailyRecoveryContext } from "./daily-recovery";
 import type { JMetrics } from "./j-metrics";
@@ -476,7 +477,7 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
     const outcome = ["completed", "partial", "substituted", "skipped"].includes(latest.feedbackStatus || "") ? latest.feedbackStatus : null;
     const minutes = typeof latest.actualDurationMin === "number" && Number.isFinite(latest.actualDurationMin) && latest.actualDurationMin >= 0 && latest.actualDurationMin <= 1440 ? latest.actualDurationMin : null;
     const rpe = typeof latest.rpe === "number" && Number.isInteger(latest.rpe) && latest.rpe >= 0 && latest.rpe <= 10 ? latest.rpe : null;
-    return reply("remember-reported-history", `Your latest reported session is dated ${latest.date}: outcome ${outcome || "unknown"}, actual duration ${minutes === null ? "unknown" : `${minutes} min`}, overall RPE ${rpe === null ? "unknown" : `${rpe}/10`}. These are reported facts, not proof of readiness today; no missing values are filled from the plan.`, `Tu última sesión informada tiene fecha ${latest.date}: resultado ${outcome || "desconocido"}, duración real ${minutes === null ? "desconocida" : `${minutes} min`}, RPE global ${rpe === null ? "desconocido" : `${rpe}/10`}. Son datos informados, no prueba de disposición para hoy; no se completan datos ausentes con el plan.`);
+    return reply("remember-reported-history", `Your latest reported session is dated ${latest.date}: outcome ${outcome || "unknown"}, actual duration ${minutes === null ? "unknown" : endpointText({ endpoint: { type: "time", seconds: minutes * 60 } })}, overall RPE ${rpe === null ? "unknown" : `${rpe}/10`}. These are reported facts, not proof of readiness today; no missing values are filled from the plan.`, `Tu última sesión informada tiene fecha ${latest.date}: resultado ${outcome || "desconocido"}, duración real ${minutes === null ? "desconocida" : endpointText({ endpoint: { type: "time", seconds: minutes * 60 } }, "es")}, RPE global ${rpe === null ? "desconocido" : `${rpe}/10`}. Son datos informados, no prueba de disposición para hoy; no se completan datos ausentes con el plan.`);
   }
   if (/\b(what (?:was|is) my goal|remind me (?:of )?my goal|cual (?:era|es) mi (?:meta|objetivo))\b/.test(t)) {
     const goal = context.profile?.goal;

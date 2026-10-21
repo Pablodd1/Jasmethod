@@ -123,12 +123,12 @@ test("held headers use an unknown executable duration and readable missing check
     const before = JSON.stringify(card);
     const html = render(React.createElement(WorkoutHeader, { card }));
     assert.match(html, es ? /EN ESPERA/ : /ON HOLD/);
-    assert.doesNotMatch(html, /newPain|urgentSymptoms|availableMin|~?0<small>MIN/);
+    assert.doesNotMatch(html, /newPain|urgentSymptoms|availableMin|~?0 min<small>DURATION/);
     assert.match(html, es ? /dolor nuevo|síntomas urgentes|tiempo disponible/ : /new or worsening pain|urgent symptoms|available training time/);
     assert.equal(JSON.stringify(card), before);
   }
   const ready = render(React.createElement(WorkoutHeader, { card: universalWorkoutExample() }));
-  assert.match(ready, /56<small>MIN/);
+  assert.match(ready, /56 min<small>DURATION/);
   assert.match(ready, /READY/);
 });
 

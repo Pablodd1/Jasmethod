@@ -41,9 +41,9 @@ export function WorkoutHeader({ card }: { card: Card }) {
         <b>
           {s.verdict === "blocked" ? "—" : <>
             {s.exactTimeSeconds === null && s.durationMin > 0 ? "~" : ""}
-            {Number((s.exactTimeSeconds === null ? s.durationMin : s.exactTimeSeconds / 60).toFixed(2))}
+            {endpointText({ endpoint: { type: "time", seconds: s.exactTimeSeconds ?? s.durationMin * 60 } }, card.language)}
           </>}
-          <small>{s.verdict === "blocked" ? (es ? "MIN · EN ESPERA" : "MIN · ON HOLD") : "MIN"}</small>
+          <small>{s.verdict === "blocked" ? (es ? "DURACIÓN · EN ESPERA" : "DURATION · ON HOLD") : (es ? "DURACIÓN" : "DURATION")}</small>
         </b>
         <b>
           {s.verdict === "ready"
@@ -153,7 +153,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
               key={i}
               role="button"
               tabIndex={0}
-              aria-label={`${i + 1}. ${st.name}: ${endpointText(st)}, ${st.target.label}`}
+              aria-label={`${i + 1}. ${st.name}: ${endpointText(st, card.language)}, ${st.target.label}`}
               aria-pressed={selected === i}
               onClick={() => setSelected(i)}
               onKeyDown={(e) => {
@@ -163,7 +163,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
                 }
               }}
             >
-              <title>{`${st.name} · ${endpointText(st)} · ${st.target.label}`}</title>
+              <title>{`${st.name} · ${endpointText(st, card.language)} · ${st.target.label}`}</title>
               <rect
                 x={x}
                 y={140 - h}
@@ -196,7 +196,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
       {step && (
         <div className="uwc-selected" aria-live="polite">
           <b>
-            {(selected ?? 0) + 1}. {step.componentSport ? `${step.componentSport.toUpperCase()} · ` : ""}{step.name} · {endpointText(step)}
+            {(selected ?? 0) + 1}. {step.componentSport ? `${step.componentSport.toUpperCase()} · ` : ""}{step.name} · {endpointText(step, card.language)}
           </b>
           <p>{step.target.label}</p>
           <p>{step.target.label.includes("RPE") ? step.zone.toUpperCase() : `${stepExecutionGuide(step, s.sport, es).effort} · ${step.zone.toUpperCase()}`}</p>
@@ -333,13 +333,13 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
           const timed = group.steps.every((st) => st.endpoint.type === "time");
           const workSteps = group.steps.filter(st => st.phase === "active");
           const recoverySteps = group.steps.filter(st => st.phase === "recovery");
-          const repeatLabel = (steps: CanonicalStep[], fallback: string) => steps.length && steps.every(st => endpointText(st) === endpointText(steps[0]) && st.zone === steps[0].zone && st.target.label === steps[0].target.label)
-            ? `${steps.length} × ${endpointText(steps[0])} · ${steps[0].zone.toUpperCase()}`
+          const repeatLabel = (steps: CanonicalStep[], fallback: string) => steps.length && steps.every(st => endpointText(st, card.language) === endpointText(steps[0], card.language) && st.zone === steps[0].zone && st.target.label === steps[0].target.label)
+            ? `${steps.length} × ${endpointText(steps[0], card.language)} · ${steps[0].zone.toUpperCase()}`
             : `${steps.length} ${fallback}`;
           const detail = group.steps.map((step, index) => (
             <div key={index}>
               <b>
-                {endpointText(step)} · {step.name}
+                {endpointText(step, card.language)} · {step.name}
               </b>
               <p>
                 {step.target.label}
@@ -359,8 +359,8 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
               <h3>{first.componentSport ? `${first.componentSport.toUpperCase()} · ` : ""}{group.title}</h3>
               <b>
                 {timed && group.steps.length > 1
-                  ? `${Number((group.steps.reduce((sum, st) => sum + st.seconds, 0) / 60).toFixed(2))} min`
-                  : endpointText(group.steps[0])}
+                  ? endpointText({ endpoint: { type: "time", seconds: group.steps.reduce((sum, st) => sum + st.seconds, 0) } }, card.language)
+                  : endpointText(group.steps[0], card.language)}
               </b>
               <p className="uwc-execution-target"><strong>{guide.target}</strong><br />{guide.target.includes("RPE") ? first.zone.toUpperCase() : `${guide.effort} · ${first.zone.toUpperCase()}`}</p>
               <p>{guide.phase}</p>

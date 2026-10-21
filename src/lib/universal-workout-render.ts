@@ -63,7 +63,7 @@ export function renderUniversalWorkoutSvg(card: UniversalWorkoutCard): string {
     "#a7bec8",
   );
   text(
-    `${s.exactTimeSeconds === null ? "~" : ""}${Number((s.exactTimeSeconds === null ? s.durationMin : s.exactTimeSeconds / 60).toFixed(2))} MIN · ${s.verdict.toUpperCase()} · REV ${s.revision.slice(0, 8)}`,
+    `${s.exactTimeSeconds === null ? "~" : ""}${endpointText({ endpoint: { type: "time", seconds: s.exactTimeSeconds ?? s.durationMin * 60 } }, card.language)} · ${s.verdict.toUpperCase()} · REV ${s.revision.slice(0, 8)}`,
     28,
   );
   if (s.verdict !== "ready") text(s.reason);
@@ -76,7 +76,7 @@ export function renderUniversalWorkoutSvg(card: UniversalWorkoutCard): string {
       const w = (952 * step.seconds) / total,
         h = 24 + Number(step.zone.slice(1)) * 15;
       elements.push(
-        `<rect x="${x}" y="${bottom - h}" width="${w}" height="${h}" fill="${stepColor(step)}" stroke="#080d10" stroke-width="1"><title>${esc(step.name)} · ${endpointText(step)}</title></rect>`,
+        `<rect x="${x}" y="${bottom - h}" width="${w}" height="${h}" fill="${stepColor(step)}" stroke="#080d10" stroke-width="1"><title>${esc(step.name)} · ${endpointText(step, card.language)}</title></rect>`,
       );
       x += w;
     }
@@ -99,7 +99,7 @@ export function renderUniversalWorkoutSvg(card: UniversalWorkoutCard): string {
   section("02", es ? "Los detalles" : "The details");
   s.steps.forEach((step, i) => {
     text(
-      `${i + 1}. ${step.name} · ${endpointText(step)} · ${step.zone.toUpperCase()}`,
+      `${i + 1}. ${step.name} · ${endpointText(step, card.language)} · ${step.zone.toUpperCase()}`,
       26,
       stepColor(step),
     );

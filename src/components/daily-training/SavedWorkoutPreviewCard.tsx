@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import type { SavedWorkoutPreview } from "@/lib/saved-workout-preview-contract";
 import { fetchSavedWorkoutPreview, savedPreviewNotice, savedPreviewPresentation } from "@/lib/saved-workout-preview-client";
 import { WorkoutIntensityTimeline, WorkoutIntervalDetails, TrainingTargetSelector } from "./UniversalWorkoutCard";
+import { endpointText } from "@/lib/universal-workout-card";
 
 // Support both the original card and its compact guide disclosure. Only the
 // unlabeled local-playback controls are removed; target selectors keep working.
@@ -27,7 +28,7 @@ export function SavedWorkoutPreviewView({ preview, es = false }: { preview: Save
     <style>{previewStyles}</style>
     <header className="uwc-header">
       <div><p>{s.sport.toUpperCase()} · {s.dateLocal} · {s.timezone}</p><h1>{s.title}</h1></div>
-      <div className="uwc-stats"><b>{s.exactTimeSeconds === null ? "~" : ""}{Number((s.exactTimeSeconds === null ? s.durationMin : s.exactTimeSeconds / 60).toFixed(2))}<small>MIN</small></b></div>
+      <div className="uwc-stats"><b>{s.exactTimeSeconds === null ? "~" : ""}{endpointText({ endpoint: { type: "time", seconds: s.exactTimeSeconds ?? s.durationMin * 60 } }, es ? "es" : "en")}<small>{es ? "DURACIÓN" : "DURATION"}</small></b></div>
     </header>
     <div className="uwc-selected" role="status"><b>{es ? "VISTA GUARDADA · SOLO LECTURA" : "SAVED PREVIEW · READ ONLY"}</b><p>{notice}</p></div>
     <div className="saved-workout-preview-timeline"><WorkoutIntensityTimeline card={card} /></div>

@@ -126,7 +126,7 @@ function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effective
     else lines.push("Before: review equipment, venue and full preparation/fueling guidance in the app.",
       "During: follow the selected session's exact blocks; stop if unwell or in pain.",
       ...(c.environment ? [dailyEnvironmentSummary(c.environment)] : []),
-      ...c.steps.slice(0, 12).map((s, i) => `${i + 1}. ${s.phase}: ${stepEndpointLabel(s)} · ${s.target.label}`),
+      ...c.steps.slice(0, 12).map((s, i) => `${i + 1}. ${s.phase}: ${stepEndpointLabel(s, language === "es" ? "es" : "en")} · ${s.target.label}`),
       ...(c.steps.length > 12 ? [`${c.steps.length - 12} further blocks are shown in the app; this is a concise summary, not the complete workout.`] : []),
       "After: cool down as prescribed, choose familiar food/fluid according to need, and report actual minutes and effort. Avoid overdrinking.");
   } else {

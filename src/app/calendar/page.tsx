@@ -32,6 +32,7 @@ import {
 import { buildSessionDetail } from "@/lib/science";
 import { dayOffProtocol, temperatureAdjustment } from "@/lib/adaptive";
 import { WeekStrip } from "@/components/week-strip";
+import { endpointText } from "@/lib/universal-workout-card";
 
 const SPORT_COLOR: Record<string, string> = {
   swim: "bg-sky-100 text-sky-700",
@@ -44,10 +45,8 @@ const SPORT_COLOR: Record<string, string> = {
   recovery: "bg-slate-100 text-slate-600",
 };
 
-function fmtMin(min: number) {
-  if (min >= 60)
-    return `${Math.floor(min / 60)}h ${min % 60 ? `${min % 60}m` : ""}`;
-  return `${min}m`;
+function fmtMin(min: number, language: "en" | "es" = "en") {
+  return endpointText({ endpoint: { type: "time", seconds: min * 60 } }, language);
 }
 
 export default function CalendarPage() {
@@ -546,7 +545,7 @@ export default function CalendarPage() {
                               ) : (
                                 <>
                                   {e.startTime ? String(e.startTime).slice(0, 5) : ""} ·{" "}
-                                  {e.durationMin ? `${e.durationMin} min` : e.type}{" "}
+                                  {e.durationMin != null ? fmtMin(e.durationMin, es ? "es" : "en") : e.type}{" "}
                                   {e.intensity ? `· ${String(e.intensity).toUpperCase()}` : ""}
                                 </>
                               )}
@@ -626,7 +625,7 @@ export default function CalendarPage() {
                       <div
                         key={w.id}
                         className={`text-[10px] md:text-[11px] rounded-md px-1.5 py-0.5 truncate ${SPORT_COLOR[w.sport] || "bg-slate-100 text-slate-600"} ${w.completed ? "line-through opacity-60" : ""} ${isDayOff ? "opacity-50" : ""}`}
-                        title={`${w.title} — ${w.calendarState||''} · ${w.source||'JMM'}${w.durationMin!=null?' · '+w.durationMin+' min':''}`}
+                        title={`${w.title} — ${w.calendarState||''} · ${w.source||'JMM'}${w.durationMin!=null?' · '+fmtMin(w.durationMin, es ? "es" : "en"):''}`}
                       >
                         <Dumbbell className="w-2.5 h-2.5 inline mr-1" />
                         {w.title.split(":").pop()?.trim().slice(0, 22)}
@@ -754,7 +753,7 @@ export default function CalendarPage() {
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-slate-400">
                             {s.startTime ? `${s.startTime} · ` : ""}
-                            {reported?actualMinutes==null?'—':fmtMin(actualMinutes):fmtMin(s.durationMin)}{!reported&&` · ${s.intensity?.toUpperCase()||'—'}`}
+                            {reported?actualMinutes==null?'—':fmtMin(actualMinutes, es ? "es" : "en"):fmtMin(s.durationMin, es ? "es" : "en")}{!reported&&` · ${s.intensity?.toUpperCase()||'—'}`}
                           </span>
                           <button type="button" className="btn-secondary text-xs px-2.5 py-1.5" disabled={resultBusy || dateKey(new Date(s.date), user?.timezone) > dateKey(new Date(), user?.timezone)} onClick={() => openResult(s)}>{es ? "Editar resultado" : "Edit result"}</button>
                           {!reported&&<button

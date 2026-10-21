@@ -307,7 +307,7 @@ test("canonical content preserves exact time, target units/source and a real PNG
   const nutrition = buildSessionNutrition({ weightKg: 70 }, { ...current, intensity: "z2", startTime: "08:00" }, now);
   const { plan, graphic } = manualWorkoutEmailContent(current, nutrition, "08:00");
   assert.match(plan.summary, /08:00 \(UTC\).*10 min structured time/);
-  assert.match(plan.steps[0], /600 s.*Z2.*150 W.*\[profile_reference\]/);
+  assert.match(plan.steps[0], /10 min.*Z2.*150 W.*\[profile_reference\]/);
   assert.ok(Buffer.isBuffer(graphic));
   assert.equal(graphic!.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
   assert.equal(plan.graphicCid, "workout-profile@jmm");
@@ -442,7 +442,7 @@ test("Spanish canonical content keeps exact fuel/target quantities and safety qu
   const { plan, graphic } = manualWorkoutEmailContent(current, nutrition, "08:00", true, "es");
   assert.ok(Buffer.isBuffer(graphic));
   assert.match(plan.summary, /08:00 \(UTC\).*ciclismo.*180 min de tiempo estructurado/);
-  assert.match(plan.steps[0], /10800 s.*Zona Z4.*Potencia: ≤210 W.*referencia del perfil/);
+  assert.match(plan.steps[0], /180 min.*Zona Z4.*Potencia: ≤210 W.*referencia del perfil/);
   assert.match(plan.before.join(" "), /140 g de carbohidratos.*70 g \(1 g\/kg\)/);
   assert.match(plan.during.join(" "), /50 g de carbohidratos TOTALES\/hora/);
   assert.match(plan.during.join(" "), /700 ml de líquidos\/hora \(estimado\)/);
