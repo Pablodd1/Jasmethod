@@ -5,6 +5,7 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {PrismaClient} from '@prisma/client';
 import {hashToken} from '../src/lib/auth';
 import {mkdir,writeFile} from 'node:fs/promises';
+import {parseHourlyEnvironment,type RaceEnvironment} from '../src/lib/race-environment';
 for(const key of ['DATABASE_URL','DIRECT_URL']){const u=new URL(process.env[key]||'');assert.equal(u.hostname,'127.0.0.1');assert.equal(u.port,'55432');assert.equal(u.pathname,'/jmm_launch_integration_test');}
 assert.notEqual(process.env.VERCEL_ENV,'production');
 const base='http://127.0.0.1:3220',db=new PrismaClient(),ids:string[]=[];
@@ -39,6 +40,17 @@ async function main(){
  const gpx='<?xml version="1.0"?><gpx version="1.1"><trk><trkseg><trkpt lat="40" lon="-73"><ele>10</ele></trkpt><trkpt lat="40.001" lon="-73"><ele>20</ele></trkpt><trkpt lat="40.002" lon="-73"><ele>10</ele></trkpt></trkseg></trk></gpx>';
  const course=await api('/api/race-scenarios/course',{gpx});assert.ok(course.segments[0].gradePct>0);assert.ok(course.segments[1].gradePct<0);checks.push('bounded GPX and event-only weather boundary');
  const legacy=await fetch(base+'/api/race-forecast',{headers:{cookie:`jmm_session=${users[0].token}`}});const gated=await legacy.json();assert.equal(gated.forecast,null);checks.push('legacy personalized forecast remains disabled');
+ for(const endpoint of ['lookup','environment']){
+  assert.equal((await fetch(base+'/api/race-scenarios/'+endpoint,{method:'POST',headers:{origin:base,'Content-Type':'application/json'},body:'{}'})).status,401);
+  await api('/api/race-scenarios/'+endpoint+'?athleteId='+users[1].id,{},403);
+  await api('/api/race-scenarios/'+endpoint,{heartRate:100},400);
+ }checks.push('event/environment routes authenticate, isolate athletes and reject health fields before provider traffic');
+ const weatherAt=now.toISOString(),key=weatherAt.replace(/[-:T.Z]/g,'').slice(0,10),parameters={T2M:{units:'C'},RH2M:{units:'%'},WS10M:{units:'m/s'}};
+ const point=parseHourlyEnvironment({header:{time_standard:'UTC',fill_value:-999,sources:['Synthetic fixture']},parameters,properties:{parameter:{T2M:{[key]:28},RH2M:{[key]:80},WS10M:{[key]:3}}}},{latitude:25,longitude:-80,at:weatherAt,timeZone:'UTC'},'historical',weatherAt)[0];
+ const original:RaceEnvironment={status:'available',label:'historical_race_day',requestedAtUTC:weatherAt,snapshot:point,samples:[],ranges:{},baselineYears:[],sourceUrl:'https://example.invalid/weather',licenseUrl:'https://example.invalid/license',attribution:'Synthetic provider copy; no live weather',warnings:[]};
+ const reviewed={original,manual:null};state=await api('/api/race-scenarios');const withWeather=await api('/api/race-scenarios',{input,metadata:{environment:reviewed},expectedRevision:state.revision},201);
+ assert.equal(withWeather.result.durationSeconds,3300);const reloaded=await api('/api/race-scenarios');assert.deepEqual(reloaded.snapshots[0].metadata.environment,reviewed);
+ assert.equal((await api('/api/race-scenarios',undefined,200,users[1])).snapshots.length,0);checks.push('reviewed weather source vintage survives actual HTTP/database reload without thermal adjustment or cross-athlete disclosure');
  const profile=await db.athleteProfile.findUnique({where:{userId:users[0].id}});assert.equal(profile?.ftp,null);assert.equal(await db.trainingPlan.count({where:{userId:users[0].id}}),0);checks.push('no profile or plan mutation');
  await mkdir('.local/jmm-race-scenario-integration',{recursive:true});await writeFile('.local/jmm-race-scenario-integration/report.json',JSON.stringify({status:'passed',checks},null,2));console.log(`PASS ${checks.length} race scenario acceptance checks`,checks);
 }

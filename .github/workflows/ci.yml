@@ -70,6 +70,9 @@ jobs:
       - name: Follow-up boundaries and injected Telegram transport
         run: npm run test:followup:boundaries
 
+      - name: Race evaluation leakage and CLI filesystem boundaries
+        run: npm run test:race-evaluate
+
       - name: Database sync and reminder tests
         run: npm run test:sync
 
@@ -139,6 +142,9 @@ jobs:
 
       - name: Install Chromium for synthetic UI acceptance
         run: npx playwright install --with-deps chromium
+
+      - name: EN and ES race lookup and weather context acceptance
+        run: node --import tsx scripts/jmm-race-intelligence-browser.cjs
 
       - name: EN and ES mobile Smart Coach and upload limit acceptance
         run: node --import tsx scripts/jmm-release-audit-browser.cjs
@@ -210,6 +216,8 @@ jobs:
             .local/jmm-metrics-integration/report.json
             .local/jmm-recovery-integration/report.json
             .local/jmm-race-scenario-integration/report.json
+            .local/jmm-race-intelligence-browser/report.json
+            .local/jmm-race-intelligence-browser/*.png
             .local/jmm-adaptive-cycle-integration/report.json
             .local/athlete-qa/activity-reconciliation-report.json
           if-no-files-found: ignore
