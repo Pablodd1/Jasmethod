@@ -53,7 +53,7 @@ function fixture(providers: Record<string,unknown>[] = []) {
     }
     return Response.json({ok:true});
   };
-  function mount(query = "redo=1") {
+  function mount(query = "redo=1",props:Record<string,unknown> = {}) {
     const cells:any[]=[]; const pending:(()=>unknown)[]=[]; let cursor=0,dirty=true,tree:unknown;
     const same=(a:unknown[]|undefined,b:unknown[]|undefined)=>!!a&&!!b&&a.length===b.length&&a.every((item,index)=>Object.is(item,b[index]));
     const react = {...React,
@@ -68,7 +68,7 @@ function fixture(providers: Record<string,unknown>[] = []) {
     const destination:string[]=[];
     const router={push:(path:string)=>destination.push(path),replace:(path:string)=>destination.push(path)};
     const session={user:{id:"fixture-a",name:"Fixture Athlete",email:"athlete@example.invalid",language:"en",timezone:"America/New_York",onboarded:false},refresh:async()=>{}};
-    const loadedModule={exports:{} as {DetailedAthleteSetup:()=>unknown}};
+    const loadedModule={exports:{} as {DetailedAthleteSetup:(props?:Record<string,unknown>)=>unknown}};
     const dependencies:Record<string,unknown>={
       react,"next/navigation":{useRouter:()=>router,useSearchParams:()=>new URLSearchParams(query)},
       "@/components/auth":{useAuth:()=>session},"@/components/gate":{ProtectedPage:({children}:any)=>children},
@@ -77,7 +77,7 @@ function fixture(providers: Record<string,unknown>[] = []) {
       "next/link":{__esModule:true,default:({children}:any)=>children},
     };
     vm.runInNewContext(code,{module:loadedModule,exports:loadedModule.exports,URLSearchParams,AbortSignal,AbortController,fetch:request,sessionStorage:{getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>storage.set(key,value),removeItem:(key:string)=>storage.delete(key)},document:{get visibilityState(){return visibility.state;}},window:{location:{reload:()=>{}},setInterval:(fn:()=>void,ms:number)=>{assert.equal(ms,15000);poll=fn;return 1;},clearInterval:()=>{poll=undefined;},addEventListener:(type:string,fn:()=>void)=>listeners.set(type,fn),removeEventListener:(type:string)=>listeners.delete(type)},require:(name:string)=>name in dependencies?dependencies[name]:requireModule(name.startsWith("@/")?`${process.cwd()}/src/${name.slice(2)}`:name)});
-    async function flush(){for(let attempts=0;attempts<20;attempts++){if(dirty){dirty=false;cursor=0;tree=loadedModule.exports.DetailedAthleteSetup();}while(pending.length)pending.shift()!();await new Promise(resolve=>setImmediate(resolve));if(!dirty&&!pending.length)return;}throw Error("Unstable fixture render");}
+    async function flush(){for(let attempts=0;attempts<20;attempts++){if(dirty){dirty=false;cursor=0;tree=loadedModule.exports.DetailedAthleteSetup(props);}while(pending.length)pending.shift()!();await new Promise(resolve=>setImmediate(resolve));if(!dirty&&!pending.length)return;}throw Error("Unstable fixture render");}
     const find=(predicate:(node:Node)=>boolean)=>{const node=nodes(tree).find(predicate);assert.ok(node,"Expected control not found");return node;};
     return {flush,destination,visibility,async events(events:string[]){for(const name of events){if(name==="poll")poll?.();else listeners.get(name)?.();}await flush();},find,async focus(){listeners.get("focus")?.();await flush();},text:()=>content(tree),input:(id:string)=>find(node=>node.props.id===id),button:(label:string)=>find(node=>node.type==="button"&&content(node.props.children).includes(label)),async click(label:string){await this.button(label).props.onClick();await flush();},async edit(id:string,value:string){const input=this.input(id);input.props.onChange(input.props.field ? value : {target:{value}});await flush();},unmount(){for(const cell of cells)if(cell&&typeof cell.cleanup==="function")cell.cleanup();}};
   }
@@ -199,7 +199,7 @@ test("full-cycle details remain collapsed and completion opens Today without gen
   const details=ui.find(node=>node.type==="details"&&content(node.props.children).includes("Details needed for a personalized plan"));
   assert.equal(details.props.open,undefined);assert.throws(()=>ui.input("onboard-field-6"));
   assert.match(ui.text(),/Experience \(optional\)/);
-  await ui.click("4. Your plan");await ui.click("Open today’s training");
+  await ui.click("4. Ready");await ui.click("Open today’s training");
   assert.deepEqual(ui.destination,["/today"]);assert.deepEqual(f.writes.map(write=>write.path),["/api/onboard"]);
 });
 
@@ -220,4 +220,18 @@ test("imported-history review shows uncertainty without autofilling or saving th
  f.server.importReview={history:{count:153,sports:[{sport:'run',count:153}]},trainingReview:{timezone:'America/New_York',rawRecordCount:5,possibleOverlapGroups:1,recordedWeeklyAverageMinutes:null,truncated:false,weeks:[{startKey:'2026-10-05',endKey:'2026-10-11',rawRecordCount:5,recordedDays:2,unknownDurationRecords:1,minutesRange:{minimum:120,maximum:null},sources:['strava','whoop'],overlaps:[{sport:'run',startAt:'2026-10-06T07:00:00Z',records:[{source:'strava',minutes:60},{source:'whoop',minutes:55}]}]}]}};
  const ui=f.mount('redo=1&step=race&return=training');await ui.flush();assert.match(ui.text(),/Review imported training before changing your baseline/);assert.match(ui.text(),/Possible copies; not reconciled/);assert.match(ui.text(),/other days unknown/);assert.match(ui.text(),/Nothing is filled or saved automatically/);
  const baseline=ui.find(node=>node.type==='input'&&node.props.type==='number'&&node.props.max==='2400');assert.equal(baseline.props.value,"90");assert.equal(f.writes.length,0);assert.equal(f.server.setup?.baselineWeeklyMinutes,90);
+});
+
+
+test("embedded profile and race saves stay in the conversation and report persisted changes",async()=>{
+  const f=fixture();let notifications=0;
+  f.server.races=[{id:"race-existing",name:"Existing race",distance:"10k",date:"2099-04-02T00:00:00.000Z",location:"Miami",priority:1}];
+  let ui=f.mount("",{embedded:true,initialSection:"profile",onSaved:()=>{notifications++;}});await ui.flush();
+  await ui.edit("onboard-pb-label","5K race");await ui.edit("onboard-pb-value","24");await ui.edit("onboard-pb-unit","min");
+  await ui.click("Save new answers and continue");assert.equal(notifications,1);assert.deepEqual(ui.destination,[]);
+  ui.unmount();ui=f.mount("",{embedded:true,initialSection:"race",onSaved:()=>{notifications++;}});await ui.flush();
+  await ui.edit("onboard-field-8","Reviewed event");await ui.click("Update this race");
+  assert.equal(notifications,2);assert.equal(f.server.races.length,1);assert.equal(f.server.races[0].name,"Reviewed event");assert.deepEqual(ui.destination,[]);
+  await ui.click("4. Ready");await ui.click("Return to this conversation");
+  assert.deepEqual(ui.destination,[]);assert.equal(notifications,3);assert.equal(f.writes.some(write=>write.path.includes("plan/generate")),false);
 });

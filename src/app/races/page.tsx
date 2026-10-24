@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Flag, Plus, Trash2, Thermometer, Mountain, Waves, Clock, Gauge } from "lucide-react";
 import Link from "next/link";
+import { readWriteReceipt } from "@/lib/client-save-receipt";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 
@@ -30,10 +31,12 @@ export default function RacesPage() {
   const [err, setErr] = useState("");
 
   async function load() {
-    const res = await fetch("/api/races");
-    const d = await res.json();
-    setRaces(d.races || []);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/races",{cache:"no-store",signal:AbortSignal.timeout(15000)});
+      const d = await res.json();
+      if(!res.ok||!Array.isArray(d.races))throw Error("Could not verify saved races. Reload before editing.");
+      setRaces(d.races);
+    }catch(error){setErr((error as Error).message);}finally{setLoading(false);}
   }
   useEffect(() => { if (user) load(); }, [user]);
 
@@ -50,8 +53,7 @@ export default function RacesPage() {
           date: form.date ? `${form.date}T00:00:00.000Z` : undefined,
         }),
       });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Failed");
+      await readWriteReceipt(res,"race");
       setForm(empty); await load();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
@@ -62,8 +64,7 @@ export default function RacesPage() {
     setBusy(true); setErr("");
     try {
       const response = await fetch("/api/races", {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,date:values.get("date"),priority:Number(values.get("priority"))})});
-      const result = await response.json();
-      if(!response.ok) throw Error(result.error || "Could not save event details");
+      await readWriteReceipt(response,"race",id);
       await load();
     } catch(error) {setErr(error instanceof Error ? error.message : "Could not save event details");}
     finally {setBusy(false);}
@@ -72,13 +73,19 @@ export default function RacesPage() {
   async function saveResult(id: string, value: string) {
     const v = value === "" ? null : parseFloat(value);
     if (value !== "" && (isNaN(v as number) || (v as number) <= 0)) return;
-    await fetch("/api/races", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, resultMin: v }) });
-    load();
+    setErr("");
+    try {
+      await readWriteReceipt(await fetch("/api/races", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, resultMin: v }),signal:AbortSignal.timeout(15000) }),"race",id);
+      await load();
+    }catch(error){setErr((error as Error).message+" Reload saved races to verify the result before retrying.");}
   }
 
   async function del(id: string) {
-    await fetch(`/api/races?id=${id}`, { method: "DELETE" });
-    load();
+    setErr("");
+    try {
+      await readWriteReceipt(await fetch(`/api/races?id=${encodeURIComponent(id)}`, { method: "DELETE",signal:AbortSignal.timeout(15000) }));
+      await load();
+    }catch(error){setErr((error as Error).message+" Reload saved races before retrying.");}
   }
 
   async function uploadGpx(id: string, file: File) {

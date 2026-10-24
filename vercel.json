@@ -35,7 +35,8 @@
       "fix/live-coach-training-recovery-20261014": false,
       "fix/jmm-p1-onboarding-diagnostics": false,
       "feat/jmm-connectivity-smart-coach": false,
-      "codex/race-intelligence-weather": false
+      "codex/race-intelligence-weather": false,
+      "codex/chat-commander-flow": false
     }
   }
 }

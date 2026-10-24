@@ -82,7 +82,7 @@ export function SiteHeader() {
           <PublicLanguageSelect compact />
           {!user && (
             <Link
-              href="/onboarding#signup"
+              href="/login?mode=signup"
               className="btn-editorial !px-4 !py-2 text-sm"
             >
               {t(language, "pub.startFree")}

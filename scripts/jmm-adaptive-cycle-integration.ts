@@ -97,6 +97,31 @@ async function scenario(name: string, work: () => Promise<void>) {
 async function main() {
   const runner = await actor("runner"), other = await actor("other"), coach = await actor("coach", "run-only", "coach");
   await setup(runner); await setup(other);
+  await scenario("Private commander previews, rejects stale/foreign writes, saves and reloads one receipt",async()=>{
+    const who=await actor("commander");await setup(who,"run-only",8);
+    await api("/api/assistant/plan",undefined,undefined,401);
+    await api(`/api/assistant/plan?athleteId=${who.id}`,other,undefined,403);
+    const conversation=await api("/api/assistant",who,{message:"Build my 8 week plan",source:"text",externalConsent:false,imageConsent:false,clientRequestId:randomUUID()});
+    const sourceMessageId=conversation.conversation.messages.find((row:Json)=>row.role==="user").id;
+    const body={action:"preview",weeks:8,startDate:today,sourceMessageId};
+    const state=await api("/api/assistant/plan",who);assert.equal(state.readiness.ready,true);assert.equal(state.defaults.weeks,8);assert.equal(state.receipt,null);
+    const draft=await api("/api/assistant/plan",who,body);assert.ok(draft.preview.weeksPreview.length);assert.equal(await db.trainingPlan.count({where:{userId:who.id}}),0);
+    await api("/api/assistant/plan",other,body,404);
+    await api("/api/assistant/plan",who,{...body,athleteId:other.id},400);
+    await api("/api/assistant/plan",who,{...body,action:"confirm",previewToken:"0".repeat(64)},409);
+    const current=await api("/api/profile",who);await api("/api/profile",who,{expectedRevision:current.revision,weeklyHours:5},200,"PUT");
+    await api("/api/assistant/plan",who,{...body,action:"confirm",previewToken:draft.previewToken},409);
+    assert.equal(await db.trainingPlan.count({where:{userId:who.id}}),0);
+    const fresh=await api("/api/assistant/plan",who,body);
+    const confirmation={...body,action:"confirm",previewToken:fresh.previewToken,confirmDoubleDay:false,confirmEventTradeoffs:false};
+    const saved=await api("/api/assistant/plan",who,confirmation);assert.ok(saved.receipt.id);assert.ok(saved.receipt.planId);
+    const reloaded=await api("/api/assistant/plan",who);assert.equal(reloaded.receipt.id,saved.receipt.id);assert.equal(reloaded.activePlans[0].id,saved.receipt.planId);
+    const replay=await api("/api/assistant/plan",who,confirmation);assert.equal(replay.replayed,true);assert.equal(replay.receipt.id,saved.receipt.id);
+    assert.equal(await db.trainingPlan.count({where:{userId:who.id}}),1);
+    await api("/api/assistant/plan",who,{...confirmation,weeks:12},409);
+    const foreign=await api("/api/assistant/plan",other);assert.equal(foreign.receipt,null);
+    assert.equal(await db.auditLog.count({where:{subjectId:who.id,action:"plan.generate"}}),1);
+  });
   await scenario('Explicit rest preference preserves evidence, template dose, daily recovery and confirmed activation',async()=>{
     const a=await actor('purposeful','half');await setup(a,'half');let state=await api('/api/profile',a);
     state=await api('/api/profile',a,{expectedRevision:state.revision,expectedSetupRevision:state.setupRevision,experience:'advanced',setup:{...state.setup,baselineWeeklyMinutes:411,trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:90}},200,'PUT');
