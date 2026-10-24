@@ -674,7 +674,7 @@ export function CoachNotes({ card }: { card: Card }) {
       {card.content.preparation.map((v, i) => (
         <p key={i}>{readinessReasonText(v, card.language === "es")}</p>
       ))}
-      <a href="/coach">J Koach</a>
+      <a href="/coach">JMM Coach</a>
     </details>
   );
 }
