@@ -1,6 +1,7 @@
 "use client";
 import { CoachAiConsent } from "./CoachAiConsent";
 import { CoachReviewRequest } from './CoachReviewRequest';
+import { CoachCommanderWorkspace } from './CoachCommanderWorkspace';
 import { COACH_REFERRALS } from "@/lib/coach-referrals";
 import { unitsOf, type UnitSystem } from "@/lib/units";
 
@@ -94,6 +95,9 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const [sendingMessage, setSendingMessage] = useState<{ requestId: string; content: string } | null>(null);
   const [voiceSupported, setVoiceSupported] = useState<boolean | null>(null);
   const [dictationError, setDictationError] = useState("");
+  const [commanderBusy,setCommanderBusy]=useState(false);
+  const [liveStatus,setLiveStatus]=useState("");
+  const appliedVersion=useRef(0);
   const requestGate = useRef(new CoachRequestGate());
   const busy = useRef(false);
   const mounted = useRef(false);
@@ -114,7 +118,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const imageConfigured = capabilities.imageUnderstanding === true && capabilities.imageProvider === "OpenAI";
   const permissions = coachExternalPermissions(capabilities, externalConsent, imageConsent);
   const canSendImage = !!screenshot && permissions.image;
-  const blocked = offline || !loaded || needsReload || !!operation;
+  const blocked = offline || !loaded || needsReload || !!operation || commanderBusy;
   const activeProposal = proposal && ["proposed", "pending"].includes(proposal.status) ? proposal : null;
 
   useEffect(() => {
@@ -141,6 +145,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   }, []);
 
   const applyPayload = useCallback((payload: CoachPayload) => {
+    appliedVersion.current++;
     if (!payload.conversation || !Array.isArray(payload.conversation.messages)) throw new Error(es ? "La conversación recibida no es válida." : "The conversation response is invalid.");
     setMessages(payload.conversation.messages);
     setServerActions(coachPendingActions(payload));
@@ -210,6 +215,38 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     }
     catch (cause) { setError((cause as Error).message); }
   }, [applyPayload, es, request]);
+
+  useEffect(()=>{
+    if(!loaded||offline)return;
+    let active=true,controller:AbortController|null=null;
+    const poll=async()=>{
+      if(document.visibilityState!=="visible"||busy.current||commanderBusy||controller)return;
+      const version=appliedVersion.current;controller=new AbortController();
+      const timeout=window.setTimeout(()=>controller?.abort(),10000);
+      try {
+        const response=await fetch("/api/assistant",{cache:"no-store",signal:controller.signal});
+        const next=await readCoachResponse(response,es);
+        if(!active||!mounted.current||busy.current||version!==appliedVersion.current||!next.conversation)return;
+        // Preserve unsaved proposal edits. A changed receipt/proposal requires deliberate reload.
+        if((next.proposal?.id??null)!==(proposal?.id??null)||(next.proposal?.revision??null)!==(proposal?.revision??null)||(next.savedReceipt?.id??null)!==(savedReceipt?.id??null)) {
+          setNeedsReload(true);setLiveStatus(es?"Hay cambios en otra ventana. Recarga para revisarlos; tus valores editados se conservan.":"Changes are available from another window. Reload to review; your edited values are retained.");return;
+        }
+        setMessages(current=>JSON.stringify(current)===JSON.stringify(next.conversation!.messages)?current:next.conversation!.messages);
+        setLiveStatus(es?"Conversación actualizada mientras esta página está visible.":"Conversation checked while this page is visible.");
+      }catch{if(active)setLiveStatus(es?"No se pudo actualizar la conversación. Los mensajes visibles pueden estar desactualizados.":"Conversation refresh unavailable. Visible messages may be stale.");}
+      finally{window.clearTimeout(timeout);controller=null;}
+    };
+    const timer=window.setInterval(()=>void poll(),15000);
+    return()=>{active=false;window.clearInterval(timer);controller?.abort();};
+  },[loaded,offline,es,proposal?.id,proposal?.revision,savedReceipt?.id,commanderBusy]);
+
+  function readReply(content:string) {
+    const synthesis=window.speechSynthesis;
+    const voice=synthesis?.getVoices().find(v=>v.localService&&v.lang.toLowerCase().startsWith(es?"es":"en"));
+    if(!voice){setStatus(es?"No hay una voz local disponible. El texto sigue disponible; no se envió a un servicio de voz externo.":"No local voice is available. Read the text here; it was not sent to an external speech service.");return;}
+    synthesis.cancel();const utterance=new SpeechSynthesisUtterance(content);utterance.voice=voice;utterance.lang=voice.lang;synthesis.speak(utterance);
+  }
+  useEffect(()=>()=>{window.speechSynthesis?.cancel();},[athleteId]);
 
   useEffect(() => {
     mounted.current = true;
@@ -367,10 +404,10 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
 
   return <section id="jasai" aria-labelledby={`${id}-title`} className="card space-y-4 scroll-mt-24 min-w-0" lang={es ? "es" : "en"}>
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 id={`${id}-title`} className="font-display text-xl font-bold">Jas KCoach</h2>
+      <div><h2 id={`${id}-title`} className="font-display text-xl font-bold">JMM Coach</h2>
         <p className="text-sm text-slate-700 mt-1">{es ? "Escribe o dicta tu pregunta, revísala y envíala. Las respuestas del entrenador aparecen aquí como texto." : "Type or dictate your question, review it, then send. Your coach’s replies appear here as text."}</p></div>
     </div>
-    <p className="text-xs text-slate-700">{es?'El chat propone datos de perfil, cambios de una sesión seleccionada y resultados. Los días fijos, preferencias de descanso, ciclos completos y carreras siguen en sus editores:':'Chat proposes profile facts, selected-workout edits and results. Recurring weekdays, rest-day preferences, whole cycles and race details still use their editors:'} <Link className={`underline ${focus}`} href="/settings">{es?'Perfil':'Profile'}</Link> · <Link className={`underline ${focus}`} href="/training">{es?'Entrenamiento':'Training'}</Link>.</p>
+    <p className="text-xs text-slate-700">{es?'El chat propone datos de perfil, cambios de una sesión seleccionada y resultados. Revisa horarios, descanso, ciclos y carreras en el espacio de trabajo de abajo. También puedes abrir:':'Chat proposes profile facts, selected-workout edits and results. Review recurring availability, rest preferences, whole cycles and race details in the workspace below. You can also open:'} <Link className={`underline ${focus}`} href="/settings">{es?'Perfil':'Profile'}</Link> · <Link className={`underline ${focus}`} href="/training">{es?'Entrenamiento':'Training'}</Link>.</p>
     <p className="text-sm text-slate-700">{es?'Propósito → ejecución controlada → tus resultados → progresión revisada. Te apoyaré y exigiré constancia; no presión para ignorar síntomas ni promesas de mejorar cada día.':'Purpose → controlled execution → your feedback → reviewed progression. Expect support and accountability, without pressure to ignore symptoms or promises of improvement every day.'}</p>
     {operation && <div role="status" className="flex flex-wrap items-center gap-3 text-sm"><span>{operation === "load" ? (es ? "Cargando conversación…" : "Loading conversation…") : operation === "confirm" ? (es ? "Comprobando y guardando…" : "Verifying and saving…") : (es ? "Procesando solicitud…" : "Processing request…")}</span><button type="button" className={secondaryClass} onClick={cancelRequest}>{es ? "Dejar de esperar" : "Stop waiting"}</button></div>}
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
@@ -379,8 +416,9 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     {offline && <p role="status" className="text-sm text-amber-900">{es ? "Sin conexión. Conéctate antes de enviar mensajes o confirmar cambios." : "Offline. Reconnect before sending messages or confirming changes."}</p>}
     <ol ref={history} className="min-h-32 max-h-[40vh] sm:max-h-[55vh] overflow-y-auto overscroll-contain space-y-3 rounded-lg border p-3" aria-label={es ? "Historial de conversación" : "Conversation history"} aria-live="polite" aria-relevant="additions" tabIndex={0}>
       {messages.map(entry => <li key={entry.id} className={`rounded-lg p-3 ${entry.role === "user" ? "bg-ocean-50" : "bg-slate-50"}`}>
-        <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "J Koach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
+        <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "JMM Coach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
         <p className="mt-1 whitespace-pre-wrap break-words">{entry.content}</p>
+        {entry.role==="assistant"&&<button type="button" className="underline text-sm mt-2" onClick={()=>readReply(entry.content)}>{es?"Escuchar con voz local":"Read aloud with local voice"}</button>}
         {entry.localContextSummary&&<details className="mt-2 text-sm"><summary className="cursor-pointer underline">{es?'Datos guardados · analizados dentro de JMM':'Saved athlete facts · evaluated inside JMM'}</summary><p className="whitespace-pre-wrap break-words mt-2">{entry.localContextSummary}</p></details>}
       </li>)}
       {sendingMessage && <li className="rounded-lg bg-ocean-50 p-3"><p className="text-xs font-semibold text-slate-700">{es ? "Tú · Enviando…" : "You · Sending…"}</p><p className="mt-1 whitespace-pre-wrap break-words">{sendingMessage.content}</p></li>}
@@ -424,10 +462,12 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
         {screenshot && imageConfigured && !imageConsent && <p className="text-sm text-amber-900">{es ? "La captura no se enviará sin tu consentimiento para OpenAI. Puedes enviar solo el texto." : "The screenshot will not be sent without your OpenAI consent. You can send text only."}</p>}
       </div>
 
-      <p className="text-xs text-slate-700">{es ? "Enviar un mensaje no confirma cambios. Puedes confirmar objetivo, horas semanales, peso y resultados de sesión (estado, minutos, deporte y RPE). Las preferencias de comunicación no cambian." : "Sending a message does not confirm changes. Supported edits: profile facts, selected unfinished workout duration/sport/effort zone, and actual workout feedback with optional HR, watts, reported kcal and weights. Race details, training baseline, applied tests and whole cycles still use their dedicated editors."}</p>
+      <p className="text-xs text-slate-700">{es ? "Enviar un mensaje no confirma cambios. Puedes confirmar objetivo, horas semanales, peso y resultados de sesión (estado, minutos, deporte y RPE). Las preferencias de comunicación no cambian." : "Sending a message does not confirm changes. Supported edits: profile facts, selected unfinished workout duration/sport/effort zone, and actual workout feedback with optional HR, watts, reported kcal and weights. Use the workspace below to review your profile, schedule, race, workout steps and whole-plan preview before saving."}</p>
         </div>
       </details>
     </form>
+    <p className="text-xs text-slate-600" role="status">{liveStatus|| (es?"Los cambios de conversación se comprueban cada 15 segundos mientras la página está visible.":"Conversation changes are checked every 15 seconds while this page is visible.")}</p>
+    <CoachCommanderWorkspace athleteId={athleteId} es={es} messages={messages} sessionId={sessionId} disabled={offline||!loaded||needsReload||!!operation} onBusy={setCommanderBusy} onSaved={async()=>{await onConfirmed();await load();}}/>
     <CoachReviewRequest messages={messages} es={es} disabled={blocked} />
     {coachTextStatusMessage(externalStatus, es) && <p role="status" className="text-xs text-slate-700">{coachTextStatusMessage(externalStatus, es)}</p>}
     {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}

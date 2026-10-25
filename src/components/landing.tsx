@@ -125,7 +125,7 @@ export default function LandingPage() {
         <p className="deck mt-5 max-w-2xl">{t(lang, "pub.deck")}</p>
 
         <div className="flex flex-wrap gap-3 mt-8">
-          <Link href="/onboarding#signup" className="btn-editorial-accent">
+          <Link href="/login?mode=signup" className="btn-editorial-accent">
             {t(lang, "pub.startFree")} <ArrowRight className="w-4 h-4" />
           </Link>
           <Link href="/science" className="btn-editorial-ghost">

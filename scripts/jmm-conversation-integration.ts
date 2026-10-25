@@ -228,7 +228,7 @@ async function main() {
     const page=await request("/coach",undefined,{status:200});
     const html=await page.text();
     assert.match(html,/noindex/);
-    assert.match(html,/J Koach/);
+    assert.match(html,/JMM Coach/);
     // HTTP route coverage complements, but does not replace, signed-in browser navigation.
   });
   await scenario("Unauthenticated access and invalid envelopes fail without success",async()=>{await request("/api/assistant",undefined,{status:401});await request("/api/assistant",undefined,{body:{message:"hello"},status:401});const a=await actor("invalid");for(const body of [null,[],{message:""},{message:"x".repeat(10001)},{message:"hello",source:"web"},{message:"hello",externalConsent:"yes"},{message:"image",image:{url:"http://127.0.0.1/private"}}]) await request("/api/assistant",a,{body,status:400});});

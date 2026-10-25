@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 const origin = new URL(process.env.SMOKE_BASE_URL || "http://127.0.0.1:3220");
 assert.ok(["http:", "https:"].includes(origin.protocol));
 const pages = ["/", "/login", "/forgot-password", "/how-it-works", "/race-prediction", "/personal-coaching", "/science", "/science/race-fuel", "/protocols", "/metrics", "/privacy", "/terms", "/help", "/coach"];
-const privateApis = ["/api/assistant", "/api/today", "/api/profile"];
+const privateApis = ["/api/assistant/plan", "/api/assistant", "/api/today", "/api/profile"];
 let failed = 0;
 for (const path of [...pages, ...privateApis]) {
   try {
@@ -12,7 +12,7 @@ for (const path of [...pages, ...privateApis]) {
     if (!privateApis.includes(path)) {
       const html = await response.text();
       assert.match(html, /<html/);
-      if (path === "/coach") { assert.match(html, /noindex/); assert.match(html, /J Koach/); }
+      if (path === "/coach") { assert.match(html, /noindex/); assert.match(html, /JMM Coach/); }
     }
     console.log(`PASS ${path} ${response.status}`);
   } catch (error) { failed++; console.error(`FAIL ${path}: ${error instanceof Error ? error.message : "request failed"}`); }

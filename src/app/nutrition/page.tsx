@@ -1,7 +1,8 @@
 "use client";
 
 import { PUBLIC_CONTACT_EMAIL, PUBLIC_CONTACT_MAILTO } from "@/lib/public-contact";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { readWriteReceipt } from "@/lib/client-save-receipt";
 import { Apple, Droplets, UtensilsCrossed, Calculator, Info, Camera, Loader2 } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -16,6 +17,9 @@ export default function NutritionPage() {
   const [form, setForm] = useState({ meal: "breakfast", food: "", calories: "", proteinG: "", carbsG: "", fatG: "" });
   const [waterForm, setWaterForm] = useState({ ml: "250", source: "water" });
   const [saved, setSaved] = useState(false);
+  const [saveError,setSaveError]=useState("");
+  const [saving,setSaving]=useState(false);
+  const savingRef=useRef(false);
   // Smart photo logging: picture -> Gemini vision -> macros -> editable form
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoMsg, setPhotoMsg] = useState<string | null>(null);
@@ -51,38 +55,49 @@ export default function NutritionPage() {
   }
 
   async function load() {
-    const res = await fetch("/api/nutrition?days=7");
-    const d = await res.json();
-    setDaily(d.daily || []);
-    setLogs(d.logs?.nutrition || []);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/nutrition?days=7",{cache:"no-store",signal:AbortSignal.timeout(15000)});
+      const d = await res.json();
+      if(!res.ok||!Array.isArray(d.daily)||!Array.isArray(d.logs?.nutrition))throw Error("Could not verify saved nutrition. Reload to check your records.");
+      setDaily(d.daily);setLogs(d.logs.nutrition);
+    }catch(error){setSaveError((error as Error).message);}finally{setLoading(false);}
   }
   useEffect(() => { if (user) load(); }, [user]);
 
   async function logFood(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/nutrition", {
+    if(savingRef.current)return;savingRef.current=true;setSaving(true);setSaved(false);setSaveError("");
+    const submitted={...form};
+    try {
+    const response=await fetch("/api/nutrition", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(submitted),signal:AbortSignal.timeout(15000),
     });
-    setForm({ meal: "breakfast", food: "", calories: "", proteinG: "", carbsG: "", fatG: "" });
+    await readWriteReceipt(response,"log");
+    setForm(current=>JSON.stringify(current)===JSON.stringify(submitted)?{ meal: "breakfast", food: "", calories: "", proteinG: "", carbsG: "", fatG: "" }:current);
     setSaved(true);
-    load();
-    setTimeout(() => setSaved(false), 2000);
+    await load();
+    }catch(error){setSaveError((error as Error).name==="TimeoutError"?"Saving timed out. Your draft is retained. Reload records before retrying to avoid a duplicate.":(error as Error).message);}
+    finally{savingRef.current=false;setSaving(false);}
   }
 
   async function logWater(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/nutrition", {
+    if(savingRef.current)return;savingRef.current=true;setSaving(true);setSaved(false);setSaveError("");
+    const submitted={...waterForm};
+    try {
+    const response=await fetch("/api/nutrition", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "hydration", ml: waterForm.ml, source: waterForm.source }),
+      body: JSON.stringify({ type: "hydration", ml: submitted.ml, source: submitted.source }),signal:AbortSignal.timeout(15000),
     });
-    setWaterForm({ ml: "250", source: "water" });
+    await readWriteReceipt(response,"log");
+    setWaterForm(current=>JSON.stringify(current)===JSON.stringify(submitted)?{ ml: "250", source: "water" }:current);
     setSaved(true);
-    load();
-    setTimeout(() => setSaved(false), 2000);
+    await load();
+    }catch(error){setSaveError((error as Error).name==="TimeoutError"?"Saving timed out. Your draft is retained. Reload records before retrying to avoid a duplicate.":(error as Error).message);}
+    finally{savingRef.current=false;setSaving(false);}
   }
 
   const today = daily[0];
@@ -93,6 +108,8 @@ export default function NutritionPage() {
       <div className="space-y-6">
         <div>
           <h1 className="font-display text-2xl font-bold">Nutrition & Hydration</h1>
+          {saveError&&<p role="alert" className="rounded bg-red-50 p-3 text-red-800">{saveError}</p>}
+          {saved&&<p role="status" className="rounded bg-green-50 p-3">{lang==="es"?"Guardado confirmado por el servidor. Revisa tus registros abajo.":"Save confirmed by the server. Review your records below."}</p>}
           <p className="text-slate-500 text-sm">Fuel like a pro: 1.2-1.6 g/kg protein, 60-90 g carbs/hour during long sessions, electrolytes in heat (Thomas 2016; Jeukendrup 2011).</p>
         </div>
 
@@ -152,7 +169,7 @@ export default function NutritionPage() {
                   <input className="input" type="number" step="0.1" value={form.fatG} onChange={(e) => setForm({ ...form, fatG: e.target.value })} placeholder="10" />
                 </div>
               </div>
-              <button type="submit" className="btn-primary w-full justify-center">Log Meal</button>
+              <button type="submit" disabled={saving} className="btn-primary w-full justify-center">{saving?"Saving…":"Log Meal"}</button>
             </form>
           </div>
 
@@ -182,7 +199,7 @@ export default function NutritionPage() {
                   <option value="electrolytes">Electrolytes</option>
                 </select>
               </div>
-              <button type="submit" className="btn-secondary">+ Add</button>
+              <button type="submit" disabled={saving} className="btn-secondary">{saving?"Saving…":"+ Add"}</button>
             </form>
             <p className="text-[11px] text-slate-400 mt-3">
               Sweat rate 0.4-1.2 L/h; sodium 400-1000 mg/L in hot weather (ACSM 2007). Weigh before/after sessions to find YOUR rate.

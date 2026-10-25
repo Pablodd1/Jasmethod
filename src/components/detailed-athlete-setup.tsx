@@ -38,16 +38,16 @@ type ImportReview = {
 };
 type SavedRace = RaceForm & { id: string; priority?: number };
 
-export function DetailedAthleteSetup() {
+export function DetailedAthleteSetup({embedded=false,initialSection="race",onSaved}:{embedded?:boolean;initialSection?:"profile"|"race";onSaved?:()=>void|Promise<void>} = {}) {
   const { user, refresh } = useAuth();
   const router = useRouter();
   const query = useSearchParams();
-  const returnToTraining = query.get("return") === "training";
-  const requestedStep = query.get("step");
+  const returnToTraining = embedded || query.get("return") === "training";
+  const requestedStep = embedded ? initialSection : query.get("step");
   const requestedGoal = query.get("goal");
   const requestedWeeks = query.get("weeks");
-  const redo = query.get("redo") === "1";
-  const advanced = query.get("advanced") === "1";
+  const redo = embedded || query.get("redo") === "1";
+  const advanced = embedded || query.get("advanced") === "1";
   const fullPlanningSetup = advanced || returnToTraining;
   const [savedReadiness, setSavedReadiness] = useState<{ready:boolean;missing:string[];review:string[]}|null>(null);
   const [step, setStep] = useState<OnboardingStep>(ONBOARDING_STEP.devices);
@@ -231,6 +231,7 @@ export function DetailedAthleteSetup() {
         setPersonalBest({...EMPTY_PERSONAL_BEST});
       }
       setNotice(t("Section saved to your profile. Existing training stays in place until you review and confirm a plan update.", "Sección guardada en tu perfil. El entrenamiento actual se conserva hasta revisar y confirmar un cambio de plan."));
+      if (embedded) await onSaved?.();
       return true;
     } catch(e) { setError((e as Error).message); return false; }
     finally { savingRef.current = false; setSaving(false); }
@@ -261,6 +262,7 @@ export function DetailedAthleteSetup() {
       setRaceId(saved.race.id);
       setRaces(current=>[...current.filter(item=>item.id !== saved.race.id),{...saved.race,date:saved.race.date.slice(0,10),location:saved.race.location ?? ""}]);
       setNotice(t("Race saved. Further edits update this same event.", "Carrera guardada. Los próximos cambios actualizan este evento."));
+      if (embedded) await onSaved?.();
       return true;
     } catch(e) { setError((e as Error).message); return false; }
     finally { savingRef.current = false; setSaving(false); }
@@ -274,7 +276,9 @@ export function DetailedAthleteSetup() {
       const result = await response.json();
       if (!response.ok || result.ok !== true) throw Error("Could not finish onboarding. Your saved answers remain available; please retry.");
       completedRef.current = true;
-      await refresh(); router.push(destination);
+      await refresh();
+      if (embedded) { completedRef.current=false; await onSaved?.(); setNotice(t("Saved answers reviewed. Return to the plan preview in this conversation.","Datos guardados revisados. Vuelve a la vista previa del plan en esta conversación.")); }
+      else router.push(destination);
     } catch(e) { setError((e as Error).message); }
     finally { savingRef.current = false; setSaving(false); }
   }
@@ -292,7 +296,7 @@ export function DetailedAthleteSetup() {
     {step:ONBOARDING_STEP.devices,label:t("1. Connections", "1. Conexiones")},
     {step:ONBOARDING_STEP.profile,label:t("2. Your data", "2. Tus datos")},
     {step:ONBOARDING_STEP.race,label:t("3. Goals & schedule", "3. Objetivos y horario")},
-    {step:ONBOARDING_STEP.done,label:t("4. Your plan", "4. Tu plan")},
+    {step:ONBOARDING_STEP.done,label:t("4. Ready", "4. Listo")},
   ];
   const OPTIONAL_STEPS = [{step:ONBOARDING_STEP.zones,label:t("Edit saved thresholds", "Editar umbrales guardados")},{step:ONBOARDING_STEP.travel,label:t("Travel (optional)", "Viajes (opcional)")}];
 
@@ -588,12 +592,12 @@ export function DetailedAthleteSetup() {
             </p>
             <p className="text-sm mb-5"><Link href="/settings" className="underline">{t("Your profile, PBs and thresholds stay editable in Profile & Zones.", "Tu perfil, marcas y umbrales siguen editables en Perfil y zonas.")}</Link></p>
             <button onClick={()=>void finishOnboarding("/today")} disabled={saving} className="btn-primary w-full justify-center text-lg">
-              {lang === "es" ? "Abrir el entrenamiento de hoy" : "Open today’s training"} <ArrowRight className="w-4 h-4 ml-2" />
+              {embedded?t("Return to this conversation","Volver a esta conversación"):lang === "es" ? "Abrir el entrenamiento de hoy" : "Open today’s training"} <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>
         )}
 
-        <div className="flex flex-wrap gap-4 mt-6 border-t pt-4">{step !== ONBOARDING_STEP.done && <button disabled={saving} className="underline min-h-11" onClick={()=>{setError("");setStep(onboardingNext(step));}}>{t("Skip this section for now", "Omitir esta sección por ahora")}</button>}<button disabled={saving} className="underline min-h-11" onClick={()=>void finishOnboarding("/today")}>{t("Open Today with saved answers", "Abrir Hoy con respuestas guardadas")}</button><Link className="underline min-h-11 inline-flex items-center" href="/training">{t("View my saved training plan", "Ver mi plan de entrenamiento guardado")}</Link></div>
+        <div className="flex flex-wrap gap-4 mt-6 border-t pt-4">{step !== ONBOARDING_STEP.done && <button disabled={saving} className="underline min-h-11" onClick={()=>{setError("");setStep(onboardingNext(step));}}>{t("Skip this section for now", "Omitir esta sección por ahora")}</button>}<button disabled={saving} className="underline min-h-11" onClick={()=>void finishOnboarding("/today")}>{embedded ? t("Return to this conversation", "Volver a esta conversación") : t("Open Today with saved answers", "Abrir Hoy con respuestas guardadas")}</button><Link className="underline min-h-11 inline-flex items-center" href="/training">{t("View my saved training plan", "Ver mi plan de entrenamiento guardado")}</Link></div>
         {/* Navigation: language switcher */}
         <div className="mt-5 flex justify-end">
           <select aria-label={t("Setup language", "Idioma de configuración")} className="text-xs bg-white border border-slate-300 rounded-lg px-2 py-1 shadow" value={lang} onChange={(e) => changeLang(e.target.value)}>

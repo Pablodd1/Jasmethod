@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import { endpointText } from "@/lib/universal-workout-card";
 import type { UniversalWorkoutCard } from "@/lib/universal-workout-card";
 
 /**
@@ -46,7 +47,10 @@ export function IntervalCoachEditor({ card, onSaved }: { card: UniversalWorkoutC
     } catch { /* history is optional */ }
   }, [q, s.id]);
 
-  if (!["run", "bike"].includes(s.sport) || s.verdict !== "ready" || !s.steps.every(step => step.endpoint.type === "time")) return null;
+  const unavailable = s.verdict !== "ready" ? (es ? "Primero revisa el check-in y el bloqueo de esta sesión. El editor no puede autorizar el entrenamiento." : "Review this session's check-in and hold first. The editor cannot clear exercise.")
+    : !["run", "bike"].includes(s.sport) ? (es ? "Los comandos de intervalos admiten carrera y ciclismo. Revisa los pasos guardados de este deporte en la tarjeta." : "Interval commands support running and cycling. Review this sport's saved steps in the workout card.")
+    : !s.steps.length || !s.steps.every(step => step.endpoint.type === "time") ? (es ? "Esta sesión no tiene una secuencia de intervalos por tiempo compatible. No se convierten distancias o repeticiones en segundos supuestos." : "This session has no supported timed interval sequence. Distance or repetition steps are not converted into assumed seconds.") : null;
+  if (unavailable) return <details data-testid="interval-coach-unavailable"><summary className="cursor-pointer underline">{es ? "Disponibilidad de los comandos de intervalos" : "Interval command availability"}</summary><p className="text-sm mt-2">{unavailable}</p></details>;
 
   async function doPreview(event: React.FormEvent) {
     event.preventDefault();
@@ -89,7 +93,7 @@ export function IntervalCoachEditor({ card, onSaved }: { card: UniversalWorkoutC
       await onSaved();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
-  const mins = (sec: number) => `${Math.round(sec / 60)} min`;
+  const mins = (sec: number) => endpointText({ endpoint: { type: "time", seconds: sec } }, es ? "es" : "en");
 
   return (
     <details data-testid="interval-coach-editor" onToggle={event => { if ((event.currentTarget as HTMLDetailsElement).open) { void loadHistory(); void loadProposal(); } }}>
@@ -115,7 +119,7 @@ export function IntervalCoachEditor({ card, onSaved }: { card: UniversalWorkoutC
       {preview && (
         <section aria-label={es ? "Vista previa del cambio" : "Change preview"} data-testid="interval-preview">
           <ul>{preview.data.changes.map((c, i) => <li key={i}>{c}</li>)}</ul>
-          <p>{es ? "Antes" : "Before"}: {preview.data.before.repeats} × {preview.data.before.workSeconds ?? "—"} s · {es ? "Después" : "After"}: {preview.data.after.repeats} × {preview.data.after.workSeconds ?? "—"} s · {mins(preview.data.before.totalSeconds)} → {mins(preview.data.after.totalSeconds)}</p>
+          <p>{es ? "Antes" : "Before"}: {preview.data.before.repeats} × {preview.data.before.workSeconds == null ? "—" : mins(preview.data.before.workSeconds)} · {es ? "Después" : "After"}: {preview.data.after.repeats} × {preview.data.after.workSeconds == null ? "—" : mins(preview.data.after.workSeconds)} · {mins(preview.data.before.totalSeconds)} → {mins(preview.data.after.totalSeconds)}</p>
           {preview.data.requiresConfirmation && (
             <label>
               <input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />{" "}

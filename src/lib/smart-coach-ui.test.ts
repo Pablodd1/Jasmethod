@@ -84,3 +84,14 @@ test("analysis card, consent checkbox and deletion panel: wording, defaults and 
   assert.doesNotMatch(none, /Borrar todos/);
   assert.match(html(createElement(ActivityAnalysisCard, { workoutId: "w1", lang: "en" })), /Analysing/);
 });
+
+
+test("interval commands explain held, unsupported-sport and non-time sessions without offering writes",()=>{
+  for(const lang of ["en","es"] as const){
+    const card=universalWorkoutExample(lang);
+    for(const patch of [{verdict:"blocked",steps:[]},{sport:"swim"},{steps:[{...card.session.steps[0],endpoint:{type:"distance",meters:100}}]},{steps:[]}]){
+      const text=html(createElement(UniversalWorkoutCard,{card:{...card,session:{...card.session,...patch}} as any,onSaved:()=>{}}));
+      assert.match(text,/data-testid="interval-coach-unavailable"/);assert.doesNotMatch(text,/data-testid="interval-coach-editor"/);
+    }
+  }
+});

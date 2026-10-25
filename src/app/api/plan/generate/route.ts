@@ -1,4 +1,5 @@
 import {ACTIVITY_EVIDENCE_SELECT} from "@/lib/activity-evidence";
+import {commanderRequestHash} from "@/lib/coach-commander-provenance";
 import {unreportedWorkoutWhere} from "@/lib/calendar-workouts";
 import { normalizeCycleEvents, assessCycleEvents } from "@/lib/cycle-events";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
@@ -55,6 +56,11 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError("Invalid plan body");
+    const commander = body.commanderContext;
+    if (commander !== undefined) {
+      if (actor.id!==user.id || !commander || typeof commander!=="object" || Array.isArray(commander) || Object.keys(commander).sort().join(',')!=="origin,requestHash,sourceMessageId" || commander.origin!=="private_coach" || commander.requestHash!==commanderRequestHash({...body,sourceMessageId:commander.sourceMessageId}) || (commander.sourceMessageId!==null && (typeof commander.sourceMessageId!=="string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(commander.sourceMessageId)))) throw new ApiError("Invalid private coach planning context",403);
+      if (commander.sourceMessageId && !await prisma.coachConversationMessage.findFirst({where:{id:commander.sourceMessageId,userId:user.id,role:"user"},select:{id:true}})) throw new ApiError("Source message not found",404);
+    }
     const {
       distance,
       weeks,
@@ -226,7 +232,7 @@ export async function POST(req: Request) {
     const doubleDayAgreementRequired=generated.some(w=>w.sessions.some(s=>s.doubleDayRole));
     const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true,easyPct:true}});
     const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated, storedRaces, recentActivity, activityDecisions, benchmarkTests, appliedAnchors })).digest("hex");
-    if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated, recoveryPolicy, cycle}, previewToken,
+    if (body.preview === true) return NextResponse.json({ok:true, preview: {distance: dist, weeks:weeksCount, startDate:start, startDateKey:dateKey(start,user.timezone), timezone:user.timezone, raceDate:race, weeklyBudgetMin:weeklyBudget, existingPlans:currentPlans.length, weeksPreview:generated, recoveryPolicy, cycle}, previewToken,
       planningBasis: setup.baselinePlanOptIn ? "baseline_only" : "baseline", targetReview: readiness.targetReview ?? [],
       doubleDayAgreementRequired, eventTradeoffAgreementRequired:eventReview.requiresChoice,
       warning: "Numeric targets remain aspirations: this plan is not optimized or promised to reach them. Future sessions are provisional and bounded by reported recent training. Existing prescriptions and completed activity will be preserved. A goal is not a guaranteed outcome; daily safety checks still apply."});
@@ -354,6 +360,7 @@ export async function POST(req: Request) {
             before:JSON.stringify({activePlans:oldPlans}),
             after: JSON.stringify({
               planId:plan.id,
+              ...(commander ? {commander} : {}),
               easyPct:plan.easyPct,
               name: plan.name,
               cycle,

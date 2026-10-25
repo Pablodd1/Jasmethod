@@ -157,7 +157,7 @@ test("check-in weight drafts use the same chosen-unit presentation without chang
 for (const es of [false, true]) test(`conversation first render is labeled, consent-off, and safe (${es ? "ES" : "EN"})`, () => {
   const markup = renderToStaticMarkup(React.createElement(CoachConversation, { es, athleteId: "test-athlete", onConfirmed: () => undefined }));
   assert.ok(markup.includes(`lang="${es ? "es" : "en"}"`));
-  assert.ok(markup.includes('Jas KCoach'));
+  assert.ok(markup.includes('JMM Coach'));
   assert.ok(markup.includes(es ? "Historial de conversación" : "Conversation history"));
   assert.ok(markup.includes('type="file" accept="image/png,image/jpeg,image/webp"'));
   assert.equal(markup.includes('checked=""'), false);

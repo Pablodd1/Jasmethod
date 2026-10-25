@@ -146,6 +146,14 @@ jobs:
       - name: EN and ES race lookup and weather context acceptance
         run: node --import tsx scripts/jmm-race-intelligence-browser.cjs
 
+      - name: EN and ES private commander preview and save-error acceptance
+        run: node scripts/jmm-commander-browser.cjs
+
+      - name: Private commander browser to PostgreSQL persistence and reload
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-commander-persistence-browser.cjs
+
       - name: EN and ES mobile Smart Coach and upload limit acceptance
         run: node --import tsx scripts/jmm-release-audit-browser.cjs
 
@@ -218,6 +226,10 @@ jobs:
             .local/jmm-race-scenario-integration/report.json
             .local/jmm-race-intelligence-browser/report.json
             .local/jmm-race-intelligence-browser/*.png
+            .local/jmm-commander-browser/report.json
+            .local/jmm-commander-browser/*.png
+            .local/jmm-commander-persistence-browser/report.json
+            .local/jmm-commander-persistence-browser/*.png
             .local/jmm-adaptive-cycle-integration/report.json
             .local/athlete-qa/activity-reconciliation-report.json
           if-no-files-found: ignore
