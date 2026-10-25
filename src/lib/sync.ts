@@ -19,6 +19,7 @@ export interface SyncResult {
   ok: boolean;
   imported: number;
   error?: string;
+  retryAfterMs?: number;
 }
 export interface SyncSummary {
   results: SyncResult[];
@@ -431,7 +432,7 @@ export async function syncUserConnectors(
         where: identity(),
         data: { status: "error", lastError: error, syncStartedAt: null },
       });
-      results.push({ provider: conn.provider, ok: false, imported, error });
+      results.push({ provider: conn.provider, ok: false, imported, error, ...(conn.provider === "intervals" && Number.isFinite(e?.retryAfterMs) ? {retryAfterMs:Math.min(86400000,Math.max(1000,e.retryAfterMs))} : {}) });
     }
   }
   // Reference physiology is filled only from quality-gated observations.

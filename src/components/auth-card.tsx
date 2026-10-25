@@ -234,7 +234,7 @@ function AuthCardContent({
       </>}
 
       <p className="micro mt-5 text-center !normal-case !tracking-normal !text-[11px] !text-ink-400">
-        Free pilot: 50 total accounts. No payment or wearable required. See our <Link className="underline" href="/privacy">privacy policy</Link> for how your data is used.
+        Free pilot: 50 total accounts. No payment or wearable required. See our <Link className="underline" href="/privacy">privacy policy</Link> for how your data is used. <Link className="underline" href="/policies">Policies and data rights / Políticas y derechos de datos</Link>.
       </p>
       <p className="text-[10px] text-ink-400 text-center mt-3 leading-snug">
         {mode === "signup" ? (

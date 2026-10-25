@@ -19,6 +19,8 @@ test('durable worker retries errors, fences completion by lease, and caps interr
     let result=await runSyncJobs(1,async()=>{executions++;throw Error('temporary provider failure')});
     assert.equal(result[0].status,'retrying');
     assert.equal(writes.at(-1).data.status,'pending');assert.ok(writes.at(-1).where.leaseToken);
+    const limitedAt=Date.now();await runSyncJobs(1,async()=>{throw Object.assign(Error('rate limited'),{retryAfterMs:370000});});
+    assert.ok(writes.at(-1).data.availableAt.getTime()>=limitedAt+370000,'Provider cooldown survives worker scheduling');
     assert.deepEqual(writes[1].where.attempts,{gte:5});assert.equal(writes[1].data.status,'failed');
     mode='dead';result=await runSyncJobs(1,async()=>{throw Error('failure')});assert.equal(result[0].status,'failed');
     mode='contended';const before=executions;result=await runSyncJobs(1,async()=>{executions++});assert.equal(result[0].status,'claimed_elsewhere');assert.equal(executions,before);

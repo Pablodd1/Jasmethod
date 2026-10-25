@@ -20,7 +20,7 @@ export default function NutritionPage() {
   const [saveError,setSaveError]=useState("");
   const [saving,setSaving]=useState(false);
   const savingRef=useRef(false);
-  // Smart photo logging: picture -> Gemini vision -> macros -> editable form
+  // Smart photo logging: picture -> optional OpenAI vision -> macros -> editable form
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoFile,setPhotoFile]=useState<File|null>(null);
   const [photoConsent,setPhotoConsent]=useState(false);
@@ -37,7 +37,7 @@ export default function NutritionPage() {
         const res = await fetch("/api/nutrition/photo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: reader.result, photoConsent:true, photoProviderConsent:"google_gemini", photoSource:"food_photo" }),
+          body: JSON.stringify({ image: reader.result, photoConsent:true, photoProviderConsent:"openai", photoSource:"food_photo" }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "Analysis failed");
@@ -140,7 +140,7 @@ export default function NutritionPage() {
                   {photoBusy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {lang === "es" ? "Analizando…" : "Analyzing…"}</> : <><Camera className="w-3.5 h-3.5" /> {lang === "es" ? "Tomar / subir foto" : "Take / upload photo"}</>}
                 </button>
               </div>
-              {photoFile&&<div className="space-y-2 mt-3"><p className="text-sm break-words">{photoFile.name}</p><label className="flex gap-2 text-sm"><input type="checkbox" checked={photoConsent} disabled={photoBusy} onChange={e=>setPhotoConsent(e.target.checked)}/><span>{lang==="es"?"Esta es una foto de comida o su envase, no una captura de dispositivo ni datos importados. Permito que Google Gemini reciba y analice esta foto y las instrucciones, solo para este análisis. Las estimaciones pueden equivocarse. Puedo ingresar la comida manualmente sin usar IA.":"This is a photo of food or its packaging, not a device screenshot or imported data. I allow Google Gemini to receive and analyze this photo and the instructions for this analysis only. Estimates can be wrong. I can enter the meal manually without AI."}</span></label><button type="button" className="btn-secondary" disabled={!photoConsent||photoBusy} onClick={()=>analyzePhoto(photoFile)}>{lang==="es"?"Analizar esta foto con Google Gemini":"Analyze this photo with Google Gemini"}</button></div>}
+              {photoFile&&<div className="space-y-2 mt-3"><p className="text-sm break-words">{photoFile.name}</p><label className="flex gap-2 text-sm"><input type="checkbox" checked={photoConsent} disabled={photoBusy} onChange={e=>setPhotoConsent(e.target.checked)}/><span>{lang==="es"?"Esta es una foto de comida o su envase, no una captura de dispositivo ni datos importados. Permito que OpenAI reciba y analice esta foto y las instrucciones, solo para este análisis. Las estimaciones pueden equivocarse. Puedo ingresar la comida manualmente sin usar IA.":"This is a photo of food or its packaging, not a device screenshot or imported data. I allow OpenAI to receive and analyze this photo and the instructions for this analysis only. Estimates can be wrong. I can enter the meal manually without AI."}</span></label><button type="button" className="btn-secondary" disabled={!photoConsent||photoBusy} onClick={()=>analyzePhoto(photoFile)}>{lang==="es"?"Analizar esta foto con OpenAI":"Analyze this photo with OpenAI"}</button></div>}
             {photoMsg && <div role="status" className="text-[11px] text-slate-600 mt-2 leading-relaxed">{photoMsg}</div>}
             </div>
             <form onSubmit={logFood} className="space-y-3">

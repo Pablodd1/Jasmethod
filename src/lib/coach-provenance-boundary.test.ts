@@ -19,7 +19,7 @@ test("rich briefing with unverified derived provenance stays local even when ext
   const coach = load("src/lib/coach.ts", {
     "./metric-language": {}, "node:crypto": { createHash: forbidden }, "./protocols": {}, "./gemini-response": {},
   }, { process: { env: { EXTERNAL_AI_ENABLED: "true", GEMINI_API_KEY: "synthetic-key" } }, fetch: forbidden });
-  for (const externalAiEligible of [false, undefined]) {
+  for (const externalAiEligible of [false, undefined, true]) {
     const briefing = coach.getCoachBriefing("synthetic-athlete", {
       name: "Synthetic", profile: { weightKg: 70, weightSource: "strava" },
       todaySession: { title: "Matched planned session", source: "plan", completed: true, prescription: { title: "Saved", verdict: "rest", detail: { main: "Saved instruction" } } },

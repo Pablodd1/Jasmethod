@@ -178,6 +178,7 @@ export default function ConnectorsPage() {
     const ok = query.get("ok");
     if (error) {
       const messages: Record<string, string> = {
+        intervals_pilot_unavailable: "Intervals.icu is currently limited to the selected pilot athletes. Your saved records remain available.",
         session_expired: "Your login expired during authorization. Sign in and connect again.",
         invalid_state: "The authorization response could not be verified. Connect again.",
         authorization_declined: "Authorization was cancelled or declined.",
@@ -192,6 +193,7 @@ export default function ConnectorsPage() {
         denied: "Authorization was cancelled or declined.",
       };
       const spanishMessages: Record<string, string> = {
+        intervals_pilot_unavailable: "Intervals.icu está limitado a los atletas seleccionados para la prueba. Tus registros guardados siguen disponibles.",
         session_expired: "Tu sesión caducó durante la autorización. Inicia sesión y vuelve a conectar.",
         invalid_state: "No se pudo verificar la autorización. Vuelve a conectar.",
         authorization_declined: "La autorización fue cancelada o rechazada.",

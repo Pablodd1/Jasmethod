@@ -1,27 +1,11 @@
-import { METRIC_LANGUAGE_RULES } from "./metric-language";
-// JasMiamiMethod — AI Coach (Gemini Flash via Google AI Studio, direct API).
-// Caches a briefing for the current athlete context and serves instantly; generation runs fire-and-forget
-// in the background and backfills the cache. (ponytail: in-memory Map — survives across
-// requests in one server process; swap for a DB row if you go multi-instance.)
-
-import { createHash } from "node:crypto";
-import { protocolCoachContext } from "./protocols";
-import { geminiAnswer, geminiGenerationConfig } from "./gemini-response";
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-
+// Personal briefings are local only. External education uses coach-text-provider.
 interface Briefing {
-  mode: "gemini" | "fallback";
+  mode: "fallback";
   headline: string;
   briefing: string;
   adaptation: string;
   sources: string[];
 }
-
-const cache = new Map<string, { date: string; briefing: Briefing }>();
-const pending = new Set<string>();
-
-function todayKey() { return new Date().toISOString().slice(0, 10); }
 
 export interface CoachContext {
   name: string;
@@ -34,11 +18,11 @@ export interface CoachContext {
   bloodFlags: string[];
   dnaHighlights: string[];
   language?: string; // en | es | ht | fr | ru
-  externalAiEligible?: boolean; // explicit policy boundary; omitted contexts stay local
+  externalAiEligible?: boolean; // legacy compatibility only; never grants external processing
   historyDigest?: string; // long-term memory: check-in trend, weekly load, adherence, benchmarks
 }
 
-// Localized rule-based fallback briefings (used when Gemini is unavailable).
+// Localized deterministic briefings; no external AI request.
 // "{title}" is replaced with the session title. Languages fall back to English.
 const FALLBACK: Record<string, { green: string; amber: string; red: string; swap: string; trim: string; full: string; none: string }> = {
   en: {
@@ -119,91 +103,8 @@ export function fallbackBriefing(c: CoachContext): Briefing {
   return { mode: "fallback", headline, briefing, adaptation, sources: ["HRV: Buchheit 2014", "Polarized: Seiler 2009"] };
 }
 
-function buildPrompt(c: CoachContext): string {
-  const p = c.profile || {};
-  const m = c.latestMetric || {};
-  const LANG_NAMES: Record<string, string> = { en: "English", es: "Spanish", ht: "Haitian Creole", fr: "French", ru: "Russian" };
-  const langName = LANG_NAMES[c.language || "en"] || "English";
-  return `You are KCoach, a research-informed training coach for ${c.name || "this athlete"}.
-Athlete profile: sex=${p.sex || "n/a"}, age=${p.birthYear ? new Date().getFullYear() - p.birthYear : "n/a"}, experience=${p.experience || "n/a"}, goal=${p.goal || "n/a"}.
-Injury flag: ${p.injured ? "active: training paused" : "not recorded"}.
-Physiology: VO2max=${p.vo2max ?? "n/a"}, LTHR=${p.lthr ?? "n/a"}, FTP=${p.ftp ?? "n/a"}.
-Readiness score (0-100): ${c.readiness?.score ?? "n/a"} — ${c.readiness?.advice ?? "no HRV data"}.
-Latest morning metric: HRV=${m.hrv ?? "n/a"} ms, restingHR=${m.restingHr ?? m.rhr ?? "n/a"}, sleep=${m.sleepHours ?? "n/a"} h.
-Today's planned session: ${c.todaySession ? `${c.todaySession.title} (${c.todaySession.durationMin} min, ${c.todaySession.intensity || "Z2"}, ${c.todaySession.sport})` : "none"}.
-Active plan: ${c.planName ?? "none"}.
-Blood flags: ${c.bloodFlags.length ? c.bloodFlags.join("; ") : "none on file"}.
-DNA highlights: ${c.dnaHighlights.length ? c.dnaHighlights.join("; ") : "none on file"}.
-Athlete history (analyze this BEFORE advising):
-${c.historyDigest || "no history yet"}
-${protocolCoachContext(c.todaySession ? [c.todaySession] : [])}
-
-${METRIC_LANGUAGE_RULES}
-
-Coaching rules: use only current observations to judge readiness. Missing or stale HRV means uncertainty, not a red day. Review symptoms and performance with recovery trends; a single wearable score is not a diagnosis. Completion alone is not permission to increase training. An injury flag or saved rest decision takes precedence. Never invent measurements or sources. Do not override the saved prescription; propose changes through the reviewed protocol workflow.
-
-Language: respond entirely in ${langName}.
-
-Respond in strict JSON: {"headline": "<GREEN|AMBER|RED|CHECK IN> — short tag", "briefing": "<2-3 sentences>", "adaptation": "<explain the saved prescription or the next review step>", "sources": ["<verified author year>", ...]}.
-Keep it tight. No markdown. Under 90 words total.`;
-}
-
-function geminiBriefing(c: CoachContext): Promise<Briefing> {
-  return new Promise((resolve) => {
-    if (!GEMINI_KEY) { console.error("[coach] GEMINI_API_KEY missing"); return resolve(fallbackBriefing(c)); }
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 20000); // flash models answer in ~1-2s; 20s headroom
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: buildPrompt(c) }] }],
-        generationConfig: { ...geminiGenerationConfig(GEMINI_MODEL), responseMimeType: "application/json" },
-      }),
-      signal: ctrl.signal,
-    }).then(async (res) => {
-      clearTimeout(t);
-      if (!res.ok) { console.error("[coach] Gemini HTTP", res.status); return resolve(fallbackBriefing(c)); }
-      const data = await res.json();
-      const text = geminiAnswer(data);
-      if (!text) return resolve(fallbackBriefing(c));
-      const parsed = JSON.parse(text);
-      if (!parsed || ![parsed.headline, parsed.briefing, parsed.adaptation].every((value) => typeof value === "string" && value.trim())) return resolve(fallbackBriefing(c));
-      resolve({
-        mode: "gemini",
-        headline: parsed.headline || fallbackBriefing(c).headline,
-        briefing: parsed.briefing || fallbackBriefing(c).briefing,
-        adaptation: parsed.adaptation || fallbackBriefing(c).adaptation,
-        sources: Array.isArray(parsed.sources) ? parsed.sources.filter((source: unknown) => typeof source === "string") : [],
-      });
-    }).catch((e) => { clearTimeout(t); console.error("[coach] Gemini error:", String(e?.message || e)); resolve(fallbackBriefing(c)); });
-  });
-}
-
-// Returns a briefing instantly. If a fresh JASAI result is cached, returns it.
-// Otherwise returns fallback immediately and kicks off background JASAI generation
-// that backfills the cache (so the next load shows the real model output).
-export function getCoachBriefing(userId: string, c: CoachContext): Briefing {
-  // A missing session is a local plan-review state, never a model request.
-  if (!c.todaySession) return fallbackBriefing(c);
-  if (process.env.EXTERNAL_AI_ENABLED !== "true" || !c.externalAiEligible) return fallbackBriefing(c);
-  const tk = todayKey() + createHash("sha256").update(JSON.stringify(c)).digest("hex");
-  const hit = cache.get(userId);
-  if (hit && hit.date === tk) return hit.briefing;
-
-  const pendingKey = userId + tk;
-  if (!pending.has(pendingKey)) {
-    pending.add(pendingKey);
-    geminiBriefing(c).then((b) => {
-      // ponytail: only cache a real model result. Caching fallback would pin the
-      // user to rule-based output all day after a single 429/timeout — wrong.
-      if (b.mode === "gemini") {
-        cache.set(userId, { date: tk, briefing: b });
-      }
-      pending.delete(pendingKey);
-    }).catch(() => pending.delete(pendingKey));
-  }
-  // Changed athlete data must not reuse advice from an older context.
+/** The legacy eligibility flag cannot authorize mixed-source personal context.
+ * No external dispatch or legacy briefing cache exists at this boundary. */
+export function getCoachBriefing(_userId: string, c: CoachContext): Briefing {
   return fallbackBriefing(c);
 }

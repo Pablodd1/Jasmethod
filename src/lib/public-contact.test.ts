@@ -23,6 +23,10 @@ function render(file: string, props = {}, language = "en") {
     "@/components/gate": { ProtectedPage: ({ children }: any) => children },
     "next/link": { __esModule: true, default: ({ children, ...rest }: any) => React.createElement("a", rest, children) },
   };
+  const nested = { exports: {} as Record<string, React.ComponentType<any>> };
+  const policyOutput = ts.transpileModule(readFileSync("src/components/policy-page.tsx", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
+  vm.runInNewContext(policyOutput, { module: nested, exports: nested.exports, require: (name: string) => name in dependencies ? dependencies[name] : requireModule(name) });
+  dependencies["@/components/policy-page"] = nested.exports;
   vm.runInNewContext(output, { module: fixture, exports: fixture.exports, require: (name: string) =>
     name in dependencies ? dependencies[name] : requireModule(name),
   }, { filename: file });
@@ -31,7 +35,7 @@ function render(file: string, props = {}, language = "en") {
 
 test("public privacy and terms render the same working contact in accessible email links", () => {
   assert.equal(PUBLIC_CONTACT_EMAIL, "jasmel@jasmiamimethod.fit");
-  for (const page of ["privacy", "terms"]) {
+  for (const page of ["privacy", "terms", "cookies", "data-rights", "policies"]) {
     const html = render(`src/app/${page}/page.tsx`);
     assert.ok(html.includes(`href="${PUBLIC_CONTACT_MAILTO}"`));
     assert.ok(html.includes(`>${PUBLIC_CONTACT_EMAIL}</a>`));
@@ -39,10 +43,13 @@ test("public privacy and terms render the same working contact in accessible ema
     if (page === "privacy") {
       assert.ok(html.split(`href="${PUBLIC_CONTACT_MAILTO}"`).length - 1 >= 1);
       assert.doesNotMatch(html, /deletion is final and completes within 30 days/);
-      assert.match(html, /AI Dynamic LLC/);
-      assert.match(html, /401 69th St, Apt 709, Miami Beach, FL 33141/);
+      assert.match(html, /AI DYNAMICS INC/);
+      assert.match(html, /401 69th St, Apt 709, Miami Beach, FL 33141, USA/);
+      assert.match(html, /responsible for processing JMM users/);
+      assert.match(html, /responsable del tratamiento de los datos personales/);
+      assert.doesNotMatch(html, /awaiting confirmation|pendiente de confirmaci/);
       assert.doesNotMatch(html, /30 d[i\u00ed]as/);
-      assert.match(html, /Google Gemini/);
+      assert.match(html, /OpenAI/);
     }
   }
 });

@@ -16,7 +16,7 @@ export async function processSyncJob(job: { userId:string;kind:string;payload:st
     const {syncUserConnectors}=await import('./sync');
     if(!['oura','whoop','strava','google_cal','intervals'].includes(payload.provider)) throw new Error('Unsupported provider');
     const result=await syncUserConnectors(job.userId,payload.provider);
-    if(result.results.some(r=>!r.ok)) throw new Error('Provider reconciliation failed');
+    if(result.results.some(r=>!r.ok)) throw Object.assign(new Error('Provider reconciliation failed'),{retryAfterMs:Math.max(0,...result.results.filter(r=>!r.ok).map(r=>r.retryAfterMs||0))});
   } else if(job.kind==='intervals') {
     const {processIntervalsEvent}=await import('./intervals-ingest');
     await processIntervalsEvent(job.userId,payload);
@@ -40,9 +40,10 @@ export async function runSyncJobs(limit=4, process=processSyncJob) {
       await process(job);
       const done=await prisma.syncJob.updateMany({where:{id:job.id,status:'running',leaseToken:token},data:{status:'done',leaseToken:null,leasedUntil:null,lastError:null}});
       return {id:job.id,status:done.count?'done':'lease_lost'};
-    } catch {
+    } catch (error) {
       const status=job.attempts+1>=5?'failed':'pending';
-      const result=await prisma.syncJob.updateMany({where:{id:job.id,status:'running',leaseToken:token},data:{status,leaseToken:null,leasedUntil:null,availableAt:new Date(Date.now()+Math.min(3600000,30000*2**job.attempts)),lastError:'Processing failed; inspect connector status. Reconnect if authorization expired.'}});
+      const directed=error&&typeof error==='object'&&'retryAfterMs' in error&&typeof error.retryAfterMs==='number'&&Number.isFinite(error.retryAfterMs)?Math.min(86400000,Math.max(0,error.retryAfterMs)):0;
+      const result=await prisma.syncJob.updateMany({where:{id:job.id,status:'running',leaseToken:token},data:{status,leaseToken:null,leasedUntil:null,availableAt:new Date(Date.now()+Math.max(directed,Math.min(3600000,30000*2**job.attempts))),lastError:'Processing failed; inspect connector status. Reconnect if authorization expired.'}});
       return {id:job.id,status:result.count?(status==='pending'?'retrying':'failed'):'lease_lost'};
     }
   }));

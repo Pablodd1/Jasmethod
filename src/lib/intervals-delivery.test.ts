@@ -8,6 +8,7 @@ import * as crypto from "node:crypto";
 import { Decoder, Stream } from "@garmin/fitsdk";
 import * as canonical from "./canonical-session";
 import * as fit from "./fit-export";
+import { providerRetryAfterMs } from "./provider-retry";
 const require = createRequire(import.meta.url), ts = require("typescript");
 function load(file: string, dependencies: Record<string, any>, extra: Record<string, any> = {}) {
   const exports: any = {};
@@ -22,15 +23,16 @@ function fixture(initial = session()) {
   const state: any = { calls: [], deletes: [], audits: [], fail: null, afterPublish: null, saveFails: false, consent: false, deleted: false, autoEnabled: undefined, approvalRevision: initial.revision };
   const provider = load("src/lib/intervals.ts", { "./provider-fetch": { providerFetch: async (_url: string, init: any) => {
     const body = JSON.parse(init.body);
-    if (_url.endsWith("bulk-delete")) { state.deletes.push(body); return Response.json(1); }
+    if (_url.endsWith("bulk-delete")) { state.deletes.push(body); return state.fail === "cancel-rate" ? new Response(null,{status:429,headers:{"retry-after":"370"}}) : Response.json(1); }
     state.calls.push(body);
     if (state.fail === "network") throw Error("synthetic timeout");
     if (state.fail === "rejected") return new Response("bad", { status: 400 });
+    if (state.fail === "rate") return new Response(null, { status: 429, headers: {"retry-after":"370"} });
     if (state.fail === "server") return new Response("bad", { status: 500 });
     if (state.fail === "malformed") return Response.json({ accepted: true });
     if (state.afterPublish) current = state.afterPublish;
     return Response.json([{ id: 123, external_id: body[0].external_id }]);
-  } }, "./capabilities": { requireIntervalsConnector: () => {} } });
+  } }, "./capabilities": { requireIntervalsConnector: () => {} }, "./provider-retry": {providerRetryAfterMs} });
   const db: any = { workout: {
     findFirst: async () => state.deleted ? null : ({ ...row }),
     updateMany: async ({ where, data }: any) => { if (row.deliveryId !== where.deliveryId) return { count: 0 }; if (state.saveFails && JSON.parse(data.deliveryId).status !== "publishing") throw Error("storage failure"); Object.assign(row, data); return { count: 1 }; },
@@ -40,6 +42,21 @@ function fixture(initial = session()) {
   const publish = (action = "publish", revision = current.revision) => api.publishIntervalsWorkout({ athleteId: "athlete", sessionId: "workout", actorId: "athlete", expectedRevision: revision, action });
   return { api, state, row, publish, change: (value: canonical.CanonicalSession) => { current = value; } };
 }
+
+test("provider cooldown is durable and blocks repeated publication and maintenance without another call",async()=>{
+ const f=fixture();f.state.fail="rate";const before=Date.now();
+ const response=await f.publish();assert.equal(response.status,"rejected");assert.equal(response.deviceReceived,false);
+ const receipt=JSON.parse(f.row.deliveryId);assert.ok(receipt.retryAt>=before+370000);
+ assert.equal((await f.publish()).status,"busy");assert.equal(f.state.calls.length,1);
+ await f.api.reconcileIntervalsPublications('athlete');assert.equal(f.state.calls.length,1);
+});
+
+test("deleted-session cancellation records the provider cooldown before another maintenance pass",async()=>{
+ const f=fixture({...session(),dateLocal:new Date().toISOString().slice(0,10)});await f.publish();f.state.deleted=true;f.state.fail="cancel-rate";
+ await assert.rejects(f.api.reconcileIntervalsPublications('athlete'));
+ assert.equal(f.state.deletes.length,1);assert.ok(JSON.parse(f.state.audits.at(-1).after).retryAt>Date.now());
+ await f.api.reconcileIntervalsPublications('athlete');assert.equal(f.state.deletes.length,1);
+});
 
 test("Intervals native payload round-trips exact five-second power and running pace/distance FIT", () => {
   const f = fixture();

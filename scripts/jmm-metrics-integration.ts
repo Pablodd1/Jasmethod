@@ -84,7 +84,10 @@ async function main() {
     assert.equal((await metrics(a, `/api/fitness?athleteId=${b.id}`)).totalJStress, 300);
     assert.equal((await metrics(b)).totalJStress, 1000);
     const answer = await (await request("/api/assistant", a, { body: { message: "What is my JStress?", externalConsent: false, clientRequestId: randomUUID() } })).json();
-    assert.match(answer.answer, new RegExp(`JStress \\(${today}\\): 300 AU`));
+    assert.match(answer.answer, /not retained in chat/);
+    assert.doesNotMatch(answer.answer, /300 AU|1000 AU/);
+    const storedReply = await db.coachConversationMessage.findFirstOrThrow({where:{userId:a.id,role:"assistant"},orderBy:{createdAt:"desc"}});
+    assert.doesNotMatch(storedReply.content, /300 AU|1000 AU/);
     assert.equal(answer.trainingModified, false);
   });
   await scenario("Missing effort remains unknown, matched plans are skipped, partial training counts", async () => {

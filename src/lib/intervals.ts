@@ -2,6 +2,7 @@
 // Provider acceptance does not establish downstream device receipt. Legacy ZWO is never published.
 import { providerFetch } from "./provider-fetch";
 import { requireIntervalsConnector } from "./capabilities";
+import { providerRetryAfterMs } from "./provider-retry";
 
 const INTERVALS_API = "https://intervals.icu/api/v1";
 
@@ -58,7 +59,7 @@ ${blocks}
 // Documented OAuth bulk upsert; FIT is generated from the exact canonical revision.
 // Provider acceptance is not proof of downstream watch receipt.
 export class IntervalsDeliveryError extends Error {
-  constructor(message: string, public definite = false, public status = 502) { super(message); }
+  constructor(message: string, public definite = false, public status = 502, public retryAfterMs?: number) { super(message); }
 }
 export async function intervalsUpsertFit(authorization: string, event: { external_id: string; start_date_local: string; filename: string; file_contents_base64: string }) {
   requireIntervalsConnector();
@@ -66,7 +67,7 @@ export async function intervalsUpsertFit(authorization: string, event: { externa
     method: "POST", headers: { Authorization: authorization, "Content-Type": "application/json" },
     body: JSON.stringify([{ category: "WORKOUT", ...event }]), redirect: "error",
   });
-  if (!response.ok) throw new IntervalsDeliveryError("Intervals rejected or could not confirm the workout publication.", response.status >= 400 && response.status < 500 && response.status !== 408, response.status === 429 ? 429 : 502);
+  if (!response.ok) throw new IntervalsDeliveryError("Intervals rejected or could not confirm the workout publication.", response.status >= 400 && response.status < 500 && response.status !== 408, response.status === 429 ? 429 : 502, response.status === 429 ? providerRetryAfterMs(response.headers.get("retry-after")) : undefined);
   let data: unknown;
   try { data = await response.json(); } catch { throw new IntervalsDeliveryError("Intervals returned an unreadable publication receipt."); }
   if (!Array.isArray(data) || data.length !== 1 || !data[0] || !["string", "number"].includes(typeof data[0].id) || String(data[0].id).length === 0 ||
@@ -79,7 +80,7 @@ export async function intervalsDeleteOwnedEvent(authorization: string, externalI
     method: "PUT", headers: { Authorization: authorization, "Content-Type": "application/json" },
     body: JSON.stringify([legacyId ? { id: legacyId } : { external_id: externalId }]), redirect: "error",
   });
-  if (!response.ok) throw new IntervalsDeliveryError("Intervals could not confirm cancellation.", response.status >= 400 && response.status < 500 && response.status !== 408);
+  if (!response.ok) throw new IntervalsDeliveryError("Intervals could not confirm cancellation.", response.status >= 400 && response.status < 500 && response.status !== 408, response.status === 429 ? 429 : 502, response.status === 429 ? providerRetryAfterMs(response.headers.get("retry-after")) : undefined);
   // The documented response is a count, including zero for an absent event.
   let count: unknown;
   try { count = await response.json(); } catch { throw new IntervalsDeliveryError("Intervals returned an unreadable cancellation receipt."); }

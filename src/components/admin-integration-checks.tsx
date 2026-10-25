@@ -24,10 +24,10 @@ export function AdminIntegrationChecks() {
     finally { setBusy(false); }
   }
   return <details className="card space-y-3">
-    <summary className="font-bold cursor-pointer">Email, Telegram and DeepSeek readiness</summary>
+    <summary className="font-bold cursor-pointer">Email, Telegram and OpenAI readiness</summary>
     <p className="text-sm">Check the running deployment without revealing credentials. Athletes still control their own verification, pairing and communication consent.</p>
     {checks && <ul className="space-y-3">{Object.entries(checks).map(([key, check]) => <li key={key} className="text-sm">
-      <strong>{key === "deepseek" ? "DeepSeek" : key === "telegram" ? "Telegram" : "Email"}: {check.state}</strong>
+      <strong>{key === "openai" ? "OpenAI" : key === "telegram" ? "Telegram" : "Email"}: {check.state}</strong>
       <p>{check.detail}</p>{!!check.missing?.length && <p className="text-amber-800 break-words">Missing: {check.missing.join(", ")}</p>}
       {check.botUsername && <p>Verified bot username: @{check.botUsername}</p>}
     </li>)}</ul>}

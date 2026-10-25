@@ -1,16 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkTelegramWebhook, launchConfiguration, probeLaunchIntegrations, telegramWebhookTarget } from "./launch-integrations";
-const env = { APP_URL: "https://example.test", DEEPSEEK_API_KEY: "synthetic-private-ai-key", EXTERNAL_AI_ENABLED: "true",
+const env = { APP_URL: "https://example.test", OPENAI_API_KEY: "synthetic-private-ai-key", EXTERNAL_AI_ENABLED: "true",
   SMTP_HOST: "smtp.example.test", SMTP_FROM: "no-reply@example.test", MANUAL_WORKOUT_EMAIL_ORIGIN: "https://example.test", ENABLE_MANUAL_WORKOUT_EMAIL: "true",
   TELEGRAM_BOT_TOKEN: "synthetic-private-bot-token", TELEGRAM_COACHING_WEBHOOK_SECRET: "synthetic_webhook_secret_with_32_characters",
   TELEGRAM_BOT_USERNAME: "Synthetic_JMM_bot", ENABLE_TELEGRAM_COACHING: "true", ENABLE_AUTOMATED_DELIVERY: "true", COACHING_TRANSPORT: "telegram" };
 test("launch diagnostics never reveal secrets and distinguish configuration from provider verification", () => {
   const checks = launchConfiguration(env);
-  assert.equal(checks.deepseek.state, "configured"); assert.equal(checks.email.state, "configured");
+  assert.equal(checks.openai.state, "configured"); assert.equal(checks.email.state, "configured");
   assert.equal(checks.telegram.state, "configured");
-  for (const secret of [env.DEEPSEEK_API_KEY, env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_COACHING_WEBHOOK_SECRET]) assert.ok(!JSON.stringify(checks).includes(secret));
-  assert.ok(launchConfiguration({}).deepseek.missing?.includes("DEEPSEEK_API_KEY"));
+  for (const secret of [env.OPENAI_API_KEY, env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_COACHING_WEBHOOK_SECRET]) assert.ok(!JSON.stringify(checks).includes(secret));
+  assert.ok(launchConfiguration({}).openai.missing?.includes("OPENAI_API_KEY"));
 });
 test("webhook destination is server-owned HTTPS origin only", () => {
   for (const APP_URL of ["http://example.test", "https://user:password@example.test", "https://example.test/other", "https://example.test?next=other", "file:///tmp"]) assert.equal(telegramWebhookTarget({ APP_URL }), null);
@@ -48,7 +48,7 @@ test("disabled integrations make no network requests", async () => {
   assert.equal(called, false); assert.equal(result.email.state, "missing"); assert.equal(result.telegram.state, "missing");
 });
 test("runtime readiness uses actual AI model and email-origin validators", () => {
-  assert.equal(launchConfiguration({ ...env, DEEPSEEK_MODEL: "unsupported" }).deepseek.state, "missing");
+  assert.equal(launchConfiguration({ ...env, OPENAI_TEXT_MODEL: "unsupported" }).openai.state, "missing");
   assert.equal(launchConfiguration({ ...env, MANUAL_WORKOUT_EMAIL_ORIGIN: "http://example.test/other" }).email.state, "missing");
 });
 test("verified bot identity must match the pairing username", async () => {

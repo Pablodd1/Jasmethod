@@ -13,7 +13,7 @@ export async function POST(req:Request) {
     if(!rateLimit(`food-photo:${user.id}`,6,60000).ok)throw new ApiError("Please wait before another photo",429);
     const body=await readConversationBody(req,3*1024*1024);
     try{requireFoodPhotoConsent(body);}catch(error){throw new ApiError((error as Error).message,403);}
-    try{return Response.json(await analyzeFoodPhoto(body,user.language||"en",{key:process.env.GEMINI_API_KEY,model:process.env.GEMINI_MODEL}),{headers});}
+    try{return Response.json(await analyzeFoodPhoto(body,user.language||"en",{key:process.env.NUTRITION_PHOTO_ENABLED === "true" ? process.env.OPENAI_API_KEY : undefined}),{headers});}
     catch{return Response.json({error:"Photo analysis could not be completed. Review the file and consent, or enter the meal manually."},{status:422,headers});}
   }catch(error){const response=errorResponse(error);response.headers.set("Cache-Control","private, no-store");return response;}
 }

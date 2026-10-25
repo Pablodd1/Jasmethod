@@ -263,7 +263,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>}
           {children}
           <footer className="mt-8 text-xs text-slate-500">
-            {lang === "es" ? "Los gráficos y análisis pueden incluir datos de dispositivos Garmin, importados mediante Intervals.icu." : "Charts and analysis may include data from Garmin devices, imported through Intervals.icu."}
+            <Link href="/policies" className="mb-3 block underline">{lang === "es" ? "Políticas, privacidad y derechos de datos" : "Policies, privacy and data rights"}</Link>
+            {lang === "es" ? "Los registros guardados pueden proceder de dispositivos Garmin u otras fuentes. Las importaciones de actividades de origen Garmin mediante Intervals.icu siguen bloqueadas hasta verificar los permisos." : "Saved records may originate from Garmin devices or other sources. Garmin-origin activity imports through Intervals.icu remain blocked pending permission verification."}
           </footer>
         </div>
       </main>

@@ -143,6 +143,9 @@ jobs:
       - name: Install Chromium for synthetic UI acceptance
         run: npx playwright install --with-deps chromium
 
+      - name: Public policy discovery, bilingual pages and mobile acceptance
+        run: node scripts/jmm-public-policies-browser.cjs
+
       - name: EN and ES race lookup and weather context acceptance
         run: node --import tsx scripts/jmm-race-intelligence-browser.cjs
 
@@ -229,6 +232,8 @@ jobs:
             .local/jmm-race-scenario-integration/report.json
             .local/jmm-race-intelligence-browser/report.json
             .local/jmm-race-intelligence-browser/*.png
+            .local/jmm-public-policies-browser/report.json
+            .local/jmm-public-policies-browser/*.png
             .local/jmm-ai-consent-browser/report.json
             .local/jmm-ai-consent-browser/*.png
             .local/jmm-commander-browser/report.json

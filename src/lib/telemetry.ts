@@ -1,6 +1,6 @@
 // JasMiamiMethod — Telemetry, metering & cost estimation
 //
-// Self-hosted observability (no third-party service):
+// Application observability stored in the managed application database:
 //   AppEvent     — error/warn/info ledger (client + server + cron)
 //   UsageCounter — per-user, per-day, per-metric consumption counters
 //
@@ -128,7 +128,7 @@ export async function meterUsage(
 
 // ---- Cost model (EDITABLE — planning estimates, not invoices) ----
 export const COST_TABLE = {
-  ai_input_per_1m_tokens: 0.1, // Gemini Flash-class list price
+  ai_input_per_1m_tokens: 0.1, // Operator planning assumption; not a verified provider price
   ai_output_per_1m_tokens: 0.4,
   email_per_send: 0.001, // SMTP marginal/infra amortization
   telegram_per_send: 0, // bot API is free
