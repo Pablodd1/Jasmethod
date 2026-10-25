@@ -238,7 +238,11 @@ export function extractLocalCandidates(message: string, context: CandidateContex
     if (sports.length > 1) continue;
     const minuteMatches = allNumbers(t, /\b(\d+(?:[.,]\d+)?)\s*(?:minutes?|mins?|minutos?)\b/g);
     const hourMatches = allNumbers(t, /\b(\d+(?:[.,]\d+)?)\s*(?:hours?|horas?)\b(?!\s*(?:per week|a week|weekly|por semana|a la semana|semanales))/g).map(n => n * 60);
-    const durations = unique([...minuteMatches, ...hourMatches]);
+    // Preserve the reviewed conversational duration edit without exporting the
+    // athlete's request to a model. Only this exact, unambiguous unit is mapped.
+    const halfHour = explicitEdit && /\b(?:half an? hour|media hora)[.!?\s]*$/.test(t)
+      && !/\b(?:not|no|around|about|approximately|more than|less than|aproximadamente)\s+(?:half an? hour|media hora)\b/.test(t) ? [30] : [];
+    const durations = unique([...minuteMatches, ...hourMatches, ...halfHour]);
     if (durations.length > 1 || /\b\d+\s*(?:-|to|a|or|o)\s*\d+\s*(?:min|hour|hora)/.test(t)) continue;
     const kind = planned ? "workout_plan" : "workout_feedback";
     if (!planned && !completed && !skipped && !partial) continue;

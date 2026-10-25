@@ -745,7 +745,7 @@ test('chat workout confirmation protects recovery, event sessions and stale revi
 
 test('local fallback creates an owner-bound review proposal without external text transmission, then confirmation alone changes the workout',async()=>{
  const f=fixture(),originalFetch=globalThis.fetch,oldEnv={enabled:process.env.EXTERNAL_AI_ENABLED,key:process.env.DEEPSEEK_API_KEY,model:process.env.DEEPSEEK_MODEL};
- const message='Change this session duration to 30 minutes';let calls=0;
+ const message='Could you make this session half an hour?';let calls=0;
  try {
    Object.assign(f.state.workout,{completed:false,feedbackStatus:null,feedbackAt:null,actualDurationMin:null,rpe:null,approved:false});
    process.env.EXTERNAL_AI_ENABLED='true';process.env.DEEPSEEK_API_KEY='synthetic-test-only';process.env.DEEPSEEK_MODEL='deepseek-flash';
