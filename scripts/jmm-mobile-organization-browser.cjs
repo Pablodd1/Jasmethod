@@ -51,6 +51,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
     await page.getByText('Synthetic HYROX event',{exact:true}).waitFor();
     await page.getByText(es?'Falta el lugar; añádelo cuando lo sepas.':'Venue missing — add it when available.',{exact:true}).waitFor();
     await shot('03-saved-venue-missing');
+    await page.getByText(es?"Editar fecha, prioridad o lugar":"Edit date, priority or venue",{exact:true}).click();
     await page.locator('input[name="location"]').fill('Synthetic venue, Miami, FL');
     await page.getByRole('button',{name:es?'Guardar datos del evento':'Save event details',exact:true}).click();
     await page.getByText('Synthetic venue, Miami, FL',{exact:true}).waitFor();await page.reload();

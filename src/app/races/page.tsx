@@ -117,7 +117,7 @@ export default function RacesPage() {
 
   const es = lang === "es";
   const t = (en: string, spanish: string) => es ? spanish : en;
-  const field = (key: string, label: string, type = "text", required = false) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><input id={`race-${key}`} type={type} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)} required={required} /></div>;
+  const field = (key: string, label: string, type = "text", required = false) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><input id={`race-${key}`} type={type} step={type === "number" ? "any" : undefined} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)} required={required} /></div>;
   const select = (key: string, label: string, options: string[]) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><select id={`race-${key}`} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)}><option value="">{t("Not known yet", "Aún no lo sé")}</option>{options.map(option => <option key={option}>{option}</option>)}</select></div>;
 
   return (
@@ -154,12 +154,14 @@ export default function RacesPage() {
                   </div>
                   <button type="button" aria-label={`${t("Delete race", "Eliminar carrera")}: ${r.name}`} onClick={() => del(r.id)} className="flex min-h-11 min-w-11 items-center justify-center text-slate-500 hover:text-coral-600"><Trash2 className="w-4 h-4" /></button>
                 </div>
+                <details className="mt-2"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{t("Edit date, priority or venue", "Editar fecha, prioridad o lugar")}</summary>
                 <form key={`${r.id}-${r.date}-${r.priority}-${r.location}`} onSubmit={event=>saveTiming(event,r.id)} className="mt-3 flex flex-wrap items-end gap-2">
                   <label className="text-sm">{lang === "es" ? "Fecha del evento" : "Event date"}<input name="date" type="date" className="input" defaultValue={String(r.date).slice(0,10)} required/></label>
                   <label className="text-sm">{lang === "es" ? "Prioridad" : "Priority"}<select name="priority" className="input" defaultValue={String(r.priority)}><option value="1">A</option><option value="2">B</option><option value="3">C</option></select></label>
                   <label className="w-full text-sm">{t("Venue or city", "Lugar o ciudad")}<input name="location" className="input min-h-11 !text-base" defaultValue={r.location || ""} /></label>
                   <button className="btn-secondary min-h-11" disabled={busy}>{t("Save event details", "Guardar datos del evento")}</button>
                 </form>
+                </details>
                 <details className="mt-3 border-t pt-2"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{t("Result & course details", "Resultado y recorrido")}</summary>
                 <div className="mt-2 flex flex-wrap items-end gap-2">
                   <div>
