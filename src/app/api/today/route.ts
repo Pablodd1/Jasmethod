@@ -22,6 +22,7 @@ import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { workoutRevision } from '@/lib/workout-update';
 import { currentOrReportedWorkoutWhere, currentWorkoutWhere, isCurrentWorkout } from '@/lib/calendar-workouts';
 import { readDailyInputContext } from '@/lib/daily-input-context';
+import { readTrainingWeekReview } from '@/lib/training-week-store';
 import { trainingViewDisclosureAllowed, ACTIVITY_DISCLOSURE_REASON } from '@/lib/activity-disclosure';
 import { readVerifiedActivityReport } from '@/lib/activity-report-envelope';
 export const dynamic = "force-dynamic";
@@ -183,10 +184,14 @@ export async function GET(req: Request) {
       ? sessions.find(session=>session.id===scopedReview.sessionId && session.verdict==="ready" && session.existingReview?.eligible)?.id ?? null : null;
     const recovery = dailyRecoveryContext({ plannedRest, eventDay, sessions, reviewedSessionId, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     const visibleConnectors = connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled());
-    const inputContext = await readDailyInputContext(user.id, user.timezone);
+    const [inputContext, weekReview] = await Promise.all([
+      readDailyInputContext(user.id, user.timezone),
+      readTrainingWeekReview(actor.id, user.id, key, user.timezone, currentPlan?.id ?? null, activityDecisions),
+    ]);
     if (!trainingViewDisclosureAllowed(actor.id, user.id, [...allWorkouts, ...reported], inputContext)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
     return Response.json({
       inputContext,
+      weekReview,
       athleteReview: athleteDayReview(allWorkouts.map(w=>({...w,feedbackRevision:workoutRevision(w)})), user.id, key, user.timezone, setupState.setup, activityDecisions),
       recovery,
       cycle: activePlan ? savedCycleSummary(activePlan, user.timezone, key) : null,

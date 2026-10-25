@@ -51,3 +51,35 @@ These are implementation blockers for the addendum, not reasons to block the
 mobile layout improvements. No schema migration, credential, provider permission,
 connector activation or production athlete record is changed by this PR.
 
+## Daily structure follow-up
+
+Today now leads with one compact section: the current cycle week, recorded
+minutes before today, upcoming planned minutes, and the canonical daily review
+status. A disclosure lists the next three saved sessions. The check-in questions
+come before devices, recent activity correction, voice input and the optional
+focus task. Existing safety/recovery questions remain unanswered until the
+athlete answers them; device readings do not fill subjective symptoms.
+
+The optional week reader uses the athlete's timezone, Monday–Sunday bounds,
+current-plan ownership and existing source/reconciliation rules. No-data actuals
+stay unknown; missing durations, duplicate identifiers, unresolved overlaps,
+restricted sources or truncated reads withhold totals. Upcoming minutes come
+only from unfinished sessions in the current cycle. Query failure or foreign
+disclosure restrictions omit this optional context without hiding the saved
+session. Week summaries are local display only and do not enter external AI.
+
+This is a clearer view of the existing canonical adaptation and plan-review
+workflow. It does not introduce a new readiness score, use week totals to
+silently increase dose, or automatically replace future training. Changes to a
+cycle still require the existing reviewed preview and explicit confirmation.
+The optional Stroop task is task history, not physical readiness or clearance;
+unsupported comparative labels were removed. Its save indicator now requires
+an actual saved-record receipt, with a visible failure state.
+
+Additional verification: seven week/context/store tests cover real versus
+planned minutes, missingness, duplicates, source restrictions, timezone bounds,
+owner scoping and unavailable storage. The existing EN/ES daily-flow browser
+journeys now capture device/no-device/skip states and exercise failed and
+successful optional-task receipts. Full check-in and plan-review boundary tests
+remain in CI.
+
