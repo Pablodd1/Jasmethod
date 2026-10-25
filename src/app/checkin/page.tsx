@@ -727,7 +727,7 @@ function CheckinPageContent() {
         )}
 
         {/* Consolidated from the former Brain page: cognitive check lives here */}
-        <details id="optional-focus-check" className="rounded-xl border border-sand-200 bg-white p-4 scroll-mt-24"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{lang === "es" ? "Prueba opcional de atención" : "Optional focus check"}</summary><p className="my-2 text-sm text-slate-600">{lang === "es" ? "Puedes omitirla. No mide preparación física ni sustituye las preguntas de seguridad." : "You can skip this. It does not measure physical readiness or replace safety questions."}</p><CognitiveCheck lang={lang} /></details>
+        <details id="optional-focus-check" className="space-y-2 scroll-mt-24"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{lang === "es" ? "Prueba opcional de atención" : "Optional focus check"}</summary><p className="my-2 text-sm text-slate-600">{lang === "es" ? "Puedes omitirla. No mide preparación física ni sustituye las preguntas de seguridad." : "You can skip this. It does not measure physical readiness or replace safety questions."}</p><CognitiveCheck lang={lang} /></details>
 
         <section className="card space-y-3" aria-labelledby="previous-session-heading">
           <h2 id="previous-session-heading" className="font-display font-bold text-lg">{lang === "es" ? "Actividad reciente: solo lo que falta" : "Recent activity: only what's missing"}</h2>

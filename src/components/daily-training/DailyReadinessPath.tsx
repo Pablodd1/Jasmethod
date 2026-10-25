@@ -15,6 +15,8 @@ interface Props {
 /** Status comes from the canonical daily resolver, never a second client score. */
 export function DailyReadinessPath({ es, date, offline, cycle, week, context, mode, safetyStatus, reviewedSessionId, hasSession }: Props) {
   const t = (en: string, spanish: string) => es ? spanish : en;
+  const observedDate = new Date(date);
+  const dateLabel = Number.isFinite(observedDate.getTime()) ? new Intl.DateTimeFormat(es ? "es" : "en", { month: "short", day: "numeric", timeZone: "UTC" }).format(observedDate) : t("Unknown", "Sin confirmar");
   const currentMetrics = !offline && context?.dateLocal === date ? Object.values(context.metrics).filter(metric => metric.status === "usable" && metric.selected !== null).length : 0;
   const reviewed = !offline && ["training", "easy-day"].includes(mode ?? "") && (safetyStatus === "clear" || !!reviewedSessionId);
   const held = ["hold", "review-needed"].includes(mode ?? "");
@@ -26,7 +28,7 @@ export function DailyReadinessPath({ es, date, offline, cycle, week, context, mo
     </div>
     <dl className="grid grid-cols-3 gap-3 text-sm">
       <div><dt className="text-slate-500">{t("Before today", "Antes de hoy")}</dt><dd className="mt-1 font-semibold">{past}</dd></div>
-      <div><dt className="text-slate-500">{t("Today", "Hoy")}</dt><dd className="mt-1 font-semibold">{date}</dd></div>
+      <div><dt className="text-slate-500">{t("Today", "Hoy")}</dt><dd className="mt-1 font-semibold">{dateLabel}</dd></div>
       <div><dt className="text-slate-500">{t("Ahead", "Por venir")}</dt><dd className="mt-1 font-semibold">{week?.ahead.minutes != null ? `${week.ahead.minutes} min` : t("Not confirmed", "Sin confirmar")}</dd></div>
     </dl>
     <details className="border-b border-sand-200 pb-2 text-sm"><summary className="min-h-11 cursor-pointer content-center font-semibold">{t("Review this week's context", "Revisar el contexto semanal")}</summary>
