@@ -8,7 +8,7 @@ const base = process.env.JMM_UI_TEST_BASE || 'http://127.0.0.1:3230';
 assert.ok(/^http:\/\/127\.0\.0\.1:\d+$/.test(base), 'Only an isolated loopback app is allowed');
 const dir = '.local/jmm-live-repair-browser'; mkdirSync(dir, { recursive: true });
 const results = [], errors = [], unexpected = [], geometry = [];
-const { buildCoachReply } = require('../src/lib/coach-conversation.ts');
+const { historySafeLocalReply } = require('../src/lib/ai-data-policy.ts');
 const { calendarWorkoutView } = require('../src/lib/calendar-workouts.ts');
 const today = new Date().toISOString().slice(0, 10);
 const reason = "Training is on hold until today's safety, recovery and available-time answers are known. Missing: sleep, soreness, motivation, energy, stress, sick, newPain, urgentSymptoms, availableMin. Unknown or skipped answers are not evidence of readiness. No device data is required.";
@@ -50,7 +50,7 @@ async function main() {
         if (route.request().method() === 'POST' && path === '/api/assistant') {
           const input = route.request().postDataJSON(); sends++;
           assert.equal(input.externalConsent, false); assert.ok(input.clientRequestId);
-          const answer = buildCoachReply(input.message, {localToday:today,language,savedTodaySessions:[{date:today,title:'Synthetic saved run',sport:'run',durationMin:56,completed:false}]}).answer;
+          const answer = historySafeLocalReply('',language,true);
           history.push({id:'synthetic-user',role:'user',content:input.message,createdAt:new Date().toISOString(),source:'text',clientRequestId:input.clientRequestId},{id:'synthetic-assistant',role:'assistant',content:answer,createdAt:new Date().toISOString(),source:'local'});
           return route.fulfill({json:{ok:true,conversation:{id:'synthetic-conversation',messages:history},proposal:null}});
         }
@@ -65,7 +65,8 @@ async function main() {
         return route.fulfill({json:{ok:true}});
       });
       await page.goto(`${base}/coach`);
-      const textarea = page.locator('textarea').first(); await textarea.waitFor({state:'visible'}); await page.waitForTimeout(200);
+      const textarea = page.locator('textarea').first(); await textarea.waitFor({state:'visible'});
+      await page.waitForFunction(()=>document.querySelector('textarea')?.disabled===false);
       assert.equal(await textarea.isDisabled(), false, 'Composer becomes usable');
       assert.equal(await page.getByRole('button', {name: language === 'es' ? /^Enviar mensaje$/ : /^Send message$/}).isDisabled(), true, 'Empty submit stays disabled');
       const dictation = page.getByRole('button', {name: language === 'es' ? /dictado|dictar/i : /dictat/i}).first();
@@ -84,7 +85,7 @@ async function main() {
       assert.equal(await page.getByRole('button', {name: language === 'es' ? /^Enviar mensaje$/ : /^Send message$/}).isDisabled(), false, 'Typing enables submit without sending');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Coach has no horizontal overflow');
       await page.getByRole('button', {name: language === 'es' ? /^Enviar mensaje$/ : /^Send message$/}).click();
-      await page.getByRole('list', {name:language === 'es' ? 'Historial de conversación' : 'Conversation history'}).getByText(/Synthetic saved run: 56 min/).waitFor({state:'visible'});
+      await page.getByRole('list', {name:language === 'es' ? 'Historial de conversación' : 'Conversation history'}).getByText(language==='es'?/No se conserva un resumen/:/not retained in chat/).waitFor({state:'visible'});
       assert.equal(sends,1,'One explicit click produces one synthetic send');
       await page.screenshot({path:`${dir}/coach-${language}-${width}.png`});
       await page.goto(`${base}/daily`);
