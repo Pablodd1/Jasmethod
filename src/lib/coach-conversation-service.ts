@@ -337,7 +337,8 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const chatContext:CoachReplyContext={...context,profile:null,externalFacts:undefined,athleteOverview:undefined,jMetrics:null,recentFeedback:[],savedTodaySessions:[],approvedSession:undefined,recentMessages:[],checkin:undefined,recovery:undefined,unresolvedSafetyConcernAt:null,unreviewedImageConcern:undefined};
       const safetyReply=buildCoachReply(input.message,context);
       const safetyHeld=SAFETY_RULES.some(rule=>safetyReply.ruleId===`coach-conversation-v1:${rule}`);
-      const reply = safetyHeld ? safetyReply : contextNeeds.overview||contextNeeds.history!=="none"||contextNeeds.load
+      const localRecordQuestion=/^coach-conversation-v1:(?:saved-training-navigation|remember-confirmed-|remember-reported-|missing-reported-)/.test(safetyReply.ruleId);
+      const reply = safetyHeld ? safetyReply : localRecordQuestion||contextNeeds.overview||contextNeeds.history!=="none"||contextNeeds.load
         ? {answer:historySafeLocalReply("",actor.language,true),ruleId:"coach-conversation-v1:local-data-review",sourceIds:[]}
         : buildCoachReply(input.message, chatContext);
       const suggestedActions: PendingAction[] = SAFETY_RULES.some(rule => reply.ruleId === `coach-conversation-v1:${rule}`) ? ["review_checkin"] : [];
