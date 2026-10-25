@@ -22,9 +22,14 @@ export default function NutritionPage() {
   const savingRef=useRef(false);
   // Smart photo logging: picture -> Gemini vision -> macros -> editable form
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoFile,setPhotoFile]=useState<File|null>(null);
+  const [photoConsent,setPhotoConsent]=useState(false);
   const [photoMsg, setPhotoMsg] = useState<string | null>(null);
 
   function analyzePhoto(file: File) {
+    if(!photoConsent||photoBusy)return;
+    if(!["image/png","image/jpeg","image/webp"].includes(file.type)||file.size>2*1024*1024){setPhotoMsg(lang==="es"?"Elige PNG, JPEG o WebP de hasta 2 MB. Puedes ingresar la comida manualmente.":"Choose PNG, JPEG or WebP up to 2 MB. Manual meal entry is available.");return;}
+    setPhotoConsent(false);
     setPhotoBusy(true); setPhotoMsg(null);
     const reader = new FileReader();
     reader.onload = async () => {
@@ -32,18 +37,18 @@ export default function NutritionPage() {
         const res = await fetch("/api/nutrition/photo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: reader.result }),
+          body: JSON.stringify({ image: reader.result, photoConsent:true, photoProviderConsent:"google_gemini", photoSource:"food_photo" }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || "Analysis failed");
-        setForm({
+        setForm(current=>JSON.stringify(current)===JSON.stringify(form)?{
           meal: form.meal,
           food: d.analysis.food || "",
           calories: d.analysis.calories != null ? String(d.analysis.calories) : "",
           proteinG: d.analysis.proteinG != null ? String(d.analysis.proteinG) : "",
           carbsG: d.analysis.carbsG != null ? String(d.analysis.carbsG) : "",
           fatG: d.analysis.fatG != null ? String(d.analysis.fatG) : "",
-        });
+        }:current);
         setPhotoMsg(d.analysis.notes || "✓ Revisa y ajusta antes de guardar");
       } catch (e: any) {
         setPhotoMsg("✗ " + (e.message || "Error"));
@@ -51,6 +56,7 @@ export default function NutritionPage() {
         setPhotoBusy(false);
       }
     };
+    reader.onerror=()=>{setPhotoBusy(false);setPhotoMsg("Photo could not be read. Enter the meal manually.");};
     reader.readAsDataURL(file);
   }
 
@@ -125,16 +131,17 @@ export default function NutritionPage() {
                 <input
                   id="food-photo"
                   type="file"
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/webp"
                   capture="environment"
                   className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) analyzePhoto(f); e.currentTarget.value = ""; }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) {setPhotoFile(f);setPhotoConsent(false);setPhotoMsg(null);} e.currentTarget.value = ""; }}
                 />
                 <button type="button" disabled={photoBusy} onClick={() => document.getElementById("food-photo")?.click()} className="btn-primary text-xs">
                   {photoBusy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {lang === "es" ? "Analizando…" : "Analyzing…"}</> : <><Camera className="w-3.5 h-3.5" /> {lang === "es" ? "Tomar / subir foto" : "Take / upload photo"}</>}
                 </button>
               </div>
-              {photoMsg && <div className="text-[11px] text-slate-600 mt-2 leading-relaxed">{photoMsg}</div>}
+              {photoFile&&<div className="space-y-2 mt-3"><p className="text-sm break-words">{photoFile.name}</p><label className="flex gap-2 text-sm"><input type="checkbox" checked={photoConsent} disabled={photoBusy} onChange={e=>setPhotoConsent(e.target.checked)}/><span>{lang==="es"?"Esta es una foto de comida o su envase, no una captura de dispositivo ni datos importados. Permito que Google Gemini reciba y analice esta foto y las instrucciones, solo para este análisis. Las estimaciones pueden equivocarse. Puedo ingresar la comida manualmente sin usar IA.":"This is a photo of food or its packaging, not a device screenshot or imported data. I allow Google Gemini to receive and analyze this photo and the instructions for this analysis only. Estimates can be wrong. I can enter the meal manually without AI."}</span></label><button type="button" className="btn-secondary" disabled={!photoConsent||photoBusy} onClick={()=>analyzePhoto(photoFile)}>{lang==="es"?"Analizar esta foto con Google Gemini":"Analyze this photo with Google Gemini"}</button></div>}
+            {photoMsg && <div role="status" className="text-[11px] text-slate-600 mt-2 leading-relaxed">{photoMsg}</div>}
             </div>
             <form onSubmit={logFood} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">

@@ -1,7 +1,7 @@
-import { resolveCheckinSafety } from "./checkin-safety";
+import { genericExternalContext, AI_DATA_POLICY_VERSION } from "./ai-data-policy";
 import type { CoachReplyContext } from "./coach-conversation";
 
-export const COACH_CONTEXT_VERSION = "deepseek-personal-v1";
+export const COACH_CONTEXT_VERSION = AI_DATA_POLICY_VERSION;
 export interface ManualCoachActual {
   date: Date | string; source: string | null; planned: boolean; completed: boolean; matchedPlanId: string | null; externalId: string | null;
   actualDurationMin: number | null; durationMin: number; actualSport: string | null; sport: string; rpe: number | null;
@@ -43,23 +43,7 @@ export function minimizedCoachText(text: string): string {
     .replace(/https?:\/\/\S+/gi,"[link removed]").replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,"[email removed]")
     .replace(/(?<!\w)(?:\+?\d[\d ().-]{7,}\d)(?!\w)/g,"[contact number removed]");
 }
-export function externalCoachContext(context: CoachReplyContext,includeAiReplies=false) {
-  const checkin = context.checkin?.observedDate === context.localToday ? context.checkin : null;
-  const safety = resolveCheckinSafety(checkin);
-  const answers = checkin ? Object.fromEntries(["sleep","soreness","motivation","energy","stress","sick","newPain","urgentSymptoms","availableMin"].map(key => [key,
-    typeof checkin[key as keyof typeof checkin] === "boolean" || typeof checkin[key as keyof typeof checkin] === "number" ? checkin[key as keyof typeof checkin] : null])) : null;
-  const facts = context.externalFacts;
-  const fallback = personalCoachFacts(null,false,[],context.localToday);
-  const boundedFacts = facts?.version === COACH_CONTEXT_VERSION ? {
-    version: COACH_CONTEXT_VERSION, profile: { goal: goals.has(facts.profile.goal || "") ? facts.profile.goal : null,
-      experience: levels.has(facts.profile.experience || "") ? facts.profile.experience : null, weightKg: finite(facts.profile.weightKg,20,300), source: "athlete_intent_and_explicit_manual_fields" },
-    recentManualActuals: facts.recentManualActuals.filter(row => row.source === "manual_unmatched_activity" && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && Date.parse(row.date) <= Date.parse(context.localToday) && Date.parse(context.localToday)-Date.parse(row.date)<30*86400000).slice(0,10)
-      .map(row=>({date:row.date,sport:sports.has(row.sport || "")?row.sport:null,actualMinutes:finite(row.actualMinutes,0,1440),reportedRpe:finite(row.reportedRpe,0,10),source:"manual_unmatched_activity"})),
-    historyDays:30, excluded:fallback.excluded,
-  } : fallback;
-  return { date: context.localToday, language: context.language === "es" ? "es" as const : "en" as const, facts: boundedFacts,
-    checkin: { source: "athlete_self_report", status: safety.status, observedDate: checkin?.observedDate ?? null, answers },
-    recentUserMessages: (context.recentMessages || []).filter(m => m.role === "user" && !/strava|ignore (?:all|previous|system)|system prompt|developer message|ignora|exfiltrate/i.test(m.content)).slice(-4).map(m => ({ content: minimizedCoachText(m.content.slice(0,800)), source: "unverified_athlete_message" })),
-    recentAiReplies:includeAiReplies?(context.recentMessages||[]).filter(m=>m.role==='assistant'&&m.source==='deepseek'&&m.externalContextVersion===COACH_CONTEXT_VERSION&&!/strava|ignore (?:all|previous|system)|system prompt|developer message|exfiltrate/i.test(m.content)).slice(-2).map(m=>({content:minimizedCoachText(m.content.slice(0,800)),source:'unverified_prior_ai_explanation'})):[],
-  };
+/** Compatibility boundary: legacy callers cannot export personal facts or memory. */
+export function externalCoachContext(context: CoachReplyContext, _includeAiReplies=false) {
+  return genericExternalContext(context.language);
 }

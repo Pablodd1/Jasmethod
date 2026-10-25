@@ -173,7 +173,7 @@ test("current explicit symptom facts become checkin review proposals only", () =
 
 test("maximum allowed base64 envelope is processed without pathological regex recursion", () => {
   const bytes = Buffer.alloc(2 * 1024 * 1024);
-  assert.ok(parseConversationInput({ message: "", image: { mimeType: "image/png", dataBase64: bytes.toString("base64") } }).image);
+  assert.ok(parseConversationInput({ message: "", imageSource:"manual_note", image: { mimeType: "image/png", dataBase64: bytes.toString("base64") } }).image);
 });
 
 test("broader unresolved physical symptoms suppress exertion advice even with a green checkin", () => {
@@ -491,4 +491,14 @@ test('explicit selected workout changes and reported profile values become propo
  assert.equal(value('My goal FTP is 350 W','ftp'),undefined);
  assert.equal(value('My level is intermediate','experience'),'amateur');
  assert.equal(value('My birth year is 1990','birthYear'),1990);
+});
+
+test('selected half-hour requests remain local proposals with no ambiguous unit conversion',()=>{
+ const selected={...context,sessionId:'session',sessionDate:context.localToday};
+ for(const text of ['Could you make this session half an hour?','Cambia esta sesion a media hora.']) {
+   const proposal=extractLocalCandidates(text,selected).find(c=>c.field==='durationMin');
+   assert.equal(proposal?.value,30);assert.equal(proposal?.status,'proposed');assert.equal(proposal?.sessionId,'session');assert.equal(proposal?.evidence,text);
+ }
+ for(const text of ['Do not make this session half an hour','Make this session about half an hour','Make this session half an hour or one hour','Make this session 45 minutes or half an hour'])assert.equal(extractLocalCandidates(text,selected).find(c=>c.field==='durationMin'),undefined);
+ assert.equal(extractLocalCandidates('Make this session half an hour',context).find(c=>c.field==='durationMin'),undefined);
 });

@@ -146,6 +146,9 @@ jobs:
       - name: EN and ES race lookup and weather context acceptance
         run: node --import tsx scripts/jmm-race-intelligence-browser.cjs
 
+      - name: EN and ES per-image AI consent and manual fallback acceptance
+        run: node scripts/jmm-ai-consent-browser.cjs
+
       - name: EN and ES private commander preview and save-error acceptance
         run: node scripts/jmm-commander-browser.cjs
 
@@ -226,6 +229,8 @@ jobs:
             .local/jmm-race-scenario-integration/report.json
             .local/jmm-race-intelligence-browser/report.json
             .local/jmm-race-intelligence-browser/*.png
+            .local/jmm-ai-consent-browser/report.json
+            .local/jmm-ai-consent-browser/*.png
             .local/jmm-commander-browser/report.json
             .local/jmm-commander-browser/*.png
             .local/jmm-commander-persistence-browser/report.json

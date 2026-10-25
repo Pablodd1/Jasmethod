@@ -73,6 +73,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const [externalConsent, setExternalConsent] = useState(false);
   const [aiReplyMemory,setAiReplyMemory]=useState(false);
   const [imageConsent, setImageConsent] = useState(false);
+  const [imageSource,setImageSource]=useState("unknown");
   const [screenshot, setScreenshot] = useState<Screenshot | null>(null);
   const [imageBusy, setImageBusy] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -117,7 +118,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const textConfigured = capabilities.externalAi === true && capabilities.textProvider === "DeepSeek";
   const imageConfigured = capabilities.imageUnderstanding === true && capabilities.imageProvider === "OpenAI";
   const permissions = coachExternalPermissions(capabilities, externalConsent, imageConsent);
-  const canSendImage = !!screenshot && permissions.image;
+  const canSendImage = !!screenshot && permissions.image && imageSource==="manual_note";
   const blocked = offline || !loaded || needsReload || !!operation || commanderBusy;
   const activeProposal = proposal && ["proposed", "pending"].includes(proposal.status) ? proposal : null;
 
@@ -276,7 +277,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     if (busy.current || blocked || listening || imageBusy || (!message.trim() && !canSendImage)) return;
     setDictationError("");
     const outgoingImage = canSendImage ? { mimeType: screenshot!.mimeType, dataBase64: screenshot!.dataBase64 } : undefined;
-    const outgoing: CoachSendBody = { message: message.trim(), source, externalConsent: permissions.text, ...(permissions.text && aiReplyMemory ? {aiReplyMemoryConsent:true} : {}), ...(permissions.text ? { textProviderConsent: "deepseek" } : {}), ...(outgoingImage ? { image: outgoingImage, imageConsent: true, imageProviderConsent: "openai" } : {}), ...(sessionId ? { sessionId } : {}) };
+    const outgoing: CoachSendBody = { message: message.trim(), source, externalConsent: permissions.text, ...(permissions.text && aiReplyMemory ? {aiReplyMemoryConsent:true} : {}), ...(permissions.text ? { textProviderConsent: "deepseek" } : {}), ...(outgoingImage ? { image: outgoingImage, imageConsent: true, imageProviderConsent: "openai", imageSource:"manual_note" } : {}), ...(sessionId ? { sessionId } : {}) };
     sendAttempt.current = coachSendAttempt(sendAttempt.current, outgoing, () => crypto.randomUUID());
     const clientRequestId = sendAttempt.current.clientRequestId;
     setSendingMessage({ requestId: clientRequestId, content: outgoing.message || (es ? "Captura para revisar" : "Screenshot for review") });
@@ -332,6 +333,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   }
 
   function chooseScreenshot(file: File | undefined) {
+    setImageSource("unknown");setImageConsent(false);
     stopFile(); setImageBusy(false); setScreenshot(null); setExternalConsent(false); setAiReplyMemory(false); setImageConsent(false); setError("");
     if (!file) return;
     const invalid = validateCoachImage(file);
@@ -419,7 +421,6 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
         <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "JMM Coach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
         <p className="mt-1 whitespace-pre-wrap break-words">{entry.content}</p>
         {entry.role==="assistant"&&<button type="button" className="underline text-sm mt-2" onClick={()=>readReply(entry.content)}>{es?"Escuchar con voz local":"Read aloud with local voice"}</button>}
-        {entry.localContextSummary&&<details className="mt-2 text-sm"><summary className="cursor-pointer underline">{es?'Datos guardados · analizados dentro de JMM':'Saved athlete facts · evaluated inside JMM'}</summary><p className="whitespace-pre-wrap break-words mt-2">{entry.localContextSummary}</p></details>}
       </li>)}
       {sendingMessage && <li className="rounded-lg bg-ocean-50 p-3"><p className="text-xs font-semibold text-slate-700">{es ? "Tú · Enviando…" : "You · Sending…"}</p><p className="mt-1 whitespace-pre-wrap break-words">{sendingMessage.content}</p></li>}
       {loaded && !sendingMessage && !messages.length && <li className="text-sm text-slate-700">{es ? "Haz una pregunta sobre tu entrenamiento. Por ejemplo: «¿Qué es el RPE?» o «Tengo una hora para trabajar el VO₂max en pista»." : "Ask a training question. For example: “What is RPE?” or “I have an hour for VO₂max training on the track.”"}</li>}
@@ -458,7 +459,9 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
         {imageBusy && <p role="status" className="text-sm">{es ? "Leyendo archivo local…" : "Reading local file…"}</p>}
         {screenshot && <div className="space-y-2"><Image src={screenshot.dataUrl} width={320} height={200} unoptimized className="h-48 w-full max-w-sm object-contain rounded border" alt={es ? "Vista previa de la captura elegida" : "Preview of selected screenshot"} /><p className="text-xs break-words">{screenshot.name}</p><button type="button" className={secondaryClass} disabled={!!operation} onClick={() => { stopFile(); setImageBusy(false); setScreenshot(null); setExternalConsent(false); setAiReplyMemory(false); setImageConsent(false); }}>{es ? "Quitar captura" : "Remove screenshot"}</button></div>}
         {!imageConfigured && <p className="text-sm text-amber-900">{es ? "El análisis de imágenes no está configurado. La captura solo se previsualiza aquí y no se enviará. Describe sus datos en tu mensaje; no se extraerán valores inventados." : "Image analysis is not configured. The screenshot is previewed here only and will not be sent. Describe its details in your message; no values will be guessed."}</p>}
-        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className={`mt-1 h-5 w-5 shrink-0 ${focus}`} checked={imageConsent} disabled={blocked || !imageConfigured || !screenshot} onChange={event => setImageConsent(event.target.checked)} /><span>{es ? "Permitir a OpenAI analizar esta captura y las instrucciones de extracción, solo para esta respuesta. La imagen puede contener datos personales o de salud. No se comparte mi perfil, conversación ni sesión seleccionada para analizar la imagen." : "Allow OpenAI to analyze this screenshot and extraction instructions, for this reply only. The image may contain personal or health data. My profile, conversation and selected session are not shared for image analysis."}</span></label>
+        <label className="block text-sm">{es?"Origen de la captura":"Screenshot source"}<select className={inputClass} value={imageSource} disabled={blocked||!screenshot} onChange={e=>{setImageSource(e.target.value);setImageConsent(false);}}><option value="unknown">{es?"Desconocido / no confirmado":"Unknown / not confirmed"}</option><option value="manual_note">{es?"Nota escrita manualmente; sin datos de dispositivos o importados":"Manually authored note; no device or imported data"}</option><option value="device">{es?"Dispositivo o aplicación de wearable":"Device or wearable app"}</option><option value="imported">{es?"Datos importados o resúmenes derivados":"Imported data or derived summaries"}</option></select></label>
+        {screenshot&&imageSource!=="manual_note"&&<p role="status" className="text-sm">{es?"No se enviará a OpenAI. Las capturas de dispositivos, importaciones y origen desconocido están bloqueadas, incluso con consentimiento. Usa la revisión local o la entrada manual.":"This will not be sent to OpenAI. Device, imported and unknown-origin screenshots are blocked, even with consent. Use local review or manual entry."}</p>}
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className={`mt-1 h-5 w-5 shrink-0 ${focus}`} checked={imageConsent} disabled={blocked || !imageConfigured || !screenshot || imageSource!=="manual_note"} onChange={event => setImageConsent(event.target.checked)} /><span>{es ? "Permitir a OpenAI analizar esta captura y las instrucciones de extracción, solo para esta respuesta. Confirmo que esta nota manual no contiene datos de dispositivos/importados ni resúmenes derivados. No se comparte mi perfil, conversación ni sesión seleccionada para analizar la imagen." : "Allow OpenAI to analyze this screenshot and extraction instructions, for this reply only. I confirm this manually authored note contains no device/imported data or derived summaries. My profile, conversation and selected session are not shared for image analysis."}</span></label>
         {screenshot && imageConfigured && !imageConsent && <p className="text-sm text-amber-900">{es ? "La captura no se enviará sin tu consentimiento para OpenAI. Puedes enviar solo el texto." : "The screenshot will not be sent without your OpenAI consent. You can send text only."}</p>}
       </div>
 
@@ -533,7 +536,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
       <summary className={`cursor-pointer ${focus}`}>{es ? "Privacidad y detalles de la conversación" : "Privacy & conversation details"}</summary>
       <div className="mt-3 space-y-3">
         <p>{es ? "La conversación se guarda para continuar al volver. El chat funciona sin IA externa. El permiso de DeepSeek dura mientras esta página está abierta; el análisis de capturas pide permiso por envío." : "Your conversation is saved so you can continue when you return. Chat works without external AI. DeepSeek permission lasts while this page is open; screenshot analysis requires permission for each send."}</p>
-    {mode && <p className="text-xs text-slate-700">{mode === "kcoach_ai" || mode === "coach_ai" ? (es ? "Orientación de DeepSeek con contexto manual limitado y permiso mientras esta página está abierta. No es un diagnóstico ni autorización; los cambios requieren revisión y confirmación en JMM." : "Conversational DeepSeek guidance with limited manual context and your permission while this page is open. It is not diagnosis or clearance; changes require JMM review and confirmation.") : (es ? "Respuesta de texto local: usa reglas y tus datos de la app. El análisis de imágenes, si se utiliza, se indica por separado." : "Local text response: uses rules and your in-app data. Image analysis, if used, is identified separately.")}</p>}
+    {mode && <p className="text-xs text-slate-700">{mode === "kcoach_ai" || mode === "coach_ai" ? (es ? "Educación general de DeepSeek con un tema fijo e idioma solamente, con permiso mientras esta página está abierta. No es un diagnóstico ni autorización; los cambios requieren revisión y confirmación en JMM." : "General DeepSeek education using a fixed topic and language only, with your permission while this page is open. It is not diagnosis or clearance; changes require JMM review and confirmation.") : (es ? "Respuesta de texto local: usa reglas y tus datos de la app. El análisis de imágenes, si se utiliza, se indica por separado." : "Local text response: uses rules and your in-app data. Image analysis, if used, is identified separately.")}</p>}
       <button type="button" className={secondaryClass} disabled={blocked || listening || imageBusy || !messages.length} onClick={() => setClearReview(true)}>{es ? "Borrar conversación" : "Clear conversation"}</button>
     {clearReview && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-3" role="group" aria-label={es ? "Confirmar borrado" : "Confirm conversation clearing"}>
       <p>{es ? "¿Borrar solo esta conversación y sus propuestas pendientes? Los datos de perfil, resultados, check-ins, preguntas compartidas con entrenadores y el registro de cambios confirmados se conservan." : "Clear only this conversation and its pending proposals? Profile facts, workout results, check-ins, shared human-coach questions and the confirmed change audit are retained."}</p>

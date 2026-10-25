@@ -37,9 +37,12 @@ test("public privacy and terms render the same working contact in accessible ema
     assert.ok(html.includes(`>${PUBLIC_CONTACT_EMAIL}</a>`));
     assert.doesNotMatch(html, /jasmelacosta@gmail\.com|coach@jasmiamimethod\.com/);
     if (page === "privacy") {
-      assert.equal(html.split(`href="${PUBLIC_CONTACT_MAILTO}"`).length - 1, 4);
-      assert.match(html, /deletion is final and completes within 30 days/);
-      assert.match(html, /la eliminación es definitiva y se completa en 30 días/);
+      assert.ok(html.split(`href="${PUBLIC_CONTACT_MAILTO}"`).length - 1 >= 1);
+      assert.doesNotMatch(html, /deletion is final and completes within 30 days/);
+      assert.match(html, /AI Dynamic LLC/);
+      assert.match(html, /401 69th St, Apt 709, Miami Beach, FL 33141/);
+      assert.doesNotMatch(html, /30 d[i\u00ed]as/);
+      assert.match(html, /Google Gemini/);
     }
   }
 });

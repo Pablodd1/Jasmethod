@@ -311,8 +311,8 @@ test("late provider output cannot resurrect a cleared chat or replace a newer co
     process.env.DEEPSEEK_API_KEY = "synthetic-test-only";
     process.env.DEEPSEEK_MODEL = "deepseek-flash";
     try {
-      const pending = appendConversation(actor, { message: "Explain RPE and easy endurance", clientRequestId: "pending-text-request", source: "text", externalConsent: true, textProviderConsent: "deepseek" });
-      await started;
+      const pending = appendConversation(actor, { message: "What is RPE?", clientRequestId: "pending-text-request", source: "text", externalConsent: true, textProviderConsent: "deepseek" });
+      await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(Error("Provider did not start")),2000))]);
       if (action === "clear") await clearConversation(actor, { confirmed: true });
       else await appendConversation(actor, { message: "A newer message", source: "text", externalConsent: false });
       resolveFetch(Response.json({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: JSON.stringify(providerMode === "selection" ? { answer: "Delayed provider explanation", sourceIds: [] } : { answer: "Delayed provider explanation" }) } }] }));
@@ -345,10 +345,10 @@ test("service wires configured vision only for named per-image consent and prese
     return Response.json({ status: "completed", error: null, incomplete_details: null, output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: JSON.stringify({ candidates: [candidate({ id: "image-weight", source: "image", evidence: "Visible weight 75 kg" })] }) }] }] });
   };
   try {
-    for (const consent of [{ externalConsent: true, textProviderConsent: "deepseek", imageConsent: false }, { imageConsent: true }, { imageConsent: true, imageProviderConsent: "openai" }]) {
+    for (const consent of [{ externalConsent: true, textProviderConsent: "deepseek", imageConsent: false }, { imageConsent: true }, { imageConsent: true, imageSource: "manual_note" as const, imageProviderConsent: "openai" }]) {
       const f = fixture();
       try {
-        const result = await appendConversation(actor, { message: "Review this screenshot", clientRequestId: "image-request", image, ...consent });
+        const result = await appendConversation(actor, { message: "Review this screenshot", clientRequestId: "image-request", image, imageSource:"manual_note", ...consent });
         assert.equal(result.capabilities.imageUnderstanding, true);
         assert.equal(result.capabilities.imageProvider, "OpenAI");
         if (consent.imageProviderConsent === "openai") {
@@ -405,7 +405,7 @@ test("rate budgets and active request lock apply before image decoding or provid
     try {
       const count = kind === "all" ? 30 : kind === "metered" ? 6 : 1;
       f.state.requests = Array.from({ length: count }, (_, index) => ({ id: `old-${index}`, userId: actor.id, clientRequestId: `old-${index}`, requestHash: "hash", status: kind === "active" ? "processing" : "completed", activeKey: kind === "active" ? actor.id : null, metered: kind !== "all", createdAt: new Date() }));
-      await assert.rejects(appendConversation(actor, { message: "Review screenshot", clientRequestId: "budget-request", image }), (e: unknown) => e instanceof ApiError && e.status === (kind === "active" ? 409 : 429));
+      await assert.rejects(appendConversation(actor, { message: "Review screenshot", clientRequestId: "budget-request", imageSource:"manual_note", image }), (e: unknown) => e instanceof ApiError && e.status === (kind === "active" ? 409 : 429));
       assert.equal(f.state.messages.length, 1);
       assert.deepEqual(f.state.writes, []);
     } finally { f.restore(); }
@@ -441,7 +441,7 @@ test("deferred vision followed by clear cannot recreate chat or proposals", asyn
   const start = new Promise<void>(resolve => { started = resolve; });
   let calls = 0;
   globalThis.fetch = async () => { calls++; started(); return new Promise<Response>(resolve => { resolveFetch = resolve; }); };
-  const body = { message: "Read screenshot", clientRequestId: "delayed-image", image: { mimeType: "image/png", dataBase64: data.toString("base64") }, imageConsent: true, imageProviderConsent: "openai" };
+  const body = { message: "Read screenshot", clientRequestId: "delayed-image", image: { mimeType: "image/png", dataBase64: data.toString("base64") }, imageConsent: true, imageSource: "manual_note" as const, imageProviderConsent: "openai" };
   try {
     const pending = appendConversation(actor, body);
     await start;
@@ -500,10 +500,10 @@ test("conversation reads owner-only actual JStress and explicit rest without leg
     f.state.loadWorkouts = [recorded, { ...recorded, id: "other", userId: "athlete-b" }, { ...recorded, id: "matched-plan", matchedPlanId: "actual-a" }, { ...recorded, id: "incomplete", completed: false }, { ...recorded, id: "partial", completed: false, feedbackStatus: "partial", actualDurationMin: 10, rpe: 3 }];
     f.state.restObservations = [{ userId: actor.id, metricType: "jmm_rest_day", source: "manual", value: 1, qualityFlag: "ok", measurementMethod: "athlete_reported_rest", observedAt: new Date(`${today}T00:00Z`) }];
     const result = await appendConversation(actor, { message: "What is my JStress?" });
-    assert.match(result.answer, /Recorded-session total: 130 AU/);
-    assert.match(result.answer, /2\/2 performed sessions/);
-    assert.match(result.answer, new RegExp(`JStress \\(${today}\\): 0 AU`));
-    assert.match(result.answer, /88 days are unknown/);
+    assert.match(result.answer,/not retained in chat/);assert.doesNotMatch(result.answer,/130 AU/);
+    assert.doesNotMatch(result.answer, /2\/2 performed sessions/);
+    assert.doesNotMatch(result.answer,/0 AU/);
+    assert.doesNotMatch(result.answer,/88 days are unknown/);
     assert.doesNotMatch(result.answer, /999/);
     assert.equal(f.state.loadQuery.userId, actor.id);
     assert.equal(f.state.restQuery.measurementMethod, "athlete_reported_rest");
@@ -532,7 +532,7 @@ test("coach ignores superseded plans on an active rest day but suppresses moveme
     f.state.todayRecoverySessions = [{ id: "superseded-plan-row", planned: false, completed: false, approved: true, durationMin: 75, intensity: "z3", planDay: { dayOff: false } }];
     f.state.checkin = { answers: JSON.stringify({ sleep: 4, soreness: 2, motivation: 4, energy: 4, stress: 2, sick: false, newPain: false, urgentSymptoms: false, availableMin: 30 }) };
     const first = await appendConversation(actor, { message: "Explain my recovery day" });
-    assert.match(first.answer, /20 min very easy Z1/);
+    assert.doesNotMatch(first.answer, /20 min very easy Z1/);
     f.state.loadWorkouts = [{ id: "actual-today", userId: actor.id, date: new Date(), completed: true, planned: false, matchedPlanId: null, durationMin: 20, rpe: 2 }];
     const afterActivity = await appendConversation(actor, { message: "Explain my recovery day now" });
     assert.doesNotMatch(afterActivity.answer, /20 min very easy Z1/);
@@ -597,12 +597,12 @@ test("named DeepSeek conversation reads only bounded manual export history, pers
   globalThis.fetch=async(_url,init)=>{calls++;sent=JSON.parse(JSON.parse(String(init?.body)).messages[1].content);return Response.json({choices:[{finish_reason:"stop",message:{role:"assistant",content:JSON.stringify({answer:"We can discuss consistency around your reported goals. The available history is partial; review the saved plan before changes.",sourceIds:[]})}}]});};
   const before=structuredClone({profile:f.state.profile,workout:f.state.workout});
   try {
-    const request={message:"How can my training become more consistent?",externalConsent:true,textProviderConsent:"deepseek",clientRequestId:"deepseek-context-one"};
+    const request={message:"What is RPE?",externalConsent:true,textProviderConsent:"deepseek",clientRequestId:"deepseek-context-one"};
     const result=await appendConversation(actor,request);
     assert.equal(result.mode,"coach_ai");assert.equal(result.externalStatus,"answered");assert.equal(result.trainingModified,false);
     assert.equal(result.capabilities.textProvider,"DeepSeek");assert.equal(calls,1);
-    assert.deepEqual({source:f.state.externalRead.where.source,planned:f.state.externalRead.where.planned,matchedPlanId:f.state.externalRead.where.matchedPlanId,externalId:f.state.externalRead.where.externalId,take:f.state.externalRead.take},{source:"manual",planned:false,matchedPlanId:null,externalId:null,take:10});
-    assert.equal(sent.context.facts.profile.weightKg,null);assert.equal(sent.context.facts.recentManualActuals.length,0);
+    assert.equal(f.state.externalRead,undefined);assert.deepEqual(sent.context,{version:"generic-education-v2",language:"en"});
+    assert.equal(sent.message,undefined);assert.deepEqual(sent.changeFields,[]);
     assert.equal(f.state.messages.at(-1).source,"deepseek");assert.equal(JSON.parse(f.state.messages.at(-1).metadata).namedConsent,"deepseek");
     assert.deepEqual(f.state.writes,[]);assert.deepEqual({profile:f.state.profile,workout:f.state.workout},before);
     const replay=await appendConversation(actor,request);assert.equal(replay.replayed,true);assert.equal(calls,1);
@@ -626,11 +626,11 @@ test("personal overview combines owner-only actual history, biometrics and race 
     f.state.metrics = [metric, { ...metric, userId: "athlete-b", date: bounds.start, hrv: 999 }];
     f.state.races = [race, { ...race, userId: "athlete-b", name: "Other athlete race", date: bounds.start }];
     const result = await appendConversation(actor, { message: "Analyze my profile, goal, training history, sleep and upcoming race" });
-    assert.match(result.answer, /sport\/goal: 5k/);
-    assert.match(result.answer, /2\/3 returned session reports.*50 min total/);
-    assert.match(result.answer, /oura.*sleep 7 h, resting HR unknown bpm, HRV 44 ms \(rmssd\)/);
-    assert.match(result.answer, /Saved test race/);
-    assert.match(result.answer, /do not predict a finish time/);
+    assert.match(result.answer,/not retained in chat/);
+    assert.doesNotMatch(result.answer,/50 min total/);
+    assert.doesNotMatch(result.answer,/oura|HRV 44/);
+    assert.doesNotMatch(result.answer,/Saved test race/);
+    assert.match(result.answer,/Review Today/);
     assert.doesNotMatch(result.answer, /999|888|777|Other athlete race/);
     assert.equal(result.proposal?.id, "proposal-a", "A read-only summary must not create a new proposal");
     assert.deepEqual(result.proposal?.candidates, []);
@@ -657,7 +657,7 @@ test("latest-session questions request one actual report without unrelated biome
     const report = { id: "latest", userId: actor.id, date: new Date(`${today}T00:00:00Z`), matchedPlanId: null, planned: true, completed: true, durationMin: 80, sport: "run", feedbackStatus: "completed", actualDurationMin: 25, actualSport: "run", rpe: 3 };
     f.state.recentFeedback = [report, { ...report, id: "older", date: localDate(addDaysKey(today, -2), actor.timezone), actualDurationMin: 40 }];
     const result = await appendConversation(actor, { message: "How was my last workout?" });
-    assert.match(result.answer, /actual duration 25 min/);
+    assert.doesNotMatch(result.answer,/actual duration 25 min/);assert.match(result.answer,/not retained in chat/);
     assert.equal(f.state.feedbackRead.take, 1);
     assert.equal(f.state.metricsRead, undefined);
     assert.equal(f.state.raceRead, undefined);
@@ -670,7 +670,7 @@ test("explicit personal-summary aliases fetch bounded saved context while conver
     const f = fixture([]);
     try {
       const result = await appendConversation(actor, { message });
-      assert.match(result.answer, /Your saved sport\/goal: 5k/, message);
+      assert.match(result.answer,/not retained in chat/,message);
       assert.equal(f.state.feedbackRead.take, 200);
       assert.equal(f.state.feedbackRead.where.userId, actor.id);
       assert.equal(f.state.metricsRead.where.userId, actor.id);
@@ -743,7 +743,7 @@ test('chat workout confirmation protects recovery, event sessions and stale revi
  }
 });
 
-test('DeepSeek interpretation creates an owner-bound review proposal, then confirmation alone changes the workout',async()=>{
+test('local fallback creates an owner-bound review proposal without external text transmission, then confirmation alone changes the workout',async()=>{
  const f=fixture(),originalFetch=globalThis.fetch,oldEnv={enabled:process.env.EXTERNAL_AI_ENABLED,key:process.env.DEEPSEEK_API_KEY,model:process.env.DEEPSEEK_MODEL};
  const message='Could you make this session half an hour?';let calls=0;
  try {
@@ -751,10 +751,21 @@ test('DeepSeek interpretation creates an owner-bound review proposal, then confi
    process.env.EXTERNAL_AI_ENABLED='true';process.env.DEEPSEEK_API_KEY='synthetic-test-only';process.env.DEEPSEEK_MODEL='deepseek-flash';
    globalThis.fetch=async(url,init)=>{calls++;assert.equal(String(url),'https://api.deepseek.com/chat/completions');const payload=JSON.parse(String(init?.body));assert.ok(!payload.messages[1].content.includes('session-a'));return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({answer:'I can propose a duration of 30 minutes for your review.',sourceIds:[],changes:[{kind:'workout_plan',field:'durationMin',unit:'min',value:30,evidence:message}]})}}]});};
    const result=await appendConversation(actor,{message,sessionId:'session-a',source:'voice',externalConsent:true,textProviderConsent:'deepseek',clientRequestId:'ai-change-once'});
-   assert.equal(result.externalStatus,'answered');assert.equal(calls,1);assert.equal(f.state.workout.durationMin,40);assert.deepEqual(f.state.writes,[]);
+   assert.equal(result.externalStatus,'policy_local');assert.equal(calls,0);assert.equal(f.state.workout.durationMin,40);assert.deepEqual(f.state.writes,[]);
    const proposal=result.proposal!;assert.equal(proposal.status,'pending');assert.equal(proposal.candidates[0].source,'voice');assert.equal(proposal.candidates[0].sessionId,'session-a');
    const body={proposalId:proposal.id,expectedRevision:proposal.revision,candidates:proposal.candidates,confirmed:true,idempotencyKey:'ai-confirm-once'};
    const saved=await confirmConversation(actor,body);assert.equal(saved.trainingModified,true);assert.equal(f.state.workout.durationMin,30);assert.equal(f.state.workout.approved,false);
-   const writes=f.state.writes.length;await confirmConversation(actor,body);assert.equal(f.state.writes.length,writes);assert.equal(calls,1);
+   const writes=f.state.writes.length;await confirmConversation(actor,body);assert.equal(f.state.writes.length,writes);assert.equal(calls,0);
  }finally{globalThis.fetch=originalFetch;for(const [key,value] of Object.entries({EXTERNAL_AI_ENABLED:oldEnv.enabled,DEEPSEEK_API_KEY:oldEnv.key,DEEPSEEK_MODEL:oldEnv.model})){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
+});
+
+
+test("legacy AI memory and imported summaries are withheld from chat and cannot contaminate a new reply",async()=>{
+ const f=fixture([]);
+ try{
+  f.state.messages.push({id:"legacy-device-summary",userId:actor.id,conversationId:"conversation-a",role:"assistant",source:"deepseek",content:"DEVICE_SUMMARY_CANARY_6654321",createdAt:new Date(),metadata:JSON.stringify({contextVersion:"deepseek-personal-v1",localContextSummary:"DERIVED_CANARY_77777"})});
+  const result=await appendConversation(actor,{message:"What is RPE?",clientRequestId:"privacy-legacy",externalConsent:false});
+  assert.ok(!JSON.stringify(result).includes("DEVICE_SUMMARY_CANARY"));assert.ok(!JSON.stringify(result).includes("DERIVED_CANARY"));
+  const latest=result.conversation.messages.at(-1)!;assert.match(latest.content,/effort|RPE/i);assert.deepEqual(f.state.writes,[]);
+ }finally{f.restore();}
 });
