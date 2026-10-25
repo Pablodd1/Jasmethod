@@ -4,7 +4,8 @@ export type CommanderDraft = { area: CommanderArea; weeks?: number; startDate?: 
 export function commanderDraft(message: string): CommanderDraft | null {
   const text = message.trim();
   if (!text || text.length > 4000) return null;
-  const area: CommanderArea | null = /\b(?:race|venue|triathlon|carrera objetivo|competici[oó]n|sede)\b/i.test(text) ? "race"
+  const requestsCycle = /\b(?:plan|cycle|ciclo)\b/i.test(text) && /\b(?:build|create|generate|revise|replace|change|want|make|crea|genera|cambia|quiero|prepara)\b/i.test(text);
+  const area: CommanderArea | null = requestsCycle ? "plan" : /\b(?:race|venue|triathlon|carrera objetivo|competici[oó]n|sede)\b/i.test(text) ? "race"
     : /\b(?:plan|cycle|weeks?|ciclo|semanas?)\b/i.test(text) ? "plan"
     : /\b(?:schedule|weekday|rest day|days off|no day off|availability|horario|descanso|disponibilidad)\b/i.test(text) ? "profile"
     : /\b(?:interval|workout|session|intervalos|sesi[oó]n|entrenamiento)\b/i.test(text) ? "session" : null;

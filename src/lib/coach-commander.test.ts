@@ -10,6 +10,9 @@ test("commander extracts explicit plan horizon/start without guessing race dates
   assert.equal(commanderDraft("Plan starting 2026-02-30")?.startDate,undefined);
   assert.equal(commanderDraft("Build 8 weeks or 12 weeks")?.weeks,undefined);
   assert.equal(commanderDraft("I can train every weekday")?.area,"profile");
+  assert.equal(commanderDraft("Build my 12 week triathlon plan")?.area,"plan");
+  assert.equal(commanderDraft("Quiero un plan de triathlon de 8 semanas")?.weeks,8);
+  assert.equal(commanderDraft("Find my triathlon venue")?.area,"race");
   assert.equal(commanderDraft("hello"),null);
   assert.equal(commanderDraft("x".repeat(4001)),null);
 });
