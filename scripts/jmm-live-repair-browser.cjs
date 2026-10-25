@@ -186,11 +186,11 @@ async function main() {
         if(path==='/api/assistant'&&req.method()==='POST') {
           const input=req.postDataJSON();sends++;
           assert.equal(input.externalConsent,true);assert.equal(input.textProviderConsent,'deepseek');assert.equal(input.sessionId,session.id);
-          assert.equal(input.aiReplyMemoryConsent,sends===1?undefined:true);
+          assert.equal(input.aiReplyMemoryConsent,undefined);
           messages.push({id:`action-user-${sends}`,role:'user',content:input.message,source:'text',createdAt:new Date().toISOString(),clientRequestId:input.clientRequestId});
-          messages.push({id:`action-answer-${sends}`,role:'assistant',content:'Synthetic interpretation: review the proposed duration before confirming. Nothing has been saved.',source:'deepseek',needsHumanReview:true,createdAt:new Date().toISOString()});
+          messages.push({id:`action-answer-${sends}`,role:'assistant',content:'Synthetic local review: check the proposed duration before confirming. Nothing has been saved.',source:'local',needsHumanReview:true,createdAt:new Date().toISOString()});
           if(sends===1)proposal={id:'synthetic-review-proposal',revision:1,status:'pending',candidates:[{id:'duration-change',kind:'workout_plan',field:'durationMin',value:30,unit:'min',observedDate:today,source:'text',evidence:input.message,sessionId:session.id,status:'proposed'}]};
-          return route.fulfill({json:{ok:true,capabilities,conversation:{id:'synthetic-review-chat',messages},proposal,mode:'coach_ai',externalStatus:'answered'}});
+          return route.fulfill({json:{ok:true,capabilities,conversation:{id:'synthetic-review-chat',messages},proposal,mode:'coach_local',externalStatus:'policy_local'}});
         }
         if(path==='/api/assistant/escalate'&&req.method()==='POST') {
           const input=req.postDataJSON();shares++;assert.equal(input.confirmed,true);assert.equal(input.notifyAdmin,false);assert.equal(input.sourceMessageId,'action-user-2');assert.equal(input.question,'Synthetic question reviewed for the human coach.');
@@ -199,16 +199,15 @@ async function main() {
         unexpected.push(`${req.method()} ${path}`);return route.fulfill({status:500,json:{error:'Unexpected synthetic operation'}});
       });
       await page.goto(`${base}/coach`);
-      const ai=page.getByLabel('Use DeepSeek for conversation while this page is open',{exact:true});await ai.waitFor();
+      const ai=page.getByLabel('Use DeepSeek only for general education while this page is open',{exact:true});await ai.waitFor();
       assert.equal(await ai.isChecked(),false);await ai.check();
-      const memory=page.getByLabel(/Also include up to two previous DeepSeek replies/);assert.equal(await memory.isChecked(),false);
+      const memory=page.getByLabel(/Also include up to two previous DeepSeek replies/);assert.equal(await memory.count(),0);
       await page.getByRole('textbox',{name:'Your message',exact:true}).fill('Make this session half an hour');
       await page.getByRole('button',{name:'Send message',exact:true}).click();
       await page.getByText('Review 1 proposed facts · Not saved',{exact:true}).waitFor({state:'visible'});
       assert.equal(await page.getByRole('button',{name:'Approve changes (0)',exact:true}).isDisabled(),true);
       assert.equal(await page.getByLabel('Value (min)',{exact:true}).isVisible(),true,'Proposal is expanded without another click');
       assert.equal(await ai.isChecked(),true,'Page permission persists after a send');
-      await memory.check();
       await page.getByRole('textbox',{name:'Your message',exact:true}).fill('Why do you recommend that?');await page.getByRole('button',{name:'Send message',exact:true}).click();
       await page.getByRole('list',{name:'Conversation history',exact:true}).getByText('Why do you recommend that?',{exact:true}).waitFor({state:'visible'});
       await page.getByRole('button',{name:'Ask a human coach',exact:true}).click();
@@ -218,8 +217,8 @@ async function main() {
       assert.equal(sends,2);assert.equal(shares,1);assert.equal(await ai.isChecked(),true);
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
       await page.screenshot({path:`${dir}/confirmed-actions-${width}.png`});
-      await page.reload();await ai.waitFor();assert.equal(await ai.isChecked(),false);assert.equal(await memory.isChecked(),false);
-      results.push({width,confirmedActionReview:'pass',pageScopedAiConsent:'pass',optionalMemory:'pass',humanHandoff:'pass'});
+      await page.reload();await ai.waitFor();assert.equal(await ai.isChecked(),false);assert.equal(await memory.count(),0);
+      results.push({width,confirmedActionReview:'pass',pageScopedAiConsent:'pass',legacyMemoryAbsent:'pass',humanHandoff:'pass'});
       await context.close();
     }
     {
