@@ -239,8 +239,8 @@ for (const es of [false, true]) test(`AI choice and workout scope are visible; o
   assert.match(markup,/tel:\+17869708366/);
   assert.doesNotMatch(markup, /<details[^>]*\bopen(?:=|>|\s)/);
   assert.ok(markup.includes("DeepSeek") && markup.includes("OpenAI"));
-  assert.ok(markup.includes(es ? "cuatro mensajes" : "four recent messages"));
-  assert.ok(markup.includes(es ? "diez actividades manuales" : "ten manual activities"));
+  assert.ok(markup.includes(es ? "Memoria externa de IA desactivada" : "External AI memory is disabled"));
+  assert.ok(markup.includes(es ? "tema de una lista fija" : "allowlisted topic"));
   assert.ok(markup.includes(es ? "mientras esta página esté abierta" : "while this page is open"));
   assert.ok(markup.includes(es ? "revisión y confirmación" : "review and confirmation"));
   assert.ok(markup.includes(es ? "Sí, borrar conversación" : "Yes, clear conversation") === false);

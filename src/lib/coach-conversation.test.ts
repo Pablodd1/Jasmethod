@@ -173,7 +173,7 @@ test("current explicit symptom facts become checkin review proposals only", () =
 
 test("maximum allowed base64 envelope is processed without pathological regex recursion", () => {
   const bytes = Buffer.alloc(2 * 1024 * 1024);
-  assert.ok(parseConversationInput({ message: "", image: { mimeType: "image/png", dataBase64: bytes.toString("base64") } }).image);
+  assert.ok(parseConversationInput({ message: "", imageSource:"manual_note", image: { mimeType: "image/png", dataBase64: bytes.toString("base64") } }).image);
 });
 
 test("broader unresolved physical symptoms suppress exertion advice even with a green checkin", () => {

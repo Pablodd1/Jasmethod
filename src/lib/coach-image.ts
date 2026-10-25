@@ -1,3 +1,4 @@
+import { assertScreenshotSource, type ScreenshotSource } from "./ai-data-policy";
 import { COACH_IMAGE_MAX_BYTES, parseConversationInput, validateCoachCandidates, type CoachCandidate, type CoachImageInput } from "./coach-conversation";
 
 export const COACH_IMAGE_MAX_DIMENSION = 4096;
@@ -16,7 +17,7 @@ function detectedMime(bytes: Buffer): CoachImageInput["mimeType"] | null {
 /** Local decode + re-encode strips EXIF/GPS, comments and non-pixel payloads.
  * No URLs, fetches, filesystem paths, SVG, or trusting client dimensions. */
 export async function validateCoachImage(raw: unknown): Promise<ValidatedCoachImage> {
-  const { image } = parseConversationInput({ message: "", image: raw });
+  const { image } = parseConversationInput({ message: "", image: raw, imageSource: "manual_note" });
   if (!image) throw Error("Missing image bytes");
   const bytes = Buffer.from(image.dataBase64, "base64");
   if (!bytes.length || bytes.length > COACH_IMAGE_MAX_BYTES || bytes.toString("base64") !== image.dataBase64) throw Error("Invalid image bytes or size; maximum 2 MB");
@@ -40,9 +41,10 @@ export const IMAGE_EXTRACTION_INSTRUCTION = `Extract only explicitly visible ath
  * no default network/model call and no athlete context beyond the submitted image. */
 export async function extractImageCandidates(
   raw: unknown,
-  context: { localToday: string; imageConsent: boolean; imageProviderConsent?: "openai"; sessionId?: string },
+  context: { localToday: string; imageConsent: boolean; imageProviderConsent?: "openai"; imageSource?: ScreenshotSource; sessionId?: string },
   provider?: CoachImageProvider,
 ): Promise<ImageCandidateResult> {
+  assertScreenshotSource(context.imageSource);
   const image = await validateCoachImage(raw);
   if (context.imageConsent !== true || context.imageProviderConsent !== "openai") return { candidates: [], status: "not_requested", warnings: ["Image validated locally. Explicit consent is required before sending it to an external provider."] };
   if (!provider) return { candidates: [], status: "not_configured", warnings: ["External image extraction is not configured. Enter the visible values as text; nothing was extracted or saved."] };

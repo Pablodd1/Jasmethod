@@ -186,6 +186,7 @@ export type CoachSendBody = {
   textProviderConsent?: "deepseek";
   imageConsent?: boolean;
   imageProviderConsent?: "openai";
+  imageSource?: "manual_note" | "device" | "imported" | "unknown";
   image?: { mimeType: "image/png" | "image/jpeg" | "image/webp"; dataBase64: string };
   sessionId?: string;
 };
@@ -193,7 +194,7 @@ export type CoachSendAttempt = { signature: string; clientRequestId: string };
 export function coachSendAttempt(previous: CoachSendAttempt | null, body: CoachSendBody, createId: () => string): CoachSendAttempt {
   // An explicit sequence is stable across object property insertion order. Include
   // every provider-affecting field so changed consent can never reuse a paid claim.
-  const signature = JSON.stringify([body.message, body.source, body.sessionId ?? null, body.externalConsent, body.aiReplyMemoryConsent === true, body.textProviderConsent ?? null, body.imageConsent === true, body.imageProviderConsent ?? null, body.image?.mimeType ?? null, body.image?.dataBase64 ?? null]);
+  const signature = JSON.stringify([body.message, body.source, body.sessionId ?? null, body.externalConsent, body.aiReplyMemoryConsent === true, body.textProviderConsent ?? null, body.imageConsent === true, body.imageProviderConsent ?? null, body.imageSource ?? null, body.image?.mimeType ?? null, body.image?.dataBase64 ?? null]);
   return previous?.signature === signature ? previous : { signature, clientRequestId: createId() };
 }
 export function coachSendWasRecorded(attempt: CoachSendAttempt | null, messages: CoachMessage[]): boolean {

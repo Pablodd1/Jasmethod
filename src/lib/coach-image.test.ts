@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import sharp from "sharp";
 import { extractImageCandidates, IMAGE_EXTRACTION_INSTRUCTION, validateCoachImage } from "./coach-image";
 import type { CoachCandidate } from "./coach-conversation";
-const ctx = { localToday: "2026-10-03", imageConsent: true, imageProviderConsent: "openai" as const, sessionId: "selected" };
+const ctx = { localToday: "2026-10-03", imageConsent: true, imageSource: "manual_note" as const, imageProviderConsent: "openai" as const, sessionId: "selected" };
 async function fixture(format: "png" | "jpeg" | "webp" = "png") { const data = await sharp({ create: { width: 12, height: 10, channels: 3, background: "white" } }).toFormat(format).toBuffer(); return { mimeType: `image/${format}` as "image/png" | "image/jpeg" | "image/webp", dataBase64: data.toString("base64") }; }
 const candidate: CoachCandidate = { id: "image_1", kind: "workout_feedback", field: "actualDurationMin", value: 30, unit: "min", observedDate: ctx.localToday, source: "image", evidence: "Completed: 2026-10-03. Duration 30 min", status: "proposed" };
 
