@@ -28,14 +28,15 @@ export function buildTrainingWeekReview(rows: readonly WeekRow[], userId: string
   const review = truncated || repeated || !!reconciled?.unresolvedGroups || !!reconciled?.groups.some(group => group.budgetMinutes === null);
   const known = policy.status === "allowed" && !review && !!actual.length;
   const ahead = owned.filter(row => row.localDay > today && row.planned && !hasPerformedTraining(row) && row.feedbackStatus !== "skipped" && row.planDay?.planId === activePlanId && activePlanId !== null);
+  const aheadUnavailable = truncated || !activePlanId || derivedActivityPolicy(ahead).status !== "allowed";
   const validAhead = ahead.every(row => typeof row.durationMin === "number" && Number.isFinite(row.durationMin) && row.durationMin >= 0 && row.durationMin <= 1440);
   return {
     start: bounds.start, end: bounds.end, today, coverage: "recorded_only" as const,
     past: { status: policy.status !== "allowed" ? "restricted" as const : review ? "review" as const : actual.length ? "available" as const : "unknown" as const,
       sessions: known ? reconciled!.groups.length : null,
       minutes: known ? reconciled!.groups.reduce((sum, group) => sum + group.budgetMinutes!, 0) : null },
-    ahead: { sessions: truncated || !activePlanId ? null : ahead.length, minutes: truncated || !activePlanId || !validAhead ? null : ahead.reduce((sum, row) => sum + row.durationMin!, 0),
-      next: truncated || !activePlanId ? null : [...ahead].sort((a,b) => a.localDay.localeCompare(b.localDay) || a.id.localeCompare(b.id)).slice(0,3).map(row => ({ id: row.id, date: row.localDay, title: row.title, minutes: row.durationMin ?? null })) },
+    ahead: { sessions: aheadUnavailable ? null : ahead.length, minutes: aheadUnavailable || !validAhead ? null : ahead.reduce((sum, row) => sum + row.durationMin!, 0),
+      next: aheadUnavailable ? null : [...ahead].sort((a,b) => a.localDay.localeCompare(b.localDay) || a.id.localeCompare(b.id)).slice(0,3).map(row => ({ id: row.id, date: row.localDay, title: row.title, minutes: row.durationMin ?? null })) },
     usage: "local_display_only" as const,
   };
 }

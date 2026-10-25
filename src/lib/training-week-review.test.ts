@@ -29,6 +29,7 @@ test("foreign, invalid-date and outside-week records cannot enter the week", () 
 });
 test("source restrictions and duplicate identifiers withhold derived totals", () => {
   for(const source of ["strava","unrecognized"]) assert.equal(review([row("restricted","2026-10-19",{source})]).past.status,"restricted");
+  for(const source of ["strava","unrecognized"]) assert.equal(review([row("future-restricted","2026-10-22",{source,planned:true,completed:false,planDay:{planId:"active"}})]).ahead.minutes,null);
   const result = review([row("a","2026-10-19T08:00Z",{source:"garmin",externalId:"same"}),row("b","2026-10-19T08:00Z",{source:"garmin",externalId:"same"})]);
   assert.equal(result.past.status,"review");assert.equal(result.past.minutes,null);
 });

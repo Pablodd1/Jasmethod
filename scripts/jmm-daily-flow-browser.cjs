@@ -46,7 +46,7 @@ function fixtures(language) {
   function rich(reviewed = false) {
     const current = reviewed ? canonical : blocked;
     return { date: today, timezone: 'UTC', language, units: 'metric', inputContext, recovery: {mode:reviewed?'training':'checkin-needed',safetyStatus:'unknown',reviewedSessionId:reviewed?workout.id:null},
-      weekReview: buildTrainingWeekReview([recent,{...workout,id:'synthetic-next',date:new Date(now.getTime()+86400000).toISOString(),durationMin:30,planDay:{planId:'synthetic-cycle'}}],user.id,today,'UTC','synthetic-cycle'),
+      weekReview: buildTrainingWeekReview([recent,{...workout,id:'synthetic-next',source:'plan',date:new Date(now.getTime()+86400000).toISOString(),durationMin:30,planDay:{planId:'synthetic-cycle'}}],user.id,today,'UTC','synthetic-cycle'),
       cycle: { start: today, end: today, status: 'active', weeks: 1, currentWeek: 1 },
       connectors: [{ provider: 'whoop', status: 'connected', lastSyncAt: now.toISOString() }],
       sessions: [{ ...workout, durationMin: current.durationMin, plannedDurationMin: 45, verdict: current.verdict,
