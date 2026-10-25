@@ -40,7 +40,10 @@ test("public privacy and terms render the same working contact in accessible ema
       assert.ok(html.split(`href="${PUBLIC_CONTACT_MAILTO}"`).length - 1 >= 1);
       assert.doesNotMatch(html, /deletion is final and completes within 30 days/);
       assert.match(html, /AI DYNAMICS INC/);
-      assert.match(html, /mailing address awaiting confirmation/);
+      assert.match(html, /401 69th St, Apt 709, Miami Beach, FL 33141, USA/);
+      assert.match(html, /responsible for processing JMM users/);
+      assert.match(html, /responsable del tratamiento de los datos personales/);
+      assert.doesNotMatch(html, /awaiting confirmation|pendiente de confirmaci/);
       assert.doesNotMatch(html, /30 d[i\u00ed]as/);
       assert.match(html, /OpenAI/);
     }
