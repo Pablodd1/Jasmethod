@@ -129,14 +129,14 @@ export default function RacesPage() {
           <p className="text-slate-500 text-sm">{t("Save the event first. Add venue and course details when you know them.", "Guarda primero la carrera. Añade lugar y recorrido cuando los conozcas.")}</p>
         </div>
 
-        <Link href="/races/scenarios" className="btn-primary justify-center w-fit">
+        <Link href="/races/scenarios" className="btn-secondary min-h-11 justify-center w-fit">
           <Gauge className="w-4 h-4" aria-hidden="true" /> {lang === "es" ? "Revisar lugar y pronóstico" : "Review venue & forecast"}
         </Link>
 
         {saved && <p role="status" className="text-sm text-emerald-800">{t("Race saved. Review a new plan preview if the event date or priority changed.", "Carrera guardada. Revisa una nueva vista previa si cambió la fecha o prioridad.")}</p>}
         {err && <div role="alert" className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
 
-        <p role="status" className="text-sm rounded-lg border p-3">{lang === "es" ? "¿Cambiaste fecha o prioridad? Revisa una nueva vista previa. Tu plan guardado no cambia." : "Changed the date or priority? Review a new plan preview. Your saved plan stays unchanged."} <Link href="/training" className="underline">{lang === "es" ? "Revisar ciclo actualizado" : "Review updated cycle"}</Link></p>
+        {races.length > 0 && <p role="status" className="text-sm rounded-lg border p-3">{lang === "es" ? "¿Cambiaste fecha o prioridad? Revisa una nueva vista previa. Tu plan guardado no cambia." : "Changed the date or priority? Review a new plan preview. Your saved plan stays unchanged."} <Link href="/training" className="underline">{lang === "es" ? "Revisar ciclo actualizado" : "Review updated cycle"}</Link></p>}
 
         {/* Races list */}
         {!loading && races.length > 0 && (

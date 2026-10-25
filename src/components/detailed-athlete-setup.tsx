@@ -315,15 +315,16 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
     <ProtectedPage>
       <div className="training-workflow max-w-2xl mx-auto py-4 px-1 sm:px-4">
         <TrainingWorkflowNav active="setup" es={lang === "es"} />
-        <header className="my-5 space-y-2"><p className="text-sm font-semibold">{t("Free pilot · no payment required", "Piloto gratuito · sin pago")}</p><h1 className="font-display text-3xl">{user?.onboarded ? t("Review your athlete setup", "Revisa tu perfil de atleta") : t("Welcome to JMM", "Bienvenido a JMM")}</h1><p className="text-sm">{t("Start with your goal and available time. Devices, races and performance tests are optional. Save each section when ready.", "Empieza por tu objetivo y tiempo disponible. Dispositivos, carreras y pruebas son opcionales. Guarda cada sección cuando esté lista.")}</p></header>
-        {returnToTraining && <section className="mb-5 rounded-xl border border-ocean-200 bg-ocean-50 p-4 space-y-2">
-          <h2 className="font-display text-xl">{t("Before your plan preview", "Antes de ver tu plan")}</h2>
-          <p>{t("Confirm recent training, available days and current restrictions. Save, preview your plan, then confirm it.", "Confirma entrenamiento reciente, días disponibles y restricciones actuales. Guarda, revisa la vista previa y confirma el plan.")}</p>
-          <Link className="underline" href="/training">{t("Back to training without saving", "Volver al entrenamiento sin guardar")}</Link>
-        </section>}
+        <header className="my-5 space-y-2">
+          {!returnToTraining && <p className="text-sm font-semibold">{t("Free pilot · no payment required", "Piloto gratuito · sin pago")}</p>}
+          <h1 className="font-display text-2xl font-bold">{returnToTraining ? t("Before your plan preview", "Antes de ver tu plan") : user?.onboarded ? t("Review your athlete setup", "Revisa tu perfil de atleta") : t("Welcome to JMM", "Bienvenido a JMM")}</h1>
+          <p className="text-sm">{returnToTraining ? t("Confirm recent training, available days and current restrictions. Save, preview, then confirm your plan.", "Confirma entrenamiento reciente, días disponibles y restricciones. Guarda, revisa y confirma tu plan.") : t("Start with your goal and available time. Devices, races and performance tests are optional. Save each section when ready.", "Empieza por tu objetivo y tiempo disponible. Dispositivos, carreras y pruebas son opcionales. Guarda cada sección cuando esté lista.")}</p>
+        </header>
         {error && <div role="alert" className="mb-4 text-red-700">{error} <button type="button" className="underline" onClick={() => window.location.reload()}>Reload and review</button></div>}
         {notice && <p role="status" className="mb-4 rounded-lg border border-emerald-300 p-3 text-sm">{notice}</p>}
         {draftStorageError && <p role="alert" className="mb-4 text-amber-900">{t("This browser could not retain your tab draft. Save this section before leaving or reloading.", "Este navegador no pudo conservar el borrador. Guarda esta sección antes de salir o recargar.")}</p>}
+        <details open={!returnToTraining || undefined} className="mb-4">
+          <summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{t("Other setup sections & saving", "Otras secciones y guardado")}</summary>
         {/* Progress bar */}
         <div className="flex gap-1.5 mb-6">
           {STEPS.map((_, i) => (
@@ -334,6 +335,7 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
         <nav aria-label={t("Setup steps", "Pasos de configuración")} className="flex flex-wrap gap-2 mb-5">{STEPS.map(item => <button key={item.step} disabled={saving} aria-current={step===item.step ? "step" : undefined} className={`min-h-11 text-sm rounded-full px-3 py-2 border ${step===item.step ? "bg-ocean-700 text-white" : "bg-white"}`} onClick={() => {setError("");setStep(item.step);}}>{item.label}</button>)}</nav>
         <details className="text-sm text-slate-600 mb-3"><summary className="min-h-11 cursor-pointer content-center">{t("How your answers are saved", "Cómo se guardan tus respuestas")}</summary>        <p className="text-sm text-slate-600 mb-5">{t("Save each section to keep accepted answers in your account. Unfinished entries are retained in this tab across navigation and reloads. Skipping keeps them as a draft. Unknown answers stay unknown; a personalized plan needs the relevant reviewed details.", "Guarda cada sección para conservar las respuestas en tu cuenta. Los datos sin guardar se conservan en esta pestaña al navegar o recargar. Omitir los conserva como borrador. Un plan personalizado necesita los datos relevantes revisados.")}</p></details>
         <div className="flex flex-wrap gap-4 mb-5">{OPTIONAL_STEPS.map(item=><button key={item.step} disabled={saving} className="underline min-h-11 text-sm" aria-current={step===item.step ? "step" : undefined} onClick={()=>setStep(item.step)}>{item.label}</button>)}</div>
+        </details>
         {/* Step 0: Language + Welcome */}
         {step === ONBOARDING_STEP.welcome && (
           <div className="text-center py-8">
@@ -448,7 +450,7 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
         {/* Step 3: Goal race */}
         {step === ONBOARDING_STEP.race && (
           <div>
-            <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
+            <h2 className={`font-display text-xl font-bold mb-4 flex items-center gap-2 ${returnToTraining ? "sr-only" : ""}`}>
               <Flag className="w-5 h-5 text-coral-500" /> {lang === "es" ? "Objetivos y carrera opcional" : "Goals and optional race"}
             </h2>
             <p className="text-sm text-slate-500 mb-4">
