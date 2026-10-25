@@ -37,7 +37,7 @@ async function main() {
     for (const language of ['en', 'es']) {
       const who = await actor(language), other = await actor(language), es = language === 'es';
       const current = await api(who, '/api/profile');
-      await api(who, '/api/profile', { expectedRevision: current.revision, expectedSetupRevision: current.setupRevision,
+      await api(who, '/api/profile', { experience: "beginner", weeklyHours: 3, expectedRevision: current.revision, expectedSetupRevision: current.setupRevision,
         setup: { adultConfirmed: true, profileConfirmed: true, goalDescription: 'Familiar controlled running practice', baselineWeeklyMinutes: 90,
           baselineObservedAt: today, interruptions: 'none', restrictions: 'none', qualifiedReview: 'none_needed', trainingDays: [0, 2, 4],
           maxSessionMinutes: 45, equipmentAccess: 'Running shoes and familiar route', planWeeks: 8 } });
