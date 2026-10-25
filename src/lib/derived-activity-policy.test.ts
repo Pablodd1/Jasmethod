@@ -87,7 +87,7 @@ test("fitness route counts partial and substituted actuals in load without claim
     const rows=[session({id:"plan",date,source:"plan",externalId:null,planned:true,completed:false,actualDurationMin:null,durationMin:60,rpe:null}),
       session({id:"report",date,source:"manual",externalId:null,completed,feedbackStatus,actualDurationMin:20,durationMin:60})];
     const before=JSON.stringify(rows),result=await (await fitnessFixture(rows).run()).json();
-    assert.equal(result.pmcUnavailableReason,null);assert.equal(result.pmc.series.at(-1).tss,13);
+    assert.equal(result.pmcUnavailableReason,null);assert.equal(result.pmc.series.find((point:any)=>point.date===date.toISOString().slice(0,10))?.tss,13);
     assert.equal(result.jMetrics.totalJStress,80);assert.equal(result.execution,null);
     assert.match(result.executionUnavailableReason,/cannot represent partial or substituted/);
     assert.equal(JSON.stringify(rows),before);
@@ -118,6 +118,6 @@ test("fitness execution uses the reported actual sport and counts linked activit
   const rows=[session({id:"plan",date,source:"plan",externalId:null,planned:true,completed:true,matchedPlanId:"activity",durationMin:60,actualDurationMin:20}),
     session({id:"activity",date,source:"manual",externalId:null,sport:"run",actualSport:"bike",completed:true,feedbackStatus:"completed",durationMin:60,actualDurationMin:20})];
   const result=await (await fitnessFixture(rows).run()).json();
-  assert.equal(result.pmc.series.at(-1).tss,13);assert.equal(result.execution.completed,1);
+  assert.equal(result.pmc.series.find((point:any)=>point.date===date.toISOString().slice(0,10))?.tss,13);assert.equal(result.execution.completed,1);
   assert.equal(result.execution.matched,1);assert.equal(result.execution.durationCompliance,0.33);
 });
