@@ -1,6 +1,6 @@
 // Personal briefings are local only. External education uses coach-text-provider.
 interface Briefing {
-  mode: "gemini" | "fallback";
+  mode: "fallback";
   headline: string;
   briefing: string;
   adaptation: string;
@@ -22,7 +22,7 @@ export interface CoachContext {
   historyDigest?: string; // long-term memory: check-in trend, weekly load, adherence, benchmarks
 }
 
-// Localized rule-based fallback briefings (used when Gemini is unavailable).
+// Localized deterministic briefings; no external AI request.
 // "{title}" is replaced with the session title. Languages fall back to English.
 const FALLBACK: Record<string, { green: string; amber: string; red: string; swap: string; trim: string; full: string; none: string }> = {
   en: {

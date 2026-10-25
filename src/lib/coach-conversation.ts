@@ -25,7 +25,7 @@ export interface CoachCandidate {
   warnings?: string[];
 }
 export type CoachImageInput = { mimeType: "image/png" | "image/jpeg" | "image/webp"; dataBase64: string };
-export interface ConversationInput { message: string; source: "text" | "voice"; externalConsent: boolean; aiReplyMemoryConsent?:boolean;textProviderConsent?: "deepseek"; imageConsent: boolean; imageProviderConsent?: "openai"; imageSource?: ScreenshotSource; image?: CoachImageInput }
+export interface ConversationInput { message: string; source: "text" | "voice"; externalConsent: boolean; aiReplyMemoryConsent?:boolean;textProviderConsent?: "openai"; imageConsent: boolean; imageProviderConsent?: "openai"; imageSource?: ScreenshotSource; image?: CoachImageInput }
 export interface CandidateContext { localToday: string; sessionId?: string; sessionDate?: string; source?: "text" | "voice" | "image" }
 export const COACH_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const COACH_GOALS = ["sprint", "olympic", "half", "full", "hyrox", "run-only", "track-sprint", "cycle", "swim-only", "5k", "10k", "half-marathon", "marathon"] as const;
@@ -72,7 +72,7 @@ export function parseConversationInput(raw: unknown): ConversationInput {
   if(raw.aiReplyMemoryConsent!==undefined&&typeof raw.aiReplyMemoryConsent!=='boolean')throw Error('Choose explicit AI reply memory consent');
   if (raw.imageConsent !== undefined && typeof raw.imageConsent !== "boolean") throw Error("Choose explicit image consent");
   if (raw.imageProviderConsent !== undefined && raw.imageProviderConsent !== "openai") throw Error("Invalid image provider consent");
-  if (raw.textProviderConsent !== undefined && raw.textProviderConsent !== "deepseek") throw Error("Invalid text provider consent");
+  if (raw.textProviderConsent !== undefined && raw.textProviderConsent !== "openai") throw Error("Invalid text provider consent");
   if (raw.image !== undefined) assertScreenshotSource(raw.imageSource);
   let image: CoachImageInput | undefined;
   if (raw.image !== undefined) {
@@ -80,7 +80,7 @@ export function parseConversationInput(raw: unknown): ConversationInput {
     image = { mimeType: raw.image.mimeType as CoachImageInput["mimeType"], dataBase64: raw.image.dataBase64 };
   }
   if (!message && !image) throw Error("Add a message or image");
-  return { message, source: raw.source === "voice" ? "voice" : "text", externalConsent: raw.externalConsent === true, imageConsent: raw.imageConsent === true,...(raw.aiReplyMemoryConsent===true?{aiReplyMemoryConsent:true}:{}), ...(raw.textProviderConsent === "deepseek" ? { textProviderConsent: "deepseek" as const } : {}), ...(raw.imageProviderConsent === "openai" ? { imageProviderConsent: "openai" as const } : {}), ...(image ? { image, imageSource: "manual_note" as const } : {}) };
+  return { message, source: raw.source === "voice" ? "voice" : "text", externalConsent: raw.externalConsent === true, imageConsent: raw.imageConsent === true,...(raw.aiReplyMemoryConsent===true?{aiReplyMemoryConsent:true}:{}), ...(raw.textProviderConsent === "openai" ? { textProviderConsent: "openai" as const } : {}), ...(raw.imageProviderConsent === "openai" ? { imageProviderConsent: "openai" as const } : {}), ...(image ? { image, imageSource: "manual_note" as const } : {}) };
 }
 
 type Rule = { unit: string | null; type: "number" | "boolean" | "string"; min?: number; max?: number; integer?: boolean; values?: readonly string[] };
