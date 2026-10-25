@@ -110,8 +110,8 @@ async function journey(browser, language, width) {
     if (path === '/api/today') { await richGate; return route.fulfill({ json: {...f.rich(reviewed),...(!withMeasurements?{inputContext:null,connectors:[]}:{} )} }); }
     if (path === '/api/plan/preview') { assert.equal(url.searchParams.get('sessionId'), f.workout.id); return route.fulfill({ json: f.preview }); }
     if (path === '/api/workout/card') { assert.equal(url.searchParams.get('id'), f.workout.id); return route.fulfill({ json: f.card(reviewed) }); }
-    if (path === '/api/checkin') return route.fulfill({ json: f.checkin });
-    if (path === '/api/connectors') return route.fulfill({ json: { providers: [{ provider: 'whoop', status: 'connected', lastSyncAt: now.toISOString() }] } });
+    if (path === '/api/checkin') return route.fulfill({ json: withMeasurements?f.checkin:{...f.checkin,inputContext:null,checkin:null,previousSessions:[]} });
+    if (path === '/api/connectors') return route.fulfill({ json: { providers: withMeasurements?[{ provider: 'whoop', status: 'connected', lastSyncAt: now.toISOString() }]:[] } });
     if (path === '/api/connectors/native') return route.fulfill({ json: { apple: { exportEnabled: false },
       coros: { configured: false, authorizationAvailable: false, connectionStatus: 'disconnected' } } });
     if (path === '/api/training/locations') return route.fulfill({ json: { locations: [] } });
@@ -206,6 +206,13 @@ async function journey(browser, language, width) {
     await manualPath.getByRole('link',{name:language==='es'?'Omitir por ahora':'Skip for now',exact:true}).click();
     assert.equal(mutations.length,2,'Skipping readiness creates no answer, approval or workout write');
     await assertMobile(page,'no-device-skipped',language,width,manualPath);
+    await manualPath.getByRole('link',{name:language==='es'?'Responder check-in':'Answer check-in',exact:true}).click();
+    await page.locator('#answer-sleep').waitFor();
+    for(const key of ['sleep','soreness','energy','stress','motivation'])assert.equal(await page.locator(`#answer-${key}`).inputValue(),'');
+    assert.equal(await page.getByTestId('daily-input-context').count(),0);
+    for(const placeholder of ['e.g. 48','e.g. 62','e.g. 7.5'])await page.getByPlaceholder(placeholder,{exact:true}).waitFor();
+    await assertMobile(page,'no-device-questions',language,width,page.locator('#daily-questions'));
+
     await page.goto(`${base}/checkin#optional-focus-check`);
     const focus=page.locator('#optional-focus-check');if(!(await focus.getByRole('button',{name:language==='es'?'Empezar':'Start',exact:true}).isVisible()))await focus.locator('summary').click();
     await assertMobile(page,'optional-focus',language,width,focus);
