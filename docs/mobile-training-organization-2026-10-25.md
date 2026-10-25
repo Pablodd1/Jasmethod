@@ -28,7 +28,7 @@ reload saved state. Permission: preserve existing sign-in protection and explici
 provider lookup/AI consent boundaries; navigation does not grant access.
 
 `scripts/jmm-mobile-organization-browser.cjs` exercises these states using
-synthetic browser API fixtures, captures nine steps per language/viewport, and
+synthetic browser API fixtures, captures ten steps per language/viewport, and
 fails on overflow, browser errors or unexpected provider requests. Existing
 PostgreSQL workflow acceptance independently checks actual persistence and
 ownership. Screenshots are UI fixtures, not evidence of production athlete data.

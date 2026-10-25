@@ -9,7 +9,8 @@ const results=[],errors=[],unexpected=[];
 async function main(){const browser=await chromium.launch({headless:true});try{
   for(const language of ['en','es']) for(const width of [390,1280]){
     const es=language==='es', context=await browser.newContext({viewport:{width,height:844}}),page=await context.newPage();
-    let races=[], reject=false, failLoad=false, writes=0, signedIn=true;
+    let races=[], reject=false, failLoad=false, writes=0, signedIn=true, holdRead=true, releaseRead;
+    const firstRead=new Promise(resolve=>{releaseRead=resolve;});
     const profile={profile:{goal:'hyrox',units:'metric'},zones:null,revision:'synthetic-profile',setupRevision:null,setup:null,planningReadiness:{ready:false,missing:['Confirm recent training and available time'],review:[]}};
     page.on('pageerror',e=>errors.push(e.message));
     await page.route('**/*',async route=>{
@@ -21,7 +22,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
       if(url.pathname==='/api/plan')return route.fulfill({json:{plans:[]}});
       if(url.pathname==='/api/target-progress')return route.fulfill({status:503,json:{error:'Synthetic unavailable evidence'}});
       if(url.pathname==='/api/races'){
-        if(req.method()==='GET')return route.fulfill(failLoad?{status:503,json:{error:'Synthetic unavailable races'}}:{json:{races}});
+        if(req.method()==='GET'){if(holdRead)await firstRead;return route.fulfill(failLoad?{status:503,json:{error:'Synthetic unavailable races'}}:{json:{races}});}
         writes++;const body=req.postDataJSON();
         if(reject)return route.fulfill({status:400,json:{error:'Synthetic rejected save — draft retained'}});
         if(req.method()==='POST'){
@@ -40,6 +41,9 @@ async function main(){const browser=await chromium.launch({headless:true});try{
       results.push({language,viewport:`${width}x844`,step,artifact:path,status:'PASS'});
     }
     await page.goto(base+'/races');
+    await page.getByText(es?'Cargando carreras…':'Loading saved races…',{exact:true}).waitFor();await shot('00-loading');
+    holdRead=false;releaseRead();
+    await page.waitForFunction(()=>{const button=document.querySelector('section[aria-labelledby="add-race-title"] button[type="submit"]');return button&&!button.disabled;});
     const name=page.getByLabel(es?'Nombre de la carrera':'Race name',{exact:true});await name.waitFor();
     assert.equal(await page.locator('#race-distance').inputValue(),'');
     if(width===390){assert.equal(await name.evaluate(el=>getComputedStyle(el).fontSize),'16px');assert.ok((await name.boundingBox()).height>=44);}
