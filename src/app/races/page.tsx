@@ -14,6 +14,21 @@ const VENUES = ["pool", "lake", "ocean", "river"];
 const FEDERATIONS = ["USAT", "WORLD_TRIATHLON", "BRITISH_TRIATHLON", "IRONMAN"];
 const CATEGORIES = ["age_group", "elite"];
 
+// Persist existing format identifiers; labels explain them in the athlete's language.
+const OPTION_LABELS: Record<string, [string, string]> = {
+  sprint: ["Sprint triathlon", "Triatlón sprint"], olympic: ["Olympic triathlon", "Triatlón olímpico"],
+  half: ["70.3 triathlon", "Triatlón 70.3"], full: ["Full-distance triathlon", "Triatlón de larga distancia"],
+  "5k": ["5 km run", "Carrera de 5 km"], "10k": ["10 km run", "Carrera de 10 km"],
+  "half-marathon": ["Half marathon", "Media maratón"], marathon: ["Marathon", "Maratón"],
+  "40k": ["40 km cycling", "Ciclismo de 40 km"], "100k": ["100 km cycling", "Ciclismo de 100 km"],
+  "180k": ["180 km cycling", "Ciclismo de 180 km"], "gran-fondo": ["Gran fondo", "Gran fondo"],
+  "750m": ["750 m swim", "Natación de 750 m"], "1500m": ["1,500 m swim", "Natación de 1.500 m"],
+  "1900m": ["1,900 m swim", "Natación de 1.900 m"], "3800m": ["3,800 m swim", "Natación de 3.800 m"], hyrox: ["HYROX", "HYROX"],
+  flat: ["Flat", "Llano"], rolling: ["Rolling", "Ondulado"], hilly: ["Hilly", "Con cuestas"], mountain: ["Mountain", "Montaña"], trail: ["Trail", "Sendero"],
+  pool: ["Pool", "Piscina"], lake: ["Lake", "Lago"], ocean: ["Ocean", "Mar"], river: ["River", "Río"],
+  none: ["None", "Ninguna"], mild: ["Mild", "Suave"], strong: ["Strong", "Fuerte"], age_group: ["Age group", "Grupo de edad"], elite: ["Elite", "Élite"],
+};
+
 const empty = {
   name: "", distance: "", date: "", startTime: "", location: "",
   targetTempC: "", humidity: "", baseElevM: "", goalTimeMin: "", priority: "1",
@@ -117,8 +132,9 @@ export default function RacesPage() {
 
   const es = lang === "es";
   const t = (en: string, spanish: string) => es ? spanish : en;
+  const optionLabel = (value: string) => OPTION_LABELS[value]?.[es ? 1 : 0] ?? value;
   const field = (key: string, label: string, type = "text", required = false) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><input id={`race-${key}`} type={type} step={type === "number" ? "any" : undefined} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)} required={required} /></div>;
-  const select = (key: string, label: string, options: string[]) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><select id={`race-${key}`} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)}><option value="">{t("Not known yet", "Aún no lo sé")}</option>{options.map(option => <option key={option}>{option}</option>)}</select></div>;
+  const select = (key: string, label: string, options: string[]) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><select id={`race-${key}`} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)}><option value="">{t("Not known yet", "Aún no lo sé")}</option>{options.map(option => <option key={option} value={option}>{optionLabel(option)}</option>)}</select></div>;
 
   return (
     <ProtectedPage>
@@ -147,7 +163,7 @@ export default function RacesPage() {
                   <div>
                     <div className="font-display font-bold flex items-center gap-2"><Flag className="w-4 h-4 text-coral-500" /> {r.name}</div>
                     <div className="text-xs text-slate-500">
-                      {r.distance} · {new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone:"UTC" })}
+                      {optionLabel(r.distance)} · {new Date(r.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone:"UTC" })}
                       {r.startTime ? ` · ${r.startTime}` : ""}
                       {r.priority === 1 ? " · A-race" : r.priority === 2 ? " · B-race" : r.priority === 3 ? " · C-race" : ""}
                     </div>
@@ -233,7 +249,7 @@ export default function RacesPage() {
           <form onSubmit={submit} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               {field("name", t("Race name", "Nombre de la carrera"), "text", true)}
-              <div><label htmlFor="race-distance" className="label">{t("Distance / format", "Distancia / formato")}</label><select id="race-distance" required className="input min-h-11 !text-base" value={form.distance} onChange={event => set("distance", event.target.value)}><option value="">{t("Choose a distance", "Elige distancia")}</option>{DISTANCES.map(distance => <option key={distance}>{distance}</option>)}</select></div>
+              <div><label htmlFor="race-distance" className="label">{t("Distance / format", "Distancia / formato")}</label><select id="race-distance" required className="input min-h-11 !text-base" value={form.distance} onChange={event => set("distance", event.target.value)}><option value="">{t("Choose a distance", "Elige distancia")}</option>{DISTANCES.map(distance => <option key={distance} value={distance}>{optionLabel(distance)}</option>)}</select></div>
               {field("date", t("Date", "Fecha"), "date", true)}
               {field("location", t("Venue or city (optional)", "Lugar o ciudad (opcional)"))}
             </div>
