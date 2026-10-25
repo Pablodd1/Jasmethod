@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { TrainingWorkflowNav } from "@/components/training-workflow-nav";
 import { RaceIntelligenceCard } from '@/components/race-intelligence-card';
 import { applyEventToDraft } from '@/lib/race-scenario-draft';
 import { unitsOf } from '@/lib/units';
@@ -96,13 +97,12 @@ export function RaceScenarioWorkspace() {
   const sportName = (sport: ScenarioSport) => sport === "run" ? say("Run", "Carrera") : sport === "bike" ? say("Bike", "Ciclismo") : say("Swim", "Natación");
   const raceMatches = data?.races.filter(race => `${race.name} ${race.location ?? ""} ${race.date.slice(0, 10)} ${race.distance}`.toLocaleLowerCase().includes(raceSearch.trim().toLocaleLowerCase())) ?? [];
   const compared = data?.snapshots.filter(snapshot => selected.includes(snapshot.id)) ?? [];
-  return <div className="mx-auto max-w-6xl space-y-6 pb-12 text-slate-900">
-    <Link href="/races" className={`inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-ocean-900 ${focus}`}><ArrowLeft className="h-4 w-4" aria-hidden="true" />{say("Your races", "Tus carreras")}</Link>
-    <header className="overflow-hidden rounded-3xl bg-ocean-950 px-6 py-8 text-white sm:px-9 sm:py-10">
-      <div className="flex flex-wrap items-center justify-between gap-4"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-ocean-200">AdvanzedRacing · {say("Scenario workspace", "Espacio de escenarios")}</p><span className="rounded-full border border-ocean-700 px-3 py-1 text-xs text-ocean-100">{say("Unvalidated pilot", "Piloto no validado")}</span></div>
-      <h1 className="mt-5 max-w-3xl font-display text-3xl font-bold leading-tight sm:text-4xl">{say("Make your race assumptions visible.", "Haz visibles los supuestos de tu carrera.")}</h1>
-      <p className="mt-4 max-w-2xl text-sm leading-relaxed text-ocean-100 sm:text-base">{say("Start with your own evidence. Review the course and conditions, choose an execution scenario, then save a version you can compare.", "Empieza con tu evidencia. Revisa recorrido y condiciones, elige un escenario de ejecución y guarda una versión que puedas comparar.")}</p>
-      <div className="mt-7 grid grid-cols-3 gap-3 border-t border-ocean-800 pt-5 text-sm"><div><span className="block font-mono text-xl font-bold">{data ? data.anchors.length : "—"}</span><span className="mt-1 block text-xs text-ocean-200">{say("Reference records", "Referencias")}</span></div><div><span className="block font-mono text-xl font-bold">{data ? data.races.length : "—"}</span><span className="mt-1 block text-xs text-ocean-200">{say("Saved races", "Carreras guardadas")}</span></div><div><span className="block font-mono text-xl font-bold">{data ? data.snapshots.length : "—"}</span><span className="mt-1 block text-xs text-ocean-200">{say("Saved scenarios", "Escenarios guardados")}</span></div></div>
+  return <div className="training-workflow mx-auto max-w-6xl space-y-5 pb-12 text-slate-900">
+    <TrainingWorkflowNav active="races" es={es} />
+    <header className="space-y-2">
+      <h1 className="font-display text-2xl font-bold">{say("Venue, course & forecast", "Lugar, recorrido y pronóstico")}</h1>
+      <p className="text-sm text-slate-600">{say("Find the event, confirm its venue, then review the conditions. Save a scenario only after checking its assumptions.", "Busca la carrera, confirma el lugar y revisa las condiciones. Guarda un escenario tras revisar sus supuestos.")}</p>
+      <p className="text-sm font-semibold text-amber-900">{say("Scenario estimates · unvalidated pilot", "Estimaciones de escenarios · piloto no validado")}</p>
     </header>
     <fieldset disabled={busy === "save" || loading} className="min-w-0"><legend className="sr-only">{say("Race lookup and weather","Consulta de carrera y meteorología")}</legend>
     <RaceIntelligenceCard draft={draft} es={es} units={unitsOf(user?.profile?.units,language)} onEvent={event=>change(current=>applyEventToDraft(current,event))} onContext={evidence=>change(current=>{const point=evidence.manual??evidence.original.snapshot;return {...current,environment:evidence,...(point?{weatherKind:"manual" as const,temperatureC:str(point.airTempC),humidityPct:str(point.relativeHumidityPct),windMps:str(point.windSpeedMps),weatherSource:"Reviewed weather context; no automatic performance adjustment",weather:null,history:null,savedWeatherEvidence:null}:{} )};})} onVenue={venue=>change(current=>({...current,latitude:String(venue.latitude),longitude:String(venue.longitude),coordinatesReviewed:true,environment:null,weather:null,history:null,weatherKind:'unknown',temperatureC:'',humidityPct:'',windMps:'',weatherSource:'',savedWeatherEvidence:null,weatherRequest:null}))}/>

@@ -2,6 +2,7 @@
 import "@/components/daily-training/universal-workout-card.css";
 
 import { trustedCycleMovementGuidance } from "@/lib/cycle-movement-guidance";
+import { TrainingWorkflowNav } from "@/components/training-workflow-nav";
 import { TrainingCycleOverview } from "@/components/training-cycle-overview";
 import { TargetProgressPanel } from "@/components/target-progress-panel";
 import { RestPreference } from "@/components/rest-preference";
@@ -279,18 +280,19 @@ function TrainingPageContent() {
 
   return (
     <ProtectedPage>
-      <div className="space-y-6">
+      <div className="training-workflow space-y-5">
+        <TrainingWorkflowNav active="plan" es={es} />
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="font-display text-2xl font-bold">{es ? "Plan de entrenamiento" : "Training Plan"}</h1>
             <p className="text-slate-500 text-sm">
-              {es ? "Tu ciclo guardado, calendario mensual y sesiones estructuradas. Revisa lo realizado y tu recuperación antes de progresar." : "Your saved cycle, monthly schedule and structured sessions. Review actual training and recovery before progressing."}
+              {es ? "Revisa tu semana. Previsualiza y confirma los cambios del plan." : "Review your week. Preview and confirm any plan changes."}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <a href="/protocols" className="btn-primary">Training protocols</a>
-            <a href="/api/training/export" className="btn-secondary">
-              <Download className="w-4 h-4" /> Download all training
+            <a href="/protocols" className="btn-secondary min-h-11">{es ? "Protocolos" : "Protocols"}</a>
+            <a href="/api/training/export" className="btn-secondary min-h-11">
+              <Download className="w-4 h-4" aria-hidden="true" /> {es ? "Exportar" : "Export"}
             </a>
             {planLoaded && <span className="chip chip-z2">
               <Layers className="w-3.5 h-3.5" /> {completedCount}/{totalCount}{" "}
@@ -299,19 +301,14 @@ function TrainingPageContent() {
           </div>
         </div>
 
-        <p className="text-xs text-slate-500 -mt-4">
-          The ZIP includes your complete training history and analytics data as
-          CSV, the active plan as an importable calendar, and structured FIT
-          files for compatible Garmin/COROS workflows.
-        </p>
+        <details className="text-sm text-slate-600"><summary className="min-h-11 cursor-pointer content-center">{es ? "Qué incluye la exportación" : "What the export includes"}</summary><p>{es ? "Historial y análisis en CSV, calendario del plan y archivos FIT para dispositivos compatibles. Revisa la importación en tu dispositivo." : "History and analytics as CSV, the plan calendar, and FIT files for compatible devices. Verify import on your device."}</p></details>
 
         {loading && <p role="status" className="card" aria-live="polite">{planLoaded ? (es ? "Actualizando tu ciclo guardado…" : "Refreshing your saved training…") : (es ? "Cargando tu ciclo y sesiones guardadas…" : "Loading your saved cycle and sessions…")}</p>}
         {loadError && <div role="alert" className="card border-red-300"><p>{loadError}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={() => void load()}>{es ? "Reintentar entrenamiento" : "Retry loading training"}</button></div>}
         {setupError && <div role="alert" className="card border-amber-300"><p>{setupError} {es ? "El ciclo guardado se carga por separado." : "Your saved cycle loads separately."}</p><button type="button" className="btn-secondary mt-2" disabled={setupLoading} onClick={() => void load()}>{es ? "Reintentar configuración" : "Retry planning setup"}</button></div>}
         {savedMessage && <p role="status" className="card border-emerald-300">{savedMessage}</p>}
         {plan && <TrainingCycleOverview es={es} plan={plan} cycle={cycle} timezone={user?.timezone || "America/New_York"} selectedMonth={visibleMonth} onMonthChange={setSelectedMonth} />}
-        <RestPreference es={es} onSaved={()=>{setPreview(null);void load();}} />
-        <TargetProgressPanel key={user?.id} language={user?.language} />
+        <details className="rounded-xl border border-sand-200 bg-white px-4"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{es ? "Objetivos y días de descanso" : "Targets & rest days"}</summary><div className="space-y-4 pb-4"><RestPreference es={es} onSaved={()=>{setPreview(null);void load();}} /><TargetProgressPanel key={user?.id} language={user?.language} /></div></details>
 
         {/* A saved cycle remains primary; replacing it is an explicit review. */}
         <details className="card" open={planLoaded && !plan && !loading && !loadError}>

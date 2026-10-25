@@ -6,6 +6,7 @@ import Link from "next/link";
 import { readWriteReceipt } from "@/lib/client-save-receipt";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
+import { TrainingWorkflowNav } from "@/components/training-workflow-nav";
 
 const DISTANCES = ["sprint", "olympic", "half", "full", "5k", "10k", "half-marathon", "marathon", "40k", "100k", "180k", "gran-fondo", "750m", "1500m", "1900m", "3800m", "hyrox"];
 const TERRAINS = ["flat", "rolling", "hilly", "mountain", "trail"];
@@ -14,7 +15,7 @@ const FEDERATIONS = ["USAT", "WORLD_TRIATHLON", "BRITISH_TRIATHLON", "IRONMAN"];
 const CATEGORIES = ["age_group", "elite"];
 
 const empty = {
-  name: "", distance: "olympic", date: "", startTime: "", location: "",
+  name: "", distance: "", date: "", startTime: "", location: "",
   targetTempC: "", humidity: "", baseElevM: "", goalTimeMin: "", priority: "1",
   bikeElevM: "", bikeTerrain: "", runElevM: "", runTerrain: "",
   swimVenue: "", waterTempC: "", swimCurrent: "", notes: "",
@@ -29,13 +30,16 @@ export default function RacesPage() {
   const [form, setForm] = useState<any>(empty);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [verified, setVerified] = useState(false);
 
   async function load() {
+    setVerified(false);
     try {
       const res = await fetch("/api/races",{cache:"no-store",signal:AbortSignal.timeout(15000)});
       const d = await res.json();
       if(!res.ok||!Array.isArray(d.races))throw Error("Could not verify saved races. Reload before editing.");
-      setRaces(d.races);
+      setRaces(d.races); setVerified(true); setErr("");
     }catch(error){setErr((error as Error).message);}finally{setLoading(false);}
   }
   useEffect(() => { if (user) load(); }, [user]);
@@ -44,7 +48,8 @@ export default function RacesPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true); setErr("");
+    if (busy || !verified) return;
+    setBusy(true); setErr(""); setSaved(false);
     try {
       const res = await fetch("/api/races", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -54,23 +59,25 @@ export default function RacesPage() {
         }),
       });
       await readWriteReceipt(res,"race");
-      setForm(empty); await load();
+      setForm(empty); setSaved(true); await load();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
   async function saveTiming(event: React.FormEvent<HTMLFormElement>, id: string) {
     event.preventDefault();
+    if (busy || !verified) return;
     const values = new FormData(event.currentTarget);
-    setBusy(true); setErr("");
+    setBusy(true); setErr(""); setSaved(false);
     try {
-      const response = await fetch("/api/races", {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,date:values.get("date"),priority:Number(values.get("priority"))})});
-      await readWriteReceipt(response,"race",id);
+      const response = await fetch("/api/races", {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,date:values.get("date"),priority:Number(values.get("priority")),location:values.get("location")})});
+      await readWriteReceipt(response,"race",id); setSaved(true);
       await load();
     } catch(error) {setErr(error instanceof Error ? error.message : "Could not save event details");}
     finally {setBusy(false);}
   }
 
   async function saveResult(id: string, value: string) {
+    if (busy || !verified) return;
     const v = value === "" ? null : parseFloat(value);
     if (value !== "" && (isNaN(v as number) || (v as number) <= 0)) return;
     setErr("");
@@ -81,6 +88,7 @@ export default function RacesPage() {
   }
 
   async function del(id: string) {
+    if (busy || !verified) return;
     setErr("");
     try {
       await readWriteReceipt(await fetch(`/api/races?id=${encodeURIComponent(id)}`, { method: "DELETE",signal:AbortSignal.timeout(15000) }));
@@ -89,6 +97,7 @@ export default function RacesPage() {
   }
 
   async function uploadGpx(id: string, file: File) {
+    if (busy || !verified) return;
     setErr("");
     try {
       const text = await file.text();
@@ -106,23 +115,28 @@ export default function RacesPage() {
     }
   }
 
-  const num = (v: any) => (v === "" || v === null || v === undefined ? null : Number(v));
+  const es = lang === "es";
+  const t = (en: string, spanish: string) => es ? spanish : en;
+  const field = (key: string, label: string, type = "text", required = false) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><input id={`race-${key}`} type={type} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)} required={required} /></div>;
+  const select = (key: string, label: string, options: string[]) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><select id={`race-${key}`} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)}><option value="">{t("Not known yet", "Aún no lo sé")}</option>{options.map(option => <option key={option}>{option}</option>)}</select></div>;
 
   return (
     <ProtectedPage>
-      <div className="space-y-6">
+      <div className="training-workflow mx-auto max-w-4xl space-y-5">
+        <TrainingWorkflowNav active="races" es={es} />
         <div>
-          <h1 className="font-display text-2xl font-bold">Races &amp; Venues</h1>
-          <p className="text-slate-500 text-sm">Keep your event and venue details together, then review explicit course and weather assumptions in a race scenario.</p>
+          <h1 className="font-display text-2xl font-bold">{t("Races & venues", "Carreras y lugares")}</h1>
+          <p className="text-slate-500 text-sm">{t("Save the event first. Add venue and course details when you know them.", "Guarda primero la carrera. Añade lugar y recorrido cuando los conozcas.")}</p>
         </div>
 
         <Link href="/races/scenarios" className="btn-primary justify-center w-fit">
-          <Gauge className="w-4 h-4" aria-hidden="true" /> {lang === "es" ? "AdvanzedRacing · Escenarios" : "AdvanzedRacing · Scenarios"}
+          <Gauge className="w-4 h-4" aria-hidden="true" /> {lang === "es" ? "Revisar lugar y pronóstico" : "Review venue & forecast"}
         </Link>
 
+        {saved && <p role="status" className="text-sm text-emerald-800">{t("Race saved. Review a new plan preview if the event date or priority changed.", "Carrera guardada. Revisa una nueva vista previa si cambió la fecha o prioridad.")}</p>}
         {err && <div role="alert" className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
 
-        <p role="status" className="text-sm rounded-lg border p-3">{lang === "es" ? "Después de cambiar una fecha o prioridad, revisa y confirma una nueva vista previa del ciclo. El plan guardado no se reemplaza automáticamente y no se añade entrenamiento en el día del evento." : "After changing an event date or priority, review and confirm a fresh cycle preview. Your saved plan is not automatically replaced, and no added workout is allowed on the event day."} <Link href="/training" className="underline">{lang === "es" ? "Revisar ciclo actualizado" : "Review updated cycle"}</Link></p>
+        <p role="status" className="text-sm rounded-lg border p-3">{lang === "es" ? "¿Cambiaste fecha o prioridad? Revisa una nueva vista previa. Tu plan guardado no cambia." : "Changed the date or priority? Review a new plan preview. Your saved plan stays unchanged."} <Link href="/training" className="underline">{lang === "es" ? "Revisar ciclo actualizado" : "Review updated cycle"}</Link></p>
 
         {/* Races list */}
         {!loading && races.length > 0 && (
@@ -138,18 +152,20 @@ export default function RacesPage() {
                       {r.priority === 1 ? " · A-race" : r.priority === 2 ? " · B-race" : r.priority === 3 ? " · C-race" : ""}
                     </div>
                   </div>
-                  <button onClick={() => del(r.id)} className="text-slate-400 hover:text-coral-600"><Trash2 className="w-4 h-4" /></button>
+                  <button type="button" aria-label={`${t("Delete race", "Eliminar carrera")}: ${r.name}`} onClick={() => del(r.id)} className="flex min-h-11 min-w-11 items-center justify-center text-slate-500 hover:text-coral-600"><Trash2 className="w-4 h-4" /></button>
                 </div>
-                <form key={`${r.id}-${r.date}-${r.priority}`} onSubmit={event=>saveTiming(event,r.id)} className="mt-3 flex flex-wrap items-end gap-2">
+                <form key={`${r.id}-${r.date}-${r.priority}-${r.location}`} onSubmit={event=>saveTiming(event,r.id)} className="mt-3 flex flex-wrap items-end gap-2">
                   <label className="text-sm">{lang === "es" ? "Fecha del evento" : "Event date"}<input name="date" type="date" className="input" defaultValue={String(r.date).slice(0,10)} required/></label>
                   <label className="text-sm">{lang === "es" ? "Prioridad" : "Priority"}<select name="priority" className="input" defaultValue={String(r.priority)}><option value="1">A</option><option value="2">B</option><option value="3">C</option></select></label>
-                  <button className="btn-secondary min-h-11" disabled={busy}>{lang === "es" ? "Guardar fecha y prioridad" : "Save date and priority"}</button>
+                  <label className="w-full text-sm">{t("Venue or city", "Lugar o ciudad")}<input name="location" className="input min-h-11 !text-base" defaultValue={r.location || ""} /></label>
+                  <button className="btn-secondary min-h-11" disabled={busy}>{t("Save event details", "Guardar datos del evento")}</button>
                 </form>
+                <details className="mt-3 border-t pt-2"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{t("Result & course details", "Resultado y recorrido")}</summary>
                 <div className="mt-2 flex flex-wrap items-end gap-2">
                   <div>
-                    <label className="label !text-[10px] !mb-0.5">{lang === "es" ? "Resultado real (min)" : "Actual result (min)"}</label>
+                    <label htmlFor={`result-${r.id}`} className="label">{lang === "es" ? "Resultado real (min)" : "Actual result (min)"}</label>
                     <input
-                      className="input !py-1 !px-2 text-xs w-28"
+                      id={`result-${r.id}`} className="input min-h-11 text-base w-32"
                       type="number"
                       step="0.01"
                       defaultValue={r.resultMin ?? ""}
@@ -198,69 +214,61 @@ export default function RacesPage() {
                     <div className="text-[10px] text-slate-400 mt-0.5">{lang === "es" ? "Revisa la distancia, la elevación y su procedencia antes de usar un escenario." : "Review distance, elevation and provenance before using a scenario."}</div>
                   </div>
                 </div>
+                </details>
+                <p className="mt-3 text-sm text-slate-600">{r.location || t("Venue missing — add it when available.", "Falta el lugar; añádelo cuando lo sepas.")}</p>
+                <Link href="/races/scenarios" className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold underline">{t("Review venue, course & weather", "Revisar lugar, recorrido y clima")}</Link>
               </div>
             ))}
           </div>
         )}
 
-        {/* Add race */}
-        <div className="card">
-          <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><Plus className="w-4 h-4" /> Add Race</h2>
+        {!loading && !verified && <button className="btn-secondary min-h-11" onClick={() => void load()}>{t("Reload saved races", "Recargar carreras")}</button>}
+        {loading && <p role="status">{t("Loading saved races…", "Cargando carreras…")}</p>}
+        {!loading && verified && races.length === 0 && <p className="text-sm text-slate-600">{t("No races saved. You can train without a race.", "No tienes carreras guardadas. Puedes entrenar sin carrera.")}</p>}
+        <section className="card" aria-labelledby="add-race-title">
+          <h2 id="add-race-title" className="font-display font-bold text-lg">{t("Add a race", "Añadir carrera")}</h2>
+          <p className="mb-4 mt-1 text-sm text-slate-600">{t("Name, distance and date are required. Everything else can wait.", "Nombre, distancia y fecha son obligatorios. Lo demás puede esperar.")}</p>
           <form onSubmit={submit} className="space-y-4">
-            <div className="grid md:grid-cols-3 gap-3">
-              <div><label className="label">Name</label><input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Miami 70.3" required /></div>
-              <div><label className="label">Distance</label>
-                <select className="input" value={form.distance} onChange={(e) => set("distance", e.target.value)}>{DISTANCES.map((d) => <option key={d}>{d}</option>)}</select>
-              </div>
-              <div><label className="label">Priority</label>
-                <select className="input" value={form.priority} onChange={(e) => set("priority", e.target.value)}>
-                  <option value="1">1 — A-race (anchor)</option><option value="2">2 — B-race</option><option value="3">3 — C-race</option>
-                </select>
-              </div>
-              <div><label className="label">Date</label><input type="date" className="input" value={form.date} onChange={(e) => set("date", e.target.value)} required /></div>
-              <div><label className="label">Start time</label><input type="time" className="input" value={form.startTime} onChange={(e) => set("startTime", e.target.value)} /></div>
-              <div><label className="label">Location</label><input className="input" value={form.location} onChange={(e) => set("location", e.target.value)} placeholder="Miami, FL" /></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {field("name", t("Race name", "Nombre de la carrera"), "text", true)}
+              <div><label htmlFor="race-distance" className="label">{t("Distance / format", "Distancia / formato")}</label><select id="race-distance" required className="input min-h-11 !text-base" value={form.distance} onChange={event => set("distance", event.target.value)}><option value="">{t("Choose a distance", "Elige distancia")}</option>{DISTANCES.map(distance => <option key={distance}>{distance}</option>)}</select></div>
+              {field("date", t("Date", "Fecha"), "date", true)}
+              {field("location", t("Venue or city (optional)", "Lugar o ciudad (opcional)"))}
             </div>
-
-            <div className="border-t border-sand-200 pt-3">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Environment</div>
-              <div className="grid md:grid-cols-3 gap-3">
-                <div><label className="label">Air temp (°C)</label><input type="number" className="input" value={form.targetTempC} onChange={(e) => set("targetTempC", e.target.value)} placeholder="28" /></div>
-                <div><label className="label">Humidity (%)</label><input type="number" className="input" value={form.humidity} onChange={(e) => set("humidity", e.target.value)} placeholder="70" /></div>
-                <div><label className="label">Base elevation (m)</label><input type="number" className="input" value={form.baseElevM} onChange={(e) => set("baseElevM", e.target.value)} placeholder="1600" /></div>
+            <details className="border-t border-sand-200 pt-2">
+              <summary className="min-h-11 cursor-pointer content-center font-semibold text-sm">{t("Timing & goal (optional)", "Horario y objetivo (opcional)")}</summary>
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                {field("startTime", t("Local start time", "Hora local de salida"), "time")}
+                <div><label htmlFor="race-priority" className="label">{t("Priority", "Prioridad")}</label><select id="race-priority" className="input min-h-11 !text-base" value={form.priority} onChange={event => set("priority", event.target.value)}><option value="1">{t("A — main race", "A — carrera principal")}</option><option value="2">{t("B — secondary", "B — secundaria")}</option><option value="3">{t("C — practice", "C — práctica")}</option></select></div>
+                {field("goalTimeMin", t("Goal time (minutes)", "Tiempo objetivo (minutos)"), "number")}
+                {field("notes", t("Notes / official race link", "Notas / enlace oficial"))}
               </div>
-            </div>
-
-            <div className="border-t border-sand-200 pt-3">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Bike &amp; Run</div>
-              <div className="grid md:grid-cols-4 gap-3">
-                <div><label className="label">Bike terrain</label><select className="input" value={form.bikeTerrain} onChange={(e) => set("bikeTerrain", e.target.value)}><option value="">—</option>{TERRAINS.map((t) => <option key={t}>{t}</option>)}</select></div>
-                <div><label className="label">Bike climb (m)</label><input type="number" className="input" value={form.bikeElevM} onChange={(e) => set("bikeElevM", e.target.value)} placeholder="650" /></div>
-                <div><label className="label">Run terrain</label><select className="input" value={form.runTerrain} onChange={(e) => set("runTerrain", e.target.value)}><option value="">—</option>{TERRAINS.map((t) => <option key={t}>{t}</option>)}</select></div>
-                <div><label className="label">Run climb (m)</label><input type="number" className="input" value={form.runElevM} onChange={(e) => set("runElevM", e.target.value)} placeholder="120" /></div>
-              </div>
-            </div>
-
-            <div className="border-t border-sand-200 pt-3">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Water</div>
-              <div className="grid md:grid-cols-3 gap-3">
-                <div><label className="label">Swim venue</label><select className="input" value={form.swimVenue} onChange={(e) => set("swimVenue", e.target.value)}><option value="">—</option>{VENUES.map((v) => <option key={v}>{v}</option>)}</select></div>
-                <div><label className="label">Water temp (°C)</label><input type="number" className="input" value={form.waterTempC} onChange={(e) => set("waterTempC", e.target.value)} placeholder="21" /></div>
-                <div><label className="label">Current</label><select className="input" value={form.swimCurrent} onChange={(e) => set("swimCurrent", e.target.value)}><option value="">—</option><option value="none">None</option><option value="mild">Mild</option><option value="strong">Strong</option></select></div>
-                <div><label className="label">Federation (wetsuit rules)</label><select className="input" value={form.federation} onChange={(e) => set("federation", e.target.value)}><option value="">—</option>{FEDERATIONS.map((f) => <option key={f}>{f}</option>)}</select></div>
-                <div><label className="label">Category</label><select className="input" value={form.category} onChange={(e) => set("category", e.target.value)}><option value="">—</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2">Federation decides wetsuit legality (USAT forbids ≥28.9°C; World Triathlon elite ≥20°C; British 22°C / 24.6°C for 60+ or &gt;1500m). Always verify the current rulebook.</p>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-3">
-              <div><label className="label">Goal time (min)</label><input type="number" className="input" value={form.goalTimeMin} onChange={(e) => set("goalTimeMin", e.target.value)} placeholder="300" /></div>
-              <div><label className="label">Notes</label><input className="input" value={form.notes} onChange={(e) => set("notes", e.target.value)} /></div>
-            </div>
-
-            <button type="submit" disabled={busy} className="btn-primary justify-center"><Plus className="w-4 h-4" /> {busy ? "Saving…" : "Add Race"}</button>
+            </details>
+            <details className="border-t border-sand-200 pt-2">
+              <summary className="min-h-11 cursor-pointer content-center font-semibold text-sm">{t("Course & conditions (optional)", "Recorrido y condiciones (opcional)")}</summary>
+              <p className="my-3 text-sm text-slate-600">{t("Enter confirmed information only. Blank means unknown. Use the venue & forecast workspace to check sources and assumptions.", "Introduce solo datos confirmados. Vacío significa desconocido. Revisa fuentes y supuestos en lugar y pronóstico.")}</p>
+              <fieldset className="space-y-3"><legend className="font-semibold text-sm">{t("Land course", "Recorrido terrestre")}</legend><div className="grid gap-4 sm:grid-cols-2">
+                {select("bikeTerrain", t("Bike terrain", "Terreno de ciclismo"), TERRAINS)}
+                {field("bikeElevM", t("Bike ascent (m)", "Ascenso en bici (m)"), "number")}
+                {select("runTerrain", t("Run terrain", "Terreno de carrera"), TERRAINS)}
+                {field("runElevM", t("Run ascent (m)", "Ascenso a pie (m)"), "number")}
+                {field("baseElevM", t("Venue elevation (m)", "Altitud del lugar (m)"), "number")}
+              </div></fieldset>
+              <fieldset className="mt-4 space-y-3"><legend className="font-semibold text-sm">{t("Weather", "Clima")}</legend><div className="grid gap-4 sm:grid-cols-2">
+                {field("targetTempC", t("Air temperature (°C)", "Temperatura del aire (°C)"), "number")}
+                {field("humidity", t("Humidity (%)", "Humedad (%)"), "number")}
+              </div></fieldset>
+              <details className="mt-3"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{t("Swim details", "Datos de natación")}</summary><div className="mt-3 grid gap-4 sm:grid-cols-2">
+                {select("swimVenue", t("Water type", "Tipo de agua"), VENUES)}
+                {field("waterTempC", t("Water temperature (°C)", "Temperatura del agua (°C)"), "number")}
+                {select("swimCurrent", t("Current", "Corriente"), ["none", "mild", "strong"])}
+                {select("federation", t("Federation", "Federación"), FEDERATIONS)}
+                {select("category", t("Category", "Categoría"), CATEGORIES)}
+              </div><p className="mt-3 text-sm text-slate-600">{t("Confirm current wetsuit rules with the organizer.", "Confirma las reglas del traje de neopreno con el organizador.")}</p></details>
+            </details>
+            <button type="submit" disabled={busy || loading || !verified} className="btn-primary min-h-11 w-full justify-center sm:w-auto"><Plus className="w-4 h-4" aria-hidden="true" />{busy ? t("Saving…", "Guardando…") : t("Save race", "Guardar carrera")}</button>
           </form>
-        </div>
+        </section>
       </div>
     </ProtectedPage>
   );

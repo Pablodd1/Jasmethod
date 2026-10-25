@@ -4,6 +4,7 @@ import { ONBOARDING_STEP, onboardingNext, onboardingResume, type OnboardingStep 
 import { ONBOARDING_ANCHORS, missingOnboardingAnchors, readManualPersonalBests, appendManualPersonalBest } from "@/lib/onboarding-evidence";
 import { saveReviewedProfile } from "@/lib/profile-client";
 import { onboardingSectionPayload, type OnboardingSection, type SavedOnboarding } from "@/lib/onboarding-save";
+import { TrainingWorkflowNav } from "@/components/training-workflow-nav";
 import { DoubleDayFields } from "@/components/double-day-fields";
 import { TravelFields } from "@/components/travel-fields";
 import { PLANNABLE_GOALS, planningGoal } from "@/lib/planning-setup";
@@ -312,11 +313,12 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
 
   return (
     <ProtectedPage>
-      <div className="max-w-2xl mx-auto py-6 px-1 sm:px-4">
-        <header className="mb-5 space-y-2"><p className="text-sm font-semibold">{t("Free pilot · no payment required", "Piloto gratuito · sin pago")}</p><h1 className="font-display text-3xl">{user?.onboarded ? t("Review your athlete setup", "Revisa tu perfil de atleta") : t("Welcome to JMM", "Bienvenido a JMM")}</h1><p className="text-sm">{t("Connect or import first. We will show what is actually available and ask only for missing personal bests, thresholds and goals. Everything stays editable in your profile.", "Conecta o importa primero. Mostraremos los datos disponibles y pediremos solo marcas, umbrales y objetivos que falten. Podrás editar todo en tu perfil.")}</p></header>
+      <div className="training-workflow max-w-2xl mx-auto py-4 px-1 sm:px-4">
+        <TrainingWorkflowNav active="setup" es={lang === "es"} />
+        <header className="my-5 space-y-2"><p className="text-sm font-semibold">{t("Free pilot · no payment required", "Piloto gratuito · sin pago")}</p><h1 className="font-display text-3xl">{user?.onboarded ? t("Review your athlete setup", "Revisa tu perfil de atleta") : t("Welcome to JMM", "Bienvenido a JMM")}</h1><p className="text-sm">{t("Start with your goal and available time. Devices, races and performance tests are optional. Save each section when ready.", "Empieza por tu objetivo y tiempo disponible. Dispositivos, carreras y pruebas son opcionales. Guarda cada sección cuando esté lista.")}</p></header>
         {returnToTraining && <section className="mb-5 rounded-xl border border-ocean-200 bg-ocean-50 p-4 space-y-2">
-          <h1 className="font-display text-2xl">{t("Planning setup", "Configuración del plan")}</h1>
-          <p>{t("Review your goal, recent training, availability and restrictions below. Devices, zones and a race are optional. Save this section to return to your plan preview; nothing is assigned automatically.", "Revisa objetivo, entrenamiento reciente, disponibilidad y restricciones. Dispositivos, zonas y carrera son opcionales. Guarda esta sección para volver al plan; no se asigna nada automáticamente.")}</p>
+          <h2 className="font-display text-xl">{t("Before your plan preview", "Antes de ver tu plan")}</h2>
+          <p>{t("Confirm recent training, available days and current restrictions. Save, preview your plan, then confirm it.", "Confirma entrenamiento reciente, días disponibles y restricciones actuales. Guarda, revisa la vista previa y confirma el plan.")}</p>
           <Link className="underline" href="/training">{t("Back to training without saving", "Volver al entrenamiento sin guardar")}</Link>
         </section>}
         {error && <div role="alert" className="mb-4 text-red-700">{error} <button type="button" className="underline" onClick={() => window.location.reload()}>Reload and review</button></div>}
