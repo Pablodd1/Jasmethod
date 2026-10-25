@@ -31,7 +31,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
   for(const value of ['device','imported','unknown']){await source.selectOption(value);assert.equal(await imageConsent.isEnabled(),false);}
   assert.equal(chatCalls.length,0);
   await page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true}).fill('What is RPE?');
-  await page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}).first().click();
+  await page.getByRole('button',{name:es?'Enviar solo texto':'Send text only',exact:true}).first().click();
   await page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true}).waitFor();
   await page.waitForFunction(()=>document.querySelector('textarea')?.value==='');
   assert.equal(chatCalls.length,1);assert.equal(chatCalls[0].image,undefined);
