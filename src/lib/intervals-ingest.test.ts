@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { providerRetryAfterMs } from "./provider-retry";
 import { mapIntervalsActivity, mapIntervalsWellness, fetchIntervalsRange, intervalsRead, intervalsEventHash, intervalsSecretMatches } from "./intervals-ingest";
 const activity = { id: "i123", icu_athlete_id: "a1", source: "COROS", type: "Run", name: "Easy run", start_date: "2026-10-04T11:30:00Z", moving_time: 1800, distance: 5000, average_heartrate: 140, max_heartrate: 160, icu_average_watts: 250, calories: 320 };
 test("Intervals maps documented activity units and preserves absent measurements", () => {
@@ -43,6 +44,17 @@ test("Intervals range reads use Bearer and bounded nonoverlapping date windows",
   assert.equal(calls.length, 4); assert.equal(rows.activities.length, 2);
   assert.equal(calls[0].searchParams.get("newest"), "2026-09-30"); assert.equal(calls[2].searchParams.get("oldest"), "2026-10-01");
   assert.ok(calls.every(u => u.pathname.startsWith("/api/v1/athlete/0/")));
+});
+
+test("50 initial imports use 600 bounded reads with independent bearer identities; 429 returns full cooldown without retry",async()=>{
+ let calls=0;
+ await Promise.all(Array.from({length:50},(_,i)=>fetchIntervalsRange(`Bearer synthetic-${i}`,"2026-01-01","2026-06-29",true,true,(async(_url,init)=>{
+   calls++;assert.equal((init?.headers as Record<string,string>).Authorization,`Bearer synthetic-${i}`);return Response.json([]);
+ }) as typeof fetch)));
+ assert.equal(calls,600);
+ let rejectedCalls=0;
+ await assert.rejects(intervalsRead("/athlete/0/activities","Bearer synthetic",(async()=>{rejectedCalls++;return new Response(null,{status:429,headers:{"retry-after":"370"}});}) as typeof fetch),(error:unknown)=>!!error&&typeof error==='object'&&'retryAfterMs' in error&&error.retryAfterMs===370000);
+ assert.equal(rejectedCalls,1);
 });
 test("Intervals permission failures and malformed provider lists fail visibly", async () => {
   await assert.rejects(intervalsRead("/athlete/0/wellness", "Bearer fixture", (async () => new Response("", { status: 403 })) as typeof fetch), /Reconnect/);
@@ -94,6 +106,7 @@ function eventWorkerFixture(status: number, record: any = activity, connected = 
     if (id === "date-fns-tz") return { fromZonedTime };
     if (id === "./dates") return dates;
     if (id === "./capabilities") return { requireIntervalsConnector: () => {} };
+    if (id === "./provider-retry") return { providerRetryAfterMs };
     if (id === "./db") return { prisma: { connector: { findFirst: async ({ where }: any) => connected && !(fetched && changeAfterFetch === "disconnect") && where.externalRef === "a1" && where.userId === "u1" ? { scope: "ACTIVITY:READ" } : null }, user: { findUniqueOrThrow: async () => ({ timezone: "UTC" }) } } };
     if (id === "./intervals-oauth") return { getIntervalsAuthorization: async () => ({ authorization: fetched && changeAfterFetch === "replace" ? "Bearer replacement" : "Bearer fixture", athleteId: "a1" }) };
     if (id === "./activity-store") return { storeActivity: async (...args: any[]) => { writes.push(args); return true; }, deleteImportedActivities: async (...args: any[]) => { deletes.push(args); } };
@@ -146,6 +159,7 @@ test("Intervals long-gap reconciliation resumes at the retained cursor with comp
     if (id === "date-fns-tz") return { fromZonedTime };
     if (id === "./dates") return dates;
     if (id === "./capabilities") return { requireIntervalsConnector: () => {} };
+    if (id === "./provider-retry") return { providerRetryAfterMs };
     if (id === "./db") return { prisma: {} };
     if (id === "./intervals-oauth") return { getIntervalsAuthorization: async () => ({ authorization: "Bearer synthetic", athleteId: "a1" }), intervalsScopesAllow: () => true };
     if (id === "./activity-store") return { storeActivity: async () => { writes++; return true; } };

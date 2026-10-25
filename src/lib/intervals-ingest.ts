@@ -5,6 +5,7 @@ import { prisma } from "./db";
 import { storeActivity, deleteImportedActivities } from "./activity-store";
 import { getIntervalsAuthorization, intervalsScopesAllow } from "./intervals-oauth";
 import { requireIntervalsConnector } from "./capabilities";
+import { providerRetryAfterMs } from "./provider-retry";
 
 // Field contract: https://intervals.icu/api/v1/docs (Activity, Wellness).
 // Intervals hrv is RMSSD; hrvSDNN is retained separately, never converted.
@@ -51,7 +52,7 @@ export function mapIntervalsWellness(w: any, timezone: string) {
 }
 export async function intervalsRead(path: string, authorization: string, fetcher: typeof fetch = fetch): Promise<any> {
   const response = await fetcher(`https://intervals.icu/api/v1${path}`, { headers: { Authorization: authorization, Accept: "application/json" }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20000) });
-  if (!response.ok) throw Object.assign(new Error(response.status === 401 || response.status === 403 ? "Intervals authorization or scope expired. Reconnect this provider." : `Intervals read failed (${response.status})`), { status: response.status });
+  if (!response.ok) throw Object.assign(new Error(response.status === 401 || response.status === 403 ? "Intervals authorization or scope expired. Reconnect this provider." : `Intervals read failed (${response.status})`), { status: response.status, ...(response.status === 429 ? {retryAfterMs:providerRetryAfterMs(response.headers.get("retry-after"))} : {}) });
   return response.json();
 }
 export async function fetchIntervalsRange(authorization: string, oldest: string, newest: string, activity: boolean, wellness: boolean, fetcher: typeof fetch = fetch) {

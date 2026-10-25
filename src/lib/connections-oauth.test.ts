@@ -394,6 +394,36 @@ test('intervals OAuth: WRITE scopes include READ but Calendar READ cannot publis
   assert.equal(f.intervals.intervalsScopesAllow('ACTIVITY:READ,WELLNESS:READ,CALENDAR:READ',['CALENDAR:WRITE']),false);
 });
 
+test('Intervals pilot refuses other athletes before authorization or exchange, and rechecks a changed allowlist on callback',async()=>{
+  const f=fixture(original);f.env.INTERVALS_PILOT_USER_IDS='athlete-A';f.setSession('athlete-B');
+  assert.equal((await f.authorize(new Request('https://app.example/api/connectors/intervals/authorize'),'intervals')).status,403);
+  assert.equal(f.getTxn(),null);assert.equal(f.log.tokenCalls.length,0);
+  f.setSession('athlete-A');await f.authorize(new Request('https://app.example/api/connectors/intervals/authorize'),'intervals');
+  f.env.INTERVALS_PILOT_USER_IDS='athlete-B';
+  const r=await f.callback(new Request(`https://app.example/api/connectors/intervals/callback?state=${f.getTxn().state}&code=fixture-code`),'intervals');
+  assert.match(r.headers.get('location'),/intervals_pilot_unavailable/);assert.equal(f.log.tokenCalls.length,0);assert.equal(f.log.writes.length,0);
+});
+
+test('50 synthetic athletes retain independent OAuth identities despite a different returning browser user',async()=>{
+  const ids=Array.from({length:50},(_,i)=>`pilot-${i}`);const seen=new Set();
+  await Promise.all(ids.map(async(id,i)=>{
+    const f=fixture(original,{intervalsReply:{token_type:'Bearer',access_token:`synthetic-token-${i}`,scope:'ACTIVITY:READ,WELLNESS:READ,CALENDAR:WRITE',athlete:{id:String(10000+i)}}});
+    f.env.INTERVALS_PILOT_USER_IDS=ids.join(',');f.setSession(id);
+    const start=await f.authorize(new Request('https://app.example/api/connectors/intervals/authorize'),'intervals');assert.equal(start.status,307);
+    const state=f.getTxn().state;assert.equal(seen.has(state),false);seen.add(state);f.setSession(ids[(i+1)%50]);
+    const done=await f.callback(new Request(`https://app.example/api/connectors/intervals/callback?state=${state}&code=synthetic-code`),'intervals');assert.match(done.headers.get('location'),/ok=intervals/);
+    const saved=f.log.writes[0].create;assert.equal(saved.userId,id);assert.equal(saved.externalRef,String(10000+i));assert.equal(f.log.queued[0].data.userId,id);assert.equal(f.log.tokenCalls.length,1);
+  }));assert.equal(seen.size,50);
+});
+
+test('pilot list fails closed on blank, malformed and over-50 entries',()=>{
+ const {intervals}=fixture(original);
+ for(const list of ['', 'pilot-1,', 'pilot-1,bad id', Array.from({length:51},(_,i)=>`pilot-${i}`).join(',')])assert.equal(intervals.intervalsPilotAllows('pilot-1',{INTERVALS_PILOT_USER_IDS:list}),false);
+ assert.equal(intervals.intervalsPilotAllows('pilot-1',{}),true);
+ assert.equal(intervals.intervalsPilotAllows('pilot-1',{INTERVALS_PILOT_USER_IDS:'pilot-1,pilot-10'}),true);
+ assert.equal(intervals.intervalsPilotAllows('pilot-1',{INTERVALS_PILOT_USER_IDS:'pilot-10'}),false);
+});
+
 function intervalsCredentialFixture(options={}) {
   let connection={id:'connector-1',userId:'athlete-A',provider:'intervals',externalRef:'321',status:'connected',
     tokenEnc:'enc:v1:fixture',scope:'ACTIVITY:READ,WELLNESS:READ,CALENDAR:WRITE',expiresAt:null,...options.connection};

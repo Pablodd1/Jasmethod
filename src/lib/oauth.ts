@@ -6,7 +6,7 @@ import { encryptSecret } from "./crypto";
 import * as api from "./importers";
 import { createOAuthState } from "./oauth-state";
 import { appMutationOriginAllowed } from "./request-origin";
-import { intervalsAuthUrl, intervalsExchangeToken, intervalsOAuthConfigured, IntervalsOAuthError } from "./intervals-oauth";
+import { intervalsAuthUrl, intervalsExchangeToken, intervalsOAuthConfigured, intervalsPilotAllows, IntervalsOAuthError } from "./intervals-oauth";
 import { stravaConnectorEnabled, STRAVA_DISABLED_MESSAGE } from "./capabilities";
 
 const providers = {
@@ -116,6 +116,8 @@ export async function authorizeSmokeCalendar(req: Request) {
 export async function authorize(req: Request, provider: string, options?: { mode: "smoke" }) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
+  if (provider === "intervals" && !intervalsPilotAllows(user.id))
+    return Response.json({ error: "Intervals.icu is currently limited to the selected pilot athletes.", code: "intervals_pilot_unavailable" }, { status: 403 });
   if (provider === "strava" && !stravaConnectorEnabled())
     return Response.json({ error: STRAVA_DISABLED_MESSAGE, code: "provider_disabled" }, { status: 503 });
   const params = new URL(req.url).searchParams;
@@ -212,6 +214,7 @@ export async function callback(req: Request, provider: string) {
   if (smoke && !smokeAccountAllowed(txn!.userId)) return redirect("smoke_test_unavailable");
   if (!txn || txn.provider !== storedProvider || txn.usedAt || txn.expiresAt <= now)
     return redirect("invalid_state");
+  if (canonical === "intervals" && !intervalsPilotAllows(txn.userId)) return redirect("intervals_pilot_unavailable");
   let claim;
   try {
     claim = await prisma.oAuthTransaction.updateMany({

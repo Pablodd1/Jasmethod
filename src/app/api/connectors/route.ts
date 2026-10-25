@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { athlinksConfigured } from "@/lib/athlinks";
 import { ATHLINKS_DEFERRED } from "@/lib/athlinks-availability";
-import { disconnectIntervals, IntervalsOAuthError } from "@/lib/intervals-oauth";
+import { disconnectIntervals, intervalsPilotAllows, IntervalsOAuthError } from "@/lib/intervals-oauth";
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -105,7 +105,7 @@ export async function GET() {
     ].map((p) => ({
       ...p,
       method: p.id === "athlinks" ? "athlinks" : p.id === "intervals" ? "oauth" : "upload",
-      configured: p.id === "athlinks" ? athlinksConfigured() : p.id === "intervals" ? intervalsOAuthConfigured() : true,
+      configured: p.id === "athlinks" ? athlinksConfigured() : p.id === "intervals" ? intervalsOAuthConfigured() && intervalsPilotAllows(user.id) : true,
       status:
         connectors.find((c) => c.provider === p.id)?.status || "disconnected",
     })),
