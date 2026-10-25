@@ -39,10 +39,10 @@ test("public privacy and terms render the same working contact in accessible ema
     if (page === "privacy") {
       assert.ok(html.split(`href="${PUBLIC_CONTACT_MAILTO}"`).length - 1 >= 1);
       assert.doesNotMatch(html, /deletion is final and completes within 30 days/);
-      assert.match(html, /AI Dynamic LLC/);
-      assert.match(html, /401 69th St, Apt 709, Miami Beach, FL 33141/);
+      assert.match(html, /AI DYNAMICS INC/);
+      assert.match(html, /mailing address awaiting confirmation/);
       assert.doesNotMatch(html, /30 d[i\u00ed]as/);
-      assert.match(html, /Google Gemini/);
+      assert.match(html, /OpenAI/);
     }
   }
 });

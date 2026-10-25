@@ -6,7 +6,7 @@ import type { CoachReplyContext } from "./coach-conversation";
 import { type CoachCandidate } from './coach-conversation';
 
 
-export interface CoachTextEnvironment { EXTERNAL_AI_ENABLED?: string; DEEPSEEK_API_KEY?: string; DEEPSEEK_MODEL?: string }
+export interface CoachTextEnvironment { EXTERNAL_AI_ENABLED?: string; OPENAI_API_KEY?: string; OPENAI_TEXT_MODEL?: string }
 export interface CoachTextResult {
   status: "not_requested" | "not_configured" | "policy_local" | "answered" | "unavailable";
   answer?: string; sourceIds?: string[]; candidates?:CoachCandidate[];needsHumanReview?:boolean;
@@ -14,10 +14,10 @@ export interface CoachTextResult {
 export type CoachTextFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 const MAX_REQUEST_BYTES = 32 * 1024, MAX_RESPONSE_BYTES = 64 * 1024;
 
-const models = new Set(["deepseek-flash", "deepseek-v4-pro"]);
-function currentEnvironment(): CoachTextEnvironment { return { EXTERNAL_AI_ENABLED: process.env.EXTERNAL_AI_ENABLED, DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY, DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL }; }
+const models = new Set(["gpt-4.1-mini-2025-04-14", "gpt-4.1-mini"]);
+function currentEnvironment(): CoachTextEnvironment { return { EXTERNAL_AI_ENABLED: process.env.EXTERNAL_AI_ENABLED, OPENAI_API_KEY: process.env.OPENAI_API_KEY, OPENAI_TEXT_MODEL: process.env.OPENAI_TEXT_MODEL }; }
 export function coachTextConfigured(env: CoachTextEnvironment = currentEnvironment()): boolean {
-  return typeof window === "undefined" && env.EXTERNAL_AI_ENABLED === "true" && typeof env.DEEPSEEK_API_KEY === "string" && /^[\x21-\x7e]{1,1024}$/.test(env.DEEPSEEK_API_KEY) && models.has(env.DEEPSEEK_MODEL || "deepseek-flash");
+  return typeof window === "undefined" && env.EXTERNAL_AI_ENABLED === "true" && typeof env.OPENAI_API_KEY === "string" && /^[\x21-\x7e]{1,1024}$/.test(env.OPENAI_API_KEY) && models.has(env.OPENAI_TEXT_MODEL || "gpt-4.1-mini-2025-04-14");
 }
 // Safety, personal context, proposals and all writes remain server-owned.
 // The external model receives only a fixed educational topic.
@@ -62,9 +62,9 @@ function validatedAnswer(raw: unknown, payload: string,grounded:CoachCandidate[]
   return { answer: [value.answer.trim(), ...references].join("\n\n"), sourceIds, ...(value.changes!==undefined?{changes:value.changes}:{}),...(value.needsHumanReview===true?{needsHumanReview:true}:{}) };
 }
 export async function coachTextAnswer(input: {
-  message: string; localRuleId: string; context: CoachReplyContext; externalConsent: boolean; aiReplyMemoryConsent?:boolean;textProviderConsent?: "deepseek"; hasCandidates: boolean;
+  message: string; localRuleId: string; context: CoachReplyContext; externalConsent: boolean; aiReplyMemoryConsent?:boolean;textProviderConsent?: "openai"; hasCandidates: boolean;
 }, options: { env?: CoachTextEnvironment; fetch?: CoachTextFetch } = {}): Promise<CoachTextResult> {
-  if (input.externalConsent !== true || input.textProviderConsent !== "deepseek") return { status: "not_requested" };
+  if (input.externalConsent !== true || input.textProviderConsent !== "openai") return { status: "not_requested" };
   const env=options.env ?? currentEnvironment();
   if (!coachTextConfigured(env)) return { status:"not_configured" };
   if (input.hasCandidates || !textProviderQuestionAllowed(input.message,input.localRuleId) || input.context.unreviewedImageConcern || input.context.unresolvedSafetyConcernAt) return { status:"policy_local" };
@@ -76,7 +76,7 @@ export async function coachTextAnswer(input: {
     approvedEducation:Object.entries(educationalCatalog).map(([topic, paragraphs])=>({topic,paragraphs:paragraphs.map(p=>p[context.language])})),
     references:PROTOCOL_SOURCES,
   });
-  const body=JSON.stringify({model:env.DEEPSEEK_MODEL || "deepseek-flash",stream:false,thinking:{type:"disabled"},temperature:.2,max_tokens:1400,response_format:{type:"json_object"},messages:[
+  const body=JSON.stringify({model:env.OPENAI_TEXT_MODEL || "gpt-4.1-mini-2025-04-14",stream:false,store:false,temperature:.2,max_tokens:1400,response_format:{type:"json_object"},messages:[
     {role:"system",content:"You provide general sports education in the supplied language using only the supplied topic and reviewed catalog. No athlete context, user text, session, device data or chat history is provided. Do not infer or request those data, personalize an answer, claim to know a goal/history, diagnose, clear exercise, prescribe doses, create workouts, predict results or propose changes. Return JSON {\"answer\":\"brief general explanation\",\"sourceIds\":[],\"changes\":[]}. Only supplied source IDs may be referenced. Never claim anything was saved, sent or approved."},
     {role:"user",content:payload},
   ]});
@@ -84,10 +84,10 @@ export async function coachTextAnswer(input: {
   const controller=new AbortController(); let timer:ReturnType<typeof setTimeout>|undefined;
   const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error("Provider timeout"));},12000);});
   try { return await Promise.race([deadline,(async():Promise<CoachTextResult>=>{
-    const response=await(options.fetch ?? fetch)("https://api.deepseek.com/chat/completions",{method:"POST",redirect:"error",referrerPolicy:"no-referrer",cache:"no-store",credentials:"omit",headers:{"Content-Type":"application/json",Authorization:`Bearer ${env.DEEPSEEK_API_KEY!}`},signal:controller.signal,body});
+    const response=await(options.fetch ?? fetch)("https://api.openai.com/v1/chat/completions",{method:"POST",redirect:"error",referrerPolicy:"no-referrer",cache:"no-store",credentials:"omit",headers:{"Content-Type":"application/json",Authorization:`Bearer ${env.OPENAI_API_KEY!}`},signal:controller.signal,body});
     if(!response.ok)return{status:"unavailable"};
     const generated=await boundedJson(response,controller.signal), choice=generated?.choices?.[0];
-    if(choice?.finish_reason!=="stop"||choice.message?.role!=="assistant"||choice.message?.tool_calls?.length||typeof choice.message?.content!=="string"||choice.message.content.length>4500)return{status:"unavailable"};
+    if(choice?.finish_reason!=="stop"||choice.message?.role!=="assistant"||choice.message?.refusal||choice.message?.tool_calls?.length||typeof choice.message?.content!=="string"||choice.message.content.length>4500)return{status:"unavailable"};
     const raw=JSON.parse(choice.message.content);
     const candidates:CoachCandidate[]=[];
     const result=validatedAnswer(raw,payload,candidates);

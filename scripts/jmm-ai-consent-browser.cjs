@@ -8,17 +8,17 @@ const file={name:'synthetic.png',mimeType:'image/png',buffer:Buffer.from('iVBORw
 async function main(){const browser=await chromium.launch({headless:true});try{
  for(const language of ['en','es']){
   const es=language==='es',context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();let photoCalls=0,mealCalls=0,chatCalls=[];
-  const conversation=()=>({ok:true,conversation:{id:'synthetic-private-chat',messages:[]},proposal:null,receipt:null,savedReceipt:null,pendingActions:[],sessions:[],capabilities:{externalAi:true,textProvider:'DeepSeek',imageUnderstanding:true,imageProvider:'OpenAI'}});
+  const conversation=()=>({ok:true,conversation:{id:'synthetic-private-chat',messages:[]},proposal:null,receipt:null,savedReceipt:null,pendingActions:[],sessions:[],capabilities:{externalAi:true,textProvider:'OpenAI',imageUnderstanding:true,imageProvider:'OpenAI'}});
   page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',async route=>{const req=route.request(),url=new URL(req.url());if(url.origin!==base){unexpected.push('external');return route.abort();}if(!url.pathname.startsWith('/api/'))return route.continue();
    if(url.pathname==='/api/auth/me')return route.fulfill({json:{user:{id:'synthetic-consent-owner',email:'athlete@example.invalid',name:'Synthetic',role:'athlete',language,timezone:'UTC',onboarded:true}}});
-   if(url.pathname==='/api/nutrition/photo'){photoCalls++;const body=req.postDataJSON();assert.equal(body.photoConsent,true);assert.equal(body.photoProviderConsent,'google_gemini');assert.equal(body.photoSource,'food_photo');return route.fulfill({json:{ok:true,analysis:{food:'Synthetic reviewed estimate',calories:20,proteinG:1,carbsG:2,fatG:1,notes:'Review this estimate'}}});}
+   if(url.pathname==='/api/nutrition/photo'){photoCalls++;const body=req.postDataJSON();assert.equal(body.photoConsent,true);assert.equal(body.photoProviderConsent,'openai');assert.equal(body.photoSource,'food_photo');return route.fulfill({json:{ok:true,analysis:{food:'Synthetic reviewed estimate',calories:20,proteinG:1,carbsG:2,fatG:1,notes:'Review this estimate'}}});}
    if(url.pathname==='/api/nutrition'){if(req.method()==='POST'){mealCalls++;return route.fulfill({json:{ok:true,log:{id:'synthetic-manual-meal'}}});}return route.fulfill({json:{daily:[],logs:{nutrition:[],hydration:[]}}});}
    if(url.pathname==='/api/assistant'){if(req.method()==='POST')chatCalls.push(req.postDataJSON());return route.fulfill({json:conversation()});}
    if(req.method()!=='GET')unexpected.push(req.method()+' '+url.pathname);return route.fulfill({json:{ok:true}});
   });
   await page.goto(base+'/nutrition');await page.locator('#food-photo').setInputFiles(file);
-  const consent=page.getByRole('checkbox',{name:/Google Gemini/}),analyze=page.getByRole('button',{name:es?'Analizar esta foto con Google Gemini':'Analyze this photo with Google Gemini',exact:true});
+  const consent=page.getByRole('checkbox',{name:/OpenAI/}),analyze=page.getByRole('button',{name:es?'Analizar esta foto con OpenAI':'Analyze this photo with OpenAI',exact:true});
   assert.equal(await consent.isChecked(),false);assert.equal(await analyze.isEnabled(),false);assert.equal(photoCalls,0);
   await page.getByPlaceholder('Oatmeal + banana').fill('Synthetic manual meal');await page.getByRole('button',{name:'Log Meal',exact:true}).click();
   await page.getByText(/Save confirmed by the server|Guardado confirmado/).waitFor();assert.equal(mealCalls,1);assert.equal(photoCalls,0);
@@ -40,9 +40,11 @@ async function main(){const browser=await chromium.launch({headless:true});try{
   await page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}).first().click();
   await page.waitForFunction(()=>document.querySelector('textarea')?.value==='');
   assert.equal(chatCalls.length,2);assert.equal(chatCalls[1].imageSource,'manual_note');assert.equal(chatCalls[1].imageConsent,true);assert.equal(chatCalls[1].imageProviderConsent,'openai');
-  assert.equal(await page.getByRole('checkbox',{name:/two previous DeepSeek|dos respuestas previas/}).count(),0);
+  assert.equal(await page.getByRole('checkbox',{name:/two previous OpenAI|dos respuestas previas/}).count(),0);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${dir}/coach-${language}-390.png`,fullPage:true});
-  results.push({language,status:'PASS',checks:['unchecked per-photo Gemini consent','manual meal works without AI','one-photo consent consumed','device/imported/unknown screenshot sources blocked','text-only fallback','explicit manual source and OpenAI consent','legacy memory UI removed','mobile geometry']});await context.close();
+  await page.goto(base+'/privacy');await page.getByRole('heading',{name:'Privacy Policy · Política de Privacidad',exact:true}).waitFor();
+  const policy=await page.locator('main').innerText();assert.match(policy,/AI DYNAMICS INC/);assert.match(policy,/only optional AI provider/);assert.match(policy,/único proveedor opcional de IA/);assert.doesNotMatch(policy,/DeepSeek|Google Gemini|zero provider retention is guaranteed/);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${dir}/privacy-${language}-390.png`,fullPage:true});
+  results.push({language,status:'PASS',checks:['unchecked per-photo OpenAI consent','manual meal works without AI','one-photo consent consumed','device/imported/unknown screenshot sources blocked','text-only fallback','explicit manual source and OpenAI consent','legacy memory UI removed','bilingual OpenAI-only proposed policy','mobile geometry']});await context.close();
  }
 }finally{await browser.close();writeFileSync(dir+'/report.json',JSON.stringify({results,errors,unexpected,scope:'Synthetic UI fixture; provider zero-call and real HTTP refusal tests are separate'},null,2));}
 assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);}

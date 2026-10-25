@@ -94,7 +94,7 @@ async function run(req: Request) {
       if (isSyncAuthFailure(f.error)) {
         await alertOwner(
           "sync_auth",
-          `${u.name} — ${f.provider}: ${f.error}`,
+          "A connected service needs reauthorization. Review the private integration diagnostics in JMM.",
           { cooldownMin: 720 },
         );
       }
@@ -111,7 +111,8 @@ async function run(req: Request) {
       : { skipped: true, ...(ATHLINKS_DEFERRED ? { reason: "provider_deferred" } : {}) },
     perUser,
   };
-  console.log("[cron/sync]", JSON.stringify(summary));
+  // Platform logs get aggregate operation counts only, not athlete rows/errors.
+  console.log("[cron/sync]", JSON.stringify({ ranAt: summary.ranAt, durationMs: summary.durationMs, athletes: summary.athletes, totalImported: summary.totalImported, failedAthletes: summary.failedAthletes }));
   await logEvent({ kind: failedUsers.length ? "warn" : "info", source: "cron", route: "/api/cron/sync", message: "athletes=" + connected.length + " imported=" + summary.totalImported + " failed=" + failedUsers.length });
   return NextResponse.json(summary);
 }

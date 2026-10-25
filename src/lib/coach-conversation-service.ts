@@ -24,7 +24,7 @@ import { currentOrReportedWorkoutWhere } from './calendar-workouts';
 export type ConversationActor = { id: string; timezone: string; language?: string };
 type DB = Prisma.TransactionClient;
 export const CONVERSATION_MESSAGE_LIMIT = 60;
-function coachCapabilities() { const externalAi = coachTextConfigured(), imageUnderstanding = coachVisionConfiguration().configured; return { externalAi, textProvider: externalAi ? "DeepSeek" : null, imageUnderstanding, imageProvider: imageUnderstanding ? "OpenAI" : null }; }
+function coachCapabilities() { const externalAi = coachTextConfigured(), imageUnderstanding = coachVisionConfiguration().configured; return { externalAi, textProvider: externalAi ? "OpenAI" : null, imageUnderstanding, imageProvider: imageUnderstanding ? "OpenAI" : null }; }
 const SAFETY_RULES = ["urgent-symptoms", "illness-or-pain", "clarify-fatigue", "clarify-prior-safety", "clarify-symptom-timing", "clarify-current-symptoms", "unreviewed-image-urgent", "unreviewed-image-symptoms"];
 const mutationFields: Record<string, readonly string[]> = {
   profile: ["goal", "weeklyHours", "weightKg", "heightCm", "birthYear", "experience", "ftp"],
@@ -181,7 +181,7 @@ export async function appendConversation(actor: ConversationActor, raw: unknown)
   const input = parseAssistantInput(body);
   const selectedSessionId = body.sessionId == null || body.sessionId === "" ? undefined : identifier(body.sessionId, "session");
   const requestedConversationId = body.conversationId === undefined ? undefined : identifier(body.conversationId, "conversation");
-  const namedExternal = (input.externalConsent && input.textProviderConsent === "deepseek") || Boolean(input.image && input.imageConsent && input.imageProviderConsent === "openai");
+  const namedExternal = (input.externalConsent && input.textProviderConsent === "openai") || Boolean(input.image && input.imageConsent && input.imageProviderConsent === "openai");
   if (namedExternal && body.clientRequestId === undefined) throw new ApiError("An external request needs a stable clientRequestId before sending");
   const clientRequestId = body.clientRequestId === undefined ? randomUUID() : identifier(body.clientRequestId, "client request id");
   const requestHash = createHash("sha256").update(JSON.stringify({ input, sessionId: selectedSessionId ?? null, conversationId: requestedConversationId ?? null })).digest("hex");
@@ -225,7 +225,7 @@ export async function appendConversation(actor: ConversationActor, raw: unknown)
   if (claim.replayed) {
     const history = await prisma.$transaction(tx => readConversation(actor, tx), { isolationLevel: "Serializable" });
     const lastAnswer = [...history.conversation.messages].reverse().find(message => message.role === "assistant");
-    return { ...history, capabilities: coachCapabilities(), ok: true, replayed: true, mode: lastAnswer?.source === "deepseek" ? "coach_ai" : "coach_local", answer: lastAnswer?.content ?? "", trainingModified: false, externalStatus: "not_requested", imageStatus: "not_requested" };
+    return { ...history, capabilities: coachCapabilities(), ok: true, replayed: true, mode: lastAnswer?.source === "openai" ? "coach_ai" : "coach_local", answer: lastAnswer?.content ?? "", trainingModified: false, externalStatus: "not_requested", imageStatus: "not_requested" };
   }
   const guard = claim.guard;
   const finish = async (status: "completed" | "failed") => prisma.$transaction(tx => tx.coachConversationRequest.updateMany({ where: { id: guard.id, userId: actor.id, status: "processing" }, data: { status, activeKey: null, finishedAt: new Date() } }), { isolationLevel: "Serializable" });
@@ -363,7 +363,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const lastAnswer = [...history.conversation.messages].reverse().find(message => message.role === "assistant");
       return { ...result, ...history, answer: lastAnswer?.content ?? "", externalStatus: provider.status };
     }
-    const disclosure = actor.language === "es" ? "DeepSeek · educación general sin contexto personal ni memoria. Los cambios se revisan en JMM." : "DeepSeek · general education without personal context or memory. Changes are reviewed in JMM.";
+    const disclosure = actor.language === "es" ? "OpenAI · educación general sin contexto personal ni memoria. Los cambios se revisan en JMM." : "OpenAI · general education without personal context or memory. Changes are reviewed in JMM.";
     try {
       return await prisma.$transaction(async tx => {
         const current = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
@@ -387,7 +387,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
         }
         const review=interpreted.length?(actor.language==='es'?'Revisa y confirma los valores abajo; todavía no se han guardado.':'Review and confirm the values below; they have not been saved yet.'):'';
         const answer = [provider.answer,review,disclosure].filter(Boolean).join('\n\n');
-        const updated = await tx.coachConversationMessage.updateMany({ where: { id: _guard.messageId, userId: actor.id, conversationId: current.id }, data: { content: answer, source: "deepseek", metadata: JSON.stringify({ ruleId: _ruleId, provider: "DeepSeek", namedConsent: "deepseek", contextVersion: AI_DATA_POLICY_VERSION, sourceIds: provider.sourceIds ?? [],needsHumanReview:provider.needsHumanReview===true,externalConsent: true }) } });
+        const updated = await tx.coachConversationMessage.updateMany({ where: { id: _guard.messageId, userId: actor.id, conversationId: current.id }, data: { content: answer, source: "openai", metadata: JSON.stringify({ ruleId: _ruleId, provider: "OpenAI", namedConsent: "openai", contextVersion: AI_DATA_POLICY_VERSION, sourceIds: provider.sourceIds ?? [],needsHumanReview:provider.needsHumanReview===true,externalConsent: true }) } });
         if (updated.count !== 1) throw new ApiError('The conversation changed before the interpreted reply could be saved.',409);
         await tx.coachConversation.update({ where: { id: current.id, userId: actor.id }, data: { revision: { increment: 1 } } });
         return { ...result, ...await readConversation(actor, tx), answer, mode: "coach_ai", externalStatus: "answered", disclosure };

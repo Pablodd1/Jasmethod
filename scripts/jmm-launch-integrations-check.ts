@@ -34,7 +34,7 @@ async function main() { try {
   const before = await db.workout.count();
   const response = await request(admin.cookie, { action: "probe" }); assert.equal(response.status, 200);
   const result = await response.json();
-  assert.equal(result.checks.deepseek.state, "missing"); assert.equal(result.checks.email.state, "missing"); assert.equal(result.checks.telegram.state, "missing");
+  assert.equal(result.checks.openai.state, "missing"); assert.equal(result.checks.email.state, "missing"); assert.equal(result.checks.telegram.state, "missing");
   assert.equal(response.headers.get("cache-control"), "private, no-store");
   assert.doesNotMatch(JSON.stringify(result), /synthetic-smtp|synthetic-private|Bearer |postgresql:|tokenHash/);
   assert.equal(await db.workout.count(), before);

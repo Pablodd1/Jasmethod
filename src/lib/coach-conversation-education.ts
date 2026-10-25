@@ -1,6 +1,6 @@
 export type EducationalLanguage = "en" | "es";
 export type ApprovedParagraph = { id: string; en: string; es: string };
-// Trusted bilingual definitions for local answers and the optional DeepSeek
+// Trusted bilingual definitions for local answers and the optional OpenAI
 // context. Provider prose remains advisory and cannot overwrite this catalog.
 export const educationalCatalog = {
   jmetrics: [

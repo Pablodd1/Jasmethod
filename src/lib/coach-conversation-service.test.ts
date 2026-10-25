@@ -302,16 +302,16 @@ test("late provider output cannot resurrect a cleared chat or replace a newer co
   for (const action of ["clear", "new-message"] as const) for (const providerMode of ["selection", "invalid"] as const) {
     const f = fixture();
     const previousFetch = globalThis.fetch;
-    const priorEnv = { enabled: process.env.EXTERNAL_AI_ENABLED, key: process.env.DEEPSEEK_API_KEY, model: process.env.DEEPSEEK_MODEL };
+    const priorEnv = { enabled: process.env.EXTERNAL_AI_ENABLED, key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_TEXT_MODEL };
     let resolveFetch!: (response: Response) => void;
     let signalStarted!: () => void;
     const started = new Promise<void>(resolve => { signalStarted = resolve; });
     globalThis.fetch = async () => { signalStarted(); return new Promise<Response>(resolve => { resolveFetch = resolve; }); };
     process.env.EXTERNAL_AI_ENABLED = "true";
-    process.env.DEEPSEEK_API_KEY = "synthetic-test-only";
-    process.env.DEEPSEEK_MODEL = "deepseek-flash";
+    process.env.OPENAI_API_KEY = "synthetic-test-only";
+    process.env.OPENAI_TEXT_MODEL = "gpt-4.1-mini-2025-04-14";
     try {
-      const pending = appendConversation(actor, { message: "What is RPE?", clientRequestId: "pending-text-request", source: "text", externalConsent: true, textProviderConsent: "deepseek" });
+      const pending = appendConversation(actor, { message: "What is RPE?", clientRequestId: "pending-text-request", source: "text", externalConsent: true, textProviderConsent: "openai" });
       await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(Error("Provider did not start")),2000))]);
       if (action === "clear") await clearConversation(actor, { confirmed: true });
       else await appendConversation(actor, { message: "A newer message", source: "text", externalConsent: false });
@@ -319,12 +319,12 @@ test("late provider output cannot resurrect a cleared chat or replace a newer co
       const result = await pending;
       assert.equal(result.mode, "coach_local");
       assert.equal(result.externalStatus, "unavailable");
-      assert.ok(!f.state.messages.some((m: any) => m.source === "deepseek" || m.content.includes("Delayed provider")));
+      assert.ok(!f.state.messages.some((m: any) => m.source === "openai" || m.content.includes("Delayed provider")));
       if (action === "clear") { assert.equal(result.conversation.messages.length, 0); assert.equal(result.answer, ""); }
       else assert.ok(result.conversation.messages.some((m: any) => m.content === "A newer message"));
     } finally {
       globalThis.fetch = previousFetch;
-      for (const [name, value] of [["EXTERNAL_AI_ENABLED", priorEnv.enabled], ["DEEPSEEK_API_KEY", priorEnv.key], ["DEEPSEEK_MODEL", priorEnv.model]]) { if (value === undefined) delete process.env[name!]; else process.env[name!] = value; }
+      for (const [name, value] of [["EXTERNAL_AI_ENABLED", priorEnv.enabled], ["OPENAI_API_KEY", priorEnv.key], ["OPENAI_TEXT_MODEL", priorEnv.model]]) { if (value === undefined) delete process.env[name!]; else process.env[name!] = value; }
       f.restore();
     }
   }
@@ -345,7 +345,7 @@ test("service wires configured vision only for named per-image consent and prese
     return Response.json({ status: "completed", error: null, incomplete_details: null, output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: JSON.stringify({ candidates: [candidate({ id: "image-weight", source: "image", evidence: "Visible weight 75 kg" })] }) }] }] });
   };
   try {
-    for (const consent of [{ externalConsent: true, textProviderConsent: "deepseek", imageConsent: false }, { imageConsent: true }, { imageConsent: true, imageSource: "manual_note" as const, imageProviderConsent: "openai" }]) {
+    for (const consent of [{ externalConsent: true, textProviderConsent: "openai", imageConsent: false }, { imageConsent: true }, { imageConsent: true, imageSource: "manual_note" as const, imageProviderConsent: "openai" }]) {
       const f = fixture();
       try {
         const result = await appendConversation(actor, { message: "Review this screenshot", clientRequestId: "image-request", image, imageSource:"manual_note", ...consent });
@@ -548,8 +548,8 @@ test("coach ignores superseded plans on an active rest day but suppresses moveme
 test("direct questions use local answers without a paid provider round-trip or athlete writes", async () => {
   const f = fixture([]);
   const previousFetch = globalThis.fetch;
-  const prior = { enabled: process.env.EXTERNAL_AI_ENABLED, key: process.env.DEEPSEEK_API_KEY };
-  process.env.EXTERNAL_AI_ENABLED = "true"; process.env.DEEPSEEK_API_KEY = "synthetic-text-test";
+  const prior = { enabled: process.env.EXTERNAL_AI_ENABLED, key: process.env.OPENAI_API_KEY };
+  process.env.EXTERNAL_AI_ENABLED = "true"; process.env.OPENAI_API_KEY = "synthetic-text-test";
   let calls = 0;
   globalThis.fetch = async () => { calls++; throw Error("Ordinary answers must not need an external provider"); };
   const before = structuredClone({ profile: f.state.profile, workout: f.state.workout });
@@ -572,7 +572,7 @@ test("direct questions use local answers without a paid provider round-trip or a
   } finally {
     globalThis.fetch = previousFetch;
     if (prior.enabled === undefined) delete process.env.EXTERNAL_AI_ENABLED; else process.env.EXTERNAL_AI_ENABLED = prior.enabled;
-    if (prior.key === undefined) delete process.env.DEEPSEEK_API_KEY; else process.env.DEEPSEEK_API_KEY = prior.key;
+    if (prior.key === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = prior.key;
     f.restore();
   }
 });
@@ -589,21 +589,21 @@ test("logging clarification is stated once, and a selected session does not ask 
   } finally { f.restore(); }
 });
 
-test("named DeepSeek conversation reads only bounded manual export history, persists advisory provenance and never writes athlete data", async () => {
+test("named OpenAI conversation reads only bounded manual export history, persists advisory provenance and never writes athlete data", async () => {
   const f=fixture([]), previousFetch=globalThis.fetch;
-  const prior=Object.fromEntries(["EXTERNAL_AI_ENABLED","DEEPSEEK_API_KEY","DEEPSEEK_MODEL"].map(key=>[key,process.env[key]]));
-  process.env.EXTERNAL_AI_ENABLED="true";process.env.DEEPSEEK_API_KEY="synthetic-only";process.env.DEEPSEEK_MODEL="deepseek-flash";
+  const prior=Object.fromEntries(["EXTERNAL_AI_ENABLED","OPENAI_API_KEY","OPENAI_TEXT_MODEL"].map(key=>[key,process.env[key]]));
+  process.env.EXTERNAL_AI_ENABLED="true";process.env.OPENAI_API_KEY="synthetic-only";process.env.OPENAI_TEXT_MODEL="gpt-4.1-mini-2025-04-14";
   let calls=0,sent:any;
   globalThis.fetch=async(_url,init)=>{calls++;sent=JSON.parse(JSON.parse(String(init?.body)).messages[1].content);return Response.json({choices:[{finish_reason:"stop",message:{role:"assistant",content:JSON.stringify({answer:"We can discuss consistency around your reported goals. The available history is partial; review the saved plan before changes.",sourceIds:[]})}}]});};
   const before=structuredClone({profile:f.state.profile,workout:f.state.workout});
   try {
-    const request={message:"What is RPE?",externalConsent:true,textProviderConsent:"deepseek",clientRequestId:"deepseek-context-one"};
+    const request={message:"What is RPE?",externalConsent:true,textProviderConsent:"openai",clientRequestId:"openai-context-one"};
     const result=await appendConversation(actor,request);
     assert.equal(result.mode,"coach_ai");assert.equal(result.externalStatus,"answered");assert.equal(result.trainingModified,false);
-    assert.equal(result.capabilities.textProvider,"DeepSeek");assert.equal(calls,1);
-    assert.equal(f.state.externalRead,undefined);assert.deepEqual(sent.context,{version:"generic-education-v2",language:"en"});
+    assert.equal(result.capabilities.textProvider,"OpenAI");assert.equal(calls,1);
+    assert.equal(f.state.externalRead,undefined);assert.deepEqual(sent.context,{version:"openai-generic-education-v3",language:"en"});
     assert.equal(sent.message,undefined);assert.deepEqual(sent.changeFields,[]);
-    assert.equal(f.state.messages.at(-1).source,"deepseek");assert.equal(JSON.parse(f.state.messages.at(-1).metadata).namedConsent,"deepseek");
+    assert.equal(f.state.messages.at(-1).source,"openai");assert.equal(JSON.parse(f.state.messages.at(-1).metadata).namedConsent,"openai");
     assert.deepEqual(f.state.writes,[]);assert.deepEqual({profile:f.state.profile,workout:f.state.workout},before);
     const replay=await appendConversation(actor,request);assert.equal(replay.replayed,true);assert.equal(calls,1);
   } finally {globalThis.fetch=previousFetch;for(const [key,value] of Object.entries(prior)){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
@@ -744,19 +744,19 @@ test('chat workout confirmation protects recovery, event sessions and stale revi
 });
 
 test('local fallback creates an owner-bound review proposal without external text transmission, then confirmation alone changes the workout',async()=>{
- const f=fixture(),originalFetch=globalThis.fetch,oldEnv={enabled:process.env.EXTERNAL_AI_ENABLED,key:process.env.DEEPSEEK_API_KEY,model:process.env.DEEPSEEK_MODEL};
+ const f=fixture(),originalFetch=globalThis.fetch,oldEnv={enabled:process.env.EXTERNAL_AI_ENABLED,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_TEXT_MODEL};
  const message='Could you make this session half an hour?';let calls=0;
  try {
    Object.assign(f.state.workout,{completed:false,feedbackStatus:null,feedbackAt:null,actualDurationMin:null,rpe:null,approved:false});
-   process.env.EXTERNAL_AI_ENABLED='true';process.env.DEEPSEEK_API_KEY='synthetic-test-only';process.env.DEEPSEEK_MODEL='deepseek-flash';
-   globalThis.fetch=async(url,init)=>{calls++;assert.equal(String(url),'https://api.deepseek.com/chat/completions');const payload=JSON.parse(String(init?.body));assert.ok(!payload.messages[1].content.includes('session-a'));return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({answer:'I can propose a duration of 30 minutes for your review.',sourceIds:[],changes:[{kind:'workout_plan',field:'durationMin',unit:'min',value:30,evidence:message}]})}}]});};
-   const result=await appendConversation(actor,{message,sessionId:'session-a',source:'voice',externalConsent:true,textProviderConsent:'deepseek',clientRequestId:'ai-change-once'});
+   process.env.EXTERNAL_AI_ENABLED='true';process.env.OPENAI_API_KEY='synthetic-test-only';process.env.OPENAI_TEXT_MODEL='gpt-4.1-mini-2025-04-14';
+   globalThis.fetch=async(url,init)=>{calls++;assert.equal(String(url),'https://api.openai.com/v1/chat/completions');const payload=JSON.parse(String(init?.body));assert.ok(!payload.messages[1].content.includes('session-a'));return Response.json({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({answer:'I can propose a duration of 30 minutes for your review.',sourceIds:[],changes:[{kind:'workout_plan',field:'durationMin',unit:'min',value:30,evidence:message}]})}}]});};
+   const result=await appendConversation(actor,{message,sessionId:'session-a',source:'voice',externalConsent:true,textProviderConsent:'openai',clientRequestId:'ai-change-once'});
    assert.equal(result.externalStatus,'policy_local');assert.equal(calls,0);assert.equal(f.state.workout.durationMin,40);assert.deepEqual(f.state.writes,[]);
    const proposal=result.proposal!;assert.equal(proposal.status,'pending');assert.equal(proposal.candidates[0].source,'voice');assert.equal(proposal.candidates[0].sessionId,'session-a');
    const body={proposalId:proposal.id,expectedRevision:proposal.revision,candidates:proposal.candidates,confirmed:true,idempotencyKey:'ai-confirm-once'};
    const saved=await confirmConversation(actor,body);assert.equal(saved.trainingModified,true);assert.equal(f.state.workout.durationMin,30);assert.equal(f.state.workout.approved,false);
    const writes=f.state.writes.length;await confirmConversation(actor,body);assert.equal(f.state.writes.length,writes);assert.equal(calls,0);
- }finally{globalThis.fetch=originalFetch;for(const [key,value] of Object.entries({EXTERNAL_AI_ENABLED:oldEnv.enabled,DEEPSEEK_API_KEY:oldEnv.key,DEEPSEEK_MODEL:oldEnv.model})){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
+ }finally{globalThis.fetch=originalFetch;for(const [key,value] of Object.entries({EXTERNAL_AI_ENABLED:oldEnv.enabled,OPENAI_API_KEY:oldEnv.key,OPENAI_TEXT_MODEL:oldEnv.model})){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
 });
 
 
@@ -764,8 +764,9 @@ test("legacy AI memory and imported summaries are withheld from chat and cannot 
  const f=fixture([]);
  try{
   f.state.messages.push({id:"legacy-device-summary",userId:actor.id,conversationId:"conversation-a",role:"assistant",source:"deepseek",content:"DEVICE_SUMMARY_CANARY_6654321",createdAt:new Date(),metadata:JSON.stringify({contextVersion:"deepseek-personal-v1",localContextSummary:"DERIVED_CANARY_77777"})});
+  f.state.messages.push({id:"legacy-openai-policy",userId:actor.id,conversationId:"conversation-a",role:"assistant",source:"openai",content:"OLD_POLICY_CANARY_889977",createdAt:new Date(),metadata:JSON.stringify({contextVersion:"generic-education-v2"})});
   const result=await appendConversation(actor,{message:"What is RPE?",clientRequestId:"privacy-legacy",externalConsent:false});
-  assert.ok(!JSON.stringify(result).includes("DEVICE_SUMMARY_CANARY"));assert.ok(!JSON.stringify(result).includes("DERIVED_CANARY"));
+  assert.ok(!JSON.stringify(result).includes("DEVICE_SUMMARY_CANARY"));assert.ok(!JSON.stringify(result).includes("DERIVED_CANARY"));assert.ok(!JSON.stringify(result).includes("OLD_POLICY_CANARY"));
   const latest=result.conversation.messages.at(-1)!;assert.match(latest.content,/effort|RPE/i);assert.deepEqual(f.state.writes,[]);
  }finally{f.restore();}
 });
