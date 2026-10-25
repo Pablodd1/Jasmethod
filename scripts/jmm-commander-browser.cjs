@@ -24,7 +24,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
         if(req.method()==='GET')return route.fulfill({json:{ok:true,localToday:'2026-10-24',readiness:{ready:true,missing:[],review:[]},defaults:{distance:'run-only',weeks:8,easyPct:70,trainingWindow:'any'},activePlans:saved?[{id:saved.planId,name:saved.name}]:[],receipt:saved}});
         const body=req.postDataJSON();assert.equal(body.sourceMessageId,'message-source');
         if(body.action==='preview'){
-          previews++;return route.fulfill({json:{ok:true,previewToken:'a'.repeat(64),warning:'Synthetic preview; not saved',doubleDayAgreementRequired:false,eventTradeoffAgreementRequired:false,preview:{weeks:body.weeks,startDate:'2026-11-02T05:00Z',weeklyBudgetMin:120,weeksPreview:[{week:1,theme:'Controlled foundation',totalMinutes:20,sessions:[{daySlot:0,title:'Synthetic easy session',sport:'run',minutes:20,zone:'z2',description:'Familiar controlled practice',steps:[{name:'Easy',seconds:1200,zone:'z2'}]}]}]}}});
+          previews++;return route.fulfill({json:{ok:true,previewToken:'a'.repeat(64),warning:'Synthetic preview; not saved',doubleDayAgreementRequired:false,eventTradeoffAgreementRequired:false,preview:{weeks:body.weeks,startDate:'2026-11-02T05:00Z',weeklyBudgetMin:120,weeksPreview:[{week:1,theme:'Controlled foundation',totalMinutes:20,sessions:[{daySlot:0,title:'Synthetic easy session',sport:'run',minutes:20,zone:'z2',description:'Familiar controlled practice',steps:[{name:'Short step',seconds:15,zone:'z2'},{name:'Easy',seconds:1185,zone:'z2'}]}]}]}}});
         }
         confirmations++;
         if(reject){reject=false;return route.fulfill({status:409,json:{error:'Synthetic stale preview: review again'}});}
@@ -50,6 +50,8 @@ async function main(){const browser=await chromium.launch({headless:true});try{
     assert.equal(confirmations,0);
     await panel.getByRole('button',{name:es?'Preparar vista previa aquí':'Prepare plan preview here',exact:true}).click();
     await panel.getByText('Synthetic preview; not saved',{exact:true}).waitFor();
+    await panel.locator('summary').filter({hasText:'Controlled foundation'}).click();
+    await panel.getByText(/Short step · 15 (?:sec|s) · z2/).waitFor();
     await panel.getByLabel(es?'Semanas (4–30)':'Weeks (4–30)').fill('12');
     assert.equal(await panel.getByRole('button',{name:es?'Confirmar y guardar este plan':'Confirm and save this plan',exact:true}).count(),0);
     await panel.getByRole('button',{name:es?'Preparar vista previa aquí':'Prepare plan preview here',exact:true}).click();

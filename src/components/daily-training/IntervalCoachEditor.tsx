@@ -93,7 +93,7 @@ export function IntervalCoachEditor({ card, onSaved }: { card: UniversalWorkoutC
       await onSaved();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
-  const mins = (sec: number) => endpointText({ endpoint: { type: "time", seconds: sec } });
+  const mins = (sec: number) => endpointText({ endpoint: { type: "time", seconds: sec } }, es ? "es" : "en");
 
   return (
     <details data-testid="interval-coach-editor" onToggle={event => { if ((event.currentTarget as HTMLDetailsElement).open) { void loadHistory(); void loadProposal(); } }}>
