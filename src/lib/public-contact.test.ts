@@ -23,6 +23,10 @@ function render(file: string, props = {}, language = "en") {
     "@/components/gate": { ProtectedPage: ({ children }: any) => children },
     "next/link": { __esModule: true, default: ({ children, ...rest }: any) => React.createElement("a", rest, children) },
   };
+  const nested = { exports: {} as Record<string, React.ComponentType<any>> };
+  const policyOutput = ts.transpileModule(readFileSync("src/components/policy-page.tsx", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
+  vm.runInNewContext(policyOutput, { module: nested, exports: nested.exports, require: (name: string) => name in dependencies ? dependencies[name] : requireModule(name) });
+  dependencies["@/components/policy-page"] = nested.exports;
   vm.runInNewContext(output, { module: fixture, exports: fixture.exports, require: (name: string) =>
     name in dependencies ? dependencies[name] : requireModule(name),
   }, { filename: file });
@@ -31,7 +35,7 @@ function render(file: string, props = {}, language = "en") {
 
 test("public privacy and terms render the same working contact in accessible email links", () => {
   assert.equal(PUBLIC_CONTACT_EMAIL, "jasmel@jasmiamimethod.fit");
-  for (const page of ["privacy", "terms"]) {
+  for (const page of ["privacy", "terms", "cookies", "data-rights", "policies"]) {
     const html = render(`src/app/${page}/page.tsx`);
     assert.ok(html.includes(`href="${PUBLIC_CONTACT_MAILTO}"`));
     assert.ok(html.includes(`>${PUBLIC_CONTACT_EMAIL}</a>`));

@@ -40,7 +40,8 @@
       "codex/ai-data-consent": false,
       "codex/ai-data-consent-followup": false,
       "codex/intervals-approved-pilot": false,
-      "codex/openai-garmin-disclosure": false
+      "codex/openai-garmin-disclosure": false,
+      "codex/public-policy-pages": false
     }
   }
 }

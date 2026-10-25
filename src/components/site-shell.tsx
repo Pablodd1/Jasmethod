@@ -116,8 +116,16 @@ export function SiteFooter() {
           <Link href="/faq" className="text-ink-600 hover:text-ink-900">FAQ</Link>
           <Link href="/contact" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Contacto" : "Contact"}</Link>
           <Link href="/book" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Reservar" : "Book"}</Link>
+          <Link href="/help" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Ayuda" : "Help"}</Link>
         </div>
       </div>
+      <nav aria-label={language === "es" ? "Políticas" : "Policies"} className="pub-container pb-8 flex flex-wrap gap-x-5 gap-y-3 text-sm underline">
+        <Link href="/policies">{language === "es" ? "Políticas y avisos" : "Policies and notices"}</Link>
+        <Link href="/privacy">{language === "es" ? "Privacidad e IA" : "Privacy and AI"}</Link>
+        <Link href="/terms">{language === "es" ? "Términos" : "Terms"}</Link>
+        <Link href="/cookies">{language === "es" ? "Cookies y almacenamiento" : "Cookies and storage"}</Link>
+        <Link href="/data-rights">{language === "es" ? "Derechos y eliminación" : "Data rights and deletion"}</Link>
+      </nav>
     </footer>
   );
 }

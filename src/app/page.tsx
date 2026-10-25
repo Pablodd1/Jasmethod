@@ -7,7 +7,7 @@
 // is ever shown publicly. Same ocean/paper theme as the app.
 import Link from "next/link";
 import { useAuth } from "@/components/auth";
-import { SiteHeader } from "@/components/site-shell";
+import { SiteHeader, SiteFooter } from "@/components/site-shell";
 import {
   HeartPulse, Watch, FlaskConical, MessageSquare,
   CalendarDays, Activity, Brain, ChevronRight, ShieldCheck, Globe2,
@@ -122,8 +122,8 @@ const COPY = {
   privacy: {
     title: ["Your data stays yours", "Tus datos siguen siendo tuyos"],
     body: [
-      "Tokens encrypted at rest. Provider connections revoked by you, anytime. External AI only with your explicit per-question consent — your biometrics never leave our servers without it.",
-      "Tokens encriptados en reposo. Conexiones revocadas por ti, cuando quieras. IA externa solo con tu consentimiento explícito por pregunta — tu biometría nunca sale de nuestros servidores sin él.",
+      "Connections and external AI are optional. OpenAI features require specific consent; device/imported data and derived training summaries are excluded from external AI coaching requests. Manual tools remain available. Read the privacy notice for hosting, recipients and retention limits.",
+      "Las conexiones y la IA externa son opcionales. OpenAI requiere consentimiento específico; datos de dispositivos/importados y resúmenes derivados no se envían al coaching por IA externa. Las herramientas manuales siguen disponibles. Consulta Privacidad para alojamiento, destinatarios y conservación.",
     ],
     links: ["Privacy Policy", "Terms of Service", "Help & Support"],
     linksEs: ["Política de privacidad", "Términos de servicio", "Ayuda y soporte"],
@@ -363,17 +363,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="border-t border-ink-200/70 mt-16">
-        <div className="pub-container py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-ink-500">
-          <span className="font-display font-bold text-ink-800">JasMiamiMethod</span>
-          <span>{es(language) ? "Ciencia del deporte · Miami, FL" : "Sports science · Miami, FL"}</span>
-          <div className="flex gap-4">
-            <Link href="/privacy" className="hover:text-ink-900">{es(language) ? "Privacidad" : "Privacy"}</Link>
-            <Link href="/terms" className="hover:text-ink-900">{es(language) ? "Términos" : "Terms"}</Link>
-            <Link href="/help" className="hover:text-ink-900">{es(language) ? "Ayuda" : "Help"}</Link>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

@@ -1,107 +1,42 @@
-import { PUBLIC_CONTACT_EMAIL, PUBLIC_CONTACT_MAILTO } from "@/lib/public-contact";
 import type { Metadata } from "next";
-import Link from "next/link";
-import { SiteHeader, SiteFooter } from "@/components/site-shell";
-
-export const metadata: Metadata = {
-  title: "Terms of Service — JasMiamiMethod",
-};
-
-export default function TermsPage() {
-  return (
-    <div className="min-h-screen bg-paper">
-      <SiteHeader />
-      <div className="pub-container py-12 sm:py-16 max-w-2xl">
-        <p className="kicker">Legal</p>
-        <h1 className="display-2xl mt-4">Terms of Service</h1>
-        <p className="micro mt-2">Last updated: September 24, 2026</p>
-
-        <div className="prose-editorial mt-8">
-          <h2>1. What JasMiamiMethod is</h2>
-          <p>
-            JasMiamiMethod (&quot;JMM&quot;, &quot;we&quot;) is a training-planning web
-            application that generates exercise recommendations from information you
-            provide (check-ins, benchmarks, goals) and data you choose to connect from
-            third-party devices and services. JMM is a coaching tool —{" "}
-            <strong>it is not a medical device, not a diagnostic product, and not a
-            substitute for a physician, physiotherapist, or licensed dietitian.</strong>
-          </p>
-
-          <h2>2. No medical advice</h2>
-          <p>
-            The training sessions, fueling plans, supplement information, readiness
-            scores and race predictions produced by JMM are educational
-            estimates derived from published sports-science research and the data
-            you supply. They are not medical advice and have not been evaluated by
-            any regulatory authority. Do not use JMM to diagnose or treat any
-            injury, illness, or medical condition. Always seek the advice of a
-            qualified health professional with any questions regarding a medical
-            condition, and before beginning any new training or nutrition program.
-          </p>
-
-          <h2>3. Your responsibilities</h2>
-          <ul>
-            <li>
-              You acknowledge you are physically able to take part in the training
-              JMM prescribes, or have cleared it with a medical professional.
-            </li>
-            <li>
-              Training carries inherent risk of injury. You train voluntarily and
-              accept that risk.
-            </li>
-            <li>
-              You will stop and seek professional assessment for pain that changes
-              how you move, chest pain, dizziness, or symptoms of illness.
-            </li>
-          </ul>
-
-          <h2>4. Data you provide and connect</h2>
-          <p>
-            JMM stores the profile, check-in, and training data you enter, and —
-            only when you explicitly connect a provider (WHOOP, Strava, Oura,
-            Google Calendar and others) — retrieves your data from that provider
-            under the permissions you grant. Each connection belongs to your
-            account alone; you can disconnect at any time from the Connections
-            page. We do not sell your data. See our{" "}
-            <Link href="/privacy" className="underline text-ocean-700">
-              Privacy Policy
-            </Link>{" "}
-            for storage and retention details.
-          </p>
-
-          <h2>5. Third-party content and AI features</h2>
-          <p>
-            Some answers are produced by an AI assistant grounded in your data and
-            cited research. AI output can be incomplete or wrong: verify anything
-            important, and treat supplement information as educational, not as a
-            recommendation to use any product. JMM cites published research where
-            available; it does not claim that following its plans will produce any
-            specific result or prevent injury or illness.
-          </p>
-
-          <h2>6. Billing (when enabled)</h2>
-          <p>
-            Paid plans, when offered, renew automatically until cancelled from your
-            account settings. Fees are stated at signup. You may cancel at any
-            time; access continues to the end of the paid period.
-          </p>
-
-          <h2>7. Limitation of liability</h2>
-          <p>
-            To the maximum extent permitted by law, JMM is provided &quot;as
-            is&quot; without warranties of any kind, and we are not liable for any
-            injury, loss, or damage arising from use of the app or reliance on its
-            output. Our total liability is limited to the amount you paid us in
-            the 12 months before the claim.
-          </p>
-
-          <h2>8. Contact</h2>
-          <p>
-            Questions about these terms: <a href={PUBLIC_CONTACT_MAILTO} className="underline">{PUBLIC_CONTACT_EMAIL}</a>
-          </p>
-        </div>
-      </div>
-      <SiteFooter />
-    </div>
-  );
-}
+import { PolicyPage } from "@/components/policy-page";
+export const metadata: Metadata = {title: "Terms of Service · Términos de servicio — JasMiamiMethod", alternates: {canonical: "/terms"}};
+const sections = [
+  {
+    "id": "service",
+    "title": "1. Service and operator / Servicio y operador",
+    "en": "AI DYNAMICS INC operates JasMiamiMethod (JMM), an exercise-planning and educational coaching service. These terms govern use of JMM. The privacy, AI, cookie and data-rights notices are available from the Policies page and public footer. They describe processing and choices; reading these terms does not authorize an optional AI call or provider connection.",
+    "es": "AI DYNAMICS INC opera JasMiamiMethod (JMM), un servicio de planificación del ejercicio y coaching educativo. Estos términos regulan el uso de JMM. Los avisos de privacidad, IA, cookies y derechos están en la página de Políticas y el pie público. Describen el tratamiento y las opciones; leer estos términos no autoriza IA opcional ni conexiones."
+  },
+  {
+    "id": "health-and-training",
+    "title": "2. Health and training limitations / Límites de salud y entrenamiento",
+    "en": "JMM is not a medical device, diagnostic service or substitute for a qualified health professional. Plans, nutrition estimates, readiness indicators and race predictions can be wrong or incomplete. They do not diagnose, treat, clear you to exercise, guarantee performance or confirm watch delivery. Review all instructions and estimates. Stop exercise and seek appropriate help for concerning symptoms; do not rely on JMM as an emergency or continuous monitoring service. Training and nutrition changes may require qualified professional advice.",
+    "es": "JMM no es un dispositivo médico, servicio diagnóstico ni sustituto de un profesional cualificado. Los planes, estimaciones nutricionales, indicadores y predicciones pueden ser erróneos o incompletos. No diagnostican, tratan, autorizan ejercicio, garantizan rendimiento ni confirman entrega al reloj. Revisa instrucciones y estimaciones. Detén el ejercicio y busca ayuda adecuada ante síntomas preocupantes; JMM no es un servicio de emergencias ni monitorización continua. Los cambios pueden requerir asesoramiento profesional."
+  },
+  {
+    "id": "accounts",
+    "title": "3. Accounts and appropriate use / Cuentas y uso adecuado",
+    "en": "Provide information you have the right to use, keep account access private, and do not impersonate others, bypass access controls, upload malicious content or use someone else’s connected account. Personal plan creation requires the adult eligibility confirmation and review shown in setup; an account or checkbox is not a medical clearance. Contact us about access by a child or use requiring guardian consent before providing that child’s information.",
+    "es": "Facilita información que tengas derecho a usar, protege el acceso y no suplantes a otros, evites controles, cargues contenido malicioso ni uses conexiones ajenas. Crear un plan personal exige la confirmación de elegibilidad adulta y revisión de la configuración; una cuenta o casilla no autoriza ejercicio. Consúltanos sobre acceso de menores o consentimiento del tutor antes de proporcionar sus datos."
+  },
+  {
+    "id": "connections-and-ai",
+    "title": "4. Connections, consent and optional AI / Conexiones, consentimiento e IA",
+    "en": "Connections and external AI are optional. This version supports direct OpenAI API features only when configured and specifically consented to. Local chat, plan review and manual meal entry remain available without external AI. AI may make mistakes; no AI response can silently approve or save a plan change. Garmin-origin activity imports through Intervals.icu remain blocked pending permission verification, and Garmin-derived data is not authorized for external AI processing or model training. Connection approval is not Garmin approval or proof of device receipt. See Privacy for recipients and limits.",
+    "es": "Las conexiones y la IA externa son opcionales. Esta versión admite la API directa de OpenAI solo cuando está configurada y autorizada específicamente. El chat local, revisión de planes y entrada manual de comidas siguen disponibles sin IA externa. La IA puede equivocarse y no puede aprobar ni guardar silenciosamente cambios. Las actividades de origen Garmin mediante Intervals.icu siguen bloqueadas hasta verificar permisos; sus datos derivados no están autorizados para IA externa ni entrenamiento de modelos. Aprobar una conexión no equivale a aprobación de Garmin ni recepción en el dispositivo. Consulta Privacidad."
+  },
+  {
+    "id": "billing",
+    "title": "5. Current pilot, paid services and cancellations / Piloto actual, servicios de pago y cancelaciones",
+    "en": "The current JMM app is a free pilot and does not implement automatic subscription billing or an in-app subscription-cancellation flow. Do not assume that a paid coaching service, renewal or refund policy exists because a contact or booking page is available. For separately arranged coaching, obtain written price, scope, cancellation and refund terms before agreeing to pay; ask the contact address about an existing arrangement. Mandatory consumer rights remain applicable.",
+    "es": "La aplicación JMM actual es un piloto gratuito y no implementa cobros automáticos ni un flujo de cancelación de suscripciones. Las páginas de contacto o reservas no implican un servicio de pago, renovación ni política de reembolso. Para coaching acordado por separado, solicita por escrito precio, alcance, cancelación y reembolso antes de aceptar pagar; consulta el correo de contacto sobre un acuerdo existente. Se mantienen los derechos obligatorios del consumidor."
+  },
+  {
+    "id": "availability",
+    "title": "6. Availability, changes and rights / Disponibilidad, cambios y derechos",
+    "en": "We may update JMM or restrict abusive use. Availability of third-party connections depends on those providers and your authorization. We do not guarantee uninterrupted access, complete source data or a particular training result. Nothing in these terms excludes liability or consumer rights that applicable law does not permit us to exclude. Material service or processing changes should be described in updated notices and require new consent where applicable. Contact AI DYNAMICS INC with questions or complaints.",
+    "es": "Podemos actualizar JMM o restringir usos abusivos. Las conexiones dependen del proveedor y de tu autorización. No garantizamos acceso continuo, datos completos ni resultados de entrenamiento. Estos términos no excluyen responsabilidad ni derechos que la ley aplicable no permita excluir. Los cambios materiales del servicio o tratamiento deben describirse en avisos actualizados y requerir nuevo consentimiento cuando corresponda. Contacta con AI DYNAMICS INC para consultas o reclamaciones."
+  }
+];
+export default function Page(){return <PolicyPage title="Terms of Service · Términos de servicio">{sections.map(s=><section id={s.id} key={s.id} className="rounded-2xl border border-ink-200 bg-white p-5"><h2 className="font-display font-bold text-lg mb-2">{s.title}</h2><p lang="en"><strong>EN:</strong> {s.en}</p><p lang="es" className="mt-2"><strong>ES:</strong> {s.es}</p></section>)}</PolicyPage>}

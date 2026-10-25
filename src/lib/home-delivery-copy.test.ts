@@ -18,7 +18,7 @@ function renderHome(language: "en" | "es") {
     if (key === "react/jsx-runtime") return require(key);
     if (key === "next/link") return { default: ({ children, ...props }: any) => createElement("a", props, children) };
     if (key === "@/components/auth") return { useAuth: () => ({ language, user: null }) };
-    if (key === "@/components/site-shell") return { SiteHeader: () => null };
+    if (key === "@/components/site-shell") return { SiteHeader: () => null, SiteFooter: () => null };
     if (key === "lucide-react") return new Proxy({}, { get: () => () => null });
     throw new Error(`Unexpected homepage dependency: ${key}`);
   } });
