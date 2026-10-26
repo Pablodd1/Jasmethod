@@ -29,6 +29,8 @@ async function main(){const browser=await chromium.launch({headless:true});try{
     return route.fulfill({status:503,json:{error:es?'Autorización rechazada de prueba':'Synthetic authorization rejected'}});
    }
    if(url.pathname==='/api/connectors')return route.fulfill({json:{providers:[],connectors:[],capabilities:{intervalsConnector:false}}});
+   if(url.pathname==='/api/activity-streams')return route.fulfill({json:{enabled:false,retentionDays:null,workoutIds:[]}});
+   if(url.pathname==='/api/telemetry/error'){errors.push(req.postData());return route.fulfill({json:{ok:true}});}
    if(req.method()!=='GET')unexpected.push(req.method()+' '+url.pathname);
    return route.fulfill({json:{observations:[],history:{bySource:[]},providers:[],configured:false,verified:false,enabled:false}});
   });
