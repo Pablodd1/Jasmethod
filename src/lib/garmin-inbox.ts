@@ -1,7 +1,7 @@
 import { createHash,randomUUID } from "node:crypto";
 import { prisma } from "./db";
 import { encryptSecret,decryptSecret } from "./crypto";
-import { GarminError,garminConfig } from "./garmin-config";
+import { GarminError,GarminBudgetError,garminConfig } from "./garmin-config";
 import { garminSummaryPermission,garminActivity,garminMetrics,type GarminSummary,type GarminPushSink } from "./garmin-ingest";
 import { getGarminAuthorization } from "./garmin-oauth";
 import { storeActivity } from "./activity-store";
@@ -32,7 +32,7 @@ export const garminPushSink:GarminPushSink={
 };
 export async function processGarminInbox(athleteId:string,limit=10,authorization:typeof getGarminAuthorization=getGarminAuthorization){
  garminConfig();
- if(process.env.ENABLE_GARMIN_IMPORTS!=="true")return {processed:0,pending:true};
+ if(process.env.ENABLE_GARMIN_IMPORTS!=="true")return {processed:0,pending:true,budgetDeferred:false};
  const jobs=await prisma.syncJob.findMany({where:{userId:athleteId,kind,availableAt:{lte:new Date()},OR:[{status:"pending"},{status:"working",leasedUntil:{lt:new Date()}}]},orderBy:{createdAt:"asc"},take:Math.min(25,Math.max(1,limit))});
  let processed=0;
  for(const job of jobs){
@@ -75,8 +75,11 @@ export async function processGarminInbox(athleteId:string,limit=10,authorization
    const done=await prisma.syncJob.updateMany({where:{id:job.id,userId:athleteId,leaseToken:lease,status:"working"},data:{status:"done",leasedUntil:null,leaseToken:null,lastError:null}});if(done.count)processed++;
   }catch(error){
    const superseded=error instanceof GarminError && error.code==="superseded_summary";
-   await prisma.syncJob.updateMany({where:{id:job.id,userId:athleteId,leaseToken:lease,status:"working"},data:{status:superseded?"superseded":"pending",leasedUntil:null,leaseToken:null,availableAt:new Date(Date.now()+Math.min(3600000,60000*2**Math.min(job.attempts,6))),lastError:superseded?null:"Garmin processing deferred; verify permissions or summary contract."}});
+   const budget=error instanceof GarminBudgetError || (error instanceof GarminError && error.code==="provider_rate_limited");
+   const delay=error instanceof GarminBudgetError?error.retryAfterMs:Math.min(3600000,60000*2**Math.min(job.attempts,6));
+   await prisma.syncJob.updateMany({where:{id:job.id,userId:athleteId,leaseToken:lease,status:"working"},data:{status:superseded?"superseded":"pending",leasedUntil:null,leaseToken:null,availableAt:new Date(Date.now()+delay),lastError:superseded?null:"Garmin processing deferred; verify permissions or summary contract."}});
+   if(budget)return {processed,pending:true,budgetDeferred:!(error instanceof GarminBudgetError && error.budgetScope==="athlete")};
   }
  }
- return {processed,pending:jobs.length===limit};
+ return {processed,pending:jobs.length===limit,budgetDeferred:false};
 }

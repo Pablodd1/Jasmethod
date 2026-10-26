@@ -1,10 +1,10 @@
-import { GarminError } from "./garmin-config";
+import { GarminError, GarminBudgetError } from "./garmin-config";
 import type { GarminWorkoutPayload } from "./garmin-workout";
 
 export type GarminRemoteWorkout = { workoutId: number; ownerId: number; workoutName: string; sport: string; segments: unknown[] };
 export type GarminSchedule = { scheduleId: number; workoutId: number; date: string };
 export class GarminTrainingError extends GarminError {
-  constructor(code: string, public readonly uncertain: boolean, public readonly retryAfterMs = 0) {
+  constructor(code: string, public readonly uncertain: boolean, public readonly retryAfterMs = 0, public readonly budgetScope?: "app" | "athlete") {
     super(code, code === "garmin_rate_limited" ? "Garmin rate limit reached; delivery is paused." : "Garmin delivery could not be verified. Review its status before retrying.", 503);
   }
 }
@@ -25,6 +25,7 @@ export function createGarminTrainingProtocol(fetcher: typeof fetch = fetch) {
     try { response = await fetcher(`https://apis.garmin.com${path}`, { method, headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(body ? {"Content-Type":"application/json"} : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}), redirect: "error", cache: "no-store", signal: AbortSignal.timeout(15000) }); }
     catch (error) {
+      if (error instanceof GarminBudgetError) throw new GarminTrainingError("garmin_rate_limited", false, error.retryAfterMs, error.budgetScope);
       if (error instanceof GarminError && error.code === "local_garmin_budget") throw new GarminTrainingError("garmin_rate_limited", false, 60000);
       throw new GarminTrainingError("garmin_outcome_unknown", method !== "GET");
     }

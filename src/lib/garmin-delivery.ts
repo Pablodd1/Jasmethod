@@ -1,9 +1,9 @@
 import { prisma } from "./db";
-import { GarminError, garminConfig } from "./garmin-config";
+import { GarminError, GarminBudgetError, garminConfig } from "./garmin-config";
 import { getGarminAuthorization } from "./garmin-oauth";
 import { effectivePrescription } from "./effective-prescription";
 import { createGarminDeliveryService, type GarminDeliveryReceipt, type GarminDeliveryStore } from "./garmin-delivery-service";
-import { createGarminTrainingProtocol } from "./garmin-training-protocol";
+import { createGarminTrainingProtocol, GarminTrainingError } from "./garmin-training-protocol";
 import { dateKey,addDaysKey } from "./dates";
 
 const action = "garmin.delivery.v1";
@@ -50,7 +50,11 @@ export async function reserveGarminRequest(athleteId: string, oauth = false) {
     const now = new Date(), minute = new Date(now.getTime()-60000), day = new Date(now.getTime()-86400000);
     const app = await tx.auditLog.count({where:{action:{in:["garmin.api","garmin.oauth"]},createdAt:{gt:minute}}});
     const athlete = oauth ? 0 : await tx.auditLog.count({where:{subjectId:athleteId,action:"garmin.api",createdAt:{gt:day}}});
-    if (app >= 90 || athlete >= 190) throw new GarminError("local_garmin_budget","Garmin's rolling request budget is nearly exhausted; retry later.",429);
+    if (app >= 90) throw new GarminBudgetError("app",60000);
+    if (athlete >= 190) {
+      const oldest=await tx.auditLog.findFirst({where:{subjectId:athleteId,action:"garmin.api",createdAt:{gt:day}},orderBy:{createdAt:"asc"},select:{createdAt:true}});
+      throw new GarminBudgetError("athlete",Math.max(60000,(oldest?.createdAt.getTime()??now.getTime())+86401000-now.getTime()));
+    }
     await tx.auditLog.create({data:{actorId:athleteId,subjectId:athleteId,action:oauth?"garmin.oauth":"garmin.api",note:"Request reservation; no payload or credential stored."}});
   });
 }
@@ -87,7 +91,8 @@ export async function reconcileGarminPublications(athleteId:string,deadline=Date
   const audits = await prisma.auditLog.findMany({where:{subjectId:athleteId,actorId:athleteId,action},orderBy:[{createdAt:"desc"},{id:"desc"}],distinct:["entityId"]});
   const receipts = new Map<string,GarminDeliveryReceipt>();
   for (const a of audits) {const r=readGarminReceipt(a.after);if(r && !receipts.has(r.sessionId)) receipts.set(r.sessionId,r);}
-  const ids=new Set([...upcoming.map(w=>w.id),...receipts.keys()]), totals={published:0,cancelled:0,attention:0};
+  const ids=new Set([...upcoming.map(w=>w.id),...receipts.keys()]), totals={published:0,cancelled:0,attention:0,budgetDeferred:false};
+  let newPublications=0;
   for (const sessionId of ids) {
     if(Date.now()>deadline)break;
     const receipt=receipts.get(sessionId);
@@ -95,14 +100,20 @@ export async function reconcileGarminPublications(athleteId:string,deadline=Date
     const session=await currentGarminSession(athleteId,sessionId);
     const eligible=session?.verdict === "ready" && session.dateLocal>=first && session.dateLocal<=last && ["run","bike"].includes(session.sport) && session.capability.mode==="native";
     if (!receipt && (!auto || !eligible)) continue;
+    if (!receipt && newPublications>=1) continue; // Give every athlete today's session before filling one athlete's week.
     if (receipt?.status==="failed" && !receipt.workoutId && !auto) continue;
     if (receipt?.status==="published" && eligible && receipt.revision===session!.revision) continue;
     if (receipt?.status==="unknown" && !receipt.workoutId) {totals.attention++;continue;}
     if (receipt?.status==="cancelled" && (!auto || !eligible)) continue;
     if (receipt && (receipt.leaseUntil>now || (receipt.retryAt??0)>now)) continue;
     try {const result=await publishGarminWorkout({athleteId,sessionId,expectedRevision:session?.revision??receipt!.revision,cancel:!eligible,automatic:true});
-      if(result?.status==="published") totals.published++;else if(result?.status==="cancelled") totals.cancelled++;else totals.attention++;
-    } catch {totals.attention++;}
+      if(result?.status==="published") {totals.published++;if(!receipt)newPublications++;}else if(result?.status==="cancelled") totals.cancelled++;else totals.attention++;
+    } catch(error) {
+      totals.attention++;
+      if(error instanceof GarminBudgetError || (error instanceof GarminTrainingError && error.code==="garmin_rate_limited")) {
+        totals.budgetDeferred=error.budgetScope!=="athlete";break;
+      }
+    }
   }
   return totals;
 }

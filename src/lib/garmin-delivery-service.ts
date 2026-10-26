@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GarminError } from "./garmin-config";
+import { GarminError, GarminBudgetError } from "./garmin-config";
 import { garminWorkoutPayload, type GarminWorkoutPayload } from "./garmin-workout";
 import { GarminTrainingError, type GarminTrainingProtocol, type GarminRemoteWorkout } from "./garmin-training-protocol";
 import type { CanonicalSession } from "./canonical-session";
@@ -91,8 +91,9 @@ export function createGarminDeliveryService(deps: {
       return row;
     } catch (error) {
       if (row.status === "cancelled") await save({leaseUntil:0});
-      if (row.status !== "cancelled") await save({status:(row.status === "unknown" && !row.workoutId) || (row.stage === "creating" && !row.workoutId && !(error instanceof GarminTrainingError && !error.uncertain)) || (error instanceof GarminTrainingError && error.uncertain) ? "unknown" : "failed",leaseUntil:0,
-        ...(error instanceof GarminTrainingError && error.retryAfterMs ? {retryAt:now()+error.retryAfterMs} : {})});
+      const provedUnsent=(error instanceof GarminTrainingError && !error.uncertain) || (error instanceof GarminError && error.code==="local_garmin_budget");
+      if (row.status !== "cancelled") await save({status:(row.status === "unknown" && !row.workoutId) || (row.stage === "creating" && !row.workoutId && !provedUnsent) || (error instanceof GarminTrainingError && error.uncertain) ? "unknown" : "failed",leaseUntil:0,
+        ...((error instanceof GarminTrainingError || error instanceof GarminBudgetError) && error.retryAfterMs ? {retryAt:now()+error.retryAfterMs} : {})});
       throw error;
     }
   };

@@ -4,6 +4,11 @@ export class GarminError extends Error {
     super(message); this.name = "GarminError";
   }
 }
+export class GarminBudgetError extends GarminError {
+  constructor(public readonly budgetScope: "app" | "athlete", public readonly retryAfterMs: number) {
+    super("local_garmin_budget", "Garmin's rolling request budget is nearly exhausted; retry later.", 429);
+  }
+}
 export type GarminEnvironment = Record<string, string | undefined>;
 export function garminOrigin(env: GarminEnvironment = process.env): string {
   try {
