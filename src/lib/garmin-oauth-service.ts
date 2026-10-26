@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { GarminError, garminConfig, garminCredentials, garminConfigured, type GarminEnvironment } from "./garmin-config";
 import { garminAuthorizationUrl, garminDigest, garminEqual, type GarminPermission, type GarminProtocol, type GarminToken } from "./garmin-protocol";
 
-export type GarminConnection = { id: string; userId: string; status: string; tokenEnc: string | null; refreshEnc: string | null; expiresAt: Date | null; externalRef: string | null; scope: string | null; lastError: string | null };
+export type GarminConnection = { id: string; userId: string; status: string; tokenEnc: string | null; refreshEnc: string | null; expiresAt: Date | null; externalRef: string | null; scope: string | null; lastError: string | null; syncStartedAt?: Date | null };
 export type GarminPatch = Partial<Omit<GarminConnection, "id" | "userId">>;
 export type GarminTransaction = { state: string; userId: string; returnUrl: string | null; expiresAt: Date; usedAt: Date | null };
 export interface GarminStore {
@@ -19,6 +19,7 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const validRandom = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value);
 const changed = () => { throw new GarminError("connection_changed", "The Garmin connection changed. Refresh before trying again.", 409); };
 const invalid = () => { throw new GarminError("invalid_state", "This Garmin authorization expired or belongs to a different session. Start again."); };
+const busyStatuses = new Set(["exchanging", "refreshing", "disconnecting"]);
 
 export function createGarminOAuthService(deps: { store: GarminStore; protocol: GarminProtocol; encrypt: (text: string) => string; decrypt: (text: string) => string; env?: GarminEnvironment; now?: () => Date }) {
   const { store, protocol } = deps, env = deps.env ?? process.env, now = deps.now ?? (() => new Date());
@@ -32,6 +33,7 @@ export function createGarminOAuthService(deps: { store: GarminStore; protocol: G
     try { return JSON.parse(deps.decrypt(value)); } catch { throw new GarminError("reconnect_required", "Reconnect Garmin to verify authorization.", 409); }
   };
   async function replace(row: GarminConnection, patch: GarminPatch, unique = false, invalidateAt?: Date): Promise<GarminConnection> {
+    if (patch.status) patch = { ...patch, syncStartedAt: busyStatuses.has(patch.status) ? now() : null };
     if (!await store.replace(row, patch, unique, invalidateAt)) changed();
     return { ...row, ...patch };
   }
@@ -134,13 +136,26 @@ export function createGarminOAuthService(deps: { store: GarminStore; protocol: G
     if (!current || current.status !== "connected" || current.tokenEnc !== row.tokenEnc || current.externalRef !== row.externalRef) changed();
     return { accessToken: auth.accessToken, userId: row.externalRef!, connectorId: row.id };
   }
-  async function disconnect(userId: string) {
+  async function disconnect(userId: string, manualRevocationReported = false) {
     let row = await store.get(userId);
     if (!row || (row.status === "disconnected" && !row.tokenEnc && !row.refreshEnc)) return { disconnected: true, providerRevoked: false };
-    if (["exchanging", "refreshing", "disconnecting"].includes(row.status)) throw new GarminError("connection_busy", "Garmin authorization is in progress. Wait before disconnecting.", 409);
+    if (manualRevocationReported) {
+      if (row.status !== "revocation_required") throw new GarminError("manual_recovery_unavailable", "Try normal Garmin disconnection first.", 409);
+      await replace(row, { status: "disconnected", tokenEnc: null, refreshEnc: null, expiresAt: null, externalRef: null, scope: null, lastError: null }, false, now());
+      return { disconnected: true, providerRevoked: false, manualRevocationReported: true };
+    }
+    const interrupted = busyStatuses.has(row.status);
+    if (interrupted && row.syncStartedAt && now().getTime() - row.syncStartedAt.getTime() < 90_000)
+      throw new GarminError("connection_busy", "Garmin authorization is in progress. Wait before disconnecting.", 409);
     const cfg = garminCredentials(env); // Revocation remains available while the release flag is off.
     let auth: Grant | null = null;
-    if (row.status !== "authorizing" && row.tokenEnc) auth = grant(row, cfg.clientId);
+    if (row.status !== "authorizing" && row.tokenEnc) {
+      try { auth = grant(row, cfg.clientId); }
+      catch {
+        await replace(row, { status: "revocation_required", lastError: "An interrupted Garmin exchange has an unknown outcome. Remove JMM in Garmin Connect, then report manual removal to clear this local connection." });
+        throw new GarminError("revocation_unconfirmed", "Remove JMM in Garmin Connect account settings, then confirm manual removal here.", 503);
+      }
+    }
     row = await replace(row, { status: "disconnecting" }, false, now());
     if (auth) {
       try { await protocol.revoke(auth.accessToken); }

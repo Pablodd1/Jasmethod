@@ -1,4 +1,4 @@
-import { GarminError, garminOrigin, GARMIN_CONSENT_VERSION, type GarminEnvironment } from "./garmin-config";
+import { GarminError, garminOrigin, GARMIN_CONSENT_VERSION, GARMIN_MANUAL_REVOCATION_VERSION, type GarminEnvironment } from "./garmin-config";
 import { appMutationOriginAllowed } from "./request-origin";
 import { rateLimit } from "./ratelimit";
 
@@ -24,6 +24,10 @@ export async function validateGarminMutation(req: Request, userId: string, conse
     throw new GarminError("own_account_required", "Use only your own Garmin account.", 403);
   if (consentRequired && (body as Record<string, unknown>).consent !== GARMIN_CONSENT_VERSION)
     throw new GarminError("consent_required", "Review Garmin's permissions and the JMM data-use disclosure before connecting.");
+  const consent = (body as Record<string, unknown>).consent;
+  if (!consentRequired && consent !== undefined && consent !== GARMIN_MANUAL_REVOCATION_VERSION)
+    throw new GarminError("invalid_request", "Use the explicit manual-removal control after removing JMM in Garmin.");
+  return { manualRevocationReported: !consentRequired && consent === GARMIN_MANUAL_REVOCATION_VERSION };
 }
 export function garminErrorResponse(error: unknown) {
   return Response.json({ code: error instanceof GarminError ? error.code : "connection_failed",

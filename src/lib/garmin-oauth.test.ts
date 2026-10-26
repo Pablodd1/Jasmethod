@@ -28,7 +28,7 @@ function fixture() {
     },
     async replace(expected, patch, unique, invalidateAt) {
       const actual = rows.get(expected.userId);
-      if (options.casLost || !actual || actual.id !== expected.id || actual.status !== expected.status || actual.tokenEnc !== expected.tokenEnc || actual.refreshEnc !== expected.refreshEnc) return false;
+      if (options.casLost || !actual || actual.id !== expected.id || actual.status !== expected.status || actual.tokenEnc !== expected.tokenEnc || actual.refreshEnc !== expected.refreshEnc || actual.syncStartedAt?.getTime() !== expected.syncStartedAt?.getTime()) return false;
       if (unique && [...rows.values()].some(r => r.userId !== expected.userId && r.externalRef === patch.externalRef && r.tokenEnc))
         throw new GarminError("provider_account_already_linked", "Already linked", 409);
       rows.set(expected.userId, { ...actual, ...patch });
@@ -151,6 +151,26 @@ test("Garmin revocation failure retains credentials for recovery and does not re
 test("Garmin pending authorization disconnect invalidates its callback without provider call", async () => {
   const f = fixture(), a = await f.start(); await f.service.disconnect("A");
   await assert.rejects(f.service.complete("A", a.params, a.browserBinding)); assert.equal(f.calls.revoke, 0); assert.equal(f.calls.token, 0);
+});
+test("Garmin active exchange cannot be interrupted, but an expired exchange has honest manual recovery", async () => {
+  const f = fixture(); await f.start(); const row = f.rows.get("A")!;
+  row.status = "exchanging"; row.syncStartedAt = new Date("2026-10-25T12:00:00Z");
+  await assert.rejects(f.service.disconnect("A"), /in progress/); assert.equal(f.calls.revoke, 0);
+  f.advance(90_001); await assert.rejects(f.service.disconnect("A"), /Remove JMM/);
+  assert.equal(f.rows.get("A")!.status, "revocation_required");
+  assert.deepEqual(await f.service.disconnect("A", true), { disconnected: true, providerRevoked: false, manualRevocationReported: true });
+  assert.equal(f.rows.get("A")!.tokenEnc, null); assert.equal(f.calls.revoke, 0);
+});
+for (const interrupted of ["refreshing", "disconnecting"]) {
+  test(`Garmin interrupted ${interrupted} with a stored grant can recover and revoke`, async () => {
+    const f = fixture(); await f.connect(); const row = f.rows.get("A")!;
+    row.status = interrupted; row.syncStartedAt = new Date("2026-10-25T12:00:00Z"); f.advance(90_001);
+    assert.equal((await f.service.disconnect("A")).providerRevoked, true); assert.equal(f.calls.revoke, 1);
+  });
+}
+test("Garmin manual removal cannot clear a normal connected account without trying provider revocation", async () => {
+  const f = fixture(); await f.connect(); await assert.rejects(f.service.disconnect("A", true), /normal Garmin disconnection/);
+  assert.equal(f.rows.get("A")!.status, "connected"); assert.equal(f.calls.revoke, 0);
 });
 test("50 Garmin athlete grants retain independent identity and encrypted credentials", async () => {
   const f = fixture();

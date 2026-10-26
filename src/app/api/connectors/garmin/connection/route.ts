@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Sign in to continue." }, { status: 401 });
   try {
-    await validateGarminMutation(req, user.id, false);
-    return Response.json(await disconnectGarmin(user.id), { headers: { "Cache-Control": "private, no-store" } });
+    const consent = await validateGarminMutation(req, user.id, false);
+    return Response.json(await disconnectGarmin(user.id, consent.manualRevocationReported), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return garminErrorResponse(error); }
 }

@@ -30,7 +30,7 @@ export const garminOAuthStore: GarminStore = {
         if (other) throw new GarminError("provider_account_already_linked", "This Garmin account is already connected to another athlete.", 409);
       }
       const result = await tx.connector.updateMany({ where: { id: expected.id, userId: expected.userId, provider,
-        status: expected.status, tokenEnc: expected.tokenEnc, refreshEnc: expected.refreshEnc }, data: { ...patch, syncStartedAt: null } });
+        status: expected.status, tokenEnc: expected.tokenEnc, refreshEnc: expected.refreshEnc, syncStartedAt: expected.syncStartedAt ?? null }, data: patch });
       if (result.count && invalidateAt)
         await tx.oAuthTransaction.updateMany({ where: { userId: expected.userId, provider, usedAt: null }, data: { usedAt: invalidateAt } });
       return result.count === 1;
@@ -40,7 +40,7 @@ export const garminOAuthStore: GarminStore = {
 const service = () => createGarminOAuthService({ store: garminOAuthStore, protocol: createGarminProtocol(), encrypt: encryptSecret, decrypt: decryptSecret });
 export const beginGarminAuthorization = (userId: string) => service().begin(userId);
 export const completeGarminAuthorization = (userId: string, params: URLSearchParams, binding: string | undefined) => service().complete(userId, params, binding);
-export const disconnectGarmin = (userId: string) => service().disconnect(userId);
+export const disconnectGarmin = (userId: string, manualRevocationReported = false) => service().disconnect(userId, manualRevocationReported);
 export const getGarminConnectionStatus = (userId: string) => service().status(userId);
 /** Internal server use only; establish the authenticated athlete before calling. */
 export const getGarminAuthorization = (userId: string, permissions: GarminPermission[] = []) => service().authorization(userId, permissions);

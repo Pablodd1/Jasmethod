@@ -16,6 +16,7 @@ The branch starts at updated main `f488524`, preserving PR82's mobile, readiness
 - Live Garmin user ID and user-permission verification before storing an authorized state. No invented scope parameter; users control Garmin's permissions. Subsequent authorization use rechecks permissions even with an unexpired access token.
 - Encrypted access/rotating refresh credentials; compare-and-swap ownership prevents simultaneous refresh or stale completion overwrites. Ambiguous token exchanges/refreshes require reconnection instead of blind retries.
 - Real Garmin registration revocation on explicit own-account disconnect, including when the release switch is off. Unconfirmed revocation retains recovery credentials and blocks their use. A duplicate remote identity is rejected without revoking the established owner's app-wide Garmin registration.
+- Interrupted operations have a bounded lease. A stored grant can still be revoked after interruption; an exchange with an unknown outcome requires manual Garmin removal. Explicitly reported manual removal clears only local credentials and never claims provider-verified revocation.
 - No import, AI request, outgoing message, Calendar event, workout publication or watch receipt is produced by this grant flow. No initial pull job is queued; Starter does not provide historical backfill.
 - English/Spanish privacy and setup wording distinguish approved application, configured transport, athlete authorization and actual delivery.
 
