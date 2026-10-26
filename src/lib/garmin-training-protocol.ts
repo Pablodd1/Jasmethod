@@ -1,7 +1,7 @@
 import { GarminError, GarminBudgetError } from "./garmin-config";
 import type { GarminWorkoutPayload } from "./garmin-workout";
 
-export type GarminRemoteWorkout = { workoutId: number; ownerId: number; workoutName: string; sport: string; segments: unknown[] };
+export type GarminRemoteWorkout = { workoutId: number; ownerId: number; workoutName: string; sport: string; segments: unknown[]; poolLength?: number | null; poolLengthUnit?: string | null };
 export type GarminSchedule = { scheduleId: number; workoutId: number; date: string };
 export class GarminTrainingError extends GarminError {
   constructor(code: string, public readonly uncertain: boolean, public readonly retryAfterMs = 0, public readonly budgetScope?: "app" | "athlete") {
