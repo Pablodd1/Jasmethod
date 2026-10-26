@@ -17,6 +17,7 @@ import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { t, type Lang } from "@/lib/i18n";
 import { SetupPaths } from "@/components/setup-paths";
+import { GarminConnection } from "@/components/garmin-connection";
 import { StoredStreamsPanel, StreamConsentCheckbox, useStreamStatus } from "@/components/activity-streams";
 import { IMPORT_FILE_FORMATS } from "@/lib/athlete-setup-paths";
 import { STRAVA_AI_NOTICE } from "@/lib/strava-provenance";
@@ -431,6 +432,7 @@ export default function ConnectorsPage() {
 
         <NativeDeviceStatus es={lang === "es"} />
         <SetupPaths lang={lang === "es" ? "es" : "en"} providers={providers} intervalsConnector={intervalsConnector} loading={loading} refreshKey={refreshKey} />
+        <GarminConnection lang={lang === "es" ? "es" : "en"} />
         <p className="text-sm">
           <a href={`/help/pilot?lang=${lang === "es" ? "es" : "en"}`} className="underline min-h-11 inline-flex items-center">{lang === "es" ? "Guía paso a paso" : "Step-by-step guide"}</a>
         </p>
@@ -775,8 +777,8 @@ export default function ConnectorsPage() {
                   : "Garmin and COROS: import options"}
               </strong>{" "}
               {lang === "es"
-                ? `Importa un archivo de tu propia actividad. JMM no tiene una conexión directa autorizada de Garmin ni COROS. Un enlace personal en otro servicio no autoriza el reenvío a JMM; los datos de Strava no se usan para análisis de entrenamiento. ${STRAVA_AI_NOTICE.es}`
-                : `Import your own activity file. JMM has no authorized direct Garmin or COROS connection. A personal link in another service does not authorize onward sharing to JMM; Strava data is excluded from training analysis. ${STRAVA_AI_NOTICE.en}`}
+                ? `Importa un archivo de tu propia actividad. La aplicación Garmin de JMM está aprobada; las importaciones directas requieren configuración, consentimiento y validación independientes. COROS sigue siendo manual. Un enlace personal en otro servicio no autoriza el reenvío a JMM; los datos de Strava no se usan para análisis de entrenamiento. ${STRAVA_AI_NOTICE.es}`
+                : `Import your own activity file. JMM's Garmin app is approved; direct imports require separate configuration, consent and validation. COROS remains manual. A personal link in another service does not authorize onward sharing to JMM; Strava data is excluded from training analysis. ${STRAVA_AI_NOTICE.en}`}
             </div>
           </div>
         </div>

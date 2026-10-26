@@ -158,6 +158,14 @@ jobs:
       - name: EN and ES private commander preview and save-error acceptance
         run: node scripts/jmm-commander-browser.cjs
 
+      - name: Garmin consent, unavailable configuration and revocation browser acceptance
+        run: node scripts/jmm-garmin-browser.cjs
+
+      - name: Garmin encrypted OAuth persistence and athlete isolation
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-garmin-integration.ts
+
       - name: Private commander browser to PostgreSQL persistence and reload
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
@@ -239,6 +247,9 @@ jobs:
             .local/jmm-public-policies-browser/*.png
             .local/jmm-mobile-organization-browser/report.json
             .local/jmm-mobile-organization-browser/*.png
+            .local/jmm-garmin-browser/report.json
+            .local/jmm-garmin-browser/*.png
+            .local/jmm-garmin-integration/report.json
             .local/jmm-ai-consent-browser/report.json
             .local/jmm-ai-consent-browser/*.png
             .local/jmm-commander-browser/report.json
