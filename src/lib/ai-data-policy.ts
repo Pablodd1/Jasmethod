@@ -1,7 +1,7 @@
 /** Fail closed at every image boundary. Consent does not grant provider data rights. */
 export const SCREENSHOT_SOURCES = ["manual_note", "device", "imported", "unknown"] as const;
 export type ScreenshotSource = typeof SCREENSHOT_SOURCES[number];
-export const AI_DATA_POLICY_VERSION = "generic-education-v2";
+export const AI_DATA_POLICY_VERSION = "openai-generic-education-v3";
 export function screenshotSourceAllowed(source: unknown): source is "manual_note" {
   return source === "manual_note";
 }

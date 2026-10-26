@@ -7,6 +7,15 @@ import { intervalsConnectorEnabled } from "./capabilities";
 export const INTERVALS_REQUIRED_SCOPES = ["ACTIVITY:READ", "WELLNESS:READ", "CALENDAR:WRITE"] as const;
 type OAuthConfig = { clientId: string; clientSecret: string; redirectUri: string };
 
+/** Optional staged rollout: an explicitly empty/malformed list enables nobody. */
+export function intervalsPilotAllows(userId: string, env: Record<string, string | undefined> = process.env): boolean {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(userId)) return false;
+  const value = env.INTERVALS_PILOT_USER_IDS;
+  if (value === undefined) return true;
+  const ids = value.split(",").map(id => id.trim());
+  return ids.length <= 50 && ids.every(id => /^[A-Za-z0-9_-]{1,128}$/.test(id)) && ids.includes(userId);
+}
+
 export class IntervalsOAuthError extends Error {
   constructor(public code: string, message: string, public status = 400) {
     super(message);
@@ -63,6 +72,7 @@ export async function intervalsExchangeToken(cfg: OAuthConfig, code: string) {
 /** Internal callers must first establish authority to act for userId. */
 export async function getIntervalsAuthorization(userId: string, requiredScopes: readonly string[] = INTERVALS_REQUIRED_SCOPES) {
   if (!intervalsConnectorEnabled()) throw new IntervalsOAuthError("provider_unavailable", "Intervals.icu is not enabled.", 503);
+  if (!intervalsPilotAllows(userId)) throw new IntervalsOAuthError("intervals_pilot_unavailable", "Intervals.icu is currently limited to the selected pilot athletes.", 403);
   const connector = await prisma.connector.findUnique({ where: { userId_provider: { userId, provider: "intervals" } } });
   if (!connector || !["connected", "error"].includes(connector.status) || !connector.externalRef ||
     !connector.tokenEnc?.startsWith("enc:v1:") || !connector.scope || connector.scope === "api_key" ||

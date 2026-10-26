@@ -4,7 +4,7 @@ import { manualEmailOrigin } from "./manual-workout-email";
 
 type Environment = Record<string, string | undefined>;
 export type IntegrationCheck = { state: "configured" | "verified" | "missing" | "failed" | "conflict"; detail: string; missing?: string[]; botUsername?: string };
-export type LaunchChecks = { deepseek: IntegrationCheck; email: IntegrationCheck; telegram: IntegrationCheck };
+export type LaunchChecks = { openai: IntegrationCheck; email: IntegrationCheck; telegram: IntegrationCheck };
 const present = (env: Environment, key: string) => Boolean(env[key]?.trim());
 export function telegramWebhookTarget(env: Environment): string | null {
   try {
@@ -25,12 +25,12 @@ export function launchConfiguration(env: Environment = process.env): LaunchCheck
   if (!telegramWebhookTarget(env)) telegramMissing.push("HTTPS app origin");
   const username = env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || env.TELEGRAM_BOT_USERNAME || "";
   if (!/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username)) telegramMissing.push("valid TELEGRAM_BOT_USERNAME");
-  const aiMissing = present(env, "DEEPSEEK_API_KEY") ? [] : ["DEEPSEEK_API_KEY"];
+  const aiMissing = present(env, "OPENAI_API_KEY") ? [] : ["OPENAI_API_KEY"];
   if (env.EXTERNAL_AI_ENABLED !== "true") aiMissing.push("EXTERNAL_AI_ENABLED=true");
-  if (!aiMissing.length && !coachTextConfigured(env)) aiMissing.push("valid DeepSeek key and supported DEEPSEEK_MODEL");
+  if (!aiMissing.length && !coachTextConfigured(env)) aiMissing.push("valid OpenAI key and supported OPENAI_TEXT_MODEL");
   return {
-    deepseek: { state: aiMissing.length ? "missing" : "configured", missing: aiMissing,
-      detail: "Configuration only. A successful consented chat is required to verify DeepSeek." },
+    openai: { state: aiMissing.length ? "missing" : "configured", missing: aiMissing,
+      detail: "Configuration only. A successful consented chat is required to verify OpenAI." },
     email: { state: emailMissing.length ? "missing" : "configured", missing: emailMissing,
       detail: "Athletes must verify their own email and opt in. SMTP acceptance is not inbox delivery." },
     telegram: { state: telegramMissing.length ? "missing" : "configured", missing: telegramMissing,
@@ -109,5 +109,5 @@ export async function probeLaunchIntegrations(env: Environment = process.env, de
     })(),
     checkTelegramWebhook(false, env, dependencies.telegram),
   ]);
-  return { deepseek: config.deepseek, email, telegram };
+  return { openai: config.openai, email, telegram };
 }

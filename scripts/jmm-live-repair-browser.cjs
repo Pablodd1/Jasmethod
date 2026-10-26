@@ -177,7 +177,7 @@ async function main() {
       const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),f=fixtures('en');
       page.on('pageerror',e=>errors.push(String(e)));
       const messages=[];let sends=0,shares=0;
-      const capabilities={externalAi:true,textProvider:'DeepSeek',imageUnderstanding:false,imageProvider:null};
+      const capabilities={externalAi:true,textProvider:'OpenAI',imageUnderstanding:false,imageProvider:null};
       const session={id:'synthetic-action-session',title:'Synthetic review session',sport:'run',date:today};
       let proposal=null;
       await page.route('**/api/**',async route=>{
@@ -186,7 +186,7 @@ async function main() {
         if(path==='/api/assistant'&&req.method()==='GET')return route.fulfill({json:{ok:true,capabilities,conversation:{id:'synthetic-review-chat',messages},proposal,sessions:[session],defaultSessionId:session.id}});
         if(path==='/api/assistant'&&req.method()==='POST') {
           const input=req.postDataJSON();sends++;
-          assert.equal(input.externalConsent,true);assert.equal(input.textProviderConsent,'deepseek');assert.equal(input.sessionId,session.id);
+          assert.equal(input.externalConsent,true);assert.equal(input.textProviderConsent,'openai');assert.equal(input.sessionId,session.id);
           assert.equal(input.aiReplyMemoryConsent,undefined);
           messages.push({id:`action-user-${sends}`,role:'user',content:input.message,source:'text',createdAt:new Date().toISOString(),clientRequestId:input.clientRequestId});
           messages.push({id:`action-answer-${sends}`,role:'assistant',content:'Synthetic local review: check the proposed duration before confirming. Nothing has been saved.',source:'local',needsHumanReview:true,createdAt:new Date().toISOString()});
@@ -200,9 +200,9 @@ async function main() {
         unexpected.push(`${req.method()} ${path}`);return route.fulfill({status:500,json:{error:'Unexpected synthetic operation'}});
       });
       await page.goto(`${base}/coach`);
-      const ai=page.getByLabel('Use DeepSeek only for general education while this page is open',{exact:true});await ai.waitFor();
+      const ai=page.getByLabel('Use OpenAI only for general education while this page is open',{exact:true});await ai.waitFor();
       assert.equal(await ai.isChecked(),false);await ai.check();
-      const memory=page.getByLabel(/Also include up to two previous DeepSeek replies/);assert.equal(await memory.count(),0);
+      const memory=page.getByLabel(/Also include up to two previous OpenAI replies/);assert.equal(await memory.count(),0);
       await page.getByRole('textbox',{name:'Your message',exact:true}).fill('Make this session half an hour');
       await page.getByRole('button',{name:'Send message',exact:true}).click();
       await page.getByText('Review 1 proposed facts · Not saved',{exact:true}).waitFor({state:'visible'});

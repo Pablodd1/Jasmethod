@@ -469,7 +469,7 @@ function ForecastView({ data, forecast, lang, brief, briefLoading, onBrief }: {
           <button onClick={onBrief} disabled={briefLoading} className="btn-secondary text-sm">
             {briefLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-coral-500" />}
             {es ? "Generar plan de carrera (brief)" : "Generate race plan brief"}
-            {brief && <span className="ml-1 text-slate-400">({brief.source === "gemini" ? "AI" : "template"})</span>}
+            {brief && <span className="ml-1 text-slate-400">(template)</span>}
           </button>
           {brief && (
             <pre className="mt-3 whitespace-pre-wrap text-xs leading-relaxed text-slate-600 bg-sand-50 border border-sand-200 rounded-2xl p-4 font-sans max-h-96 overflow-y-auto">{brief.text}</pre>

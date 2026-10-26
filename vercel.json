@@ -38,7 +38,9 @@
       "codex/race-intelligence-weather": false,
       "codex/chat-commander-flow": false,
       "codex/ai-data-consent": false,
-      "codex/ai-data-consent-followup": false
+      "codex/ai-data-consent-followup": false,
+      "codex/intervals-approved-pilot": false,
+      "codex/openai-garmin-disclosure": false
     }
   }
 }

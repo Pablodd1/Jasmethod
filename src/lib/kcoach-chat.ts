@@ -8,9 +8,7 @@ import { METRIC_LANGUAGE_RULES } from "./metric-language";
 // - Context is gathered SERVER-SIDE from the athlete's own records.
 // - Local mode (default): answers are computed from real numbers —
 //   deterministic, honest, zero external calls.
-// - External mode (explicit per-question consent + EXTERNAL_AI_ENABLED):
-//   the question PLUS a compact context digest go to Gemini, disclosed to
-//   the athlete. No raw provider payloads, no tokens, no credentials.
+// - This legacy rich-context path always stays local, regardless of AI flags.
 import { prisma } from "./db";
 import { dayBounds, dateKey } from "./dates";
 
@@ -209,7 +207,7 @@ export function localGroundedAnswer(
   return parts.join("\n");
 }
 
-// ---- Gemini grounded payload (consent-gated) ----
+// ---- Legacy grounded payload (not sent externally) (consent-gated) ----
 
 export function groundedQuestionPayload(question: string, ctx: ChatContext) {
   const system = `You are KCoach, the coach of JasMiamiMethod, speaking directly to athlete ${ctx.name}. Answer in ${ctx.language === "es" ? "Spanish" : "English"}. You are a science-based endurance coach: cite the athlete's own numbers, be concrete, honest about uncertainty, never invent data, never prescribe medical care. You CANNOT modify training in the app — if the athlete asks for changes, tell them to use the training editor. Keep it under 180 words.

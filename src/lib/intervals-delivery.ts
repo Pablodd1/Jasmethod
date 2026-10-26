@@ -9,7 +9,7 @@ import { getIntervalsAuthorization } from "./intervals-oauth";
 import { readIntervalsAutoPublish } from "./intervals-preferences";
 import { intervalsUpsertFit, intervalsDeleteOwnedEvent, IntervalsDeliveryError } from "./intervals";
 
-export type IntervalsReceipt = { version: 1; status: "publishing" | "published" | "cancelled" | "unknown" | "rejected"; externalId: string; revision: string; dateLocal?: string; providerAthleteId?: string; eventId?: string; lease?: string; leaseUntil?: number; action?: "publish" | "cancel" };
+export type IntervalsReceipt = { version: 1; status: "publishing" | "published" | "cancelled" | "unknown" | "rejected"; externalId: string; revision: string; dateLocal?: string; providerAthleteId?: string; eventId?: string; lease?: string; leaseUntil?: number; retryAt?: number; action?: "publish" | "cancel" };
 export function intervalsExternalId(athleteId: string, sessionId: string) { return `jmm-${createHash("sha256").update(`${athleteId}:${sessionId}`).digest("hex")}`; }
 export function readIntervalsReceipt(value: string | null | undefined): IntervalsReceipt | null {
   try { const r = JSON.parse(value || "null"); return r?.version === 1 && typeof r.externalId === "string" && typeof r.status === "string" ? r : null; } catch { return null; }
@@ -36,6 +36,7 @@ export async function publishIntervalsWorkout(input: { athleteId: string; sessio
   const mayPublish = (w: { planned: boolean; completed: boolean; planDay?: { plan?: { status: string } } | null }) => w.planned && !w.completed && (!w.planDay?.plan || w.planDay.plan.status === "active");
   if (action === "publish" && !mayPublish(workout)) throw new SessionResolutionError("Only incomplete planned sessions in an active plan can be published.", 409);
   const prior = readIntervalsReceipt(workout.deliveryId);
+  if (prior?.retryAt && prior.retryAt > Date.now()) return result("busy", session.revision, "Intervals requested a cooldown. Retry after the provider rate-limit window; nothing new was sent.");
   if (prior?.providerAthleteId && prior.providerAthleteId !== providerAthleteId) throw new SessionResolutionError("This delivery belongs to a different Intervals account. Reconnect the original account to maintain or cancel it.", 409);
   if (workout.deliveryProvider && workout.deliveryProvider !== "intervals") throw new SessionResolutionError("Another provider owns this workout delivery.", 409);
   if (workout.deliveryId?.startsWith("pending:")) throw new SessionResolutionError("An older publication has an unknown outcome. Review the original calendar event before replacing this connection.", 409);
@@ -49,7 +50,7 @@ export async function publishIntervalsWorkout(input: { athleteId: string; sessio
   const claimedValue = JSON.stringify(receipt);
   const claimed = await prisma.workout.updateMany({ where: { id: workout.id, userId: input.athleteId, deliveryId: workout.deliveryId }, data: { deliveryProvider: "intervals", deliveryId: claimedValue } });
   if (!claimed.count) return result("busy", session.revision, "Another publication changed this session. Retry after refreshing.");
-  let outcome: IntervalsReceipt["status"] = "unknown", eventId = prior?.eventId, reason: string | undefined;
+  let outcome: IntervalsReceipt["status"] = "unknown", eventId = prior?.eventId, reason: string | undefined, retryAt: number | undefined;
   try {
     // Persist ownership before the external request so deleted sessions can be retracted.
     await prisma.auditLog.create({ data: { actorId: input.actorId, subjectId: input.athleteId, action: "intervals.delivery", entityId: workout.id, after: claimedValue } });
@@ -68,10 +69,11 @@ export async function publishIntervalsWorkout(input: { athleteId: string; sessio
       } else outcome = "published";
     }
   } catch (error) {
+    if(error instanceof IntervalsDeliveryError && error.retryAfterMs)retryAt=Date.now()+error.retryAfterMs;
     outcome = error instanceof IntervalsDeliveryError && error.definite ? "rejected" : "unknown";
     reason = outcome === "unknown" ? "Provider outcome is unknown. Reconciliation will retry the same external ID; watch receipt is not confirmed." : (error as Error).message;
   }
-  const saved: IntervalsReceipt = { version: 1, externalId: receipt.externalId, revision: session.revision, dateLocal: session.dateLocal, providerAthleteId, eventId, status: outcome, action };
+  const saved: IntervalsReceipt = { version: 1, externalId: receipt.externalId, revision: session.revision, dateLocal: session.dateLocal, providerAthleteId, eventId, status: outcome, action, ...(retryAt?{retryAt}:{}) };
   try {
     const stored = await prisma.workout.updateMany({ where: { id: workout.id, userId: input.athleteId, deliveryId: claimedValue }, data: { deliveryId: JSON.stringify(saved) } });
     if (!stored.count) return result("unknown", session.revision, "Provider responded, but the local receipt could not be confirmed.", eventId);
@@ -92,6 +94,7 @@ export async function reconcileIntervalsPublications(athleteId: string) {
   for (const workout of workouts) {
     const receipt = readIntervalsReceipt(workout.deliveryId);
     if (receipt?.status === "cancelled") continue;
+    if (receipt?.retryAt && receipt.retryAt > Date.now()) continue;
     if (!receipt) {
       if (workout.deliveryId || process.env.ENABLE_INTERVALS_AUTO_PUBLISH !== "true" || !workout.approved) continue;
       const connector = await prisma.connector.findUnique({ where: { userId_provider: { userId: athleteId, provider: "intervals" } }, select: { externalRef: true } });
@@ -123,11 +126,15 @@ export async function reconcileIntervalsPublications(athleteId: string) {
     if (!entry.entityId || seen.has(entry.entityId)) continue;
     seen.add(entry.entityId);
     const receipt = readIntervalsReceipt(entry.after);
-    if (!receipt || receipt.status === "cancelled" || !receipt.dateLocal || receipt.dateLocal < firstDate || receipt.dateLocal > lastDate || (receipt.leaseUntil && receipt.leaseUntil > Date.now())) continue;
+    if (!receipt || receipt.status === "cancelled" || !receipt.dateLocal || receipt.dateLocal < firstDate || receipt.dateLocal > lastDate || (receipt.leaseUntil && receipt.leaseUntil > Date.now()) || (receipt.retryAt && receipt.retryAt > Date.now())) continue;
     if (await prisma.workout.findFirst({ where: { id: entry.entityId, userId: athleteId }, select: { id: true } })) continue;
     const { authorization, athleteId: providerAthleteId } = await getIntervalsAuthorization(athleteId, ["CALENDAR:WRITE"]);
     if (receipt.providerAthleteId && receipt.providerAthleteId !== providerAthleteId) throw new SessionResolutionError("A deleted session belongs to a different Intervals account; reconnect that account to cancel it.", 409);
-    await intervalsDeleteOwnedEvent(authorization, receipt.externalId);
+    try { await intervalsDeleteOwnedEvent(authorization, receipt.externalId); }
+    catch(error) {
+      if(error instanceof IntervalsDeliveryError && error.retryAfterMs)await prisma.auditLog.create({data:{actorId:athleteId,subjectId:athleteId,action:"intervals.delivery",entityId:entry.entityId,after:JSON.stringify({...receipt,status:"rejected",action:"cancel",retryAt:Date.now()+error.retryAfterMs,lease:undefined,leaseUntil:undefined}),note:"Provider cooldown before retrying cancellation of a deleted session."}});
+      throw error;
+    }
     await prisma.auditLog.create({ data: { actorId: athleteId, subjectId: athleteId, action: "intervals.delivery", entityId: entry.entityId, after: JSON.stringify({ ...receipt, status: "cancelled", lease: undefined, leaseUntil: undefined }), note: "Removed provider event for a deleted local session." } });
   }
   if (outcomes.some(o => ["unknown", "rejected"].includes(o.status))) throw new Error("One or more Intervals publications require reconciliation.");
