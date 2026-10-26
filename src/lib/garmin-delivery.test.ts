@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { garminWorkoutPayload } from "./garmin-workout";
+import { garminWorkoutPayload,garminPublicationEligible } from "./garmin-workout";
 import { createGarminDeliveryService,verifyGarminWorkout,type GarminDeliveryReceipt,type GarminDeliveryStore } from "./garmin-delivery-service";
 import { GarminTrainingError,createGarminTrainingProtocol } from "./garmin-training-protocol";
 import { GarminError,GarminBudgetError } from "./garmin-config";
-import type { CanonicalSession } from "./canonical-session";
+import { canonicalSession,type CanonicalSession } from "./canonical-session";
 const session=():CanonicalSession=>({schemaVersion:2,id:"session-A",athleteId:"athlete-A",revision:"revision-A",revisionNumber:1,dateLocal:"2026-10-27",timezone:"America/New_York",title:"Prescribed running",sport:"run",durationMin:10,verdict:"ready",reason:"Ready",exactTimeSeconds:600,
  capability:{available:true,mode:"native",fitSport:"running",deviceTested:false,reason:"Synthetic"},steps:[{name:"Warm up",seconds:300,zone:"z1",phase:"warmup",endpoint:{type:"time",seconds:300},target:{type:"open",source:"explicit",label:"Easy"}},{name:"Main",seconds:300,zone:"z3",phase:"active",endpoint:{type:"distance",meters:1000},target:{type:"pace",low:300,high:360,source:"explicit",label:"5–6 min/km"}}]});
 function fixture(){
@@ -38,3 +38,7 @@ test("opt-out during creation withdraws the new remote workout before scheduling
 test("existing publication keeps safety replacement after stopping new publications",async()=>{const f=fixture();await f.deliver(input);f.allowed=false;f.current={...session(),revision:"revision-B"};assert.equal((await f.deliver({...input,expectedRevision:"revision-B"}))?.status,"published");assert.equal(f.calls.remove,1);});
 
 test("budget refusal during permission refresh before create is proved unsent and retryable",async()=>{const f=fixture();f.budgetAt=2;await assert.rejects(f.deliver(input));assert.equal(f.calls.create,0);assert.equal(f.receipt?.status,"failed");assert.equal(f.receipt?.retryAt,61000);f.budgetAt=0;f.advance();assert.equal((await f.deliver(input))?.status,"published");});
+
+function poolSession(unit:"m"|"yd"="m",stroke="freestyle",sendOffSeconds?:number){const structure={schemaVersion:1,kind:"pool",poolLength:{value:25,unit},steps:[{kind:"lengths",name:"Swim",phase:"active",zone:"z2",lengths:4,stroke,...(sendOffSeconds?{sendOffSeconds}:{})},{kind:"rest",seconds:30}]};return canonicalSession({athleteId:"athlete-A",workout:{id:"session-A",userId:"athlete-A",sport:"swim",durationMin:10,title:"Pool practice",date:new Date("2026-10-27T12:00:00Z")},prescription:{title:"Pool practice",sport:"swim",durationMin:10,verdict:"full",sportStructure:structure},dateLocal:"2026-10-27",timezone:"UTC"});}
+test("pool publication preserves metre/yard pool length, exact swim distance, stroke and final fixed rest",()=>{for(const unit of ["m","yd"] as const){const c=poolSession(unit),p=garminWorkoutPayload(c);assert.equal(p.sport,"LAP_SWIMMING");assert.equal(p.poolLength,25);assert.equal(p.poolLengthUnit,unit==="yd"?"YARD":"METER");const [swim,rest]=p.segments[0].steps;assert.equal(swim.durationValue,unit==="yd"?91.44:100);assert.equal(swim.strokeType,"FREESTYLE");assert.equal(swim.targetType,null);assert.equal(rest.durationType,"FIXED_REST");assert.equal(rest.intensity,"REST");assert.equal(rest.durationValue,30);verifyGarminWorkout({...p,workoutId:1,ownerId:2},p);assert.throws(()=>verifyGarminWorkout({...p,workoutId:1,ownerId:2,poolLength:50},p));}});
+test("ambiguous pool drills/send-offs and newly unrepresentable prescriptions are never auto-published",()=>{assert.equal(garminPublicationEligible(poolSession("m","drill")),false);assert.equal(garminPublicationEligible(poolSession("m","freestyle",90)),false);const changed=session();changed.steps[0].note="x".repeat(513);assert.equal(garminPublicationEligible(changed),false);assert.equal(garminPublicationEligible(poolSession()),true);});

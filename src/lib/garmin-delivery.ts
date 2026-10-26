@@ -5,6 +5,7 @@ import { effectivePrescription } from "./effective-prescription";
 import { createGarminDeliveryService, type GarminDeliveryReceipt, type GarminDeliveryStore } from "./garmin-delivery-service";
 import { createGarminTrainingProtocol, GarminTrainingError } from "./garmin-training-protocol";
 import { dateKey,addDaysKey } from "./dates";
+import { garminPublicationEligible } from "./garmin-workout";
 
 const action = "garmin.delivery.v1";
 export function readGarminReceipt(text: string | null | undefined): GarminDeliveryReceipt | null {
@@ -86,7 +87,7 @@ export async function reconcileGarminPublications(athleteId:string,deadline=Date
   if (connector?.status !== "connected" || !connector.externalRef) return {published:0,cancelled:0,attention:0};
   const auto = await garminAutoPublishEnabled(athleteId,connector.externalRef), now=Date.now();
   const user=await prisma.user.findUniqueOrThrow({where:{id:athleteId},select:{timezone:true}});
-  const first=dateKey(new Date(now),user.timezone),last=addDaysKey(first,7);
+  const first=dateKey(new Date(now),user.timezone),last=addDaysKey(first,6);
   const upcoming = await prisma.workout.findMany({where:{userId:athleteId,planned:true,date:{gte:new Date(now-86400000),lte:new Date(now+7*86400000)}},select:{id:true},take:100,orderBy:{date:"asc"}});
   const audits = await prisma.auditLog.findMany({where:{subjectId:athleteId,actorId:athleteId,action},orderBy:[{createdAt:"desc"},{id:"desc"}],distinct:["entityId"]});
   const receipts = new Map<string,GarminDeliveryReceipt>();
@@ -98,7 +99,7 @@ export async function reconcileGarminPublications(athleteId:string,deadline=Date
     const receipt=receipts.get(sessionId);
     if(receipt && receipt.date<first)continue; // Do not rewrite historical calendar entries.
     const session=await currentGarminSession(athleteId,sessionId);
-    const eligible=session?.verdict === "ready" && session.dateLocal>=first && session.dateLocal<=last && ["run","bike"].includes(session.sport) && session.capability.mode==="native";
+    const eligible=!!session && session.dateLocal>=first && session.dateLocal<=last && garminPublicationEligible(session);
     if (!receipt && (!auto || !eligible)) continue;
     if (!receipt && newPublications>=1) continue; // Give every athlete today's session before filling one athlete's week.
     if (receipt?.status==="failed" && !receipt.workoutId && !auto) continue;

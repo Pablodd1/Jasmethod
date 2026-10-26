@@ -21,7 +21,7 @@ export function verifyGarminWorkout(remote: GarminRemoteWorkout, payload: Garmin
     return expected === actual;
   }
   // Metadata may be server-generated; executable steps and the sport must round-trip exactly.
-  if (!same(b.segments,a.segments) || b.sport !== a.sport || b.workoutName !== a.workoutName)
+  if (!same(b.segments,a.segments) || b.sport !== a.sport || b.workoutName !== a.workoutName || ("poolLength" in b && (!same(b.poolLength,a.poolLength) || !same(b.poolLengthUnit,a.poolLengthUnit))))
     throw new GarminTrainingError("garmin_prescription_mismatch", false);
 }
 export function createGarminDeliveryService(deps: {
