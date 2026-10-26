@@ -29,9 +29,10 @@ export async function processSyncJob(job: { userId:string;kind:string;payload:st
 // Injection is only a test seam; the HTTP endpoint always uses the real processor.
 export async function runSyncJobs(limit=4, process=processSyncJob) {
   const now=new Date();
-  await prisma.syncJob.updateMany({where:{status:'running',leasedUntil:{lt:now},attempts:{lt:5}},data:{status:'pending',leaseToken:null,leasedUntil:null}});
-  await prisma.syncJob.updateMany({where:{status:'running',leasedUntil:{lt:now},attempts:{gte:5}},data:{status:'failed',leaseToken:null,leasedUntil:null,lastError:'Repeated interrupted processing; operator review required.'}});
-  const jobs=await prisma.syncJob.findMany({where:{status:'pending',availableAt:{lte:now}},orderBy:{availableAt:'asc'},take:Math.max(1,Math.min(20,limit))});
+  const kind={in:['sync','strava','whoop','intervals']};
+  await prisma.syncJob.updateMany({where:{kind,status:'running',leasedUntil:{lt:now},attempts:{lt:5}},data:{status:'pending',leaseToken:null,leasedUntil:null}});
+  await prisma.syncJob.updateMany({where:{kind,status:'running',leasedUntil:{lt:now},attempts:{gte:5}},data:{status:'failed',leaseToken:null,leasedUntil:null,lastError:'Repeated interrupted processing; operator review required.'}});
+  const jobs=await prisma.syncJob.findMany({where:{kind,status:'pending',availableAt:{lte:now}},orderBy:{availableAt:'asc'},take:Math.max(1,Math.min(20,limit))});
   return Promise.all(jobs.map(async job=>{
     const token=randomUUID();
     const claim=await prisma.syncJob.updateMany({where:{id:job.id,status:'pending'},data:{status:'running',leaseToken:token,attempts:{increment:1},leasedUntil:new Date(Date.now()+15*60000)}});

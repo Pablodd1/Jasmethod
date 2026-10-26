@@ -46,3 +46,10 @@ test('webhook acknowledges only durable enqueue and scopes job to matched athlet
     await assert.rejects(enqueueSyncJob('athlete','sync','initial',{provider:'oura'}),/storage unavailable/);
   }finally{(prisma.connector as any).findFirst=originals.findFirst;(prisma.syncJob as any).upsert=originals.upsert;if(flag===undefined)delete process.env.ENABLE_STRAVA_CONNECTOR;else process.env.ENABLE_STRAVA_CONNECTOR=flag;}
 });
+
+test('generic worker excludes the separately encrypted Garmin inbox from claims and recovery',async()=>{
+ const original={findMany:prisma.syncJob.findMany,updateMany:prisma.syncJob.updateMany};const scopes:any[]=[];
+ (prisma.syncJob as any).findMany=async({where}:any)=>{scopes.push(where.kind.in);return [];};
+ (prisma.syncJob as any).updateMany=async({where}:any)=>{scopes.push(where.kind.in);return {count:0};};
+ try{await runSyncJobs();assert.equal(scopes.length,3);for(const kinds of scopes){assert.ok(kinds.includes('intervals'));assert.ok(!kinds.includes('garmin.data.v1'));}}finally{Object.assign(prisma.syncJob,original);}
+});

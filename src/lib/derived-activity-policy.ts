@@ -12,7 +12,9 @@ export interface DerivedActivityPolicy {
 export function derivedActivityPolicy(rows: readonly ProvenanceFields[]): DerivedActivityPolicy {
   const restrictedRecords = { strava: 0, unknown: 0 };
   for (const row of rows) {
-    const origin = provenanceOf(row);
+    // Direct Garmin is positively identified for LOCAL deterministic analysis only.
+    // filterForAi/isAiEligible deliberately keep this source excluded.
+    const origin = localOrigin(row);
     if (origin !== "allowed") restrictedRecords[origin]++;
   }
   const restricted = restrictedRecords.strava + restrictedRecords.unknown > 0;
@@ -23,4 +25,5 @@ export function derivedActivityPolicy(rows: readonly ProvenanceFields[]): Derive
   };
 }
 
-export const isDerivedActivityEligible = (row: ProvenanceFields) => provenanceOf(row) === "allowed";
+const localOrigin = (row: ProvenanceFields) => provenanceOf(row) === "strava" ? "strava" : row.source === "garmin_direct" && row.externalId?.startsWith("garmin:") ? "allowed" : provenanceOf(row);
+export const isDerivedActivityEligible = (row: ProvenanceFields) => localOrigin(row) === "allowed";

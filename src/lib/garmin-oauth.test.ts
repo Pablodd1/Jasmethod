@@ -10,7 +10,7 @@ const token = (suffix = "1"): GarminToken => ({ accessToken: `access-${suffix}`,
 function fixture() {
   const env = environment(), rows = new Map<string, GarminConnection>(), txns = new Map<string, GarminTransaction>();
   const calls = { token: 0, revoke: 0, identity: 0, permissions: 0 };
-  const options = { failToken: false, failRevoke: false, failIdentity: false, subject: "garmin-athlete-A", permissions: ["ACTIVITY_EXPORT", "HEALTH_EXPORT", "WORKOUT_IMPORT"] as any[], casLost: false };
+  const options = { failToken: false, budgetToken: false, failRevoke: false, failIdentity: false, subject: "garmin-athlete-A", permissions: ["ACTIVITY_EXPORT", "HEALTH_EXPORT", "WORKOUT_IMPORT"] as any[], casLost: false };
   let clock = new Date("2026-10-25T12:00:00Z");
   const encrypt = (s: string) => `enc:v1:${Buffer.from(s).toString("base64")}`;
   const decrypt = (s: string) => Buffer.from(s.slice(7), "base64").toString();
@@ -37,7 +37,7 @@ function fixture() {
     },
   };
   const protocol: GarminProtocol = {
-    async token() { calls.token++; if (options.failToken) throw new Error("fixture-private-token-response"); return token(String(calls.token)); },
+    async token() { calls.token++; if (options.budgetToken) throw new GarminError("local_garmin_budget", "Wait", 429); if (options.failToken) throw new Error("fixture-private-token-response"); return token(String(calls.token)); },
     async identity() { calls.identity++; if (options.failIdentity) throw new Error("fixture-private-identity-response"); return options.subject; },
     async permissions() { calls.permissions++; return options.permissions; },
     async revoke() { calls.revoke++; if (options.failRevoke) throw new GarminError("revocation_unconfirmed", "Provider revocation unconfirmed", 503); },
@@ -207,3 +207,6 @@ test("Garmin transport exceptions and provider bodies never expose credentials",
     await assert.rejects(protocol.token(cfg, { grant_type: "refresh_token" }), e => e instanceof GarminError && !e.message.includes("fixture-private-secret"));
   }
 });
+
+test("local budget refusal before token exchange leaves no ambiguous remote grant",async()=>{const f=fixture(),start=await f.start();f.options.budgetToken=true;await assert.rejects(f.service.complete("A",start.params,start.browserBinding));assert.equal(f.rows.get("A")?.status,"disconnected");assert.equal(f.rows.get("A")?.tokenEnc,null);});
+test("local budget refusal before refresh retains the last verified grant for later retry",async()=>{const f=fixture();await f.connect();f.advance(86400000);const before=f.rows.get("A")!.tokenEnc;f.options.budgetToken=true;await assert.rejects(f.service.authorization("A"));assert.equal(f.rows.get("A")?.status,"connected");assert.equal(f.rows.get("A")?.tokenEnc,before);f.options.budgetToken=false;await f.service.authorization("A");});

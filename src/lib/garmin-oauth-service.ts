@@ -87,6 +87,10 @@ export function createGarminOAuthService(deps: { store: GarminStore; protocol: G
         tokenEnc: seal({ version: 1, kind: "grant", clientId: cfg.clientId, accessToken: token.accessToken, subject }), lastError: null }, true);
       return { connected: true, permissions };
     } catch (error) {
+      if (error instanceof GarminError && error.code === "local_garmin_budget" && row.tokenEnc === pending.marker) {
+        await replace(row, { status: "disconnected", tokenEnc: null, refreshEnc: null, expiresAt: null });
+        throw error;
+      }
       if (error instanceof GarminError && error.code === "provider_account_already_linked") {
         // Garmin deregistration is app/user-wide, not token-specific. Revoking
         // this duplicate grant would disconnect the existing athlete's account.
@@ -111,6 +115,7 @@ export function createGarminOAuthService(deps: { store: GarminStore; protocol: G
       const refresh = open(row.refreshEnc);
       if (!record(refresh) || refresh.version !== 1 || typeof refresh.refreshToken !== "string" || typeof refresh.expiresAt !== "number" || refresh.expiresAt <= now().getTime())
         throw new GarminError("reconnect_required", "Garmin refresh authorization expired. Reconnect your account.", 409);
+      const beforeRefresh = row;
       row = await replace(row, { status: "refreshing" });
       try {
         const token = await protocol.token(cfg, { grant_type: "refresh_token", refresh_token: (refresh as Refresh).refreshToken });
@@ -121,6 +126,10 @@ export function createGarminOAuthService(deps: { store: GarminStore; protocol: G
         auth = grant(row, cfg.clientId);
         permissionsChecked = true;
       } catch (error) {
+        if (error instanceof GarminError && error.code === "local_garmin_budget" && row.tokenEnc === beforeRefresh.tokenEnc) {
+          await replace(row, { status: "connected", lastError: "Garmin request budget reached. Retry later." });
+          throw error;
+        }
         await replace(row, { status: "reconnect_required", lastError: "Garmin refresh was not confirmed. Disconnect before reconnecting; automatic retries are disabled." });
         throw error;
       }

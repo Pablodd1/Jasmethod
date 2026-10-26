@@ -30,6 +30,7 @@ export function garminConfigured(env: GarminEnvironment = process.env): boolean 
   try { garminConfig(env); return true; } catch { return false; }
 }
 export const GARMIN_CONSENT_VERSION = "garmin-direct-v1";
+export const GARMIN_AUTO_CONSENT = "garmin-auto-publish-v1";
 export const GARMIN_MANUAL_REVOCATION_VERSION = "garmin-manual-revocation-reported-v1";
 export const GARMIN_NOTICE = {
   en: "Connect your own Garmin account. Choose the permissions in Garmin. Starter access supplies new data after consent; it does not import historical records. Garmin data stays out of external AI and other delivery channels. Authorization is separate from imports, workout publication and watch receipt.",
