@@ -21,7 +21,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
     assert.equal(req.method(),'POST');const body=req.postDataJSON();disconnects++;
     if(body.consent==='garmin-manual-revocation-reported-v1'){assert.equal(status,'revocation_required');status='disconnected';return route.fulfill({json:{disconnected:true,providerRevoked:false,manualRevocationReported:true}});}
     assert.deepEqual(body,{});
-    if(revokeFailure){status='revocation_required';return route.fulfill({status:503,json:{error:es?'Revocación sin confirmar':'Provider revocation unconfirmed'}});}
+    if(revokeFailure){status='revocation_required';return route.fulfill({status:503,json:{error:es?'Garmin no confirmó la revocación de prueba.':'Provider revocation unconfirmed'}});}
     status='disconnected';return route.fulfill({json:{disconnected:true,providerRevoked:true}});
    }
    if(url.pathname==='/api/connectors/garmin/authorize'){
