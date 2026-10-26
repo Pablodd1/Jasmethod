@@ -96,6 +96,10 @@ function todaySession(session: Record<string, any>) {
 
 export const isTodayTrainingResponse = (value: unknown): value is Record<string, any> =>
   object(value) && date(value.date) && text(value.timezone) && records(value.sessions, todaySession) &&
+    optionalObject(value.weekReview, week => week.coverage === "recorded_only" && week.usage === "local_display_only" && date(week.start) && date(week.end) && date(week.today) &&
+      object(week.past) && ["available","unknown","review","restricted"].includes(week.past.status) && ["sessions","minutes"].every(key => week.past[key] == null || finite(week.past[key]) && week.past[key] >= 0) &&
+      object(week.ahead) && ["sessions","minutes"].every(key => week.ahead[key] == null || finite(week.ahead[key]) && week.ahead[key] >= 0) &&
+      optionalRecords(week.ahead.next, item => text(item.id) && date(item.date) && text(item.title) && (item.minutes == null || finite(item.minutes) && item.minutes >= 0))) &&
     optionalObject(value.athleteReview, review => finite(review.rawRecordCount) && (finite(review.possibleCopies) || (review.possibleCopies === null && object(review.derivedActivityPolicy) && review.derivedActivityPolicy.status === "insufficient" && text(review.derivedActivityPolicy.reason))) && (review.baselineWeeklyMinutes == null || finite(review.baselineWeeklyMinutes)) && optionalText(review.baselineObservedAt) && records(review.records, row => text(row.id) && text(row.title) && text(row.sport) && text(row.source) && ['minutes','rpe','distanceKm','paceSecondsPerKm','avgHr','avgPower','calories','preWeightKg','postWeightKg'].every(key => row[key] == null || finite(row[key])) && textFields(row,['actualDetails','feedbackStatus','feedbackNote','matchedPlanId']))) &&
     optionalObject(value.race, race => optionalText(race.name) && finite(race.daysAway)) &&
     optionalObject(value.cycle, cycle => textFields(cycle, ["start", "end", "status"]) && finite(cycle.weeks) && (cycle.currentWeek == null || finite(cycle.currentWeek))) &&

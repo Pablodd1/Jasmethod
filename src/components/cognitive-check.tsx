@@ -1,9 +1,8 @@
 "use client";
 // Random stimuli and timers are produced in user-event callbacks, not render output.
 
-// Cognitive check — compact Stroop test (inhibitory control, the pacing-
-// discipline system). Consolidated INTO the Daily Check-in per the product
-// spec; the /brain archive page imports this same component.
+// Optional Stroop task. Results are task observations, never physical readiness
+// or training clearance; the /brain archive imports the same component.
 import { useEffect, useRef, useState } from "react";
 import { Zap, Target } from "lucide-react";
 
@@ -20,6 +19,8 @@ export function CognitiveCheck({ lang = "en" }: { lang?: string }) {
   const [times, setTimes] = useState<number[]>([]);
   const [correct, setCorrect] = useState(0);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const saveVersion = useRef(0);
   const startRef = useRef(0);
 
   const TOTAL = 10;
@@ -32,7 +33,7 @@ export function CognitiveCheck({ lang = "en" }: { lang?: string }) {
     startRef.current = performance.now();
   }
 
-  function begin() { setStarted(true); setTrial(0); setTimes([]); setCorrect(0); setDone(false); setSaved(false); next(); }
+  function begin() { saveVersion.current++; setSaveError(false); setStarted(true); setTrial(0); setTimes([]); setCorrect(0); setDone(false); setSaved(false); next(); }
 
   function answer(c: string) {
     const ms = performance.now() - startRef.current;
@@ -45,9 +46,14 @@ export function CognitiveCheck({ lang = "en" }: { lang?: string }) {
       const avg = Math.round([...times, ms].reduce((a, x) => a + x, 0) / TOTAL);
       const accuracy = Math.round((correct + (isCorrect ? 1 : 0)) / TOTAL * 100);
       // Persist to the same cognitive history as the /brain tests.
-      fetch("/api/cognitive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ test: "stroop", score: avg, accuracy }) })
-        .then(() => setSaved(true))
-        .catch(() => {});
+      const version = saveVersion.current;
+      fetch("/api/cognitive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ test: "stroop", score: avg, accuracy }), signal: AbortSignal.timeout(15000) })
+        .then(async response => {
+          const receipt = await response.json();
+          if (!response.ok || receipt.ok !== true || typeof receipt.id !== "string" || !receipt.id) throw Error("Save unconfirmed");
+          if (version === saveVersion.current) setSaved(true);
+        })
+        .catch(() => { if (version === saveVersion.current) setSaveError(true); });
     } else {
       setTrial(t);
       next();
@@ -61,8 +67,8 @@ export function CognitiveCheck({ lang = "en" }: { lang?: string }) {
         <h3 className="font-display font-bold text-lg">{es ? "Cognitive Check — Stroop" : "Cognitive Check — Stroop"}</h3>
         <p className="text-sm text-slate-500 mt-1 mb-4">
           {es
-            ? "La palabra dice un color, la tinta es otra. Toca el color de la TINTA. 10 rondas — mide el control inhibitorio (disciplina de ritmo)."
-            : "The word says one color, the ink is another. Tap the INK color. 10 trials — measures inhibitory control (relevant to pacing discipline)."}
+            ? "La palabra dice un color, la tinta es otra. Toca el color de la TINTA. 10 rondas. Es un resultado de la tarea, no una prueba de preparación física."
+            : "The word says one color, the ink is another. Tap the INK color. 10 trials. This is a task result, not a physical readiness test."}
         </p>
         <button onClick={begin} className="btn-primary">{es ? "Empezar" : "Start"}</button>
       </div>
@@ -78,10 +84,9 @@ export function CognitiveCheck({ lang = "en" }: { lang?: string }) {
           {es ? "¡Listo!" : "Done!"} {es ? "Promedio" : "Avg"} {avg} ms · {Math.round(correct / TOTAL * 100)}%
         </h3>
         <p className="text-sm text-slate-500 mt-2">
-          {avg < 700 ? (es ? "Enfoque de élite — control inhibitorio de primer nivel." : "Elite focus — top-tier inhibitory control.")
-            : avg < 1000 ? (es ? "Sólido — enfoque sobre el promedio." : "Solid — above average focus.")
-            : (es ? "Base razonable — repite cada semana y verás mejora." : "Reasonable baseline — retest weekly, expect improvement.")}
+          {es ? "La práctica, el dispositivo y las distracciones pueden cambiar el resultado. No modifica tu entrenamiento." : "Practice, device and distractions can affect this result. It does not change your training."}
         </p>
+        {saveError && <p role="alert" className="text-sm text-red-700">{es ? "No se confirmó el guardado. El resultado solo está en esta pantalla." : "Saving was not confirmed. This result is only on this screen."}</p>}
         {saved && <p className="text-xs text-emerald-600 mt-1">{es ? "✓ Guardado en tu historial cognitivo" : "✓ Saved to your cognitive history"}</p>}
         <div className="flex justify-center gap-2 mt-4">
           <button onClick={begin} className="btn-secondary">{es ? "Repetir" : "Retest"}</button>

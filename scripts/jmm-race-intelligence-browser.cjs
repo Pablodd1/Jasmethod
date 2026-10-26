@@ -58,8 +58,11 @@ async function main() {
                 await page.goto(base + '/races/scenarios');
                 const card = page.locator('section[aria-labelledby="race-intelligence-title"]');
                 await card.getByRole('button', { name: es ? 'Buscar carrera' : 'Find race', exact: true }).waitFor();
+                await page.screenshot({path:`${dir}/${lang}-${width}-lookup-start.png`,fullPage:true});
                 await card.getByLabel(es ? 'Carrera o ciudad' : 'Race or city', { exact: true }).fill('Synthetic');
                 await card.getByRole('button', { name: es ? 'Buscar carrera' : 'Find race', exact: true }).click();
+                await card.getByRole('button', { name: es ? 'Confirmar evento' : 'Confirm this event', exact: true }).first().waitFor();
+                await page.screenshot({path:`${dir}/${lang}-${width}-lookup-results.png`,fullPage:true});
                 await card.getByRole('button', { name: es ? 'Confirmar evento' : 'Confirm this event', exact: true }).nth(1).click();
                 assert.equal(await page.getByLabel(es ? 'Nombre del escenario / evento' : 'Scenario / event name', { exact: true }).inputValue(), 'Synthetic public race · 10K');
                 assert.equal(await page.getByLabel(es ? 'Hora local' : 'Local time', { exact: true }).inputValue(), '');
@@ -67,8 +70,10 @@ async function main() {
                 assert.equal(await card.getByText(es ? 'Salida desconocida' : 'Start time unknown', {exact:false}).count(),0);
                 await card.getByRole('button', { name: es ? 'Buscar dirección del lugar' : 'Find venue address', exact: true }).click();
                 await card.getByRole('button', { name: es ? 'Confirmar coordenadas' : 'Confirm venue coordinates', exact: true }).click();
+                await page.screenshot({path:`${dir}/${lang}-${width}-venue-confirmed.png`,fullPage:true});
                 await card.getByRole('button', { name: es ? 'Consultar condiciones' : 'Get race conditions', exact: true }).click();
                 await card.getByRole('heading', { name: es ? 'Pronóstico disponible' : 'Live forecast', exact: true }).waitFor();
+                await page.screenshot({path:`${dir}/${lang}-${width}-forecast-review.png`,fullPage:true});
                 assert.ok((await card.innerText()).includes(units === 'imperial' ? '86°F' : '30°C'));
                 await card.getByText(es ? 'Detalles y correcciones' : 'Weather details and corrections', { exact: true }).click();
                 await card.getByLabel(es ? `Punto de rocío (${units === 'imperial' ? '°F' : '°C'})` : `Dew point (${units === 'imperial' ? '°F' : '°C'})`, { exact: true }).fill(units === 'imperial' ? '110' : '40');

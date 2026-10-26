@@ -5,6 +5,7 @@ import { readinessReasonText } from "@/components/daily-training/readiness-copy"
 import { SavedWorkoutPreviewCard } from "@/components/daily-training/SavedWorkoutPreviewCard";
 import { ExistingWorkoutReview } from "@/components/daily-training/ExistingWorkoutReview";
 import { DailyInputSummary } from "@/components/daily-training/DailyInputSummary";
+import { DailyReadinessPath } from "@/components/daily-training/DailyReadinessPath";
 import { readTrainingJson, TrainingReadError, isTodayTrainingResponse } from "@/components/daily-training/training-read";
 import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
 import { JMetricsCard } from "@/components/j-metrics-card";
@@ -198,7 +199,7 @@ function TodayPageContent() {
   if(user?.onboarded === false) return <ProtectedPage><p role="status">Opening connection-first athlete setup…</p></ProtectedPage>;
   return (
     <ProtectedPage>
-      <div className="space-y-5 max-w-4xl mx-auto">
+      <div className="training-workflow space-y-5 max-w-4xl mx-auto">
         <div>
           <p className="text-sm text-slate-500">{data?.date}</p>
           <h1 className="font-display text-3xl font-bold">
@@ -221,17 +222,13 @@ function TodayPageContent() {
             const id = event.target.value; const url = new URL(window.location.href); url.searchParams.set("sessionId", id); window.history.pushState({}, "", url);
             setSelected(id); setFeedback(false); setMessage(""); setError("");
           }}>{!session && <option value="" disabled>{es ? "Elige una sesión actual" : "Choose a current session"}</option>}{data.sessions.map((s: any) => <option key={s.id} value={s.id}>{s.title} · {s.plannedDurationMin ?? s.durationMin} min</option>)}</select></label>}
+        {data && <DailyReadinessPath es={es} date={data.date} cycle={data.cycle} week={data.weekReview} context={data.inputContext} mode={data.recovery?.mode} safetyStatus={data.recovery?.safetyStatus} reviewedSessionId={data.recovery?.reviewedSessionId} hasSession={!!session} offline={offline} />}
         {session && <section id="today-workout" className="space-y-3 scroll-mt-4">
           <UniversalWorkoutCardLoader key={`card:${session.id}-${session.revision}`} sessionId={session.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={session.id} es={es} />} onSaved={() => load()} />
           {session.verdict === "blocked" && session.existingReview && <ExistingWorkoutReview key={`review:${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} candidate={session.existingReview} es={es} disabled={busy || offline} onSaved={load} />}
         </section>}
         {syncStatus && <p role="status" className="text-sm text-slate-600">{syncStatus === "refreshing" ? (es ? "Actualizando conexiones en segundo plano. Tu plan guardado sigue visible." : "Refreshing connections in the background. Your saved plan stays visible.") : syncStatus === "complete" ? (es ? "La actualización terminó. Revisa las fechas de las mediciones." : "Refresh completed. Check measurement dates.") : (es ? "No se confirmó una actualización completa. El plan guardado está disponible; no asumimos datos nuevos." : "A complete refresh was not confirmed. The saved plan remains available; no new data is assumed.")}</p>}
         <DailyInputSummary context={data?.inputContext} es={es} />
-        <section className="card space-y-2" aria-label={es ? "Tu ciclo guardado" : "Your saved cycle"}>
-          <h2 className="font-semibold">{data?.cycle ? (es ? "Ciclo guardado" : "Saved training cycle") : (es ? "Tu plan de entrenamiento" : "Your training plan")}</h2>
-          {data?.cycle && <p className="text-sm">{data.cycle.currentWeek ? `${es ? "Semana" : "Week"} ${data.cycle.currentWeek} / ${data.cycle.weeks} · ` : ""}{data.cycle.start} – {data.cycle.end}{data.cycle.status === "ended" ? (es ? " · Ciclo finalizado; revisa tu progreso antes del siguiente." : " · Cycle ended; review your progress before the next one.") : ""}</p>}
-          <div className="flex flex-wrap gap-3"><Link href="/training" className="btn-primary">{es ? "Ver ciclo y mes" : "View cycle and month"}</Link><Link href="/calendar" className="btn-secondary">{es ? "Calendario" : "Calendar"}</Link></div>
-        </section>
         {offline && data && (
           <div role="status" className="card bg-amber-50 text-amber-900">
             {es ? "Copia sin conexión" : "Offline copy"} · {data?.date} ·{" "}

@@ -8,6 +8,7 @@ const { chromium } = require('playwright');
 const { canonicalSession } = require('../src/lib/canonical-session.ts');
 const { buildUniversalWorkoutCard } = require('../src/lib/universal-workout-card-server.ts');
 const { buildDailyInputContext } = require('../src/lib/daily-input-context.ts');
+const { buildTrainingWeekReview } = require('../src/lib/training-week-review.ts');
 
 const base = process.env.JMM_UI_TEST_BASE || 'http://127.0.0.1:3220';
 assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/, 'Only an isolated loopback app is allowed');
@@ -44,7 +45,8 @@ function fixtures(language) {
     minutes: 45, remainingPlanMinutes: 45, contextRevision: 'b'.repeat(64), workoutRevision: 'c'.repeat(64) };
   function rich(reviewed = false) {
     const current = reviewed ? canonical : blocked;
-    return { date: today, timezone: 'UTC', language, units: 'metric', inputContext, recovery: null,
+    return { date: today, timezone: 'UTC', language, units: 'metric', inputContext, recovery: {mode:reviewed?'training':'checkin-needed',safetyStatus:'unknown',reviewedSessionId:reviewed?workout.id:null},
+      weekReview: buildTrainingWeekReview([recent,{...workout,id:'synthetic-next',source:'plan',date:new Date(now.getTime()+86400000).toISOString(),durationMin:30,planDay:{planId:'synthetic-cycle'}}],user.id,today,'UTC','synthetic-cycle'),
       cycle: { start: today, end: today, status: 'active', weeks: 1, currentWeek: 1 },
       connectors: [{ provider: 'whoop', status: 'connected', lastSyncAt: now.toISOString() }],
       sessions: [{ ...workout, durationMin: current.durationMin, plannedDurationMin: 45, verdict: current.verdict,
@@ -79,7 +81,7 @@ async function journey(browser, language, width) {
   const page = await context.newPage(), f = fixtures(language);
   page.setDefaultTimeout(15000);
   const mutations = [], reads = [];
-  let releaseRich, richReleased = false, reviewed = false, failReview = true;
+  let releaseRich, richReleased = false, reviewed = false, failReview = true, withMeasurements=true, cognitiveReject=true, cognitiveWrites=0;
   const richGate = new Promise(resolve => { releaseRich = () => { richReleased = true; resolve(); }; });
   page.on('pageerror', error => errors.push({ language, width, error: String(error) }));
   await context.route('**/*', async route => {
@@ -88,6 +90,7 @@ async function journey(browser, language, width) {
     if (!url.pathname.startsWith('/api/')) return route.continue();
     const path = url.pathname;
     if (request.method() !== 'GET') {
+      if(path==='/api/cognitive' && request.method()==='POST'){const body=request.postDataJSON();assert.equal(body.test,'stroop');assert.ok(Number.isFinite(body.score));cognitiveWrites++;return route.fulfill(cognitiveReject?{status:503,json:{error:'Synthetic save rejected'}}:{json:{ok:true,id:'synthetic-cognitive-receipt'}});}
       if (path === '/api/checkin' && request.method() === 'POST') {
         const body = request.postDataJSON(); mutations.push({ path, body });
         assert.deepEqual(Object.keys(body).sort(), ['mode','sessionId','expectedRevision','contextRevision','noSymptoms','recoveryUnchanged','timeConfirmed','confirmed'].sort());
@@ -104,11 +107,11 @@ async function journey(browser, language, width) {
     reads.push(`${path}${url.search}`);
     if (path === '/api/auth/me') return route.fulfill({ json: { user: f.user } });
     if (path === '/api/today' && url.searchParams.get('view') === 'plan') return route.fulfill({ json: f.fast });
-    if (path === '/api/today') { await richGate; return route.fulfill({ json: f.rich(reviewed) }); }
+    if (path === '/api/today') { await richGate; return route.fulfill({ json: {...f.rich(reviewed),...(!withMeasurements?{inputContext:null,connectors:[]}:{} )} }); }
     if (path === '/api/plan/preview') { assert.equal(url.searchParams.get('sessionId'), f.workout.id); return route.fulfill({ json: f.preview }); }
     if (path === '/api/workout/card') { assert.equal(url.searchParams.get('id'), f.workout.id); return route.fulfill({ json: f.card(reviewed) }); }
-    if (path === '/api/checkin') return route.fulfill({ json: f.checkin });
-    if (path === '/api/connectors') return route.fulfill({ json: { providers: [{ provider: 'whoop', status: 'connected', lastSyncAt: now.toISOString() }] } });
+    if (path === '/api/checkin') return route.fulfill({ json: withMeasurements?f.checkin:{...f.checkin,inputContext:null,checkin:null,previousSessions:[]} });
+    if (path === '/api/connectors') return route.fulfill({ json: { providers: withMeasurements?[{ provider: 'whoop', status: 'connected', lastSyncAt: now.toISOString() }]:[] } });
     if (path === '/api/connectors/native') return route.fulfill({ json: { apple: { exportEnabled: false },
       coros: { configured: false, authorizationAvailable: false, connectionStatus: 'disconnected' } } });
     if (path === '/api/training/locations') return route.fulfill({ json: { locations: [] } });
@@ -129,6 +132,11 @@ async function journey(browser, language, width) {
     assert.equal(mutations.length, 0, 'Fast saved view never posts or approves');
     const fastGeometry = await assertMobile(page, 'saved-fast', language, width, fast);
     releaseRich();
+    const pathCard=page.getByRole('region',{name:language==='es'?'Tu semana y preparación':'Your week and readiness',exact:true});
+    await pathCard.waitFor();
+    assert.match(await pathCard.innerText(),language==='es'?/3 mediciones actuales/:/3 current measurements/);
+    assert.match(await pathCard.innerText(),language==='es'?/Faltan tus respuestas/:/Your answers are still needed/);
+    await assertMobile(page,'week-readiness',language,width,pathCard);
     const review = page.getByTestId('existing-workout-review'); await review.waitFor({ state: 'visible' });
     await review.locator('summary').click();
     const checks = review.locator('input[type="checkbox"]'); assert.equal(await checks.count(), 3);
@@ -191,6 +199,33 @@ async function journey(browser, language, width) {
     assert.equal(new URL(page.url()).searchParams.get('sessionId'), f.workout.id);
     assert.equal(mutations.length, 2, 'Recovering a stale session link never posts or approves');
     await assertMobile(page, 'stale-link-recovered', language, width, page.locator('#today-workout'));
+    withMeasurements=false;reviewed=false;
+    await page.goto(`${base}/today`);
+    const manualPath=page.getByRole('region',{name:language==='es'?'Tu semana y preparación':'Your week and readiness',exact:true});await manualPath.waitFor();
+    assert.match(await manualPath.innerText(),language==='es'?/Puedes empezar sin mediciones/:/No current measurements/);
+    await manualPath.getByRole('link',{name:language==='es'?'Omitir por ahora':'Skip for now',exact:true}).click();
+    assert.equal(mutations.length,2,'Skipping readiness creates no answer, approval or workout write');
+    await assertMobile(page,'no-device-skipped',language,width,manualPath);
+    await manualPath.getByRole('link',{name:language==='es'?'Responder check-in':'Answer check-in',exact:true}).click();
+    await page.locator('#answer-sleep').waitFor();
+    for(const key of ['sleep','soreness','energy','stress','motivation'])assert.equal(await page.locator(`#answer-${key}`).inputValue(),'');
+    assert.equal(await page.getByTestId('daily-input-context').count(),0);
+    for(const placeholder of ['e.g. 48','e.g. 62','e.g. 7.5'])await page.getByPlaceholder(placeholder,{exact:true}).waitFor();
+    await assertMobile(page,'no-device-questions',language,width,page.locator('#daily-questions'));
+
+    await page.goto(`${base}/checkin#optional-focus-check`);
+    const focus=page.locator('#optional-focus-check');if(!(await focus.getByRole('button',{name:language==='es'?'Empezar':'Start',exact:true}).isVisible()))await focus.locator('summary').click();
+    await assertMobile(page,'optional-focus',language,width,focus);
+    await focus.getByRole('button',{name:language==='es'?'Empezar':'Start',exact:true}).click();
+    for(let i=0;i<10;i++)await focus.getByRole('button',{name:'red',exact:true}).click();
+    await focus.getByRole('alert').waitFor();
+    assert.equal(await focus.getByText(language==='es'?'✓ Guardado en tu historial cognitivo':'✓ Saved to your cognitive history',{exact:true}).count(),0);
+    await assertMobile(page,'focus-save-error',language,width,focus);
+    cognitiveReject=false;
+    await focus.getByRole('button',{name:language==='es'?'Repetir':'Retest',exact:true}).click();
+    for(let i=0;i<10;i++)await focus.getByRole('button',{name:'red',exact:true}).click();
+    await focus.getByText(language==='es'?'✓ Guardado en tu historial cognitivo':'✓ Saved to your cognitive history',{exact:true}).waitFor();
+    assert.equal(cognitiveWrites,2);assert.equal(mutations.length,2);
     results.push({ language, width, fastSavedPlanBeforeRichContext: 'pass', explicitUncheckedReview: 'pass', failedSaveKeepsDraft: 'pass',
       noAutomaticPostOrApproval: 'pass', importedNumericCorrection: 'pass', knownActualCorrection: 'pass',
       staleSelectedLinkRecovery: 'pass', geometries: { fast: fastGeometry, review: reviewGeometry, checkin: checkinGeometry }, mockedReviewRequests: mutations.length });

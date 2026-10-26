@@ -79,10 +79,11 @@ async function scenario(name, work) {
     await page.getByLabel('I reviewed my events and accept this conservative plan', { exact: false }).check();
     const racesPage = await page.context().newPage(); await racesPage.goto(base + '/races');
     const timing = racesPage.locator('form').filter({ has: racesPage.locator('input[name="date"]') }).nth(1);
+    await timing.locator('..').getByText('Edit date, priority or venue',{exact:true}).click();
     await timing.getByLabel('Event date', { exact: true }).fill(day(13));
     await timing.locator('select[name="priority"]').selectOption('3');
     const edited = racesPage.waitForResponse(response => response.url().endsWith('/api/races') && response.request().method() === 'PUT');
-    await timing.getByRole('button', { name: 'Save date and priority', exact: true }).click(); assert.equal((await edited).status(), 200);
+    await timing.getByRole('button', { name: 'Save event details', exact: true }).click(); assert.equal((await edited).status(), 200);
     await racesPage.getByRole('link', { name: 'Review updated cycle', exact: true }).waitFor();
     await shot(racesPage, '01b-edit-event-priority'); await racesPage.close();
     const stale = page.waitForResponse(response => response.url().endsWith('/api/plan/generate') && response.request().method() === 'POST');

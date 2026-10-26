@@ -325,156 +325,20 @@ function CheckinPageContent() {
 
   return (
     <ProtectedPage>
-      <div className="space-y-6">
+      <div className="training-workflow space-y-5 max-w-4xl mx-auto">
         <div>
           <h1 className="font-display text-2xl font-bold">{lang === "es" ? "Revisión del día" : "Daily check-in"}</h1>
-          <p className="text-slate-500 text-sm">{lang === "es" ? "Tu entrenamiento guardado está en Hoy antes de responder. Usa estas preguntas para cambios, datos que faltan o una revisión completa. Omitir respuestas no confirma que estés listo." : "Your saved workout is visible in Today before answering. Use these questions for changes, missing information or a full review. Skipped answers do not establish readiness."}</p>
-          <a className="btn-primary mt-3" href="/today">{lang === "es" ? "Omitir cuestionario y ver mi sesión" : "Skip questionnaire and view my session"}</a>
+          <p className="text-slate-500 text-sm">{lang === "es" ? "Indica cómo te sientes y cuánto tiempo tienes. Se reutilizan las mediciones disponibles. Lo que omitas sigue sin confirmar." : "Tell us how you feel and how much time you have. Available measurements are reused. Skipped answers stay unknown."}</p>
+          <a className="btn-secondary min-h-11 mt-3" href="/today">{lang === "es" ? "Omitir cuestionario y ver mi sesión" : "Skip questionnaire and view my session"}</a>
         </div>
         <DailyInputSummary context={inputContext} es={lang === "es"} />
         {draftNotice && <p role="status" className="text-sm">{draftNotice}</p>}
 
         {err && <div role="alert" className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}
 
-        {/* Módulos integrados — device sync. Full until 1 device connects, then collapsed. */}
-        <div className="card">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <h2 className="font-display font-bold text-lg flex items-center gap-2">
-              <Plug className="w-5 h-5 text-ocean-500" /> Módulos integrados
-              {connectedCount > 0 && (
-                <span className="chip chip-z2 ml-1"><Watch className="w-3 h-3" /> {connectedCount} connected</span>
-              )}
-            </h2>
-            {connectedCount > 0 ? (
-              <div className="flex items-center gap-3">
-                <button onClick={syncDevices} disabled={syncing} className="btn-secondary text-sm">
-                  <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync now"}
-                </button>
-                <a href="/connectors" className="text-xs text-ocean-600 underline">Manage devices</a>
-              </div>
-            ) : (
-              <span className="text-xs text-slate-400">Connect a device to pull real biometrics, or skip and use the questionnaire. <a href="/connectors" className="text-ocean-600 underline">All devices &amp; file imports →</a></span>
-            )}
-          </div>
-          {syncMsg && <div role="status" className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2 mt-3">{syncMsg}</div>}
-          {connectedCount === 0 && (
-            <div className="grid md:grid-cols-2 gap-3 mt-3">
-              {providers.map((p) => (
-                <div key={p.id} className="rounded-xl border border-sand-200 p-3 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-semibold text-sm">{p.name}</div>
-                    <div className="text-[11px] text-slate-400 truncate">{p.method === "oauth" ? "Real-time pull" : "File import"}</div>
-                  </div>
-                  {p.method === "oauth" && p.configured && p.connectUrl ? (
-                    <a href={p.connectUrl} className="btn-primary text-xs px-3 py-1.5 shrink-0"><ExternalLink className="w-3 h-3" /> Connect</a>
-                  ) : p.method === "upload" || !p.configured ? (
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <input id={`checkin-file-${p.id}`} type="file" className="hidden" accept=".tcx,.xml,.csv" onChange={() => uploadImport(p.id)} />
-                      <button onClick={() => document.getElementById(`checkin-file-${p.id}`)?.click()} disabled={importing === p.id} className="btn-secondary text-xs px-3 py-1.5">
-                        <Upload className="w-3 h-3" /> {importing === p.id ? "…" : "Upload"}
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Consolidated from the former VFC/Recovery page: HRV readiness hero */}
-        {readiness && adaptation?.safetyStatus === "clear" && (
-          <div className={`rounded-3xl p-5 text-white ${readiness.score >= 65 ? "bg-gradient-to-r from-emerald-600 to-emerald-500" : readiness.score >= 40 ? "bg-gradient-to-r from-amber-500 to-amber-400" : "bg-gradient-to-r from-coral-600 to-coral-500"}`}>
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold opacity-90"><Activity className="w-4 h-4" /> {lang === "es" ? "Comparación derivada de VFC (no autorización para entrenar)" : "Derived HRV comparison (not training clearance)"}</div>
-                <div className="font-display text-3xl font-extrabold mt-1">{readiness.score}/100</div>
-                <div className="text-sm mt-0.5">{readiness.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(readiness.deltaPct)}%</div>
-              </div>
-              <p className="text-sm leading-relaxed max-w-md opacity-95">{readiness.advice}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Consolidated from the former Brain page: cognitive check lives here */}
-        <CognitiveCheck lang={lang} />
-
-        <section className="card space-y-3" aria-labelledby="previous-session-heading">
-          <h2 id="previous-session-heading" className="font-display font-bold text-lg">{lang === "es" ? "Actividad reciente: solo lo que falta" : "Recent activity: only what's missing"}</h2>
-          <p className="text-xs text-slate-600">{lang === "es" ? "Las duraciones conocidas ya están disponibles. Añade esfuerzo o corrige el resultado si hace falta. La fecha de la sesión y la del registro son distintas." : "Known durations are already available. Add effort or correct the outcome only when needed. Session date and entry time remain separate."}</p>
-          <label className="block text-sm">{lang === "es" ? "Fecha local observada" : "Local observation date"}<input className="input" type="date" max={localToday || undefined} value={feedbackDate} onChange={(e) => void loadFeedbackDate(e.target.value)} /></label>
-          {previousSessions.length === 0 && <p className="text-sm text-slate-600">{lang === "es" ? "No hay sesiones registradas para esta fecha. No se supone que descansaste ni que tu carga fue cero." : "No sessions are recorded for this date. This does not mean you rested or had zero activity."}</p>}
-          {previousSessions.map((session: any) => (
-            <form key={`${session.id}:${session.feedbackAt || "new"}:${displayUnits}`} onSubmit={(e) => void saveSessionFeedback(e, session.id)} className="rounded-xl border border-sand-200 p-3 space-y-3">
-              <h3 className="font-semibold">{session.title}</h3>
-              <p className="text-xs text-slate-600">{session.planned === false ? (lang === "es" ? "Actividad registrada" : "Recorded activity") : (lang === "es" ? "Planificado" : "Planned")}: {session.sport} · {session.durationMin} min · {feedbackDate}</p>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <label className="text-sm">{lang === "es" ? "Resultado real" : "Actual outcome"}<select name="feedbackStatus" className="input" defaultValue={session.feedbackStatus || (session.completed ? "completed" : "unknown")}>{([ ["unknown", "Unknown / No sé"], ["completed", "Completed / Completada"], ["partial", "Partly completed / Parcial"], ["substituted", "Substituted / Sustituida"], ["skipped", "Skipped / Omitida"] ] as const).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                <label className="text-sm">{lang === "es" ? "Deporte realizado (si es distinto)" : "Actual sport (if different)"}<select name="actualSport" className="input" defaultValue={session.actualSport || ""}><option value="">{lang === "es" ? "Sin indicar" : "Not reported"}</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map((sport) => <option key={sport} value={sport}>{sport}</option>)}</select></label>
-                <SessionObservationInput name="actualDurationMin" value={session.knownActualDurationMin ?? session.actualDurationMin} label={lang === "es" ? "Minutos reales" : "Actual minutes"} max={1440} es={lang === "es"} />
-                <SessionObservationInput name="rpe" value={session.rpe} label={lang === "es" ? "Esfuerzo de toda la sesión, 0–10" : "Whole-session exertion, 0–10"} max={10} es={lang === "es"} hint={lang === "es" ? "0 sin esfuerzo · 1 muy fácil · 3 fácil · 5 moderado · 7 duro · 10 máximo" : "0 no effort · 1 very easy · 3 easy · 5 moderate · 7 hard · 10 maximal"} />
-              </div>
-              <div className="grid sm:grid-cols-3 gap-3">
-                <label className="text-sm">{lang === "es" ? "Distancia real" : "Actual distance"} ({displayUnits==="imperial"?"mi":"km"}, {lang==="es"?"opcional":"optional"})<input name="actualDistanceKm" className="input" type="number" min={0} max={distanceToDisplay(1500,displayUnits)} step="any" placeholder="—" defaultValue={actualActivityFormValues({distanceKm:actualDetailValues(session).distanceKm??null,loadKg:null},displayUnits).actualDistanceKm} /></label>
-                <label className="text-sm">{lang === "es" ? "Repeticiones reales (opcional)" : "Actual repetitions (optional)"}<input name="actualReps" className="input" type="number" min={0} max={100000} step={1} placeholder="—" defaultValue={actualDetailValues(session).reps ?? ""} /></label>
-                <label className="text-sm">{lang === "es" ? "Carga realizada" : "Actual load"} ({displayUnits==="imperial"?"lb":"kg"}, {lang==="es"?"opcional":"optional"})<input name="actualLoadKg" className="input" type="number" min={0} max={weightToDisplay(1500,displayUnits)} step="any" placeholder="—" defaultValue={actualActivityFormValues({distanceKm:null,loadKg:actualDetailValues(session).loadKg??null},displayUnits).actualLoadKg} /></label>
-              </div>
-              <ActualFuelingFields details={session.actualDetails} actualDurationMin={session.knownActualDurationMin ?? session.actualDurationMin} es={lang === "es"} />
-              <label className="block text-sm">{lang === "es" ? "Cambios en intervalos/descansos, distancia/repeticiones/carga si se conocen; tolerancia, dolor y cuándo ocurrió" : "Interval/recovery changes, distance/reps/load if known; tolerance, pain and when it occurred"}<textarea name="feedbackNote" maxLength={4000} className="input" defaultValue={session.feedbackNote || ""} /></label>
-              <p className="text-xs text-slate-600">{lang === "es" ? "Informa síntomas actuales también en las preguntas de seguridad de hoy. Las notas de sesiones no son un diagnóstico." : "Also report current symptoms in today's safety questions. Session notes are not a diagnosis."}</p>
-              <button type="submit" disabled={feedbackBusy === session.id} className="btn-secondary">{feedbackBusy === session.id ? "Saving…" : lang === "es" ? "Guardar informe de esta sesión" : "Save this session report"}</button>
-            </form>
-          ))}
-          {feedbackMessage && <p role="status" className="text-sm text-ocean-700">{feedbackMessage}</p>}
-          <a className="text-sm underline" href="/calendar">{lang === "es" ? "Añadir actividad no planificada o revisar el calendario" : "Add unplanned activity or review the calendar"}</a>
-        </section>
-
-        {/* Voice check-in */}
-        <div className="card bg-ocean-50 border-ocean-200">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <h2 className="font-display font-bold text-lg flex items-center gap-2"><Mic className="w-5 h-5 text-ocean-600" /> Voice Check-In</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{lang === "es" ? "Español e inglés. Ejemplo: sueño 4, agujetas 2, energía 3, motivación 4, estrés 2, peso con libras o kilos explícitos. Revisa y edita todo antes de aplicar." : "English and Spanish. State weight with explicit pounds or kilograms, for example weight 163 pounds. Review and edit every answer before applying."}</p>
-            </div>
-            <button onClick={() => listening ? recognition.current?.stop() : startVoice()} disabled={!voiceSupported} className={`btn-primary ${listening ? "opacity-70" : ""}`}>
-              <Mic className="w-4 h-4" /> {listening ? (lang === "es" ? "Detener y revisar" : "Stop and review") : (lang === "es" ? "Iniciar voz" : "Start Voice")}
-            </button>
-          </div>
-          <p className="text-xs text-slate-600 mt-2">{lang === "es" ? "Al iniciar, se solicita acceso al micrófono. El servicio de voz de tu navegador puede procesar el audio. JMM no guarda audio ni transcripciones; solo las respuestas que confirmas al enviar." : "Starting requests microphone permission. Your browser's speech service may process audio. JMM does not store raw audio or transcripts; only answers you confirm and submit are saved."}</p>
-          {!voiceSupported && <p role="status" className="text-xs text-amber-700">Voice extraction is available only in English and Spanish. Use the text form for other languages.</p>}
-          <details className="mt-2">
-            <summary className="text-xs font-semibold text-ocean-700 cursor-pointer select-none">📋 Question script — read these in order (tap to expand)</summary>
-            <ol className="text-xs text-slate-600 mt-2 space-y-1 list-decimal list-inside">
-              {(lang === "es" ? ["Sueño, agujetas, energía, motivación y estrés: de uno a cinco.", displayUnits==="imperial"?"Peso en libras, pulso en reposo, VFC y horas de sueño, solo si los sabes.":"Peso en kilos, pulso en reposo, VFC y horas de sueño, solo si los sabes.", "¿Enfermedad, dolor nuevo o síntomas de alarma hoy?", "Minutos disponibles hoy. Revisa las respuestas antes de enviar."] : VOICE_SCRIPT.map(q=>displayUnits==="imperial"?q.replace("kilograms","pounds"):q)).map((q) => <li key={q}>{q}</li>)}
-            </ol>
-            <p className="text-[11px] text-slate-400 mt-1.5">One breath, one number. The full transcript gets parsed automatically — you&apos;ll confirm before it applies.</p>
-          </details>
-          {listening && <div className="text-xs text-ocean-700 mt-2 animate-pulse">● Recording — say your answers, then pause.</div>}
-          {transcript && <p className="text-sm text-slate-600 mt-2 italic border-l-2 border-ocean-300 pl-2">“{transcript}”</p>}
-          {speechError && <p className="text-xs text-amber-700 mt-2">{speechError}</p>}
-
-          {heard && (
-            <div className="mt-3 rounded-xl bg-white border border-ocean-200 p-3">
-              <h3 className="font-semibold text-sm mb-2">{lang === "es" ? "Revisa y edita las respuestas propuestas" : "Review and edit candidate answers"}</h3>
-              {heard.warnings.length > 0 && <ul role="alert" className="text-xs text-amber-800 mb-3">{heard.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                {([ ["sleep", "Sleep / Sueño (1–5)"], ["soreness", "Soreness / Agujetas (1–5)"], ["energy", "Energy / Energía (1–5)"], ["motivation", "Motivation / Motivación (1–5)"], ["stress", "Stress / Estrés (1–5)"], ["rhr", "Resting HR / Pulso (bpm)"], ["hrv", "HRV / VFC (ms)"], ["sleepHours", "Sleep / Sueño (h)"], ["availableMinutes", "Available / Disponible (min)"] ] as const).map(([key, label]) => (
-                  <label key={key}>{label}<input type="number" step="any" className="input" value={heard[key] ?? ""} placeholder="—" onChange={(e) => setHeard({ ...heard, [key]: e.target.value === "" ? undefined : Number(e.target.value) })} /></label>
-                ))}
-                <ProfileMeasurementInput field="weightKg" id="voice-weightKg" value={heard.weightKg} units={displayUnits} label={lang==="es"?"Peso propuesto":"Proposed weight"} es={lang==="es"} onChange={canonical=>setHeard({...heard,weightKg:canonical===""?undefined:Number(canonical)})} onValidityChange={(_,message)=>setUnitErrors(current=>({...current,voiceWeight:message}))}/>
-                {([ ["sick", "Illness / Enfermedad"], ["newPain", "New pain / Dolor nuevo"], ["urgentSymptoms", "Urgent symptoms / Síntomas de alarma"], ["menstrual", "Menstrual phase / Fase menstrual"] ] as const).map(([key, label]) => (
-                  <label key={key}>{label}<select className="input" value={heard[key] === undefined ? "" : String(heard[key])} onChange={(e) => setHeard({ ...heard, [key]: e.target.value === "" ? undefined : e.target.value === "true" })}><option value="">Unknown / No sé</option><option value="false">No</option><option value="true">Yes / Sí</option></select></label>
-                ))}
-              </div>
-              <p className="text-xs text-slate-600 mt-2">{lang === "es" ? "Confirma fechas, síntomas, valores y unidades. Lo no entendido se deja sin contestar. Enviar el formulario guarda tus respuestas." : "Confirm dates, symptoms, values and units. Unrecognized answers stay unanswered. Submitting the form saves your answers."}</p>
-              <button onClick={applyHeard} className="btn-primary text-xs px-4 py-2 mt-2">{lang === "es" ? "He revisado las respuestas: aplicar" : "I reviewed these answers: apply"}</button>
-              <button onClick={() => { setHeard(null); setTranscript(""); }} className="btn-secondary text-xs ml-2">{lang === "es" ? "Descartar" : "Discard"}</button>
-            </div>
-          )}
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6">
+        <div id="daily-questions" className="grid md:grid-cols-2 gap-6 scroll-mt-24">
           <div className="card">
-            <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-ocean-500" /> {lang === "es" ? "Revisión completa" : "Full review"}</h2>
+            <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-ocean-500" /> {lang === "es" ? "Cómo estás hoy" : "How you feel today"}</h2>
             <form onSubmit={submit} className="space-y-4">
               {QUESTIONS.map((q) => (
                 <div key={q.key}>
@@ -802,6 +666,143 @@ function CheckinPageContent() {
             )}
           </div>
         </div>
+
+        {/* Módulos integrados — device sync. Full until 1 device connects, then collapsed. */}
+        <div className="card">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="font-display font-bold text-lg flex items-center gap-2">
+              <Plug className="w-5 h-5 text-ocean-500" /> Módulos integrados
+              {connectedCount > 0 && (
+                <span className="chip chip-z2 ml-1"><Watch className="w-3 h-3" /> {connectedCount} connected</span>
+              )}
+            </h2>
+            {connectedCount > 0 ? (
+              <div className="flex items-center gap-3">
+                <button onClick={syncDevices} disabled={syncing} className="btn-secondary text-sm">
+                  <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing…" : "Sync now"}
+                </button>
+                <a href="/connectors" className="text-xs text-ocean-600 underline">Manage devices</a>
+              </div>
+            ) : (
+              <span className="text-xs text-slate-400">Connect a device to pull real biometrics, or skip and use the questionnaire. <a href="/connectors" className="text-ocean-600 underline">All devices &amp; file imports →</a></span>
+            )}
+          </div>
+          {syncMsg && <div role="status" className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2 mt-3">{syncMsg}</div>}
+          {connectedCount === 0 && (
+            <div className="grid md:grid-cols-2 gap-3 mt-3">
+              {providers.map((p) => (
+                <div key={p.id} className="rounded-xl border border-sand-200 p-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm">{p.name}</div>
+                    <div className="text-[11px] text-slate-400 truncate">{p.method === "oauth" ? "Real-time pull" : "File import"}</div>
+                  </div>
+                  {p.method === "oauth" && p.configured && p.connectUrl ? (
+                    <a href={p.connectUrl} className="btn-primary text-xs px-3 py-1.5 shrink-0"><ExternalLink className="w-3 h-3" /> Connect</a>
+                  ) : p.method === "upload" || !p.configured ? (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <input id={`checkin-file-${p.id}`} type="file" className="hidden" accept=".tcx,.xml,.csv" onChange={() => uploadImport(p.id)} />
+                      <button onClick={() => document.getElementById(`checkin-file-${p.id}`)?.click()} disabled={importing === p.id} className="btn-secondary text-xs px-3 py-1.5">
+                        <Upload className="w-3 h-3" /> {importing === p.id ? "…" : "Upload"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Consolidated from the former VFC/Recovery page: HRV readiness hero */}
+        {readiness && adaptation?.safetyStatus === "clear" && (
+          <div className={`rounded-3xl p-5 text-white ${readiness.score >= 65 ? "bg-gradient-to-r from-emerald-600 to-emerald-500" : readiness.score >= 40 ? "bg-gradient-to-r from-amber-500 to-amber-400" : "bg-gradient-to-r from-coral-600 to-coral-500"}`}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold opacity-90"><Activity className="w-4 h-4" /> {lang === "es" ? "Comparación derivada de VFC (no autorización para entrenar)" : "Derived HRV comparison (not training clearance)"}</div>
+                <div className="font-display text-3xl font-extrabold mt-1">{readiness.score}/100</div>
+                <div className="text-sm mt-0.5">{readiness.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(readiness.deltaPct)}%</div>
+              </div>
+              <p className="text-sm leading-relaxed max-w-md opacity-95">{readiness.advice}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Consolidated from the former Brain page: cognitive check lives here */}
+        <details id="optional-focus-check" className="space-y-2 scroll-mt-24"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{lang === "es" ? "Prueba opcional de atención" : "Optional focus check"}</summary><p className="my-2 text-sm text-slate-600">{lang === "es" ? "Puedes omitirla. No mide preparación física ni sustituye las preguntas de seguridad." : "You can skip this. It does not measure physical readiness or replace safety questions."}</p><CognitiveCheck lang={lang} /></details>
+
+        <section className="card space-y-3" aria-labelledby="previous-session-heading">
+          <h2 id="previous-session-heading" className="font-display font-bold text-lg">{lang === "es" ? "Actividad reciente: solo lo que falta" : "Recent activity: only what's missing"}</h2>
+          <p className="text-xs text-slate-600">{lang === "es" ? "Las duraciones conocidas ya están disponibles. Añade esfuerzo o corrige el resultado si hace falta. La fecha de la sesión y la del registro son distintas." : "Known durations are already available. Add effort or correct the outcome only when needed. Session date and entry time remain separate."}</p>
+          <label className="block text-sm">{lang === "es" ? "Fecha local observada" : "Local observation date"}<input className="input" type="date" max={localToday || undefined} value={feedbackDate} onChange={(e) => void loadFeedbackDate(e.target.value)} /></label>
+          {previousSessions.length === 0 && <p className="text-sm text-slate-600">{lang === "es" ? "No hay sesiones registradas para esta fecha. No se supone que descansaste ni que tu carga fue cero." : "No sessions are recorded for this date. This does not mean you rested or had zero activity."}</p>}
+          {previousSessions.map((session: any) => (
+            <form key={`${session.id}:${session.feedbackAt || "new"}:${displayUnits}`} onSubmit={(e) => void saveSessionFeedback(e, session.id)} className="rounded-xl border border-sand-200 p-3 space-y-3">
+              <h3 className="font-semibold">{session.title}</h3>
+              <p className="text-xs text-slate-600">{session.planned === false ? (lang === "es" ? "Actividad registrada" : "Recorded activity") : (lang === "es" ? "Planificado" : "Planned")}: {session.sport} · {session.durationMin} min · {feedbackDate}</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="text-sm">{lang === "es" ? "Resultado real" : "Actual outcome"}<select name="feedbackStatus" className="input" defaultValue={session.feedbackStatus || (session.completed ? "completed" : "unknown")}>{([ ["unknown", "Unknown / No sé"], ["completed", "Completed / Completada"], ["partial", "Partly completed / Parcial"], ["substituted", "Substituted / Sustituida"], ["skipped", "Skipped / Omitida"] ] as const).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                <label className="text-sm">{lang === "es" ? "Deporte realizado (si es distinto)" : "Actual sport (if different)"}<select name="actualSport" className="input" defaultValue={session.actualSport || ""}><option value="">{lang === "es" ? "Sin indicar" : "Not reported"}</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map((sport) => <option key={sport} value={sport}>{sport}</option>)}</select></label>
+                <SessionObservationInput name="actualDurationMin" value={session.knownActualDurationMin ?? session.actualDurationMin} label={lang === "es" ? "Minutos reales" : "Actual minutes"} max={1440} es={lang === "es"} />
+                <SessionObservationInput name="rpe" value={session.rpe} label={lang === "es" ? "Esfuerzo de toda la sesión, 0–10" : "Whole-session exertion, 0–10"} max={10} es={lang === "es"} hint={lang === "es" ? "0 sin esfuerzo · 1 muy fácil · 3 fácil · 5 moderado · 7 duro · 10 máximo" : "0 no effort · 1 very easy · 3 easy · 5 moderate · 7 hard · 10 maximal"} />
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <label className="text-sm">{lang === "es" ? "Distancia real" : "Actual distance"} ({displayUnits==="imperial"?"mi":"km"}, {lang==="es"?"opcional":"optional"})<input name="actualDistanceKm" className="input" type="number" min={0} max={distanceToDisplay(1500,displayUnits)} step="any" placeholder="—" defaultValue={actualActivityFormValues({distanceKm:actualDetailValues(session).distanceKm??null,loadKg:null},displayUnits).actualDistanceKm} /></label>
+                <label className="text-sm">{lang === "es" ? "Repeticiones reales (opcional)" : "Actual repetitions (optional)"}<input name="actualReps" className="input" type="number" min={0} max={100000} step={1} placeholder="—" defaultValue={actualDetailValues(session).reps ?? ""} /></label>
+                <label className="text-sm">{lang === "es" ? "Carga realizada" : "Actual load"} ({displayUnits==="imperial"?"lb":"kg"}, {lang==="es"?"opcional":"optional"})<input name="actualLoadKg" className="input" type="number" min={0} max={weightToDisplay(1500,displayUnits)} step="any" placeholder="—" defaultValue={actualActivityFormValues({distanceKm:null,loadKg:actualDetailValues(session).loadKg??null},displayUnits).actualLoadKg} /></label>
+              </div>
+              <ActualFuelingFields details={session.actualDetails} actualDurationMin={session.knownActualDurationMin ?? session.actualDurationMin} es={lang === "es"} />
+              <label className="block text-sm">{lang === "es" ? "Cambios en intervalos/descansos, distancia/repeticiones/carga si se conocen; tolerancia, dolor y cuándo ocurrió" : "Interval/recovery changes, distance/reps/load if known; tolerance, pain and when it occurred"}<textarea name="feedbackNote" maxLength={4000} className="input" defaultValue={session.feedbackNote || ""} /></label>
+              <p className="text-xs text-slate-600">{lang === "es" ? "Informa síntomas actuales también en las preguntas de seguridad de hoy. Las notas de sesiones no son un diagnóstico." : "Also report current symptoms in today's safety questions. Session notes are not a diagnosis."}</p>
+              <button type="submit" disabled={feedbackBusy === session.id} className="btn-secondary">{feedbackBusy === session.id ? "Saving…" : lang === "es" ? "Guardar informe de esta sesión" : "Save this session report"}</button>
+            </form>
+          ))}
+          {feedbackMessage && <p role="status" className="text-sm text-ocean-700">{feedbackMessage}</p>}
+          <a className="text-sm underline" href="/calendar">{lang === "es" ? "Añadir actividad no planificada o revisar el calendario" : "Add unplanned activity or review the calendar"}</a>
+        </section>
+
+        {/* Voice check-in */}
+        <div className="card bg-ocean-50 border-ocean-200">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="font-display font-bold text-lg flex items-center gap-2"><Mic className="w-5 h-5 text-ocean-600" /> Voice Check-In</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{lang === "es" ? "Español e inglés. Ejemplo: sueño 4, agujetas 2, energía 3, motivación 4, estrés 2, peso con libras o kilos explícitos. Revisa y edita todo antes de aplicar." : "English and Spanish. State weight with explicit pounds or kilograms, for example weight 163 pounds. Review and edit every answer before applying."}</p>
+            </div>
+            <button onClick={() => listening ? recognition.current?.stop() : startVoice()} disabled={!voiceSupported} className={`btn-primary ${listening ? "opacity-70" : ""}`}>
+              <Mic className="w-4 h-4" /> {listening ? (lang === "es" ? "Detener y revisar" : "Stop and review") : (lang === "es" ? "Iniciar voz" : "Start Voice")}
+            </button>
+          </div>
+          <p className="text-xs text-slate-600 mt-2">{lang === "es" ? "Al iniciar, se solicita acceso al micrófono. El servicio de voz de tu navegador puede procesar el audio. JMM no guarda audio ni transcripciones; solo las respuestas que confirmas al enviar." : "Starting requests microphone permission. Your browser's speech service may process audio. JMM does not store raw audio or transcripts; only answers you confirm and submit are saved."}</p>
+          {!voiceSupported && <p role="status" className="text-xs text-amber-700">Voice extraction is available only in English and Spanish. Use the text form for other languages.</p>}
+          <details className="mt-2">
+            <summary className="text-xs font-semibold text-ocean-700 cursor-pointer select-none">📋 Question script — read these in order (tap to expand)</summary>
+            <ol className="text-xs text-slate-600 mt-2 space-y-1 list-decimal list-inside">
+              {(lang === "es" ? ["Sueño, agujetas, energía, motivación y estrés: de uno a cinco.", displayUnits==="imperial"?"Peso en libras, pulso en reposo, VFC y horas de sueño, solo si los sabes.":"Peso en kilos, pulso en reposo, VFC y horas de sueño, solo si los sabes.", "¿Enfermedad, dolor nuevo o síntomas de alarma hoy?", "Minutos disponibles hoy. Revisa las respuestas antes de enviar."] : VOICE_SCRIPT.map(q=>displayUnits==="imperial"?q.replace("kilograms","pounds"):q)).map((q) => <li key={q}>{q}</li>)}
+            </ol>
+            <p className="text-[11px] text-slate-400 mt-1.5">One breath, one number. The full transcript gets parsed automatically — you&apos;ll confirm before it applies.</p>
+          </details>
+          {listening && <div className="text-xs text-ocean-700 mt-2 animate-pulse">● Recording — say your answers, then pause.</div>}
+          {transcript && <p className="text-sm text-slate-600 mt-2 italic border-l-2 border-ocean-300 pl-2">“{transcript}”</p>}
+          {speechError && <p className="text-xs text-amber-700 mt-2">{speechError}</p>}
+
+          {heard && (
+            <div className="mt-3 rounded-xl bg-white border border-ocean-200 p-3">
+              <h3 className="font-semibold text-sm mb-2">{lang === "es" ? "Revisa y edita las respuestas propuestas" : "Review and edit candidate answers"}</h3>
+              {heard.warnings.length > 0 && <ul role="alert" className="text-xs text-amber-800 mb-3">{heard.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                {([ ["sleep", "Sleep / Sueño (1–5)"], ["soreness", "Soreness / Agujetas (1–5)"], ["energy", "Energy / Energía (1–5)"], ["motivation", "Motivation / Motivación (1–5)"], ["stress", "Stress / Estrés (1–5)"], ["rhr", "Resting HR / Pulso (bpm)"], ["hrv", "HRV / VFC (ms)"], ["sleepHours", "Sleep / Sueño (h)"], ["availableMinutes", "Available / Disponible (min)"] ] as const).map(([key, label]) => (
+                  <label key={key}>{label}<input type="number" step="any" className="input" value={heard[key] ?? ""} placeholder="—" onChange={(e) => setHeard({ ...heard, [key]: e.target.value === "" ? undefined : Number(e.target.value) })} /></label>
+                ))}
+                <ProfileMeasurementInput field="weightKg" id="voice-weightKg" value={heard.weightKg} units={displayUnits} label={lang==="es"?"Peso propuesto":"Proposed weight"} es={lang==="es"} onChange={canonical=>setHeard({...heard,weightKg:canonical===""?undefined:Number(canonical)})} onValidityChange={(_,message)=>setUnitErrors(current=>({...current,voiceWeight:message}))}/>
+                {([ ["sick", "Illness / Enfermedad"], ["newPain", "New pain / Dolor nuevo"], ["urgentSymptoms", "Urgent symptoms / Síntomas de alarma"], ["menstrual", "Menstrual phase / Fase menstrual"] ] as const).map(([key, label]) => (
+                  <label key={key}>{label}<select className="input" value={heard[key] === undefined ? "" : String(heard[key])} onChange={(e) => setHeard({ ...heard, [key]: e.target.value === "" ? undefined : e.target.value === "true" })}><option value="">Unknown / No sé</option><option value="false">No</option><option value="true">Yes / Sí</option></select></label>
+                ))}
+              </div>
+              <p className="text-xs text-slate-600 mt-2">{lang === "es" ? "Confirma fechas, síntomas, valores y unidades. Lo no entendido se deja sin contestar. Enviar el formulario guarda tus respuestas." : "Confirm dates, symptoms, values and units. Unrecognized answers stay unanswered. Submitting the form saves your answers."}</p>
+              <button onClick={applyHeard} className="btn-primary text-xs px-4 py-2 mt-2">{lang === "es" ? "He revisado las respuestas: aplicar" : "I reviewed these answers: apply"}</button>
+              <button onClick={() => { setHeard(null); setTranscript(""); }} className="btn-secondary text-xs ml-2">{lang === "es" ? "Descartar" : "Discard"}</button>
+            </div>
+          )}
+        </div>
+
       </div>
     </ProtectedPage>
   );

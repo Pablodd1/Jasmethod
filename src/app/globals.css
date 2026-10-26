@@ -51,6 +51,21 @@ h1, h2, h3, h4 {
 /* <select> min-content = longest <option> text and is NOT overridden by
    min-w-0; overflow:hidden resets the intrinsic size (text just elides). */
 select { min-width: 0; }
+
+/* Training setup is frequently used on phones: readable fields avoid iOS
+   focus zoom, and every disclosure remains a full touch target. */
+.training-workflow summary {
+  min-height: 44px;
+  align-content: center;
+}
+@media (max-width: 639px) {
+  .training-workflow input:not([type="checkbox"]):not([type="radio"]),
+  .training-workflow select, .training-workflow textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .training-workflow { overflow-wrap: anywhere; }
+}
 /* grid/flex ITEMS (not containers) default to min-width:auto and stretch
    their track once a nowrap child gets long enough */
 [class*="grid"] > *, .card { min-width: 0; }
