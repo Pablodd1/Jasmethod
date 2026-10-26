@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { GARMIN_CONSENT_VERSION, GARMIN_MANUAL_REVOCATION_VERSION, GARMIN_NOTICE } from "@/lib/garmin-config";
+import { GarminDeliveryPreferences } from "./garmin-delivery-preferences";
 
 type Status = { configured: boolean; status: string; permissions: string[]; lastError: string | null };
 async function readStatus(response: Response): Promise<Status> {
@@ -58,13 +59,14 @@ export function GarminConnection({ lang }: { lang: "en" | "es" }) {
     {status && <>
       <p className="text-sm font-semibold">{labels[status.status] || (es ? "Estado sin confirmar" : "Status unconfirmed")}</p>
       {!status.configured && <p className="text-sm">{es ? "Pendiente: credenciales de producción y verificación de destinatarios de datos. Puedes seguir usando archivos y entradas manuales." : "Awaiting production credentials and verification of data recipients. File imports and manual entries remain available."}</p>}
-      <p className="text-sm">{es ? "Importaciones: no verificadas. Publicación directa y recepción en el reloj: no habilitadas." : "Imports: unverified. Direct workout publication and watch receipt: not enabled."}</p>
-      {status.permissions.length > 0 && <ul className="text-sm list-disc pl-5">{status.permissions.map(p => <li key={p}>{p === "ACTIVITY_EXPORT" ? (es ? "Lectura de actividades" : "Read activities") : p === "HEALTH_EXPORT" ? (es ? "Lectura de salud y recuperación" : "Read health and recovery") : (es ? "Permiso para entrenamientos; publicación aún desactivada" : "Workout permission; publication still disabled")}</li>)}</ul>}
+      <p className="text-sm">{es ? "Importaciones: no verificadas aquí. Consulta los estados de publicación abajo; la recepción en el reloj se verifica por separado." : "Imports: unverified here. See publication status below; watch receipt is verified separately."}</p>
+      {status.permissions.length > 0 && <ul className="text-sm list-disc pl-5">{status.permissions.map(p => <li key={p}>{p === "ACTIVITY_EXPORT" ? (es ? "Lectura de actividades" : "Read activities") : p === "HEALTH_EXPORT" ? (es ? "Lectura de salud y recuperación" : "Read health and recovery") : (es ? "Permiso para publicar entrenamientos" : "Workout publication permission")}</li>)}</ul>}
       {status.configured && disconnected && <>
         <label className="flex gap-3 items-start text-sm"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} className="mt-1 h-5 w-5" />{es ? "He leído el uso de datos y conectaré mi propia cuenta. Revisaré los permisos en Garmin." : "I reviewed the data use and will connect my own account. I will review the permissions in Garmin."}</label>
         <button className="btn-primary" type="button" disabled={busy || !consent} onClick={() => action(true)}>{es ? "Continuar a Garmin" : "Continue to Garmin"}</button>
       </>}
       {!disconnected && <button className="btn-secondary" type="button" disabled={busy} onClick={() => action(false)}>{es ? "Desconectar Garmin" : "Disconnect Garmin"}</button>}
+      {status.status === "connected" && <GarminDeliveryPreferences lang={lang} />}
       {status.status === "revocation_required" && <details className="text-sm space-y-2">
         <summary className="cursor-pointer">{es ? "Recuperar una desconexión sin confirmar" : "Recover an unconfirmed disconnection"}</summary>
         <p>{es ? "Elimina JMM en los ajustes de tu cuenta Garmin. Limpiar aquí solo borra la conexión local; no verifica la revocación en Garmin." : "Remove JMM in your Garmin account settings. Clearing here only removes the local connection; it does not verify Garmin revocation."}</p>

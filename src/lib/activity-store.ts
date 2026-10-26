@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { dayBounds } from "./dates";
 import { generateAndDeliverActivityReport } from "./activity-report";
+import type { Prisma } from "@prisma/client";
 
 // Provider records remain the source of measured results. A fulfilled plan is
 // linked to the import so it is never counted a second time in training load.
@@ -8,6 +9,7 @@ export async function storeActivity(
   userId: string,
   timezone: string,
   activity: any,
+  options: { beforeWrite?: (tx: Prisma.TransactionClient) => Promise<void> } = {},
 ): Promise<boolean> {
   if (
     !activity.externalId ||
@@ -19,6 +21,7 @@ export async function storeActivity(
   let savedId: string | null = null;
   const created = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+    await options.beforeWrite?.(tx);
     const existing = await tx.workout.findFirst({
       where: {
         userId,
@@ -106,6 +109,7 @@ export async function storeActivity(
   // Telegram messages.
   if (
     created &&
+    activity.source !== "garmin_direct" &&
     savedId &&
     Date.now() - new Date(activity.date).getTime() < 48 * 3600000
   )

@@ -29,7 +29,10 @@ export function parseGarminToken(value: unknown): GarminToken {
 export function createGarminProtocol(fetcher: typeof fetch = fetch) {
   async function request(url: string, init: RequestInit): Promise<Response> {
     try { return await fetcher(url, { ...init, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(15_000) }); }
-    catch { throw new GarminError("provider_outcome_unknown", "Garmin did not confirm the request. Reconnect before another authorization attempt.", 503); }
+    catch (error) {
+      if (error instanceof GarminError && error.code === "local_garmin_budget") throw error;
+      throw new GarminError("provider_outcome_unknown", "Garmin did not confirm the request. Reconnect before another authorization attempt.", 503);
+    }
   }
   async function json(response: Response): Promise<unknown> {
     if (!response.ok) throw new GarminError(response.status === 429 ? "provider_rate_limited" : "provider_rejected",

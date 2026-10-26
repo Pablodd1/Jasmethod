@@ -9,7 +9,7 @@ const results=[],errors=[],unexpected=[];
 async function main(){const browser=await chromium.launch({headless:true});try{
  for(const language of ['en','es'])for(const width of [390,1280]){
   const es=language==='es',context=await browser.newContext({viewport:{width,height:844}}),page=await context.newPage();
-  let configured=false,status='disconnected',statusFailure=false,revokeFailure=false,starts=0,disconnects=0;
+  let configured=false,status='disconnected',statusFailure=false,revokeFailure=false,starts=0,disconnects=0,trainingAvailable=false,autoEnabled=false,preferenceFailure=false;
   page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',async route=>{
    const req=route.request(),url=new URL(req.url());
@@ -28,6 +28,12 @@ async function main(){const browser=await chromium.launch({headless:true});try{
     assert.equal(req.method(),'POST');assert.deepEqual(req.postDataJSON(),{consent:'garmin-direct-v1'});starts++;
     return route.fulfill({status:503,json:{error:es?'Autorización rechazada de prueba':'Synthetic authorization rejected'}});
    }
+   if(url.pathname==='/api/connectors/garmin/preferences'){
+    if(req.method()==='GET')return route.fulfill({json:{available:trainingAvailable,enabled:autoEnabled,importsAvailable:false,historicalBackfill:false,receipts:trainingAvailable?[{sessionId:'synthetic-session',revision:'synthetic-revision',date:'2026-10-27',status:'published',deviceReceived:false}]:[]}});
+    assert.equal(req.method(),'PUT');const body=req.postDataJSON();assert.deepEqual(body,autoEnabled?{enabled:false}:{enabled:true,consent:'garmin-auto-publish-v1'});
+    if(preferenceFailure)return route.fulfill({status:503,json:{error:'Synthetic preference unavailable'}});
+    autoEnabled=body.enabled;return route.fulfill({json:{enabled:autoEnabled}});
+   }
    if(url.pathname==='/api/connectors')return route.fulfill({json:{providers:[],connectors:[],capabilities:{intervalsConnector:false}}});
    if(url.pathname==='/api/activity-streams')return route.fulfill({json:{enabled:false,retentionDays:null,workoutIds:[]}});
    if(url.pathname==='/api/telemetry/error'){errors.push(req.postData());return route.fulfill({json:{ok:true}});}
@@ -35,7 +41,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
    return route.fulfill({json:{observations:[],history:{bySource:[]},providers:[],configured:false,verified:false,enabled:false}});
   });
   const card=page.locator('#garmin-direct-connection');
-  async function open(){await page.goto(base+'/connectors');await card.getByRole('heading').waitFor();}
+  async function open(){await page.goto(base+'/connectors');await card.locator('#garmin-direct-heading').waitFor();}
   async function shot(step){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await card.scrollIntoViewIfNeeded();const artifact=`${language}-${width}-${step}.png`;await page.screenshot({path:`${dir}/${artifact}`});results.push({language,width,step,artifact,status:'PASS'});}
   await open();await card.getByText(es?/Pendiente: credenciales/:/Awaiting production credentials/).waitFor();assert.equal(await card.getByRole('checkbox').count(),0);await shot('01-awaiting-configuration');
   configured=true;await open();const consent=card.getByRole('checkbox');const connect=card.getByRole('button',{name:es?'Continuar a Garmin':'Continue to Garmin',exact:true});await consent.waitFor();assert.equal(await consent.isChecked(),false);assert.equal(await connect.isEnabled(),false);await shot('02-consent-unchecked');
@@ -45,6 +51,10 @@ async function main(){const browser=await chromium.launch({headless:true});try{
   revokeFailure=false;await card.getByRole('button',{name:es?'Desconectar Garmin':'Disconnect Garmin',exact:true}).click();await card.getByText(es?'Sin autorizar':'Not authorized',{exact:true}).waitFor();await shot('06-disconnected');
   status='revocation_required';await open();await card.getByText(es?'Recuperar una desconexión sin confirmar':'Recover an unconfirmed disconnection',{exact:true}).click();const manual=card.getByLabel(es?'He eliminado JMM en Garmin.':'I removed JMM in Garmin.',{exact:true}),clear=card.getByRole('button',{name:es?'Limpiar conexión local':'Clear local connection',exact:true});assert.equal(await manual.isChecked(),false);assert.equal(await clear.isEnabled(),false);await manual.check();await clear.click();await card.getByText(es?'Sin autorizar':'Not authorized',{exact:true}).waitFor();await shot('07-manual-removal-reported');
   statusFailure=true;await open();await card.getByRole('alert').waitFor();assert.equal(await card.getByRole('button').count(),0);await shot('08-status-unavailable');assert.equal(disconnects,3);
+  statusFailure=false;status='connected';trainingAvailable=true;await open();const delivery=card.getByTestId('garmin-delivery-preferences');const autoConsent=delivery.getByRole('checkbox'),enable=delivery.getByRole('button',{name:es?'Activar publicación automática':'Enable automatic publication',exact:true});await autoConsent.waitFor();assert.equal(await autoConsent.isChecked(),false);assert.equal(await enable.isEnabled(),false);await shot('09-auto-consent-unchecked');
+  await autoConsent.check();await enable.click();const stop=delivery.getByRole('button',{name:es?'Detener nuevas publicaciones':'Stop new publications',exact:true});await stop.waitFor();assert.equal(autoEnabled,true);await delivery.getByText(es?/reloj sin verificar/:/watch unverified/).waitFor();await shot('10-auto-enabled-watch-unverified');
+  preferenceFailure=true;await stop.click();await delivery.getByRole('alert').waitFor();assert.equal(autoEnabled,true);await shot('11-preference-save-unconfirmed');
+  preferenceFailure=false;await stop.click();await enable.waitFor();assert.equal(autoEnabled,false);assert.equal(await autoConsent.isChecked(),false);await shot('12-auto-stopped');
   await context.close();
  }
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);

@@ -17,6 +17,7 @@ export const garminOAuthStore: GarminStore = {
       await tx.connector.upsert({ where: { userId_provider: { userId, provider } },
         create: { userId, provider, tokenEnc: marker, status: "authorizing" },
         update: { tokenEnc: marker, refreshEnc: null, expiresAt: null, externalRef: null, scope: null, status: "authorizing", lastError: null, lastSyncAt: null, lastSyncCount: null, syncStartedAt: null } });
+      await tx.auditLog.create({data:{actorId:userId,subjectId:userId,action:"garmin.auto_publish",after:JSON.stringify({version:1,enabled:false,providerUserId:null}),note:"A new Garmin grant requires a fresh publication opt-in."}});
     }, { isolationLevel: "Serializable" });
   },
   transaction: state => prisma.oAuthTransaction.findFirst({ where: { state, provider } }),
@@ -31,16 +32,22 @@ export const garminOAuthStore: GarminStore = {
       }
       const result = await tx.connector.updateMany({ where: { id: expected.id, userId: expected.userId, provider,
         status: expected.status, tokenEnc: expected.tokenEnc, refreshEnc: expected.refreshEnc, syncStartedAt: expected.syncStartedAt ?? null }, data: patch });
-      if (result.count && invalidateAt)
+      if (result.count && invalidateAt) {
         await tx.oAuthTransaction.updateMany({ where: { userId: expected.userId, provider, usedAt: null }, data: { usedAt: invalidateAt } });
+        await tx.auditLog.create({data:{actorId:expected.userId,subjectId:expected.userId,action:"garmin.auto_publish",after:JSON.stringify({version:1,enabled:false,providerUserId:null}),note:"Garmin disconnection stops new automatic publications."}});
+      }
       return result.count === 1;
     }, { isolationLevel: "Serializable" });
   },
 };
-const service = () => createGarminOAuthService({ store: garminOAuthStore, protocol: createGarminProtocol(), encrypt: encryptSecret, decrypt: decryptSecret });
-export const beginGarminAuthorization = (userId: string) => service().begin(userId);
-export const completeGarminAuthorization = (userId: string, params: URLSearchParams, binding: string | undefined) => service().complete(userId, params, binding);
-export const disconnectGarmin = (userId: string, manualRevocationReported = false) => service().disconnect(userId, manualRevocationReported);
-export const getGarminConnectionStatus = (userId: string) => service().status(userId);
+const service = (userId: string) => createGarminOAuthService({ store: garminOAuthStore, protocol: createGarminProtocol(async (url, init) => {
+  const { reserveGarminRequest } = await import("./garmin-delivery");
+  await reserveGarminRequest(userId, String(url).includes("/oauth/token"));
+  return fetch(url, init);
+}), encrypt: encryptSecret, decrypt: decryptSecret });
+export const beginGarminAuthorization = (userId: string) => service(userId).begin(userId);
+export const completeGarminAuthorization = (userId: string, params: URLSearchParams, binding: string | undefined) => service(userId).complete(userId, params, binding);
+export const disconnectGarmin = (userId: string, manualRevocationReported = false) => service(userId).disconnect(userId, manualRevocationReported);
+export const getGarminConnectionStatus = (userId: string) => service(userId).status(userId);
 /** Internal server use only; establish the authenticated athlete before calling. */
-export const getGarminAuthorization = (userId: string, permissions: GarminPermission[] = []) => service().authorization(userId, permissions);
+export const getGarminAuthorization = (userId: string, permissions: GarminPermission[] = []) => service(userId).authorization(userId, permissions);

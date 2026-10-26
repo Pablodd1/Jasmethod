@@ -4,6 +4,11 @@ export class GarminError extends Error {
     super(message); this.name = "GarminError";
   }
 }
+export class GarminBudgetError extends GarminError {
+  constructor(public readonly budgetScope: "app" | "athlete", public readonly retryAfterMs: number) {
+    super("local_garmin_budget", "Garmin's rolling request budget is nearly exhausted; retry later.", 429);
+  }
+}
 export type GarminEnvironment = Record<string, string | undefined>;
 export function garminOrigin(env: GarminEnvironment = process.env): string {
   try {
@@ -30,6 +35,7 @@ export function garminConfigured(env: GarminEnvironment = process.env): boolean 
   try { garminConfig(env); return true; } catch { return false; }
 }
 export const GARMIN_CONSENT_VERSION = "garmin-direct-v1";
+export const GARMIN_AUTO_CONSENT = "garmin-auto-publish-v1";
 export const GARMIN_MANUAL_REVOCATION_VERSION = "garmin-manual-revocation-reported-v1";
 export const GARMIN_NOTICE = {
   en: "Connect your own Garmin account. Choose the permissions in Garmin. Starter access supplies new data after consent; it does not import historical records. Garmin data stays out of external AI and other delivery channels. Authorization is separate from imports, workout publication and watch receipt.",
