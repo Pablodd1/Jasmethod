@@ -15,13 +15,14 @@ async function main() {
   const { garminOAuthStore: store } = await import("../src/lib/garmin-oauth");
   const { createGarminOAuthService } = await import("../src/lib/garmin-oauth-service");
   const { encryptSecret, decryptSecret } = await import("../src/lib/crypto");
+  const { hashPassword } = await import("../src/lib/auth");
   const ids: string[] = []; let exchanges = 0, remote = `${prefix}-remote-A`, revocations = 0;
   const env = { APP_URL: "https://app.example", ENABLE_GARMIN_CONNECTOR: "true", GARMIN_PROCESSING_APPROVED: "true", GARMIN_CLIENT_ID: "fixture-client", GARMIN_CLIENT_SECRET: "fixture-secret", TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY };
   const protocol = { token: async () => { exchanges++; return { accessToken: `fixture-private-${exchanges}`, refreshToken: `fixture-refresh-${exchanges}`, expiresIn: 86400, refreshExpiresIn: 7_776_000 }; },
     identity: async () => remote, permissions: async () => ["ACTIVITY_EXPORT" as const,"HEALTH_EXPORT" as const,"WORKOUT_IMPORT" as const], revoke: async () => { revocations++; } };
   const service = createGarminOAuthService({ store, protocol, encrypt: encryptSecret, decrypt: decryptSecret, env });
   try {
-    for (const suffix of ["A", "B"]) ids.push((await prisma.user.create({ data: { email: `${prefix}-${suffix}@example.invalid`, name: "Synthetic Garmin athlete", passwordHash: "SYNTHETIC_NOT_A_PASSWORD_HASH" } })).id);
+    for (const suffix of ["A", "B"]) ids.push((await prisma.user.create({ data: { email: `${prefix}-${suffix}@example.invalid`, name: "Synthetic Garmin athlete", passwordHash: hashPassword(randomUUID()) } })).id);
     const start = await service.begin(ids[0]), state = new URL(start.authorizationUrl).searchParams.get("state")!;
     const params = new URLSearchParams({ state, code: "fixture-code" });
     await assert.rejects(service.complete(ids[1], params, start.browserBinding)); assert.equal(exchanges, 0);
