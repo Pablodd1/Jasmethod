@@ -1,0 +1,46 @@
+/** Real PostgreSQL acceptance. Refuses every database except disposable CI. */
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+for (const key of ["DATABASE_URL", "DIRECT_URL"]) {
+  const url = new URL(process.env[key] || "");
+  assert.equal(url.protocol, "postgresql:"); assert.equal(url.hostname, "127.0.0.1"); assert.equal(url.port, "55432");
+  assert.equal(url.pathname, "/jmm_launch_integration_test"); assert.equal(url.search, "");
+}
+assert.notEqual(process.env.VERCEL_ENV, "production");
+const results: string[] = [], prefix = `garmin-fixture-${randomUUID()}`;
+async function main() {
+  process.env.TOKEN_ENCRYPTION_KEY = "SYNTHETIC_GARMIN_CI_ENCRYPTION_KEY_32_CHARACTERS";
+  const { prisma } = await import("../src/lib/db");
+  const { garminOAuthStore: store } = await import("../src/lib/garmin-oauth");
+  const { createGarminOAuthService } = await import("../src/lib/garmin-oauth-service");
+  const { encryptSecret, decryptSecret } = await import("../src/lib/crypto");
+  const ids: string[] = []; let exchanges = 0, remote = `${prefix}-remote-A`, revocations = 0;
+  const env = { APP_URL: "https://app.example", ENABLE_GARMIN_CONNECTOR: "true", GARMIN_PROCESSING_APPROVED: "true", GARMIN_CLIENT_ID: "fixture-client", GARMIN_CLIENT_SECRET: "fixture-secret", TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY };
+  const protocol = { token: async () => { exchanges++; return { accessToken: `fixture-private-${exchanges}`, refreshToken: `fixture-refresh-${exchanges}`, expiresIn: 86400, refreshExpiresIn: 7_776_000 }; },
+    identity: async () => remote, permissions: async () => ["ACTIVITY_EXPORT" as const], revoke: async () => { revocations++; } };
+  const service = createGarminOAuthService({ store, protocol, encrypt: encryptSecret, decrypt: decryptSecret, env });
+  try {
+    for (const suffix of ["A", "B"]) ids.push((await prisma.user.create({ data: { email: `${prefix}-${suffix}@example.invalid`, name: "Synthetic Garmin athlete", passwordHash: "SYNTHETIC_NOT_A_PASSWORD_HASH" } })).id);
+    const start = await service.begin(ids[0]), state = new URL(start.authorizationUrl).searchParams.get("state")!;
+    const params = new URLSearchParams({ state, code: "fixture-code" });
+    await assert.rejects(service.complete(ids[1], params, start.browserBinding)); assert.equal(exchanges, 0);
+    const race = await Promise.allSettled([service.complete(ids[0], params, start.browserBinding), service.complete(ids[0], params, start.browserBinding)]);
+    assert.equal(race.filter(r => r.status === "fulfilled").length, 1); assert.equal(exchanges, 1); results.push("single durable state claim; another athlete cannot consume it");
+    const saved = await prisma.connector.findUniqueOrThrow({ where: { userId_provider: { userId: ids[0], provider: "garmin_direct" } } });
+    assert.equal(saved.status, "connected"); assert.equal(saved.externalRef, remote); assert.ok(saved.tokenEnc!.startsWith("enc:v1:")); assert.ok(!saved.tokenEnc!.includes("fixture-private"));
+    assert.equal((await service.authorization(ids[0], ["ACTIVITY_EXPORT"])).userId, remote); results.push("encrypted credentials persist and reload for the owner");
+    const second = await service.begin(ids[1]), secondParams = new URLSearchParams({ state: new URL(second.authorizationUrl).searchParams.get("state")!, code: "fixture-code-B" });
+    await assert.rejects(service.complete(ids[1], secondParams, second.browserBinding), /already connected/);
+    assert.equal((await store.get(ids[0]))!.status, "connected"); assert.equal((await store.get(ids[1]))!.status, "disconnected"); results.push("provider identity cannot be attached to a second athlete");
+    await service.disconnect(ids[1]); assert.equal(revocations, 0); await service.disconnect(ids[0]); assert.equal(revocations, 1);
+    assert.equal((await store.get(ids[0]))!.tokenEnc, null); assert.equal((await store.get(ids[1]))!.tokenEnc, null); results.push("duplicate grant never revokes the established owner; owner disconnect revokes registration");
+  } finally {
+    await prisma.oAuthTransaction.deleteMany({ where: { userId: { in: ids }, provider: "garmin_direct" } });
+    await prisma.user.deleteMany({ where: { id: { in: ids }, email: { startsWith: prefix } } });
+    await prisma.$disconnect();
+    mkdirSync(".local/jmm-garmin-integration", { recursive: true });
+    writeFileSync(".local/jmm-garmin-integration/report.json", JSON.stringify({ results, realGarminRequests: 0 }, null, 2));
+  }
+}
+main().catch(error => { console.error(error instanceof assert.AssertionError ? error.message : "Isolated Garmin integration failed; no production connection was attempted."); process.exitCode = 1; });
