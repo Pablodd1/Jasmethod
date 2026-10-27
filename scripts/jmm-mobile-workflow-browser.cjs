@@ -37,7 +37,7 @@ async function actor(name, { onboarded = false, language = 'en', profile = {} } 
             timezone: 'UTC',
             language,
             onboarded,
-            profile: { create: profile },
+            profile: { create: { units: 'metric', ...profile } },
             reminder: { create: { emailEnabled: false, telegramEnabled: false } }
         } });
     ids.push(a.id);
@@ -154,7 +154,7 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
             assert.equal(await p.getByLabel('Actual minutes',{exact:true}).inputValue(),'60');
             assert.equal(await p.getByLabel('Effort 0–10',{exact:true}).inputValue(),'');
             await p.getByLabel('Effort 0–10',{exact:true}).fill('3');
-            await p.getByText('HR, power, calories & weight (optional)',{exact:true}).click();
+            await p.getByText('HR, power & calories (optional)',{exact:true}).click();
             for (const [label,value] of Object.entries({'Average HR (bpm)':'135','Actual average power (W, this sport’s device)':'210','Reported energy (kcal)':'100','Weight before (kg)':'70','Weight after (kg)':'69.9'})) await p.getByLabel(label,{exact:true}).fill(value);
             const response = p.waitForResponse(r=>r.url().endsWith('/api/plan')&&r.request().method()==='PUT');
             await p.getByRole('button',{name:'Save result',exact:true}).click();
@@ -163,7 +163,7 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
             for(const [field,value] of Object.entries({avgHr:135,avgPower:210,calories:100,preWeightKg:70,postWeightKg:69.9,rpe:3,actualDurationMin:60})) assert.equal(saved[field],value,field);
             await p.reload();
             await openFeedback();
-            await p.getByText('HR, power, calories & weight (optional)',{exact:true}).click();
+            await p.getByText('HR, power & calories (optional)',{exact:true}).click();
             for (const [label,value] of Object.entries({'Effort 0–10':'3','Average HR (bpm)':'135','Actual average power (W, this sport’s device)':'210','Reported energy (kcal)':'100','Weight before (kg)':'70','Weight after (kg)':'69.9'})) assert.equal(await p.getByLabel(label,{exact:true}).inputValue(),value,label);
             assert.equal(await p.getByRole('region',{name:'Your JMM metrics',exact:true}).count(),1);
             await shot(p,`feedback-${width}-reloaded`);
@@ -251,15 +251,15 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
             availableMinutes: 60
         });
         await p.reload();
-        await p.getByRole('button', { name: 'Log how it felt', exact: true }).waitFor();
+        await p.getByRole('button', { name: 'Log results & notes', exact: true }).waitFor();
         await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).waitFor();
         assert.equal(await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).count(), 1);
-        await p.getByRole('button', { name: 'Log how it felt', exact: true }).click();
+        await p.getByRole('button', { name: 'Log results & notes', exact: true }).click();
         assert.equal(await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).count(), 1, 'Opening feedback must not duplicate keyed metrics/coach siblings');
         await p.getByLabel('Outcome').selectOption('partial');
         await p.getByLabel('Actual minutes', { exact: true }).fill('15');
         await p.getByLabel('Effort 0–10', { exact: true }).fill('3');
-        await p.getByText('HR, power, calories & weight (optional)', { exact: true }).click();
+        await p.getByText('HR, power & calories (optional)', { exact: true }).click();
         await p.getByLabel('Average HR (bpm)', { exact: true }).fill('135');
         await p.getByLabel('Actual average power (W, this sport’s device)', { exact: true }).fill('210');
         await p.getByLabel('Reported energy (kcal)', { exact: true }).fill('100');
@@ -270,13 +270,14 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
         await p.getByRole('button', { name: 'Save result', exact: true }).click();
         assert.equal((await response).status(), 200);
         await p.reload();
-        await p.getByRole('button', { name: 'Log how it felt', exact: true }).click();
+        await p.getByRole('button', { name: 'Log results & notes', exact: true }).click();
+        await p.getByRole('button', { name: 'Log effort & recovery', exact: true }).click();
         assert.equal(await p.getByLabel('Actual minutes', { exact: true }).inputValue(), '15');
         assert.equal(await p.getByLabel('Effort 0–10', { exact: true }).inputValue(), '3');
         feedbackRecord = await db.workout.findFirst({ where: { userId: athlete.id, feedbackStatus: 'partial', actualDurationMin: 15 } });
         assert.ok(feedbackRecord);
         for(const [field,value] of Object.entries({avgHr:135,avgPower:210,calories:100,preWeightKg:70,postWeightKg:69.9})) assert.equal(feedbackRecord[field],value);
-        await p.getByText('HR, power, calories & weight (optional)', { exact: true }).click();
+        await p.getByText('HR, power & calories (optional)', { exact: true }).click();
         assert.equal(await p.getByLabel('Reported energy (kcal)', { exact: true }).inputValue(),'100');
         assert.equal(await p.getByLabel('Weight after (kg)', { exact: true }).inputValue(),'69.9');
         assert.equal(await p.getByRole('region', { name: 'Your JMM metrics', exact: true }).count(), 1);
