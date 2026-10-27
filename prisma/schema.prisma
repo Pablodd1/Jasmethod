@@ -59,6 +59,7 @@ model User {
   auditSubjects AuditLog[] @relation("AuditSubject")
   onboarded     Boolean  @default(false) // first-time setup completed
   metricObservations MetricObservation[]
+  preWorkoutWeights PreWorkoutWeight[]
   coaching      CoachAssignment[] @relation("CoachSide") // athletes this user coaches
   coachedBy     CoachAssignment[] @relation("AthleteSide") // coaches assigned to this user
   forecastSnapshots RaceForecastSnapshot[]
@@ -389,9 +390,24 @@ model Workout {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   planDay    PlanDay? @relation(fields: [planDayId], references: [id], onDelete: SetNull)
   stream     ActivityStream?
+  preWorkoutWeight PreWorkoutWeight?
 
   @@index([userId, date])
   @@index([userId, source, externalId])
+}
+
+// Athlete-reported weigh-in, separate from workout completion and device data.
+model PreWorkoutWeight {
+  id String @id @default(cuid())
+  userId String
+  workoutId String? @unique
+  weightKg Float
+  observedAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workout Workout? @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+  @@index([userId, observedAt])
 }
 
 // Second-by-second data of ONE imported activity (heart rate, power, cadence, speed, altitude, distance — no GPS).

@@ -40,7 +40,7 @@ export async function GET(req: Request) {
       if (!trainingViewDisclosureAllowed(actor.id, user.id, saved)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
       return Response.json({ kind: "saved_today_plan", date: key, timezone: user.timezone, sessions: saved.map(({source,externalId,notes,...session})=>session), readOnly: true }, { headers: { "Cache-Control": "private, no-store" } });
     }
-  const [allWorkouts, race, connectors, checkin, restDay, activePlan, eventToday, setupState, activityDecisions] = await Promise.all([
+  const [allWorkouts, race, connectors, checkin, restDay, activePlan, eventToday, setupState, activityDecisions, preWeights] = await Promise.all([
     prisma.workout.findMany({
       where: {
         AND: [currentOrReportedWorkoutWhere(user.id, currentPlan?.id ?? null)],
@@ -71,7 +71,12 @@ export async function GET(req: Request) {
     prisma.race.findFirst({where:{userId:user.id,date:{gte:new Date(`${key}T00:00:00Z`),lt:new Date(`${addDaysKey(key,1)}T00:00:00Z`)}},select:{id:true}}),
     readPlanningSetup(user.id),
     readActivityDecisions(user.id),
+    actor.id === user.id ? prisma.preWorkoutWeight.findMany({ where: { userId: user.id, workoutId: { not: null }, observedAt: { gte: start, lt: end } }, select: { workoutId: true, weightKg: true, observedAt: true, updatedAt: true } }) : Promise.resolve([]),
   ]);
+  const preWeightFor = (id: string) => {
+    const row = preWeights.find(item => item.workoutId === id);
+    return row ? { weightKg: row.weightKg, observedAt: row.observedAt.toISOString(), revision: row.updatedAt.toISOString(), source: "athlete_reported" } : null;
+  };
 
   const workouts = allWorkouts.filter(w => w.planned && isCurrentWorkout(w, user.id, currentPlan?.id ?? null));
 
@@ -103,7 +108,7 @@ export async function GET(req: Request) {
       const resolved = resolvedWorkouts[index];
       if (!resolved) return [];
       if ("resolutionError" in resolved) return [{
-        id: w.id, feedbackRevision: workoutRevision(w), title: w.title || "Session needs review", sport: w.sport, type: w.type,
+        id: w.id, feedbackRevision: workoutRevision(w), preWorkoutWeight: preWeightFor(w.id), title: w.title || "Session needs review", sport: w.sport, type: w.type,
         revision: null, verdict: "blocked", resolutionReason: resolved.resolutionError,
         capability: { available: false, mode: "unavailable", reason: resolved.resolutionError, deviceTested: false },
         matchedPlanId: w.matchedPlanId,
@@ -133,7 +138,7 @@ export async function GET(req: Request) {
           : null;
       return {
         id: w.id,
-        feedbackRevision: workoutRevision(w),
+        feedbackRevision: workoutRevision(w), preWorkoutWeight: preWeightFor(w.id),
         revision: canonical.revision,
         existingReview: resolved.existingReview,
         plannedDurationMin: w.durationMin,

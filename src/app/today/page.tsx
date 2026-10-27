@@ -31,6 +31,7 @@ import { AthleteDayReview } from "@/components/daily-training/AthleteDayReview";
 import { SessionMeasurementsFields } from "@/components/daily-training/SessionMeasurementsFields";
 import { observationsFromForm } from "@/lib/session-observations";
 import { todayFeedbackTarget } from "@/lib/today-feedback-target";
+import { PreWorkoutWeightCard } from "@/components/daily-training/PreWorkoutWeightCard";
 export default function TodayPage() {
   const { user } = useAuth();
   return <TodayPageContent key={user?.id || "signed-out"} />;
@@ -169,6 +170,8 @@ function TodayPageContent() {
     ) ||
     data?.sessions[0];
   const feedbackSession = reportActivityId ? data?.athleteReview?.records.find((record: any) => record.id === reportActivityId) : session;
+  const linkedPreWeight = session?.preWorkoutWeight && (feedbackSession?.id === session.id || session.matchedPlanId === feedbackSession?.id) ? session.preWorkoutWeight.weightKg : null;
+  const feedbackForForm = feedbackSession ? { ...feedbackSession, preWeightKg: feedbackSession.preWeightKg ?? linkedPreWeight } : null;
   // Imported review records expose their observed minutes; planned sessions
   // must never use a planned duration as an actual measurement.
   const feedbackActualMinutes = reportActivityId ? feedbackSession?.minutes ?? null : feedbackSession?.actualDurationMin ?? null;
@@ -241,6 +244,7 @@ function TodayPageContent() {
           <a href={session ? "#today-workout" : "/training"} className="btn-primary min-h-12 justify-center">{es ? "Ver entrenamiento" : "View workout"}</a>
           <button className="btn-secondary min-h-12 justify-center" disabled={busy || offline || feedbackTarget.kind === 'none'} onClick={openFeedbackTarget}>{es ? "Registrar resultado y notas" : "Log results & notes"}</button>
         </nav>
+        {session && !session.completed && !session.feedbackStatus && !session.matchedPlanId && !offline && <PreWorkoutWeightCard key={`${session.id}:${session.preWorkoutWeight?.revision ?? 'new'}:${displayUnits}`} session={session} units={displayUnits} es={es} disabled={busy || offline} onSaved={load} />}
         {!data && savedPlan?.sessions?.length > 0 && <section className="space-y-3" aria-label={es ? "Plan guardado mientras cargan los datos" : "Saved plan while context loads"}>
           <p role="status" className="text-sm">{es ? "Tu sesión guardada ya está disponible. El contexto y los datos se están revisando; esta vista no autoriza el ejercicio." : "Your saved session is available. Context and data are still being reviewed; this preview does not authorize exercise."}</p>
           {savedPlan.sessions.map((s: any) => <div key={s.id}><p className="font-semibold">{s.title} · {s.durationMin} min</p><SavedWorkoutPreviewCard sessionId={s.id} es={es} /></div>)}
@@ -291,7 +295,7 @@ function TodayPageContent() {
                   e.preventDefault();
                   const f = new FormData(e.currentTarget);
                   let actualFueling, observations;
-                  try { actualFueling = actualFuelingFromForm(f); observations = observationsFromForm(f, displayUnits, feedbackSession); } catch (cause) { setError((cause as Error).message); return; }
+                  try { actualFueling = actualFuelingFromForm(f); observations = observationsFromForm(f, displayUnits, feedbackForForm); } catch (cause) { setError((cause as Error).message); return; }
                   action(
                     "/api/plan",
                     { sessionId: feedbackSession.id, expectedRevision: feedbackSession.feedbackRevision, ...Object.fromEntries(f), ...observations, actualFueling },
@@ -358,7 +362,7 @@ function TodayPageContent() {
                     {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </label>
-                <SessionMeasurementsFields saved={feedbackSession} details={feedbackSession.actualDetails} actualMinutes={feedbackActualMinutes} es={es} units={displayUnits} />
+                <SessionMeasurementsFields saved={feedbackForForm} details={feedbackSession.actualDetails} actualMinutes={feedbackActualMinutes} es={es} units={displayUnits} />
                 <ActualFuelingFields key={`${feedbackSession.id}-${feedbackSession.revision}`} details={feedbackSession.actualDetails} actualDurationMin={feedbackActualMinutes} es={es} />
                 <textarea
                   aria-label="Workout feedback"

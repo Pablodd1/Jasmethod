@@ -259,6 +259,27 @@ async function main() {
     assert.ok(!(await json("/api/today",other)).sessions.some((item:any)=>item.id===w.id));
     await request("/api/plan",other,{method:"PUT",body:{sessionId:w.id,expectedRevision:reload.feedbackRevision,feedbackNote:"foreign"},status:404});
   });
+  await scenario("Pre-workout weight is owner-only, dated, revision-checked and never completes the session",async()=>{
+    const a=await actor("preweight"),other=await actor("preweight-other"),w=await fixture(a);
+    const first=(await json("/api/today",a)).sessions.find((item:any)=>item.id===w.id);assert.ok(first);
+    const body={sessionId:w.id,expectedRevision:first.feedbackRevision,expectedMeasurementRevision:null,weightKg:70};
+    await request("/api/workout/pre-weight",undefined,{method:"PUT",body,status:401});
+    await request("/api/workout/pre-weight",other,{method:"PUT",body,status:404});
+    await request("/api/workout/pre-weight",a,{method:"PUT",body:{...body,weightKg:0},status:400});
+    await request("/api/workout/pre-weight",a,{method:"PUT",body:{...body,expectedRevision:"stale"},status:409});
+    const before=await db.workout.findUniqueOrThrow({where:{id:w.id}});
+    const saved=await json("/api/workout/pre-weight",a,{method:"PUT",body});
+    assert.equal(saved.measurement.weightKg,70);assert.equal(saved.measurement.source,"athlete_reported");assert.ok(saved.measurement.observedAt);
+    assert.deepEqual(await db.workout.findUniqueOrThrow({where:{id:w.id}}),before,"Weigh-in does not change completion, approval or prescription");
+    const reload=(await json("/api/today",a)).sessions.find((item:any)=>item.id===w.id);
+    assert.equal(reload.preWorkoutWeight.weightKg,70);assert.equal(reload.preWorkoutWeight.revision,saved.measurement.revision);
+    assert.ok(!(await json("/api/today",other)).sessions.some((item:any)=>item.id===w.id));
+    await request("/api/workout/pre-weight",a,{method:"PUT",body,status:409});
+    const revised=await json("/api/workout/pre-weight",a,{method:"PUT",body:{...body,expectedMeasurementRevision:saved.measurement.revision,weightKg:71}});assert.equal(revised.measurement.weightKg,71);
+    await json("/api/plan",a,{method:"PUT",body:{sessionId:w.id,expectedRevision:first.feedbackRevision,feedbackStatus:"partial",actualDurationMin:20}});
+    const completed=(await json("/api/today",a)).sessions.find((item:any)=>item.id===w.id);
+    await request("/api/workout/pre-weight",a,{method:"PUT",body:{...body,expectedRevision:completed.feedbackRevision,expectedMeasurementRevision:revised.measurement.revision,weightKg:72},status:409});
+  });
   await scenario("Provider consent with unconfigured keys performs no paid extraction and preserves local state",async()=>{const a=await actor("provider-off");const result=await ask(a,"Why is easy endurance useful?",{externalConsent:true,textProviderConsent:"openai"});assert.equal(result.externalStatus,"not_configured");assert.equal(result.trainingModified,false);const capabilities=(await json("/api/assistant",a)).capabilities;assert.equal(capabilities.externalAi,false);assert.equal(capabilities.imageUnderstanding,false);});
   await scenario("Conversation persists, remains owner-scoped, and clears only its own text",async()=>{const a=await actor("memory"),b=await actor("other");const w=await fixture(a,-1,true);await ask(a,"I want to be consistent this month.");await ask(a,"Can we keep that goal in mind?");await ask(b,"A separate athlete conversation.");const before=await json("/api/assistant",a);assert.ok(before.conversation.messages.length>=4);assert.ok(before.conversation.messages.some((m:any)=>m.content.includes("consistent")));await request(`/api/assistant?athleteId=${b.id}`,a,{status:403});await request(`/api/assistant?athleteId=${b.id}`,a,{method:"DELETE",body:{confirmed:true},status:403});await json("/api/assistant",a,{method:"DELETE",body:{confirmed:true}});assert.equal((await json("/api/assistant",a)).conversation.messages.length,0);assert.ok((await json("/api/assistant",b)).conversation.messages.length>0);assert.equal((await db.workout.findUniqueOrThrow({where:{id:w.id}})).actualDurationMin,28);});
   await scenario("Editable explicit profile review really saves and returns idempotent receipt",async()=>{

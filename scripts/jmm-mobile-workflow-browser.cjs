@@ -168,6 +168,21 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
             assert.equal(await p.getByRole('region',{name:'Your JMM metrics',exact:true}).count(),1);
             await shot(p,`feedback-${width}-reloaded`);
         });
+        for (const width of [390, 412]) await scenario(`${width}px pre-workout weigh-in stays separate from the result`, async () => {
+            const a = await actor(`preweight-${width}`, {onboarded:true});
+            const w = await db.workout.create({data:{userId:a.id,date:new Date(new Date().toISOString().slice(0,10)+'T12:00:00Z'),sport:'bike',title:'Synthetic pre-weigh workout',type:'endurance',durationMin:40,intensity:'z2',planned:true,completed:false,approved:false,source:'manual'}});
+            const p = await pageFor(a,width); await p.goto(base+'/today');
+            const card=p.locator('details').filter({has:p.locator('summary').filter({hasText:'Weight before training'})});
+            await card.locator('summary').click(); await card.getByLabel('Weight before (kg)',{exact:true}).fill('70');
+            const response=p.waitForResponse(r=>r.url().endsWith('/api/workout/pre-weight')&&r.request().method()==='PUT');
+            await card.getByRole('button',{name:'Save weight',exact:true}).click();assert.equal((await response).status(),200);
+            await p.getByText(/70 kg saved/).waitFor();
+            const row=await db.workout.findUniqueOrThrow({where:{id:w.id}});assert.equal(row.completed,false);assert.equal(row.feedbackAt,null);assert.equal(row.feedbackStatus,null);assert.equal(row.preWeightKg,null);
+            assert.equal((await db.preWorkoutWeight.findUniqueOrThrow({where:{workoutId:w.id}})).weightKg,70);
+            await p.reload();await p.getByRole('button',{name:'Log results & notes',exact:true}).click();
+            assert.equal(await p.locator('#workout-feedback').getByLabel('Weight before (kg)',{exact:true}).inputValue(),'70');
+            await shot(p,`preweight-${width}-result`);
+        });
         return;
     }
     let athlete, p, originalPlan, completed, feedbackRecord;

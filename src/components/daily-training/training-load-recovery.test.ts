@@ -14,9 +14,10 @@ import { resolveCheckinSafety } from "../../lib/checkin-safety";
 const options = () => ({ signal: new AbortController().signal, label: "Saved training", validate: isSavedPlanResponse });
 
 test("offline Today cache removes personal feedback notes without mutating live records", () => {
-  const live = { sessions: [{ id: "planned", feedbackNote: "private note" }], athleteReview: { records: [{ id: "actual", feedbackNote: "private result" }] } };
+  const live = { sessions: [{ id: "planned", feedbackNote: "private note", preWorkoutWeight: { weightKg: 70 } }], athleteReview: { records: [{ id: "actual", feedbackNote: "private result" }] } };
   const cached = todayOfflineSnapshot(live);
   assert.equal(cached.sessions[0].feedbackNote, null);
+  assert.equal(cached.sessions[0].preWorkoutWeight, null);
   assert.equal(cached.athleteReview.records[0].feedbackNote, null);
   assert.equal(live.sessions[0].feedbackNote, "private note");
   assert.equal(live.athleteReview.records[0].feedbackNote, "private result");

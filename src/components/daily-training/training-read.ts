@@ -65,7 +65,7 @@ const optionalRecords = (value: unknown, valid: (item: Record<string, any>) => b
 export function todayOfflineSnapshot(value: Record<string, any>) {
   return {
     ...value,
-    sessions: value.sessions.map((session: Record<string, any>) => ({ ...session, feedbackNote: null })),
+    sessions: value.sessions.map((session: Record<string, any>) => ({ ...session, feedbackNote: null, preWorkoutWeight: null })),
     ...(value.athleteReview ? { athleteReview: { ...value.athleteReview, records: value.athleteReview.records.map((record: Record<string, any>) => ({ ...record, feedbackNote: null })) } } : {}),
   };
 }
@@ -89,7 +89,7 @@ export const isTrainingProfileResponse = (value: unknown): value is { profile: a
 
 function todaySession(session: Record<string, any>) {
   const p = session.prescription;
-  return sessionSummary(session) && textFields(session, ["resolutionReason", "coachNotes"]) && object(p) && object(p.targets) && text(p.verdict) &&
+  return sessionSummary(session) && optionalObject(session.preWorkoutWeight, weight => finite(weight.weightKg) && weight.weightKg >= 20 && weight.weightKg <= 350 && date(weight.observedAt) && date(weight.revision) && weight.source === "athlete_reported") && textFields(session, ["resolutionReason", "coachNotes"]) && object(p) && object(p.targets) && text(p.verdict) &&
     optionalObject(p.detail, detail => textFields(detail, ["breathing"])) && optionalObject(p.scaled, scaled => textFields(scaled, ["reason"])) &&
     records(p.steps, step => text(step.name) && text(step.zone) && textFields(step, ["note", "group", "phase"]) && finite(step.seconds) && step.seconds >= 0 &&
       (step.target == null || (object(step.target) && text(step.target.label) && optionalText(step.target.missingReason))) &&
