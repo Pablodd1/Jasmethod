@@ -260,6 +260,8 @@ async function main() {
     await request("/api/plan",other,{method:"PUT",body:{sessionId:w.id,expectedRevision:reload.feedbackRevision,feedbackNote:"foreign"},status:404});
   });
   await scenario("Pre-workout weight is owner-only, dated, revision-checked and never completes the session",async()=>{
+    const security=await db.$queryRaw<Array<{rls:boolean; policies:bigint}>>`SELECT c.relrowsecurity AS rls, (SELECT count(*) FROM pg_policy p WHERE p.polrelid=c.oid) AS policies FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='PreWorkoutWeight'`;
+    assert.equal(security[0]?.rls,true);assert.equal(Number(security[0]?.policies),0,"The measurement table has no public Data API policy");
     const a=await actor("preweight"),other=await actor("preweight-other"),w=await fixture(a);
     const first=(await json("/api/today",a)).sessions.find((item:any)=>item.id===w.id);assert.ok(first);
     const body={sessionId:w.id,expectedRevision:first.feedbackRevision,expectedMeasurementRevision:null,weightKg:70};
