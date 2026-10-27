@@ -82,6 +82,7 @@ async function journey(browser, language, width) {
   page.setDefaultTimeout(15000);
   const mutations = [], reads = [];
   let releaseRich, richReleased = false, reviewed = false, failReview = true, withMeasurements=true, cognitiveReject=true, cognitiveWrites=0;
+  let feedbackSaved = { feedbackRevision: 'e'.repeat(64), feedbackNote: 'Synthetic saved note', preWeightKg: 70, postWeightKg: 69 }, failFeedback = true, recordMode = 'none', forceOffline = false;
   const richGate = new Promise(resolve => { releaseRich = () => { richReleased = true; resolve(); }; });
   page.on('pageerror', error => errors.push({ language, width, error: String(error) }));
   await context.route('**/*', async route => {
@@ -90,6 +91,19 @@ async function journey(browser, language, width) {
     if (!url.pathname.startsWith('/api/')) return route.continue();
     const path = url.pathname;
     if (request.method() !== 'GET') {
+      if (path === '/api/plan' && request.method() === 'PUT') {
+        const body = request.postDataJSON();
+        assert.equal(body.sessionId, f.workout.id);
+        assert.equal(body.expectedRevision, feedbackSaved.feedbackRevision);
+        assert.equal(body.feedbackNote, 'Synthetic updated note');
+        assert.equal(body.preWeightKg, 70);
+        assert.equal(body.postWeightKg, 69);
+        assert.equal(body.actualDurationMin, '37');
+        if (failFeedback) return route.fulfill({ status: 503, json: { error: 'Synthetic result not saved' } });
+        feedbackSaved = { ...feedbackSaved, feedbackRevision: 'f'.repeat(64), feedbackNote: body.feedbackNote, actualDurationMin: 37, feedbackStatus: body.feedbackStatus };
+        recordMode = 'saved';
+        return route.fulfill({ json: { ok: true, workout: { id: f.workout.id } } });
+      }
       if(path==='/api/cognitive' && request.method()==='POST'){const body=request.postDataJSON();assert.equal(body.test,'stroop');assert.ok(Number.isFinite(body.score));cognitiveWrites++;return route.fulfill(cognitiveReject?{status:503,json:{error:'Synthetic save rejected'}}:{json:{ok:true,id:'synthetic-cognitive-receipt'}});}
       if (path === '/api/checkin' && request.method() === 'POST') {
         const body = request.postDataJSON(); mutations.push({ path, body });
@@ -107,9 +121,21 @@ async function journey(browser, language, width) {
     reads.push(`${path}${url.search}`);
     if (path === '/api/auth/me') return route.fulfill({ json: { user: f.user } });
     if (path === '/api/today' && url.searchParams.get('view') === 'plan') return route.fulfill({ json: f.fast });
-    if (path === '/api/today') { await richGate; return route.fulfill({ json: {...f.rich(reviewed),...(!withMeasurements?{inputContext:null,connectors:[]}:{} )} }); }
-    if (path === '/api/plan/preview') { assert.equal(url.searchParams.get('sessionId'), f.workout.id); return route.fulfill({ json: f.preview }); }
-    if (path === '/api/workout/card') { assert.equal(url.searchParams.get('id'), f.workout.id); return route.fulfill({ json: f.card(reviewed) }); }
+    if (path === '/api/today') {
+      if (forceOffline) return route.fulfill({ status: 503, json: { error: 'Synthetic offline' } });
+      await richGate; const rich = f.rich(reviewed); rich.units = language === 'en' ? 'imperial' : 'metric'; rich.sessions[0] = { ...rich.sessions[0], ...feedbackSaved };
+      if (recordMode !== 'none') {
+        const record = recordMode === 'saved'
+          ? { ...feedbackSaved, id: f.workout.id, title: f.workout.title, sport: 'bike', source: 'plan', minutes: 37 }
+          : { id: 'synthetic-imported', title: 'Synthetic imported activity', sport: 'bike', source: 'whoop', minutes: 35, feedbackRevision: 'a'.repeat(64) };
+        rich.athleteReview = { rawRecordCount: 1, possibleCopies: 0, records: [record] };
+        if (recordMode === 'matched') rich.sessions[0].matchedPlanId = record.id;
+        if (recordMode === 'choose') rich.sessions.push({ ...rich.sessions[0], id: 'synthetic-second-session', title: 'Synthetic second planned workout', matchedPlanId: null });
+      }
+      return route.fulfill({ json: {...rich,...(!withMeasurements?{inputContext:null,connectors:[]}:{} )} });
+    }
+    if (path === '/api/plan/preview') { const id = url.searchParams.get('sessionId'); assert.ok([f.workout.id,'synthetic-second-session'].includes(id)); return route.fulfill({ json: { ...f.preview, sessionId: id } }); }
+    if (path === '/api/workout/card') { assert.ok([f.workout.id,'synthetic-second-session'].includes(url.searchParams.get('id'))); return route.fulfill({ json: f.card(reviewed) }); }
     if (path === '/api/checkin') return route.fulfill({ json: withMeasurements?f.checkin:{...f.checkin,inputContext:null,checkin:null,previousSessions:[]} });
     if (path === '/api/connectors') return route.fulfill({ json: { providers: withMeasurements?[{ provider: 'whoop', status: 'connected', lastSyncAt: now.toISOString() }]:[] } });
     if (path === '/api/connectors/native') return route.fulfill({ json: { apple: { exportEnabled: false },
@@ -226,9 +252,44 @@ async function journey(browser, language, width) {
     for(let i=0;i<10;i++)await focus.getByRole('button',{name:'red',exact:true}).click();
     await focus.getByText(language==='es'?'✓ Guardado en tu historial cognitivo':'✓ Saved to your cognitive history',{exact:true}).waitFor();
     assert.equal(cognitiveWrites,2);assert.equal(mutations.length,2);
+    await page.goto(`${base}/today`);
+    const logResult = page.getByRole('button', { name: language === 'es' ? 'Registrar resultado y notas' : 'Log results & notes', exact: true });
+    await logResult.waitFor({ state: 'visible' });
+    await logResult.click();
+    const feedback = page.locator('#workout-feedback'); await feedback.waitFor();
+    assert.equal(await feedback.locator('[name=feedbackNote]').inputValue(), 'Synthetic saved note');
+    assert.equal(await feedback.locator('[name=actualDurationMin]').inputValue(), '', 'Planned time is never copied into actual minutes');
+    assert.equal(await feedback.locator('[name=preWeightKg]').inputValue(), language === 'en' ? '154.3234' : '70');
+    assert.equal(await feedback.locator('[name=postWeightKg]').inputValue(), language === 'en' ? '152.1188' : '69');
+    await feedback.locator('[name=feedbackStatus]').selectOption('partial');
+    await feedback.locator('[name=actualDurationMin]').fill('37');
+    await feedback.locator('[name=feedbackNote]').fill('Synthetic updated note');
+    await assertMobile(page, 'workout-results', language, width, feedback);
+    const saveResult = feedback.getByRole('button', { name: language === 'es' ? 'Guardar resultado' : 'Save result', exact: true });
+    await saveResult.click(); await feedback.getByRole('alert').filter({ hasText: 'Synthetic result not saved' }).waitFor();
+    assert.equal(await feedback.locator('[name=feedbackNote]').inputValue(), 'Synthetic updated note', 'A failed save retains the note');
+    failFeedback = false; await saveResult.click(); await feedback.waitFor({ state: 'hidden' });
+    await logResult.click();
+    await page.getByRole('button', { name: language === 'es' ? 'Registrar esfuerzo y recuperación' : 'Log effort & recovery', exact: true }).click(); await feedback.waitFor();
+    assert.equal(await feedback.locator('[name=feedbackNote]').inputValue(), 'Synthetic updated note', 'Saved note reloads');
+    assert.equal(await feedback.locator('[name=actualDurationMin]').inputValue(), '37');
+    recordMode = 'matched'; await page.goto(`${base}/today`); await logResult.click(); await feedback.waitFor();
+    assert.match(await feedback.innerText(), /Synthetic imported activity/, 'A linked plan opens its exact imported activity');
+    recordMode = 'choose'; await page.goto(`${base}/today`);
+    await page.getByRole('combobox', { name: language === 'es' ? /^Sesión de hoy/ : /^Today's session/ }).selectOption('synthetic-second-session');
+    await logResult.click();
+    await page.getByRole('button', { name: /Synthetic second planned workout/ }).click(); await feedback.waitFor();
+    assert.match(await feedback.innerText(), /Synthetic second planned workout/, 'Another planned workout remains an explicit choice');
+    const legacy = f.rich(false); legacy.sessions[0].feedbackNote = 'legacy private note';
+    legacy.athleteReview = { rawRecordCount: 1, possibleCopies: 0, records: [{ id: 'legacy', title: 'Legacy activity', sport: 'bike', source: 'manual', feedbackNote: 'legacy private result' }] };
+    await page.evaluate(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), { key: `jmm_today_${f.user.id}`, value: legacy });
+    forceOffline = true; await page.goto(`${base}/today`);
+    await page.locator('div[role="status"]').filter({ hasText: language === 'es' ? 'Copia sin conexión' : 'Offline copy' }).waitFor();
+    const migrated = await page.evaluate(key => localStorage.getItem(key), `jmm_today_${f.user.id}`);
+    assert.doesNotMatch(migrated, /legacy private note|legacy private result/, 'Offline upgrade removes legacy notes from persistent cache');
     results.push({ language, width, fastSavedPlanBeforeRichContext: 'pass', explicitUncheckedReview: 'pass', failedSaveKeepsDraft: 'pass',
       noAutomaticPostOrApproval: 'pass', importedNumericCorrection: 'pass', knownActualCorrection: 'pass',
-      staleSelectedLinkRecovery: 'pass', geometries: { fast: fastGeometry, review: reviewGeometry, checkin: checkinGeometry }, mockedReviewRequests: mutations.length });
+      staleSelectedLinkRecovery: 'pass', resultsSaveFailureAndReload: 'pass', weightUnits: 'pass', geometries: { fast: fastGeometry, review: reviewGeometry, checkin: checkinGeometry }, mockedReviewRequests: mutations.length });
   } catch (error) {
     const selectedCards = await page.locator('#today-workout').evaluateAll(nodes => nodes.map(node => ({
       children: Array.from(node.children).map(child => ({ tag: child.tagName, className: child.className,

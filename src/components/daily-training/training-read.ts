@@ -60,8 +60,17 @@ const optionalObject = (value: unknown, valid: (item: Record<string, any>) => bo
 const date = (value: unknown) => text(value) && Number.isFinite(Date.parse(value));
 const records = (value: unknown, valid: (item: Record<string, any>) => boolean) => Array.isArray(value) && value.every(item => object(item) && valid(item));
 const optionalRecords = (value: unknown, valid: (item: Record<string, any>) => boolean) => value == null || records(value, valid);
+/** The offline view cannot submit results, so personal feedback notes stay in
+ * the authenticated response rather than persistent browser storage. */
+export function todayOfflineSnapshot(value: Record<string, any>) {
+  return {
+    ...value,
+    sessions: value.sessions.map((session: Record<string, any>) => ({ ...session, feedbackNote: null })),
+    ...(value.athleteReview ? { athleteReview: { ...value.athleteReview, records: value.athleteReview.records.map((record: Record<string, any>) => ({ ...record, feedbackNote: null })) } } : {}),
+  };
+}
 const sessionSummary = (session: Record<string, any>) => text(session.id) && text(session.title) && text(session.sport) &&
-  finite(session.durationMin) && session.durationMin >= 0 && textFields(session, ["intensity", "startTime", "feedbackStatus", "revision"]);
+  finite(session.durationMin) && session.durationMin >= 0 && textFields(session, ["intensity", "startTime", "feedbackStatus", "feedbackNote", "revision"]);
 const cycleMetadata = (value: unknown) => value == null || (object(value) && object(value.baseline) && object(value.activity) &&
   optionalRecords(value.weeks, week => finite(week.week) && text(week.theme) && finite(week.totalMinutes)) &&
   (value.events == null || (object(value.events) && optionalRecords(value.events.events, event => text(event.dateKey) && optionalText(event.name) && optionalText(event.priority)))) &&

@@ -388,12 +388,11 @@ export function adaptSession(checkin: Checkin): Adaptation {
   // poor sleep, stress — already flow through their own weights above. The
   // cycle phase note is contextual guidance only (cycle-tracking.ts).
   if (sick) score -= 40;
-  // Objective morning signals: elevated RHR = recovery lagging (Plews 2013),
-  // low RHR = recovered. ±6 bpm vs the 7-day baseline.
+  // A higher resting pulse may prompt a conservative reduction. A lower
+  // pulse alone cannot establish recovery or increase the planned dose.
   if (checkin.rhr && checkin.rhrBaseline) {
     const rhrDelta = checkin.rhr - checkin.rhrBaseline;
     if (rhrDelta > 6) score -= 10;
-    else if (rhrDelta < -6) score += 4;
   }
   // Prescription-mismatch signal: yesterday felt HARDER than expected → the
   // current dose may be too big (small dip; "easier" never escalates — no

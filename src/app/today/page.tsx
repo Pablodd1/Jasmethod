@@ -6,7 +6,7 @@ import { SavedWorkoutPreviewCard } from "@/components/daily-training/SavedWorkou
 import { ExistingWorkoutReview } from "@/components/daily-training/ExistingWorkoutReview";
 import { DailyInputSummary } from "@/components/daily-training/DailyInputSummary";
 import { DailyReadinessPath } from "@/components/daily-training/DailyReadinessPath";
-import { readTrainingJson, TrainingReadError, isTodayTrainingResponse } from "@/components/daily-training/training-read";
+import { readTrainingJson, TrainingReadError, isTodayTrainingResponse, todayOfflineSnapshot } from "@/components/daily-training/training-read";
 import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
 import { JMetricsCard } from "@/components/j-metrics-card";
 import { CoachingConversation } from "@/components/coaching-conversation";
@@ -19,6 +19,7 @@ import { FuelTimeline } from "@/components/fuel-timeline";
 import { WorkoutSparkline } from "@/components/workout-sparkline";
 import { fmtVolumeDual } from "@/lib/units";
 import { fmtDistance } from "@/lib/units";
+import { unitsOf } from "@/lib/units";
 import { DailyRecoveryCard } from "@/components/daily-recovery-card";
 import { FitDownloadActions, fitDownloadUrl } from "@/components/daily-training/FitDownloadActions";
 import { endpointLabel } from "@/components/daily-training/training-contract";
@@ -29,6 +30,7 @@ import { actualFuelingFromForm } from "@/lib/actual-fueling";
 import { AthleteDayReview } from "@/components/daily-training/AthleteDayReview";
 import { SessionMeasurementsFields } from "@/components/daily-training/SessionMeasurementsFields";
 import { observationsFromForm } from "@/lib/session-observations";
+import { todayFeedbackTarget } from "@/lib/today-feedback-target";
 export default function TodayPage() {
   const { user } = useAuth();
   return <TodayPageContent key={user?.id || "signed-out"} />;
@@ -53,6 +55,7 @@ function TodayPageContent() {
     [selected, setSelected] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sessionId")),
     [busy, setBusy] = useState(false),
     [feedback, setFeedback] = useState(false),
+    [expandReports, setExpandReports] = useState(false),
     [message, setMessage] = useState("");
   const [savedPlan, setSavedPlan] = useState<any>(null);
   const [syncStatus, setSyncStatus] = useState("");
@@ -91,7 +94,7 @@ function TodayPageContent() {
       setOffline(false);
       setError("");
       try {
-        localStorage.setItem(`jmm_today_${user.id}`, JSON.stringify(d));
+        localStorage.setItem(`jmm_today_${user.id}`, JSON.stringify(todayOfflineSnapshot(d)));
       } catch {}
     } catch (e: unknown) {
       if (!mounted.current || controller.signal.aborted) return;
@@ -99,12 +102,17 @@ function TodayPageContent() {
       setOffline(true);
       if (e instanceof TrainingReadError && (e.status === 401 || e.status === 403)) {
         setData(null);
+        try { localStorage.removeItem(`jmm_today_${user.id}`); } catch { /* Browser storage is optional. */ }
         return;
       }
       try {
         const saved = localStorage.getItem(`jmm_today_${user.id}`);
         const cached: unknown = saved ? JSON.parse(saved) : null;
-        if (isTodayTrainingResponse(cached)) setData(cached);
+        if (isTodayTrainingResponse(cached)) {
+          const safe = todayOfflineSnapshot(cached);
+          setData(safe);
+          localStorage.setItem(`jmm_today_${user.id}`, JSON.stringify(safe));
+        }
       } catch {}
     } finally {
       if (!controller.signal.aborted) setLoading(false);
@@ -161,6 +169,20 @@ function TodayPageContent() {
     ) ||
     data?.sessions[0];
   const feedbackSession = reportActivityId ? data?.athleteReview?.records.find((record: any) => record.id === reportActivityId) : session;
+  // Imported review records expose their observed minutes; planned sessions
+  // must never use a planned duration as an actual measurement.
+  const feedbackActualMinutes = reportActivityId ? feedbackSession?.minutes ?? null : feedbackSession?.actualDurationMin ?? null;
+  const displayUnits = data?.units === "imperial" || data?.units === "metric" ? data.units : unitsOf(user?.profile?.units, user?.language);
+  const feedbackTarget = todayFeedbackTarget(session, data?.athleteReview?.records ?? []);
+  function openFeedbackTarget() {
+    if (feedbackTarget.kind === 'session' || feedbackTarget.kind === 'record') {
+      setReportActivityId(feedbackTarget.kind === 'record' ? feedbackTarget.id : null); setFeedback(true);
+      requestAnimationFrame(() => document.getElementById("workout-feedback")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } else if (feedbackTarget.kind === 'choose') {
+      setExpandReports(true);
+      requestAnimationFrame(() => document.getElementById("today-reports")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }
   async function action(url: string, body: any, method = "POST") {
     setBusy(true);
     setError("");
@@ -173,6 +195,7 @@ function TodayPageContent() {
       });
       const d = await r.json();
       if (!r.ok) throw Error(d.error || "Request failed");
+      if (url === "/api/plan" && method === "PUT" && (d.ok !== true || d.workout?.id !== body?.sessionId)) throw Error(es ? "No se pudo verificar el guardado. Recarga antes de intentarlo de nuevo." : "The save could not be verified. Reload before trying again.");
       setMessage(d.message || (es ? "Guardado" : "Saved"));
       setFeedback(false);
       await load();
@@ -214,13 +237,17 @@ function TodayPageContent() {
             ? "No necesitas reloj ni pruebas para registrar tu entrenamiento. Si faltan referencias válidas, sigue los objetivos de esfuerzo del plan."
             : "No watch or benchmark test is required to report training. When usable benchmarks are missing, follow the plan's effort instructions."}</p>
         </div>
+        <nav className="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label={es ? "Acciones de hoy" : "Today actions"}>
+          <a href={session ? "#today-workout" : "/training"} className="btn-primary min-h-12 justify-center">{es ? "Ver entrenamiento" : "View workout"}</a>
+          <button className="btn-secondary min-h-12 justify-center" disabled={busy || offline || feedbackTarget.kind === 'none'} onClick={openFeedbackTarget}>{es ? "Registrar resultado y notas" : "Log results & notes"}</button>
+        </nav>
         {!data && savedPlan?.sessions?.length > 0 && <section className="space-y-3" aria-label={es ? "Plan guardado mientras cargan los datos" : "Saved plan while context loads"}>
           <p role="status" className="text-sm">{es ? "Tu sesión guardada ya está disponible. El contexto y los datos se están revisando; esta vista no autoriza el ejercicio." : "Your saved session is available. Context and data are still being reviewed; this preview does not authorize exercise."}</p>
           {savedPlan.sessions.map((s: any) => <div key={s.id}><p className="font-semibold">{s.title} · {s.durationMin} min</p><SavedWorkoutPreviewCard sessionId={s.id} es={es} /></div>)}
         </section>}
         {data?.sessions.length > 0 && (data.sessions.length > 1 || !session) && <label className="block text-sm">{es ? "Sesión de hoy" : "Today's session"}<select className="input" value={session?.id ?? ""} onChange={event => {
             const id = event.target.value; const url = new URL(window.location.href); url.searchParams.set("sessionId", id); window.history.pushState({}, "", url);
-            setSelected(id); setFeedback(false); setMessage(""); setError("");
+            setSelected(id); setReportActivityId(null); setFeedback(false); setMessage(""); setError("");
           }}>{!session && <option value="" disabled>{es ? "Elige una sesión actual" : "Choose a current session"}</option>}{data.sessions.map((s: any) => <option key={s.id} value={s.id}>{s.title} · {s.plannedDurationMin ?? s.durationMin} min</option>)}</select></label>}
         {data && <DailyReadinessPath es={es} date={data.date} cycle={data.cycle} week={data.weekReview} context={data.inputContext} mode={data.recovery?.mode} safetyStatus={data.recovery?.safetyStatus} reviewedSessionId={data.recovery?.reviewedSessionId} hasSession={!!session} offline={offline} />}
         {session && <section id="today-workout" className="space-y-3 scroll-mt-4">
@@ -252,22 +279,19 @@ function TodayPageContent() {
             {message}
           </p>
         )}
-        <nav className="grid grid-cols-1 sm:grid-cols-3 gap-3" aria-label={es ? "Acciones de hoy" : "Today actions"}>
-          <a href={session ? "#today-workout" : "/training"} className="btn-primary min-h-12 justify-center">{es ? "Ver entrenamiento" : "View workout"}</a>
-          <Link href="/checkin" className="btn-secondary min-h-12 justify-center">{es ? "Algo cambió / check-in" : "Something changed / check-in"}</Link>
-          <button className="btn-secondary min-h-12 justify-center" disabled={!session || !!session.matchedPlanId || busy || offline} onClick={() => { setReportActivityId(null); setFeedback(true); requestAnimationFrame(() => document.getElementById("workout-feedback")?.scrollIntoView({ behavior:"smooth", block:"start" })); }}>{es ? "¿Cómo te sentiste?" : "Log how it felt"}</button>
-        </nav>
-        {data?.athleteReview && <AthleteDayReview review={data.athleteReview} plannedMinutes={session?.prescription?.scaled?.originalMin ?? session?.durationMin} es={es} onReport={id => { setReportActivityId(id); setFeedback(true); requestAnimationFrame(() => document.getElementById('workout-feedback')?.scrollIntoView({behavior:'smooth',block:'start'})); }} />}
-            {feedbackSession && feedback && (!feedbackSession.matchedPlanId || reportActivityId) && (
+        {data?.athleteReview && <div id="today-reports" className="scroll-mt-20"><AthleteDayReview review={data.athleteReview} plannedMinutes={session?.prescription?.scaled?.originalMin ?? session?.durationMin} es={es} expandRecords={expandReports} onRecordsToggle={setExpandReports} onReport={id => { const record = data.athleteReview.records.find((item: any) => item.id === id); if (!record || record.matchedPlanId) return; setReportActivityId(id); setFeedback(true); requestAnimationFrame(() => document.getElementById('workout-feedback')?.scrollIntoView({behavior:'smooth',block:'start'})); }} />
+          {expandReports && session && !session.matchedPlanId && !data.athleteReview.records.some((record: any) => record.id === session.id) && <button type="button" className="btn-secondary mt-3" onClick={() => { setReportActivityId(null); setFeedback(true); requestAnimationFrame(() => document.getElementById('workout-feedback')?.scrollIntoView({behavior:'smooth',block:'start'})); }}>{es ? `Registrar la sesión planificada: ${session.title}` : `Log planned session: ${session.title}`}</button>}
+        </div>}
+            {feedbackSession && feedback && !feedbackSession.matchedPlanId && (
               <form
-                key={feedbackSession.id}
+                key={`${feedbackSession.id}:${displayUnits}`}
                 id="workout-feedback"
                 className="card space-y-3"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const f = new FormData(e.currentTarget);
                   let actualFueling, observations;
-                  try { actualFueling = actualFuelingFromForm(f); observations = observationsFromForm(f); } catch (cause) { setError((cause as Error).message); return; }
+                  try { actualFueling = actualFuelingFromForm(f); observations = observationsFromForm(f, displayUnits, feedbackSession); } catch (cause) { setError((cause as Error).message); return; }
                   action(
                     "/api/plan",
                     { sessionId: feedbackSession.id, expectedRevision: feedbackSession.feedbackRevision, ...Object.fromEntries(f), ...observations, actualFueling },
@@ -312,7 +336,7 @@ function TodayPageContent() {
                       min="0"
                       max="1440"
                       defaultValue={
-                        feedbackSession.actualDurationMin ?? feedbackSession.minutes ?? ""
+                        feedbackSession.actualDurationMin ?? (reportActivityId ? feedbackSession.minutes : "") ?? ""
                       }
                     />
                   </label>
@@ -334,8 +358,8 @@ function TodayPageContent() {
                     {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </label>
-                <SessionMeasurementsFields saved={feedbackSession} details={feedbackSession.actualDetails} actualMinutes={feedbackSession.actualDurationMin ?? feedbackSession.minutes} es={es} />
-                <ActualFuelingFields key={`${feedbackSession.id}-${feedbackSession.revision}`} details={feedbackSession.actualDetails} actualDurationMin={feedbackSession.actualDurationMin ?? feedbackSession.minutes} es={es} />
+                <SessionMeasurementsFields saved={feedbackSession} details={feedbackSession.actualDetails} actualMinutes={feedbackActualMinutes} es={es} units={displayUnits} />
+                <ActualFuelingFields key={`${feedbackSession.id}-${feedbackSession.revision}`} details={feedbackSession.actualDetails} actualDurationMin={feedbackActualMinutes} es={es} />
                 <textarea
                   aria-label="Workout feedback"
                   name="feedbackNote"
@@ -347,6 +371,7 @@ function TodayPageContent() {
                       : "Actual sport if substituted, difficulty, discomfort…"
                   }
                 />
+                {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
                 <button disabled={busy || offline} className="btn-primary">
                   {es ? "Guardar resultado" : "Save result"}
                 </button>
@@ -698,7 +723,7 @@ function TodayPageContent() {
                   {!session.matchedPlanId && <button
                     className="btn-secondary"
                     disabled={busy || offline}
-                    onClick={() => setFeedback(!feedback)}
+                    onClick={openFeedbackTarget}
                   >
                     {es ? "Registrar resultado" : "Log workout result"}
                   </button>}

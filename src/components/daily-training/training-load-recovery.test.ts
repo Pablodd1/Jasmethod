@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { readTrainingJson, TrainingReadError, isSavedPlanResponse, isTrainingProfileResponse, isTodayTrainingResponse } from "./training-read";
+import { readTrainingJson, TrainingReadError, isSavedPlanResponse, isTrainingProfileResponse, isTodayTrainingResponse, todayOfflineSnapshot } from "./training-read";
 import { athleteDayReview } from "../../lib/athlete-day-review";
 import { readinessReasonText } from "./readiness-copy";
 import { UniversalWorkoutCard, WorkoutHeader } from "./UniversalWorkoutCard";
@@ -12,6 +12,15 @@ import { buildUniversalWorkoutCard } from "../../lib/universal-workout-card-serv
 import { resolveCheckinSafety } from "../../lib/checkin-safety";
 
 const options = () => ({ signal: new AbortController().signal, label: "Saved training", validate: isSavedPlanResponse });
+
+test("offline Today cache removes personal feedback notes without mutating live records", () => {
+  const live = { sessions: [{ id: "planned", feedbackNote: "private note" }], athleteReview: { records: [{ id: "actual", feedbackNote: "private result" }] } };
+  const cached = todayOfflineSnapshot(live);
+  assert.equal(cached.sessions[0].feedbackNote, null);
+  assert.equal(cached.athleteReview.records[0].feedbackNote, null);
+  assert.equal(live.sessions[0].feedbackNote, "private note");
+  assert.equal(live.athleteReview.records[0].feedbackNote, "private result");
+});
 const jsonResponse = (value: unknown) => new Response(JSON.stringify(value), { status: 200 });
 function render(element: React.ReactElement) {
   const previous = (globalThis as any).React;
