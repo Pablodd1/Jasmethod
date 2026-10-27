@@ -134,7 +134,7 @@ async function journey(browser, language, width) {
       }
       return route.fulfill({ json: {...rich,...(!withMeasurements?{inputContext:null,connectors:[]}:{} )} });
     }
-    if (path === '/api/plan/preview') { assert.equal(url.searchParams.get('sessionId'), f.workout.id); return route.fulfill({ json: f.preview }); }
+    if (path === '/api/plan/preview') { const id = url.searchParams.get('sessionId'); assert.ok([f.workout.id,'synthetic-second-session'].includes(id)); return route.fulfill({ json: { ...f.preview, sessionId: id } }); }
     if (path === '/api/workout/card') { assert.ok([f.workout.id,'synthetic-second-session'].includes(url.searchParams.get('id'))); return route.fulfill({ json: f.card(reviewed) }); }
     if (path === '/api/checkin') return route.fulfill({ json: withMeasurements?f.checkin:{...f.checkin,inputContext:null,checkin:null,previousSessions:[]} });
     if (path === '/api/connectors') return route.fulfill({ json: { providers: withMeasurements?[{ provider: 'whoop', status: 'connected', lastSyncAt: now.toISOString() }]:[] } });
