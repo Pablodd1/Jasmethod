@@ -140,7 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="jmm-app-surface flex min-h-screen">
       <aside className="hidden md:flex w-60 flex-col bg-ocean-950 text-white fixed inset-y-0 left-0 z-20">
         <div className="px-5 py-6 border-b border-ocean-900">
           <div className="flex items-center gap-2">
@@ -250,7 +250,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <main className="flex-1 min-w-0 md:ml-60 pt-14 md:pt-0 pb-16 md:pb-6">
+      <main className="jmm-app-main flex-1 min-w-0 md:ml-60 pt-14 md:pt-0 pb-16 md:pb-6">
         <ErrorTelemetry />
         <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-8">
           {pathname === "/today" && <nav aria-label={lang === "es" ? "Vista del entrenamiento de hoy" : "Today's training display"} className="mb-5 flex flex-wrap items-center gap-3 text-sm">
@@ -277,7 +277,7 @@ export function MobileNav() {
   const { user } = useAuth();
   const lang = (user?.language || "es") as Lang;
   return (
-    <nav aria-label={lang === "es" ? "Navegación principal" : "Main navigation"} className="md:hidden fixed bottom-0 inset-x-0 z-20 bg-white border-t border-sand-200 flex justify-around py-2">
+    <nav aria-label={lang === "es" ? "Navegación principal" : "Main navigation"} className="jmm-mobile-nav md:hidden fixed z-20 flex justify-around">
       {NAV.map((item) => {
         const Icon = item.icon;
         const active = isActive(pathname, item.href);
@@ -286,9 +286,9 @@ export function MobileNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1 text-center text-xs ${active ? "text-ocean-700 font-semibold" : "text-slate-600"}`}
+            className={`jmm-mobile-nav-link flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1 text-center text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-700 ${active ? "text-ocean-800 font-semibold" : "text-slate-700"}`}
           >
-            <Icon className="w-5 h-5" />
+            <Icon className="w-5 h-5 shrink-0" aria-hidden="true" />
             {navLabel(item, lang)}
           </Link>
         );

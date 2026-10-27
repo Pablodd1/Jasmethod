@@ -71,6 +71,21 @@ async function main(){const browser=await chromium.launch({headless:true});try{
     failLoad=false;
     await page.goto(base+'/training');await page.getByText('Confirm recent training and available time',{exact:true}).waitFor({state:'attached'});
     await page.getByRole('link',{name:es?'Tu plan':'Your plan',exact:true}).waitFor();await shot('07-plan-needs-setup');
+    if(width===390){
+      const nav=page.locator('nav.jmm-mobile-nav');
+      await nav.waitFor();assert.equal(await nav.getByRole('link').count(),4);
+      const active=nav.getByRole('link',{name:es?'Plan de entrenamiento':'Training plan',exact:true});
+      assert.equal(await active.getAttribute('aria-current'),'page');
+      for(const link of await nav.getByRole('link').all()){
+        const box=await link.boundingBox();assert.ok(box&&box.width>=44&&box.height>=44,'Each mobile navigation link has a full touch target');
+      }
+      await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
+      const footer=await page.locator('main footer').boundingBox(), bar=await nav.boundingBox();
+      assert.ok(footer&&bar&&footer.y+footer.height<=bar.y,'Footer remains reachable above the floating navigation');
+      const path=`${language}-${width}-glass-navigation.png`;
+      await page.screenshot({path:`${dir}/${path}`});
+      results.push({language,viewport:`${width}x844`,step:'glass-navigation',artifact:path,status:'PASS'});
+    }
     await page.goto(base+'/onboard?redo=1&step=race&return=training');
     await page.getByRole('heading',{name:es?'Antes de ver tu plan':'Before your plan preview',exact:true}).waitFor();await shot('08-planning-setup');
     assert.equal(writes,3,'Only explicit create/retry and venue edit write');

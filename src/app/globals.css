@@ -11,6 +11,57 @@ body {
   @apply bg-paper text-ink-800 font-body antialiased;
 }
 
+/* Calm, warm JMM tones on the authenticated app; public pages keep their own styling. */
+.jmm-app-surface {
+  background-color: #f7f4ee;
+  background-image:
+    radial-gradient(ellipse at 90% 0%, rgba(169, 208, 218, 0.24), transparent 36rem),
+    radial-gradient(ellipse at 0% 32%, rgba(230, 190, 164, 0.19), transparent 32rem),
+    linear-gradient(165deg, #fbfaf7 0%, #f5f4ef 54%, #edf3f2 100%);
+}
+
+/* An opaque fallback keeps the labels legible where backdrop blur is unavailable. */
+.jmm-mobile-nav {
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  max-width: 38rem;
+  margin-inline: auto;
+  padding: 0.35rem;
+  gap: 0.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 1.25rem;
+  background: #f9fbfa;
+  box-shadow: 0 10px 30px rgba(16, 47, 80, 0.18), 0 2px 8px rgba(16, 47, 80, 0.08);
+}
+
+@supports ((-webkit-backdrop-filter: blur(18px)) or (backdrop-filter: blur(18px))) {
+  .jmm-mobile-nav {
+    background: rgba(249, 251, 250, 0.88);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    backdrop-filter: blur(18px) saturate(135%);
+  }
+}
+
+.jmm-mobile-nav-link {
+  border-radius: 0.9rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.jmm-mobile-nav-link[aria-current="page"] {
+  background: rgba(186, 232, 255, 0.66);
+}
+
+@media (max-width: 767px) {
+  .jmm-app-main { padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jmm-mobile-nav-link { transition: none; }
+}
+
 h1, h2, h3, h4 {
   @apply font-display;
 }
