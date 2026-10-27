@@ -82,7 +82,7 @@ async function journey(browser, language, width) {
   page.setDefaultTimeout(15000);
   const mutations = [], reads = [];
   let releaseRich, richReleased = false, reviewed = false, failReview = true, withMeasurements=true, cognitiveReject=true, cognitiveWrites=0;
-  let feedbackSaved = { feedbackRevision: 'e'.repeat(64), feedbackNote: 'Synthetic saved note', preWeightKg: 70, postWeightKg: 69 }, failFeedback = true, recordMode = 'none', forceOffline = false;
+  let feedbackSaved = { feedbackRevision: 'e'.repeat(64), feedbackNote: 'Synthetic saved note', preWeightKg: 70, postWeightKg: 69 }, failFeedback = true, recordMode = 'none', forceOffline = false, preWorkoutSaved = null, failPreWeight = true;
   const richGate = new Promise(resolve => { releaseRich = () => { richReleased = true; resolve(); }; });
   page.on('pageerror', error => errors.push({ language, width, error: String(error) }));
   await context.route('**/*', async route => {
@@ -91,6 +91,12 @@ async function journey(browser, language, width) {
     if (!url.pathname.startsWith('/api/')) return route.continue();
     const path = url.pathname;
     if (request.method() !== 'GET') {
+      if (path === '/api/workout/pre-weight' && request.method() === 'PUT') {
+        const body = request.postDataJSON(); assert.equal(body.sessionId, f.workout.id); assert.equal(body.expectedMeasurementRevision, null); assert.equal(body.weightKg, 70);
+        if (failPreWeight) return route.fulfill({ status: 503, json: { error: 'Synthetic weight not saved' } });
+        preWorkoutSaved = { weightKg: 70, observedAt: now.toISOString(), revision: now.toISOString(), source: 'athlete_reported' };
+        return route.fulfill({ json: { ok: true, sessionId: f.workout.id, measurement: preWorkoutSaved } });
+      }
       if (path === '/api/plan' && request.method() === 'PUT') {
         const body = request.postDataJSON();
         assert.equal(body.sessionId, f.workout.id);
@@ -123,7 +129,7 @@ async function journey(browser, language, width) {
     if (path === '/api/today' && url.searchParams.get('view') === 'plan') return route.fulfill({ json: f.fast });
     if (path === '/api/today') {
       if (forceOffline) return route.fulfill({ status: 503, json: { error: 'Synthetic offline' } });
-      await richGate; const rich = f.rich(reviewed); rich.units = language === 'en' ? 'imperial' : 'metric'; rich.sessions[0] = { ...rich.sessions[0], ...feedbackSaved };
+      await richGate; const rich = f.rich(reviewed); rich.units = language === 'en' ? 'imperial' : 'metric'; rich.sessions[0] = { ...rich.sessions[0], ...feedbackSaved, preWorkoutWeight: preWorkoutSaved };
       if (recordMode !== 'none') {
         const record = recordMode === 'saved'
           ? { ...feedbackSaved, id: f.workout.id, title: f.workout.title, sport: 'bike', source: 'plan', minutes: 37 }
@@ -280,6 +286,18 @@ async function journey(browser, language, width) {
     await logResult.click();
     await page.getByRole('button', { name: /Synthetic second planned workout/ }).click(); await feedback.waitFor();
     assert.match(await feedback.innerText(), /Synthetic second planned workout/, 'Another planned workout remains an explicit choice');
+    recordMode = 'none'; feedbackSaved = { feedbackRevision: 'e'.repeat(64), feedbackNote: null, preWeightKg: null, postWeightKg: null };
+    await page.goto(`${base}/today`);
+    const preWeight = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: language === 'es' ? 'Peso antes del entrenamiento' : 'Weight before training' }) });
+    await preWeight.locator('summary').click();
+    await preWeight.locator('input').fill(language === 'en' ? '154.3234' : '70');
+    await assertMobile(page, 'pre-weight', language, width, preWeight);
+    await preWeight.getByRole('button', { name: language === 'es' ? 'Guardar peso' : 'Save weight', exact: true }).click();
+    await preWeight.getByRole('alert').filter({ hasText: 'Synthetic weight not saved' }).waitFor();
+    failPreWeight = false; await preWeight.getByRole('button', { name: language === 'es' ? 'Guardar peso' : 'Save weight', exact: true }).click();
+    await page.getByText(language === 'es' ? /70 kg guardado/ : /154\.3234 lb saved/).waitFor();
+    await logResult.click(); await feedback.waitFor();
+    assert.equal(await feedback.locator('[name=preWeightKg]').inputValue(), language === 'en' ? '154.3234' : '70', 'The exact session weigh-in is available for the later result');
     const legacy = f.rich(false); legacy.sessions[0].feedbackNote = 'legacy private note';
     legacy.athleteReview = { rawRecordCount: 1, possibleCopies: 0, records: [{ id: 'legacy', title: 'Legacy activity', sport: 'bike', source: 'manual', feedbackNote: 'legacy private result' }] };
     await page.evaluate(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), { key: `jmm_today_${f.user.id}`, value: legacy });
