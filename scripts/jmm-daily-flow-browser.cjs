@@ -284,7 +284,7 @@ async function journey(browser, language, width) {
     legacy.athleteReview = { rawRecordCount: 1, possibleCopies: 0, records: [{ id: 'legacy', title: 'Legacy activity', sport: 'bike', source: 'manual', feedbackNote: 'legacy private result' }] };
     await page.evaluate(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), { key: `jmm_today_${f.user.id}`, value: legacy });
     forceOffline = true; await page.goto(`${base}/today`);
-    await page.getByText(language === 'es' ? 'Copia sin conexión' : 'Offline copy', { exact: false }).waitFor();
+    await page.locator('div[role="status"]').filter({ hasText: language === 'es' ? 'Copia sin conexión' : 'Offline copy' }).waitFor();
     const migrated = await page.evaluate(key => localStorage.getItem(key), `jmm_today_${f.user.id}`);
     assert.doesNotMatch(migrated, /legacy private note|legacy private result/, 'Offline upgrade removes legacy notes from persistent cache');
     results.push({ language, width, fastSavedPlanBeforeRichContext: 'pass', explicitUncheckedReview: 'pass', failedSaveKeepsDraft: 'pass',
