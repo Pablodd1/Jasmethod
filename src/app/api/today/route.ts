@@ -110,7 +110,7 @@ export async function GET(req: Request) {
         jStress: workoutJStress(w),
         durationMin: 0, durationIsEstimate: false, intensity: null, tss: null, if: null, distanceKm: null,
         startTime: w.startTime, completed: w.completed, feedbackStatus: w.feedbackStatus,
-        actualDurationMin: w.actualDurationMin, actualSport: w.actualSport, actualDetails: w.actualDetails, rpe: w.rpe, avgHr: w.avgHr, avgPower: w.avgPower, calories: w.calories, preWeightKg: w.preWeightKg, postWeightKg: w.postWeightKg, regenCount: w.regenCount, approved: w.approved,
+        actualDurationMin: w.actualDurationMin, actualSport: w.actualSport, actualDetails: w.actualDetails, feedbackNote: w.feedbackNote, rpe: w.rpe, avgHr: w.avgHr, avgPower: w.avgPower, calories: w.calories, preWeightKg: w.preWeightKg, postWeightKg: w.postWeightKg, regenCount: w.regenCount, approved: w.approved,
         dayOff: !!w.planDay?.dayOff, prescription: { steps: [], targets: {}, verdict: "rest", detail: {}, scaled: { reason: resolved.resolutionError, originalMin: w.durationMin } },
         fuel: null, fuelCurve: [], post: null, coachNotes: null,
       }];
@@ -163,6 +163,7 @@ export async function GET(req: Request) {
         actualDurationMin: w.actualDurationMin,
         actualDetails: w.actualDetails,
         actualSport: w.actualSport,
+        feedbackNote: w.feedbackNote,
         rpe: w.rpe,
         avgHr: w.avgHr, avgPower: w.avgPower, calories: w.calories, preWeightKg: w.preWeightKg, postWeightKg: w.postWeightKg,
         regenCount: w.regenCount,

@@ -55,6 +55,17 @@ test("sessionFelt harder dips the score; easier never raises it (single-signal r
   assert.strictEqual(easier, base);
 });
 
+test("a lower resting heart rate alone never raises today's training dose", () => {
+  const reported = { sleep: 4, soreness: 3, motivation: 4, energy: 3, stress: 3, sick: false, newPain: false, urgentSymptoms: false, availableMin: 60 };
+  const baseline = adaptSession(reported);
+  const lowerPulse = adaptSession({ ...reported, rhr: 48, rhrBaseline: 60 });
+  assert.strictEqual(baseline.verdict, "trim");
+  assert.strictEqual(lowerPulse.verdict, baseline.verdict);
+  assert.strictEqual(lowerPulse.durationFactor, baseline.durationFactor);
+  assert.strictEqual(lowerPulse.score, baseline.score);
+  assert.ok(adaptSession({ ...reported, rhr: 68, rhrBaseline: 60 }).score < baseline.score);
+});
+
 test("pain override respects an existing rest verdict (illness stays rest)", () => {
   const p = adaptSession({
     ...good,

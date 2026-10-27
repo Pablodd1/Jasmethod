@@ -34,6 +34,16 @@ test('observation forms preserve unknown/zero and reject invalid measurements ra
  for(const value of [{ftp:220},{avgHr:0},{avgPower:'200'},{calories:1.5},{postWeightKg:0},{preWeightKg:Infinity}])assert.throws(()=>parseSessionObservations(value));
  assert.equal(readSessionObservations({avgHr:0,avgPower:NaN}).avgHr,null);
 });
+test('pre and post workout weights honor display units and preserve canonical kilograms',()=>{
+ const form=new FormData();form.set('preWeightKg','154.3234');form.set('postWeightKg','152.1188');
+ const saved=observationsFromForm(form,'imperial');
+ assert.ok(Math.abs(saved.preWeightKg!-70)<0.0001);assert.ok(Math.abs(saved.postWeightKg!-69)<0.0001);
+ form.set('postWeightKg','');assert.equal(observationsFromForm(form,'imperial').postWeightKg,null);
+ const html=renderToStaticMarkup(React.createElement(SessionMeasurementsFields,{saved:{preWeightKg:70,postWeightKg:69},units:'imperial'}));
+ assert.match(html,/Weight before \(lb\)/);assert.match(html,/Weight after \(lb\)/);assert.match(html,/154\.3234/);
+ const precise=70.123456;form.set('preWeightKg',String(Number((precise*2.20462).toFixed(4))));
+ assert.equal(observationsFromForm(form,'imperial',{preWeightKg:precise}).preWeightKg,precise);
+});
 test('mass change never becomes sweat rate without complete actual fluid/urine/duration reports',()=>{
  assert.deepEqual(weightChange(70,69),{lostKg:1,percent:1.43});
  assert.equal(observedSweatRate(70,69,500,null,60),null);

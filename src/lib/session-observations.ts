@@ -1,3 +1,5 @@
+import { weightFromDisplay, weightToDisplay, type UnitSystem } from './units';
+
 /** Optional reported results. They never supply targets, calorie needs or readiness. */
 export const OBSERVATION_LIMITS = {
   avgHr: [20, 240], avgPower: [0, 2500], calories: [0, 20000],
@@ -15,12 +17,20 @@ export function parseSessionObservations(value: unknown): SessionObservations {
   }
   return result;
 }
-export function observationsFromForm(form: FormData): SessionObservations {
+export function sessionWeightInput(kg: number | null | undefined, units: UnitSystem): string {
+  return kg == null ? '' : String(Number(weightToDisplay(kg, units).toFixed(4)));
+}
+export function observationsFromForm(form: FormData, units: UnitSystem = 'metric', original: SessionObservations = {}): SessionObservations {
   const values: Record<string, number | null> = {};
   for (const name of Object.keys(OBSERVATION_LIMITS)) {
     if (!form.has(name)) continue;
     const raw = form.get(name);
-    values[name] = raw === '' ? null : Number(raw);
+    const value = raw === '' ? null : Number(raw);
+    if (value !== null && (name === 'preWeightKg' || name === 'postWeightKg')) {
+      const saved = original[name];
+      values[name] = saved != null && value === Number(sessionWeightInput(saved, units))
+        ? saved : Number(weightFromDisplay(value, units).toFixed(4));
+    } else values[name] = value;
   }
   return parseSessionObservations(values);
 }
