@@ -61,3 +61,14 @@ test("precise manual and direct Garmin observations keep provenance; incomplete 
   const garmin=row("garmin","bike",{source:"garmin_direct",externalId:"garmin:synthetic",distanceKm:30,durationMin:60,actualDurationMin:60,actualDetails:JSON.stringify({schemaVersion:1,providerEvidence:providerSportMeasurements("bike",3591,30)})});
   const g=sportEvidence([garmin],"owner",[],now).find(s=>s.sport==="bike")!;assert.equal(g.records[0].precision,"exact");assert.equal(g.records[0].averageSpeedKmh,30*3600/3591);
 });
+test("fueling preserves exact provider timing but an actual-duration correction invalidates old precision",()=>{
+  const providerEvidence=providerSportMeasurements("bike",3591,30);
+  const base=row("garmin","bike",{source:"garmin_direct",externalId:"garmin:synthetic",distanceKm:30,durationMin:60,actualDurationMin:60,
+    actualDetails:JSON.stringify({schemaVersion:1,source:"athlete_report",values:{},providerEvidence,actualFueling:{carbsG:45}})});
+  const view=(r:SportRow)=>sportEvidence([r],"owner",[],now).find(s=>s.sport==="bike")!.records[0];
+  assert.equal(view(base).durationSeconds,3591);assert.equal(view(base).precision,"exact");
+  for(const actualDurationMin of [59,61]){const corrected=view({...base,actualDurationMin});assert.equal(corrected.precision,"whole_minutes");assert.equal(corrected.durationSeconds,actualDurationMin*60);assert.equal(corrected.averageSpeedKmh,30*60/actualDurationMin);}
+  const manual=parseSportEntry(entry({duration:"59:51"}),"UTC",now);
+  const corrected=view(row("manual","bike",{durationMin:60,actualDurationMin:59,distanceKm:30,actualDetails:manual.workout.actualDetails}));
+  assert.equal(corrected.precision,"whole_minutes");assert.equal(corrected.durationSeconds,3540);
+});

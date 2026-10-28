@@ -26,11 +26,12 @@ export function sportEvidence(rows:SportRow[],userId:string,decisions:ActivityDe
         supplemented=r.distanceKm==null&&d?.manualDistanceEvidence?.version===1&&d.manualDistanceEvidence.distanceKm===distance&&distance!==null;
         annotationConflict=manualAnnotations&&distance!==r.distanceKm&&!supplemented;
         // Athlete corrections are retained separately from the provider's measurement.
-        if(r.source==="garmin_direct"&&d?.source==="athlete_report"&&!supplemented)detail=null;
+        if(r.source==="garmin_direct"&&d?.source==="athlete_report"&&annotationConflict)detail=null;
         if(detail&&supplemented)detail={...detail,distanceKm:distance,averageSpeedKmh:speedFromDistance(distance,detail.durationSeconds)};
       }catch{/* Missing quantities stay unknown. */}
       const minutes=activityActualMinutes(r)!;
-      if(detail&&(detail.distanceKm!==distance||Math.abs(detail.durationSeconds-minutes*60)>60))detail=null;
+      const evidenceMinutes=detail?(r.source==="garmin_direct"?Math.max(1,Math.round(detail.durationSeconds/60)):Math.ceil(detail.durationSeconds/60)):null;
+      if(detail&&(detail.distanceKm!==distance||evidenceMinutes!==minutes))detail=null;
       const seconds=detail?.durationSeconds??minutes*60,allowed=isDerivedActivityEligible(r)&&!pendingIds.has(r.id);
       const speed=allowed?speedFromDistance(distance,seconds):null;
       return {id:r.id,revision:r.rawEvidenceRevision??sportRowRevision(r),observedAt:new Date(r.date).toISOString(),source:r.source||"unknown",manualAnnotations,annotationConflict,supplemented,precision:detail?"exact" as const:"whole_minutes" as const,
