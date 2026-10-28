@@ -184,6 +184,11 @@ jobs:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
         run: node --import tsx scripts/jmm-athlete-entry-browser.cjs
 
+      - name: Separate sport data, Garmin precision and manual fallback acceptance
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-sport-evidence-browser.cjs
+
       - name: Mobile feedback persistence and single-panel browser acceptance
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
@@ -252,6 +257,8 @@ jobs:
             .local/jmm-checkin-persistence-browser/*.png
             .local/jmm-athlete-entry-browser/report.json
             .local/jmm-athlete-entry-browser/*.png
+            .local/jmm-sport-evidence-browser/report.json
+            .local/jmm-sport-evidence-browser/*.png
             .local/jmm-metrics-integration/report.json
             .local/jmm-recovery-integration/report.json
             .local/jmm-race-scenario-integration/report.json

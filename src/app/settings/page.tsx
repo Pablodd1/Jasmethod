@@ -1,6 +1,7 @@
 "use client";
 import { NutritionContextEditor } from "@/components/nutrition-context-editor";
 import {BaselineTests} from "@/components/baseline-tests";
+import { SportDataPanel } from "@/components/SportDataPanel";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -663,6 +664,7 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+    <div className="mb-5"><SportDataPanel/></div>
     <BaselineTests onSaved={load} />
       </ProtectedPage>
   );

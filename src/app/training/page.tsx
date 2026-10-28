@@ -293,6 +293,7 @@ function TrainingPageContent() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <a href="/protocols" className="btn-secondary min-h-11">{es ? "Protocolos" : "Protocols"}</a>
+            <a href="/sport-data" className="btn-secondary min-h-11">{es ? "Datos por deporte" : "Sport data"}</a>
             <a href="/api/training/export" className="btn-secondary min-h-11">
               <Download className="w-4 h-4" aria-hidden="true" /> {es ? "Exportar" : "Export"}
             </a>

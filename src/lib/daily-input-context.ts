@@ -31,14 +31,14 @@ type MetricStatus = "usable" | "missing" | "stale" | "conflicting" | "invalid";
 const millis = (value: Date | string | null | undefined) => value == null ? NaN : new Date(value).getTime();
 const iso = (value: Date | string | null | undefined) => Number.isFinite(millis(value)) ? new Date(value!).toISOString() : null;
 const token = (value: string | null | undefined) => value && /^[a-zA-Z0-9_-]{1,50}$/.test(value) ? value : null;
-const providers = new Set(["manual","plan","garmin","coros","apple","apple_health","whoop","oura","strava","intervals","tcx","fit","file","garmin_csv","jmm","app"]);
+const providers = new Set(["manual","manual_sport_local","plan","garmin","garmin_direct","coros","apple","apple_health","whoop","oura","strava","intervals","tcx","fit","file","garmin_csv","jmm","app"]);
 const upstreamSources = new Set<string>([...INTERVALS_ALLOWED_UPSTREAM,"STRAVA",...Array.from(providers,source=>source.toUpperCase())]);
 const methods = new Set(["manual_entry","derived","estimated","optical_sensor","chest_strap","device_sync","provider_profile_reported","uploaded_file"]);
 const providerSource = (value: string | null | undefined) => value && providers.has(value.toLowerCase()) ? value.toLowerCase() : "unknown";
 const upstreamSource = (value: string | null | undefined) => value && upstreamSources.has(value.toUpperCase()) ? value.toUpperCase() : null;
 const number = (value: unknown, min: number, max: number) => typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : null;
 function classification(source: string, method: string | null | undefined) {
-  if (source === "manual" || method === "manual_entry") return "self_reported" as const;
+  if (["manual","manual_sport_local"].includes(source) || method === "manual_entry") return "self_reported" as const;
   if (method === "derived" || method === "estimated") return "estimated" as const;
   if (method === "optical_sensor" || method === "chest_strap") return "measured" as const;
   if (method === "device_sync" || method === "provider_profile_reported") return "provider_reported" as const;
@@ -147,7 +147,7 @@ export function buildDailyInputContext(input: DailyInputContextOptions) {
       observedAt: iso(row.date), importedAt: row.planned === false ? iso(row.createdAt) : null,
       measurementTimePrecision: "unknown" as const, importTimeBasis: row.planned === false ? "workout_created_at" as const : "not_imported_record" as const,
       recordKind: row.planned ? "planned_record" as const : "actual_record" as const,
-      classification: row.planned ? "planned" as const : row.source === "manual" ? "self_reported" as const : "provider_reported" as const,
+      classification: row.planned ? "planned" as const : ["manual","manual_sport_local"].includes(row.source||"") ? "self_reported" as const : "provider_reported" as const,
       aiEligibility: provenanceOf(row) }));
     return { id: primary.id, recordIds: group.members.map(row => row.id), sport: token(primary.actualSport || primary.sport) ?? "unknown",
       dateLocal: dateKey(new Date(primary.date), input.timezone), observedAt: iso(primary.date),

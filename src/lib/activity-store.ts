@@ -2,6 +2,7 @@ import { prisma } from "./db";
 import { dayBounds } from "./dates";
 import { generateAndDeliverActivityReport } from "./activity-report";
 import type { Prisma } from "@prisma/client";
+import { mergeProviderMeasurements } from "./sport-measurements";
 
 // Provider records remain the source of measured results. A fulfilled plan is
 // linked to the import so it is never counted a second time in training load.
@@ -30,6 +31,7 @@ export async function storeActivity(
       },
     });
     if (existing) {
+      if(activity.source==="garmin_direct"&&activity.actualDetails)activity={...activity,actualDetails:mergeProviderMeasurements(existing.actualDetails,activity.actualDetails)};
       await clearActivityLinks(tx, userId, [existing.id]);
       const fields = [
         "sport",
@@ -44,13 +46,14 @@ export async function storeActivity(
         "tss",
         "calories",
         "notes",
+        "actualDetails",
       ];
       await tx.workout.update({
         where: { id: existing.id },
         data: {
           ...Object.fromEntries(
             fields
-              .filter((k) => activity[k] !== undefined)
+              .filter((k) => activity[k] !== undefined && (k!=="actualDetails" || (activity.source==="garmin_direct"&&typeof activity[k]==="string")))
               .map((k) => [k, activity[k]]),
           ),
           actualDurationMin: activity.durationMin,
@@ -79,10 +82,11 @@ export async function storeActivity(
       "source",
       "notes",
       "externalId",
+      "actualDetails",
     ];
     const data = Object.fromEntries(
       fields
-        .filter((k) => activity[k] !== undefined)
+        .filter((k) => activity[k] !== undefined && (k!=="actualDetails" || (activity.source==="garmin_direct"&&typeof activity[k]==="string")))
         .map((k) => [k, activity[k]]),
     );
     const saved = await tx.workout.create({

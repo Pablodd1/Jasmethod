@@ -8,6 +8,7 @@ import ts from "typescript";
 import * as crypto from "node:crypto";
 import * as dates from "./dates";
 import { computeJMetrics, type JStressWorkout } from "./j-metrics";
+import { mergeProviderMeasurements } from "./sport-measurements";
 
 type Row = Record<string, any>;
 const equal = (a: any, b: any) => a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b;
@@ -100,6 +101,7 @@ function pilotFixture() {
     "./capabilities": { requireStravaConnector: () => { throw Error("Strava disabled"); }, stravaConnectorEnabled: () => false, intervalsConnectorEnabled: () => false },
     "./strava-privacy-event": { isStravaPrivacyEvent: () => false },
     "./activity-report": { generateAndDeliverActivityReport: async () => {} },
+    "./sport-measurements": { mergeProviderMeasurements },
     "./telemetry": { meterUsage: async (userId: string) => assert.ok(users.some(user => user.id === userId)) },
     "./device-metric-snapshot": {}, "./manual-workout-calendar": {}, "./manual-workout-email-locale": {},
     "./manual-workout-email": {}, "./manual-workout-email-content": {}, "./effective-prescription": {}, "./canonical-session": {}, "./calendar-workouts": {},

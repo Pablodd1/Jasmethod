@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { GarminError } from "./garmin-config";
 import { localDate, dateKey } from "./dates";
+import { providerSportMeasurements } from "./sport-measurements";
 
 export const GARMIN_DATA_TYPES = ["activities","activityDetails","activityFiles","moveIQActivities","manuallyUpdatedActivities","dailies","epochs","sleeps","bodyComps","stressDetails","userMetrics","pulseox","allDayRespiration","healthSnapshot","hrv","bloodPressures","skinTemp","nutrition","hydration","breathingVariations"] as const;
 export type GarminDataType = typeof GARMIN_DATA_TYPES[number];
@@ -34,7 +35,9 @@ export function garminActivity(summary:GarminSummary) {
   const n=(key:string,min:number,max:number)=>number(r[key],min,max);
   const rounded=(key:string,min:number,max:number)=>{const v=n(key,min,max);return v==null?null:Math.round(v);};
   const distance=n("distanceInMeters",0,10000000);
+  const providerEvidence=providerSportMeasurements(sport,seconds,distance==null?null:distance/1000,type);
   return {source:"garmin_direct",externalId:`garmin:${summary.summaryId}`,date:new Date(start*1000),sport,
+    ...(providerEvidence?{actualDetails:JSON.stringify({schemaVersion:1,source:"garmin_direct",values:{},providerEvidence})}:{}),
     title:typeof r.activityName==="string"?r.activityName.slice(0,200):`Garmin ${type}`,durationMin:Math.max(1,Math.round(seconds/60)),distanceKm:distance==null?null:distance/1000,
     avgHr:rounded("averageHeartRateInBeatsPerMinute",20,250),maxHr:rounded("maxHeartRateInBeatsPerMinute",20,250),
     avgPower:n("averagePowerInWatts",0,5000),calories:rounded("activeKilocalories",0,50000),
