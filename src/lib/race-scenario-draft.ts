@@ -6,7 +6,12 @@ import { courseToScenarioSegments, type RaceCourseResult } from "./race-course";
 import type { RaceHistoryResult, RaceWeatherResult } from "./race-weather";
 import type { EventCandidate } from './race-event-lookup';
 import { localRaceOffsets } from "./race-local-time";
-const numberOrNull = (value: string) => value.trim() === "" ? null : Number(value);
+const numberOrNull = (value: string) => {
+  if (value.trim() === "") return null;
+  const number = Number(value);
+  if (!Number.isFinite(number)) throw Error("Correct the invalid number in the displayed units before calculating or saving.");
+  return number;
+};
 const str = (value: number | null | undefined) => value == null ? "" : String(value);
 function safeUrl(value: string) { try { const url = new URL(value); return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password ? url.href : null; } catch { return null; } }
 export type ProfilePoint = { distanceM: number; elevationM: number | null; segmentIndex?: number };
@@ -66,6 +71,7 @@ export function buildInput(draft: Draft, anchors: RaceScenarioAnchor[]): RaceSce
     if (leg.sport !== "swim") {
       if (leg.courseMode === "unknown") throw Error(`${leg.sport}: choose a course profile or explicitly select a flat-course assumption.`);
       const headwindMps = Number(leg.headwindMps), speedCapMps = numberOrNull(leg.speedCapMps);
+      if (!Number.isFinite(headwindMps)) throw Error("Correct the along-course wind in the displayed speed units.");
       if (leg.courseMode === "gpx") {
         if (!leg.course) throw Error("Import a GPX before calculating.");
         segments = courseToScenarioSegments(leg.course, { headwindMps, speedCapMps, maxAbsGrade: leg.sport === "run" ? 0.15 : 0.45 });

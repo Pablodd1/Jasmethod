@@ -86,13 +86,13 @@ async function browserJourney(browser,language){
   assert.equal(await db.trainingPlan.count({where:{userId:who.user.id,status:'active'}}),1);
   await page.screenshot({path:`${dir}/starting-saved-${language}-390.png`,fullPage:false});
   await page.goto(base+'/settings');const baseline=page.getByRole('heading',{name:es?'Pruebas y resultados medidos':'Baseline tests and measured results',exact:true}).locator('..');await baseline.waitFor();
-  await baseline.getByRole('combobox').selectOption('run5k');const result=baseline.getByRole('textbox').first();await result.fill('3:90');
+  await baseline.getByRole('combobox').selectOption('run5k');const result=baseline.getByRole('textbox',{name:es?/^Resultado medido/:/^Measured result/});await result.fill('3:90');
   await baseline.locator('input[name="date"]').fill(ago(1));assert.equal(await result.evaluate(input=>input.validity.valid),false);
   await result.fill('25:00');let request=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/benchmarks'&&r.request().method()==='POST');
   await baseline.getByRole('button',{name:es?'Registrar prueba':'Record test',exact:true}).click();assert.equal((await request).status(),200);
   assert.equal((await db.benchmarkTest.findFirstOrThrow({where:{userId:who.user.id,type:'run5k'}})).result,1500);
   assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:who.user.id}})).runPaceBase,null);
-  await baseline.getByRole('combobox').selectOption('swim');await baseline.getByRole('textbox').first().fill('1:40');await baseline.locator('input[name="date"]').fill(ago(1));
+  await baseline.getByRole('combobox').selectOption('swim');await result.fill('1:40');await baseline.locator('input[name="date"]').fill(ago(1));
   request=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/benchmarks'&&r.request().method()==='POST');await baseline.getByRole('button',{name:es?'Registrar prueba':'Record test',exact:true}).click();assert.equal((await request).status(),200);
   const swim=await db.benchmarkTest.findFirstOrThrow({where:{userId:who.user.id,type:'swim'}});assert.ok(Math.abs(swim.result-(es?100:100/.9144))<1e-8);
   await baseline.scrollIntoViewIfNeeded();await page.screenshot({path:`${dir}/measured-time-${language}-390.png`,fullPage:false});
