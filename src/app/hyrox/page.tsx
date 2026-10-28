@@ -191,7 +191,7 @@ export default function HyroxPage() {
               <div className="font-display font-bold flex items-center gap-2"><Layers className="w-5 h-5 text-ocean-600" /> {es ? "Plan de parciales" : "Split plan"}</div>
               <div className="text-xs text-slate-500">{plan.notes[0]}</div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-800" role="region" aria-label={es ? "Tabla de parciales HYROX, deslizable" : "Scrollable HYROX split table"} tabIndex={0}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-slate-400 text-xs uppercase">
@@ -208,7 +208,7 @@ export default function HyroxPage() {
                       <td className="p-2 tabular-nums">{fmt(seg.targetSec)}</td>
                       <td className="p-2 tabular-nums text-slate-500">{fmt(seg.cumulativeSec)}</td>
                       <td className="p-2">
-                        <AthleteMetricInput className="input !py-1 text-xs tabular-nums" min={1} disabled={busy} es={es}
+                        <AthleteMetricInput className="input !w-24 min-w-24 !min-h-11 !py-2 text-sm tabular-nums" min={1} disabled={busy} es={es}
                           label={`${seg.name} ${es ? "tiempo real (m:ss)" : "actual time (m:ss)"}`} value={actuals[i]}
                           onChange={value => changeActual(() => { setAnalysis(null); setActuals(a => a.map((v,j) => j === i ? value : v)); })}/>
 

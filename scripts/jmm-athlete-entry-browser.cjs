@@ -101,6 +101,7 @@ async function browserJourney(browser,language){
   await baseline.scrollIntoViewIfNeeded();await page.screenshot({path:`${dir}/measured-time-${language}-390.png`,fullPage:false});
   await page.goto(base+'/hyrox');await page.locator('#hyrox-target').fill('75');await page.locator('#hyrox-pace').fill('5:00');await page.locator('#hyrox-sex').selectOption('female');await page.locator('#hyrox-pro').selectOption('0');
   await page.locator('#hyrox-build-plan').click();const split=page.getByRole('textbox',{name:es?/tiempo real \(m:ss\)/:/actual time \(m:ss\)/});await split.first().waitFor();
+  const splitSize=await split.first().boundingBox();assert.ok(splitSize.width>=90&&splitSize.height>=44,'Split clocks need a readable width and touch height on mobile');
   await split.first().fill('4:30');request=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/hyrox/split-planner'&&r.request().method()==='POST');await page.locator('#hyrox-analyze').click();const analyzed=await request;assert.equal(analyzed.status(),200);
   const body=analyzed.request().postDataJSON();assert.equal(Number(body.actualSecs[0]),270);assert.ok(Math.abs(Number(body.pace)-(es?300:300/1.609344))<1e-8);
   await split.first().scrollIntoViewIfNeeded();await page.screenshot({path:`${dir}/hyrox-time-${language}-390.png`,fullPage:false});
