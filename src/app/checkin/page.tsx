@@ -18,6 +18,7 @@ import { checkinDraftKey, emptyCheckinAnswers, hydrateCheckinDraft, restoreCheck
 import { unitsOf, distanceToDisplay, weightToDisplay } from "@/lib/units";
 import { actualActivityFormValues, actualActivityUnitPatch } from "@/lib/activity-unit-fields";
 import { ProfileMeasurementInput } from "@/components/ProfileMeasurementInput";
+import { checkinFuelBrands } from "@/lib/checkin-result-data";
 
 const QUESTIONS = [
   { key: "sleep", label: "Sleep quality last night", hint: "1 = terrible, 5 = great — hours matter but how you FEEL matters more" },
@@ -320,7 +321,7 @@ function CheckinPageContent() {
   const fuel = result?.fuel;
   const ergos = result?.ergos?.recommended;
   const recovery = result?.recovery;
-  const fuelBrands = result?.fuelBrands;
+  const fuelBrands = checkinFuelBrands(result?.fuelBrands);
   const sources = result?.sources;
 
   return (
@@ -355,7 +356,7 @@ function CheckinPageContent() {
               ))}
               {answers.urgentSymptoms === true && <p role="alert" className="text-sm text-coral-700">{lang === "es" ? "Detén el ejercicio. Busca atención médica urgente; si los síntomas son graves o continúan, contacta emergencias locales ahora." : "Stop exercise. Seek urgent medical assessment; if symptoms are severe or ongoing, contact local emergency services now."}</p>}
               <label className="flex items-center gap-2 text-sm">
-                Cycle day (1-35):
+                {lang === "es" ? "Día del ciclo (1–35):" : "Cycle day (1–35):"}
                 <input type="number" min={1} max={35} value={answers.cycleDay || ""} onChange={(e) => setQ("cycleDay", e.target.value)} className="input w-20 !py-1 !px-2 text-xs" placeholder="—" />
               </label>
 
@@ -427,7 +428,7 @@ function CheckinPageContent() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <ProfileMeasurementInput field="weightKg" id="answer-weightKg" value={answers.weightKg} units={displayUnits} label={lang==="es"?"Peso de la mañana":"Morning weight"} es={lang==="es"} onChange={canonical=>setQ("weightKg",canonical)} onValidityChange={(_,message)=>setUnitErrors(current=>({...current,morningWeight:message}))}/>
-                  <div className="text-[11px] text-slate-400">Same scale, after bathroom, before food — trend matters more than the number.</div>
+                  <div className="text-[11px] text-slate-400">{lang === "es" ? "Misma báscula, después de ir al baño y antes de comer. Importa más la tendencia que un valor aislado." : "Same scale, after bathroom, before food — trend matters more than the number."}</div>
                 </div>
                 {(correctImported || !inputContext?.metrics.restingHr.selected) && <div>
                   <label className="label">{lang === "es" ? "Pulso en reposo (bpm, opcional)" : "Resting HR (bpm, optional)"}</label>
@@ -442,9 +443,9 @@ function CheckinPageContent() {
                   <div className="text-[11px] text-slate-400">{lang === "es" ? "rMSSD y SDNN se mantienen separados. Una lectura no determina por sí sola la intensidad." : "rMSSD and SDNN remain separate. One reading does not determine training intensity by itself."}</div>
                 </div>}
                 {(correctImported || !inputContext?.metrics.sleepHours.selected) && <div>
-                  <label className="label">Sleep hours last night</label>
+                  <label className="label">{lang === "es" ? "Horas de sueño anoche" : "Sleep hours last night"}</label>
                   <input type="number" step="0.1" className="input" value={answers.sleepHours} onChange={(e) => setQ("sleepHours", e.target.value)} placeholder="e.g. 7.5" />
-                  <div className="text-[11px] text-slate-400">Reported or from your device. Under 7h — prioritize an early night.</div>
+                  <div className="text-[11px] text-slate-400">{lang === "es" ? "Informadas por ti o por tu dispositivo. Si dormiste menos de 7 horas, prioriza acostarte temprano." : "Reported or from your device. Under 7h — prioritize an early night."}</div>
                 </div>}
               </div>
               {inputContext && <button type="button" className="text-sm underline" onClick={() => setCorrectImported(v => !v)}>{correctImported ? (lang === "es" ? "Usar observaciones importadas" : "Use imported observations") : (lang === "es" ? "Corregir una observación importada" : "Correct an imported observation")}</button>}
@@ -475,7 +476,7 @@ function CheckinPageContent() {
             )}
             {adaptation && adaptationView?.kind !== "incomplete" && (
               <div className="card">
-                <h3 className="font-display font-bold mb-2">Today&apos;s Adaptation</h3>
+                <h3 className="font-display font-bold mb-2">{lang === "es" ? "Revisión de hoy" : "Today's Adaptation"}</h3>
                 <div className={`font-display text-2xl font-bold ${VERDICT_COLOR[adaptation.verdict] || ""}`}>
                   {adaptation.ruleId === "existing-workout-review-v1:scoped" ? (lang === "es" ? "Sesión fácil revisada" : "Saved easy session reviewed") : t(lang, `adapt.${adaptation.verdict}`)} · {adaptationView?.kind === "no-time" ? adaptationView.heading : adaptation.scoreAvailable === false ? (lang === "es" ? "Sin puntuación de preparación" : "No readiness score") : `${adaptation.score}/100 (self-report heuristic)`}
                 </div>

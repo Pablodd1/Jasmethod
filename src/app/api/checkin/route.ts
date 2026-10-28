@@ -524,7 +524,7 @@ export async function POST(req: Request) {
         night: stimPlan("night", { hardSession: false }),
       },
       recovery: adaptation.safetyStatus === "clear" ? recovery() : null,
-      fuelBrands: session.durationMin > 0 ? fuelBrandsFor(session.durationMin) : [],
+      fuelBrands: session.durationMin > 0 ? fuelBrandsFor(session.durationMin) : null,
       sources: sources(),
       cycle: adaptation.safetyStatus === "clear" ? cycleAdvice(checkin.cycleDay, profile?.sex ?? null) : null,
       youth: youthPolicy(profile?.birthYear ?? null),
