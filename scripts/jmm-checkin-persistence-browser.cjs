@@ -27,7 +27,7 @@ async function actor(language) {
   const headers = { cookie: `jmm_session=${token}`, origin: base, 'Content-Type': 'application/json' };
   const current = await (await fetch(base + '/api/profile', { headers })).json();
   const saved = await fetch(base + '/api/profile', { method: 'PUT', headers, body: JSON.stringify({
-    expectedRevision: current.revision, expectedSetupRevision: current.setupRevision,
+    expectedRevision: current.revision, expectedSetupRevision: current.setupRevision, experience: 'amateur', weeklyHours: 3,
     setup: { adultConfirmed: true, profileConfirmed: true, goalDescription: 'Familiar controlled running practice', baselineWeeklyMinutes: 90,
       baselineObservedAt: today, interruptions: 'none', restrictions: 'none', qualifiedReview: 'none_needed', trainingDays: [0,1,2,3,4,5,6],
       maxSessionMinutes: 45, equipmentAccess: 'Running shoes and familiar route', planWeeks: 8 }
@@ -79,6 +79,8 @@ async function main() {
         const noTime = await send(); assert.equal(noTime.fuelBrands, null); assert.equal(noTime.adaptation.durationFactor, 0);
         await page.getByText(es ? 'Hoy no tienes tiempo para entrenar' : 'No training time today', { exact: false }).waitFor();
         await page.screenshot({ path: `${dir}/no-time-${language}-${width}.png`, fullPage: true });
+        await page.getByRole('heading', { name: es ? 'Revisión de hoy' : "Today's Adaptation", exact: true }).scrollIntoViewIfNeeded();
+        await page.screenshot({ path: `${dir}/no-time-${language}-${width}-viewport.png`, fullPage: false });
         const record = await db.dailyCheckin.findFirstOrThrow({ where: { userId: who.user.id } });
         assert.equal(JSON.parse(record.answers).availableMin, 0);
         await page.reload(); await submit().waitFor();
