@@ -1,5 +1,8 @@
 "use client";
 
+import { AthleteMetricInput } from "@/components/AthleteMetricInput";
+import { clockText } from "@/lib/metric-entry";
+import { fmtSwimPace, unitsOf } from "@/lib/units";
 import { saveReviewedProfile } from "@/lib/profile-client";
 import { useEffect, useState } from "react";
 import { FlaskConical, Beaker, Droplets, HeartPulse, Bike, Waves, Footprints, Save, Zap, ClipboardList, TrendingUp } from "lucide-react";
@@ -51,6 +54,8 @@ export default function LabsPage() {
   const [revision, setRevision] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string>("");
   const [bench, setBench] = useState<any[]>([]);
+  const [benchDrafts,setBenchDrafts] = useState<Record<string,string>>({});
+  const displayUnits=unitsOf(profile?.units,user?.language);
   const [cmj, setCmj] = useState<{ today: string; base: string } | null>(null);
   const [cmjRes, setCmjRes] = useState<ReturnType<typeof cmjReadiness> | null>(null);
 
@@ -261,7 +266,7 @@ export default function LabsPage() {
               {zones.anchorHr ? <>· {lang === "es" ? "FC máx" : "max HR"} <strong>{zones.anchorHr} bpm</strong> </> : null}
               {zones.anchorLthr ? <>· LTHR <strong>{zones.anchorLthr} bpm</strong> </> : null}
               {zones.anchorPower ? <>· FTP <strong>{zones.anchorPower} W</strong> </> : null}
-              {zones.anchorSwim ? <>· {lang === "es" ? "umbral nado" : "swim threshold"} <strong>{zones.anchorSwim}s/100m</strong> </> : null}
+              {zones.anchorSwim ? <>· {lang === "es" ? "umbral nado" : "swim threshold"} <strong>{fmtSwimPace(zones.anchorSwim,displayUnits)}</strong> </> : null}
               {!zones.anchorHr && !zones.anchorLthr && !zones.anchorPower && !zones.anchorSwim ? (lang === "es" ? "—" : "—") : null}
             </p>
             <p className="text-xs text-slate-400 mt-2">
@@ -273,23 +278,26 @@ export default function LabsPage() {
         {/* SCHEDULED TESTS + result logging */}
         <div className="card">
           <div className="flex items-center gap-2 mb-3"><ClipboardList className="w-5 h-5 text-ocean-600" /><h2 className="font-display font-bold text-lg">{lang === "es" ? "Pruebas programadas" : "Scheduled Tests"}</h2></div>
-          {bench.length === 0 && <p className="text-sm text-slate-500">{lang === "es" ? "No hay pruebas programadas — genera un plan de entrenamiento y tu calendario de pruebas de 6-8 semanas aparece aquí." : "No scheduled tests — generate a training plan and your 6-8 week test calendar appears here."}</p>}
+          {bench.length === 0 && <p className="text-sm text-slate-500">{lang === "es" ? "Sin pruebas programadas. Las observaciones cómodas se incluyen dentro del plan; no es obligatorio hacer pruebas máximas." : "No scheduled tests. Comfortable observations belong inside the plan; maximal tests are not required."}</p>}
           <div className="space-y-2">
             {bench.map((b) => (
               <div key={b.id} className={`flex flex-wrap items-center gap-2 p-2 rounded-xl ${b.completed ? "bg-emerald-50" : "bg-slate-50"}`}>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold truncate">{b.name}</div>
-                  <div className="text-xs text-slate-500">{new Date(b.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}{b.result ? ` · result: ${b.result}` : b.skipped ? ` · skipped (${b.reason || "near race"})` : ""}</div>
+                  <div className="text-xs text-slate-500">{new Date(b.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}{b.result ? ` · ${b.type === "swim" ? fmtSwimPace(b.result,displayUnits) : ["run5k","run1k","run200m","run400m"].includes(b.type) ? clockText(b.result) : `${b.result} ${BENCH_UNIT[b.type] || ""}`}` : b.skipped ? ` · skipped (${b.reason || "near race"})` : ""}</div>
                 </div>
-                {!b.completed && !b.skipped && (
-                  <form className="flex items-center gap-1" onSubmit={(e) => {
+                {!b.completed && !b.skipped && ["ftp","cp","lthr","run5k","swim"].includes(b.type) && (
+                  <form className="flex items-center gap-1" onSubmit={async (e) => {
                     e.preventDefault();
                     const v = (e.currentTarget.elements.namedItem("res") as HTMLInputElement).value;
                     if (!v) return;
-                    fetch("/api/benchmarks", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: b.id, result: v }) })
-                      .then((r) => r.json()).then((d) => { if (d.ok) setBench((p) => p.map((x) => x.id === b.id ? d.test : x)); });
+                    try {
+                      const response=await fetch("/api/benchmarks", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: b.id, result: v }) });
+                      const data=await response.json();if(!response.ok||data.ok!==true)throw Error(data.error||"Could not save test");
+                      setBench(current=>current.map(item=>item.id===b.id?data.test:item));setSavedMsg(lang==="es"?"Resultado guardado; no cambió tu referencia actual.":"Result saved; the current training baseline was retained.");
+                    }catch(error){setSavedMsg((error as Error).message);}
                   }}>
-                    <input name="res" type="number" step="any" className="inp w-28" placeholder={BENCH_UNIT[b.type] || "value"} />
+                    <AthleteMetricInput name="res" es={lang === "es"} label={b.type === "swim" ? `CSS (min:sec/100 ${displayUnits === "imperial" ? "yd" : "m"})` : ["run5k","run1k","run200m","run400m"].includes(b.type) ? "m:ss" : BENCH_UNIT[b.type] || "value"} clock={["swim","run5k","run1k","run200m","run400m"].includes(b.type)} factor={b.type === "swim" && displayUnits === "imperial" ? .9144 : 1} value={benchDrafts[b.id] ?? ""} onChange={value => setBenchDrafts(current=>({...current,[b.id]:value}))} className="inp w-28" required min={1}/>
                     <button className="btn text-xs px-3 py-1.5">{lang === "es" ? "Registrar" : "Log"}</button>
                   </form>
                 )}
