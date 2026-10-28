@@ -25,5 +25,7 @@ export function derivedActivityPolicy(rows: readonly ProvenanceFields[]): Derive
   };
 }
 
-const localOrigin = (row: ProvenanceFields) => provenanceOf(row) === "strava" ? "strava" : row.source === "garmin_direct" && row.externalId?.startsWith("garmin:") ? "allowed" : provenanceOf(row);
+const localOrigin = (row: ProvenanceFields) => provenanceOf(row) === "strava" ? "strava" :
+  row.source === "garmin_direct" && row.externalId?.startsWith("garmin:") ? "allowed" :
+  row.source === "manual_sport_local" && row.externalId?.startsWith("manual-sport:") ? "allowed" : provenanceOf(row);
 export const isDerivedActivityEligible = (row: ProvenanceFields) => localOrigin(row) === "allowed";

@@ -10,6 +10,14 @@ const context = (extra: Partial<DailyInputContextOptions> = {}) => buildDailyInp
 const observation = (extra: Partial<DailyInputObservation> = {}): DailyInputObservation => ({ id:"reading",userId:"owner",metricType:"sleep_hours",value:7.5,unit:"h",source:"oura",measurementMethod:"device_sync",qualityFlag:"ok",observedAt:new Date("2026-10-21T04:00Z"),createdAt:new Date("2026-10-21T11:00Z"),...extra });
 const workout = (extra: Partial<DailyInputWorkout> = {}): DailyInputWorkout => ({ id:"activity",userId:"owner",date:new Date("2026-10-20T15:00Z"),createdAt:new Date("2026-10-21T11:00Z"),sport:"bike",source:"garmin",externalId:"garmin:synthetic",planned:false,completed:true,durationMin:45,actualDurationMin:45,distanceKm:20,...extra });
 const full = () => adaptSession({ sleep:5,soreness:1,energy:5,motivation:5,stress:1,sick:false,newPain:false,urgentSymptoms:false,availableMin:90 });
+test("local-only manual sport reports inform private training without inventing provider or AI permission",()=>{
+  const value=context({completedWorkouts:[workout({source:"manual_sport_local",externalId:"manual-sport:synthetic",rpe:4})]});
+  assert.equal(value.completedWorkouts[0].sourceRecords[0].source,"manual_sport_local");
+  assert.equal(value.completedWorkouts[0].sourceRecords[0].classification,"self_reported");
+  assert.equal(value.completedWorkouts[0].sourceRecords[0].aiEligibility,"unknown");
+  assert.equal(value.completedWorkouts[0].derivedActivityPolicy.status,"allowed");
+  assert.equal(value.completedWorkouts[0].questions.durationMinutes,false);assert.equal(value.completedWorkouts[0].questions.rpe,false);
+});
 
 test("fresh snapshot evidence exposes units/source/record times without inventing sensor precision or upstream provenance",()=>{
   const snapshot=deviceMetricSnapshot("owner",new Date("2026-10-21T04:00Z"),"oura",{sleepHours:7.5,hrv:44,restingHr:52},"device_sync",now);
