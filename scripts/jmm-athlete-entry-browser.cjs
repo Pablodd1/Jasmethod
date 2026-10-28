@@ -83,6 +83,7 @@ async function browserJourney(browser,language){
   const save=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/plan/starting'&&r.request().method()==='POST');
   await preview.getByRole('button',{name:es?'Confirmar y guardar semana inicial':'Confirm and save starting week',exact:true}).click();assert.equal((await save).status(),200);
   await page.reload();await page.getByRole('heading',{name:es?'Plan de entrenamiento':'Training Plan',exact:true}).waitFor();
+  await page.getByRole('region',{name:es?'Ciclo de entrenamiento guardado':'Saved training cycle',exact:true}).waitFor();
   assert.equal(await db.trainingPlan.count({where:{userId:who.user.id,status:'active'}}),1);
   await page.screenshot({path:`${dir}/starting-saved-${language}-390.png`,fullPage:false});
   await page.goto(base+'/settings');const baseline=page.getByRole('heading',{name:es?'Pruebas y resultados medidos':'Baseline tests and measured results',exact:true}).locator('..');await baseline.waitFor();
