@@ -4,6 +4,7 @@ import type { SessionNutrition } from "./session-nutrition";
 export interface UniversalWorkoutCard {
   schemaVersion: "jmm-workout-card-v1";
   language: "en" | "es";
+  units?: "metric" | "imperial";
   session: CanonicalSession;
   nutrition: SessionNutrition;
   content: {
@@ -32,6 +33,7 @@ export function isUniversalWorkoutCard(v: unknown): v is UniversalWorkoutCard {
     !object(v) ||
     v.schemaVersion !== "jmm-workout-card-v1" ||
     !["en", "es"].includes(v.language) ||
+    (v.units !== undefined && !["metric","imperial"].includes(v.units)) ||
     !object(v.session) ||
     !object(v.content) ||
     !object(v.breathing)

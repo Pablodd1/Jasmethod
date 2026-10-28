@@ -6,6 +6,8 @@ import { TrainingWorkflowNav } from "@/components/training-workflow-nav";
 import { TrainingCycleOverview } from "@/components/training-cycle-overview";
 import { TargetProgressPanel } from "@/components/target-progress-panel";
 import { RestPreference } from "@/components/rest-preference";
+import { StartingCycle } from "@/components/StartingCycle";
+import { planningReasonText } from "@/lib/planning-reason-copy";
 import { planningGoal } from "@/lib/planning-setup";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -319,11 +321,13 @@ function TrainingPageContent() {
               : "No threshold benchmark is required. Use effort and talk-test guidance; missing physiology is not estimated from age, sex or weight."}
           </p>
           {planningReadiness && !planningReadiness.ready && <div role="status" className="mb-4 border border-amber-300 rounded-lg p-3 space-y-3">
-            <p className="font-semibold">Complete your planning setup to unlock a preview</p>
-            <p className="text-sm">You can use JMM without completing onboarding. A personalized plan needs your recent training, available time and current restrictions. No device, threshold test or race entry is required.</p>
-            <details><summary className="cursor-pointer underline">See what needs review ({planningReadiness.missing.length + planningReadiness.review.length})</summary><ul className="list-disc ml-5 mt-2">{[...planningReadiness.missing, ...planningReadiness.review].map((reason:string)=><li key={reason}>{reason}</li>)}</ul></details>
-            <a className="btn-primary" href={setupHref}>Complete planning setup</a>
-            <p className="text-sm">Save your answers, return here, preview the plan, then confirm it. Protocols can then replace compatible upcoming sessions.</p>
+            <p className="font-semibold">{es ? "Qué falta para un ciclo personalizado" : "What's needed for a personalized cycle"}</p>
+            <p className="text-sm">{es ? "Puedes revisar una semana inicial con datos incompletos. Un ciclo personalizado necesita historial reciente, tiempo disponible y restricciones actuales. No exige dispositivo, prueba umbral ni carrera." : "You can review a starting week with incomplete information. A personalized cycle needs recent training, available time and current restrictions. No device, threshold test or race entry is required."}</p>
+            {planningReadiness.review.length>0&&<p className="text-sm font-medium">{planningReasonText(planningReadiness.review[0],es)}</p>}
+            <details><summary className="cursor-pointer underline">{es ? "Ver qué necesita revisión" : "See what needs review"} ({planningReadiness.missing.length + planningReadiness.review.length})</summary><ul className="list-disc ml-5 mt-2">{[...planningReadiness.missing, ...planningReadiness.review].map((reason:string)=><li key={reason}>{planningReasonText(reason,es)}</li>)}</ul></details>
+            <a className="btn-primary" href={setupHref}>{es ? "Revisar mis datos" : "Review my information"}</a>
+            <p className="text-sm">{es ? "Guarda los datos que conoces, revisa la vista previa y confirma el plan. Las pruebas no son obligatorias; los registros importados mantienen su fuente y fecha." : "Save information you know, review the preview, then confirm the plan. Tests are optional; imported records retain their source and date."}</p>
+            <StartingCycle key={user?.id} es={es} onSaved={async()=>{setSavedMessage(es?"Semana inicial guardada. Revisa las tareas y sesiones pendientes de seguridad.":"Starting week saved. Review the tasks and sessions pending safety checks.");await load();}}/>
           </div>}
           {planningReadiness?.ready && planningReadiness?.planningBasis === "baseline_only" && <p className="mb-4 text-sm">You explicitly chose baseline-only conservative planning. Your numeric target stays an aspiration; this plan is not optimized or promised to achieve it. Target-driven progression still requires coaching review.</p>}
           <form

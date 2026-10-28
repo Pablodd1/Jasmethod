@@ -1,6 +1,8 @@
 "use client";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { StartingCycle } from "@/components/StartingCycle";
+import { planningReasonText } from "@/lib/planning-reason-copy";
 import { addDaysKey } from "@/lib/dates";
 import { endpointText } from "@/lib/universal-workout-card";
 import React, { Suspense, useEffect, useRef, useState } from "react";
@@ -42,6 +44,7 @@ export function CoachCommanderWorkspace({athleteId,es,messages,sessionId,disable
     }catch(cause){if(mounted.current&&ticket===epoch.current)setError((cause as Error).message);}
   }
   useEffect(()=>{if(area==="plan")void readState();},[area,athleteId]); // Reload only on an explicit workspace/account change, never over a draft.
+  const planningReasons=state?[...state.readiness.review,...state.readiness.missing]:[];
   const edit=()=>{setPreview(null);setDouble(false);setEvents(false);setError("");};
   async function run(confirm:boolean) {
     if(inFlight.current||disabled||!state||!state.readiness.ready||uncertain||confirm&&!preview)return;
@@ -70,7 +73,7 @@ export function CoachCommanderWorkspace({athleteId,es,messages,sessionId,disable
     {area&&<button type="button" className="underline text-sm" disabled={busy} onClick={()=>setArea(null)}>{es?"Cerrar revisión; conservar conversación":"Close review; keep conversation"}</button>}
     {area==="plan"&&<div className="space-y-3">
       {!state&&<p role="status">{es?"Cargando tu contexto guardado…":"Loading your saved planning context…"}</p>}
-      {state&&!state.readiness.ready&&<div role="status"><p>{es?"Revisa estos datos antes de preparar un plan:":"Review these missing planning answers before a plan can be prepared:"}</p><ul className="list-disc pl-5">{state.readiness.missing.map(item=><li key={item}>{item}</li>)}</ul><button className={button} type="button" onClick={()=>setArea("profile")}>{es?"Revisar datos aquí":"Review answers here"}</button></div>}
+      {state&&!state.readiness.ready&&<div role="status"><p>{es?"Datos que faltan o necesitan revisión para un ciclo personalizado:":"Missing information or review needed for a personalized cycle:"}</p><p>{planningReasons[0]&&planningReasonText(planningReasons[0],es)}</p><details><summary className="cursor-pointer underline">{es?"Ver todos los datos pendientes":"Review all pending information"} ({planningReasons.length})</summary><ul className="list-disc pl-5">{planningReasons.map(item=><li key={item}>{planningReasonText(item,es)}</li>)}</ul></details><button className={button} type="button" disabled={disabled||busy} onClick={()=>setArea("profile")}>{es?"Revisar datos aquí":"Review answers here"}</button><StartingCycle key={athleteId} es={es} disabled={disabled||busy} onBusy={value=>{setBusy(value);onBusy(value);}} onSaved={async()=>{await readState();await onSaved();}}/></div>}
       {state&&<><p className="text-sm">{es?"Objetivo guardado":"Saved goal"}: {state.defaults.distance??"—"}. {es?"Plan actual":"Current plan"}: {state.activePlans.map(plan=>plan.name).join("; ")||"—"}</p>
         <div className="grid gap-3 sm:grid-cols-2"><label>{es?"Semanas (4–30)":"Weeks (4–30)"}<input className="input w-full" type="number" min="4" max="30" value={weeks} disabled={busy||disabled} onChange={e=>{edit();setWeeks(e.target.value);}}/></label><label>{es?"Fecha de inicio local":"Local start date"}<input className="input w-full" type="date" min={state.localToday} value={start} disabled={busy||disabled} onChange={e=>{edit();setStart(e.target.value);}}/></label><label>{es?"Distribución fácil planificada (%)":"Planned easy allocation (%)"}<input className="input w-full" type="number" min="45" max="90" value={easy} placeholder={es?"Política del plan si no se indica":"Planner policy if omitted"} disabled={busy||disabled} onChange={e=>{edit();setEasy(e.target.value);}}/></label><label>{es?"Horario preferido":"Preferred window"}<select className="input w-full" value={window} disabled={busy||disabled} onChange={e=>{edit();setWindow(e.target.value);}}><option value="">{es?"Usar preferencia guardada":"Use saved preference"}</option><option value="any">{es?"Sin hora fija":"No fixed time"}</option><option value="morning">{es?"Mañana":"Morning"}</option><option value="midday">{es?"Mediodía":"Midday"}</option><option value="evening">{es?"Tarde":"Evening"}</option></select></label></div>
         <p className="text-xs">{es?"El contexto y la generación se revisan dentro de JMM. Una sesión futura sigue siendo provisional; guardar no autoriza ejercicio ni confirma entrega al reloj.":"Planning and evidence checks run inside JMM. Future training remains provisional; saving a cycle does not clear exercise or confirm watch delivery. The default planned easy allocation is 70% when none is supplied; this is a planning policy, not measured time in zones."}</p>

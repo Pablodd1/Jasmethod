@@ -14,6 +14,22 @@ function draft() {
   return result;
 }
 
+test("invalid speed drafts cannot silently become missing values during JSON serialization", () => {
+  const form = draft();
+  for (const field of ["speedCapMps", "headwindMps"] as const) {
+    form.legs[0][field] = "invalid";
+    assert.throws(() => JSON.stringify(buildInput(form, [])), /Correct/);
+    form.legs[0][field] = field === "speedCapMps" ? "" : "0";
+  }
+  form.windMps = "invalid";
+  assert.throws(() => JSON.stringify(buildInput(form, [])), /Correct/);
+  form.windMps = "";
+  form.legs[0].speedCapMps = "4";
+  assert.equal(buildInput(form, []).legs[0].segments[0].speedCapMps, 4);
+  form.legs[0].speedCapMps = "";
+  assert.deepEqual(buildInput(form, []).legs[0].segments, []);
+});
+
 test("form serializes a dated manual reference without inventing event start time, HR or fuel", () => {
   const form = draft(), input = buildInput(form, []);
   assert.equal(parseRaceScenarioInput(input, now).ok, true);

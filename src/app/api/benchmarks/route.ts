@@ -3,9 +3,10 @@ import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { benchmarkResult } from "@/lib/benchmark-result";
 import { parseDate } from "@/lib/dates";
+import { unitsOf } from "@/lib/units";
 export const dynamic="force-dynamic";
 export async function GET(req:Request) {
- try {const {athlete}=await trainingAccess(req);const profile=await prisma.athleteProfile.findUnique({where:{userId:athlete.id}});return Response.json({profileRevision:profileRevision(profile),tests:await prisma.benchmarkTest.findMany({where:{userId:athlete.id},orderBy:{date:"asc"}})});}catch(e){return errorResponse(e);}
+ try {const {athlete}=await trainingAccess(req);const profile=await prisma.athleteProfile.findUnique({where:{userId:athlete.id}});return Response.json({units:unitsOf(profile?.units,athlete.language),language:athlete.language,profileRevision:profileRevision(profile),tests:await prisma.benchmarkTest.findMany({where:{userId:athlete.id},orderBy:{date:"asc"}})});}catch(e){return errorResponse(e);}
 }
 export async function POST(req:Request) {
  try {

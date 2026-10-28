@@ -334,7 +334,9 @@ export async function POST(req: Request) {
               : effective,
           busyHrs,
           busyNote,
-          profile,
+          // An introductory observation is effort-based, even if an undated
+          // profile number exists. Verified anchors remain separate evidence.
+          profile: isStarterSession(w) ? undefined : profile,
           // Availability is enforced at the END of prescription — the coach
           // intensity multiplier can reshape the session but never exceed it.
           timeBudgetMin: Number.isFinite(remaining) ? remaining : undefined,

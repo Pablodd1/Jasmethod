@@ -5,6 +5,9 @@
 import { useEffect, useState } from "react";
 import { Layers, Target, Trophy, Info } from "lucide-react";
 import { ProtectedPage } from "@/components/gate";
+import { AthleteMetricInput } from "@/components/AthleteMetricInput";
+import { unitsOf } from "@/lib/units";
+import { clockText } from "@/lib/metric-entry";
 import { useAuth } from "@/components/auth";
 import type { readHyroxResults } from "@/lib/hyrox-results";
 type SavedResult = Awaited<ReturnType<typeof readHyroxResults>>["results"][number];
@@ -13,6 +16,7 @@ export default function HyroxPage() {
   const { user } = useAuth();
   const lang = (user?.language || "es") as string;
   const es = lang === "es";
+  const imperial = unitsOf(user?.profile?.units, lang) === "imperial";
   const [target, setTarget] = useState("");
   const [pace, setPace] = useState("");
   const [sex, setSex] = useState("");
@@ -143,8 +147,8 @@ export default function HyroxPage() {
             <input id="hyrox-target" disabled={busy || historyLoading} min="1" className="input" type="number" value={target} onChange={(e) => changeScenario(() => setTarget(e.target.value))} placeholder={es ? "Ejemplo: 75" : "Example: 75"} />
           </div>
           <div>
-            <label htmlFor="hyrox-pace" className="label">{es ? "Ritmo 1km (seg/km)" : "1km pace (sec/km)"}</label>
-            <input id="hyrox-pace" disabled={busy || historyLoading} min="1" className="input" type="number" value={pace} onChange={(e) => changeScenario(() => setPace(e.target.value))} placeholder={es ? "umbral guardado o ritmo manual" : "saved threshold or manual pace"} />
+            <label htmlFor="hyrox-pace" className="label">{es ? `Ritmo (min:sec/${imperial ? "mi" : "km"})` : `Pace (min:sec/${imperial ? "mi" : "km"})`}</label>
+            <AthleteMetricInput id="hyrox-pace" disabled={busy || historyLoading} min={1} es={es} factor={imperial ? 1.609344 : 1} value={pace} onChange={value => changeScenario(() => setPace(value))}/>
           </div>
           <div>
             <label htmlFor="hyrox-sex" className="label">{es ? "División individual" : "Singles division"}</label>
@@ -187,13 +191,13 @@ export default function HyroxPage() {
               <div className="font-display font-bold flex items-center gap-2"><Layers className="w-5 h-5 text-ocean-600" /> {es ? "Plan de parciales" : "Split plan"}</div>
               <div className="text-xs text-slate-500">{plan.notes[0]}</div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-800" role="region" aria-label={es ? "Tabla de parciales HYROX, deslizable" : "Scrollable HYROX split table"} tabIndex={0}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-slate-400 text-xs uppercase">
                     <th className="p-2">#</th><th className="p-2">{es ? "Segmento" : "Segment"}</th>
                     <th className="p-2">{es ? "Objetivo" : "Target"}</th><th className="p-2">{es ? "Acumulado" : "Checkpoint"}</th>
-                    <th className="p-2 w-28">{es ? "Real (s)" : "Actual (s)"}</th>
+                    <th className="p-2 w-28">{es ? "Real (m:ss)" : "Actual (m:ss)"}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -204,16 +208,10 @@ export default function HyroxPage() {
                       <td className="p-2 tabular-nums">{fmt(seg.targetSec)}</td>
                       <td className="p-2 tabular-nums text-slate-500">{fmt(seg.cumulativeSec)}</td>
                       <td className="p-2">
-                        <input
-                          className="input !py-1 text-xs tabular-nums"
-                          type="number"
-                          min="1"
-                          disabled={busy}
-                          aria-label={`${seg.name} actual seconds`}
-                          value={actuals[i]}
-                          onChange={(e) => changeActual(() => { setAnalysis(null); setActuals((a) => a.map((v, j) => (j === i ? e.target.value : v))); })}
-                          placeholder="—"
-                        />
+                        <AthleteMetricInput className="input !w-24 min-w-24 !min-h-11 !py-2 text-sm tabular-nums" min={1} disabled={busy} es={es}
+                          label={`${seg.name} ${es ? "tiempo real (m:ss)" : "actual time (m:ss)"}`} value={actuals[i]}
+                          onChange={value => changeActual(() => { setAnalysis(null); setActuals(a => a.map((v,j) => j === i ? value : v)); })}/>
+
                       </td>
                     </tr>
                   ))}
@@ -255,9 +253,9 @@ export default function HyroxPage() {
               <div className="grid sm:grid-cols-3 gap-3">
                 <label className="block text-sm">{es ? "Fecha local de la prueba" : "Actual local race date"}<input className="input" type="date" disabled={busy} value={observedDate} onChange={event => changeActual(() => setObservedDate(event.target.value))}/></label>
                 <label className="block text-sm">{es ? "Nombre de la prueba (opcional)" : "Event name (optional)"}<input className="input" maxLength={200} disabled={busy} value={eventName} onChange={event => changeActual(() => setEventName(event.target.value))}/></label>
-                <label className="block text-sm">{es ? "Total real de transiciones/Roxzone (seg, opcional)" : "Actual transitions/Roxzone total (seconds, optional)"}<input className="input" type="number" min="0" max="14400" disabled={busy} value={transitionSeconds} onChange={event => changeActual(() => setTransitionSeconds(event.target.value))} placeholder="—"/></label>
+                <label className="block text-sm">{es ? "Total real de transiciones/Roxzone (m:ss, opcional)" : "Actual transitions/Roxzone total (m:ss, optional)"}<AthleteMetricInput es={es} max={14400} disabled={busy} value={transitionSeconds} onChange={value => changeActual(() => setTransitionSeconds(value))}/></label>
               </div>
-              <p className="text-sm">{actuals.filter(value => value.trim() !== "").length}/16 {es ? "parciales registrados. Transiciones" : "segments logged. Transitions"}: {transitionSeconds === "" ? (es ? "— sin registrar" : "— missing") : `${transitionSeconds} s`}. {es ? "Introduce cada segmento sin transiciones; registra el total Roxzone por separado. Sin los 16 parciales y las transiciones, no hay tiempo final completo." : "Enter segment times excluding transitions; log total Roxzone separately. Without all 16 splits and transitions there is no complete finish total."}</p>
+              <p className="text-sm">{actuals.filter(value => value.trim() !== "").length}/16 {es ? "parciales registrados. Transiciones" : "segments logged. Transitions"}: {transitionSeconds === "" ? (es ? "— sin registrar" : "— missing") : clockText(Number(transitionSeconds)) || "—"}. {es ? "Introduce cada segmento sin transiciones; registra el total Roxzone por separado. Sin los 16 parciales y las transiciones, no hay tiempo final completo." : "Enter segment times excluding transitions; log total Roxzone separately. Without all 16 splits and transitions there is no complete finish total."}</p>
               <label className="flex gap-2 items-start text-sm"><input className="mt-1" type="checkbox" disabled={busy || !dirty} checked={confirmed} onChange={event => setConfirmed(event.target.checked)}/><span>{es ? "Confirmo que son mis parciales reales de la fecha indicada; los campos vacíos siguen desconocidos. Guardar no modifica mi entrenamiento." : "I confirm these are my actual splits on the stated date; blank fields remain unknown. Saving does not change my training."}</span></label>
               <button className="btn-primary" disabled={busy || !dirty || !confirmed || !observedDate || !revision || !actuals.some(value => value.trim() !== "")} onClick={saveResults}>{es ? "Confirmar y guardar parciales" : "Confirm and save splits"}</button>
               {!revision && <p className="text-sm text-amber-800">{es ? "Actualiza el historial guardado antes de confirmar." : "Reload saved results before confirming."}</p>}

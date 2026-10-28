@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import type { UniversalWorkoutCard } from "@/lib/universal-workout-card";
+import { AthleteMetricInput } from "@/components/AthleteMetricInput";
 export function WorkoutEditor({
   card,
   onSaved,
@@ -10,6 +11,7 @@ export function WorkoutEditor({
 }) {
   const es = card.language === "es",
     s = card.session;
+  const imperial = card.units === "imperial";
   const [steps, setSteps] = useState(
     s.steps.map((st) => ({
       name: st.name,
@@ -119,17 +121,15 @@ export function WorkoutEditor({
               {i + 1}. {st.name}
             </legend>
             <label>
-              {es ? "Segundos" : "Seconds"}
-              <input
-                type="number"
-                min="1"
-                max="86400"
+              {es ? "Duración (min o m:ss)" : "Duration (min or m:ss)"}
+              <AthleteMetricInput
+                es={es} min={1} max={86400}
                 required
                 value={st.seconds}
-                onChange={(e) =>
+                onChange={(value) =>
                   setSteps((all) =>
                     all.map((v, j) =>
-                      j === i ? { ...v, seconds: Number(e.target.value) } : v,
+                      j === i ? { ...v, seconds: value === "" ? NaN : Number(value) } : v,
                     ),
                   )
                 }
@@ -177,33 +177,28 @@ export function WorkoutEditor({
                 <option value="open">
                   {es ? "Esfuerzo libre" : "Open effort"}
                 </option>
-                <option value="pace">s/km</option>
+                <option value="pace">min:sec/{imperial ? "mi" : "km"}</option>
                 <option value="power">W</option>
                 <option value="heartRate">bpm</option>
-                <option value="speed">m/s</option>
+                <option value="speed">{imperial ? "mph" : "km/h"}</option>
               </select>
             </label>
             {st.target.type !== "open" &&
               (["low", "high"] as const).map((bound) => (
                 <label key={bound}>
-                  {bound === "low"
+                  {st.target.type === "pace" ? (bound === "low" ? es ? "Ritmo más rápido" : "Faster pace" : es ? "Ritmo más lento" : "Slower pace") : bound === "low"
                     ? es
                       ? "Mínimo"
                       : "Minimum"
                     : es
                       ? "Máximo"
                       : "Maximum"}
-                  <input
-                    type="number"
-                    min="0"
-                    step={
-                      st.target.type === "pace" || st.target.type === "speed"
-                        ? "any"
-                        : "1"
-                    }
+                  <AthleteMetricInput
+                    es={es} clock={st.target.type === "pace"} min={0.001} max={st.target.type === "pace" ? 3600 : 2000}
+                    factor={st.target.type === "pace" ? (imperial ? 1.609344 : 1) : st.target.type === "speed" ? (imperial ? 2.2369362921 : 3.6) : 1}
                     required
                     value={st.target[bound] ?? ""}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setSteps((all) =>
                         all.map((v, j) =>
                           j === i
@@ -213,9 +208,9 @@ export function WorkoutEditor({
                                 target: {
                                   ...v.target,
                                   [bound]:
-                                    e.target.value === ""
+                                    value === ""
                                       ? undefined
-                                      : Number(e.target.value),
+                                      : Number(value),
                                 },
                               }
                             : v,

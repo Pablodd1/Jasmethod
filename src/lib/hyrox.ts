@@ -9,13 +9,13 @@ const fmt = (sec: number) => { const rounded = Math.round(sec); return `${Math.f
 /** Shared by GET and POST. A threshold is an explicitly labelled scenario anchor, not an inferred HYROX race pace. */
 export function resolveHyroxPace(input: unknown, profilePace: number | null | undefined) {
   if (input !== undefined && input !== null && input !== "") {
-    if ((typeof input !== "number" && typeof input !== "string") || !String(input).trim()) throw new Error("Enter a positive running pace in seconds per kilometre.");
+    if ((typeof input !== "number" && typeof input !== "string") || !String(input).trim()) throw new Error("Enter a positive running pace using the displayed min:sec pace field.");
     const pace = Number(input);
-    if (!Number.isFinite(pace) || pace <= 0) throw new Error("Enter a positive running pace in seconds per kilometre.");
+    if (!Number.isFinite(pace) || pace <= 0) throw new Error("Enter a positive running pace using the displayed min:sec pace field.");
     return { pace, source: "entered" as const };
   }
   if (profilePace != null && Number.isFinite(profilePace) && profilePace > 0) return { pace: profilePace, source: "profile_threshold_scenario" as const };
-  throw new Error("No running pace is available. Enter a practiced pace in seconds per kilometre; no device is required.");
+  throw new Error("No running pace is available. Enter a practiced pace in the displayed min:sec units; no device is required.");
 }
 export function planHyroxSplits(opts: { targetTotalMin: number; runPaceSecPerKm: number; sex?: "male" | "female"; pro?: boolean }): SplitPlan {
   const { targetTotalMin, runPaceSecPerKm, sex = "male", pro = false } = opts;

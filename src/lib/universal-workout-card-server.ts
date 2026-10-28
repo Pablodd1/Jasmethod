@@ -2,6 +2,7 @@ import type { CanonicalSession } from "./canonical-session";
 import type { SessionNutrition } from "./session-nutrition";
 import type { UniversalWorkoutCard } from "./universal-workout-card";
 import { manualWorkoutEmailContent } from "./manual-workout-email-content";
+import { unitsOf } from "./units";
 
 // Presentation projection, never a second prescription or a physiology engine.
 export function buildUniversalWorkoutCard(
@@ -41,6 +42,7 @@ export function buildUniversalWorkoutCard(
   return {
     schemaVersion: "jmm-workout-card-v1",
     language,
+    units: unitsOf(units, language),
     session,
     nutrition: session.verdict === "ready" ? nutrition : null,
     content,
