@@ -92,9 +92,12 @@ async function browserJourney(browser,language){
   await baseline.getByRole('button',{name:es?'Registrar prueba':'Record test',exact:true}).click();assert.equal((await request).status(),200);
   assert.equal((await db.benchmarkTest.findFirstOrThrow({where:{userId:who.user.id,type:'run5k'}})).result,1500);
   assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:who.user.id}})).runPaceBase,null);
+  // Profile's onSaved refresh unmounts this section. Verify persisted history after a full reload.
+  await page.reload();await baseline.getByRole('listitem').filter({hasText:'25:00'}).waitFor();
   await baseline.getByRole('combobox').selectOption('swim');await result.fill('1:40');await baseline.locator('input[name="date"]').fill(ago(1));
   request=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/benchmarks'&&r.request().method()==='POST');await baseline.getByRole('button',{name:es?'Registrar prueba':'Record test',exact:true}).click();assert.equal((await request).status(),200);
   const swim=await db.benchmarkTest.findFirstOrThrow({where:{userId:who.user.id,type:'swim'}});assert.ok(Math.abs(swim.result-(es?100:100/.9144))<1e-8);
+  await page.reload();await baseline.getByRole('listitem').filter({hasText:'1:40'}).waitFor();
   await baseline.scrollIntoViewIfNeeded();await page.screenshot({path:`${dir}/measured-time-${language}-390.png`,fullPage:false});
   await page.goto(base+'/hyrox');await page.locator('#hyrox-target').fill('75');await page.locator('#hyrox-pace').fill('5:00');await page.locator('#hyrox-sex').selectOption('female');await page.locator('#hyrox-pro').selectOption('0');
   await page.locator('#hyrox-build-plan').click();const split=page.getByRole('textbox',{name:es?/tiempo real \(m:ss\)/:/actual time \(m:ss\)/});await split.first().waitFor();
