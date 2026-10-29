@@ -260,7 +260,8 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
             if (steps.length > 1000) fail("Expanded brick exceeds the 1,000-step safety limit.");
           } else {
             const entries = sportStructureSteps(sportStructure);
-            steps = normalizeSteps(entries.map(e => sport==="swim"&&e.detail?.kind==="pool"&&profile?.swimPaceBase!=null?{...e.step,target:undefined}:e.step), sport, profile).map((step, i) => {
+            // The general CSS reference cannot establish pace for other strokes or drills.
+            steps = normalizeSteps(entries.map(e => sport==="swim"&&e.detail?.kind==="pool"&&e.detail.stroke==="freestyle"&&profile?.swimPaceBase!=null?{...e.step,target:undefined}:e.step), sport, profile).map((step, i) => {
               const detail = entries[i].detail;
               return { ...step, ...(detail ? { sportDetail: detail } : {}), note: [sportStepInstruction(detail), step.note].filter(Boolean).join(" ") || undefined,
                 ...(detail?.kind === "pool" && step.target.type !== "pace" ? { target: { type: "swimStroke" as const, stroke: detail.stroke, source: "explicit" as const, label: `${detail.stroke} · ${step.target.label}` } } : {}) };

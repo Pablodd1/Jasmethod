@@ -50,6 +50,15 @@ test('canonical fueling preserves concentration versus hourly rate and shows pos
  const session={id:'bike',dateLocal:today,timezone,sport:'bike',durationMin:180,intensity:'z2',verdict:'ready' as const};
  const n=buildSessionNutrition(profile,session,now)!;assert.equal(n.fuel.fluidMlPerHour,750);assert.equal(n.fuel.sodiumMgPerHour,525);assert.ok((n.post.proteinG??0)>0);assert.deepEqual(buildSessionNutrition(profile,session,now),n);
 });
+
+test('a general CSS reference does not invent pace for other strokes or drills',()=>{
+ const anchors=evidencedTargetProfile(profile,[],[],now,timezone);
+ for(const stroke of ['backstroke','breaststroke','butterfly','drill','mixed','im']){
+  const sportStructure={schemaVersion:1,kind:'pool',poolLength:{value:25,unit:'yd'},steps:[{kind:'lengths',name:'Explicit stroke practice',phase:'active',zone:'z2',lengths:8,stroke}]};
+  const session=canonicalSession({athleteId:'mock',dateLocal:today,timezone,profile:anchors,workout:{id:stroke,sport:'swim',title:'Stroke practice',durationMin:20},prescription:{sport:'swim',durationMin:20,verdict:'full',sportStructure}});
+  assert.equal(session.verdict,'ready',session.reason);assert.equal(session.steps[0].target.type,'swimStroke');assert.equal(session.steps[0].target.reference,undefined);
+ }
+});
 test('onboarding Continue saves edited body data atomically with references and does not clear unanswered body fields',()=>{
  const p=onboardingSectionPayload('essentials',{sex:'male',heightCm:'180.34',weightKg:'72.12',ftp:'330',manualPrs:profile.manualPrs},{},{profile:{},setup:null},null);assert.equal(p.sex,'male');assert.equal(p.heightCm,'180.34');assert.equal(p.weightKg,'72.12');assert.equal(p.ftp,'330');assert.equal(p.manualPrs,profile.manualPrs);
  assert.deepEqual(onboardingSectionPayload('essentials',{weightKg:''},{},{profile:{weightKg:72},setup:null},null),{});
