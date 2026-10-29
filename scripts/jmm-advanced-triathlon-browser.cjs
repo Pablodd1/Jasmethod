@@ -24,8 +24,10 @@ async function main(){const who=await actor(),other=await actor();const before=a
  let checked=await call(who,'/api/checkin',answers);let p=checked.prescriptions.find(p=>p.sessionId===swim.id);assert.ok(p?.canonical);assert.equal(p.canonical.capability.available,false);
  const blocked=await call(who,`/api/workout/approve?sessionId=${swim.id}`,undefined,422);assert.equal(blocked.code,'workout_structure_required');assert.ok(blocked.remediation.href);
  const pool={schemaVersion:1,kind:'pool',poolLength:{value:25,unit:'yd'},steps:[{kind:'lengths',name:'Easy preparation',phase:'warmup',zone:'z1',lengths:8,stroke:'freestyle'},{kind:'lengths',name:'Reviewed aerobic set',phase:'active',zone:'z2',lengths:20,stroke:'freestyle'},{kind:'rest',seconds:30},{kind:'lengths',name:'Easy finish',phase:'cooldown',zone:'z1',lengths:4,stroke:'freestyle'}]};
- // An explicit synthetic author-reviewed pool revision, not guessed from equipment or prose.
- await db.workout.update({where:{id:swim.id},data:{durationMin:30,originalPlan:JSON.stringify({...JSON.parse(swim.originalPlan),durationMin:30}),prescription:JSON.stringify({sport:'swim',title:swim.title,durationMin:30,verdict:'planned',sportStructure:pool,sportStructureBudgetMin:30})}});
+ // Use the existing authenticated structure writer and its revision/budget guards.
+ // This explicit synthetic fixture is not guessed from equipment or prose.
+ const metadata=await call(who,`/api/workout/structure?id=${swim.id}`);assert.equal(metadata.editable,true);
+ await call(who,`/api/workout/structure?id=${swim.id}`,{id:swim.id,expectedRevision:metadata.revision,sportStructure:pool},200,'PATCH');
  checked=await call(who,'/api/checkin',answers);p=checked.prescriptions.find(p=>p.sessionId===swim.id);assert.equal(p.canonical.verdict,'ready',p.canonical.reason);assert.ok(p.canonical.steps.some(s=>s.target.label.includes('/100 yd')));
  const day=await call(who,'/api/today'),fromToday=day.sessions.find(s=>s.id===swim.id);assert.equal(fromToday.revision,p.revision);assert.deepEqual(fromToday.fuel,p.nutrition.fuel);assert.equal(fromToday.fuel.sodiumMgPerHour,525);
  const reload=await call(who,'/api/checkin'),persisted=reload.prescriptions.find(s=>s.sessionId===swim.id);assert.equal(persisted.revision,p.revision);assert.deepEqual(persisted.nutrition,p.nutrition);
