@@ -51,7 +51,7 @@ export const SUPPLEMENT_DB: Supplement[] = [
     dose: "3–5 g/day maintenance (loading: 20 g/day × 5-7 days optional)",
     timing: "Any time of day — consistency matters more than timing",
     mechanism: "Increases phosphocreatine pool → faster ATP regeneration during high-intensity efforts. Also buffers H+ ions and may reduce muscle damage.",
-    caution: "Water retention 1-2 kg during loading phase. Safe across the lifespan (Kreider 2025: safe from adolescents to elderly, no kidney damage in healthy individuals).",
+    caution: "Water retention 1-2 kg during loading phase. Suitability varies with age, health, medicines and product quality; seek individual professional review.",
     citations: [
       { author: "Kreider", year: 2025, journal: "Frontiers in Nutrition", PMID: undefined },
       { author: "Ashtary-Larky", year: 2025, journal: "J ISSN — 61 RCT meta-analysis" },
@@ -68,7 +68,7 @@ export const SUPPLEMENT_DB: Supplement[] = [
     dose: "3–6 mg/kg body mass (200–400 mg for 70 kg athlete)",
     timing: "45–60 min pre-exercise",
     mechanism: "Adenosine receptor antagonist → reduces perceived exertion, increases motor unit recruitment and fat oxidation.",
-    caution: "≥9 mg/kg increases anxiety, jitters, GI distress. Tachycardia in sensitive individuals. Tolerance develops — cycle off every 4-6 weeks. Stop by 2 PM to protect sleep.",
+    caution: "≥9 mg/kg increases anxiety, jitters, GI distress. Tachycardia in sensitive individuals. Timing, tolerance and sleep effects vary. Review all caffeine sources and individual sensitivity with an appropriate professional; no universal cycling schedule or clock-time cutoff is prescribed.",
     citations: [
       { author: "Guest", year: 2021, journal: "J ISSN — Position Stand, cited 1297×", PMID: "33388079" },
       { author: "Grgic", year: 2020, journal: "Scandinavian J Med Sci Sports" },

@@ -16,7 +16,7 @@ export function savedWorkoutPreview(input: unknown, athleteId: string, timezone:
     if (canonical.verdict !== "ready") return unavailable(canonical.reason);
     const preview: SavedWorkoutPreview = {
       kind: "saved_plan_preview", sessionId: canonical.id, available: true,
-      reason: "Saved plan preview only. This does not confirm session-day readiness, completed training, or device delivery. Profile references use currently validated benchmarks.",
+      reason: "Saved plan preview only. This does not confirm session-day readiness, completed training, or device delivery. Targets use current dated reference evidence; reported references are not verified tests.",
       session: {
         title: canonical.title, sport: canonical.sport, dateLocal: canonical.dateLocal, timezone: canonical.timezone,
         durationMin: canonical.durationMin, exactTimeSeconds: canonical.exactTimeSeconds,

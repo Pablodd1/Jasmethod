@@ -514,7 +514,7 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     benefit:
       "Power, strength, repeat-sprint + recovery; small endurance benefit. 2025 umbrella review of 61 RCT meta-analyses: best-evidenced supplement in sport (Ashtary-Larky 2025). Also counters age-related anabolic resistance in masters athletes.",
     caution:
-      "Expect ~1kg water-weight gain during loading. 2025 safety review: no adverse effects on kidney/liver function in healthy people across the lifespan (Kreider 2025). Monohydrate only — other forms are pricier without better evidence.",
+      "Expect ~1kg water-weight gain during loading. Suitability and adverse effects need individual professional review; this is not a guarantee of safety. Monohydrate only — other forms are pricier without better evidence.",
   },
   {
     key: "betaAlanine",

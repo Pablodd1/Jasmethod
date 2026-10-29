@@ -44,7 +44,7 @@ test("legacy coach route explicitly withholds eligibility after gathering mixed-
   const route = load("src/app/api/coach/route.ts", {
     "next/server": { NextResponse: { json: (value: unknown, init?: ResponseInit) => Response.json(value, init) } },
     "@/lib/db": { prisma: data }, "@/lib/auth": { getCurrentUser: async () => ({ id: "synthetic-athlete", timezone: "UTC", name: "Synthetic" }) },
-    "@/lib/coach-readiness": { currentHrvReadiness: () => null },
+    "@/lib/effective-prescription":{effectivePrescription:async()=>null},"@/lib/coach-readiness": { currentHrvReadiness: () => null },
     "@/lib/dates": { dayBounds: () => ({ start: date, end: new Date(+date + 86400000) }), dateKey: (value: Date) => value.toISOString().slice(0, 10), addDaysKey: (value: string) => value },
     "@/lib/adaptive": {}, "@/lib/prescription": {},
     "@/lib/activity-evidence": activityEvidence,

@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) { return run(req, false); }
 export async function POST(req: Request) { return run(req, true); }
 async function run(req: Request, markApproved: boolean) {
+  let currentRevision:string|null=null;
   try {
     const { athlete: user, actor } = await trainingAccess(req);
     const url = new URL(req.url);
@@ -20,10 +21,12 @@ async function run(req: Request, markApproved: boolean) {
     const resolved = await effectivePrescription(user.id, sessionId);
     if (!resolved) throw new ApiError("Session not found", 404);
     const { workout, canonical } = resolved;
+    currentRevision=canonical.revision;
     const expectedRevision = url.searchParams.get("expectedRevision");
     if (markApproved && !expectedRevision) throw new ApiError("Refresh and approve the current workout revision.", 409);
     requireSessionRevision(canonical, expectedRevision);
     const { bytes: fit, filename, contentType } = buildSessionDownload(canonical);
+    if(!fit.length)throw new SessionResolutionError("The workout file was empty. No export was completed.",500);
     if (markApproved) await prisma.$transaction(async db => {
       const current = await effectivePrescription(user.id, sessionId, db);
       if (!current) throw new ApiError("The workout was replaced or removed. Refresh before approving.", 409);
@@ -56,7 +59,7 @@ async function run(req: Request, markApproved: boolean) {
     } });
   } catch (error) {
     if ((error as { code?: string })?.code === "P2034") return errorResponse(new ApiError("The workout or its safety information changed while approving. Refresh before trying again.", 409));
-    if (error instanceof SessionResolutionError) return NextResponse.json({ error: error.message }, { status: error.status, headers: { "Cache-Control": "private, no-store" } });
+    if (error instanceof SessionResolutionError) return NextResponse.json({ error: error.message, code:error.status===409?"session_review_required":"workout_structure_required",sessionId:new URL(req.url).searchParams.get("sessionId"),revision:currentRevision,remediation:{href:"/today",action:"Review the current session, missing sport context and structured steps before downloading. No pool length, stroke or readiness is assumed."} }, { status: error.status, headers: { "Cache-Control": "private, no-store" } });
     return errorResponse(error);
   }
 }

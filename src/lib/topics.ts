@@ -51,7 +51,7 @@ const SUPPLEMENTS: Topic = {
     "Most of the supplement aisle is noise dressed up in a shiny label. The shortlist that survives contact with replicated human trials is small: creatine, caffeine, beta-alanine, protein, vitamin D, omega-3 — plus targeted add-ons per sport. Everything here is graded against human trials, not marketing.",
   glance: [
     { value: "61", unit: "meta-analyses", label: "Creatine umbrella review 2025 — best-evidenced supplement in sport" },
-    { value: "3–5", unit: "g/day", label: "Creatine monohydrate — safe across the lifespan (Kreider 2025)" },
+    { value: "3–5", unit: "g/day", label: "Creatine monohydrate — requires individual suitability review" },
     { value: "3–6", unit: "mg/kg", label: "Caffeine — the effective dose range (Guest 2021)" },
     { value: "3.2–6.4", unit: "g/day", label: "Beta-alanine chronic load — 4+ weeks to work (Trexler 2015)" },
   ],

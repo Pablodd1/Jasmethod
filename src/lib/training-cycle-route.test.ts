@@ -90,7 +90,7 @@ test("stored UTC calendar-day race and explicitly entered race keep the intended
 
 test("swimming cycle provenance is a field-test reference, not measured lactate threshold",()=>{
   const source=fs.readFileSync("src/app/api/plan/generate/route.ts","utf8");
-  assert.match(source,/label:"Swimming CSS reference", value:profile.swimPaceBase, source:anchors.swimPaceBase \? "swim_field_test_reference"/);
+  assert.match(source,/label:"Swimming CSS reference", value:profile.swimPaceBase, observedAt:anchors.referenceEvidence.swimPaceBase\?\.observedAt\?\?null, source:anchors.swimPaceBase \? anchors.referenceEvidence.swimPaceBase\?\.source\?\?"swim_field_test_reference"/);
 });
 
 test("event edits invalidate preview and transactional event changes cannot commit",async()=>{

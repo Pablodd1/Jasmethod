@@ -174,7 +174,7 @@ test("a legacy draft without manualPrs inherits verified saved PBs before append
   ui=f.mount("redo=1&step=profile");await ui.flush();assert.equal(ui.input("onboard-field-4").props.value,"64");assert.match(ui.text(),/100 m: 13.7 sec/);
   await ui.edit("onboard-pb-label","5K race");await ui.edit("onboard-pb-value","24");await ui.edit("onboard-pb-unit","min");await ui.click("Save new answers and continue");
   assert.deepEqual(JSON.parse(String(f.server.profile.manualPrs)),[...existing,{label:"5K race",value:24,unit:"min",date:""}]);
-  assert.equal(f.server.profile.weightKg,null);
+  assert.equal(f.server.profile.weightKg,"64");
 });
 
 

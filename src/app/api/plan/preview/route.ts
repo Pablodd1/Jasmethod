@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     ]);
     if (!workout) throw new ApiError("Session not found", 404);
     const profile = evidencedTargetProfile(athlete.profile ? { ...athlete.profile, units: unitsOf(athlete.profile.units, athlete.language) } : null,
-      tests, applied.flatMap(row => row.entityId ? [row.entityId] : []));
+      tests, applied.flatMap(row => row.entityId ? [row.entityId] : []),new Date(),athlete.timezone);
     return Response.json(savedWorkoutPreview(workout, athlete.id, athlete.timezone, profile), { headers });
   } catch (error) {
     const response = errorResponse(error);

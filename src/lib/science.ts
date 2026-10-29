@@ -1,3 +1,5 @@
+import { SWIM_ZONE_MULT } from "./zone-factors";
+import { reviewedTriathlonTemplate } from "./triathlon-template";
 import { buildSprintSession } from "./sprint-protocols";
 // JasMiamiMethod — Sports Science Engine
 // Evidence-based training physiology per post-2000 research literature.
@@ -154,13 +156,7 @@ export interface ZoneTable {
 }
 
 // Swim pace zones around threshold (CSS) pace — sec/100m. Slower = larger seconds.
-const SWIM_ZONE_MULT: Record<string, { slow: number; fast: number }> = {
-  z1: { slow: 1.25, fast: 1.15 },
-  z2: { slow: 1.15, fast: 1.06 },
-  z3: { slow: 1.06, fast: 1.02 },
-  z4: { slow: 1.02, fast: 0.98 },
-  z5: { slow: 0.98, fast: 0.92 },
-};
+
 
 export function buildZoneTable(opts: {
   maxHr?: number;
@@ -353,6 +349,7 @@ export interface GeneratedWeek {
   totalMinutes: number;
   /** Existing template volume wave; event control compares reductions rather than stacking them. */
   periodizationFactor?: number;
+  templateVersion?:string;
   tss?: number;
 }
 
@@ -496,6 +493,7 @@ export function generatePlan(opts: {
     ...(extraRaces || []),
   ];
 
+  if(opts.reviewedCycle&&weeklyHours!=null&&distance==="half"&&["advanced","pro"].includes(level))return reviewedTriathlonTemplate({weeks,weeklyHours:targetHours,volume:index=>mesoVolumeRaces(index,level,races,startDate).vol});
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
     const { vol: volumeFactor, phase: ph, block } = mesoVolumeRaces(w - 1, level, races, startDate);

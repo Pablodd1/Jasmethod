@@ -57,6 +57,11 @@ export function friendlyStructureFrom(value: unknown, sport: string): FriendlySt
   const form: FriendlyStructure = { kind: s.kind, poolLength: s.kind === "pool" ? String(s.poolLength.value) : "", poolUnit: s.kind === "pool" ? s.poolLength.unit : "m", steps: [] };
   for (const row of s.steps) {
     if (row.kind === "lengths" && row.sendOffSeconds !== undefined) return null;
+    // A valid saved distance/reps structure may omit planning-time estimates.
+    // The simple form requires them; preserve the original JSON instead of
+    // trapping the athlete in a form that cannot save or switch modes.
+    if (row.kind === "lengths" && row.estimatedSeconds === undefined) return null;
+    if (["set","station","run"].includes(row.kind) && "endpoint" in row && row.endpoint.type !== "time" && (!('estimatedSeconds' in row) || row.estimatedSeconds === undefined)) return null;
     if (row.kind === "step" && row.endpoint.type !== "time") return null;
     const kind = row.kind === "step" ? row.phase : row.kind;
     const draft = emptyFriendlyStep(kind);

@@ -50,9 +50,10 @@ function validStep(value: unknown): value is SavedPreviewStep {
   } else if (e.type === "reps") {
     if (!keys(e, ["type", "reps"]) || !number(e.reps, 1, 10000) || !Number.isInteger(e.reps)) return false;
   } else if (e.type !== "lap" || !keys(e, ["type"])) return false;
-  if (!keys(t, ["type", "low", "high", "label", "source", "missingReason", "stroke"]) ||
+  if (!keys(t, ["type", "low", "high", "label", "source", "missingReason", "stroke", "reference"]) ||
     !text(t.label, 20000) || !member(t.source, ["explicit", "profile_reference", "effort"]) ||
     (t.missingReason !== undefined && !text(t.missingReason, 20000))) return false;
+  if(t.reference!==undefined){const r=t.reference;if(t.source!=="profile_reference"||!object(r)||!keys(r,["source","observedAt","unit","value"])||!member(r.source,["athlete_reported_reference","applied_field_test","estimated_from_applied_5k"])||!member(r.unit,["W","sec/km","sec/100m"])||!number(r.value,.001,3600)||!text(r.observedAt,35)||!/^\d{4}-\d{2}-\d{2}(?:T[0-9:.]+Z)?$/.test(String(r.observedAt))||!Number.isFinite(Date.parse(String(r.observedAt))))return false;}
   if (t.type === "open" || t.type === "swimStroke") {
     if (t.low !== undefined || t.high !== undefined) return false;
     return t.type === "open" ? t.stroke === undefined :

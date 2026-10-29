@@ -14,7 +14,8 @@ function session(sport = "bike", profile: TargetProfile = {}, steps?: unknown[])
 }
 function nutrition(input: Partial<FuelingInput> = {}, recovery: { nextSessionInHours?: number | null; sport?: string } = {}): NonNullable<SessionNutrition> {
   const opts = { durationMin: 90, intensity: "z2", weightKg: 70, ...input };
-  return { fuel: buildFuelingPlan(opts), post: postFuelPersonalized({ ...opts, ...recovery }), intensity: opts.intensity,
+  return { schemaVersion: "session-nutrition-v1", sessionId: "session", sourceRevision: null, dateLocal: "2026-10-07",
+    fuel: buildFuelingPlan(opts), post: postFuelPersonalized({ ...opts, ...recovery }), intensity: opts.intensity,
     contextStatus: "missing", reviewReasons: [] };
 }
 const spanish = (n: SessionNutrition, s = session()) => manualWorkoutEmailContent(s, n, "08:00", false, "es").plan;

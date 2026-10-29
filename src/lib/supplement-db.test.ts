@@ -59,7 +59,8 @@ test("ergogenic library: creatine reflects 2025 umbrella-review evidence", () =>
   const creatine = ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!;
   assert.ok(creatine);
   assert.match(creatine.benefit, /Ashtary-Larky 2025/);
-  assert.match(creatine.caution!, /Kreider 2025/);
+  assert.match(creatine.caution!, /individual professional review/);
+  assert.doesNotMatch(creatine.caution!, /across the lifespan/);
 });
 
 test("ergogenic library: recovery entries present with competition-window guidance", () => {

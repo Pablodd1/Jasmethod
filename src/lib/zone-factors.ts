@@ -13,3 +13,11 @@ export function zoneOf(value: number | null | undefined, anchor: number | null |
   for (let z = 1; z <= 6; z++) if (value <= anchor * factors[z]) return z;
   return 7;
 }
+
+export const SWIM_ZONE_MULT: Record<string, { slow: number; fast: number }> = {
+  z1: { slow: 1.25, fast: 1.15 },
+  z2: { slow: 1.15, fast: 1.06 },
+  z3: { slow: 1.06, fast: 1.02 },
+  z4: { slow: 1.02, fast: 0.98 },
+  z5: { slow: 0.98, fast: 0.92 },
+};

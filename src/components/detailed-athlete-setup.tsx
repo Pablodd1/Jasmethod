@@ -1,6 +1,7 @@
 "use client";
+import { recordReportedAnchors } from "@/lib/reported-anchors";
 
-import { ONBOARDING_STEP, onboardingNext, onboardingResume, type OnboardingStep } from "@/lib/onboarding-flow";
+import { ONBOARDING_STEP, onboardingNext, onboardingResume, onboardingSavedResume, type OnboardingStep } from "@/lib/onboarding-flow";
 import { ONBOARDING_ANCHORS, missingOnboardingAnchors, readManualPersonalBests, appendManualPersonalBest } from "@/lib/onboarding-evidence";
 import { saveReviewedProfile } from "@/lib/profile-client";
 import { onboardingSectionPayload, type OnboardingSection, type SavedOnboarding } from "@/lib/onboarding-save";
@@ -121,7 +122,7 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
       setPersonalBest(draft?.personalBest ?? {...EMPTY_PERSONAL_BEST});
       setRevision(data.revision); setSetupRevision(data.setupRevision ?? null);
       setSavedReadiness(data.planningReadiness ?? null);
-      setStep(requestedStep ? onboardingResume(requestedStep) : draft?.step ?? ONBOARDING_STEP.devices);
+      setStep(requestedStep ? onboardingResume(requestedStep) : draft?.step ?? onboardingSavedResume(data.profile??null,data.setup??null));
       setRaceLoadError(savedRaces === null);
       const normalizedRaces = (savedRaces ?? []).map(item => ({...item,date:item.date.slice(0,10),location:item.location ?? ""}));
       setRaces(normalizedRaces);
@@ -209,21 +210,24 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
     } catch (e) { setError((e as Error).message); }
   }
 
+  const [referenceDates,setReferenceDates]=useState<Record<string,string>>({});
   async function saveProfile(section: OnboardingSection) {
     const relevant=section==="profile"?["weightKg","heightCm"]:section==="zones"||section==="essentials"?["runPaceBase","swimPaceBase"]:section==="goals"?["targetGoal"]:[];
     if(relevant.some(field=>unitErrors[field])){setError(t("Review the measurement format before saving.","Revisa el formato de las medidas antes de guardar."));return false;}
     if (savingRef.current) return false;
     savingRef.current = true; setSaving(true); setError(""); setNotice("");
     try {
-      const nextProfile = section === "essentials" && Object.values(personalBest).some(Boolean)
+      let nextProfile = section === "essentials" && Object.values(personalBest).some(Boolean)
         ? {...profile,manualPrs:appendManualPersonalBest(profile.manualPrs,personalBest,dateKey(new Date(),user?.timezone))}
         : profile;
+      if(["essentials","zones"].includes(section))for(const field of ["ftp","runPaceBase","swimPaceBase"] as const)if(referenceDates[field])nextProfile={...nextProfile,manualPrs:recordReportedAnchors(nextProfile.manualPrs,{[field]:nextProfile[field]},referenceDates[field],dateKey(new Date(),user?.timezone))};
       const fields: Record<string,unknown> = onboardingSectionPayload(section, nextProfile, setup, savedOnboarding.current, setupRevision);
       if (!Object.keys(fields).length) return true;
       if (section === "profile" && reviewedWeightId) fields.reviewedWeightObservationId = reviewedWeightId;
       const result = await saveReviewedProfile(fields, revision);
       if (!result.profile || typeof result.profile !== "object" || Array.isArray(result.profile)) throw Error("The saved profile could not be verified. Reload before saving again.");
       savedOnboarding.current = {profile:result.profile ?? {},setup:result.setup ?? null};
+      if(["essentials","zones"].includes(section)&&Object.values(referenceDates).some(Boolean)){setProfile(current=>({...current,manualPrs:result.profile.manualPrs??""}));setReferenceDates({});}
       setSavedReadiness(result.planningReadiness ?? null);
       setRevision(result.revision); setSetupRevision(result.setupRevision);
       if (section === "profile") setReviewedWeightId(null);
@@ -390,8 +394,8 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
             </details>
 
             <section className="space-y-3" aria-label={t("Personal bests and recorded results", "Marcas personales y resultados guardados")}>
-              <h3 className="font-semibold">{t("Personal bests and race results", "Marcas personales y resultados de carreras")}</h3>
-              {manualBests === null ? <p role="alert">{t("Saved personal bests could not be verified. They have been preserved; review them in your profile.", "No se pudieron verificar las marcas guardadas. Se conservan; revísalas en tu perfil.")}</p> : manualBests.map((item,index)=><p key={`${item.label}-${index}`} className="text-sm">{item.label}: {item.value} {item.unit} · {item.date || t("Date unknown", "Fecha desconocida")} · {t("Manually reported", "Declarado manualmente")}</p>)}
+              <h3 className="font-semibold">{t("Saved results and reference records", "Resultados y referencias guardados")}</h3>
+              {manualBests === null ? <p role="alert">{t("Saved results and reference records could not be verified. They have been preserved; review them in your profile.", "No se pudieron verificar las marcas guardadas. Se conservan; revísalas en tu perfil.")}</p> : manualBests.map((item,index)=><p key={`${item.label}-${index}`} className="text-sm">{item.label}: {item.value} {item.unit} · {item.date || t("Date unknown", "Fecha desconocida")} · {t("Manually reported", "Declarado manualmente")}</p>)}
               {importReview.raceResults?.map(item=><p key={item.id} className="text-sm">{item.name} ({item.distance}): {item.minutes} min · {new Date(item.date).toLocaleDateString()} · {evidenceKind(item.kind)}{item.source ? ` · ${item.source}` : ""}</p>)}
               {manualBests !== null && !manualBests.length && importReview.raceResults && !importReview.raceResults.length && <p className="text-sm">{t("— No saved personal best or actual race result is available here yet. You can add one or skip.", "— Aún no hay marcas ni resultados reales disponibles aquí. Puedes añadir uno u omitirlo.")}</p>}
               {!importReview.raceResults && <p className="text-sm">{t("Imported race results: — not yet verified. You can retry the import review or continue with what you know.", "Resultados importados: — aún sin verificar. Puedes actualizar la revisión o continuar con lo que conoces.")}</p>}
@@ -445,6 +449,7 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
           {measurement("runPaceBase",t("Running threshold pace","Ritmo umbral de carrera"))}
           {measurement("swimPaceBase",t("Swimming threshold pace","Ritmo umbral de natación"))}
           <p className="text-sm">{t("Running power from Stryd requires a separate reviewed running-power reference; cycling FTP must not be reused. You can continue with perceived effort and reviewed pace/heart-rate guidance.", "La potencia de carrera de Stryd requiere su propia referencia revisada; no se reutiliza el FTP ciclista. Puedes continuar con esfuerzo percibido y ritmo/FC revisados.")}</p>
+          <fieldset className="space-y-2"><legend>{t("Actual observation dates (optional)","Fechas reales de observación (opcionales)")}</legend>{([['ftp','FTP reference date','Fecha de referencia FTP'],['runPaceBase','Run threshold reference date','Fecha del umbral de carrera'],['swimPaceBase','CSS reference date','Fecha de referencia CSS']] as const).map(([field,en,esp])=><label className="block" key={field}>{t(en,esp)}<input type="date" className="input" value={referenceDates[field]??""} max={dateKey(new Date(),user?.timezone)} onChange={e=>setReferenceDates(current=>({...current,[field]:e.target.value}))}/></label>)}<p className="text-xs">{t("Dates only the reference you select as athlete-reported, not a verified test. Undated or expired references leave numerical targets unavailable. Other references are not renewed.","Fecha solo la referencia elegida como declarada, no como prueba verificada. Sin fecha o caducada no genera objetivos numéricos. No se renuevan otras referencias.")}</p></fieldset>
           <button className="btn-primary" disabled={saving || !revision} onClick={async()=>{if(await saveProfile("zones")) setStep(ONBOARDING_STEP.race);}}>{t("Save and continue", "Guardar y continuar")}</button>
         </section>}
         {/* Step 3: Goal race */}
@@ -504,9 +509,9 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
               <details><summary className="min-h-11 cursor-pointer content-center font-semibold">{t("Add a performance target (optional)", "Añadir objetivo de rendimiento (opcional)")}</summary>
               <label className="block">{t("Optional structured target (a goal, not current ability)", "Objetivo estructurado opcional (meta, no capacidad actual)")}<select className="input" value={setup.targetGoal?.metric ?? ""} onChange={e=>setSetup({...setup,baselinePlanOptIn:false,targetGoal:e.target.value?{metric:e.target.value,sport:""}:null})}><option value="">{t("No structured target yet", "Sin objetivo estructurado todavía")}</option><option value="fitness">{t("General fitness", "Bienestar físico general")}</option><option value="completion">{t("Completion", "Terminar")}</option><option value="pace">{t("Target pace", "Ritmo objetivo")}</option><option value="power">{t("Target power / FTP", "Potencia / FTP objetivo")}</option><option value="speed">{t("Target speed", "Velocidad objetivo")}</option></select></label>
               {setup.targetGoal && <div className="space-y-2 border p-3 rounded-lg">
-                <label className="block">{t("Target sport", "Deporte del objetivo")}<select className="input" value={setup.targetGoal.sport} onChange={e=>setSetup({...setup,baselinePlanOptIn:false,targetGoal:{...setup.targetGoal!,sport:e.target.value,context:undefined,contextDescription:undefined}})}><option value="">{t("Choose sport", "Elige deporte")}</option>{["run","bike","swim","strength","mobility","recovery","brick","hyrox"].map(sport=><option key={sport} value={sport}>{sport}</option>)}</select></label>
+                <label className="block">{t("Target sport", "Deporte del objetivo")}<select className="input" value={setup.targetGoal.sport} onChange={e=>setSetup({...setup,baselinePlanOptIn:false,targetGoal:{...setup.targetGoal!,sport:e.target.value,value:"",unit:setup.targetGoal!.metric==="pace"?(e.target.value==="swim"?"sec/100m":e.target.value==="run"?"sec/km":undefined):setup.targetGoal!.metric==="power"?"W":setup.targetGoal!.metric==="speed"?"km/h":undefined,context:undefined,contextDescription:undefined}})}><option value="">{t("Choose sport", "Elige deporte")}</option>{["run","bike","swim","strength","mobility","recovery","brick","hyrox"].map(sport=><option key={sport} value={sport}>{sport}</option>)}</select></label>
                 {["pace","power","speed"].includes(setup.targetGoal.metric) && <>
-                  <label className="block">{t("Target units", "Unidades del objetivo")}<select className="input" value={setup.targetGoal.unit ?? ""} onChange={e=>{setUnitErrors(current=>({...current,targetGoal:null}));setSetup({...setup,targetGoal:{...setup.targetGoal!,unit:e.target.value,value:""}});}}><option value="">{t("Choose units", "Elige unidades")}</option>{(setup.targetGoal.metric==="pace"?["sec/km","sec/100m"]:setup.targetGoal.metric==="power"?["W"]:["km/h"]).map(unit=><option key={unit} value={unit}>{unit==="sec/km"?`min:sec/${displayUnits==="imperial"?"mi":"km"}`:unit==="sec/100m"?`min:sec/100 ${displayUnits==="imperial"?"yd":"m"}`:unit==="km/h"&&displayUnits==="imperial"?"mph":unit}</option>)}</select></label>
+                  <label className="block">{t("Target units", "Unidades del objetivo")}<select className="input" value={setup.targetGoal.unit ?? ""} onChange={e=>{setUnitErrors(current=>({...current,targetGoal:null}));setSetup({...setup,targetGoal:{...setup.targetGoal!,unit:e.target.value,value:""}});}}><option value="">{t("Choose units", "Elige unidades")}</option>{(setup.targetGoal.metric==="pace"?(setup.targetGoal.sport==="swim"?["sec/100m"]:setup.targetGoal.sport==="run"?["sec/km"]:[]):setup.targetGoal.metric==="power"?["W"]:["km/h"]).map(unit=><option key={unit} value={unit}>{unit==="sec/km"?`min:sec/${displayUnits==="imperial"?"mi":"km"}`:unit==="sec/100m"?`min:sec/100 ${displayUnits==="imperial"?"yd":"m"}`:unit==="km/h"&&displayUnits==="imperial"?"mph":unit}</option>)}</select></label>
                   {setup.targetGoal.metric==="pace"&&setup.targetGoal.unit?<ProfileMeasurementInput key={`target-${setup.targetGoal.unit}`} field={setup.targetGoal.unit==="sec/100m"?"swimPaceBase":"runPaceBase"} value={setup.targetGoal.value} units={displayUnits} label={t("Target pace","Ritmo objetivo")} es={lang==="es"} onChange={canonical=>setSetup(current=>({...current,targetGoal:{...current.targetGoal!,value:canonical}}))} onValidityChange={(_,message)=>setUnitErrors(current=>({...current,targetGoal:message}))}/>:setup.targetGoal.metric!=="pace"&&<label className="block">{t("Target value", "Valor objetivo")}<input className="input" type="number" step="any" value={setup.targetGoal.value==null||setup.targetGoal.value===""?"":setup.targetGoal.metric==="speed"&&displayUnits==="imperial"&&Number(setup.targetGoal.value)>0?convertProgressValue(Number(setup.targetGoal.value),"km/h","mph"):setup.targetGoal.value} onChange={e=>setSetup({...setup,targetGoal:{...setup.targetGoal!,value:e.target.value===""?"":setup.targetGoal!.metric==="speed"&&displayUnits==="imperial"&&Number(e.target.value)>0?convertProgressValue(Number(e.target.value),"mph","km/h"):e.target.value}})}/></label>}
                 </>}
                 {["pace","power","speed"].includes(setup.targetGoal.metric) && <>

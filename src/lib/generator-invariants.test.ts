@@ -15,8 +15,8 @@ test("generated allocations preserve full time budget and intensity caps across 
       timeOnly++;
       assert.equal(steps.reduce((sum, s) => sum + s.seconds, 0), minutes * 60, fixture);
       const c = canonicalSession({ athleteId: "fixture", workout: { id: fixture, sport, title: fixture, durationMin: minutes }, prescription: { durationMin: minutes, steps }, dateLocal: "2026-10-02", timezone: "UTC" });
-      assert.equal(c.verdict, "ready", fixture);
-      assert.equal(c.exactTimeSeconds, minutes * 60, fixture);
+      if(sport==="swim"&&minutes>75){assert.equal(c.verdict,"blocked",fixture);assert.match(c.reason,/Generic swims.*coach review/);assert.equal(c.steps.length,0);}
+      else {assert.equal(c.verdict, "ready", fixture);assert.equal(c.exactTimeSeconds, minutes * 60, fixture);}
     } else {
       // Repetition seconds remain an estimated allocation, never an exact endpoint.
       const c = canonicalSession({ athleteId: "fixture", workout: { id: fixture, sport, title: fixture, durationMin: minutes }, prescription: { durationMin: minutes, steps }, dateLocal: "2026-10-02", timezone: "UTC" });

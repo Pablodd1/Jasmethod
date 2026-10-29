@@ -38,6 +38,7 @@ export function FitDownloadActions({ sessionId, revision, title, capability, dis
       }
       const filename = filenameFrom(response);
       const blob = await response.blob();
+      if(!blob.size)throw Error(es?"El archivo estaba vacío. No se ha guardado un entrenamiento.":"The file was empty. No workout was saved.");
       if (controller.signal.aborted) return;
       const file = new File([blob], filename, { type: capability.mode === "split" ? "application/zip" : "application/octet-stream" });
       const outcome = await shareOrDownloadFit(file, title, {

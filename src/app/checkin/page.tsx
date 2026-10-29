@@ -176,7 +176,7 @@ function CheckinPageContent() {
         setAnswers((current:any)=>hydrateCheckinDraft(restored ? hydrateCheckinDraft(manual,restored.answers,restored.dirty) : manual,current,liveDirty));
       } catch { setErr("Saved answers could not be read. Please answer again."); }
     }
-    if (d.checkin?.adaptation) setResult({ adaptation: JSON.parse(d.checkin.adaptation) });
+    if (d.checkin?.adaptation) {setResult({ adaptation: JSON.parse(d.checkin.adaptation), prescriptions:d.prescriptions??[],prescription:d.prescriptions?.[0]??null });setSelectedSessionId(current=>d.prescriptions?.some((p:any)=>p.sessionId===current)?current:d.prescriptions?.[0]?.sessionId??"");}
     if (d.recovery || d.fuelBrands || d.sources) setResult((r: any) => ({ ...(r || {}), recovery: d.recovery, fuelBrands: d.fuelBrands, sources: d.sources }));
     setReadiness(d.readiness || null);
     setPreviousSessions(d.previousSessions || []); setFeedbackDate(d.feedbackDate || ""); setLocalToday(d.localToday || "");
@@ -242,9 +242,10 @@ function CheckinPageContent() {
     if (!prescription?.sessionId) return;
     setBusy(true); setErr(""); setDownloaded(false);
     try {
-      const res = await fetch(`/api/workout/approve?sessionId=${encodeURIComponent(prescription.sessionId)}`);
+      const res = await fetch(`/api/workout/approve?sessionId=${encodeURIComponent(prescription.sessionId)}${prescription.revision ? `&expectedRevision=${encodeURIComponent(prescription.revision)}` : ""}`);
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Download unavailable"); }
       const blob = await res.blob();
+      if(!blob.size)throw Error("The download was empty. No workout file was saved.");
       const name = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || "workout.fit";
       const a = document.createElement("a");
       const url = URL.createObjectURL(blob);
@@ -318,7 +319,9 @@ function CheckinPageContent() {
   // Display-only: separates an unanswered question from a real answer of 0 minutes. Safety rules are untouched.
   const adaptationView = adaptation ? checkinAdaptationView(adaptation, lang === "es") : null;
   const prescription = result?.prescriptions?.find((p: any) => p.sessionId === selectedSessionId) || result?.prescription;
-  const fuel = result?.fuel;
+  // Null belongs to the selected session: never borrow another session's meal.
+  const fuel = prescription?.nutrition?.fuel ?? null;
+  const post = prescription?.nutrition?.post ?? null;
   const ergos = result?.ergos?.recommended;
   const recovery = result?.recovery;
   const fuelBrands = checkinFuelBrands(result?.fuelBrands);
@@ -478,10 +481,10 @@ function CheckinPageContent() {
               <div className="card">
                 <h3 className="font-display font-bold mb-2">{lang === "es" ? "Revisión de hoy" : "Today's Adaptation"}</h3>
                 <div className={`font-display text-2xl font-bold ${VERDICT_COLOR[adaptation.verdict] || ""}`}>
-                  {adaptation.ruleId === "existing-workout-review-v1:scoped" ? (lang === "es" ? "Sesión fácil revisada" : "Saved easy session reviewed") : t(lang, `adapt.${adaptation.verdict}`)} · {adaptationView?.kind === "no-time" ? adaptationView.heading : adaptation.scoreAvailable === false ? (lang === "es" ? "Sin puntuación de preparación" : "No readiness score") : `${adaptation.score}/100 (self-report heuristic)`}
+                  {prescription?.canonical?.verdict === "blocked" ? (lang==="es"?"ENTRENAMIENTO PENDIENTE DE REVISIÓN":"TRAINING HELD FOR REVIEW") : adaptation.ruleId === "existing-workout-review-v1:scoped" ? (lang === "es" ? "Sesión fácil revisada" : "Saved easy session reviewed") : t(lang, `adapt.${adaptation.verdict}`)} · {adaptationView?.kind === "no-time" ? adaptationView.heading : adaptation.scoreAvailable === false ? (lang === "es" ? "Sin puntuación de preparación" : "No readiness score") : `${adaptation.score}/100 (self-report heuristic)`}
                 </div>
-                <p className="text-sm text-slate-600 mt-1">{adaptationView?.kind === "no-time" ? adaptationView.summary : readinessReasonText(adaptation.message || "", lang === "es")}</p>
-                <div className="text-xs text-slate-400 mt-2">Duration ×{adaptation.durationFactor} · intensity cap {adaptation.intensityCap}</div>
+                <p className="text-sm text-slate-600 mt-1">{prescription?.canonical?.verdict === "blocked" ? prescription.canonical.reason : adaptationView?.kind === "no-time" ? adaptationView.summary : readinessReasonText(adaptation.message || "", lang === "es")}</p>
+                <div className="text-xs text-slate-400 mt-2">Duration ×{adaptation.durationFactor} · {adaptation.intensityCap === "z7" ? (lang === "es" ? "sin reducción adicional; respeta los límites de la sesión" : "no additional reduction; keep the session limits") : `intensity cap ${adaptation.intensityCap}`}</div>
                 <a href="/onboarding#evaluation" className="text-xs text-ocean-600 underline mt-2 inline-block">What do Full / Trim / Easy / Rest mean?</a>
               </div>
             )}
@@ -495,7 +498,7 @@ function CheckinPageContent() {
             )}
             {prescription && (
               <div className="card border-ocean-300 bg-ocean-50">
-                <h3 className="font-display font-bold mb-1 flex items-center gap-2"><ClipboardCheck className="w-4 h-4 text-ocean-600" /> Today&apos;s prescription — just execute</h3>
+                <h3 className="font-display font-bold mb-1 flex items-center gap-2"><ClipboardCheck className="w-4 h-4 text-ocean-600" /> Today&apos;s saved session — review before training</h3>
                 <div className="font-semibold text-sm text-ocean-900">{prescription.title} · {prescription.durationMin} min</div>
                 {prescription.targets.hr && <div className="text-xs text-ocean-700 mt-0.5">HR target: {prescription.targets.hr} · RPE {prescription.targets.rpe}/10 <span className="text-ocean-400">(how hard it feels)</span></div>}
                 {prescription.targets.pace && <div className="text-xs text-ocean-700">Pace: {prescription.targets.pace}</div>}
@@ -511,9 +514,11 @@ function CheckinPageContent() {
                 <div className="mt-2 flex flex-wrap gap-1">
                   {prescription.sources.map((s: string) => <span key={s} className="text-[10px] bg-ocean-100 text-ocean-700 rounded-full px-2 py-0.5">{s}</span>)}
                 </div>
+                {prescription.canonical && <div role="status" className="text-sm mt-3">{prescription.canonical.verdict === "ready" ? (lang==="es"?"Sesión guardada; revisa los pasos.":"Saved session; review the steps.") : prescription.canonical.reason}<ol className="list-decimal pl-5">{prescription.canonical.steps.map((step:any,index:number)=><li key={index}>{step.name} · {step.target.label}{step.target.reference && <small className="block">{step.target.reference.source} · {step.target.reference.observedAt}</small>}</li>)}</ol></div>}
                 {result?.prescriptions?.length > 1 && <label className="block text-sm mt-3">{lang === "es" ? "Sesión" : "Session"}<select className="input" value={selectedSessionId} onChange={(e) => { setSelectedSessionId(e.target.value); setDownloaded(false); }}>{result.prescriptions.map((p: any) => <option key={p.sessionId} value={p.sessionId}>{p.title}</option>)}</select></label>}
-                {prescription.durationMin > 0 && <button onClick={downloadWorkout} disabled={busy} className="btn-primary w-full justify-center mt-3"><Download className="w-4 h-4" />{busy ? "Preparing…" : "Download workout (.FIT)"}</button>}
+                {prescription.durationMin > 0 && prescription.canonical?.capability?.available !== false && <button onClick={downloadWorkout} disabled={busy} className="btn-primary w-full justify-center mt-3"><Download className="w-4 h-4" />{busy ? "Preparing…" : "Download workout (.FIT)"}</button>}
                 {downloaded && <p role="status" className="mt-2 text-sm">File download started. Device import and receipt are not verified.</p>}
+                {prescription.canonical?.capability?.available === false && <p role="status" className="text-sm mt-2">{prescription.canonical.capability.reason} <a className="underline" href="/today">Review session structure</a></p>}
                 {prescription.durationMin > 0 && <p className="text-xs mt-2">Manual transfer and model compatibility vary. <a className="underline" href="/today">Review this session and transfer instructions</a></p>}
               </div>
             )}
@@ -529,7 +534,7 @@ function CheckinPageContent() {
             {result?.protein && (
               <div className="card">
                 <h3 className="font-display font-bold mb-1 flex items-center gap-2"><Apple className="w-4 h-4 text-emerald-500" /> Protein target</h3>
-                <p className="text-sm text-slate-600">{result.protein.note}</p>
+                <p className="text-sm text-slate-600">{result.protein.perKg} g/kg/day · {result.protein.note}</p>
               </div>
             )}
 
@@ -579,15 +584,15 @@ function CheckinPageContent() {
               </div>
             )}
 
-            {result?.post && (
+            {post && (
               <div className="card">
                 <h3 className="font-display font-bold mb-2 flex items-center gap-2"><Apple className="w-4 h-4 text-emerald-500" /> Post-workout refuel</h3>
                 <div className="text-sm text-slate-600 space-y-1">
-                  <div><strong>{result.post.carbsG ?? "—"}g carbs : {result.post.proteinG ?? "—"}g protein</strong> ({result.post.ratio})</div>
-                  <div className="text-xs text-slate-500">{result.post.window}</div>
-                  <div className="text-xs text-slate-500">{result.post.sodiumMg ?? "—"}mg sodium · {result.post.fluidMl ?? "—"}ml fluid</div>
-                  <div className="text-xs text-slate-500">{result.post.examples}</div>
-                  <div className="text-xs text-slate-400 mt-1">{result.post.notes}</div>
+                  <div><strong>{post.carbsG ?? "—"}g carbs : {post.proteinG ?? "—"}g protein</strong> ({post.ratio})</div>
+                  <div className="text-xs text-slate-500">{post.window}</div>
+                  <div className="text-xs text-slate-500">{post.sodiumMg ?? "—"}mg sodium · {post.fluidMl ?? "—"}ml fluid</div>
+                  <div className="text-xs text-slate-500">{post.examples}</div>
+                  <div className="text-xs text-slate-400 mt-1">{post.note ?? post.notes}</div>
                 </div>
               </div>
             )}

@@ -1,3 +1,4 @@
+import { effectivePrescription } from "@/lib/effective-prescription";
 import {activityActualMinutes,groupActivityEvidence} from "@/lib/activity-evidence";
 import {readActivityDecisions} from "@/lib/activity-reconciliation";
 import { NextResponse } from "next/server";
@@ -5,8 +6,6 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { currentHrvReadiness } from "@/lib/coach-readiness";
 import { dayBounds, addDaysKey, dateKey } from "@/lib/dates";
-import { prescribeToday } from "@/lib/adaptive";
-import { baseWorkout } from "@/lib/prescription";
 import { getCoachBriefing } from "@/lib/coach";
 
 // GET /api/coach — gathers the athlete's day and asks JASAI for a briefing
@@ -106,13 +105,14 @@ export async function GET() {
     profile?.injured ? "PROFILE FLAG: currently injured" : null,
   ].filter(Boolean).join("\n");
 
+  const currentSession=todayWorkouts[0]?await effectivePrescription(user.id,todayWorkouts[0].id):null;
   const briefing = getCoachBriefing(user.id, {
     name: user.name,
     profile,
     zones: null,
     readiness,
     latestMetric: withHrv[withHrv.length - 1] || null,
-    todaySession: todayWorkouts[0] ? { ...todayWorkouts[0], prescription: todayWorkouts[0].planDay?.dayOff || user.profile?.injured ? JSON.stringify(prescribeToday({ session: baseWorkout(todayWorkouts[0]), adaptation: { verdict: "rest", durationFactor: 0, intensityCap: "z1" } })) : todayWorkouts[0].prescription } : null,
+    todaySession: currentSession ? {...currentSession.workout,canonical:currentSession.canonical,prescription:currentSession.prescription} : null,
     planName: plans[0]?.name || null,
     bloodFlags,
     dnaHighlights: dnaHighlights.slice(0, 4),

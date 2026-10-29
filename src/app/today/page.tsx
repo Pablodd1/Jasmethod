@@ -424,7 +424,7 @@ function TodayPageContent() {
               </div>
               <div className="p-5 space-y-4">
                 <p role="status">{readinessReasonText(session.resolutionReason, es)}</p>
-                {session.verdict === "blocked" && <Link className="btn-secondary" href="/checkin">{es ? "Revisar check-in" : "Review check-in"}</Link>}
+                {session.verdict === "blocked" && <Link className="btn-secondary" href={session.reviewRequirement==="session_structure"?"/training":"/checkin"}>{session.reviewRequirement==="session_structure"?(es?"Revisar estructura de la sesión":"Review session structure"):(es ? "Revisar check-in" : "Review check-in")}</Link>}
                 {session.capability && <FitDownloadActions key={`${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} title={session.title} capability={session.capability} disabled={offline || busy} es={es} />}
                 <DailyEnvironmentCard key={`environment-${user?.id}-${session.id}-${session.revision}`} sessionId={session.id} dateLocal={data.date} timezone={data.timezone} startTime={session.startTime} environment={session.environment} units={data?.units === "imperial" ? "imperial" : "metric"} es={es} disabled={offline || busy} offline={offline} onSaved={load} />
                 {/* Reported load is separate from planned intensity and distance. */}

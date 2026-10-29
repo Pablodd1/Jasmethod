@@ -149,6 +149,7 @@ export async function GET(req: Request) {
         })() : null,
         capability: canonical.capability,
         verdict: canonical.verdict,
+        reviewRequirement:canonical.reviewRequirement,
         resolutionReason: canonical.reason,
         durationIsEstimate: canonical.exactTimeSeconds === null,
         title: p.title,

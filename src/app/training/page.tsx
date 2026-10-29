@@ -591,7 +591,7 @@ function TrainingPageContent() {
                         className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${off ? "bg-ocean-600 text-white" : "bg-white border border-ocean-200 text-ocean-700"}`}
                       >
                         <CloudSun className="w-3.5 h-3.5 inline mr-1" />
-                        {off ? "Resume training" : "Day off"}
+                        {off ? (es?"Revisar regreso al entrenamiento":"Review return to training") : (es?"Marcar como descanso":"Make this a rest day")}
                       </button>
                     </div>
                   </div>
