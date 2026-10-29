@@ -6,7 +6,7 @@ import { publicHref,publicRoute,englishReferenceRoute } from "@/lib/public-route
 import type { Lang } from "@/lib/i18n";
 export function PublicLanguageSelect({compact}:{compact?:boolean}) {
   const pathname=usePathname(),route=publicRoute(pathname),{language,setLanguage}=useAuth();
-  if(englishReferenceRoute(pathname))return <a href="/es/science" className="website-language text-xs" lang="es" aria-label="Spanish guides; this reference page is in English">Guías en español ↗</a>;
+  if(englishReferenceRoute(pathname))return <Link href="/es/science" className="website-language text-xs" lang="es" aria-label="Spanish guides; this reference page is in English">Guías en español ↗</Link>;
   return <label className={compact?"text-sm":"text-sm inline-flex gap-2 items-center"}><span className="sr-only">Language</span><select aria-label="Language" className="website-language" value={route.localized?route.locale:language==="es"?"es":"en"} onChange={e=>{
     if(route.localized)window.location.assign(publicHref(e.target.value,route.base)+window.location.hash);
     else void setLanguage(e.target.value as Lang);
