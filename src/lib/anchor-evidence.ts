@@ -1,4 +1,5 @@
 import { reportedAnchor } from "./reported-anchors";
+import { dateKey } from "./dates";
 import type { TargetProfile } from "./canonical-session";
 // Conservative launch validity policy, pending coaching sign-off. No age/sex
 // inference and no test is required: missing evidence simply leaves effort open.
@@ -10,9 +11,9 @@ export function evidencedTargetProfile(profile: TargetProfile | null | undefined
   const referenceEvidence:NonNullable<TargetProfile["referenceEvidence"]>={};
   for(const [field,type,unit] of [["ftp","ftp","W"],["runPaceBase","run5k","sec/km"],["swimPaceBase","swim","sec/100m"]] as const){
     const manual=reportedAnchor(profile as any,field,now,timezone);
-    const test=valid.find(t=>t.type===type&&Math.abs((type==="run5k"?Math.round(t.result!/5*1.06):t.result!)-(profile?.[field]??NaN))<.01);
-    if(test)referenceEvidence[field]={source:type==="run5k"?"estimated_from_applied_5k":"applied_field_test",observedAt:test.date.toISOString(),unit,value:profile![field]!};
-    else if(manual)referenceEvidence[field]={source:manual.source,observedAt:manual.observedAt,unit:manual.unit,value:manual.value};
+    const test=valid.filter(t=>t.type===type&&Math.abs((type==="run5k"?Math.round(t.result!/5*1.06):t.result!)-(profile?.[field]??NaN))<.01).sort((a,b)=>b.date.getTime()-a.date.getTime()||a.id.localeCompare(b.id))[0];
+    if(manual&&(!test||manual.observedAt>dateKey(test.date,timezone)))referenceEvidence[field]={source:manual.source,observedAt:manual.observedAt,unit:manual.unit,value:manual.value};
+    else if(test)referenceEvidence[field]={source:type==="run5k"?"estimated_from_applied_5k":"applied_field_test",observedAt:test.date.toISOString(),unit,value:profile![field]!};
   }
   return { ...profile,referenceEvidence,
     ftp: (matches("ftp", profile?.ftp) || reportedAnchor(profile as any,"ftp",now,timezone)) ? profile?.ftp : null,

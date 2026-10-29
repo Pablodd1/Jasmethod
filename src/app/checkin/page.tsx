@@ -319,8 +319,9 @@ function CheckinPageContent() {
   // Display-only: separates an unanswered question from a real answer of 0 minutes. Safety rules are untouched.
   const adaptationView = adaptation ? checkinAdaptationView(adaptation, lang === "es") : null;
   const prescription = result?.prescriptions?.find((p: any) => p.sessionId === selectedSessionId) || result?.prescription;
-  const fuel = prescription?.nutrition?.fuel ?? result?.fuel;
-  const post = prescription?.nutrition?.post ?? result?.post;
+  // Null belongs to the selected session: never borrow another session's meal.
+  const fuel = prescription?.nutrition?.fuel ?? null;
+  const post = prescription?.nutrition?.post ?? null;
   const ergos = result?.ergos?.recommended;
   const recovery = result?.recovery;
   const fuelBrands = checkinFuelBrands(result?.fuelBrands);

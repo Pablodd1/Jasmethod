@@ -1,5 +1,6 @@
 import type { CanonicalSession, TargetProfile } from './canonical-session';
 import { isDemanding } from './protocols';
+import { SWIM_ZONE_MULT } from './zone-factors';
 // Conservative load classification for a second-session review, not time-in-zone.
 export function canonicalDemand(session: CanonicalSession, profile?: TargetProfile | null): 'demanding' | 'easy' | 'unknown' {
   if (session.verdict !== 'ready' || !session.steps.length) return 'unknown';
@@ -13,6 +14,7 @@ export function canonicalDemand(session: CanonicalSession, profile?: TargetProfi
     if (t.type==='power' && sport==='bike' && profile?.ftp) { if(t.high! > profile.ftp*.75) return 'demanding'; }
     else if(t.type==='heartRate' && ['run','bike'].includes(sport) && profile?.lthr) { if(t.high! > profile.lthr*.89) return 'demanding'; }
     else if((t.type==='pace'||t.type==='speed') && sport==='run' && profile?.runPaceBase) { if(t.type==='pace' ? t.low! < profile.runPaceBase*1.2 : t.high! > 1000/(profile.runPaceBase*1.2)) return 'demanding'; }
+    else if((t.type==='pace'||t.type==='speed') && sport==='swim' && profile?.swimPaceBase) { const easyPace=profile.swimPaceBase*10*SWIM_ZONE_MULT.z2.fast; if(t.type==='pace' ? t.low! < easyPace : t.high! > 1000/easyPace) return 'demanding'; }
     else unknown=true;
   }
   return unknown?'unknown':'easy';
@@ -26,7 +28,9 @@ export function canonicalFuelIntensity(session: CanonicalSession, stated: unknow
     return (t.type==='power' && sport==='bike' && profile?.ftp && t.high!>profile.ftp*.9)
       || (t.type==='heartRate' && ['run','bike'].includes(sport) && profile?.lthr && t.high!>profile.lthr*.94)
       || (t.type==='pace' && sport==='run' && profile?.runPaceBase && t.low!<profile.runPaceBase*1.08)
-      || (t.type==='speed' && sport==='run' && profile?.runPaceBase && t.high!>1000/(profile.runPaceBase*1.08));
+      || (t.type==='speed' && sport==='run' && profile?.runPaceBase && t.high!>1000/(profile.runPaceBase*1.08))
+      || (t.type==='pace' && sport==='swim' && profile?.swimPaceBase && t.low!<profile.swimPaceBase*10*SWIM_ZONE_MULT.z3.fast)
+      || (t.type==='speed' && sport==='swim' && profile?.swimPaceBase && t.high!>1000/(profile.swimPaceBase*10*SWIM_ZONE_MULT.z3.fast));
   });
   const peak=Math.max(declared,...zones,highTarget?4:1);
   return `z${Math.min(7,peak)}`;

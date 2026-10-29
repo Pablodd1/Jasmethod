@@ -14,6 +14,7 @@ import { buildSessionDownload } from './fit-export';
 import { buildSessionNutrition } from './session-nutrition';
 import { buildCoachReply } from './coach-conversation';
 import { onboardingSectionPayload } from './onboarding-save';
+import { canonicalDemand, canonicalFuelIntensity } from './session-demand';
 const now=new Date('2026-10-29T00:30:00Z'),timezone='America/New_York',today='2026-10-28';
 const entered={ftp:330,runPaceBase:360/1.609344,swimPaceBase:78/.9144,units:'imperial',weightKg:159*.45359237,sweatRateMlH:750,sodiumMgPerL:700};
 const profile={...entered,manualPrs:recordReportedAnchors(null,entered,today,today)};
@@ -58,6 +59,26 @@ test('a general CSS reference does not invent pace for other strokes or drills',
   const session=canonicalSession({athleteId:'mock',dateLocal:today,timezone,profile:anchors,workout:{id:stroke,sport:'swim',title:'Stroke practice',durationMin:20},prescription:{sport:'swim',durationMin:20,verdict:'full',sportStructure}});
   assert.equal(session.verdict,'ready',session.reason);assert.equal(session.steps[0].target.type,'swimStroke');assert.equal(session.steps[0].target.reference,undefined);
  }
+});
+
+test('dated CSS keeps short easy swimming assessable without weakening faster, unknown or long-session load guards',()=>{
+ const anchors=evidencedTargetProfile(profile,[],[],now,timezone);
+ const make=(zone:string,durationMin=30)=>canonicalSession({athleteId:'mock',dateLocal:today,timezone,profile:anchors,workout:{id:'load',sport:'swim',title:'Swim',durationMin},prescription:{sport:'swim',durationMin,verdict:'full',steps:structuredSteps(durationMin,zone,'endurance',0,'swim')}});
+ const easy=make('z2');assert.equal(canonicalDemand(easy,anchors),'easy');assert.equal(canonicalDemand(make('z4'),anchors),'demanding');assert.equal(canonicalDemand(easy,{}),'unknown');
+ const faster={...easy,steps:easy.steps.map(s=>({...s,target:{...s.target,low:100,high:110}}))};assert.equal(canonicalDemand(faster,anchors),'demanding');assert.equal(canonicalFuelIntensity(faster,'z2',anchors),'z4');
+});
+
+test('fresh reported references outrank old matching tests consistently across targets and cycle review',()=>{
+ for(const date of ['2026-01-01T12:00Z','2026-10-01T12:00Z']){
+  const tests=[{id:'previous',date:new Date(date),type:'ftp',result:330,completed:true,skipped:false}];
+  const anchors=evidencedTargetProfile(profile,tests,['previous'],now,timezone);
+  const [review]=buildCycleBaselineReviews({profile,tests,appliedIds:['previous'],sports:['bike'],now,timezone});
+  assert.equal(anchors.referenceEvidence.ftp.source,'athlete_reported_reference');assert.equal(review.source,'athlete_reported_reference');assert.equal(review.status,'current');assert.equal(review.observedAt,today);
+ }
+ const tests=[{id:'verified',date:new Date('2026-10-28T18:00Z'),type:'ftp',result:330,completed:true,skipped:false}];
+ assert.equal(evidencedTargetProfile(profile,tests,['verified'],now,timezone).referenceEvidence.ftp.source,'applied_field_test');
+ assert.equal(buildCycleBaselineReviews({profile,tests,appliedIds:['verified'],sports:['bike'],now,timezone})[0].source,'measured_test');
+ assert.equal(buildCycleBaselineReviews({profile:entered,tests:[{...tests[0],date:new Date('2026-01-01T12:00Z')}],appliedIds:['verified'],sports:['bike'],now,timezone})[0].status,'expired');
 });
 test('onboarding Continue saves edited body data atomically with references and does not clear unanswered body fields',()=>{
  const p=onboardingSectionPayload('essentials',{sex:'male',heightCm:'180.34',weightKg:'72.12',ftp:'330',manualPrs:profile.manualPrs},{},{profile:{},setup:null},null);assert.equal(p.sex,'male');assert.equal(p.heightCm,'180.34');assert.equal(p.weightKg,'72.12');assert.equal(p.ftp,'330');assert.equal(p.manualPrs,profile.manualPrs);
