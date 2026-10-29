@@ -35,13 +35,40 @@ async function main(){const who=await actor(),other=await actor();const before=a
  await call(other,`/api/workout/approve?sessionId=${swim.id}`,undefined,404);
  checks.push({name:'actual healthy check-in, Today and reload share session revision, CSS and exact fueling; missing pool structure is actionable; explicitly supplied pool structure yields a nonempty parser-validated FIT; foreign athlete access denied',status:'PASS'});
  const browser=await chromium.launch({headless:true});const c=await browser.newContext({viewport:{width:390,height:844}});await c.addCookies([{name:'jmm_session',value:who.token,url:base,httpOnly:true,sameSite:'Lax'}]);const page=await c.newPage();page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',route=>{if(new URL(route.request().url()).origin!==base){unexpected.push('external');return route.abort();}return route.continue();});
- try{for(const [path,name] of [['/today','01-current-session'],['/checkin','02-reloaded-checkin'],['/training','03-saved-cycle'],['/onboard?advanced=1&redo=1&step=zones','04-dated-reference-inputs']]){await page.goto(base+path);await page.getByRole('heading',{level:1}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));if(path==='/checkin'){await page.getByRole('status').filter({hasText:'Saved session; review the steps.'}).waitFor();assert.match(await page.locator('body').innerText(),/\/100 yd/);assert.doesNotMatch(await page.locator('body').innerText(),/intensity cap z7/);const held=checked.prescriptions.find(s=>s.sessionId!==swim.id&&s.nutrition===null);if(held){await page.getByLabel(/^Session/).selectOption(held.sessionId);assert.equal(await page.getByRole('heading',{name:"Today's Training",exact:true}).count(),0);await page.getByLabel(/^Session/).selectOption(swim.id);await page.getByRole('heading',{name:"Today's Training",exact:true}).waitFor();checks.push({name:'selecting the held paired session cannot borrow the first session nutrition',status:'PASS'});}}if(path.includes('onboard')){await page.getByLabel('FTP reference date',{exact:true}).waitFor();assert.equal(await page.getByLabel('Running threshold pace',{exact:false}).first().inputValue(),'6:00');}await page.screenshot({path:dir+'/'+name+'.png',fullPage:path==='/checkin'});}
+ try{
+ for(const [path,name] of [['/today','01-current-session'],['/checkin','02-reloaded-checkin'],['/training','03-saved-cycle'],['/onboard?advanced=1&redo=1&step=zones','04-dated-reference-inputs']]){
+  await page.goto(base+path);await page.getByRole('heading',{level:1}).waitFor();
+  if(path==='/today'){
+   const card=page.locator('#today-workout .uwc[data-revision]');await card.waitFor();
+   assert.equal(await card.getAttribute('data-revision'),p.revision);await card.scrollIntoViewIfNeeded();
+  }
+  if(path==='/checkin'){
+   await page.getByRole('status').filter({hasText:'Saved session; review the steps.'}).waitFor();
+   assert.match(await page.locator('body').innerText(),/\/100 yd/);assert.doesNotMatch(await page.locator('body').innerText(),/intensity cap z7/);
+   const held=checked.prescriptions.find(s=>s.sessionId!==swim.id&&s.nutrition===null);
+   if(held){
+    await page.getByLabel(/^Session/).selectOption(held.sessionId);assert.equal(await page.getByRole('heading',{name:"Today's Training",exact:true}).count(),0);
+    await page.getByLabel(/^Session/).selectOption(swim.id);await page.getByRole('heading',{name:"Today's Training",exact:true}).waitFor();
+    checks.push({name:'selecting the held paired session cannot borrow the first session nutrition',status:'PASS'});
+   }
+  }
+  if(path==='/training'){
+   await page.getByLabel('View saved month',{exact:true}).waitFor();
+   await page.getByText('Loading your saved cycle and sessions…',{exact:true}).waitFor({state:'hidden'});
+  }
+  if(path.includes('onboard')){
+   await page.getByLabel('FTP reference date',{exact:true}).waitFor();
+   assert.equal(await page.getByLabel('Running threshold pace',{exact:false}).first().inputValue(),'6:00');
+  }
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  await page.screenshot({path:dir+'/'+name+'.png',fullPage:path!=='/today'});
+ }
  await page.goto(base+'/today');await page.getByRole('heading',{level:1}).waitFor();
  await page.getByText('Share, device & edit',{exact:true}).first().click();
  const editor=page.getByLabel('Explicit sport structure',{exact:true}).first();await editor.getByRole('button',{name:'Edit steps, sets and rests',exact:true}).click();
  await editor.getByText('Loaded the saved structure.',{exact:true}).waitFor();
  const advanced=editor.getByRole('button',{name:'Advanced options (JSON)',exact:true});if(await advanced.count())await advanced.click();assert.deepEqual(JSON.parse(await editor.getByLabel('Sport structure JSON',{exact:true}).inputValue()),pool);
- await page.screenshot({path:dir+'/05-existing-pool-editor.png'});
+ await editor.getByLabel('Sport structure JSON',{exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:dir+'/05-existing-pool-editor.png'});
  const savedStructure=page.waitForResponse(r=>r.url().includes('/api/workout/structure')&&r.request().method()==='PATCH');
  await editor.getByRole('button',{name:'Save reviewed structure',exact:true}).click();const savedResponse=await savedStructure;assert.equal(savedResponse.status(),200);assert.equal((await savedResponse.json()).ok,true);
  checks.push({name:'actual authenticated mobile Today, persisted check-in, saved cycle and dated-reference controls render without overflow or page errors; existing pool editor reloads and saves its explicit structure through HTTP',status:'PASS'});
