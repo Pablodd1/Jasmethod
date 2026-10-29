@@ -246,7 +246,7 @@ async function main() {
       assert.equal(sends,2);assert.equal(shares,1);assert.equal(await ai.isChecked(),true);
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
       await page.screenshot({path:`${dir}/confirmed-actions-${width}.png`});
-      await page.reload();await ai.waitFor();assert.equal(await ai.isChecked(),false);assert.equal(await memory.count(),0);
+      await page.reload();await page.getByText('Optional tools: logging, images & AI',{exact:true}).click();await ai.waitFor();assert.equal(await ai.isChecked(),false);assert.equal(await memory.count(),0);
       results.push({width,confirmedActionReview:'pass',pageScopedAiConsent:'pass',legacyMemoryAbsent:'pass',humanHandoff:'pass'});
       await context.close();
     }
