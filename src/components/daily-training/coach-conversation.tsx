@@ -63,6 +63,7 @@ export function ProfileProposalComparison({ candidate, beforeValue, afterValue, 
 export function CoachConversation({ fullPage = false, es, athleteId, offline = false, sessions: todaySessions = NO_SESSIONS, onConfirmed }: Props) {
   const id = useId();
   const [showTodayReview, setShowTodayReview] = useState(false);
+  const [reviewVersion, setReviewVersion] = useState(0);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [proposal, setProposal] = useState<CoachProposal | null>(null);
   const [receipt, setReceipt] = useState<CoachReceipt | null>(null);
@@ -144,7 +145,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     else anchor.scrollIntoView({ block: "nearest" });
     anchor.focus({ preventScroll: true });
   }, [fullPage]);
-  useEffect(() => { if (showTodayReview) focusTodayReview(); }, [showTodayReview, latestMessageId, focusTodayReview]);
+  useEffect(() => { if (showTodayReview) focusTodayReview(); }, [showTodayReview, reviewVersion, latestMessageId, focusTodayReview]);
 
   const stopVoice = useCallback(() => {
     voiceEpoch.current += 1;
@@ -309,6 +310,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
       const latestReply = payload.conversation?.messages.filter(entry => entry.role === "assistant").at(-1);
       const reviewToday = opensTodayWorkout(outgoing.message) && latestReply?.safetyReviewRequired !== true;
       setShowTodayReview(reviewToday);
+      if (reviewToday) setReviewVersion(value => value + 1);
       sendAttempt.current = null; setMessage(""); setSource("text"); if (outgoingImage) setScreenshot(null);
       setStatus(payload.replayed
         ? (es ? "Esta solicitud ya estaba registrada. Se muestra la conversación actual." : "This request was already recorded. Showing the current conversation.")
@@ -331,7 +333,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     try {
       applyPayload(payload); setReceipt(verified); confirmationAttempt.current = null;
       setStatus(verified.applied.length > 0 ? (es ? "Cambios confirmados y guardados. Los pasos pendientes se muestran abajo." : "Confirmed changes saved. Any pending steps are listed below.") : (es ? "Revisión registrada. No se han aplicado cambios al check-in ni al plan." : "Review recorded. No check-in or plan changes have been applied."));
-      if (verified.applied.length > 0) await onConfirmed();
+      if (verified.applied.length > 0) { setReviewVersion(value => value + 1); await onConfirmed(); }
     } catch { if (mounted.current) setError(es ? "El comprobante confirma el guardado, pero no pudimos actualizar la vista. Recarga la página." : "The receipt confirms saving, but this view could not refresh. Reload the page."); }
   }
 
@@ -351,6 +353,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     if (payload.cleared !== true) { setNeedsReload(true); setError(es ? "No se ha confirmado el borrado de la conversación." : "Clearing the conversation is unconfirmed."); return; }
     try {
       applyPayload(payload); setClearReview(false); setMessage(""); setSource("text"); setScreenshot(null); setExternalConsent(false); setAiReplyMemory(false); setImageConsent(false); setVoiceReview(false); setTranscript(""); setDictationError(""); confirmationAttempt.current = null; sendAttempt.current = null;
+      setShowTodayReview(false);
       setStatus(es ? "Conversación borrada. Se conservan tus datos confirmados y el registro de cambios." : "Conversation cleared. Confirmed athlete facts and the change audit are retained.");
     } catch (cause) { setError((cause as Error).message); setNeedsReload(true); }
   }
@@ -437,7 +440,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     </header>
     <div ref={conversationScroll} className={fullPage ? "coach-chat-scroll space-y-4" : "space-y-4"}>
     <div className="flex flex-wrap gap-2" aria-label={es ? "Iniciar conversación" : "Conversation starters"}>
-      <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setShowTodayReview(true); focusTodayReview(); }}>{es ? "Ver entrenamiento de hoy" : "Review today’s workout"}</button>
+      <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setReviewVersion(value => value + 1); setShowTodayReview(true); focusTodayReview(); }}>{es ? "Ver entrenamiento de hoy" : "Review today’s workout"}</button>
       <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setMessage(es ? "Ayúdame con la alimentación de hoy." : "Help me with today’s fueling."); textInput.current?.focus(); }}>{es ? "Alimentación" : "Fueling"}</button>
       <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setMessage(es ? "Quiero registrar el resultado de mi sesión." : "I want to log my workout result."); textInput.current?.focus(); }}>{es ? "Registrar resultado" : "Log a result"}</button>
     </div>
@@ -457,13 +460,13 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     </ol>
 
 
-    {showTodayReview && <div ref={todayReviewAnchor} tabIndex={-1} className={focus}><CoachTodayReview key={athleteId} es={es} selectedId={sessionId} onSelect={setSessionId} onSaved={async () => { await onConfirmed(); await load(); }} onClose={() => setShowTodayReview(false)} /></div>}
+    {showTodayReview && <div ref={todayReviewAnchor} tabIndex={-1} className={focus}><CoachTodayReview key={`${athleteId}:${reviewVersion}`} es={es} selectedId={sessionId} onSelect={setSessionId} onSaved={async () => { await onConfirmed(); await load(); }} onClose={() => setShowTodayReview(false)} /></div>}
     <details className="rounded-lg border p-3"><summary className={`cursor-pointer ${focus}`}>{es ? "Ayuda y acciones disponibles" : "Help & supported actions"}</summary>
       <p className="mt-2 text-sm">{es ? "Pregunta o dicta; revisa la transcripción antes de enviar. Los cambios requieren tu confirmación. Las tarjetas protegidas muestran los registros originales dentro de JMM. La IA externa solo ofrece educación general." : "Ask or dictate; review the transcript before sending. Changes need your confirmation. Protected cards show the original records inside JMM. External AI supports general education only."}</p>
       <p className="text-sm"><Link className="underline" href="/settings">{es ? "Perfil" : "Profile"}</Link> · <Link className="underline" href="/training">{es ? "Entrenamiento" : "Training"}</Link> · <Link className="underline" href="/today">{es ? "Hoy" : "Today"}</Link></p>
     </details>
     <p className="text-xs text-slate-600" role="status">{liveStatus|| (es?"Los cambios de conversación se comprueban cada 15 segundos mientras la página está visible.":"Conversation changes are checked every 15 seconds while this page is visible.")}</p>
-    <CoachCommanderWorkspace athleteId={athleteId} es={es} messages={messages} sessionId={sessionId} disabled={offline||!loaded||needsReload||!!operation} onBusy={setCommanderBusy} onSaved={async()=>{await onConfirmed();await load();}}/>
+    <CoachCommanderWorkspace athleteId={athleteId} es={es} messages={messages} sessionId={sessionId} disabled={offline||!loaded||needsReload||!!operation} onBusy={setCommanderBusy} onSaved={async()=>{setReviewVersion(value=>value+1);await onConfirmed();await load();}}/>
     <CoachReviewRequest messages={messages} es={es} disabled={blocked} />
     {coachTextStatusMessage(externalStatus, es) && <p role="status" className="text-xs text-slate-700">{coachTextStatusMessage(externalStatus, es)}</p>}
     {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}
