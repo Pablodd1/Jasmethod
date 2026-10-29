@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/db";
 import { deliverInquiryOnce } from "@/lib/public-inquiry-receipt";
-import { appMutationOriginAllowed } from "@/lib/request-origin";
+import { publicInquiryOriginAllowed } from "@/lib/public-inquiry-origin";
 import { PUBLIC_CONTACT_EMAIL } from "@/lib/public-contact";
 import { deliverSupportMessage, supportTelegramConfigured } from "@/lib/support-delivery";
 import { INQUIRY_MAX_BYTES, inquiryEmailText, parsePublicInquiry } from "@/lib/public-inquiry";
@@ -26,7 +26,7 @@ function allowed(request: Request): boolean {
 }
 
 export async function POST(req: Request) {
-  if (!appMutationOriginAllowed(req))
+  if (!publicInquiryOriginAllowed(req))
     return NextResponse.json({ ok: false, error: "Open this form on the JMM website." }, { status: 403, headers: noStore });
   if (!req.headers.get("content-type")?.startsWith("application/json"))
     return NextResponse.json({ ok: false, error: "Expected JSON." }, { status: 415, headers: noStore });
