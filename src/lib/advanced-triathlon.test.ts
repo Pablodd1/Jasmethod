@@ -29,6 +29,7 @@ test('dated manual references preserve exact units, source and local date; no te
 test('the exact advanced triathlon allocation retains two swims and two runs, bounded duration and purposeful work without renewing expired anchors',()=>{
  const setup=parsePlanningSetup({trainingDays:[2,3,4,5,6,0],maxSessionMinutes:300,baselineWeeklyMinutes:720,baselineObservedAt:today,doubleDay:{version:'optional-double-day-v1',weekday:3,purpose:'Optional second familiar easy sport',firstStart:'06:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true}},now,timezone);
  const raw=generatePlan({level:'advanced',distance:'half',weeks:24,startDate:new Date('2026-10-28T12:00Z'),weeklyHours:12,reviewedCycle:true});
+ assert.ok(raw.every(week=>week.sessions.filter(s=>s.sport==='swim').every(s=>!/review required/i.test(s.title))),'Mutable review state must not be baked into the session identity.');
  const bounded=boundPlanWeeks(raw,setup,12,3,'advanced',[],{preserveWeeklyDose:true});
  const baselineReviews=buildCycleBaselineReviews({profile,tests:[],appliedIds:[],sports:['swim','bike','run'],now,timezone});
  assert.ok(baselineReviews.every(r=>r.source==='athlete_reported_reference'));
