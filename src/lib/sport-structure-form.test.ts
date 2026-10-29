@@ -54,6 +54,16 @@ test("athlete-entered pool lengths/stroke/rest and exact yards survive canonical
   form.steps[0].amount = "4"; form.steps[0].stroke = ""; assert.throws(() => friendlyStructureValue(form, "swim"), /stroke/);
 });
 
+test("valid saved structures without optional estimates remain editable as exact JSON without inventing time",()=>{
+  for(const sport of ['swim','strength','hyrox']){
+    const value:any=structuredClone(SPORT_STRUCTURE_EXAMPLES[sport].structure);
+    const row=value.steps.find((s:any)=>s.kind==='lengths'||(s.endpoint&&s.endpoint.type!=='time'&&s.estimatedSeconds!==undefined));
+    assert.ok(row);delete row.estimatedSeconds;
+    const normalized=normalizeSportStructure(value,sport);assert.equal(friendlyStructureFrom(normalized,sport),null);
+    assert.deepEqual(normalizeSportStructure(JSON.parse(JSON.stringify(normalized)),sport),normalized);
+  }
+});
+
 test("strength repeated sets are numbered in order; absent optional load never becomes a prescription", () => {
   const form = emptyFriendlyStructure("strength")!;
   const set = { ...emptyFriendlyStep("set"), name: "Reviewed squat", zone: "z2", endpoint: "reps", amount: "5", estimate: "30" };

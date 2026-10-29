@@ -40,7 +40,7 @@ async function main(){const who=await actor(),other=await actor();const before=a
  await page.getByText('Share, device & edit',{exact:true}).first().click();
  const editor=page.getByLabel('Explicit sport structure',{exact:true}).first();await editor.getByRole('button',{name:'Edit steps, sets and rests',exact:true}).click();
  await editor.getByText('Loaded the saved structure.',{exact:true}).waitFor();
- await editor.getByRole('button',{name:'Advanced options (JSON)',exact:true}).click();assert.deepEqual(JSON.parse(await editor.getByLabel('Sport structure JSON',{exact:true}).inputValue()),pool);
+ const advanced=editor.getByRole('button',{name:'Advanced options (JSON)',exact:true});if(await advanced.count())await advanced.click();assert.deepEqual(JSON.parse(await editor.getByLabel('Sport structure JSON',{exact:true}).inputValue()),pool);
  await page.screenshot({path:dir+'/05-existing-pool-editor.png'});
  const savedStructure=page.waitForResponse(r=>r.url().includes('/api/workout/structure')&&r.request().method()==='PATCH');
  await editor.getByRole('button',{name:'Save reviewed structure',exact:true}).click();const savedResponse=await savedStructure;assert.equal(savedResponse.status(),200);assert.equal((await savedResponse.json()).ok,true);
