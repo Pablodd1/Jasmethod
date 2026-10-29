@@ -19,7 +19,11 @@ async function main(){const who=await actor(),other=await actor();const before=a
  assert.ok(preview.preview.weeksPreview.slice(2,10).some(w=>w.sessions.some(s=>Number(s.zone.slice(1))>2)));
  const saved=await call(who,'/api/plan/generate',{...body,preview:false,previewToken:preview.previewToken,confirmDoubleDay:true,confirmEventTradeoffs:true});assert.ok(saved.plan.id);
  checks.push({name:'one profile save/reload preserves body, explicit references and training context; 24-week preview/save retains bounded sport allocation and event protection',status:'PASS'});
- const current=await db.workout.findMany({where:{userId:who.user.id,planned:true,date:{gte:localDate(today,timezone),lt:localDate(addDaysKey(today,1),timezone)}}});const swim=current.find(s=>s.sport==='swim');assert.ok(swim,'The six-day fixture starts with a current swim.');
+ const current=await db.workout.findMany({where:{userId:who.user.id,planned:true,date:{gte:localDate(today,timezone),lt:localDate(addDaysKey(today,1),timezone)}}});
+ // A generated cycle need not prescribe swimming on every weekday. The canonical
+ // review fixture explicitly adds a manual swim when today has none; generation
+ // allocation/event assertions above remain separate from this seeded review.
+ const swim=current.find(s=>s.sport==='swim')||await db.workout.create({data:{userId:who.user.id,date:localDate(today,timezone),sport:'swim',title:'Synthetic explicit pool review',type:'endurance',durationMin:40,intensity:'z2',planned:true,source:'manual',indoor:true}});
  const answers={sleep:5,soreness:1,energy:5,motivation:5,stress:1,sick:false,newPain:false,urgentSymptoms:false,availableMinutes:300};
  let checked=await call(who,'/api/checkin',answers);let p=checked.prescriptions.find(p=>p.sessionId===swim.id);assert.ok(p?.canonical);assert.equal(p.canonical.capability.available,false);
  const blocked=await call(who,`/api/workout/approve?sessionId=${swim.id}`,undefined,422);assert.equal(blocked.code,'workout_structure_required');assert.ok(blocked.remediation.href);
@@ -37,12 +41,13 @@ async function main(){const who=await actor(),other=await actor();const before=a
  const browser=await chromium.launch({headless:true});const c=await browser.newContext({viewport:{width:390,height:844}});await c.addCookies([{name:'jmm_session',value:who.token,url:base,httpOnly:true,sameSite:'Lax'}]);const page=await c.newPage();page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',route=>{if(new URL(route.request().url()).origin!==base){unexpected.push('external');return route.abort();}return route.continue();});
  try{
  for(const [path,name] of [['/today','01-current-session'],['/checkin','02-reloaded-checkin'],['/training','03-saved-cycle'],['/onboard?advanced=1&redo=1&step=zones','04-dated-reference-inputs']]){
-  await page.goto(base+path);await page.getByRole('heading',{level:1}).waitFor();
+  await page.goto(base+path+(path==='/today'?'?sessionId='+swim.id:''));await page.getByRole('heading',{level:1}).waitFor();
   if(path==='/today'){
    const card=page.locator('#today-workout .uwc[data-revision]');await card.waitFor();
    assert.equal(await card.getAttribute('data-revision'),p.revision);await card.scrollIntoViewIfNeeded();
   }
   if(path==='/checkin'){
+   const selector=page.getByLabel(/^Session/);if(checked.prescriptions.length>1)await selector.selectOption(swim.id);
    await page.getByRole('status').filter({hasText:'Saved session; review the steps.'}).waitFor();
    assert.match(await page.locator('body').innerText(),/\/100 yd/);assert.doesNotMatch(await page.locator('body').innerText(),/intensity cap z7/);
    const held=checked.prescriptions.find(s=>s.sessionId!==swim.id&&s.nutrition===null);
@@ -80,7 +85,7 @@ async function main(){const who=await actor(),other=await actor();const before=a
  await page.reload();await composer.waitFor();assert.equal(await page.getByRole('region',{name:'Protected today review',exact:true}).count(),0,'Protected cards are ephemeral');
  const popup=page.getByRole('link',{name:'Open chat in another window',exact:true});assert.equal(await popup.getAttribute('target'),'_blank');assert.equal(await popup.getAttribute('href'),'/coach');
  checks.push({name:'real authenticated mobile chat opens canonical workout/fueling card, keeps composer visible, records only explicit sends, retains no protected card in history, and offers separate-window access',status:'PASS'});
- await page.goto(base+'/today');await page.getByRole('heading',{level:1}).waitFor();
+ await page.goto(base+'/today?sessionId='+swim.id);await page.getByRole('heading',{level:1}).waitFor();
  await page.getByText('Share, device & edit',{exact:true}).first().click();
  const editor=page.getByLabel('Explicit sport structure',{exact:true}).first();await editor.getByRole('button',{name:'Edit steps, sets and rests',exact:true}).click();
  await editor.getByText('Loaded the saved structure.',{exact:true}).waitFor();
@@ -92,4 +97,4 @@ async function main(){const who=await actor(),other=await actor();const before=a
  }catch(error){writeFileSync(dir+'/failure.txt',await page.locator('body').innerText().catch(()=>''));await page.screenshot({path:dir+'/failure.png',fullPage:true}).catch(()=>{});throw error;}finally{await browser.close();}
  assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
 }
-main().catch(e=>{checks.push({name:'acceptance',status:'FAIL',error:String(e)});console.error(e);process.exitCode=1;}).finally(async()=>{for(const id of ids)await db.user.delete({where:{id}});await db.$disconnect();writeFileSync(dir+'/report.json',JSON.stringify({checks,errors,unexpected,scope:'Disposable loopback synthetic persona. Original reported dates and Tue–Sun availability are covered by unit tests; integration race dates retain their offsets from the run date. On Monday only, the HTTP fixture explicitly uses Mon–Sat availability to test a current session. Explicit pool fixture is supplied, never inferred. No connected provider, real send, inbox, hardware, coaching efficacy or expert review is certified.'},null,2));});
+main().catch(e=>{checks.push({name:'acceptance',status:'FAIL',error:String(e)});console.error(e);process.exitCode=1;}).finally(async()=>{for(const id of ids)await db.user.delete({where:{id}});await db.$disconnect();writeFileSync(dir+'/report.json',JSON.stringify({checks,errors,unexpected,scope:'Disposable loopback synthetic persona. Original reported dates and Tue–Sun availability are covered by unit tests; integration race dates retain their offsets from the run date. On Monday only, the HTTP fixture explicitly uses Mon–Sat availability to test a current session. A manual current-day swim is explicitly seeded if the generated weekday has none; generation assertions are checked before seeding. The UI explicitly selects that review session. Pool structure is supplied, never inferred. No connected provider, real send, inbox, hardware, coaching efficacy or expert review is certified.'},null,2));});

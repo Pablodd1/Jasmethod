@@ -24,3 +24,7 @@ Dedicated Coach route gets a larger conversation with a persistent composer, imm
 ## Remaining gates
 
 A genuinely open-ended personalized AI dialogue needs a separately reviewed permitted-data architecture and model benchmark; the present external boundary is preserved. No credentials or provider flags are changed. Full real-time voice, unrestricted natural-language actions, human reply routing and actual watch delivery are not claimed by this slice. Production release follows validation and review.
+
+## Review and evidence scope
+
+The browser regression separates planner allocation assertions from the canonical swim review fixture. Because a six-day cycle does not prescribe a swim every weekday, the disposable test athlete gets an explicitly seeded manual current-day swim if needed. Today and Check-In select that session explicitly. This does not claim the planner schedules swimming every day. No real athlete or provider account is used.
