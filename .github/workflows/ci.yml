@@ -146,6 +146,11 @@ jobs:
       - name: Public policy discovery, bilingual pages and mobile acceptance
         run: node scripts/jmm-public-policies-browser.cjs
 
+      - name: Bilingual website crawl, mobile navigation and inquiry boundaries
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-website-launch-browser.cjs
+
       - name: Mobile training organization and step screenshots
         run: node scripts/jmm-mobile-organization-browser.cjs
 
@@ -266,6 +271,8 @@ jobs:
             .local/jmm-race-intelligence-browser/*.png
             .local/jmm-public-policies-browser/report.json
             .local/jmm-public-policies-browser/*.png
+            .local/jmm-website-launch-browser/report.json
+            .local/jmm-website-launch-browser/*.png
             .local/jmm-mobile-organization-browser/report.json
             .local/jmm-mobile-organization-browser/*.png
             .local/jmm-garmin-browser/report.json

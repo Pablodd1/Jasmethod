@@ -1,6 +1,6 @@
-import type { Metadata } from "next";
+import { publicLocale,publicMetadata } from "@/lib/public-site";
 import { PolicyPage } from "@/components/policy-page";
-export const metadata: Metadata = {title: "Terms of Service · Términos de servicio — JasMiamiMethod", alternates: {canonical: "/terms"}};
+export async function generateMetadata(){const locale=await publicLocale();return publicMetadata("/terms",locale,(locale==="es"?"Términos del servicio":"Terms of Service")+" | Jas Miami Method",locale==="es"?"Consulta los avisos y controles de AI DYNAMICS INC para Jas Miami Method.":"Read the AI DYNAMICS INC notices and controls for Jas Miami Method.");}
 const sections = [
   {
     "id": "service",

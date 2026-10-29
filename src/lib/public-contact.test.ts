@@ -8,9 +8,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { PUBLIC_CONTACT_EMAIL, PUBLIC_CONTACT_MAILTO } from "./public-contact";
 import { supportContacts, supportCategories, supportEmailDraft } from "./support-contact";
+import * as publicRoutes from "./public-routes";
 
 const requireModule = createRequire(import.meta.url);
-function render(file: string, props = {}, language = "en") {
+async function render(file: string, props = {}, language = "en") {
   const output = ts.transpileModule(readFileSync(file, "utf8"), { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true,
   } }).outputText;
@@ -19,7 +20,10 @@ function render(file: string, props = {}, language = "en") {
     "@/lib/public-contact": { PUBLIC_CONTACT_EMAIL, PUBLIC_CONTACT_MAILTO },
     "@/lib/support-contact": { supportCategories, supportEmailDraft },
     "@/components/site-shell": { SiteHeader: () => null, SiteFooter: () => null },
-    "@/components/auth": { useAuth: () => ({ user: { language } }) },
+    "@/components/auth": { useAuth: () => ({ user: { language },language }) },
+    "./auth": { useAuth: () => ({ user: { language },language }) },
+    "@/lib/public-routes":publicRoutes,
+    "@/lib/public-site":{publicLocale:async()=>language,publicMetadata:()=>({})},
     "@/components/gate": { ProtectedPage: ({ children }: any) => children },
     "next/link": { __esModule: true, default: ({ children, ...rest }: any) => React.createElement("a", rest, children) },
   };
@@ -30,13 +34,14 @@ function render(file: string, props = {}, language = "en") {
   vm.runInNewContext(output, { module: fixture, exports: fixture.exports, require: (name: string) =>
     name in dependencies ? dependencies[name] : requireModule(name),
   }, { filename: file });
-  return renderToStaticMarkup(React.createElement(fixture.exports.default || fixture.exports.SupportContact, props));
+  const component=fixture.exports.default||fixture.exports.SupportContact;
+  return renderToStaticMarkup(component.constructor.name==="AsyncFunction"?await (component as any)(props):React.createElement(component,props));
 }
 
-test("public privacy and terms render the same working contact in accessible email links", () => {
+test("public privacy and terms render the same working contact in accessible email links", async () => {
   assert.equal(PUBLIC_CONTACT_EMAIL, "jasmel@jasmiamimethod.fit");
   for (const page of ["privacy", "terms", "cookies", "data-rights", "policies"]) {
-    const html = render(`src/app/${page}/page.tsx`);
+    const html = await render(`src/app/${page}/page.tsx`);
     assert.ok(html.includes(`href="${PUBLIC_CONTACT_MAILTO}"`));
     assert.ok(html.includes(`>${PUBLIC_CONTACT_EMAIL}</a>`));
     assert.doesNotMatch(html, /jasmelacosta@gmail\.com|coach@jasmiamimethod\.com/);
@@ -63,8 +68,8 @@ test("nutrition inquiries use the shared public contact in both languages", () =
   assert.doesNotMatch(source, /jasmelacosta@gmail\.com/);
 });
 
-test("support renders an email draft without deployment email configuration", () => {
-  const html = render("src/components/support-contact.tsx", { contacts: supportContacts({}), telegramSupportAvailable: false });
+test("support renders an email draft without deployment email configuration", async () => {
+  const html = await render("src/components/support-contact.tsx", { contacts: supportContacts({}), telegramSupportAvailable: false });
   assert.ok(html.includes(`Draft an email to ${PUBLIC_CONTACT_EMAIL}`));
   assert.ok(html.includes(`href="mailto:${encodeURIComponent(PUBLIC_CONTACT_EMAIL)}?subject=`));
   assert.doesNotMatch(html, /has not configured a support contact/);

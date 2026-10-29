@@ -55,14 +55,15 @@ function applyLang(l: Lang) {
   document.documentElement.lang = l;
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children, publicLanguage }: { children: React.ReactNode; publicLanguage?: Lang }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [language, setLanguageState] = useState<Lang>("es");
+  const [language, setLanguageState] = useState<Lang>(publicLanguage||"es");
 
   // Spanish default; honor a stored preference from a previous visit.
   useEffect(() => {
+    if(publicLanguage){setLanguageState(publicLanguage);document.documentElement.lang=publicLanguage;return;}
     let initial: Lang = "es";
     try {
       const stored = localStorage.getItem("jmm_lang");
@@ -70,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
     setLanguageState(initial);
     applyLang(initial);
-  }, []);
+  }, [publicLanguage]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -94,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {}
       // A signed-in user carries their language on the profile.
-      if (data.user?.language && isLang(data.user.language)) {
+      if (!publicLanguage && data.user?.language && isLang(data.user.language)) {
         setLanguageState(data.user.language);
         applyLang(data.user.language);
       }
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(timeout);
       setLoading(false);
     }
-  }, []);
+  }, [publicLanguage]);
 
   useEffect(() => {
     refresh();

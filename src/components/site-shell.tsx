@@ -1,131 +1,30 @@
 "use client";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Globe } from "lucide-react";
 import { useAuth } from "./auth";
-import { LANGS, t, type Lang } from "@/lib/i18n";
-
-export function PublicLanguageSelect({ compact }: { compact?: boolean }) {
-  const { language, setLanguage } = useAuth();
-  if (compact) {
-    return (
-      <select
-        value={language}
-        onChange={(e) => setLanguage(e.target.value as Lang)}
-        aria-label="Language"
-        className="bg-transparent text-ink-600 text-xs font-medium border border-ink-200 rounded-md px-2 py-1 focus:outline-none hover:text-ink-900"
-      >
-        {LANGS.map((l) => (
-          <option key={l.code} value={l.code}>{l.native}</option>
-        ))}
-      </select>
-    );
-  }
-  return (
-    <div className="flex items-center gap-1.5">
-      <Globe className="w-4 h-4 text-ink-400 shrink-0" />
-      <select
-        value={language}
-        onChange={(e) => setLanguage(e.target.value as Lang)}
-        aria-label="Language"
-        className="bg-transparent text-ink-600 text-xs font-medium border border-ink-200 rounded-md px-2 py-1 focus:outline-none hover:text-ink-900"
-      >
-        {LANGS.map((l) => (
-          <option key={l.code} value={l.code}>{l.native}</option>
-        ))}
-      </select>
-    </div>
-  );
+import { publicHref,publicRoute,englishReferenceRoute } from "@/lib/public-routes";
+import type { Lang } from "@/lib/i18n";
+export function PublicLanguageSelect({compact}:{compact?:boolean}) {
+  const pathname=usePathname(),route=publicRoute(pathname),{language,setLanguage}=useAuth();
+  if(englishReferenceRoute(pathname))return <a href="/es/science" className="website-language text-xs" lang="es" aria-label="Spanish guides; this reference page is in English">Guías en español ↗</a>;
+  return <label className={compact?"text-sm":"text-sm inline-flex gap-2 items-center"}><span className="sr-only">Language</span><select aria-label="Language" className="website-language" value={route.localized?route.locale:language==="es"?"es":"en"} onChange={e=>{
+    if(route.localized)window.location.assign(publicHref(e.target.value,route.base)+window.location.hash);
+    else void setLanguage(e.target.value as Lang);
+  }}><option value="en">English</option><option value="es">Español</option></select></label>;
 }
-
-export function SiteHeader() {
-  const pathname = usePathname();
-  const { language } = useAuth();
-  const { user } = useAuth();
-  return (
-    <header className="border-b border-ink-200/70 bg-paper/90 backdrop-blur sticky top-0 z-30">
-      <div className="pub-container flex flex-wrap items-center justify-between py-4 gap-4">
-        <Link href="/" className="flex items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/icon.svg" alt="JasMiamiMethod" className="w-8 h-8 rounded-lg" />
-          <span className="font-display text-lg font-bold tracking-tight text-ink-900">
-            JasMiamiMethod
-          </span>
-        </Link>
-        <nav aria-label="Public navigation" className="flex flex-wrap items-center gap-x-4 gap-y-3 md:gap-x-6">
-          <Link href="/race-prediction" aria-current={pathname === "/race-prediction" ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">AdvanzedRacing</Link>
-          <Link href="/personal-coaching" aria-current={pathname === "/personal-coaching" ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">{language === "es" ? "Coaching diario" : "Daily coaching"}</Link>
-          <Link href="/science" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors">
-            {t(language, "pub.science")}
-          </Link>
-          <Link href="/how-it-works" className="text-sm font-medium text-ink-600 hover:text-ink-900 transition-colors">
-            {t(language, "pub.howItWorks")}
-          </Link>
-          <Link href="/blog" aria-current={pathname.startsWith("/blog") ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">{language === "es" ? "Artículos" : "Blog"}</Link>
-          <Link href="/faq" aria-current={pathname === "/faq" ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">FAQ</Link>
-          <Link href="/contact" aria-current={pathname === "/contact" ? "page" : undefined} className="text-sm font-medium text-ink-600 hover:text-ink-900 aria-[current=page]:text-vermillion-600">{language === "es" ? "Contacto" : "Contact"}</Link>
-          <Link href="/book" aria-current={pathname === "/book" ? "page" : undefined} className="text-sm font-semibold text-ocean-700 hover:text-ocean-900 aria-[current=page]:text-vermillion-600">{language === "es" ? "Reservar" : "Book a call"}</Link>
-          {/* Logged-in athletes keep the app one tap away on every public page
-              (science guides included). Logged-out visitors get the same door:
-              /today redirects to sign-in, then straight back to training. */}
-          <Link
-            href="/today"
-            className={`text-sm font-semibold transition-colors ${
-              user
-                ? "text-vermillion-600 hover:text-vermillion-500"
-                : "text-ink-600 hover:text-ink-900"
-            }`}
-          >
-            {t(language, "pub.dashboard")} →
-          </Link>
-          <PublicLanguageSelect compact />
-          {!user && (
-            <Link
-              href="/login?mode=signup"
-              className="btn-editorial !px-4 !py-2 text-sm"
-            >
-              {t(language, "pub.startFree")}
-            </Link>
-          )}
-        </nav>
-      </div>
-    </header>
-  );
+export function SiteHeader(){
+  const pathname=usePathname(),{language,user}=useAuth(),route=publicRoute(pathname),locale=route.localized?route.locale:language,es=locale==="es",href=(path:string)=>publicHref(locale,path);
+  const links=[["/how-it-works",es?"Cómo funciona":"How it works"],["/capabilities",es?"Qué puedes hacer":"Capabilities"],["/science",es?"Ciencia":"Science"],["/contact",es?"Contacto":"Contact"]];
+  const nav=(mobile=false)=><nav aria-label={es?"Navegación pública":"Public navigation"} className={mobile?"website-mobile-links":"website-desktop-links"}>{links.map(([path,label])=><Link key={path} href={href(path)} aria-current={route.base===path?"page":undefined}>{label}</Link>)}{mobile&&<Link href={user?"/today":"/login"}>{user?(es?"Mi entrenamiento":"My training"):(es?"Entrar":"Sign in")}</Link>}</nav>;
+  return <header className="website-header"><a className="website-skip" href="#main-content">{es?"Ir al contenido":"Skip to content"}</a><div className="pub-container website-header-row">
+    <Link href={href("/")} className="website-brand" aria-label="Jas Miami Method"><span aria-hidden="true" className="website-brand-mark">j</span><span>Jas Miami Method</span><span className="website-brand-short">JMM</span></Link>
+    {nav()}<div className="website-header-actions"><PublicLanguageSelect compact/><Link className="website-signin" href={user?"/today":"/login"}>{user?(es?"Mi entrenamiento":"My training"):(es?"Entrar":"Sign in")}</Link><details className="website-mobile-menu"><summary>{es?"Menú":"Menu"}</summary>{nav(true)}</details></div>
+  </div></header>;
 }
-
-export function SiteFooter() {
-  const { language } = useAuth();
-  return (
-    <footer className="border-t border-ink-200/70 mt-20">
-      <div className="pub-container py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 text-ink-600">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/icon.svg" alt="JasMiamiMethod" className="w-5 h-5 rounded" />
-          <span className="font-display font-bold text-ink-900">JasMiamiMethod</span>
-        </div>
-        <p className="micro">
-          {t(language, "pub.footerBuilt")}
-        </p>
-        <div className="flex flex-wrap gap-5 text-sm items-center">
-          <Link href="/race-prediction" className="text-ink-600 hover:text-ink-900">AdvanzedRacing</Link>
-          <Link href="/personal-coaching" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Coaching diario" : "Daily coaching"}</Link>
-          <Link href="/science" className="text-ink-600 hover:text-ink-900">{t(language, "pub.science")}</Link>
-          <Link href="/onboarding" className="text-ink-600 hover:text-ink-900">{t(language, "pub.onboarding")}</Link>
-          <Link href="/blog" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Artículos" : "Blog"}</Link>
-          <Link href="/faq" className="text-ink-600 hover:text-ink-900">FAQ</Link>
-          <Link href="/contact" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Contacto" : "Contact"}</Link>
-          <Link href="/book" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Reservar" : "Book"}</Link>
-          <Link href="/help" className="text-ink-600 hover:text-ink-900">{language === "es" ? "Ayuda" : "Help"}</Link>
-        </div>
-      </div>
-      <nav aria-label={language === "es" ? "Políticas" : "Policies"} className="pub-container pb-8 flex flex-wrap gap-x-5 gap-y-3 text-sm underline">
-        <Link href="/policies">{language === "es" ? "Políticas y avisos" : "Policies and notices"}</Link>
-        <Link href="/privacy">{language === "es" ? "Privacidad e IA" : "Privacy and AI"}</Link>
-        <Link href="/terms">{language === "es" ? "Términos" : "Terms"}</Link>
-        <Link href="/cookies">{language === "es" ? "Cookies y almacenamiento" : "Cookies and storage"}</Link>
-        <Link href="/data-rights">{language === "es" ? "Derechos y eliminación" : "Data rights and deletion"}</Link>
-      </nav>
-    </footer>
-  );
+export function SiteFooter(){
+  const {language}=useAuth(),route=publicRoute(usePathname()),locale=route.localized?route.locale:language,es=locale==="es",href=(path:string)=>publicHref(locale,path);
+  return <footer className="website-footer"><div className="pub-container"><div className="website-footer-top"><div><Link href={href("/")} className="website-brand">Jas Miami Method</Link><p>{es?"Entrenamiento, alimentación y recuperación con contexto.":"Training, fueling and recovery in context."}</p></div><nav aria-label={es?"Más información":"More information"}>{[["/personal-coaching","JMM Coach"],["/book",es?"Reservar una conversación":"Book a conversation"],["/faq",es?"Preguntas frecuentes":"FAQ"],["/blog",es?"Artículos (inglés)":"Articles"],["/help",es?"Ayuda":"Help"]].map(([path,label])=><Link key={path} href={href(path)}>{label}</Link>)}</nav></div>
+    <nav className="website-policy-links" aria-label={es?"Políticas":"Policies"}>{[["/policies",es?"Políticas y avisos":"Policies and notices"],["/privacy",es?"Privacidad e IA":"Privacy and AI"],["/terms",es?"Términos":"Terms"],["/cookies",es?"Cookies y almacenamiento":"Cookies and storage"],["/data-rights",es?"Derechos y eliminación":"Data rights and deletion"]].map(([path,label])=><Link key={path} href={href(path)}>{label}</Link>)}</nav>
+    <p className="website-footer-note">AI DYNAMICS INC · {es?"Información educativa y herramientas de entrenamiento. No es diagnóstico ni autorización médica para entrenar.":"Educational information and training tools. Not diagnosis or medical exercise clearance."}</p>
+  </div></footer>;
 }

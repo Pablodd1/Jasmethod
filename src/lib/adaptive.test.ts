@@ -55,7 +55,9 @@ assert.equal(short.carbsPerHourG, 0);
 const long = recommendFuel({ durationMin: 120, intensity: "z4", heatFactor: 1.5 });
 assert.equal(long.carbsPerHourG, 60);
 assert.ok(long.fluidMlPerHour >= 750);
-assert.ok(long.caffeineMg && long.caffeineMg > 0, "hard long session should recommend caffeine");
+assert.equal(long.caffeineMg, undefined, "hard sessions cannot silently add caffeine");
+for(const ergosIncludeCaffeine of [false,true]) assert.equal(recommendFuel({durationMin:90,intensity:"z4",ergosIncludeCaffeine}).caffeineMg,undefined);
+for(const technique of RECOVERY_TECHNIQUES){assert.doesNotMatch(technique.instructions,/immerse|hold 4s|hold 7s|cold water|lengthen exhale/i);assert.match(technique.mechanism,/not|does not/);}
 
 // --- ergogenics: opt-out respected ---
 let prefs: import("./adaptive").SupplementPrefs = { enabled: true, likes: ["caffeine"], dislikes: [], optsOut: [] };
