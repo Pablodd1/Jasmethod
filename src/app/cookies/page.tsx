@@ -1,6 +1,6 @@
-import type { Metadata } from "next";
+import { publicLocale,publicMetadata } from "@/lib/public-site";
 import { PolicyPage } from "@/components/policy-page";
-export const metadata: Metadata = {title: "Cookies and browser storage · Cookies y almacenamiento del navegador — JasMiamiMethod", alternates: {canonical: "/cookies"}};
+export async function generateMetadata(){const locale=await publicLocale();return publicMetadata("/cookies",locale,(locale==="es"?"Cookies y almacenamiento":"Cookies and browser storage")+" | Jas Miami Method",locale==="es"?"Consulta los avisos y controles de AI DYNAMICS INC para Jas Miami Method.":"Read the AI DYNAMICS INC notices and controls for Jas Miami Method.");}
 const sections = [
   {
     "id": "sign-in",

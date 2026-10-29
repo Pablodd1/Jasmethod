@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { prisma } from "@/lib/db";
+import { deliverInquiryOnce } from "@/lib/public-inquiry-receipt";
+import { publicInquiryOriginAllowed } from "@/lib/public-inquiry-origin";
 import { PUBLIC_CONTACT_EMAIL } from "@/lib/public-contact";
 import { deliverSupportMessage, supportTelegramConfigured } from "@/lib/support-delivery";
 import { INQUIRY_MAX_BYTES, inquiryEmailText, parsePublicInquiry } from "@/lib/public-inquiry";
@@ -23,8 +26,7 @@ function allowed(request: Request): boolean {
 }
 
 export async function POST(req: Request) {
-  const origin = req.headers.get("origin");
-  if (!origin || origin !== new URL(req.url).origin || req.headers.get("sec-fetch-site") === "cross-site")
+  if (!publicInquiryOriginAllowed(req))
     return NextResponse.json({ ok: false, error: "Open this form on the JMM website." }, { status: 403, headers: noStore });
   if (!req.headers.get("content-type")?.startsWith("application/json"))
     return NextResponse.json({ ok: false, error: "Expected JSON." }, { status: 415, headers: noStore });
@@ -50,46 +52,27 @@ export async function POST(req: Request) {
   if (!data) return NextResponse.json({ ok: false, error: "Please check the fields and privacy consent." }, { status: 400, headers: noStore });
   if (!allowed(req)) return NextResponse.json({ ok: false, error: "Message limit reached. Please use the email option.", code: "rate_limited" }, { status: 429, headers: { ...noStore, "Retry-After": "3600" } });
 
-  // JMM already has a server-side administrator Telegram channel with receipt checks.
-  // The visitor explicitly consents to administrator-channel or email delivery.
-  // No request is ever represented as delivered unless the provider returns acceptance.
-  if (supportTelegramConfigured()) {
-    const receipt = await deliverSupportMessage({
-      category: "question", replyEmail: data.email,
-      message: "Public inquiry (" + data.topic + ") from " + data.name + ":\n" + data.message,
-    });
-    if (receipt !== null) return NextResponse.json({
-      ok: true, channel: "telegram",
-      message: "The JMM administrator channel accepted the inquiry; this does not confirm that it has been read.",
-    }, { headers: noStore });
-  }
-  // Fallback to the existing business SMTP transport; do not invent a mail success.
-  if (!process.env.SMTP_HOST || !process.env.SMTP_FROM ||
-      !process.env.SMTP_USER || !process.env.SMTP_PASS)
-    return NextResponse.json({ ok: false, error: "Online delivery is unavailable. Please use the email option below.", code: "delivery_unavailable" }, { status: 503, headers: noStore });
-  const transport = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === "true",
-    requireTLS: process.env.SMTP_SECURE !== "true",
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
-  });
+  const requestId=(payload as Record<string,unknown>).requestId;
+  if(typeof requestId!=="string")return NextResponse.json({ok:false,error:"Reload the form before sending."},{status:400,headers:noStore});
+  const telegram=supportTelegramConfigured(),smtp=!!(process.env.SMTP_HOST&&process.env.SMTP_FROM&&process.env.SMTP_USER&&process.env.SMTP_PASS);
   try {
-    const receipt = await transport.sendMail({
-      from: process.env.SMTP_FROM,
-      to: PUBLIC_CONTACT_EMAIL,
-      replyTo: data.email,
-      subject: "JMM website inquiry: " + data.topic,
-      text: inquiryEmailText(data),
-    });
-    const accepted = (receipt.accepted || []).some((a: string | { address: string }) =>
-      (typeof a === "string" ? a : a.address).toLowerCase() === PUBLIC_CONTACT_EMAIL.toLowerCase());
-    if (!accepted) return NextResponse.json({ ok: false, error: "Delivery was not confirmed. Please use email; your message may already have been accepted." }, { status: 502, headers: noStore });
-    return NextResponse.json({ ok: true, channel: "smtp", message: "Your inquiry was accepted by our mail provider. This does not confirm it has reached the inbox." }, { headers: noStore });
-  } catch {
-    return NextResponse.json({ ok: false, error: "Delivery could not be confirmed. Please use email instead; do not repeatedly resubmit." }, { status: 502, headers: noStore });
-  } finally {
-    transport.close();
-  }
+    const result=await deliverInquiryOnce({requestId,inquiry:data,available:telegram||smtp,store:{
+      claim:async(id,hash,receipt)=>prisma.$transaction(async tx=>{
+        const receiptId="public-inquiry:"+id;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${receiptId}))`;
+        const existing=await tx.appEvent.findUnique({where:{id:receiptId},select:{id:true,meta:true}});
+        if(existing){let stored;try{stored=JSON.parse(existing.meta||"null");}catch{throw Error("Invalid receipt");}return {fresh:false,row:{id:existing.id,before:stored?.fingerprint||null,after:JSON.stringify(stored?.receipt||null)}};}
+        await tx.appEvent.create({data:{id:receiptId,kind:"info",source:"public-inquiry-receipt",route:"/contact",message:"Inquiry reply consent and transport receipt",meta:JSON.stringify({fingerprint:hash,receipt})}});
+        return {fresh:true,row:{id:receiptId,before:hash,after:JSON.stringify(receipt)}};
+      }),
+      finish:async(id,receipt)=>{const current=await prisma.appEvent.findUniqueOrThrow({where:{id},select:{meta:true}});const stored=JSON.parse(current.meta||"null");await prisma.appEvent.update({where:{id},data:{meta:JSON.stringify({...stored,receipt})}});},
+    },deliver:async()=>{
+      if(telegram){const receipt=await deliverSupportMessage({category:"question",replyEmail:data.email,message:"Public inquiry ("+data.topic+") from "+data.name+":\n"+data.message});return receipt!==null?{channel:"telegram"}:null;}
+      const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==="true",requireTLS:process.env.SMTP_SECURE!=="true",auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS},connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000});
+      try {const receipt=await transport.sendMail({from:process.env.SMTP_FROM,to:PUBLIC_CONTACT_EMAIL,replyTo:data.email,subject:"JMM website inquiry: "+data.topic,text:inquiryEmailText(data)});
+        return (receipt.accepted||[]).some((a:string|{address:string})=>(typeof a==="string"?a:a.address).toLowerCase()===PUBLIC_CONTACT_EMAIL.toLowerCase())?{channel:"smtp"}:null;
+      }finally{transport.close();}
+    }});
+    return NextResponse.json(result.body,{status:result.status,headers:noStore});
+  }catch{return NextResponse.json({ok:false,code:"receipt_unavailable",error:"Delivery is unconfirmed. Please do not repeatedly resubmit; use the email option if needed."},{status:503,headers:noStore});}
 }

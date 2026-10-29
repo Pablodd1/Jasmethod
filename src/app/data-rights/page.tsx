@@ -1,6 +1,6 @@
-import type { Metadata } from "next";
+import { publicLocale,publicMetadata } from "@/lib/public-site";
 import { PolicyPage } from "@/components/policy-page";
-export const metadata: Metadata = {title: "Data rights and deletion · Derechos de datos y eliminación — JasMiamiMethod", alternates: {canonical: "/data-rights"}};
+export async function generateMetadata(){const locale=await publicLocale();return publicMetadata("/data-rights",locale,(locale==="es"?"Derechos y eliminación":"Data rights and deletion")+" | Jas Miami Method",locale==="es"?"Consulta los avisos y controles de AI DYNAMICS INC para Jas Miami Method.":"Read the AI DYNAMICS INC notices and controls for Jas Miami Method.");}
 const sections = [
   {
     "id": "request",

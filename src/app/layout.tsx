@@ -3,8 +3,9 @@ import { Inter, Fraunces, IBM_Plex_Mono } from "next/font/google";
 import { AuthProvider } from "@/components/auth";
 import "./globals.css";
 import { WebApp } from "@/components/web-app";
+import { headers } from "next/headers";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-body" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-body", display:"swap" });
 const fraunces = Fraunces({
   subsets: ["latin"],
   variable: "--font-display",
@@ -23,37 +24,39 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   alternates: { canonical: "/" },
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
-  title: "JasMiamiMethod — Coaching for Swim, Bike, Run, HYROX & Triathlon",
+  title: "Jas Miami Method | Training, fueling and recovery",
   description:
-    "Personalized daily coaching for swimming, cycling, running, HYROX and triathlon — built on post-2000 human-performance research. Daily check-in, HRV recovery, sleep, fueling and hydration plans, blood panels, and periodized race plans. Works with or without wearables.",
+    "Review training, food and fluids around your session, recovery choices and completed work. Manual tools remain available without a wearable.",
   openGraph: {
     type: "website",
     url: SITE_URL,
     siteName: "JasMiamiMethod",
-    title: "JasMiamiMethod — Training that reads your body, not your ego",
+    title: "Jas Miami Method | Training, fueling and recovery",
     description:
-      "Daily adaptive coaching for swimming, cycling, running, HYROX and triathlon. Science-backed, works with or without wearables.",
+      "Review your session, record what happened and prepare your next step. Devices and sensitive uploads are optional.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "JasMiamiMethod — Data, not ego.",
+    title: "Jas Miami Method | Training, fueling and recovery",
     description:
-      "Daily adaptive coaching for swimming, cycling, running, HYROX and triathlon. Science-backed, works with or without wearables.",
+      "Review your session, record what happened and prepare your next step. Devices and sensitive uploads are optional.",
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const publicLanguage=(await headers()).get("x-jmm-public-locale");
+  const initialPublicLanguage=publicLanguage==="es"||publicLanguage==="en"?publicLanguage:undefined;
   return (
     <html
-      lang="en"
+      lang={initialPublicLanguage||"en"}
       className={`${inter.variable} ${fraunces.variable} ${plexMono.variable}`}
     >
       <body>
-        <AuthProvider>
+        <AuthProvider publicLanguage={initialPublicLanguage}>
           <WebApp />
           {children}
         </AuthProvider>
