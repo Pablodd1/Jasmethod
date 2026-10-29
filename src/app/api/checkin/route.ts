@@ -14,10 +14,8 @@ import { dayBounds, busyHours, addDaysKey, localDate } from "@/lib/dates";
 import {
   adaptSession,
   prescribeToday,
-  recommendFuel,
   recommendErgogenics,
   recoveryFor,
-  postWorkoutFuel,
   morningWeightTrend,
   type Checkin,
 } from "@/lib/adaptive";
@@ -131,8 +129,13 @@ export async function GET(req: Request) {
     }
     const inputContext = await readDailyInputContext(user.id, user.timezone, prisma);
     if (!trainingViewDisclosureAllowed(actor.id, user.id, [...previousSessions, ...metrics], inputContext)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
+    const currentWorkouts=checkin?await prisma.workout.findMany({where:{AND:[currentWorkoutWhere(user.id,activePlan?.id??null),{date:{gte:start,lt:end}}]},orderBy:[{startTime:"asc"},{id:"asc"}],take:50}):[];
+    if(!trainingViewDisclosureAllowed(actor.id,user.id,currentWorkouts,inputContext))throw new ApiError(ACTIVITY_DISCLOSURE_REASON,403);
+    const currentResolved=await Promise.all(currentWorkouts.map(w=>effectivePrescription(user.id,w.id)));
+    const prescriptions=currentResolved.flatMap(r=>r?[{...r.prescription,sessionId:r.canonical.id,canonical:r.canonical,nutrition:r.nutrition}]:[]);
     return NextResponse.json({
       inputContext,
+      prescriptions,
       checkin: displayedCheckin,
       feedbackDate,
       previousSessions: previousSessions.map(w => ({ id: w.id, title: w.title, sport: w.sport, durationMin: w.durationMin, date: w.date,
@@ -466,14 +469,20 @@ export async function POST(req: Request) {
       });
       return { checkin: check, prescriptions, rejectedSessions };
     }, { isolationLevel: "Serializable" });
-    const prescription = saved.prescriptions[0] || null;
+    // Resolve the saved snapshot through the same athlete/date/source boundary as Today and FIT.
+    const resolvedPrescriptions=await Promise.all(saved.prescriptions.map(async p=>{
+      const resolved=await effectivePrescription(user.id,p.sessionId);
+      if(!resolved)throw new ApiError("Check-in saved, but the current workout could not be reloaded. Refresh Today before training.",409);
+      return {...resolved.prescription,sessionId:resolved.canonical.id,canonical:resolved.canonical,nutrition:resolved.nutrition};
+    }));
+    const prescription = resolvedPrescriptions[0] || null;
     const session = prescription || {
       sport: "recovery",
       type: "recovery",
       intensity: "z1",
       durationMin: 0,
     };
-    const fuel = session.durationMin > 0 ? recommendFuel(session) : null;
+    const fuel = prescription?.nutrition?.fuel ?? null;
     const ergos = session.durationMin
       ? recommendErgogenics(
           {
@@ -511,6 +520,7 @@ export async function POST(req: Request) {
       freshnessNote: syncFreshness.note,
       providerFreshness: syncFreshness.providers,
       ...saved,
+      prescriptions:resolvedPrescriptions,
       prescription,
       adaptation,
       executionFeedback: { inputs: execution.inputs, notes: execution.notes },
@@ -518,7 +528,7 @@ export async function POST(req: Request) {
       activityReconciliation:{rawRecords:groupedHistory.rawRecords,groupedCopies:groupedHistory.groupedCopies,unresolvedGroups:groupedHistory.unresolvedGroups,requiresReview:groupedHistory.unresolvedGroups>0},
       fuel,
       ergos,
-      post: session.durationMin ? postWorkoutFuel({ ...session, weightKg: checkin.weightKg ?? profile?.weightKg ?? undefined }) : null,
+      post: prescription?.nutrition?.post ?? null,
       stim: adaptation.safetyStatus !== "clear" ? null : {
         pre: stimPlan("pre", { hardSession: hard }),
         during: stimPlan("during", { hardSession: hard }),

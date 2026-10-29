@@ -13,7 +13,7 @@ export function allocateWeeklyDose(sessions:BoundedPlanSession[],target:number,d
   }
   if(noFixedRest) for(const daySlot of availableSlots) if(!out.some(s=>s.daySlot===daySlot))out.push(recovery(daySlot));
   const adjustable=(s:BoundedPlanSession)=>/^z[12]$/.test(s.zone)&&(['run','bike','swim'].includes(s.sport)&&s.type==='endurance'||s.sport==='mobility'&&s.type==='recovery');
-  const capacity=(s:BoundedPlanSession)=>s.sport==='mobility'&&s.type==='recovery'?Math.min(20,dailyLimit):dailyLimit;
+  const capacity=(s:BoundedPlanSession)=>s.sport==='mobility'&&s.type==='recovery'?Math.min(20,dailyLimit):s.sport==='swim'?Math.min(75,dailyLimit):s.sport==='run'?Math.min(120,dailyLimit):dailyLimit;
   const fixed=out.filter(s=>!adjustable(s)),easy=out.filter(adjustable);
   const fixedTotal=fixed.reduce((n,s)=>n+s.minutes,0);
   // Never scale a quality/strength bout up to compensate for discarded sessions.

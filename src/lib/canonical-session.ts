@@ -2,7 +2,7 @@ import { environmentRevisionContext, type DailyEnvironmentAssessment } from "./d
 // Server-side canonical workout boundary. Consumers must not infer steps from prose.
 import { createHash } from "node:crypto";
 import { sessionPurposeTitle } from './session-purpose-title';
-import { HR_ZONE_UPPER_FACTORS, POWER_ZONE_UPPER_FACTORS } from "./zone-factors";
+import { HR_ZONE_UPPER_FACTORS, POWER_ZONE_UPPER_FACTORS, SWIM_ZONE_MULT } from "./zone-factors";
 export { HR_ZONE_UPPER_FACTORS, POWER_ZONE_UPPER_FACTORS } from "./zone-factors";
 import type { WorkoutStep } from "./prescription";
 import { normalizeSportStructure, sportStructureSteps, sportStepInstruction, SportStructureError, type SportStructure, type SportStepDetail, type SwimStroke } from "./sport-structure";
@@ -17,6 +17,7 @@ export interface TargetProfile {
   units?: string | null; intensityPct?: number | null; injured?: boolean | null;
   weightKg?: number | null; sweatRateMlH?: number | null; sodiumMgPerL?: number | null; gutTrained?: boolean | null;
   nutritionContext?: string | null;
+  manualPrs?:string|null; referenceEvidence?:Record<string,{source:string;observedAt:string;unit:string;value:number}>;
   goal?: string | null; experience?: string | null; weeklyHours?: number | null; birthYear?: number | null;
 }
 export interface ResolvedTarget {
@@ -26,6 +27,7 @@ export interface ResolvedTarget {
   label: string;
   source: "explicit" | "profile_reference" | "effort";
   missingReason?: string;
+  reference?:{source:string;observedAt:string;unit:string;value:number};
 }
 export interface CanonicalStep extends Omit<WorkoutStep, "target"> {
   endpoint: StepEndpoint;
@@ -46,7 +48,7 @@ export interface ExportCapability {
 export interface CanonicalSession {
   schemaVersion: 2; id: string; athleteId: string; revision: string; revisionNumber: number;
   dateLocal: string; timezone: string; title: string; sport: SessionSport; durationMin: number;
-  verdict: "ready" | "rest" | "blocked"; reason: string; steps: CanonicalStep[];
+  verdict: "ready" | "rest" | "blocked"; reviewRequirement?:"session_structure"|"current_review"; reason: string; steps: CanonicalStep[];
   exactTimeSeconds: number | null; capability: ExportCapability;
   sportStructure?: SportStructure;
   components?: CanonicalSession[];
@@ -89,6 +91,11 @@ export function resolveStepTarget(step: Pick<WorkoutStep, "zone" | "target">, sp
     if (low > high) fail("Target lower bound exceeds upper bound.");
     if (["power", "heartRate"].includes(explicit.type) && (!Number.isInteger(low) || !Number.isInteger(high))) fail("Power and heart-rate targets require whole units.");
     return { type: explicit.type, low, high, label: label(explicit.type, low, high), source: "explicit" };
+  }
+  if(sport==="swim"&&profile?.swimPaceBase!=null){
+    const css=positive(profile.swimPaceBase,600,"CSS reference"),range=SWIM_ZONE_MULT[`z${Math.min(5,z)}`];
+    const low=css*range.fast,high=css*range.slow,imperial=profile.units==="imperial",display=imperial?.9144:1;
+    return {type:"pace",low:low*10,high:high*10,source:"profile_reference",label:`${paceText(low*display)}–${paceText(high*display)}/100 ${imperial?"yd":"m"} (CSS reference)`};
   }
   // Endurance anchors are not universal prescriptions for skill/strength sports.
   if (!["run", "bike"].includes(sport)) return { type: "open", source: "effort", label: `Open effort · RPE ${rpe}/10` };
@@ -230,6 +237,7 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
       }
       if (p.verdict === "rest" || p.durationMin === 0) { verdict = "rest"; reason = typeof p.structureReviewRequired === "string" ? p.structureReviewRequired : "The saved prescription requires rest."; }
       else {
+        if(sport==="swim"&&(p.durationMin??w.durationMin)>75&&!p.sportStructure)fail("Generic swims over 75 minutes require coach review of actual swim history and explicit pool/open-water structure. This is a product review threshold, not a physiological limit.");
         if (p.verdict !== undefined && !["full", "trim", "easy", "planned"].includes(p.verdict)) fail("Unrecognized prescription safety verdict.");
         if (p.durationMin != null) positive(p.durationMin, 1440, "prescription duration");
         if (p.sportStructure !== undefined) {
@@ -252,10 +260,10 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
             if (steps.length > 1000) fail("Expanded brick exceeds the 1,000-step safety limit.");
           } else {
             const entries = sportStructureSteps(sportStructure);
-            steps = normalizeSteps(entries.map(e => e.step), sport, profile).map((step, i) => {
+            steps = normalizeSteps(entries.map(e => sport==="swim"&&e.detail?.kind==="pool"&&profile?.swimPaceBase!=null?{...e.step,target:undefined}:e.step), sport, profile).map((step, i) => {
               const detail = entries[i].detail;
               return { ...step, ...(detail ? { sportDetail: detail } : {}), note: [sportStepInstruction(detail), step.note].filter(Boolean).join(" ") || undefined,
-                ...(detail?.kind === "pool" ? { target: { type: "swimStroke" as const, stroke: detail.stroke, source: "explicit" as const, label: `${detail.stroke} · ${step.target.label}` } } : {}) };
+                ...(detail?.kind === "pool" && step.target.type !== "pace" ? { target: { type: "swimStroke" as const, stroke: detail.stroke, source: "explicit" as const, label: `${detail.stroke} · ${step.target.label}` } } : {}) };
             });
           }
         } else steps = normalizeSteps(p.steps, sport, profile);
@@ -269,7 +277,8 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
   if (verdict === "blocked" && typeof w.originalPlan === "string") {
     try { const original = JSON.parse(w.originalPlan); if (obj(original) && typeof original.title === "string" && original.title.trim()) displayTitle = original.title; } catch { /* Keep the current saved title. */ }
   }
-  const core = { schemaVersion: SESSION_SCHEMA_VERSION as 2, id: String(w.id || ""), athleteId: input.athleteId, dateLocal: input.dateLocal, timezone: input.timezone, title: sessionPurposeTitle(displayTitle, steps), sport, durationMin: verdict === "ready" ? (p?.durationMin ?? w.durationMin) : 0, verdict, reason, steps, exactTimeSeconds: steps.length && steps.every(s => s.endpoint.type === "time") ? steps.reduce((sum, s) => sum + (s.endpoint.type === "time" ? s.endpoint.seconds : 0), 0) : null, capability: exportCapability(sport, steps, verdict, sportStructure, components), ...(sportStructure ? { sportStructure } : {}), ...(components ? { components } : {}) };
+  steps=steps.map(step=>{const sportKey=step.componentSport??sport;const field=sportKey==="bike"?"ftp":sportKey==="swim"?"swimPaceBase":"runPaceBase";const reference=profile?.referenceEvidence?.[field];return step.target.source==="profile_reference"&&reference?{...step,target:{...step.target,reference}}:step;});
+  const core = { schemaVersion: SESSION_SCHEMA_VERSION as 2, id: String(w.id || ""), athleteId: input.athleteId, dateLocal: input.dateLocal, timezone: input.timezone, title: sessionPurposeTitle(displayTitle, steps), sport, durationMin: verdict === "ready" ? (p?.durationMin ?? w.durationMin) : 0, verdict, ...(verdict==="blocked"?{reviewRequirement:input.safety?.status==="clear"?"session_structure" as const:"current_review" as const}:{}), reason, steps, exactTimeSeconds: steps.length && steps.every(s => s.endpoint.type === "time") ? steps.reduce((sum, s) => sum + (s.endpoint.type === "time" ? s.endpoint.seconds : 0), 0) : null, capability: exportCapability(sport, steps, verdict, sportStructure, components), ...(sportStructure ? { sportStructure } : {}), ...(components ? { components } : {}) };
   const revision = createHash("sha256").update(JSON.stringify({ core, environment: input.environment ? environmentRevisionContext(input.environment) : null, source: [w.prescription, w.originalPlan, w.intensity, w.notes, w.startTime], actuals: [w.feedbackStatus, w.feedbackAt, w.feedbackNote, w.actualDurationMin, w.actualSport, w.actualDetails, w.rpe, w.completed, w.distanceKm, w.avgHr, w.avgPower, w.calories, w.preWeightKg, w.postWeightKg], profile: [profile?.ftp, profile?.lthr, profile?.runPaceBase, profile?.swimPaceBase, profile?.intensityPct, profile?.injured, profile?.units, profile?.weightKg, profile?.sweatRateMlH, profile?.sodiumMgPerL, profile?.gutTrained, profile?.nutritionContext], safety, context: input.revisionContext })).digest("hex");
   return { ...core, ...(input.environment ? { environment: input.environment } : {}), revision, revisionNumber: parseInt(revision.slice(0, 12), 16) };
 }

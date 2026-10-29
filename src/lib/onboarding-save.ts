@@ -9,12 +9,12 @@ export function onboardingSectionPayload(section: OnboardingSection, profile: Re
   const pick = (keys: string[]) => Object.fromEntries(keys.filter(key => Object.hasOwn(profile, key)).map(key => [key, profile[key]]));
   if (section === "essentials") {
     // Omit unchanged values, including manually reviewed references and missing answers.
-    return Object.fromEntries(["lthr", "maxHr", "ftp", "runPaceBase", "swimPaceBase", "manualPrs"]
+    return {...onboardingProfileFields(Object.fromEntries(["birthYear","sex","heightCm","weightKg"].filter(key=>Object.hasOwn(profile,key)&&profile[key]!==""&&profile[key]!=null&&String(profile[key])!==String(saved.profile[key]??"")).map(key=>[key,profile[key]]))),...Object.fromEntries(["lthr", "maxHr", "ftp", "runPaceBase", "swimPaceBase", "manualPrs"]
       .filter(key => Object.hasOwn(profile,key) && (key === "manualPrs" || saved.profile[key] == null || saved.profile[key] === "") && String(profile[key] ?? "") !== String(saved.profile[key] ?? ""))
-      .map(key => [key,profile[key]]));
+      .map(key => [key,profile[key]]))};
   }
   if (section === "profile") return onboardingProfileFields(pick(["birthYear", "sex", "heightCm", "weightKg"]));
-  if (section === "zones") return pick(["lthr", "maxHr", "ftp", "runPaceBase", "swimPaceBase"]);
+  if (section === "zones") return pick(["lthr", "maxHr", "ftp", "runPaceBase", "swimPaceBase", "manualPrs"]);
   if (section === "intent") {
     const answers = onboardingProfileFields(pick(["goal"]));
     if (typeof answers.goal === "string" && answers.goal === saved.profile.goal && !PLANNABLE_GOALS.includes(planningGoal(answers.goal)!)) delete answers.goal;

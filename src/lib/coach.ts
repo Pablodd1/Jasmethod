@@ -74,6 +74,8 @@ const FALLBACK: Record<string, { green: string; amber: string; red: string; swap
 
 export function fallbackBriefing(c: CoachContext): Briefing {
   if (c.profile?.injured) return { mode: "fallback", headline: "RECOVERY REVIEW", briefing: "The injury flag is active. Training is paused pending a recovery review.", adaptation: "Use the current rest prescription and review symptoms with your clinician or coach.", sources: [] };
+  const canonical=c.todaySession?.canonical;
+  if(canonical){const ready=canonical.verdict==="ready";return {mode:"fallback",headline:ready?"SAVED SESSION":canonical.verdict==="rest"?"REST":"HELD FOR REVIEW",briefing:ready?"Your current check-in and saved session are available. Review the steps and limits in Today; this is local guidance, not medical clearance.":canonical.reason,adaptation:ready?canonical.steps.map((step:any)=>`${step.name}: ${step.target.label}`).join(" · "):canonical.reason,sources:[]};}
   const assigned = c.todaySession?.prescription;
   if (assigned) {
     try {

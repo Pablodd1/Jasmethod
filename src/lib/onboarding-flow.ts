@@ -12,3 +12,10 @@ export function onboardingResume(value: string | null): OnboardingStep {
   const n = value === null ? 0 : Number(value);
   return Number.isInteger(n) && n >= 0 && n <= ONBOARDING_STEP.done ? n as OnboardingStep : ONBOARDING_STEP.welcome;
 }
+
+/** Resume from confirmed server saves, never schema defaults or guessed answers. */
+export function onboardingSavedResume(profile:Record<string,unknown>|null,setup:Record<string,unknown>|null):OnboardingStep {
+ if(profile?.goal&&typeof setup?.goalDescription==="string"&&setup.goalDescription.trim())return ONBOARDING_STEP.done;
+ if(profile&&["birthYear","sex","heightCm","weightKg","ftp","runPaceBase","swimPaceBase"].some(key=>profile[key]!=null&&profile[key]!==""))return ONBOARDING_STEP.race;
+ return ONBOARDING_STEP.devices;
+}

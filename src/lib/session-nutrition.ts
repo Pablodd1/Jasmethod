@@ -4,7 +4,7 @@ import type { TargetProfile } from './canonical-session';
 
 // All runtime consumers share these exact numbers and units, based on the same
 // profile and effective-session snapshot as the canonical revision.
-export function buildSessionNutrition(profile: TargetProfile | null | undefined, session: NutritionSession, now = new Date()) {
+export function buildSessionNutrition(profile: TargetProfile | null | undefined, session: NutritionSession & {revision?:string}, now = new Date()) {
   if (session.verdict !== 'ready' || session.durationMin <= 0) return null;
   const context = nutritionContextForSession(profile, session, now);
   const fuel = buildFuelingPlan({ durationMin: session.durationMin, intensity: session.intensity,
@@ -13,6 +13,6 @@ export function buildSessionNutrition(profile: TargetProfile | null | undefined,
   const post = postFuelPersonalized({durationMin:session.durationMin,intensity:session.intensity,sport:session.sport,
     weightKg:profile?.weightKg,nextSessionInHours:context.nextSessionInHours});
   fuel.measurementGaps.push(...context.reviewReasons);
-  return { fuel, post, intensity: session.intensity, contextStatus: context.status, reviewReasons: context.reviewReasons };
+  return { schemaVersion:"session-nutrition-v1" as const,sessionId:session.id,sourceRevision:session.revision??null,dateLocal:session.dateLocal, fuel, post, intensity: session.intensity, contextStatus: context.status, reviewReasons: context.reviewReasons };
 }
 export type SessionNutrition = ReturnType<typeof buildSessionNutrition>;

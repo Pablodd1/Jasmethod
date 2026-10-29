@@ -1,6 +1,7 @@
+import { reportedAnchor } from "./reported-anchors";
 import { ANCHOR_MAX_AGE_DAYS, type AnchorTest } from "./anchor-evidence";
 import type { TargetProfile } from "./canonical-session";
-import { addDaysKey, dateKey } from "./dates";
+import { addDaysKey, dateKey, localDate } from "./dates";
 import { validCycleDateKey } from "./cycle-events";
 import type { Sport } from "./science";
 
@@ -11,7 +12,7 @@ export interface CycleBaselineReview {
   sport: Sport;
   label: string;
   value: number | null;
-  source: "measured_test" | "estimated_from_5k_test" | "swim_field_test_reference" | "unavailable";
+  source: "measured_test" | "estimated_from_5k_test" | "swim_field_test_reference" | "athlete_reported_reference" | "unavailable";
   testId: string | null;
   observedAt: string | null;
   observedAtInstant: string | null;
@@ -53,7 +54,8 @@ export function buildCycleBaselineReviews(options: {
       && Number.isFinite(test.date.getTime()) && test.date.getTime() <= now.getTime()
       && value != null && Number.isFinite(value) && Math.abs((sport === "run" ? Math.round(test.result / 5 * 1.06) : test.result) - value) < .01)
       .sort((a, b) => b.date.getTime() - a.date.getTime() || a.id.localeCompare(b.id));
-    const test = tests[0];
+    const manual=["bike","run","swim"].includes(sport)?reportedAnchor(options.profile as any,sport==="bike"?"ftp":sport==="run"?"runPaceBase":"swimPaceBase",now,timezone):null;
+    const test = tests[0] ?? (manual ? {id:manual.id,date:localDate(manual.observedAt,timezone)} : undefined);
     const observedAt = test ? dateKey(test.date, timezone) : null;
     const expires = test ? new Date(test.date.getTime() + ANCHOR_MAX_AGE_DAYS * 86400000) : null;
     const reviewDueAt = observedAt ? addDaysKey(observedAt, CYCLE_REVIEW_INTERVAL_DAYS) : null;
@@ -61,7 +63,7 @@ export function buildCycleBaselineReviews(options: {
     return {
       sport, label: labels[sport] ?? `${sport}: familiar movement and technique review`,
       value: test ? value! : null,
-      source: !test ? "unavailable" : sport === "bike" ? "measured_test" : sport === "run" ? "estimated_from_5k_test" : "swim_field_test_reference",
+      source: !test ? "unavailable" : !tests[0] && manual ? "athlete_reported_reference" : sport === "bike" ? "measured_test" : sport === "run" ? "estimated_from_5k_test" : "swim_field_test_reference",
       testId: test?.id ?? null, observedAt, observedAtInstant: test?.date.toISOString() ?? null, reviewDueAt,
       expiresAt: expires ? dateKey(expires, timezone) : null, expiresAtInstant: expires?.toISOString() ?? null,
       status, reviewIntervalDays: CYCLE_REVIEW_INTERVAL_DAYS,

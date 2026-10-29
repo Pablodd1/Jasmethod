@@ -28,107 +28,15 @@ export interface RecoveryTechnique {
   mechanism: string;
 }
 
+// Optional comfort routines, not autonomic treatment or readiness measurements.
+// No cold immersion, breath-holding, forced breathing or progressive dosing.
 export const RECOVERY_TECHNIQUES: RecoveryTechnique[] = [
-  {
-    key: "box",
-    name: "Box Breathing",
-    minutes: 5,
-    instructions:
-      "Inhale 4s → hold 4s → exhale 4s → hold 4s. Repeat for 5 min, seated, eyes closed.",
-    mechanism:
-      "Equal-ratio breathing upregulates parasympathetic tone (HRV) and lowers arousal.",
-  },
-  {
-    key: "sigh",
-    name: "Physiological Sigh",
-    minutes: 2,
-    instructions:
-      "Two sharp inhales through the nose (second is a top-up), then one long slow exhale through the mouth. 5-8 rounds.",
-    mechanism:
-      "Fastest known real-time downregulation of stress; drops HR within seconds (Balban 2023).",
-  },
-  {
-    key: "478",
-    name: "4-7-8 Breathing",
-    minutes: 4,
-    instructions:
-      "Inhale 4s → hold 7s → exhale 8s (through mouth). 4-6 rounds. Best before sleep.",
-    mechanism:
-      "Long exhale activates the vagus nerve; sedative for pre-sleep recovery.",
-  },
-  {
-    key: "resonance",
-    name: "Resonance Breathing",
-    minutes: 10,
-    instructions:
-      "Breathe at ~5.5 breaths/min (5.5s in, 5.5s out) — no breath hold. 10 min.",
-    mechanism:
-      "Resonance frequency maximizes HRV amplitude; the gold-standard HRV biofeedback protocol (Lehrer 2014).",
-  },
-  {
-    key: "nadi",
-    name: "Alternate-Nostril Breathing",
-    minutes: 5,
-    instructions:
-      "Close right nostril, inhale left; close left, exhale right; continue alternating. 5 min.",
-    mechanism:
-      "Nadi Shodhana balances autonomic outflow and calms sympathetic drive.",
-  },
-  {
-    key: "pmr",
-    name: "Progressive Muscle Relaxation",
-    minutes: 8,
-    instructions:
-      "Tense each muscle group 5s then release 10s, feet → calves → quads → glutes → core → hands → arms → shoulders → face.",
-    mechanism:
-      "Reduces muscle tone + cortisol; teaches the body the 'off' signal.",
-  },
-  {
-    key: "dive",
-    name: "Cold Face Immersion",
-    minutes: 3,
-    instructions:
-      "Splash or immerse face in cold water (<15°C) for 15-30s, 3 rounds. Breathe slowly between.",
-    mechanism: "Mammalian dive reflex → acute bradycardia + vagal activation.",
-  },
-  {
-    key: "legs",
-    name: "Legs-Up-The-Wall",
-    minutes: 10,
-    instructions:
-      "Lie on back, legs vertical against a wall, arms wide. Slow nasal breathing. 10 min.",
-    mechanism:
-      "Facilitates venous return + baroreceptor reset; a passive vagal posture.",
-  },
-  {
-    key: "exhale",
-    name: "Extended Exhale (2:1)",
-    minutes: 5,
-    instructions:
-      "Inhale 3s, exhale 6s. 5 min, letting each exhale get longer than the inhale.",
-    mechanism:
-      "Prolonged exhalation is the most direct vagal lever; lowers HR and BP.",
-  },
+  {key:"comfortable-pause",name:"Optional comfortable pause",minutes:2,instructions:"If useful, sit comfortably for a brief pause. Breathe naturally. Skip or stop if uncomfortable; no breath holds or forced breathing.",mechanism:"An optional comfort routine, not a validated autonomic reset, medical treatment or recovery test."},
+  {key:"quiet-attention",name:"Optional quiet attention",minutes:3,instructions:"If useful, notice your surroundings in a comfortable position. Keep your eyes open if preferred. No cold exposure, controlled breathing ratios or performance target. Stop whenever you want.",mechanism:"A self-awareness option. It does not establish physiological recovery or override symptoms."},
+  {key:"reflection",name:"Optional session reflection",minutes:2,instructions:"Record how the session felt and any relevant notes. Leave unknown measurements blank. You can skip this pause; current symptoms still need appropriate attention.",mechanism:"A record for later review, not a diagnosis or a measure of autonomic function."},
 ];
-
-const WEEKLY_THEMES = [
-  "Breath Control Basics — nail the mechanics of each drill before chasing duration.",
-  "Down-Regulation Speed — how fast can you drop your HR after the session ends?",
-  "Nasal-Only Focus — all recovery breathing through the nose this week.",
-  "Sleep-Priming — do tonight's technique in bed to shorten sleep latency.",
-  "Vagal Tone Build — pair breathing with a 5-min cold shower finish.",
-  "Precision Rhythm — use a metronome/breath app to hold exact ratios.",
-  "Recovery Audit — log RHR + subjective feel before/after each drill.",
-];
-
-const MONTHLY_FOCUS = [
-  "Foundation: establish a daily 5-min recovery habit post-workout.",
-  "Adaptation: extend to 10 min and add one morning HRV biofeedback session/week.",
-  "Integration: attach the technique to brick + race-simulation days (highest ANS load).",
-  "Mastery: build CO2 tolerance — lengthen exhale + breath holds gradually.",
-  "Autonomy: you pick the drill each day; we just cue the habit.",
-];
-
+const WEEKLY_THEMES = ["Choose comfort rather than a breathing target. Skipping is allowed.","Notice patterns without treating a single score as readiness certainty.","Leave room for sleep, ordinary meals and life commitments."];
+const MONTHLY_FOCUS = ["Keep optional routines comfortable; do not progressively extend breath holds or cold exposure.","Review reported symptoms and actual training with the appropriate professional when needed."];
 function dayIndex(date: Date): number {
   return Math.floor(date.getTime() / 86400000);
 }
@@ -544,16 +452,9 @@ export function recommendFuel(opts: {
       "60g carbs/h, work up to 90g/h on race day (glucose:fructose 2:1).",
     );
   }
-  if (hard && durationMin >= 45 && !opts.ergosIncludeCaffeine) {
-    caffeineMg = 150;
-    notes.push(
-      "Caffeine 150mg 45-60 min pre-session (3 mg/kg personalizable).",
-    );
-  } else if (hard && durationMin >= 45) {
-    notes.push(
-      "Caffeine already covered in your ergogenic picks — same pre-session timing.",
-    );
-  }
+  // This legacy helper cannot establish per-item consent or clinical suitability.
+  // Caffeine is never silently added here, even if another picker includes it.
+  if (hard && durationMin >= 45) notes.push("Supplements are optional and require a separately reviewed choice. No caffeine dose is added by this fueling helper.");
   return {
     carbsPerHourG,
     sodiumMgPerHour,
@@ -613,7 +514,7 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     benefit:
       "Power, strength, repeat-sprint + recovery; small endurance benefit. 2025 umbrella review of 61 RCT meta-analyses: best-evidenced supplement in sport (Ashtary-Larky 2025). Also counters age-related anabolic resistance in masters athletes.",
     caution:
-      "Expect ~1kg water-weight gain during loading. 2025 safety review: no adverse effects on kidney/liver function in healthy people across the lifespan (Kreider 2025). Monohydrate only — other forms are pricier without better evidence.",
+      "Expect ~1kg water-weight gain during loading. Suitability and adverse effects need individual professional review; this is not a guarantee of safety. Monohydrate only — other forms are pricier without better evidence.",
   },
   {
     key: "betaAlanine",

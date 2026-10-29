@@ -13,9 +13,12 @@ const generate = (distance: string, extra: { weeklyHours?: number; reviewedCycle
 
 test("reviewed triathlon planning uses the reported 411-minute dose without a second event-distance multiplier", () => {
   const sprint = generate("sprint"), olympic = generate("olympic"), half = generate("half");
-  assert.deepEqual(sprint.map(w => w.totalMinutes), half.map(w => w.totalMinutes));
-  assert.deepEqual(olympic.map(w => w.totalMinutes), half.map(w => w.totalMinutes));
-  for (const distance of ["sprint", "olympic", "full"]) {
+  // Sport-specific structures/ceilings can leave different unused minutes.
+  // The volume wave must use the same reported input, without another distance discount.
+  assert.deepEqual(sprint.map(w=>w.periodizationFactor),half.map(w=>w.periodizationFactor));
+  assert.deepEqual(olympic.map(w=>w.periodizationFactor),half.map(w=>w.periodizationFactor));
+  for(const cycle of [sprint,olympic,half])assert.ok(Math.abs(cycle[0].totalMinutes-411*.85)<=8);
+  for (const distance of ["sprint", "olympic", "half", "full"]) {
     const raw = generate(distance);
     const bounded = boundPlanWeeks(raw, setup, 14, 2, "advanced", [], { preserveWeeklyDose: true }).weeks;
     const cycle = shapeTrainingCycle(bounded, { startKey: "2026-10-20", needsAssessment: true, templatePeriodized: true, recoveryReview: false, protectedDays: [] });

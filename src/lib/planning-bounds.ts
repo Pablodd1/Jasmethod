@@ -29,7 +29,9 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _le
   const hardAbsoluteDays: number[] = [];
   return {weeklyBudget, recoveryPolicy, weeks:weeks.map((week, weekIndex)=>{
     const hardDays:number[]=[];
-    const candidates = week.sessions.map((session,index)=>({...session,daySlot:index%7}))
+    const availableSlots=Array.from({length:7},(_,slot)=>slot).filter(slot=>setup.trainingDays.includes((startWeekday+slot)%7));
+    const multisport=["swim","bike","run"].every(sport=>week.sessions.some(s=>s.sport===sport));
+    const candidates = week.sessions.map((session,index)=>({...session,daySlot:options.preserveWeeklyDose&&multisport ? availableSlots[index%Math.max(1,availableSlots.length)]??index%7 : index%7}))
       .filter(session=>setup.trainingDays.includes((startWeekday+session.daySlot)%7))
       // A template rest suggestion is not compulsory training or an activity
       // completion. Optional recovery movement is offered separately on Today.
@@ -51,7 +53,7 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _le
       if(singleCandidates.some(s=>s.sport===session.sport)) continue;
       const donor=[...singleCandidates].reverse().find(s=>["bike","run","swim"].includes(s.sport)
         && /^z[12]$/.test(s.zone) && s.type==="endurance"
-        && singleCandidates.filter(other=>other.sport===s.sport).length>1
+        && singleCandidates.filter(other=>other.sport===s.sport).length>2
         && !(consent.ready&&pairSlots.includes(s.daySlot))
         && (!demandingSession(session)||!singleCandidates.some(other=>other!==s&&demandingSession(other)
           && Math.min(Math.abs(other.daySlot-s.daySlot),7-Math.abs(other.daySlot-s.daySlot))<=1)));
@@ -109,7 +111,7 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _le
         const slot=(weekday-startWeekday+7)%7;
         const primary=sessions.find(s=>s.daySlot===slot);
         const pairedMinutes=(s:BoundedPlanSession)=>setup.restPreference==='no_fixed_rest'?Math.floor(s.minutes/2):s.minutes;
-        const donors=sessions.filter(s=>!s.doubleDayRole && !pairSlots.includes(s.daySlot) && s.daySlot!==slot && ['run','bike','swim'].includes(s.sport) && /^z[12]$/.test(s.zone) && !['race','test','speed','interval','threshold','plyo'].includes(s.type)).sort((a,b)=>pairSportPriority(primary?.sport,a.sport)-pairSportPriority(primary?.sport,b.sport));
+        const donors=sessions.filter(s=>!s.doubleDayRole && !/long/i.test(s.title) && !pairSlots.includes(s.daySlot) && s.daySlot!==slot && ['run','bike','swim'].includes(s.sport) && /^z[12]$/.test(s.zone) && !['race','test','speed','interval','threshold','plyo'].includes(s.type)).sort((a,b)=>pairSportPriority(primary?.sport,a.sport)-pairSportPriority(primary?.sport,b.sport));
         // Try another already-planned easy bout when the first does not fit;
         // never shorten its dose or invent extra work merely to fill a quota.
         const donor=donors.find(s=>pairedMinutes(s)>0 && primary && primary.minutes+pairedMinutes(s)<=(setup.maxSessionMinutes??0) && clockMinutes(preference.firstStart)+primary.minutes<clockMinutes(preference.secondStart) && clockMinutes(preference.secondStart)+pairedMinutes(s)<=1440) ?? donors[0];

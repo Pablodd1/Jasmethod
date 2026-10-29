@@ -49,6 +49,7 @@ function checkinFixture(rows:any[], latest="current") {
     "next/server":{NextResponse:Response},"@/lib/db":{prisma},
     "@/lib/access":{ApiError,trainingAccess:async()=>({actor:{id:"owner"},athlete:{id:"owner",timezone:"UTC",profile}}),errorResponse:(e:ApiError)=>Response.json({error:e.message},{status:e.status||500})},
     "@/lib/planning-setup-store":{readPlanningSetup:async()=>({setup,revision:"setup"})},"@/lib/activity-reconciliation":{readActivityDecisions:async()=>[]},
+    "@/lib/effective-prescription":{effectivePrescription:async(_owner:string,id:string)=>{const update=updates.find((u:any)=>u.id===id);const prescription=typeof update?.prescription==="string"?JSON.parse(update.prescription):null;return prescription?{prescription,canonical:{id,revision:"fixture-current",verdict:prescription.verdict==="rest"?"rest":"ready"},nutrition:null}:null;}},
     "@/lib/starter-session-store":{ensureStarterWorkout:async()=>({created:false})},"@/lib/athlete-state-v2":{compareShadow:()=>null},"@/lib/background-jobs":{enqueueSyncJob:async()=>{throw Error("Unexpected provider job");}},
   };
   const mod={exports:{} as any};
