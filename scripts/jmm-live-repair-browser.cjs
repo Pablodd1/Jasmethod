@@ -42,7 +42,7 @@ async function main() {
         window.webkitSpeechRecognition = SyntheticSpeech;
       });
       const page = await context.newPage(), f = fixtures(language);
-      const history = []; let sends = 0;
+      const history = Array.from({length:12},(_,i)=>({id:'old-'+i,role:i%2?'assistant':'user',source:'local',content:'Synthetic earlier conversation '.repeat(12),createdAt:new Date().toISOString()})); let sends = 0;
       page.on('pageerror', error => errors.push(String(error)));
       let planRelease, profileFailure = false, todayState = "error";
       await page.route('**/api/**', async route => {
@@ -51,7 +51,7 @@ async function main() {
           const input = route.request().postDataJSON(); sends++;
           assert.equal(input.externalConsent, false); assert.ok(input.clientRequestId);
           const answer = historySafeLocalReply('',language,true);
-          history.push({id:'synthetic-user',role:'user',content:input.message,createdAt:new Date().toISOString(),source:'text',clientRequestId:input.clientRequestId},{id:'synthetic-assistant',role:'assistant',content:answer,createdAt:new Date().toISOString(),source:'local'});
+          history.push({id:'synthetic-user-'+sends,role:'user',content:input.message,createdAt:new Date().toISOString(),source:'text',clientRequestId:input.clientRequestId},{id:'synthetic-assistant-'+sends,role:'assistant',needsHumanReview:true,content:answer,createdAt:new Date().toISOString(),source:'local'});
           return route.fulfill({json:{ok:true,conversation:{id:'synthetic-conversation',messages:history},proposal:null}});
         }
         if (route.request().method() !== 'GET') { unexpected.push(`${route.request().method()} ${path}`); return route.fulfill({status: 500, json: { error: 'Mutations are forbidden in this fixture' }}); }
@@ -91,12 +91,20 @@ async function main() {
       const reviewButton=page.getByRole('button',{name:language==='es'?'Ver entrenamiento de hoy':'Review today’s workout',exact:true});
       await reviewButton.click();
       const privateReview=page.getByRole('region',{name:language==='es'?'Revisión protegida de hoy':'Protected today review',exact:true});
-      await privateReview.getByRole('alert').waitFor();todayState='empty';
+      await privateReview.getByRole('alert').waitFor();
+      const privateRect=await privateReview.boundingBox();assert.ok(privateRect&&privateRect.y>=0&&privateRect.y<900,'Opening a card reveals it even after a long conversation');
+      todayState='empty';
       await privateReview.getByRole('button',{name:language==='es'?'Reintentar':'Retry',exact:true}).click();
       await privateReview.getByText(language==='es'?/No hay sesiones guardadas/:/No saved sessions/).waitFor();
       await privateReview.getByRole('button',{name:language==='es'?'Cerrar tarjeta':'Close card',exact:true}).click();todayState='session';await reviewButton.click();
       await privateReview.getByRole('button',{name:f.card.session.title+' · '+f.card.session.sport,exact:true}).click();await privateReview.locator('.uwc').waitFor();
       assert.equal(sends,1,'Read-only card/retry never sends a chat message');
+      await privateReview.getByRole('button',{name:language==='es'?'Cerrar tarjeta':'Close card',exact:true}).click();
+      await page.getByRole('button',{name:language==='es'?'Alimentación':'Fueling',exact:true}).click();
+      await page.getByRole('button',{name:language==='es'?'Enviar mensaje':'Send message',exact:true}).click();
+      await page.waitForFunction(()=>document.querySelector('.coach-chat-composer textarea')?.value==='');
+      await privateReview.waitFor();assert.equal(sends,2,'Fueling starter opens protected review despite a general human-help fallback');
+
       const rect=await textarea.boundingBox();assert.ok(rect&&rect.y>=0&&rect.y+rect.height<=900,'Composer remains in mobile/desktop viewport after card review');
       await page.screenshot({path:`${dir}/coach-${language}-${width}.png`});
       await page.goto(`${base}/daily`);

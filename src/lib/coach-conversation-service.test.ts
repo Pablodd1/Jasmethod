@@ -770,3 +770,16 @@ test("legacy AI memory and imported summaries are withheld from chat and cannot 
   const latest=result.conversation.messages.at(-1)!;assert.match(latest.content,/effort|RPE/i);assert.deepEqual(f.state.writes,[]);
  }finally{f.restore();}
 });
+
+
+test("public conversation distinguishes safety review from a general human-help fallback", async () => {
+  for (const [message, safety] of [["I have chest pain today", true], ["Help me with today's fueling.", false]] as const) {
+    const f = fixture([]);
+    try {
+      const result = await appendConversation(actor, { message, clientRequestId: safety ? "safety-review-card" : "general-review-card" });
+      const reply = result.conversation.messages.filter(entry => entry.role === "assistant").at(-1);
+      assert.equal(reply?.safetyReviewRequired === true, safety);
+      if (safety) assert.ok(reply?.needsHumanReview);
+    } finally { f.restore(); }
+  }
+});

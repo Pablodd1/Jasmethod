@@ -117,6 +117,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
   const textInput = useRef<HTMLTextAreaElement>(null);
   const history = useRef<HTMLOListElement>(null);
   const conversationScroll = useRef<HTMLDivElement>(null);
+  const todayReviewAnchor = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const allSessions = mergeCoachSessions(serverSessions, todaySessions);
   const textConfigured = capabilities.externalAi === true && capabilities.textProvider === "OpenAI";
@@ -135,6 +136,15 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     if (scroll && fullPage && last) scroll.scrollTop += last.getBoundingClientRect().bottom - scroll.getBoundingClientRect().bottom + 12;
     else if (scroll) scroll.scrollTop = scroll.scrollHeight;
   }, [fullPage, latestMessageId, sendingMessage]);
+
+  const focusTodayReview = useCallback(() => {
+    const anchor = todayReviewAnchor.current, scroll = conversationScroll.current;
+    if (!anchor) return;
+    if (fullPage && scroll) scroll.scrollTop += anchor.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+    else anchor.scrollIntoView({ block: "nearest" });
+    anchor.focus({ preventScroll: true });
+  }, [fullPage]);
+  useEffect(() => { if (showTodayReview) focusTodayReview(); }, [showTodayReview, latestMessageId, focusTodayReview]);
 
   const stopVoice = useCallback(() => {
     voiceEpoch.current += 1;
@@ -297,7 +307,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     try {
       applyPayload(payload);
       const latestReply = payload.conversation?.messages.filter(entry => entry.role === "assistant").at(-1);
-      const reviewToday = opensTodayWorkout(outgoing.message) && latestReply?.needsHumanReview !== true;
+      const reviewToday = opensTodayWorkout(outgoing.message) && latestReply?.safetyReviewRequired !== true;
       setShowTodayReview(reviewToday);
       sendAttempt.current = null; setMessage(""); setSource("text"); if (outgoingImage) setScreenshot(null);
       setStatus(payload.replayed
@@ -427,7 +437,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     </header>
     <div ref={conversationScroll} className={fullPage ? "coach-chat-scroll space-y-4" : "space-y-4"}>
     <div className="flex flex-wrap gap-2" aria-label={es ? "Iniciar conversación" : "Conversation starters"}>
-      <button type="button" className={secondaryClass} disabled={blocked} onClick={() => setShowTodayReview(true)}>{es ? "Ver entrenamiento de hoy" : "Review today’s workout"}</button>
+      <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setShowTodayReview(true); focusTodayReview(); }}>{es ? "Ver entrenamiento de hoy" : "Review today’s workout"}</button>
       <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setMessage(es ? "Ayúdame con la alimentación de hoy." : "Help me with today’s fueling."); textInput.current?.focus(); }}>{es ? "Alimentación" : "Fueling"}</button>
       <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setMessage(es ? "Quiero registrar el resultado de mi sesión." : "I want to log my workout result."); textInput.current?.focus(); }}>{es ? "Registrar resultado" : "Log a result"}</button>
     </div>
@@ -447,7 +457,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     </ol>
 
 
-    {showTodayReview && <CoachTodayReview key={athleteId} es={es} selectedId={sessionId} onSelect={setSessionId} onSaved={async () => { await onConfirmed(); await load(); }} onClose={() => setShowTodayReview(false)} />}
+    {showTodayReview && <div ref={todayReviewAnchor} tabIndex={-1} className={focus}><CoachTodayReview key={athleteId} es={es} selectedId={sessionId} onSelect={setSessionId} onSaved={async () => { await onConfirmed(); await load(); }} onClose={() => setShowTodayReview(false)} /></div>}
     <details className="rounded-lg border p-3"><summary className={`cursor-pointer ${focus}`}>{es ? "Ayuda y acciones disponibles" : "Help & supported actions"}</summary>
       <p className="mt-2 text-sm">{es ? "Pregunta o dicta; revisa la transcripción antes de enviar. Los cambios requieren tu confirmación. Las tarjetas protegidas muestran los registros originales dentro de JMM. La IA externa solo ofrece educación general." : "Ask or dictate; review the transcript before sending. Changes need your confirmation. Protected cards show the original records inside JMM. External AI supports general education only."}</p>
       <p className="text-sm"><Link className="underline" href="/settings">{es ? "Perfil" : "Profile"}</Link> · <Link className="underline" href="/training">{es ? "Entrenamiento" : "Training"}</Link> · <Link className="underline" href="/today">{es ? "Hoy" : "Today"}</Link></p>
