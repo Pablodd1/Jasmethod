@@ -9,6 +9,8 @@ import {
 } from "react";
 import { clearOnboardingDrafts } from "@/lib/onboarding-form";
 import { LANGS, type Lang } from "@/lib/i18n";
+import { usePathname } from "next/navigation";
+import { publicRoute,englishReferenceRoute } from "@/lib/public-routes";
 
 interface User {
   id: string;
@@ -56,6 +58,10 @@ function applyLang(l: Lang) {
 }
 
 export function AuthProvider({ children, publicLanguage }: { children: React.ReactNode; publicLanguage?: Lang }) {
+  const pathname=usePathname(),publicPath=publicRoute(pathname);
+  // Root layouts persist across client navigation. Derive URL language on every
+  // navigation instead of retaining the server layout's initial prop.
+  const activePublicLanguage=publicPath.localized?publicPath.locale:englishReferenceRoute(pathname)?"en":undefined;
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -63,7 +69,7 @@ export function AuthProvider({ children, publicLanguage }: { children: React.Rea
 
   // Spanish default; honor a stored preference from a previous visit.
   useEffect(() => {
-    if(publicLanguage){setLanguageState(publicLanguage);document.documentElement.lang=publicLanguage;return;}
+    if(activePublicLanguage){document.documentElement.lang=activePublicLanguage;return;}
     let initial: Lang = "es";
     try {
       const stored = localStorage.getItem("jmm_lang");
@@ -71,7 +77,7 @@ export function AuthProvider({ children, publicLanguage }: { children: React.Rea
     } catch {}
     setLanguageState(initial);
     applyLang(initial);
-  }, [publicLanguage]);
+  }, [activePublicLanguage]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -95,7 +101,7 @@ export function AuthProvider({ children, publicLanguage }: { children: React.Rea
         }
       } catch {}
       // A signed-in user carries their language on the profile.
-      if (!publicLanguage && data.user?.language && isLang(data.user.language)) {
+      if (!activePublicLanguage && data.user?.language && isLang(data.user.language)) {
         setLanguageState(data.user.language);
         applyLang(data.user.language);
       }
@@ -106,7 +112,7 @@ export function AuthProvider({ children, publicLanguage }: { children: React.Rea
       clearTimeout(timeout);
       setLoading(false);
     }
-  }, [publicLanguage]);
+  }, [activePublicLanguage]);
 
   useEffect(() => {
     refresh();
@@ -147,7 +153,7 @@ export function AuthProvider({ children, publicLanguage }: { children: React.Rea
 
   return (
     <Ctx.Provider
-      value={{ user, loading, error, language, setLanguage, refresh, logout }}
+      value={{ user, loading, error, language:activePublicLanguage||language, setLanguage, refresh, logout }}
     >
       {children}
     </Ctx.Provider>
