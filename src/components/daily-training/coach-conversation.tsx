@@ -1,4 +1,6 @@
 "use client";
+import { CoachTodayReview } from "./CoachTodayReview";
+import { opensTodayWorkout } from "./coach-chat-intent";
 import { CoachAiConsent } from "./CoachAiConsent";
 import { CoachReviewRequest } from './CoachReviewRequest';
 import { CoachCommanderWorkspace } from './CoachCommanderWorkspace';
@@ -24,7 +26,7 @@ type Recognition = {
   start: () => void; stop: () => void; abort: () => void;
 };
 type Screenshot = { name: string; dataUrl: string; mimeType: "image/png" | "image/jpeg" | "image/webp"; dataBase64: string };
-type Props = { es: boolean; athleteId: string; offline?: boolean; sessions?: CoachSession[]; onConfirmed: () => Promise<void> | void };
+type Props = { fullPage?: boolean; es: boolean; athleteId: string; offline?: boolean; sessions?: CoachSession[]; onConfirmed: () => Promise<void> | void };
 const NO_SESSIONS: CoachSession[] = [];
 const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-700";
 const inputClass = `input w-full ${focus}`;
@@ -58,8 +60,10 @@ export function ProfileProposalComparison({ candidate, beforeValue, afterValue, 
   </dl>;
 }
 
-export function CoachConversation({ es, athleteId, offline = false, sessions: todaySessions = NO_SESSIONS, onConfirmed }: Props) {
+export function CoachConversation({ fullPage = false, es, athleteId, offline = false, sessions: todaySessions = NO_SESSIONS, onConfirmed }: Props) {
   const id = useId();
+  const [showTodayReview, setShowTodayReview] = useState(false);
+  const [reviewVersion, setReviewVersion] = useState(0);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [proposal, setProposal] = useState<CoachProposal | null>(null);
   const [receipt, setReceipt] = useState<CoachReceipt | null>(null);
@@ -113,6 +117,8 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const sendAttempt = useRef<CoachSendAttempt | null>(null);
   const textInput = useRef<HTMLTextAreaElement>(null);
   const history = useRef<HTMLOListElement>(null);
+  const conversationScroll = useRef<HTMLDivElement>(null);
+  const todayReviewAnchor = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const allSessions = mergeCoachSessions(serverSessions, todaySessions);
   const textConfigured = capabilities.externalAi === true && capabilities.textProvider === "OpenAI";
@@ -122,10 +128,24 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const blocked = offline || !loaded || needsReload || !!operation || commanderBusy;
   const activeProposal = proposal && ["proposed", "pending"].includes(proposal.status) ? proposal : null;
 
+  const latestMessageId = messages.at(-1)?.id;
   useEffect(() => {
     // Only scroll this conversation, never the surrounding training page.
-    if (history.current) history.current.scrollTop = history.current.scrollHeight;
-  }, [messages, sendingMessage]);
+    if (!latestMessageId && !sendingMessage) return;
+    const scroll = fullPage ? conversationScroll.current : history.current;
+    const last = history.current?.lastElementChild;
+    if (scroll && fullPage && last) scroll.scrollTop += last.getBoundingClientRect().bottom - scroll.getBoundingClientRect().bottom + 12;
+    else if (scroll) scroll.scrollTop = scroll.scrollHeight;
+  }, [fullPage, latestMessageId, sendingMessage]);
+
+  const focusTodayReview = useCallback(() => {
+    const anchor = todayReviewAnchor.current, scroll = conversationScroll.current;
+    if (!anchor) return;
+    if (fullPage && scroll) scroll.scrollTop += anchor.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+    else anchor.scrollIntoView({ block: "nearest" });
+    anchor.focus({ preventScroll: true });
+  }, [fullPage]);
+  useEffect(() => { if (showTodayReview) focusTodayReview(); }, [showTodayReview, reviewVersion, latestMessageId, focusTodayReview]);
 
   const stopVoice = useCallback(() => {
     voiceEpoch.current += 1;
@@ -286,7 +306,12 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     if (mounted.current) setSendingMessage(current => current?.requestId === clientRequestId ? null : current);
     if (!payload || !mounted.current) return;
     try {
-      applyPayload(payload); sendAttempt.current = null; setMessage(""); setSource("text"); if (outgoingImage) setScreenshot(null);
+      applyPayload(payload);
+      const latestReply = payload.conversation?.messages.filter(entry => entry.role === "assistant").at(-1);
+      const reviewToday = opensTodayWorkout(outgoing.message) && latestReply?.safetyReviewRequired !== true;
+      setShowTodayReview(reviewToday);
+      if (reviewToday) setReviewVersion(value => value + 1);
+      sendAttempt.current = null; setMessage(""); setSource("text"); if (outgoingImage) setScreenshot(null);
       setStatus(payload.replayed
         ? (es ? "Esta solicitud ya estaba registrada. Se muestra la conversación actual." : "This request was already recorded. Showing the current conversation.")
         : "");
@@ -308,7 +333,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     try {
       applyPayload(payload); setReceipt(verified); confirmationAttempt.current = null;
       setStatus(verified.applied.length > 0 ? (es ? "Cambios confirmados y guardados. Los pasos pendientes se muestran abajo." : "Confirmed changes saved. Any pending steps are listed below.") : (es ? "Revisión registrada. No se han aplicado cambios al check-in ni al plan." : "Review recorded. No check-in or plan changes have been applied."));
-      if (verified.applied.length > 0) await onConfirmed();
+      if (verified.applied.length > 0) { setReviewVersion(value => value + 1); await onConfirmed(); }
     } catch { if (mounted.current) setError(es ? "El comprobante confirma el guardado, pero no pudimos actualizar la vista. Recarga la página." : "The receipt confirms saving, but this view could not refresh. Reload the page."); }
   }
 
@@ -328,6 +353,7 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     if (payload.cleared !== true) { setNeedsReload(true); setError(es ? "No se ha confirmado el borrado de la conversación." : "Clearing the conversation is unconfirmed."); return; }
     try {
       applyPayload(payload); setClearReview(false); setMessage(""); setSource("text"); setScreenshot(null); setExternalConsent(false); setAiReplyMemory(false); setImageConsent(false); setVoiceReview(false); setTranscript(""); setDictationError(""); confirmationAttempt.current = null; sendAttempt.current = null;
+      setShowTodayReview(false);
       setStatus(es ? "Conversación borrada. Se conservan tus datos confirmados y el registro de cambios." : "Conversation cleared. Confirmed athlete facts and the change audit are retained.");
     } catch (cause) { setError((cause as Error).message); setNeedsReload(true); }
   }
@@ -404,20 +430,27 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
   const pendingDrafts = [...(receipt?.checkinDraft || []), ...(receipt?.planDraft || [])];
   const selectedCount = activeProposal?.candidates.filter(candidate => selected[candidate.id]).length || 0;
 
-  return <section id="jasai" aria-labelledby={`${id}-title`} className="card space-y-4 scroll-mt-24 min-w-0" lang={es ? "es" : "en"}>
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 id={`${id}-title`} className="font-display text-xl font-bold">JMM Coach</h2>
-        <p className="text-sm text-slate-700 mt-1">{es ? "Escribe o dicta tu pregunta, revísala y envíala. Las respuestas del entrenador aparecen aquí como texto." : "Type or dictate your question, review it, then send. Your coach’s replies appear here as text."}</p></div>
+  return <section id="jasai" aria-labelledby={`${id}-title`} className={fullPage ? "coach-chat-page" : "card space-y-4 scroll-mt-24 min-w-0"} lang={es ? "es" : "en"}>
+    <header className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h2 id={`${id}-title`} className="font-display text-xl font-bold">JMM Coach</h2>
+        <a href="/coach" target="_blank" rel="noopener noreferrer" className={`text-sm underline min-h-11 inline-flex items-center ${focus}`}>{es ? "Abrir chat en otra ventana" : "Open chat in another window"}</a>
+      </div>
+      <p className="text-sm text-slate-700">{es ? "Conversemos sobre tu entrenamiento, alimentación y recuperación." : "Let’s work through your training, fueling and recovery together."}</p>
+      <p className="text-xs text-slate-600" role="status">{textConfigured ? (es ? "JMM local · OpenAI opcional para educación general" : "Local JMM · Optional OpenAI for general education") : (es ? "JMM local · IA externa no configurada" : "Local JMM · External AI not configured")}</p>
+    </header>
+    <div ref={conversationScroll} className={fullPage ? "coach-chat-scroll space-y-4" : "space-y-4"}>
+    <div className="flex flex-wrap gap-2" aria-label={es ? "Iniciar conversación" : "Conversation starters"}>
+      <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setReviewVersion(value => value + 1); setShowTodayReview(true); focusTodayReview(); }}>{es ? "Ver entrenamiento de hoy" : "Review today’s workout"}</button>
+      <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setMessage(es ? "Ayúdame con la alimentación de hoy." : "Help me with today’s fueling."); textInput.current?.focus(); }}>{es ? "Alimentación" : "Fueling"}</button>
+      <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setMessage(es ? "Quiero registrar el resultado de mi sesión." : "I want to log my workout result."); textInput.current?.focus(); }}>{es ? "Registrar resultado" : "Log a result"}</button>
     </div>
-    <p className="text-xs text-slate-700">{es?'El chat propone datos de perfil, cambios de una sesión seleccionada y resultados. Revisa horarios, descanso, ciclos y carreras en el espacio de trabajo de abajo. También puedes abrir:':'Chat proposes profile facts, selected-workout edits and results. Review recurring availability, rest preferences, whole cycles and race details in the workspace below. You can also open:'} <Link className={`underline ${focus}`} href="/settings">{es?'Perfil':'Profile'}</Link> · <Link className={`underline ${focus}`} href="/training">{es?'Entrenamiento':'Training'}</Link>.</p>
-    <p className="text-sm text-slate-700">{es?'Propósito → ejecución controlada → tus resultados → progresión revisada. Te apoyaré y exigiré constancia; no presión para ignorar síntomas ni promesas de mejorar cada día.':'Purpose → controlled execution → your feedback → reviewed progression. Expect support and accountability, without pressure to ignore symptoms or promises of improvement every day.'}</p>
     {operation && <div role="status" className="flex flex-wrap items-center gap-3 text-sm"><span>{operation === "load" ? (es ? "Cargando conversación…" : "Loading conversation…") : operation === "confirm" ? (es ? "Comprobando y guardando…" : "Verifying and saving…") : (es ? "Procesando solicitud…" : "Processing request…")}</span><button type="button" className={secondaryClass} onClick={cancelRequest}>{es ? "Dejar de esperar" : "Stop waiting"}</button></div>}
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
     {status && <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm text-slate-800">{status}</p>}
     {(!loaded || needsReload) && !operation && <button type="button" className={secondaryClass} disabled={offline} onClick={() => void load()}>{es ? "Recargar conversación" : "Reload conversation"}</button>}
     {offline && <p role="status" className="text-sm text-amber-900">{es ? "Sin conexión. Conéctate antes de enviar mensajes o confirmar cambios." : "Offline. Reconnect before sending messages or confirming changes."}</p>}
-    <ol ref={history} className="min-h-32 max-h-[40vh] sm:max-h-[55vh] overflow-y-auto overscroll-contain space-y-3 rounded-lg border p-3" aria-label={es ? "Historial de conversación" : "Conversation history"} aria-live="polite" aria-relevant="additions" tabIndex={0}>
-      {messages.map(entry => <li key={entry.id} className={`rounded-lg p-3 ${entry.role === "user" ? "bg-ocean-50" : "bg-slate-50"}`}>
+    <ol ref={history} className={fullPage ? "space-y-4 min-w-0" : "min-h-32 max-h-[40vh] sm:max-h-[55vh] overflow-y-auto overscroll-contain space-y-3 rounded-lg border p-3"} aria-label={es ? "Historial de conversación" : "Conversation history"} aria-live="polite" aria-relevant="additions" tabIndex={0}>
+      {messages.map(entry => <li key={entry.id} className={`rounded-2xl p-3 sm:p-4 ${entry.role === "user" ? "bg-ocean-50 ml-6 sm:ml-20" : "bg-white border border-slate-100 mr-2"}`}>
         <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "JMM Coach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
         <p className="mt-1 whitespace-pre-wrap break-words">{entry.content}</p>
         {entry.role==="assistant"&&<button type="button" className="underline text-sm mt-2" onClick={()=>readReply(entry.content)}>{es?"Escuchar con voz local":"Read aloud with local voice"}</button>}
@@ -425,52 +458,15 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
       {sendingMessage && <li className="rounded-lg bg-ocean-50 p-3"><p className="text-xs font-semibold text-slate-700">{es ? "Tú · Enviando…" : "You · Sending…"}</p><p className="mt-1 whitespace-pre-wrap break-words">{sendingMessage.content}</p></li>}
       {loaded && !sendingMessage && !messages.length && <li className="text-sm text-slate-700">{es ? "Haz una pregunta sobre tu entrenamiento. Por ejemplo: «¿Qué es el RPE?» o «Tengo una hora para trabajar el VO₂max en pista»." : "Ask a training question. For example: “What is RPE?” or “I have an hour for VO₂max training on the track.”"}</li>}
     </ol>
-    <CoachAiConsent es={es} enabled={externalConsent} configured={textConfigured} disabled={blocked} onChange={value=>{setExternalConsent(value);if(!value)setAiReplyMemory(false);}} memory={aiReplyMemory} onMemoryChange={setAiReplyMemory} />
-    <form onSubmit={send} className="space-y-3">
-      <label className="block text-sm font-medium" htmlFor={`${id}-session`}>{es ? "Sesión sobre la que hablas (para registrar resultados)" : "Workout you are discussing (for logging results)"}</label>
-      <select id={`${id}-session`} className={inputClass} value={sessionId} disabled={blocked || listening} onChange={event => setSessionId(event.target.value)}>
-        <option value="">{es ? "Sin sesión seleccionada" : "No workout selected"}</option>
-        {allSessions.map(session => <option value={session.id} key={session.id}>{session.date} · {session.title} · {session.sport}</option>)}
-      </select>
-      <p className="text-xs text-slate-700">{es ? "Comprueba la fecha y el deporte. No se adivina qué sesión debe recibir los resultados. Si no aparece, abre Entrenamiento." : "Check the date and sport. We do not guess which workout should receive results. If it is missing, open Training."} <Link className={`underline ${focus}`} href="/training">{es ? "Entrenamiento" : "Training"}</Link></p>
 
-      <label className="block font-medium" htmlFor={`${id}-message`}>{source === "voice" ? (es ? "Mensaje con transcripción revisada" : "Message with reviewed transcript") : (es ? "Tu mensaje" : "Your message")}</label>
-      <textarea ref={textInput} id={`${id}-message`} className={`${inputClass} !text-base min-h-24`} rows={3} maxLength={COACH_MESSAGE_LIMIT} value={message} disabled={blocked || listening} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={es ? "Escribe tu pregunta aquí…" : "Type your question here…"} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-      <button className={`${primaryClass} min-h-11 max-w-full whitespace-normal`} disabled={blocked || listening || imageBusy || (!message.trim() && !canSendImage)} type="submit">{screenshot && !canSendImage ? (es ? "Enviar solo texto" : "Send text only") : source === "voice" ? (es ? "Enviar mensaje revisado" : "Send reviewed message") : (es ? "Enviar mensaje" : "Send message")}</button>
-        <span className="text-xs text-slate-600">{message.length}/{COACH_MESSAGE_LIMIT} · {es ? "Mayús + Intro: nueva línea" : "Shift + Enter: new line"}</span>
-      </div>
-      <p className="text-xs text-slate-700">{es ? "Los cambios en tus datos requieren tu revisión y confirmación." : "Changes to your facts need your review and confirmation."}</p>
-      {(permissions.text || canSendImage) && <p role="status" className="text-xs text-slate-700">{permissions.text ? (es ? "OpenAI habilitado para este mensaje. " : "OpenAI enabled for this message. ") : ""}{canSendImage ? (es ? "Esta captura se enviará a OpenAI." : "This screenshot will be sent to OpenAI.") : ""}</p>}
-      <div role="group" aria-labelledby={`${id}-dictation-title`} className="rounded-lg border border-ocean-200 bg-ocean-50 p-3 space-y-2 min-w-0">
-        <h3 id={`${id}-dictation-title`} className="text-sm font-semibold">{es ? "Dictar un mensaje" : "Dictate a message"}</h3>
-        <p id={`${id}-dictation-help`} className="text-xs text-slate-700">{es ? "Dictado en español. Tu navegador puede enviar el audio a su proveedor de reconocimiento. Revisa el texto antes de usarlo; el micrófono nunca guarda datos ni envía tu mensaje automáticamente." : "English dictation. Your browser may send audio to its speech-recognition provider. Review the text before using it; the microphone never saves facts or sends your message automatically."}</p>
-        {!listening ? <button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal disabled:opacity-50`} aria-describedby={`${id}-dictation-help`} disabled={blocked || imageBusy || voiceSupported !== true} onClick={startVoice}>{es ? "Iniciar dictado" : "Start dictation"}</button> : <div className="flex flex-wrap items-center gap-2"><span role="status">{es ? "Escuchando…" : "Listening…"}</span><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} onClick={finishVoice}>{es ? "Terminar y revisar" : "Stop and review"}</button><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} onClick={() => { stopVoice(); setListening(false); setVoiceReview(false); setTranscript(""); }}>{es ? "Cancelar dictado" : "Cancel dictation"}</button></div>}
-        {voiceSupported === false && <p role="status" className="text-sm text-slate-700">{es ? "El dictado no está disponible en este navegador. Escribe tu mensaje arriba; también puedes usar el dictado del teclado de tu dispositivo si está disponible." : "Dictation is unavailable in this browser. Type your message above; you can also use your device keyboard’s dictation if available."}</p>}
-        {dictationError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{dictationError}</p>}
-        {(voiceReview || listening) && <div className="space-y-2"><label className="block font-medium" htmlFor={`${id}-transcript`}>{es ? "Revisa y corrige la transcripción" : "Review and correct the transcript"}</label><textarea id={`${id}-transcript`} className={`${inputClass} !text-base`} rows={3} value={transcript} maxLength={COACH_MESSAGE_LIMIT} disabled={listening || blocked} onChange={event => setTranscript(event.target.value)} />{!listening && <div className="flex flex-wrap gap-2"><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} disabled={blocked || !transcript.trim()} onClick={useTranscript}>{es ? "Usar transcripción revisada" : "Use reviewed transcript"}</button><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} onClick={() => { setVoiceReview(false); setTranscript(""); }}>{es ? "Descartar transcripción" : "Discard transcript"}</button></div>}</div>}
-      </div>
-      <details className="rounded-lg border p-3">
-        <summary className={`cursor-pointer text-sm font-medium ${focus}`}>{es ? "Herramientas opcionales: registro, imágenes e IA" : "Optional tools: logging, images & AI"}</summary>
-        <div className="mt-3 space-y-3">
-      <div className="rounded-lg border p-3 space-y-2">
-        <label htmlFor={`${id}-image`} className="block text-sm font-medium">{es ? "Captura opcional (PNG, JPEG o WebP, máximo 2 MB)" : "Optional screenshot (PNG, JPEG or WebP, at most 2 MB)"}</label>
-        <input ref={fileInput} id={`${id}-image`} type="file" accept="image/png,image/jpeg,image/webp" className={`block max-w-full text-sm ${focus}`} disabled={blocked || listening} onChange={event => { chooseScreenshot(event.target.files?.[0]); event.target.value = ""; }} />
-        {imageBusy && <p role="status" className="text-sm">{es ? "Leyendo archivo local…" : "Reading local file…"}</p>}
-        {screenshot && <div className="space-y-2"><Image src={screenshot.dataUrl} width={320} height={200} unoptimized className="h-48 w-full max-w-sm object-contain rounded border" alt={es ? "Vista previa de la captura elegida" : "Preview of selected screenshot"} /><p className="text-xs break-words">{screenshot.name}</p><button type="button" className={secondaryClass} disabled={!!operation} onClick={() => { stopFile(); setImageBusy(false); setScreenshot(null); setExternalConsent(false); setAiReplyMemory(false); setImageConsent(false); }}>{es ? "Quitar captura" : "Remove screenshot"}</button></div>}
-        {!imageConfigured && <p className="text-sm text-amber-900">{es ? "El análisis de imágenes no está configurado. La captura solo se previsualiza aquí y no se enviará. Describe sus datos en tu mensaje; no se extraerán valores inventados." : "Image analysis is not configured. The screenshot is previewed here only and will not be sent. Describe its details in your message; no values will be guessed."}</p>}
-        <label className="block text-sm">{es?"Origen de la captura":"Screenshot source"}<select className={inputClass} value={imageSource} disabled={blocked||!screenshot} onChange={e=>{setImageSource(e.target.value);setImageConsent(false);}}><option value="unknown">{es?"Desconocido / no confirmado":"Unknown / not confirmed"}</option><option value="manual_note">{es?"Nota escrita manualmente; sin datos de dispositivos o importados":"Manually authored note; no device or imported data"}</option><option value="device">{es?"Dispositivo o aplicación de wearable":"Device or wearable app"}</option><option value="imported">{es?"Datos importados o resúmenes derivados":"Imported data or derived summaries"}</option></select></label>
-        {screenshot&&imageSource!=="manual_note"&&<p role="status" className="text-sm">{es?"No se enviará a OpenAI. Las capturas de dispositivos, importaciones y origen desconocido están bloqueadas, incluso con consentimiento. Usa la revisión local o la entrada manual.":"This will not be sent to OpenAI. Device, imported and unknown-origin screenshots are blocked, even with consent. Use local review or manual entry."}</p>}
-        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className={`mt-1 h-5 w-5 shrink-0 ${focus}`} checked={imageConsent} disabled={blocked || !imageConfigured || !screenshot || imageSource!=="manual_note"} onChange={event => setImageConsent(event.target.checked)} /><span>{es ? "Permitir a OpenAI analizar esta captura y las instrucciones de extracción, solo para esta respuesta. Confirmo que esta nota manual no contiene datos de dispositivos/importados ni resúmenes derivados. No se comparte mi perfil, conversación ni sesión seleccionada para analizar la imagen." : "Allow OpenAI to analyze this screenshot and extraction instructions, for this reply only. I confirm this manually authored note contains no device/imported data or derived summaries. My profile, conversation and selected session are not shared for image analysis."}</span></label>
-        {screenshot && imageConfigured && !imageConsent && <p className="text-sm text-amber-900">{es ? "La captura no se enviará sin tu consentimiento para OpenAI. Puedes enviar solo el texto." : "The screenshot will not be sent without your OpenAI consent. You can send text only."}</p>}
-      </div>
 
-      <p className="text-xs text-slate-700">{es ? "Enviar un mensaje no confirma cambios. Puedes confirmar objetivo, horas semanales, peso y resultados de sesión (estado, minutos, deporte y RPE). Las preferencias de comunicación no cambian." : "Sending a message does not confirm changes. Supported edits: profile facts, selected unfinished workout duration/sport/effort zone, and actual workout feedback with optional HR, watts, reported kcal and weights. Use the workspace below to review your profile, schedule, race, workout steps and whole-plan preview before saving."}</p>
-        </div>
-      </details>
-    </form>
+    {showTodayReview && <div ref={todayReviewAnchor} tabIndex={-1} className={focus}><CoachTodayReview key={`${athleteId}:${reviewVersion}`} es={es} selectedId={sessionId} onSelect={setSessionId} onSaved={async () => { await onConfirmed(); await load(); }} onClose={() => setShowTodayReview(false)} /></div>}
+    <details className="rounded-lg border p-3"><summary className={`cursor-pointer ${focus}`}>{es ? "Ayuda y acciones disponibles" : "Help & supported actions"}</summary>
+      <p className="mt-2 text-sm">{es ? "Pregunta o dicta; revisa la transcripción antes de enviar. Los cambios requieren tu confirmación. Las tarjetas protegidas muestran los registros originales dentro de JMM. La IA externa solo ofrece educación general." : "Ask or dictate; review the transcript before sending. Changes need your confirmation. Protected cards show the original records inside JMM. External AI supports general education only."}</p>
+      <p className="text-sm"><Link className="underline" href="/settings">{es ? "Perfil" : "Profile"}</Link> · <Link className="underline" href="/training">{es ? "Entrenamiento" : "Training"}</Link> · <Link className="underline" href="/today">{es ? "Hoy" : "Today"}</Link></p>
+    </details>
     <p className="text-xs text-slate-600" role="status">{liveStatus|| (es?"Los cambios de conversación se comprueban cada 15 segundos mientras la página está visible.":"Conversation changes are checked every 15 seconds while this page is visible.")}</p>
-    <CoachCommanderWorkspace athleteId={athleteId} es={es} messages={messages} sessionId={sessionId} disabled={offline||!loaded||needsReload||!!operation} onBusy={setCommanderBusy} onSaved={async()=>{await onConfirmed();await load();}}/>
+    <CoachCommanderWorkspace athleteId={athleteId} es={es} messages={messages} sessionId={sessionId} disabled={offline||!loaded||needsReload||!!operation} onBusy={setCommanderBusy} onSaved={async()=>{setReviewVersion(value=>value+1);await onConfirmed();await load();}}/>
     <CoachReviewRequest messages={messages} es={es} disabled={blocked} />
     {coachTextStatusMessage(externalStatus, es) && <p role="status" className="text-xs text-slate-700">{coachTextStatusMessage(externalStatus, es)}</p>}
     {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}
@@ -544,5 +540,54 @@ export function CoachConversation({ es, athleteId, offline = false, sessions: to
     </div>}
       </div>
     </details>
+    </div>
+    <form onSubmit={send} className={fullPage ? "coach-chat-composer space-y-2" : "space-y-3"}>
+      <label className={fullPage ? "sr-only" : "block font-medium"} htmlFor={`${id}-message`}>{source === "voice" ? (es ? "Mensaje con transcripción revisada" : "Message with reviewed transcript") : (es ? "Tu mensaje" : "Your message")}</label>
+      <textarea ref={textInput} id={`${id}-message`} className={`${inputClass} !text-base min-h-16`} rows={2} maxLength={COACH_MESSAGE_LIMIT} value={message} disabled={blocked || listening} onChange={event => setMessage(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={es ? "Escribe tu pregunta aquí…" : "Type your question here…"} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+      <button className={`${primaryClass} min-h-11 max-w-full whitespace-normal`} disabled={blocked || listening || imageBusy || (!message.trim() && !canSendImage)} type="submit">{screenshot && !canSendImage ? (es ? "Enviar solo texto" : "Send text only") : source === "voice" ? (es ? "Enviar mensaje revisado" : "Send reviewed message") : (es ? "Enviar mensaje" : "Send message")}</button>
+        <button type="button" className={`${secondaryClass} min-h-11`} aria-describedby={`${id}-dictation-help`} disabled={blocked || imageBusy || voiceSupported !== true} onClick={listening ? finishVoice : startVoice}>{listening ? (es ? "Terminar y revisar" : "Stop and review") : (es ? "Micrófono" : "Microphone")}</button>
+        <span className={fullPage ? "sr-only" : "text-xs text-slate-600"}>{message.length}/{COACH_MESSAGE_LIMIT} · {es ? "Mayús + Intro: nueva línea" : "Shift + Enter: new line"}</span>
+      </div>
+      <p className="text-xs text-slate-700">{es ? "Revisa antes de guardar. El dictado puede enviar audio al proveedor del navegador." : "Review before saving. Dictation may send audio to your browser’s provider."}</p>
+      {(permissions.text || canSendImage) && <p role="status" className="text-xs text-slate-700">{permissions.text ? (es ? "OpenAI habilitado para este mensaje. " : "OpenAI enabled for this message. ") : ""}{canSendImage ? (es ? "Esta captura se enviará a OpenAI." : "This screenshot will be sent to OpenAI.") : ""}</p>}
+      <details open={listening || voiceReview || !!dictationError || undefined} className="text-sm"><summary className={`cursor-pointer ${focus}`}>{es ? "Voz: privacidad y revisión" : "Voice: privacy & review"}</summary>
+      <div role="group" aria-labelledby={`${id}-dictation-title`} className="rounded-lg border border-ocean-200 bg-ocean-50 p-3 space-y-2 min-w-0">
+        <h3 id={`${id}-dictation-title`} className="text-sm font-semibold">{es ? "Dictar un mensaje" : "Dictate a message"}</h3>
+        <p id={`${id}-dictation-help`} className="text-xs text-slate-700">{es ? "Dictado en español. Tu navegador puede enviar el audio a su proveedor de reconocimiento. Revisa el texto antes de usarlo; el micrófono nunca guarda datos ni envía tu mensaje automáticamente." : "English dictation. Your browser may send audio to its speech-recognition provider. Review the text before using it; the microphone never saves facts or sends your message automatically."}</p>
+        {!listening ? <button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal disabled:opacity-50`} aria-describedby={`${id}-dictation-help`} disabled={blocked || imageBusy || voiceSupported !== true} onClick={startVoice}>{es ? "Iniciar dictado" : "Start dictation"}</button> : <div className="flex flex-wrap items-center gap-2"><span role="status">{es ? "Escuchando…" : "Listening…"}</span><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} onClick={finishVoice}>{es ? "Terminar y revisar" : "Stop and review"}</button><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} onClick={() => { stopVoice(); setListening(false); setVoiceReview(false); setTranscript(""); }}>{es ? "Cancelar dictado" : "Cancel dictation"}</button></div>}
+        {voiceSupported === false && <p role="status" className="text-sm text-slate-700">{es ? "El dictado no está disponible en este navegador. Escribe tu mensaje arriba; también puedes usar el dictado del teclado de tu dispositivo si está disponible." : "Dictation is unavailable in this browser. Type your message above; you can also use your device keyboard’s dictation if available."}</p>}
+        {dictationError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{dictationError}</p>}
+        {(voiceReview || listening) && <div className="space-y-2"><label className="block font-medium" htmlFor={`${id}-transcript`}>{es ? "Revisa y corrige la transcripción" : "Review and correct the transcript"}</label><textarea id={`${id}-transcript`} className={`${inputClass} !text-base`} rows={3} value={transcript} maxLength={COACH_MESSAGE_LIMIT} disabled={listening || blocked} onChange={event => setTranscript(event.target.value)} />{!listening && <div className="flex flex-wrap gap-2"><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} disabled={blocked || !transcript.trim()} onClick={useTranscript}>{es ? "Usar transcripción revisada" : "Use reviewed transcript"}</button><button type="button" className={`${secondaryClass} min-h-11 max-w-full whitespace-normal`} onClick={() => { setVoiceReview(false); setTranscript(""); }}>{es ? "Descartar transcripción" : "Discard transcript"}</button></div>}</div>}
+      </div>
+      </details>
+      <details className="rounded-lg border p-3">
+        <summary className={`cursor-pointer text-sm font-medium ${focus}`}>{es ? "Herramientas opcionales: registro, imágenes e IA" : "Optional tools: logging, images & AI"}</summary>
+        <div className="mt-3 space-y-3">
+      <label className="block text-sm font-medium" htmlFor={`${id}-session`}>{es ? "Sesión sobre la que hablas (para registrar resultados)" : "Workout you are discussing (for logging results)"}</label>
+      <select id={`${id}-session`} className={inputClass} value={sessionId} disabled={blocked || listening} onChange={event => setSessionId(event.target.value)}>
+        <option value="">{es ? "Sin sesión seleccionada" : "No workout selected"}</option>
+        {allSessions.map(session => <option value={session.id} key={session.id}>{session.date} · {session.title} · {session.sport}</option>)}
+      </select>
+      <p className="text-xs text-slate-700">{es ? "Comprueba la fecha y el deporte. No se adivina qué sesión debe recibir los resultados. Si no aparece, abre Entrenamiento." : "Check the date and sport. We do not guess which workout should receive results. If it is missing, open Training."} <Link className={`underline ${focus}`} href="/training">{es ? "Entrenamiento" : "Training"}</Link></p>
+
+
+    <CoachAiConsent es={es} enabled={externalConsent} configured={textConfigured} disabled={blocked} onChange={value=>{setExternalConsent(value);if(!value)setAiReplyMemory(false);}} memory={aiReplyMemory} onMemoryChange={setAiReplyMemory} />
+      <div className="rounded-lg border p-3 space-y-2">
+        <label htmlFor={`${id}-image`} className="block text-sm font-medium">{es ? "Captura opcional (PNG, JPEG o WebP, máximo 2 MB)" : "Optional screenshot (PNG, JPEG or WebP, at most 2 MB)"}</label>
+        <input ref={fileInput} id={`${id}-image`} type="file" accept="image/png,image/jpeg,image/webp" className={`block max-w-full text-sm ${focus}`} disabled={blocked || listening} onChange={event => { chooseScreenshot(event.target.files?.[0]); event.target.value = ""; }} />
+        {imageBusy && <p role="status" className="text-sm">{es ? "Leyendo archivo local…" : "Reading local file…"}</p>}
+        {screenshot && <div className="space-y-2"><Image src={screenshot.dataUrl} width={320} height={200} unoptimized className="h-48 w-full max-w-sm object-contain rounded border" alt={es ? "Vista previa de la captura elegida" : "Preview of selected screenshot"} /><p className="text-xs break-words">{screenshot.name}</p><button type="button" className={secondaryClass} disabled={!!operation} onClick={() => { stopFile(); setImageBusy(false); setScreenshot(null); setExternalConsent(false); setAiReplyMemory(false); setImageConsent(false); }}>{es ? "Quitar captura" : "Remove screenshot"}</button></div>}
+        {!imageConfigured && <p className="text-sm text-amber-900">{es ? "El análisis de imágenes no está configurado. La captura solo se previsualiza aquí y no se enviará. Describe sus datos en tu mensaje; no se extraerán valores inventados." : "Image analysis is not configured. The screenshot is previewed here only and will not be sent. Describe its details in your message; no values will be guessed."}</p>}
+        <label className="block text-sm">{es?"Origen de la captura":"Screenshot source"}<select className={inputClass} value={imageSource} disabled={blocked||!screenshot} onChange={e=>{setImageSource(e.target.value);setImageConsent(false);}}><option value="unknown">{es?"Desconocido / no confirmado":"Unknown / not confirmed"}</option><option value="manual_note">{es?"Nota escrita manualmente; sin datos de dispositivos o importados":"Manually authored note; no device or imported data"}</option><option value="device">{es?"Dispositivo o aplicación de wearable":"Device or wearable app"}</option><option value="imported">{es?"Datos importados o resúmenes derivados":"Imported data or derived summaries"}</option></select></label>
+        {screenshot&&imageSource!=="manual_note"&&<p role="status" className="text-sm">{es?"No se enviará a OpenAI. Las capturas de dispositivos, importaciones y origen desconocido están bloqueadas, incluso con consentimiento. Usa la revisión local o la entrada manual.":"This will not be sent to OpenAI. Device, imported and unknown-origin screenshots are blocked, even with consent. Use local review or manual entry."}</p>}
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className={`mt-1 h-5 w-5 shrink-0 ${focus}`} checked={imageConsent} disabled={blocked || !imageConfigured || !screenshot || imageSource!=="manual_note"} onChange={event => setImageConsent(event.target.checked)} /><span>{es ? "Permitir a OpenAI analizar esta captura y las instrucciones de extracción, solo para esta respuesta. Confirmo que esta nota manual no contiene datos de dispositivos/importados ni resúmenes derivados. No se comparte mi perfil, conversación ni sesión seleccionada para analizar la imagen." : "Allow OpenAI to analyze this screenshot and extraction instructions, for this reply only. I confirm this manually authored note contains no device/imported data or derived summaries. My profile, conversation and selected session are not shared for image analysis."}</span></label>
+        {screenshot && imageConfigured && !imageConsent && <p className="text-sm text-amber-900">{es ? "La captura no se enviará sin tu consentimiento para OpenAI. Puedes enviar solo el texto." : "The screenshot will not be sent without your OpenAI consent. You can send text only."}</p>}
+      </div>
+
+      <p className="text-xs text-slate-700">{es ? "Enviar un mensaje no confirma cambios. Puedes confirmar objetivo, horas semanales, peso y resultados de sesión (estado, minutos, deporte y RPE). Las preferencias de comunicación no cambian." : "Sending a message does not confirm changes. Supported edits: profile facts, selected unfinished workout duration/sport/effort zone, and actual workout feedback with optional HR, watts, reported kcal and weights. Use the review tools to review your profile, schedule, race, workout steps and whole-plan preview before saving."}</p>
+        </div>
+      </details>
+    </form>
   </section>;
 }

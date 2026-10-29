@@ -108,18 +108,19 @@ export async function readConversationBody(req: Request, maxBytes = 8 * 1024 * 1
 }
 
 function publicMessage({metadata,...message}:{id:string;role:string;content:string;source:string;createdAt:Date;metadata:string|null}, language: unknown) {
-  let clientRequestId:string|undefined,needsHumanReview=false;
+  let clientRequestId:string|undefined,needsHumanReview=false,safetyReviewRequired=false;
   try {
     const meta=JSON.parse(metadata||'{}');
     if(typeof meta.clientRequestId==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(meta.clientRequestId))clientRequestId=meta.clientRequestId;
     needsHumanReview=meta.needsHumanReview===true;
+    safetyReviewRequired=message.role === "assistant" && SAFETY_RULES.some(rule => meta.ruleId === `coach-conversation-v1:${rule}`);
     // Legacy derived summaries are never exposed or reused.
   }catch{/* Unverified metadata grants no action or context. */}
   if(message.role === "assistant") {
     let safe=false;try{safe=JSON.parse(metadata||"{}").historyPolicy===AI_DATA_POLICY_VERSION||JSON.parse(metadata||"{}").contextVersion===AI_DATA_POLICY_VERSION;}catch{}
     if(!safe)message.content=historySafeLocalReply("", language, true);
   }
-  return {...message,...(clientRequestId?{clientRequestId}:{}),...(needsHumanReview?{needsHumanReview:true}:{})};
+  return {...message,...(clientRequestId?{clientRequestId}:{}),...(needsHumanReview?{needsHumanReview:true}:{}),...(safetyReviewRequired?{safetyReviewRequired:true}:{})};
 }
 async function readConversation(actor: ConversationActor, db: DB = prisma) {
   const [conversation, profile] = await Promise.all([

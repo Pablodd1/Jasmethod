@@ -42,20 +42,21 @@ async function main() {
         window.webkitSpeechRecognition = SyntheticSpeech;
       });
       const page = await context.newPage(), f = fixtures(language);
-      const history = []; let sends = 0;
+      const history = Array.from({length:12},(_,i)=>({id:'old-'+i,role:i%2?'assistant':'user',source:'local',content:'Synthetic earlier conversation '.repeat(12),createdAt:new Date().toISOString()})); let sends = 0;
       page.on('pageerror', error => errors.push(String(error)));
-      let planRelease, profileFailure = false;
+      let planRelease, profileFailure = false, todayState = "error", todayReads = 0;
       await page.route('**/api/**', async route => {
         const url = new URL(route.request().url()), path = url.pathname;
         if (route.request().method() === 'POST' && path === '/api/assistant') {
           const input = route.request().postDataJSON(); sends++;
           assert.equal(input.externalConsent, false); assert.ok(input.clientRequestId);
           const answer = historySafeLocalReply('',language,true);
-          history.push({id:'synthetic-user',role:'user',content:input.message,createdAt:new Date().toISOString(),source:'text',clientRequestId:input.clientRequestId},{id:'synthetic-assistant',role:'assistant',content:answer,createdAt:new Date().toISOString(),source:'local'});
+          history.push({id:'synthetic-user-'+sends,role:'user',content:input.message,createdAt:new Date().toISOString(),source:'text',clientRequestId:input.clientRequestId},{id:'synthetic-assistant-'+sends,role:'assistant',needsHumanReview:true,content:answer,createdAt:new Date().toISOString(),source:'local'});
           return route.fulfill({json:{ok:true,conversation:{id:'synthetic-conversation',messages:history},proposal:null}});
         }
         if (route.request().method() !== 'GET') { unexpected.push(`${route.request().method()} ${path}`); return route.fulfill({status: 500, json: { error: 'Mutations are forbidden in this fixture' }}); }
         if (path === '/api/auth/me') return route.fulfill({json:{user:f.user}});
+        if (path === '/api/today') { todayReads++; return route.fulfill(todayState === 'error' ? {status:503,json:{error:'Synthetic unavailable'}} : {json:{date:today,sessions:todayState === 'empty' ? [] : [{id:f.card.session.id,title:f.card.session.title,sport:f.card.session.sport}]}}); }
         if (path === '/api/assistant') return route.fulfill({json:{ok:true,conversation:{id:'synthetic-conversation',messages:history},proposal:null,sessions:[],capabilities:{externalAi:false,imageUnderstanding:false,textProvider:null,imageProvider:null}}});
         if (path === '/api/v1/training/today') return route.fulfill({json:f.daily});
         if (path.endsWith('/preview')) return route.fulfill({json:f.preview});
@@ -69,7 +70,7 @@ async function main() {
       await page.waitForFunction(()=>document.querySelector('textarea')?.disabled===false);
       assert.equal(await textarea.isDisabled(), false, 'Composer becomes usable');
       assert.equal(await page.getByRole('button', {name: language === 'es' ? /^Enviar mensaje$/ : /^Send message$/}).isDisabled(), true, 'Empty submit stays disabled');
-      const dictation = page.getByRole('button', {name: language === 'es' ? /dictado|dictar/i : /dictat/i}).first();
+      const dictation = page.getByRole('button', {name: language === 'es' ? 'Micrófono' : 'Microphone', exact:true}).first();
       if (await dictation.count()) assert.equal(await dictation.isVisible(), true, 'Dictation entry is outside closed tools');
       else assert.match(await page.locator('body').innerText(), language === 'es' ? /dictado.*(?:disponible|compatible)/i : /dictation.*(?:available|supported)/i);
       await dictation.click();
@@ -87,6 +88,27 @@ async function main() {
       await page.getByRole('button', {name: language === 'es' ? /^Enviar mensaje$/ : /^Send message$/}).click();
       await page.getByRole('list', {name:language === 'es' ? 'Historial de conversación' : 'Conversation history'}).getByText(language==='es'?/No se conserva un resumen/:/not retained in chat/).waitFor({state:'visible'});
       assert.equal(sends,1,'One explicit click produces one synthetic send');
+      const reviewButton=page.getByRole('button',{name:language==='es'?'Ver entrenamiento de hoy':'Review today’s workout',exact:true});
+      await reviewButton.click();
+      const privateReview=page.getByRole('region',{name:language==='es'?'Revisión protegida de hoy':'Protected today review',exact:true});
+      await privateReview.getByRole('alert').waitFor();
+      const privateRect=await privateReview.boundingBox();assert.ok(privateRect&&privateRect.y>=0&&privateRect.y<900,'Opening a card reveals it even after a long conversation');
+      todayState='empty';
+      await privateReview.getByRole('button',{name:language==='es'?'Reintentar':'Retry',exact:true}).click();
+      await privateReview.getByText(language==='es'?/No hay sesiones guardadas/:/No saved sessions/).waitFor();
+      await privateReview.getByRole('button',{name:language==='es'?'Cerrar tarjeta':'Close card',exact:true}).click();todayState='session';await reviewButton.click();
+      await privateReview.getByRole('button',{name:f.card.session.title+' · '+f.card.session.sport,exact:true}).click();await privateReview.locator('.uwc').waitFor();
+      assert.equal(sends,1,'Read-only card/retry never sends a chat message');
+      await privateReview.getByRole('button',{name:language==='es'?'Cerrar tarjeta':'Close card',exact:true}).click();
+      await page.getByRole('button',{name:language==='es'?'Alimentación':'Fueling',exact:true}).click();
+      await page.getByRole('button',{name:language==='es'?'Enviar mensaje':'Send message',exact:true}).click();
+      await page.waitForFunction(()=>document.querySelector('.coach-chat-composer textarea')?.value==='');
+      await privateReview.waitFor();assert.equal(sends,2,'Fueling starter opens protected review despite a general human-help fallback');
+      await privateReview.locator('.uwc').waitFor();assert.equal(todayReads,4,'Another conversation review reloads the current daily record');
+      const refreshed=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/today');await reviewButton.click();await refreshed;assert.equal(todayReads,5,'Repeated review clicks also refresh an open card');
+
+
+      const rect=await textarea.boundingBox();assert.ok(rect&&rect.y>=0&&rect.y+rect.height<=900,'Composer remains in mobile/desktop viewport after card review');
       await page.screenshot({path:`${dir}/coach-${language}-${width}.png`});
       await page.goto(`${base}/daily`);
       await page.locator('.uwc').first().waitFor({state:'visible'});
@@ -132,11 +154,12 @@ async function main() {
       const context=await browser.newContext({viewport:{width:390,height:900}}),page=await context.newPage(),f=fixtures(language);
       page.on('pageerror',error=>errors.push(String(error)));
       const es=language==='es',units=es?'metric':'imperial',messages=[];
-      let proposal=null,savedReceipt=null,weight=70,writes=0,sends=0;
+      let proposal=null,savedReceipt=null,weight=70,writes=0,sends=0,todayReads=0;
       const payload=()=>({ok:true,conversation:{id:'synthetic-profile-chat',messages},proposal,receipt:savedReceipt,savedReceipt,displayUnits:units,unitPreference:'auto',capabilities:{externalAi:false,imageUnderstanding:false},sessions:[]});
       await page.route('**/api/**',async route=>{
         const req=route.request(),path=new URL(req.url()).pathname;
         if(path==='/api/auth/me')return route.fulfill({json:{user:f.user}});
+        if(path==='/api/today'){todayReads++;return route.fulfill({json:{date:today,sessions:[]}});}
         if(path==='/api/assistant'&&req.method()==='GET')return route.fulfill({json:payload()});
         if(path==='/api/assistant'&&req.method()==='POST'){
           const input=req.postDataJSON();sends++;assert.equal(input.externalConsent,false);
@@ -160,11 +183,15 @@ async function main() {
       const send=page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}),message=page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true});
       await message.fill('My weight is 75 kg');await send.click();
       const card=page.getByRole('group',{name:es?'Peso corporal':'Body weight',exact:true});await card.waitFor();
+      await page.getByRole('button',{name:es?'Ver entrenamiento de hoy':'Review today’s workout',exact:true}).click();
+      await page.getByText(es?/No hay sesiones guardadas/:/No saved sessions/).waitFor();assert.equal(todayReads,1);
+
       assert.match(await card.innerText(),es?/70\.0 kg/:/154\.3 lb/);assert.match(await card.innerText(),es?/75\.0 kg/:/165\.3 lb/);assert.equal(writes,0);
       const edit=card.getByLabel(es?'Valor (kg)':'Value (lb)',{exact:true});assert.equal(await edit.isDisabled(),true);
       await card.getByRole('button',{name:es?'Editar':'Edit',exact:true}).click();await edit.fill(es?'80':'176.3696');
       await card.getByRole('checkbox',{name:es?'Incluir al confirmar':'Include in confirmation',exact:true}).check();
-      assert.equal(writes,0);await page.getByRole('button',{name:es?'Aprobar cambios (1)':'Approve changes (1)',exact:true}).click();
+      const afterSaveRead=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/today');
+      assert.equal(writes,0);await page.getByRole('button',{name:es?'Aprobar cambios (1)':'Approve changes (1)',exact:true}).click();await afterSaveRead;assert.equal(todayReads,2,'Verified confirmation refreshes an already open private card');
       await page.getByText(es?'Cambios guardados con comprobante':'Saved changes with receipt',{exact:true}).waitFor();assert.equal(writes,1);
       await page.reload();await page.getByText(es?'Cambios guardados con comprobante':'Saved changes with receipt',{exact:true}).waitFor();assert.equal(writes,1);
       await message.fill('My weight is 81 kg');await send.click();await page.getByRole('button',{name:es?'Cancelar':'Cancel',exact:true}).click();
@@ -200,6 +227,7 @@ async function main() {
         unexpected.push(`${req.method()} ${path}`);return route.fulfill({status:500,json:{error:'Unexpected synthetic operation'}});
       });
       await page.goto(`${base}/coach`);
+      await page.getByText('Optional tools: logging, images & AI',{exact:true}).click();
       const ai=page.getByLabel('Use OpenAI only for general education while this page is open',{exact:true});await ai.waitFor();
       assert.equal(await ai.isChecked(),false);await ai.check();
       const memory=page.getByLabel(/Also include up to two previous OpenAI replies/);assert.equal(await memory.count(),0);
@@ -218,7 +246,7 @@ async function main() {
       assert.equal(sends,2);assert.equal(shares,1);assert.equal(await ai.isChecked(),true);
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
       await page.screenshot({path:`${dir}/confirmed-actions-${width}.png`});
-      await page.reload();await ai.waitFor();assert.equal(await ai.isChecked(),false);assert.equal(await memory.count(),0);
+      await page.reload();await page.getByText('Optional tools: logging, images & AI',{exact:true}).click();await ai.waitFor();assert.equal(await ai.isChecked(),false);assert.equal(await memory.count(),0);
       results.push({width,confirmedActionReview:'pass',pageScopedAiConsent:'pass',legacyMemoryAbsent:'pass',humanHandoff:'pass'});
       await context.close();
     }
