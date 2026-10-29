@@ -44,7 +44,7 @@ async function main() {
       const page = await context.newPage(), f = fixtures(language);
       const history = []; let sends = 0;
       page.on('pageerror', error => errors.push(String(error)));
-      let planRelease, profileFailure = false;
+      let planRelease, profileFailure = false, todayState = "error";
       await page.route('**/api/**', async route => {
         const url = new URL(route.request().url()), path = url.pathname;
         if (route.request().method() === 'POST' && path === '/api/assistant') {
@@ -56,6 +56,7 @@ async function main() {
         }
         if (route.request().method() !== 'GET') { unexpected.push(`${route.request().method()} ${path}`); return route.fulfill({status: 500, json: { error: 'Mutations are forbidden in this fixture' }}); }
         if (path === '/api/auth/me') return route.fulfill({json:{user:f.user}});
+        if (path === '/api/today') return route.fulfill(todayState === 'error' ? {status:503,json:{error:'Synthetic unavailable'}} : {json:{date:today,sessions:todayState === 'empty' ? [] : [{id:f.card.session.id,title:f.card.session.title,sport:f.card.session.sport}]}});
         if (path === '/api/assistant') return route.fulfill({json:{ok:true,conversation:{id:'synthetic-conversation',messages:history},proposal:null,sessions:[],capabilities:{externalAi:false,imageUnderstanding:false,textProvider:null,imageProvider:null}}});
         if (path === '/api/v1/training/today') return route.fulfill({json:f.daily});
         if (path.endsWith('/preview')) return route.fulfill({json:f.preview});
@@ -69,7 +70,7 @@ async function main() {
       await page.waitForFunction(()=>document.querySelector('textarea')?.disabled===false);
       assert.equal(await textarea.isDisabled(), false, 'Composer becomes usable');
       assert.equal(await page.getByRole('button', {name: language === 'es' ? /^Enviar mensaje$/ : /^Send message$/}).isDisabled(), true, 'Empty submit stays disabled');
-      const dictation = page.getByRole('button', {name: language === 'es' ? /dictado|dictar/i : /dictat/i}).first();
+      const dictation = page.getByRole('button', {name: language === 'es' ? 'Micrófono' : 'Microphone', exact:true}).first();
       if (await dictation.count()) assert.equal(await dictation.isVisible(), true, 'Dictation entry is outside closed tools');
       else assert.match(await page.locator('body').innerText(), language === 'es' ? /dictado.*(?:disponible|compatible)/i : /dictation.*(?:available|supported)/i);
       await dictation.click();
@@ -87,6 +88,16 @@ async function main() {
       await page.getByRole('button', {name: language === 'es' ? /^Enviar mensaje$/ : /^Send message$/}).click();
       await page.getByRole('list', {name:language === 'es' ? 'Historial de conversación' : 'Conversation history'}).getByText(language==='es'?/No se conserva un resumen/:/not retained in chat/).waitFor({state:'visible'});
       assert.equal(sends,1,'One explicit click produces one synthetic send');
+      const reviewButton=page.getByRole('button',{name:language==='es'?'Ver entrenamiento de hoy':'Review today’s workout',exact:true});
+      await reviewButton.click();
+      const privateReview=page.getByRole('region',{name:language==='es'?'Revisión protegida de hoy':'Protected today review',exact:true});
+      await privateReview.getByRole('alert').waitFor();todayState='empty';
+      await privateReview.getByRole('button',{name:language==='es'?'Reintentar':'Retry',exact:true}).click();
+      await privateReview.getByText(language==='es'?/No hay sesiones guardadas/:/No saved sessions/).waitFor();
+      await privateReview.getByRole('button',{name:language==='es'?'Cerrar tarjeta':'Close card',exact:true}).click();todayState='session';await reviewButton.click();
+      await privateReview.getByRole('button',{name:f.card.session.title+' · '+f.card.session.sport,exact:true}).click();await privateReview.locator('.uwc').waitFor();
+      assert.equal(sends,1,'Read-only card/retry never sends a chat message');
+      const rect=await textarea.boundingBox();assert.ok(rect&&rect.y>=0&&rect.y+rect.height<=900,'Composer remains in mobile/desktop viewport after card review');
       await page.screenshot({path:`${dir}/coach-${language}-${width}.png`});
       await page.goto(`${base}/daily`);
       await page.locator('.uwc').first().waitFor({state:'visible'});
@@ -200,6 +211,7 @@ async function main() {
         unexpected.push(`${req.method()} ${path}`);return route.fulfill({status:500,json:{error:'Unexpected synthetic operation'}});
       });
       await page.goto(`${base}/coach`);
+      await page.getByText('Optional tools: logging, images & AI',{exact:true}).click();
       const ai=page.getByLabel('Use OpenAI only for general education while this page is open',{exact:true});await ai.waitFor();
       assert.equal(await ai.isChecked(),false);await ai.check();
       const memory=page.getByLabel(/Also include up to two previous OpenAI replies/);assert.equal(await memory.count(),0);

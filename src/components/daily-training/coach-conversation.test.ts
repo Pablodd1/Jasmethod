@@ -226,15 +226,16 @@ test("safety next-step links do not need a proposal or saved receipt", () => {
   assert.deepEqual(coachPendingActions({ ok: true }), []);
 });
 
-for (const es of [false, true]) test(`AI choice and workout scope are visible; optional image tools and privacy stay closed (${es ? "ES" : "EN"})`, () => {
+for (const es of [false, true]) test(`composer comes before optional workout/image/AI tools; privacy stays closed (${es ? "ES" : "EN"})`, () => {
   const markup = renderToStaticMarkup(React.createElement(CoachConversation, { es, athleteId: "test-athlete", onConfirmed: () => undefined }));
   const composer = markup.indexOf("<textarea");
   const send = markup.indexOf('type="submit"');
   const tools = markup.indexOf(es ? "Herramientas opcionales" : "Optional tools");
   const workout = markup.indexOf(es ? "Sesión sobre la que hablas" : "Workout you are discussing");
   const privacy = markup.indexOf(es ? "Privacidad y detalles" : "Privacy &amp; conversation");
-  assert.ok(workout>=0&&workout<composer&&composer<send&&send<tools&&tools<privacy);
-  assert.equal((markup.match(/<details/g) || []).length, 4);
+  assert.ok(composer>=0&&composer<send&&send<tools&&tools<workout);
+  assert.ok(privacy>=0);
+  assert.equal((markup.match(/<details/g) || []).length, 6);
   assert.match(markup,/tel:\+17862317906/);
   assert.match(markup,/tel:\+17869708366/);
   assert.doesNotMatch(markup, /<details[^>]*\bopen(?:=|>|\s)/);
@@ -242,21 +243,21 @@ for (const es of [false, true]) test(`AI choice and workout scope are visible; o
   assert.ok(markup.includes(es ? "Memoria externa de IA desactivada" : "External AI memory is disabled"));
   assert.ok(markup.includes(es ? "tema de una lista fija" : "allowlisted topic"));
   assert.ok(markup.includes(es ? "mientras esta página esté abierta" : "while this page is open"));
-  assert.ok(markup.includes(es ? "revisión y confirmación" : "review and confirmation"));
+  assert.ok(markup.includes(es ? "requieren tu confirmación" : "need your confirmation"));
   assert.ok(markup.includes(es ? "Sí, borrar conversación" : "Yes, clear conversation") === false);
 });
 
 for (const es of [false, true]) test(`dictation is visible beside the composer, labeled, and never duplicated (${es ? "ES" : "EN"})`, () => {
   const markup = renderToStaticMarkup(React.createElement(CoachConversation, { es, athleteId: "test-athlete", onConfirmed: () => undefined }));
   const visibleComposer = markup.slice(markup.indexOf("<form"), markup.indexOf("<details",markup.indexOf('<form')));
-  const startLabel = es ? "Iniciar dictado" : "Start dictation";
+  const startLabel = es ? "Micrófono" : "Microphone";
   assert.equal(markup.split(startLabel).length - 1, 1);
   assert.ok(visibleComposer.includes(startLabel));
-  assert.ok(visibleComposer.includes(es ? "Dictar un mensaje" : "Dictate a message"));
-  assert.ok(visibleComposer.includes(es ? "puede enviar el audio a su proveedor" : "may send audio to its speech-recognition provider"));
-  assert.ok(visibleComposer.includes(es ? "nunca guarda datos ni envía tu mensaje automáticamente" : "never saves facts or sends your message automatically"));
+  assert.ok(markup.includes(es ? "Dictar un mensaje" : "Dictate a message"));
+  assert.ok(visibleComposer.includes(es ? "puede enviar audio al proveedor del navegador" : "may send audio to your browser’s provider"));
+  assert.ok(markup.includes(es ? "nunca guarda datos ni envía tu mensaje automáticamente" : "never saves facts or sends your message automatically"));
   assert.match(visibleComposer, /<button[^>]*aria-describedby="[^"]+-dictation-help"[^>]*disabled=""/);
-  assert.match(visibleComposer, /<textarea[^>]*!text-base[^>]*rows="3"/);
+  assert.match(visibleComposer, /<textarea[^>]*!text-base[^>]*rows="2"/);
   assert.match(visibleComposer, /min-h-11 max-w-full whitespace-normal/);
   assert.doesNotMatch(markup, /live voice|voice call|voz en vivo/i);
   // Support is unknown until hydration; do not falsely label capable devices unsupported.

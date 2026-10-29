@@ -343,3 +343,13 @@ select { min-width: 0; }
 @media(max-width:700px){.website-hero{grid-template-columns:1fr;padding-block:40px;gap:34px}.website-page h1{font-size:40px;max-width:19ch}.website-capabilities,.website-two-column,.website-contact-grid{grid-template-columns:1fr;gap:30px}.website-section{padding-block:40px}.website-intro{padding-top:40px}.website-closing,.website-footer-top{align-items:flex-start;flex-direction:column}.website-header-row{gap:12px}.website-header-actions{gap:14px}.website-session{max-width:450px;padding:22px}.website-deck{font-size:16px}.website-footer-top nav{max-width:none}.website-evidence-band{padding-block:40px}}
 @media(max-width:479px){.website-header .website-brand>span:not(.website-brand-mark):not(.website-brand-short){display:none}.website-brand-short{display:inline}.website-signin{display:none}.website-brand{font-size:18px}.website-language{max-width:106px}.website-header-actions{gap:12px}.website-header-row{min-height:68px}.website-page h1{font-size:36px}.website-steps>li{gap:12px;grid-template-columns:24px 1fr}.website-guide-list>a{grid-template-columns:22px 1fr 16px;gap:12px}}
 @media(prefers-reduced-motion:reduce){.website-page *, .website-header *{scroll-behavior:auto;transition:none!important}}
+
+/* Dedicated Coach route: conversation scrolls while the composer stays visible.
+   Embedded Coach retains the normal training-page flow. Use dynamic viewport sizing. */
+.coach-chat-route { max-width: 60rem; margin: -1rem auto; }
+.coach-chat-page { display: flex; flex-direction: column; gap: .75rem; height: calc(100dvh - 10.5rem); min-height: 22rem; min-width: 0; }
+.coach-chat-scroll { flex: 1 1 0%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .25rem .25rem .75rem; scrollbar-gutter: stable; }
+.coach-chat-composer { flex: 0 0 auto; max-height: 46dvh; overflow-y: auto; border: 1px solid #9cbcc5; border-radius: 1.25rem; padding: .75rem; background: rgba(255,255,255,.97); box-shadow: 0 8px 28px rgba(12,67,83,.06); }
+.coach-chat-composer textarea { background: transparent; }
+@media (min-width: 768px) { .coach-chat-route { margin-top: -1rem; } .coach-chat-page { height: calc(100dvh - 5rem); } }
+@media (max-height: 520px) { .coach-chat-page { min-height: 0; } .coach-chat-composer { max-height: 52dvh; } }

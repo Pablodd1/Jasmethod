@@ -63,6 +63,23 @@ async function main(){const who=await actor(),other=await actor();const before=a
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await page.screenshot({path:dir+'/'+name+'.png',fullPage:path!=='/today'});
  }
+ // The same authenticated canonical session is reviewable without leaving chat.
+ await page.goto(base+'/coach');
+ const composer=page.getByRole('textbox',{name:'Your message',exact:true});await composer.waitFor();
+ await page.getByRole('button',{name:'Review today’s workout',exact:true}).click();
+ const review=page.getByRole('region',{name:'Protected today review',exact:true});await review.waitFor();
+ await review.getByRole('button',{name:fromToday.title+' · '+fromToday.sport,exact:true}).click();
+ const chatCard=review.locator('.uwc[data-revision]');await chatCard.waitFor();assert.equal(await chatCard.getAttribute('data-revision'),p.revision);
+ const beforeHistory=await call(who,'/api/assistant');assert.equal(beforeHistory.conversation.messages.length,0,'Opening a private card does not persist a summary or a synthetic message');
+ const bounds=await composer.boundingBox();assert.ok(bounds&&bounds.y>=0&&bounds.y+bounds.height<=844,'Composer remains in initial mobile viewport');
+ await page.screenshot({path:dir+'/06-coach-protected-review.png'});
+ await composer.fill("Help me with today's fueling.");await page.getByRole('button',{name:'Send message',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.coach-chat-composer textarea')?.value==='');
+ await page.getByRole('region',{name:'Protected today review',exact:true}).waitFor();
+ const afterHistory=await call(who,'/api/assistant');assert.equal(afterHistory.conversation.messages.length,2);assert.doesNotMatch(afterHistory.conversation.messages.find(m=>m.role==='assistant').content,/525|330|78|700/,'Private numeric workout evidence is absent from persisted assistant text');
+ await page.reload();await composer.waitFor();assert.equal(await page.getByRole('region',{name:'Protected today review',exact:true}).count(),0,'Protected cards are ephemeral');
+ const popup=page.getByRole('link',{name:'Open chat in another window',exact:true});assert.equal(await popup.getAttribute('target'),'_blank');assert.equal(await popup.getAttribute('href'),'/coach');
+ checks.push({name:'real authenticated mobile chat opens canonical workout/fueling card, keeps composer visible, records only explicit sends, retains no protected card in history, and offers separate-window access',status:'PASS'});
  await page.goto(base+'/today');await page.getByRole('heading',{level:1}).waitFor();
  await page.getByText('Share, device & edit',{exact:true}).first().click();
  const editor=page.getByLabel('Explicit sport structure',{exact:true}).first();await editor.getByRole('button',{name:'Edit steps, sets and rests',exact:true}).click();
