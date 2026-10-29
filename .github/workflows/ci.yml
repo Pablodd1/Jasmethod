@@ -264,6 +264,7 @@ jobs:
             .local/jmm-athlete-entry-browser/*.png
             .local/jmm-advanced-triathlon/report.json
             .local/jmm-advanced-triathlon/*.png
+            .local/jmm-advanced-triathlon/*.txt
             .local/jmm-sport-evidence-browser/report.json
             .local/jmm-sport-evidence-browser/*.png
             .local/jmm-metrics-integration/report.json
