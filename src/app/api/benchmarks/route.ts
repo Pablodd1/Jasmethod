@@ -4,9 +4,10 @@ import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
 import { benchmarkResult } from "@/lib/benchmark-result";
 import { parseDate } from "@/lib/dates";
 import { unitsOf } from "@/lib/units";
+import { initialAssessmentEvidence } from "@/lib/baseline-test-options";
 export const dynamic="force-dynamic";
 export async function GET(req:Request) {
- try {const {athlete}=await trainingAccess(req);const profile=await prisma.athleteProfile.findUnique({where:{userId:athlete.id}});return Response.json({units:unitsOf(profile?.units,athlete.language),language:athlete.language,profileRevision:profileRevision(profile),tests:await prisma.benchmarkTest.findMany({where:{userId:athlete.id},orderBy:{date:"asc"}})});}catch(e){return errorResponse(e);}
+ try {const {athlete}=await trainingAccess(req);const [profile,tests,trainingRecords]=await Promise.all([prisma.athleteProfile.findUnique({where:{userId:athlete.id}}),prisma.benchmarkTest.findMany({where:{userId:athlete.id},orderBy:{date:"asc"}}),prisma.workout.count({where:{userId:athlete.id,OR:[{completed:true},{actualDurationMin:{gt:0}},{feedbackStatus:{in:["completed","partial","substituted"]}}]}})]);return Response.json({units:unitsOf(profile?.units,athlete.language),language:athlete.language,goal:profile?.goal??null,profileRevision:profileRevision(profile),tests,evidence:initialAssessmentEvidence(trainingRecords,profile?.manualPrs,tests.filter(test=>test.completed&&!test.skipped&&test.result!==null).length)},{headers:{"Cache-Control":"private, no-store"}});}catch(e){return errorResponse(e);}
 }
 export async function POST(req:Request) {
  try {

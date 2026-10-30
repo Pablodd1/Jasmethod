@@ -87,6 +87,8 @@ async function browserJourney(browser,language){
   assert.equal(await db.trainingPlan.count({where:{userId:who.user.id,status:'active'}}),1);
   await page.screenshot({path:`${dir}/starting-saved-${language}-390.png`,fullPage:false});
   await page.goto(base+'/settings');const baseline=page.getByRole('heading',{name:es?'Pruebas y resultados medidos':'Baseline tests and measured results',exact:true}).locator('..');await baseline.waitFor();
+  await baseline.getByRole('link',{name:es?'Revisar semana de evaluación inicial':'Review initial assessment week',exact:true}).waitFor();
+  await baseline.scrollIntoViewIfNeeded();await page.screenshot({path:`${dir}/initial-assessment-${language}-390.png`,fullPage:false});
   const records=page.getByRole('heading',{name:es?'Récords personales':'Personal records',exact:true}).locator('..');
   await records.getByText(es?'Añadir un resultado real que falta':'Add a missing actual result',{exact:true}).click();
   await records.getByRole('textbox',{name:es?'Nombre de la marca':'Personal best label',exact:true}).fill('Synthetic 5K');
@@ -101,9 +103,14 @@ async function browserJourney(browser,language){
   const savedRecords=JSON.parse((await db.athleteProfile.findUniqueOrThrow({where:{userId:who.user.id}})).manualPrs);
   assert.equal(savedRecords.length,1);assert.equal(savedRecords[0].value,24.5);assert.equal(savedRecords[0].unit,'min');assert.match(savedRecords[0].label,/run.*5 km.*time/);
   await page.reload();await records.getByText('24:30',{exact:true}).waitFor();
+  await baseline.getByRole('combobox',{name:es?'Deporte de evaluación':'Assessment sport',exact:true}).selectOption('multisport');
+  assert.equal(await baseline.getByRole('link',{name:es?'Revisar semana de evaluación inicial':'Review initial assessment week',exact:true}).count(),0,'An existing personal record prevents the empty-history assessment prompt');
   await records.getByText(es?'Resultados HYROX':'HYROX results',{exact:true}).click();await records.getByText(es?/0 resultados guardados/:/0 saved results/).waitFor();
   await records.scrollIntoViewIfNeeded();await page.screenshot({path:`${dir}/sport-records-${language}-390.png`,fullPage:false});
-  await baseline.getByRole('combobox').selectOption('run5k');const result=baseline.getByRole('textbox',{name:es?/^Resultado medido/:/^Measured result/});await result.fill('3:90');
+  assert.equal(await baseline.getByRole('combobox',{name:es?'Prueba':'Test',exact:true}).inputValue(),'');
+  assert.equal(await baseline.getByRole('button',{name:es?'Registrar prueba':'Record test',exact:true}).isDisabled(),true,'A multisport selection does not invent a single combined benchmark');
+  await baseline.getByRole('combobox',{name:es?'Deporte de evaluación':'Assessment sport',exact:true}).selectOption('run');
+  await baseline.getByRole('combobox',{name:es?'Prueba':'Test',exact:true}).selectOption('run5k');const result=baseline.getByRole('textbox',{name:es?/^Resultado medido/:/^Measured result/});await result.fill('3:90');
   await baseline.locator('input[name="date"]').fill(ago(1));assert.equal(await result.evaluate(input=>input.validity.valid),false);
   await result.fill('25:00');let request=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/benchmarks'&&r.request().method()==='POST');
   await baseline.getByRole('button',{name:es?'Registrar prueba':'Record test',exact:true}).click();assert.equal((await request).status(),200);
@@ -111,7 +118,7 @@ async function browserJourney(browser,language){
   assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:who.user.id}})).runPaceBase,null);
   // Profile's onSaved refresh unmounts this section. Verify persisted history after a full reload.
   await page.reload();await baseline.getByRole('listitem').filter({hasText:'25:00'}).waitFor();
-  await baseline.getByRole('combobox').selectOption('swim');await result.fill('1:40');await baseline.locator('input[name="date"]').fill(ago(1));
+  await baseline.getByRole('combobox',{name:es?'Deporte de evaluación':'Assessment sport',exact:true}).selectOption('swim');await baseline.getByRole('combobox',{name:es?'Prueba':'Test',exact:true}).selectOption('swim');await result.fill('1:40');await baseline.locator('input[name="date"]').fill(ago(1));
   request=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/benchmarks'&&r.request().method()==='POST');await baseline.getByRole('button',{name:es?'Registrar prueba':'Record test',exact:true}).click();assert.equal((await request).status(),200);
   const swim=await db.benchmarkTest.findFirstOrThrow({where:{userId:who.user.id,type:'swim'}});assert.ok(Math.abs(swim.result-(es?100:100/.9144))<1e-8);
   await page.reload();await baseline.getByRole('listitem').filter({hasText:'1:40'}).waitFor();

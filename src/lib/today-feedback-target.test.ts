@@ -10,4 +10,7 @@ test('result entry resolves an explicit matched activity and refuses to guess', 
   assert.deepEqual(todayFeedbackTarget({ id: 'planned' }, [{ id: 'actual' }]), { kind: 'choose' });
   assert.deepEqual(todayFeedbackTarget({ id: 'planned' }, []), { kind: 'session', id: 'planned' });
   assert.deepEqual(todayFeedbackTarget(null, []), { kind: 'none' });
+  assert.deepEqual(todayFeedbackTarget(null,[{id:'actual'}]),{kind:'record',id:'actual'});
+  assert.deepEqual(todayFeedbackTarget({id:'actual'},[{id:'actual'}]),{kind:'record',id:'actual'});
+  assert.deepEqual(todayFeedbackTarget(null,[{id:'a'},{id:'b'}]),{kind:'choose'});
 });

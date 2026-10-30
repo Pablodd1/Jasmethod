@@ -417,7 +417,9 @@ async function main() {
     const yesterday = new Date(day.getTime() - 86400000).toISOString().slice(0, 10);
     const before = await json(`/api/checkin?feedbackDate=${yesterday}`, athlete);
     assert.equal(before.feedbackDate, yesterday); assert.equal(before.previousSessions[0].id, fixtures.historical.id);
-    await json("/api/plan", athlete, { method: "PUT", body: { sessionId: fixtures.historical.id, feedbackStatus: "partial", actualDurationMin: 12, rpe: 9, feedbackNote: "Synthetic late correction: harder than planned." } });
+    await json("/api/plan", athlete, { method: "PUT", body: { sessionId: fixtures.historical.id, feedbackStatus: "partial", actualDurationMin: 12, rpe: 9, feedbackNote: "Synthetic late correction: harder than planned.", preWeightKg:70, postWeightKg:69.5 } });
+    const reported = await db.workout.findUniqueOrThrow({where:{id:fixtures.historical.id}});
+    assert.equal(reported.preWeightKg,70);assert.equal(reported.postWeightKg,69.5);assert.match(reported.feedbackNote!,/harder than planned/);
     await json("/api/checkin", athlete, { body: validAnswers });
     const checkin = await db.dailyCheckin.findUniqueOrThrow({ where: { userId_date: { userId: athlete.id, date: day } } });
     const adaptation = JSON.parse(checkin.adaptation!);
