@@ -67,3 +67,17 @@ test("SMTP failure reports only a safe actionable category, never provider text 
     assert.doesNotMatch(JSON.stringify(result), /private-provider|smtp-password|private-authentication|private-token/);
   }
 });
+
+test("SMTP provider diagnostics use exact allowlisted hosts and never expose private configuration", async () => {
+  for(const [host,provider] of [["smtp-relay.brevo.com","Brevo"],[" SMTP.GMAIL.COM ","Google Gmail"],["smtp.office365.com","Microsoft 365"],["smtp.sendgrid.net","SendGrid"],["smtp.resend.com","Resend"]]) {
+    const configured={...env,SMTP_HOST:host,SMTP_USER:"private-login",SMTP_PASS:"private-password"};
+    assert.match(launchConfiguration(configured).email.detail,new RegExp(`Configured SMTP provider: ${provider}`));
+    const result=await probeLaunchIntegrations(configured,{smtp:async()=>{throw {code:"EAUTH"}},telegram:async()=>{throw Error("disabled fixture")}});
+    assert.match(result.email.detail,new RegExp(`Configured SMTP provider: ${provider}`));assert.match(result.email.detail,/authentication was rejected/);
+    assert.doesNotMatch(JSON.stringify(result),/private-login|private-password/);
+  }
+  for(const host of ["smtp-relay.brevo.com.attacker.invalid","https://private-user:private-password@smtp.gmail.com","private-project.example.invalid"]) {
+    const detail=launchConfiguration({...env,SMTP_HOST:host}).email.detail;
+    assert.match(detail,/not identified/);assert.ok(!detail.includes(host));
+  }
+});

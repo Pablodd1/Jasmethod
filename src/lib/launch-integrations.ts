@@ -6,6 +6,16 @@ type Environment = Record<string, string | undefined>;
 export type IntegrationCheck = { state: "configured" | "verified" | "missing" | "failed" | "conflict"; detail: string; missing?: string[]; botUsername?: string };
 export type LaunchChecks = { openai: IntegrationCheck; email: IntegrationCheck; telegram: IntegrationCheck };
 const present = (env: Environment, key: string) => Boolean(env[key]?.trim());
+/** Fixed provider names only. Never expose arbitrary host strings or authentication values. */
+function smtpProviderDetail(env: Environment): string {
+  const host = env.SMTP_HOST?.trim().toLowerCase();
+  const provider = host === "smtp-relay.brevo.com" || host === "smtp-relay.sendinblue.com" ? "Brevo"
+    : host === "smtp.gmail.com" ? "Google Gmail"
+    : host === "smtp.office365.com" ? "Microsoft 365"
+    : host === "smtp.sendgrid.net" ? "SendGrid"
+    : host === "smtp.resend.com" ? "Resend" : null;
+  return provider ? `Configured SMTP provider: ${provider}. ` : "SMTP provider is not identified by the safe host allowlist. ";
+}
 export function telegramWebhookTarget(env: Environment): string | null {
   try {
     const url = new URL(env.APP_URL || env.NEXT_PUBLIC_APP_URL || "");
@@ -32,7 +42,7 @@ export function launchConfiguration(env: Environment = process.env): LaunchCheck
     openai: { state: aiMissing.length ? "missing" : "configured", missing: aiMissing,
       detail: "Configuration only. A successful consented chat is required to verify OpenAI." },
     email: { state: emailMissing.length ? "missing" : "configured", missing: emailMissing,
-      detail: "Athletes must verify their own email and opt in. SMTP acceptance is not inbox delivery." },
+      detail: smtpProviderDetail(env) + "Athletes must verify their own email and opt in. SMTP acceptance is not inbox delivery." },
     telegram: { state: telegramMissing.length ? "missing" : "configured", missing: telegramMissing,
       detail: "Athletes must pair their private chat and opt in. A bot receipt does not prove it was read." },
   };
@@ -103,9 +113,9 @@ export async function probeLaunchIntegrations(env: Environment = process.env, de
       if (config.email.state === "missing") return config.email;
       try {
         return await (dependencies.smtp ? dependencies.smtp() : verifySmtp(env))
-          ? { state: "verified", detail: "SMTP connection, TLS and authentication verified. No email was sent; inbox delivery remains unverified." }
-          : { state: "failed", detail: "SMTP verification was not confirmed. No email was sent." };
-      } catch (error) { return { state: "failed", detail: smtpFailureDetail(error) }; }
+          ? { state: "verified", detail: smtpProviderDetail(env) + "SMTP connection, TLS and authentication verified. No email was sent; inbox delivery remains unverified." }
+          : { state: "failed", detail: smtpProviderDetail(env) + "SMTP verification was not confirmed. No email was sent." };
+      } catch (error) { return { state: "failed", detail: smtpProviderDetail(env) + smtpFailureDetail(error) }; }
     })(),
     checkTelegramWebhook(false, env, dependencies.telegram),
   ]);
