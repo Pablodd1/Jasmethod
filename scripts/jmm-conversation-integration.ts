@@ -58,6 +58,11 @@ async function main() {
     await request("/api/nutrition/photo",undefined,{body:{},status:401});
     for(const body of [{},{photoConsent:false},{photoConsent:"true",photoProviderConsent:"openai"},{photoConsent:true,photoProviderConsent:"google_gemini"},{photoConsent:true,photoProviderConsent:"openai",photoSource:"device"}])await request("/api/nutrition/photo",a,{body,status:403});
     const before=await db.coachConversationMessage.count({where:{userId:a.id}});
+    const dialogue={message:"Help me review my goals",manualDialogueConsent:true,messageOrigin:"athlete_authored",externalConsent:true,textProviderConsent:"openai",clientRequestId:randomUUID()};
+    await request("/api/assistant",a,{body:dialogue,status:403});
+    const crossOrigin=await fetch(new URL("/api/assistant",base),{method:"POST",headers:{"Content-Type":"application/json",cookie:a.cookie,Origin:"https://other.example.invalid"},body:JSON.stringify(dialogue),redirect:"manual"});
+    assert.equal(crossOrigin.status,403,"Personal dialogue refuses cross-origin dispatch before writing");
+    assert.equal(await db.coachConversationMessage.count({where:{userId:a.id}}),before);
     for(const imageSource of [undefined,"device","imported","unknown","forged"])await request("/api/assistant",a,{body:{message:"Review image",image:{mimeType:"image/png",dataBase64:"AAAA"},imageSource,imageConsent:true,imageProviderConsent:"openai",clientRequestId:randomUUID()},status:400});
     assert.equal(await db.coachConversationMessage.count({where:{userId:a.id}}),before);
     const chat=await ask(a,"What is RPE?");

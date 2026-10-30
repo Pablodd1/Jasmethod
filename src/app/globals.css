@@ -353,3 +353,8 @@ select { min-width: 0; }
 .coach-chat-composer textarea { background: transparent; }
 @media (min-width: 768px) { .coach-chat-route { margin-top: -1rem; } .coach-chat-page { height: calc(100dvh - 5rem); } }
 @media (max-height: 520px) { .coach-chat-page { min-height: 0; } .coach-chat-composer { max-height: 52dvh; } }
+
+/* Immersive Coach route uses the actual viewport, without surrounding app chrome. */
+.coach-chat-route { max-width: none; margin: 0; padding: .75rem; height: 100dvh; overflow: hidden; }
+.coach-chat-route .coach-chat-page { width: min(100%, 72rem); height: 100%; min-height: 0; margin: 0 auto; }
+.coach-chat-route .coach-chat-composer { max-height: 38dvh; padding: .6rem .75rem; }

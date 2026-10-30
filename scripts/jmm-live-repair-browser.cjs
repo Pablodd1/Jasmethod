@@ -81,6 +81,11 @@ async function main() {
       const transcript = page.getByLabel(language === 'es' ? /Revisa y corrige la transcripción/ : /Review and correct the transcript/).first();
       await transcript.waitFor({state:'visible'});
       assert.equal(sends, 0, 'Dictation never auto-sends');
+      assert.match(await textarea.inputValue(),/Synthetic reviewed question/,'Speech appears directly in the main message box');
+      const reviewSend=page.getByRole('button',{name:language==='es'?'Enviar mensaje revisado':'Send reviewed message',exact:true});assert.equal(await reviewSend.isDisabled(),true,'Unreviewed voice cannot send');
+      await transcript.fill(language==='es'?'Mi disponibilidad es 10 horas semanales':'My availability is 10 hours per week');
+      assert.match(await textarea.inputValue(),/10/,'Transcript correction updates the main message draft');
+
       await page.getByRole('button',{name: language === 'es' ? /Descartar transcripción/ : /Discard transcript/}).click();
       await textarea.fill(language === 'es' ? 'Explica mi entrenamiento' : 'Explain my workout');
       assert.equal(await page.getByRole('button', {name: language === 'es' ? /^Enviar mensaje$/ : /^Send message$/}).isDisabled(), false, 'Typing enables submit without sending');
@@ -149,6 +154,36 @@ async function main() {
       await page.screenshot({path:`${dir}/training-${language}-${width}.png`});
       results.push({language,width,coach:'pass',heldCard:'pass',delayedPlanAndProfileFailure:'pass'});
       await context.close();
+    }
+    for (const language of ['en','es']) {
+      const es=language==='es',context=await browser.newContext({viewport:{width:390,height:900}}),page=await context.newPage(),f=fixtures(language),messages=[];
+      let sends=0;page.on('pageerror',e=>errors.push(String(e)));
+      const capabilities={externalAi:true,personalDialogue:true,textProvider:'OpenAI',imageUnderstanding:false,imageProvider:null};
+      await page.route('**/api/**',async route=>{
+        const req=route.request(),path=new URL(req.url()).pathname;
+        if(path==='/api/auth/me')return route.fulfill({json:{user:f.user}});
+        if(path==='/api/today')return route.fulfill({json:{date:today,sessions:[]}});
+        if(path==='/api/assistant'&&req.method()==='GET')return route.fulfill({json:{ok:true,conversation:{id:'manual-dialogue',messages},capabilities,sessions:[]}});
+        if(path==='/api/assistant'&&req.method()==='POST'){
+          const input=req.postDataJSON();sends++;assert.equal(input.manualDialogueConsent,true);assert.equal(input.messageOrigin,'athlete_authored');assert.equal(input.externalConsent,true);assert.equal(input.textProviderConsent,'openai');assert.equal(input.image,undefined);assert.equal(input.profile,undefined);assert.equal(input.history,undefined);
+          messages.push({id:'manual-user-'+sends,role:'user',source:'text',content:input.message,createdAt:new Date().toISOString(),clientRequestId:input.clientRequestId},{id:'manual-reply-'+sends,role:'assistant',source:'openai',content:sends===1?(es?'Revisemos tu objetivo y disponibilidad. ¿Cuál es tu prioridad?':"Let's review your goal and availability. What is your priority?"):(es?'Puedo ayudarte a preparar preguntas para una evaluación médica; no puedo diagnosticar una lesión.':'I can help prepare questions for a medical assessment; I cannot diagnose an injury.'),createdAt:new Date().toISOString()});
+          return route.fulfill({json:{ok:true,conversation:{id:'manual-dialogue',messages},capabilities,mode:'coach_ai',externalStatus:'answered',dialogueAction:sends===1?'review_today':'none'}});
+        }
+        unexpected.push(req.method()+' '+path);return route.fulfill({status:500,json:{error:'Unexpected synthetic dialogue operation'}});
+      });
+      await page.goto(base+'/coach');await page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true}).waitFor();
+      const routeBounds=await page.locator('.coach-chat-route').boundingBox();assert.ok(routeBounds&&routeBounds.y===0&&routeBounds.height===900,'Coach uses the full viewport without app navigation');
+      assert.equal(await page.getByRole('navigation',{name:es?'Navegación principal':'Main navigation',exact:true}).count(),0);
+      await page.getByText(es?'Conversación personal con OpenAI':'Personal conversation with OpenAI',{exact:true}).click();
+      const consent=page.getByRole('checkbox',{name:es?/Permito enviar a OpenAI mis mensajes/:/Allow OpenAI to receive my own/});assert.equal(await consent.isChecked(),false);assert.equal(sends,0);await consent.check();
+      const composer=page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true});await composer.fill(es?'Ayúdame a desarrollar mi entrenamiento alrededor del trabajo.':'Help me develop my training around work.');await page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}).click();
+      await page.getByText(es?'Revisemos tu objetivo y disponibilidad. ¿Cuál es tu prioridad?':"Let's review your goal and availability. What is your priority?",{exact:true}).waitFor();
+      await page.getByRole('region',{name:es?'Revisión protegida de hoy':'Protected today review',exact:true}).waitFor();
+      await composer.fill(es?'¿Cómo podemos hablar de una lesión?':'How can we discuss an injury concern?');await page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}).click();
+      await page.getByText(es?'Puedo ayudarte a preparar preguntas para una evaluación médica; no puedo diagnosticar una lesión.':'I can help prepare questions for a medical assessment; I cannot diagnose an injury.',{exact:true}).waitFor();assert.equal(sends,2);
+      await page.screenshot({path:dir+'/personal-dialogue-'+language+'-390.png'});
+      await page.reload();await page.getByText(es?'Conversación personal con OpenAI':'Personal conversation with OpenAI',{exact:true}).click();assert.equal(await consent.isChecked(),false,'Personal consent resets on reload');assert.equal(sends,2);
+      results.push({language,width:390,immersiveConversation:'pass',explicitManualDialogueConsent:'pass',followupAndProtectedReview:'pass',reloadConsentReset:'pass'});await context.close();
     }
     for (const language of ['en','es']) {
       const context=await browser.newContext({viewport:{width:390,height:900}}),page=await context.newPage(),f=fixtures(language);

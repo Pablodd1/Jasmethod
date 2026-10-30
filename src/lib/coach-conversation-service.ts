@@ -1,3 +1,4 @@
+import { coachDialogueAnswer, manualDialogueAllowed, manualDialogueHistory, MANUAL_DIALOGUE_POLICY } from "./coach-dialogue-provider";
 import { AI_DATA_POLICY_VERSION, historySafeLocalReply } from "./ai-data-policy";
 import {ACTIVITY_EVIDENCE_SELECT} from "./activity-evidence";
 import { readActivityDecisions } from "./activity-reconciliation";
@@ -24,7 +25,7 @@ import { currentOrReportedWorkoutWhere } from './calendar-workouts';
 export type ConversationActor = { id: string; timezone: string; language?: string };
 type DB = Prisma.TransactionClient;
 export const CONVERSATION_MESSAGE_LIMIT = 60;
-function coachCapabilities() { const externalAi = coachTextConfigured(), imageUnderstanding = coachVisionConfiguration().configured; return { externalAi, textProvider: externalAi ? "OpenAI" : null, imageUnderstanding, imageProvider: imageUnderstanding ? "OpenAI" : null }; }
+function coachCapabilities() { const externalAi = coachTextConfigured(), imageUnderstanding = coachVisionConfiguration().configured; return { externalAi, personalDialogue: externalAi, textProvider: externalAi ? "OpenAI" : null, imageUnderstanding, imageProvider: imageUnderstanding ? "OpenAI" : null }; }
 const SAFETY_RULES = ["urgent-symptoms", "illness-or-pain", "clarify-fatigue", "clarify-prior-safety", "clarify-symptom-timing", "clarify-current-symptoms", "unreviewed-image-urgent", "unreviewed-image-symptoms"];
 const mutationFields: Record<string, readonly string[]> = {
   profile: ["goal", "weeklyHours", "weightKg", "heightCm", "birthYear", "experience", "ftp"],
@@ -245,6 +246,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
   // Explicitly reject cross-athlete bodies as well as query-string overrides.
   if (body.athleteId !== undefined && body.athleteId !== actor.id) throw new ApiError("Private assistant conversations are only available to their owner", 403);
   const input = parseAssistantInput(body);
+  const manualDialogue = manualDialogueAllowed(input, input.message);
   const sessionId = guard.sessionId;
   const today = dayBounds(actor.timezone);
   // Most chat turns do not need a 90-day load series. Keep today's performed
@@ -346,25 +348,30 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const clarifications = reply.ruleId === "coach-conversation-v1:clarify-data" ? [] : conversationClarifications(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate });
       const answer = [reply.answer, candidates.length ? actor.language === "es" ? "¿Quieres aplicar estos cambios? Revisa los valores abajo y confirma solo los correctos. Aún no se ha guardado nada." : "Apply these changes? Review the values below and confirm only those that are correct. Nothing has been saved yet." : "", ...clarifications, ...(image?.warnings ?? [])].filter(Boolean).join("\n\n");
       const userMessage = await tx.coachConversationMessage.create({ data: { conversationId: conversation.id, userId: actor.id, role: "user", content: input.message || "Image attached for review", source: input.image ? "image" : input.source,
-        metadata: JSON.stringify({ clientRequestId: typeof body.clientRequestId === "string" ? body.clientRequestId : null, localDate: today.key, timezone: actor.timezone, sessionId: sessionId ?? null, externalConsent: input.externalConsent, textProviderConsent: input.textProviderConsent ?? null, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent ?? null, imageStatus: image?.status ?? null,imageSource: input.imageSource??null }) } });
+        metadata: JSON.stringify({ clientRequestId: typeof body.clientRequestId === "string" ? body.clientRequestId : null, localDate: today.key, timezone: actor.timezone, sessionId: sessionId ?? null, externalConsent: input.externalConsent, textProviderConsent: input.textProviderConsent ?? null, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent ?? null, imageStatus: image?.status ?? null,imageSource: input.imageSource??null, ...(manualDialogue ? {manualDialoguePolicy:MANUAL_DIALOGUE_POLICY,manualDialogueGeneration:conversation.generation,manualDialogueConsent:true,messageOrigin:"athlete_authored"} : {}) }) } });
       if (candidates.length) {
         await tx.coachConversationProposal.updateMany({ where: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation, status: "pending" }, data: { status: "superseded", revision: { increment: 1 } } });
         await tx.coachConversationProposal.create({ data: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation, sourceMessageId: userMessage.id, timezone: actor.timezone,
           candidates: JSON.stringify(candidates), baseRevisions: JSON.stringify({ profile: profileRevision(profile), beforeProfile: profileBeforeValues(profile, candidates), workouts: selected ? { [selected.id]: { revision: workoutRevision(selected), date: sessionDate } } : {} }) } });
       }
-      const assistantMessage = await tx.coachConversationMessage.create({ data: { conversationId: conversation.id, userId: actor.id, role: "assistant", content: answer, source: "local", metadata: JSON.stringify({ historyPolicy:AI_DATA_POLICY_VERSION, ruleId: reply.ruleId, sourceIds: reply.sourceIds ?? [],needsHumanReview:suggestedActions.length>0||reply.ruleId==='coach-conversation-v1:ask-next-detail', requiresCheckinReview: unreviewedCurrentCheckin, pendingActions: suggestedActions, imageStatus: image?.status ?? null }) } });
-      return { ok: true, answer, mode: "coach_local", trainingModified: false, externalStatus: input.externalConsent ? "not_configured" : "not_requested", imageStatus: image?.status ?? "not_requested", capabilities: coachCapabilities(), ...await readConversation(actor, tx), _context: context, _guard: { conversationId: conversation.id, revision: conversation.revision, generation: conversation.generation, messageId: assistantMessage.id,sourceMessageId:userMessage.id,baseRevisions:{profile:profileRevision(profile),beforeProfile:profileBeforeValues(profile),workouts:selected?{[selected.id]:{revision:workoutRevision(selected),date:sessionDate}}:{}} }, _ruleId: reply.ruleId, _hasCandidates: candidates.length > 0 };
+      const replyMetadata = { historyPolicy:AI_DATA_POLICY_VERSION, ruleId: reply.ruleId, sourceIds: reply.sourceIds ?? [],needsHumanReview:suggestedActions.length>0||reply.ruleId==='coach-conversation-v1:ask-next-detail', requiresCheckinReview: unreviewedCurrentCheckin, pendingActions: suggestedActions, imageStatus: image?.status ?? null };
+      const assistantMessage = await tx.coachConversationMessage.create({ data: { conversationId: conversation.id, userId: actor.id, role: "assistant", content: answer, source: "local", metadata: JSON.stringify(replyMetadata) } });
+      const dialogueRows = manualDialogue ? await tx.coachConversationMessage.findMany({ where: { userId: actor.id, conversationId: conversation.id, id: { not: userMessage.id } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 60, select: { role: true, content: true, metadata: true } }) : [];
+      const dialogueHistory = manualDialogueHistory([...dialogueRows].reverse(), conversation.generation);
+      return { ok: true, answer, mode: "coach_local", trainingModified: false, externalStatus: input.externalConsent ? "not_configured" : "not_requested", imageStatus: image?.status ?? "not_requested", capabilities: coachCapabilities(), ...await readConversation(actor, tx), _replyMetadata:replyMetadata, _dialogueHistory:dialogueHistory, _context: context, _guard: { conversationId: conversation.id, revision: conversation.revision, generation: conversation.generation, messageId: assistantMessage.id,sourceMessageId:userMessage.id,baseRevisions:{profile:profileRevision(profile),beforeProfile:profileBeforeValues(profile),workouts:selected?{[selected.id]:{revision:workoutRevision(selected),date:sessionDate}}:{}} }, _ruleId: reply.ruleId, _hasCandidates: candidates.length > 0 };
     }, { isolationLevel: "Serializable", timeout: 20000 });
-    const { _context, _guard, _ruleId, _hasCandidates, ...result } = local;
+    const { _replyMetadata, _dialogueHistory, _context, _guard, _ruleId, _hasCandidates, ...result } = local;
     // Network work never runs inside a database transaction. A concurrent clear,
     // confirmation or new message prevents late provider output replacing state.
-    const provider = await coachTextAnswer({ message: input.message, localRuleId: _ruleId, context: _context, externalConsent: input.externalConsent,aiReplyMemoryConsent:input.aiReplyMemoryConsent, textProviderConsent: input.textProviderConsent, hasCandidates: _hasCandidates });
+    const provider = input.manualDialogueConsent === true && !manualDialogue ? {status:"policy_local" as const} : manualDialogue && _ruleId !== "coach-conversation-v1:urgent-symptoms" && _ruleId !== "coach-conversation-v1:unreviewed-image-urgent"
+      ? await coachDialogueAnswer({ message: input.message, language: actor.language || "en", units: result.displayUnits, externalConsent: input.externalConsent, textProviderConsent: input.textProviderConsent, manualDialogueConsent: input.manualDialogueConsent, messageOrigin: input.messageOrigin, history: _dialogueHistory })
+      : await coachTextAnswer({ message: input.message, localRuleId: _ruleId, context: _context, externalConsent: input.externalConsent,aiReplyMemoryConsent:input.aiReplyMemoryConsent, textProviderConsent: input.textProviderConsent, hasCandidates: _hasCandidates });
     if (!provider.answer) {
       const history = await prisma.$transaction(tx => readConversation(actor, tx), { isolationLevel: "Serializable" });
       const lastAnswer = [...history.conversation.messages].reverse().find(message => message.role === "assistant");
       return { ...result, ...history, answer: lastAnswer?.content ?? "", externalStatus: provider.status };
     }
-    const disclosure = actor.language === "es" ? "OpenAI · educación general sin contexto personal ni memoria. Los cambios se revisan en JMM." : "OpenAI · general education without personal context or memory. Changes are reviewed in JMM.";
+    const disclosure = manualDialogue ? (actor.language === "es" ? "OpenAI · Solo tus mensajes propios consentidos; los registros y tarjetas de JMM no se comparten." : "OpenAI · Your consented own messages only; JMM records and cards are not shared.") : actor.language === "es" ? "OpenAI · educación general sin contexto personal ni memoria. Los cambios se revisan en JMM." : "OpenAI · general education without personal context or memory. Changes are reviewed in JMM.";
     try {
       return await prisma.$transaction(async tx => {
         const current = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
@@ -387,11 +394,12 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           await tx.coachConversationProposal.create({data:{userId:actor.id,conversationId:current.id,generation:current.generation,sourceMessageId:_guard.sourceMessageId,timezone:actor.timezone,candidates:JSON.stringify(interpreted),baseRevisions:JSON.stringify(_guard.baseRevisions)}});
         }
         const review=interpreted.length?(actor.language==='es'?'Revisa y confirma los valores abajo; todavía no se han guardado.':'Review and confirm the values below; they have not been saved yet.'):'';
-        const answer = [provider.answer,review,disclosure].filter(Boolean).join('\n\n');
-        const updated = await tx.coachConversationMessage.updateMany({ where: { id: _guard.messageId, userId: actor.id, conversationId: current.id }, data: { content: answer, source: "openai", metadata: JSON.stringify({ ruleId: _ruleId, provider: "OpenAI", namedConsent: "openai", contextVersion: AI_DATA_POLICY_VERSION, sourceIds: provider.sourceIds ?? [],needsHumanReview:provider.needsHumanReview===true,externalConsent: true }) } });
+        const safety = manualDialogue && SAFETY_RULES.some(rule => _ruleId === `coach-conversation-v1:${rule}`) ? result.answer : "";
+        const answer = [safety,provider.answer,review,disclosure].filter(Boolean).join('\n\n');
+        const updated = await tx.coachConversationMessage.updateMany({ where: { id: _guard.messageId, userId: actor.id, conversationId: current.id }, data: { content: answer, source: "openai", metadata: JSON.stringify({ ..._replyMetadata, ruleId: _ruleId, provider: "OpenAI", namedConsent: "openai", contextVersion: AI_DATA_POLICY_VERSION, sourceIds: provider.sourceIds ?? [],needsHumanReview:_replyMetadata.needsHumanReview || provider.needsHumanReview===true,externalConsent: true, ...(manualDialogue && !safety ? {manualDialoguePolicy:MANUAL_DIALOGUE_POLICY,manualDialogueGeneration:current.generation,manualDialogueConsent:true,messageOrigin:"athlete_authored"} : {}) }) } });
         if (updated.count !== 1) throw new ApiError('The conversation changed before the interpreted reply could be saved.',409);
         await tx.coachConversation.update({ where: { id: current.id, userId: actor.id }, data: { revision: { increment: 1 } } });
-        return { ...result, ...await readConversation(actor, tx), answer, mode: "coach_ai", externalStatus: "answered", disclosure };
+        return { ...result, ...await readConversation(actor, tx), answer, mode: "coach_ai", externalStatus: "answered", disclosure, ...("dialogueAction" in provider ? {dialogueAction:provider.dialogueAction} : {}) };
       }, { isolationLevel: "Serializable" });
     } catch { return { ...result, ...await readConversation(actor), externalStatus: "unavailable" }; }
   } catch (error) { transactionError(error); }
