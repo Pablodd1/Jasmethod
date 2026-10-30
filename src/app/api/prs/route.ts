@@ -4,15 +4,17 @@ import { ApiError, errorResponse } from "@/lib/access";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { personalRecordEntry, type RecordDraft } from "@/lib/personal-record-entry";
+import { dateKey } from "@/lib/dates";
 
-// GET /api/prs — personal records computed from completed imported/manual workouts.
-// PRs drive goal-setting: the coach uses these to set realistic race targets.
+// GET /api/prs — recorded activity results and separately reported personal marks.
+// Whole-activity matches are not verified race results or fastest segment efforts.
 export async function GET() {
   const user = await getCurrentUser();
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [workouts, profile] = await Promise.all([prisma.workout.findMany({
+  const [storedWorkouts, profile] = await Promise.all([prisma.workout.findMany({
     where: { userId: user.id, completed: true, source: { not: "plan" } }, // imported + manual, skip plan seeds
     orderBy: { date: "desc" },
     select: {
@@ -20,6 +22,9 @@ export async function GET() {
       sport: true,
       title: true,
       durationMin: true,
+      actualDurationMin: true,
+      actualSport: true,
+      planned: true,
       distanceKm: true,
       avgHr: true,
       avgPower: true,
@@ -27,6 +32,13 @@ export async function GET() {
       source: true,
     },
   }), prisma.athleteProfile.findUnique({where:{userId:user.id}})]);
+  // A completed planned duration is not an actual result. Only explicit actuals
+  // or a completed unplanned activity establish recorded time.
+  const workouts = storedWorkouts.flatMap(w=>{
+    const minutes = w.actualDurationMin ?? (w.planned === false ? w.durationMin : null);
+    return typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0 && minutes <= 1440
+      ? [{...w,sport:w.actualSport || w.sport,durationMin:minutes}] : [];
+  });
   const savedManual = readManualPersonalBests(profile?.manualPrs);
   // Do not turn malformed stored records into an editable empty replacement.
   const manualReviewRequired = savedManual === null || savedManual.some(record => record.value <= 0 || !record.unit.trim());
@@ -53,12 +65,14 @@ export async function GET() {
   function bestTimeFor(
     sport: string,
     targetKm: number,
-  ): { date: Date; minutes: number; title: string; paceSecKm: number } | null {
+  ): { date: Date; minutes: number; title: string; paceSecKm: number; source: string; distanceKm: number } | null {
     let best: {
       date: Date;
       minutes: number;
       title: string;
       paceSecKm: number;
+      source: string;
+      distanceKm: number;
     } | null = null;
     for (const w of workouts) {
       if (
@@ -68,11 +82,11 @@ export async function GET() {
         w.distanceKm > targetKm * 1.01
       )
         continue;
-      // extrapolate time to exact distance only if duration is plausible
+      // Preserve the whole activity's actual time; never extrapolate an exact-distance PR.
       const minutes = w.durationMin; // actual total for an activity covering this distance
       const paceSecKm = (w.durationMin * 60) / w.distanceKm;
       if (!best || minutes < best.minutes)
-        best = { date: w.date, minutes, title: w.title, paceSecKm };
+        best = { date: w.date, minutes, title: w.title, paceSecKm, source:w.source || "unknown", distanceKm:w.distanceKm };
     }
     return best;
   }
@@ -83,7 +97,8 @@ export async function GET() {
     if (b)
       prs.push({
         sport: "run",
-        label: `${d === 21.0975 ? "Half" : d === 42.195 ? "Marathon" : `${d}K`} Run best recorded time`,
+        label: `${d === 21.0975 ? "Half" : d === 42.195 ? "Marathon" : `${d}K`} Run recorded activity time`,
+        source:b.source,
         minutes: b.minutes,
         paceSecKm: Math.round(b.paceSecKm),
         date: b.date,
@@ -95,9 +110,10 @@ export async function GET() {
     if (b)
       prs.push({
         sport: "bike",
-        label: `${d}K Bike best recorded time`,
+        label: `${d}K Bike recorded activity time`,
+        source:b.source,
         minutes: b.minutes,
-        avgSpeedKmh: Math.round((d / (b.minutes / 60)) * 10) / 10,
+        avgSpeedKmh: Math.round((b.distanceKm / (b.minutes / 60)) * 10) / 10,
         date: b.date,
         title: b.title,
       });
@@ -107,9 +123,10 @@ export async function GET() {
     if (b)
       prs.push({
         sport: "swim",
-        label: `${d === 0.75 ? "750m" : d === 1.5 ? "1500m" : "3.8km"} Swim best recorded time`,
+        label: `${d === 0.75 ? "750m" : d === 1.5 ? "1500m" : "3.8km"} Swim recorded activity time`,
+        source:b.source,
         minutes: b.minutes,
-        paceSec100m: Math.round((b.minutes * 60) / (d * 10)),
+        paceSec100m: Math.round(b.paceSecKm / 10),
         date: b.date,
         title: b.title,
       });
@@ -117,26 +134,28 @@ export async function GET() {
 
   // ---- Best power output (bike) ----
   const bestPower = workouts
-    .filter((w) => w.sport === "bike" && w.avgPower)
+    .filter((w) => w.sport === "bike" && typeof w.avgPower === "number" && Number.isFinite(w.avgPower) && w.avgPower > 0)
     .sort((a, b) => (b.avgPower || 0) - (a.avgPower || 0))[0];
   if (bestPower)
     prs.push({
       sport: "bike",
       label: "Best Avg Power",
       watts: bestPower.avgPower,
+      source:bestPower.source,
       date: bestPower.date,
       title: bestPower.title,
     });
 
   // ---- Max distance in one session ----
   const longest = workouts
-    .filter((w) => w.distanceKm)
+    .filter((w) => typeof w.distanceKm === "number" && Number.isFinite(w.distanceKm) && w.distanceKm > 0)
     .sort((a, b) => (b.distanceKm || 0) - (a.distanceKm || 0))[0];
   if (longest)
     prs.push({
       sport: longest.sport,
       label: "Longest Session",
       km: Math.round((longest.distanceKm || 0) * 10) / 10,
+      source:longest.source,
       date: longest.date,
       title: longest.title,
     });
@@ -157,7 +176,7 @@ export async function GET() {
       avgPower: w.avgPower,
     }));
 
-  return NextResponse.json({ prs, races, manual, manualReviewRequired, revision: profileRevision(profile), total: prs.length });
+  return NextResponse.json({ prs:prs.map(record=>({...record,observedAt:record.date,date:dateKey(record.date,user.timezone)})), races, manual, manualReviewRequired, revision: profileRevision(profile), total: prs.length });
 }
 
 // PUT /api/prs — replace the athlete's manual personal records.
@@ -172,6 +191,14 @@ export async function PUT(req: Request) {
     if (!body || typeof body !== "object" || Array.isArray(body) || !("manual" in body) || !Array.isArray(body.manual)) throw new ApiError("Supply the personal records you reviewed before saving");
     const manual = readManualPersonalBests(body.manual);
     if (!manual || manual.some(row => row.value <= 0 || !row.unit.trim())) throw new ApiError("Each personal best needs a label, positive result and units (maximum 50)");
+    if ("recordDraft" in body) {
+      let record;
+      try { record = personalRecordEntry(body.recordDraft as RecordDraft,dateKey(new Date(),user.timezone)); }
+      catch(error){throw new ApiError((error as Error).message);}
+      const last = manual.at(-1);
+      if (!last || ["label","value","unit","date"].some(key=>(last as any)[key] !== (record as any)[key])) throw new ApiError("The reviewed result does not match the submitted record.");
+      if (manual.slice(0,-1).some(row=>row.label===record.label&&row.value===record.value&&row.unit===record.unit&&row.date===record.date)) throw new ApiError("This result is already saved.",409);
+    }
     const profile = await saveProfile(user.id, user, {
       expectedRevision: "expectedRevision" in body ? body.expectedRevision : undefined,
       manualPrs: JSON.stringify(manual),
