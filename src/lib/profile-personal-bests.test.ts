@@ -63,7 +63,7 @@ test("PB reads remain athlete-scoped and reject anonymous reads without touching
 
 test("recorded activity times use actual minutes and sport, preserving provider and observation date",async()=>{
   const row={date:new Date("2026-10-01T12:00Z"),sport:"run",title:"Recorded run",planned:false,durationMin:45,actualDurationMin:24,distanceKm:5,source:"garmin"};
-  const f=fixture("[]",[row,{...row,sport:"bike",actualSport:"run",durationMin:10,actualDurationMin:null,planned:true}]);
+  const f=fixture("[]",[row,{...row,sport:"bike",actualSport:"run",durationMin:10,actualDurationMin:10,planned:true},{...row,sport:"run",actualSport:"bike",actualDurationMin:5}]);
   const body=await(await f.GET()).json();
   assert.equal(body.prs[0].minutes,24);assert.equal(body.prs[0].source,"garmin");assert.equal(body.prs[0].date,"2026-10-01");assert.equal(body.prs[0].observedAt,"2026-10-01T12:00:00.000Z");
   assert.match(body.prs[0].label,/recorded activity time/);assert.equal(body.prs.filter((p:any)=>p.minutes).length,1);

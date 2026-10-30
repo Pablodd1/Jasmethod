@@ -35,6 +35,9 @@ export async function GET() {
   // A completed planned duration is not an actual result. Only explicit actuals
   // or a completed unplanned activity establish recorded time.
   const workouts = storedWorkouts.flatMap(w=>{
+    // Planned distance/power and a substituted sport are not corroborated
+    // actual measurements. Keep those records out of automatic distance PRs.
+    if(w.planned !== false || (w.actualSport && w.actualSport !== w.sport)) return [];
     const minutes = w.actualDurationMin ?? (w.planned === false ? w.durationMin : null);
     return typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0 && minutes <= 1440
       ? [{...w,sport:w.actualSport || w.sport,durationMin:minutes}] : [];
