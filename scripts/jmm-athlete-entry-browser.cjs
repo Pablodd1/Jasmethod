@@ -94,6 +94,8 @@ async function browserJourney(browser,language){
   await records.getByRole('textbox',{name:'Record distance',exact:true}).fill('5');
   await records.getByRole('combobox',{name:'Distance units',exact:true}).selectOption('km');
   await records.getByLabel(es?'Fecha real':'Actual date',{exact:true}).fill(ago(1));
+  for(const input of await records.locator('input,select').all()){const box=await input.boundingBox();if(box)assert.ok(box.height>=44,'Personal-result entry needs readable mobile touch targets');}
+  await records.getByRole('textbox',{name:es?'Resultado':'Result',exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:`${dir}/sport-record-entry-${language}-390.png`,fullPage:false});
   const recordSave=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/prs'&&r.request().method()==='PUT');
   await records.getByRole('button',{name:es?'Añadir marca':'Add PR',exact:true}).click();assert.equal((await recordSave).status(),200);
   const savedRecords=JSON.parse((await db.athleteProfile.findUniqueOrThrow({where:{userId:who.user.id}})).manualPrs);

@@ -132,7 +132,7 @@ export function PrsCard({ lang = "en", timezone = "UTC", units = "metric" }: { l
             </span>
             <span className="text-[10px] text-slate-400">{m.date}</span>
             <button
-              className="p-1 rounded hover:bg-red-50 text-red-500"
+              className="min-h-11 min-w-11 inline-flex items-center justify-center rounded hover:bg-red-50 text-red-500"
               title={es ? "Eliminar marca" : "Remove record"}
               aria-label={`${es ? "Eliminar" : "Remove"} ${m.label}`}
               disabled={saving || !data || data.manualReviewRequired}
@@ -147,10 +147,10 @@ export function PrsCard({ lang = "en", timezone = "UTC", units = "metric" }: { l
       {/* Add manual PR */}
       <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5 space-y-2">
         <summary className="text-sm font-semibold min-h-11 cursor-pointer">{es ? "Añadir un resultado real que falta" : "Add a missing actual result"}</summary>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 [&_input]:min-h-11 [&_select]:min-h-11">
           <label className="text-xs">{es ? "Deporte" : "Sport"}<select aria-label="Record sport" className="input" disabled={saving} value={sport} onChange={e=>setSport(e.target.value)}>{RECORD_SPORTS.map(s=><option key={s} value={s}>{({run:es?"Carrera":"Run",bike:es?"Ciclismo":"Bike",swim:es?"Natación":"Swim",triathlon:es?"Triatlón":"Triathlon",hyrox:"HYROX",strength:es?"Fuerza":"Strength"})[s]}</option>)}</select></label>
           <label className="text-xs">{es ? "Tipo de resultado" : "Result type"}<select aria-label="Record metric" className="input" disabled={saving} value={metric} onChange={e=>{setMetric(e.target.value);setValue("");setUnit(e.target.value==="speed"?"km/h":e.target.value==="load"?"kg":"min/km");}}>{[ ["time",es?"Tiempo total":"Total time"],["pace",es?"Ritmo":"Pace"],["speed",es?"Velocidad":"Speed"],["power",es?"Potencia media":"Average power"],["distance",es?"Distancia":"Distance"],["load",es?"Carga":"Load"],["reps",es?"Repeticiones":"Repetitions"] ].map(([v,t])=><option key={v} value={v}>{t}</option>)}</select></label>
-          <input aria-label={es ? "Nombre de la marca" : "Personal best label"} disabled={saving} className="input !py-1 text-xs" placeholder={es ? "Marca (ej. 5k TT)" : "Label (e.g. 5k TT)"} value={label} onChange={(e) => setLabel(e.target.value)} />
+          <input aria-label={es ? "Nombre de la marca" : "Personal best label"} disabled={saving} className="input min-h-11 text-sm" placeholder={es ? "Prueba, carrera o estación (ej. 5K)" : "Test, race or station (e.g. 5K)"} value={label} onChange={(e) => setLabel(e.target.value)} />
           <label className="text-xs">{metric==="time"?(es?"Tiempo total · m:ss o h:mm:ss":"Total time · m:ss or h:mm:ss"):metric==="pace"?(es?"Ritmo · m:ss":"Pace · m:ss"):metric==="power"?(es?"Potencia media (W)":"Average power (W)"):metric==="speed"?(es?"Velocidad":"Speed"):metric==="load"?(es?"Carga":"Load"):metric==="reps"?(es?"Repeticiones":"Repetitions"):(es?"Distancia":"Distance")}<input aria-label={es ? "Resultado" : "Result"} disabled={saving} className="input text-sm" type="text" inputMode={metric==="time"||metric==="pace"?"text":"decimal"} placeholder={metric==="time"?"24:30":metric==="pace"?"5:00":metric==="power"?"240":"30"} value={value} onChange={(e) => setValue(e.target.value)} /></label>
           {["pace","speed","load"].includes(metric)&&<label className="text-xs">{es?"Unidades del resultado":"Result units"}<select aria-label={es?"Unidades":"Units"} className="input" disabled={saving} value={unit} onChange={e=>setUnit(e.target.value)}>{(metric==="pace"?["min/km","min/mi","min/100m","min/100yd"]:metric==="speed"?["km/h","mph"]:["kg","lb"]).map(u=><option key={u}>{u}</option>)}</select></label>}
           {metric!=="distance"&&<label className="text-xs">{es?"Distancia del resultado (opcional)":"Result distance (optional)"}<input aria-label="Record distance" className="input" inputMode="decimal" value={distance} disabled={saving} onChange={e=>setDistance(e.target.value)}/></label>}
@@ -158,7 +158,7 @@ export function PrsCard({ lang = "en", timezone = "UTC", units = "metric" }: { l
           <label className="text-xs">{es?"Fecha del resultado":"Result date"}<input aria-label={es ? "Fecha real" : "Actual date"} disabled={saving} className="input text-sm" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
         </div>
         <button
-          className="btn-secondary w-full justify-center !py-1 text-xs"
+          className="btn-secondary min-h-11 w-full justify-center text-sm"
           disabled={saving || !data || data.manualReviewRequired || !label.trim() || !value}
           onClick={async () => {
             const draft = {sport,metric,label,result:value,distance,distanceUnit,date,units:unit};
