@@ -233,9 +233,10 @@ for (const es of [false, true]) test(`composer comes before optional workout/ima
   const tools = markup.indexOf(es ? "Herramientas opcionales" : "Optional tools");
   const workout = markup.indexOf(es ? "Sesión sobre la que hablas" : "Workout you are discussing");
   const privacy = markup.indexOf(es ? "Privacidad y detalles" : "Privacy &amp; conversation");
-  assert.ok(composer>=0&&composer<send&&send<tools&&tools<workout);
+  assert.ok(composer>=0&&composer<send);
+  assert.ok(tools>=0&&tools<workout&&workout<composer);
   assert.ok(privacy>=0);
-  assert.equal((markup.match(/<details/g) || []).length, 6);
+  assert.equal((markup.match(/<details/g) || []).length, 7);
   assert.match(markup,/tel:\+17862317906/);
   assert.match(markup,/tel:\+17869708366/);
   assert.doesNotMatch(markup, /<details[^>]*\bopen(?:=|>|\s)/);

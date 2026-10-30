@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./auth";
 import { AppShell, MobileNav } from "./app-shell";
 
-export function AuthGate({ children }: { children: React.ReactNode }) {
+export function AuthGate({ children, immersive = false }: { children: React.ReactNode; immersive?: boolean }) {
   const { user, loading, error, language } = useAuth();
   const router = useRouter();
 
@@ -33,12 +33,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <AppShell>{children}</AppShell>
-      <MobileNav />
+      <AppShell immersive={immersive}>{children}</AppShell>
+      {!immersive && <MobileNav />}
     </>
   );
 }
 
-export function ProtectedPage({ children }: { children: React.ReactNode }) {
-  return <AuthGate>{children}</AuthGate>;
+export function ProtectedPage({ children, immersive = false }: { children: React.ReactNode; immersive?: boolean }) {
+  return <AuthGate immersive={immersive}>{children}</AuthGate>;
 }

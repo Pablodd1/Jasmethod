@@ -14,7 +14,7 @@ type State={localToday:string;readiness:{ready:boolean;missing:string[];review:s
 type Week={week:number;theme:string;totalMinutes:number;sessions:{daySlot:number;title:string;sport:string;minutes:number;zone:string;description:string;startTime?:string;steps?:{name:string;seconds:number;zone:string}[]}[]};
 type Preview={previewToken:string;warning:string;doubleDayAgreementRequired:boolean;eventTradeoffAgreementRequired:boolean;preview:{startDate:string;startDateKey?:string;timezone?:string;weeks:number;weeklyBudgetMin:number;weeksPreview:Week[];cycle?:{assessment?:string;events?:{warnings?:{message:string}[]}}}};
 const button="btn-secondary min-h-11 whitespace-normal";
-export function CoachCommanderWorkspace({athleteId,es,messages,sessionId,disabled,onSaved,onBusy}:{athleteId:string;es:boolean;messages:CoachMessage[];sessionId:string;disabled:boolean;onSaved:()=>void|Promise<void>;onBusy:(busy:boolean)=>void}) {
+export function CoachCommanderWorkspace({requestedArea,requestKey,athleteId,es,messages,sessionId,disabled,onSaved,onBusy}:{requestedArea?:CommanderArea;requestKey?:string;athleteId:string;es:boolean;messages:CoachMessage[];sessionId:string;disabled:boolean;onSaved:()=>void|Promise<void>;onBusy:(busy:boolean)=>void}) {
   const [area,setArea]=useState<CommanderArea|null>(null),[state,setState]=useState<State|null>(null),[preview,setPreview]=useState<Preview|null>(null);
   const [weeks,setWeeks]=useState(""),[start,setStart]=useState(""),[easy,setEasy]=useState(""),[window,setWindow]=useState("");
   const [error,setError]=useState(""),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[double,setDouble]=useState(false),[events,setEvents]=useState(false);
@@ -33,6 +33,7 @@ export function CoachCommanderWorkspace({athleteId,es,messages,sessionId,disable
     if(draft.weeks!==undefined)setWeeks(String(draft.weeks));if(draft.startDate)setStart(draft.startDate);
     setError(draft.questions.length?(es?"Revisa las semanas y la fecha de inicio; no se han supuesto valores.":draft.questions.join(" ")):"");
   },[messages,es,disabled]);
+  useEffect(()=>{if(requestedArea&&requestKey)setArea(requestedArea);},[requestedArea,requestKey]);
   async function readState() {
     const ticket=++epoch.current;
     try {

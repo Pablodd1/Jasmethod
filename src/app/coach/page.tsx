@@ -8,7 +8,7 @@ import { CoachConversation } from "@/components/daily-training/coach-conversatio
 export default function CoachPage() {
   const { user } = useAuth();
   const es = user?.language === "es";
-  return <ProtectedPage><main className="coach-chat-route" aria-label={es ? "Conversación con JMM Coach" : "JMM Coach conversation"}>
+  return <ProtectedPage immersive><main className="coach-chat-route" aria-label={es ? "Conversación con JMM Coach" : "JMM Coach conversation"}>
     <h1 className="sr-only">JMM Coach</h1>
     {user && <CoachConversation key={user.id} fullPage athleteId={user.id} es={es} onConfirmed={() => undefined} />}
   </main></ProtectedPage>;

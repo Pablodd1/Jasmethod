@@ -783,3 +783,28 @@ test("public conversation distinguishes safety review from a general human-help 
     } finally { f.restore(); }
   }
 });
+
+
+test("consented personal dialogue reuses only its isolated messages and returns a read-only profile action", async () => {
+ const f = fixture([]), oldFetch = global.fetch;
+ const previous = {enabled:process.env.EXTERNAL_AI_ENABLED,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_TEXT_MODEL};
+ try {
+  process.env.EXTERNAL_AI_ENABLED="true";process.env.OPENAI_API_KEY="synthetic-dialogue-key";process.env.OPENAI_TEXT_MODEL="gpt-4.1-mini-2025-04-14";
+  f.state.messages.push({id:"legacy-imported-answer",role:"assistant",source:"local",userId:actor.id,conversationId:"conversation-a",content:"IMPORTED_PROFILE_CANARY",createdAt:new Date(),metadata:JSON.stringify({historyPolicy:"openai-generic-education-v3"})});
+  let calls=0;
+  global.fetch=async (url,init)=>{
+   assert.equal(String(url),"https://api.openai.com/v1/chat/completions");calls++;const body=JSON.parse(init?.body as string);assert.doesNotMatch(init?.body as string,/IMPORTED_PROFILE_CANARY|Original interval|Keep historical prescription/);
+   if(calls===2)assert.ok(body.messages.some((message:any)=>message.content==="I want to improve endurance alongside work."));
+   return Response.json({choices:[{finish_reason:"stop",message:{role:"assistant",content:JSON.stringify({answer:"Let's review your goal and availability together. What is most important to you?",action:"review_profile"})}}]});
+  };
+  const consent={manualDialogueConsent:true,messageOrigin:"athlete_authored",externalConsent:true,textProviderConsent:"openai"};
+  const first=await appendConversation(actor,{message:"I want to improve endurance alongside work.",clientRequestId:"manual-turn-first",...consent});
+  assert.equal(first.externalStatus,"answered");assert.equal('dialogueAction' in first?first.dialogueAction:null,"review_profile");assert.deepEqual(f.state.writes,[]);
+  const second=await appendConversation(actor,{message:"What should we prioritize together?",clientRequestId:"manual-turn-second",...consent});assert.equal(second.externalStatus,"answered");assert.equal(calls,2);assert.deepEqual(f.state.writes,[]);
+  const available=await appendConversation(actor,{message:"Today I have 15 minutes available",clientRequestId:"manual-availability",...consent});
+  assert.equal(available.externalStatus,"answered");
+  const marker=f.state.messages.filter((row:any)=>row.role==="assistant").at(-1);
+  assert.equal(JSON.parse(marker.metadata).requiresCheckinReview,true,"AI prose cannot erase the local check-in review marker");
+
+ }finally{global.fetch=oldFetch;for(const [key,value] of Object.entries({EXTERNAL_AI_ENABLED:previous.enabled,OPENAI_API_KEY:previous.key,OPENAI_TEXT_MODEL:previous.model})){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
+});

@@ -118,7 +118,7 @@ function LanguageSelect({
 
 import { ErrorTelemetry } from "./error-telemetry";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, immersive = false }: { children: React.ReactNode; immersive?: boolean }) {
   const pathname = usePathname();
   const { user, logout, refresh } = useAuth();
   const lang = (user?.language || "es") as Lang;
@@ -138,6 +138,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     });
     await refresh();
   }
+
+  if (immersive) return <div className="jmm-app-surface min-h-dvh"><ErrorTelemetry />{children}</div>;
 
   return (
     <div className="jmm-app-surface flex min-h-screen">
