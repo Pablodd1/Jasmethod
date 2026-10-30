@@ -4,6 +4,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 import { scheduleTests } from "./adaptive";
+import { initialAssessmentEvidence } from "./baseline-test-options";
 
 test("legacy scheduling endpoint rejects every plan sport without any database writes",async()=>{
   let accesses=0;
@@ -15,6 +16,7 @@ test("legacy scheduling endpoint rejects every plan sport without any database w
     "@/lib/access":{ApiError,trainingAccess:async()=>({actor:{id:"owner"},athlete:{id:"owner"}}),errorResponse:(e:any)=>Response.json({error:e.message},{status:e.status??500})},
     "@/lib/benchmark-result":{benchmarkResult:fail},"@/lib/dates":{parseDate:fail},
     "@/lib/units":{unitsOf:fail},
+    "@/lib/baseline-test-options":{initialAssessmentEvidence},
   };
   const output:any={exports:{}};
   const source=ts.transpileModule(fs.readFileSync("src/app/api/benchmarks/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;

@@ -105,8 +105,9 @@ async function journey(browser, language, width) {
         assert.equal(body.preWeightKg, 70);
         assert.equal(body.postWeightKg, 69);
         assert.equal(body.actualDurationMin, '37');
+        assert.equal(body.rpe,'9');
         if (failFeedback) return route.fulfill({ status: 503, json: { error: 'Synthetic result not saved' } });
-        feedbackSaved = { ...feedbackSaved, feedbackRevision: 'f'.repeat(64), feedbackNote: body.feedbackNote, actualDurationMin: 37, feedbackStatus: body.feedbackStatus };
+        feedbackSaved = { ...feedbackSaved, feedbackRevision: 'f'.repeat(64), feedbackNote: body.feedbackNote, actualDurationMin: 37, rpe:9, feedbackStatus: body.feedbackStatus };
         recordMode = 'saved';
         return route.fulfill({ json: { ok: true, workout: { id: f.workout.id } } });
       }
@@ -278,7 +279,7 @@ async function journey(browser, language, width) {
     await page.goto(`${base}/today`);
     const logResult = page.getByRole('button', { name: language === 'es' ? 'Registrar resultado y notas' : 'Log results & notes', exact: true });
     await logResult.waitFor({ state: 'visible' });
-    await logResult.click();
+    await page.getByRole('button',{name:language==='es'?'Responder preguntas postentrenamiento':'Answer post-workout questions',exact:true}).click();
     const feedback = page.locator('#workout-feedback'); await feedback.waitFor();
     assert.equal(await feedback.locator('[name=feedbackNote]').inputValue(), 'Synthetic saved note');
     assert.equal(await feedback.locator('[name=actualDurationMin]').inputValue(), '', 'Planned time is never copied into actual minutes');
@@ -286,6 +287,7 @@ async function journey(browser, language, width) {
     assert.equal(await feedback.locator('[name=postWeightKg]').inputValue(), language === 'en' ? '152.1188' : '69');
     await feedback.locator('[name=feedbackStatus]').selectOption('partial');
     await feedback.locator('[name=actualDurationMin]').fill('37');
+    await feedback.locator('[name=rpe]').fill('9');
     await feedback.locator('[name=feedbackNote]').fill('Synthetic updated note');
     await assertMobile(page, 'workout-results', language, width, feedback);
     const saveResult = feedback.getByRole('button', { name: language === 'es' ? 'Guardar resultado' : 'Save result', exact: true });
@@ -293,9 +295,10 @@ async function journey(browser, language, width) {
     assert.equal(await feedback.locator('[name=feedbackNote]').inputValue(), 'Synthetic updated note', 'A failed save retains the note');
     failFeedback = false; await saveResult.click(); await feedback.waitFor({ state: 'hidden' });
     await logResult.click();
-    await page.getByRole('button', { name: language === 'es' ? 'Registrar esfuerzo y recuperación' : 'Log effort & recovery', exact: true }).click(); await feedback.waitFor();
+    await feedback.waitFor();
     assert.equal(await feedback.locator('[name=feedbackNote]').inputValue(), 'Synthetic updated note', 'Saved note reloads');
     assert.equal(await feedback.locator('[name=actualDurationMin]').inputValue(), '37');
+    assert.equal(await feedback.locator('[name=rpe]').inputValue(),'9');
     recordMode = 'matched'; await page.goto(`${base}/today`); await logResult.click(); await feedback.waitFor();
     assert.match(await feedback.innerText(), /Synthetic imported activity/, 'A linked plan opens its exact imported activity');
     recordMode = 'choose'; await page.goto(`${base}/today`);

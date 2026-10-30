@@ -9,6 +9,7 @@ export function todayFeedbackTarget(session: Candidate | null | undefined, recor
     if (linked.length === 1) return { kind: 'record', id: linked[0].id };
     return records.length ? { kind: 'choose' } : { kind: 'none' };
   }
+  if(records.length===1&&!records[0].matchedPlanId&&(!session||session.id===records[0].id))return {kind:'record',id:records[0].id};
   if (records.length) return { kind: 'choose' };
   return session ? { kind: 'session', id: session.id } : { kind: 'none' };
 }

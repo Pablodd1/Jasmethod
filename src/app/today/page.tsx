@@ -181,6 +181,10 @@ function TodayPageContent() {
   const feedbackActualMinutes = reportActivityId ? feedbackSession?.minutes ?? null : feedbackSession?.actualDurationMin ?? null;
   const displayUnits = data?.units === "imperial" || data?.units === "metric" ? data.units : unitsOf(user?.profile?.units, user?.language);
   const feedbackTarget = todayFeedbackTarget(session, data?.athleteReview?.records ?? []);
+  const reportCandidate = feedbackTarget.kind === 'record' ? data?.athleteReview?.records.find((record:any)=>record.id===feedbackTarget.id) : feedbackTarget.kind === 'session' ? session : null;
+  const reportedMinutes = reportCandidate?.actualDurationMin ?? reportCandidate?.minutes;
+  const reportHasBasics = !!reportCandidate?.feedbackStatus && (['skipped','unknown'].includes(reportCandidate.feedbackStatus) || (typeof reportedMinutes==='number' && reportedMinutes>=0 && typeof reportCandidate.rpe==='number' && reportCandidate.rpe>=0 && reportCandidate.rpe<=10));
+  const actionPending = useRef(false);
   function openFeedbackTarget() {
     if (feedbackTarget.kind === 'session' || feedbackTarget.kind === 'record') {
       setReportActivityId(feedbackTarget.kind === 'record' ? feedbackTarget.id : null); setFeedback(true);
@@ -191,6 +195,8 @@ function TodayPageContent() {
     }
   }
   async function action(url: string, body: any, method = "POST") {
+    if(actionPending.current)return;
+    actionPending.current=true;
     setBusy(true);
     setError("");
     setMessage("");
@@ -209,6 +215,7 @@ function TodayPageContent() {
     } catch (e: any) {
       setError(e.message);
     } finally {
+      actionPending.current=false;
       setBusy(false);
     }
   }
@@ -266,6 +273,12 @@ function TodayPageContent() {
           {!plannedView && session.verdict === "blocked" && session.existingReview && <ExistingWorkoutReview key={`review:${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} candidate={session.existingReview} es={es} disabled={busy || offline} onSaved={load} />}
         </section>}
         {syncStatus && <p role="status" className="text-sm text-slate-600">{syncStatus === "refreshing" ? (es ? "Actualizando conexiones en segundo plano. Tu plan guardado sigue visible." : "Refreshing connections in the background. Your saved plan stays visible.") : syncStatus === "complete" ? (es ? "La actualización terminó. Revisa las fechas de las mediciones." : "Refresh completed. Check measurement dates.") : (es ? "No se confirmó una actualización completa. El plan guardado está disponible; no asumimos datos nuevos." : "A complete refresh was not confirmed. The saved plan remains available; no new data is assumed.")}</p>}
+        {data && !feedback && feedbackTarget.kind !== 'none' && <section aria-label={es?"Después del entrenamiento":"After training"} className="card space-y-3">
+          <h2 className="font-display font-bold text-lg">{reportHasBasics?(es?"Informe postentrenamiento registrado":"Recorded post-workout report"):(es?"Después del entrenamiento · ¿cómo fue?":"After training · how did it go?")}</h2>
+          <p className="text-sm">{reportHasBasics?(es?"Tus resultados ya están registrados. Puedes revisar notas, peso y alimentación opcionales.":"Your results are already recorded. You can review optional notes, weight and fueling."):(es?"Registra resultado, minutos reales, esfuerzo y molestias o notas. Peso antes/después y alimentación son opcionales; los datos sincronizados se conservan para revisar.":"Report outcome, actual minutes, effort and discomfort or notes. Before/after weight and fueling are optional; synced records stay available for review.")}</p>
+          <button type="button" className="btn-primary min-h-11" disabled={busy||offline} onClick={openFeedbackTarget}>{feedbackTarget.kind==='choose'?(es?"Elegir actividad para revisar":"Choose activity to review"):reportHasBasics?(es?"Revisar informe guardado":"Review saved report"):(es?"Responder preguntas postentrenamiento":"Answer post-workout questions")}</button>
+          <p className="text-xs text-slate-600">{es?"Los minutos y el esfuerzo guardados se usan en la revisión de próximas sesiones. El peso se conserva para cálculos de hidratación; no aumenta automáticamente la carga ni cambia tu perfil.":"Saved minutes and effort inform upcoming-session review. Weight is retained for hydration calculations; it does not automatically increase training load or change your profile."}</p>
+        </section>}
         <DailyInputSummary context={data?.inputContext} es={es} />
         {offline && data && (
           <div role="status" className="card bg-amber-50 text-amber-900">
@@ -297,7 +310,7 @@ function TodayPageContent() {
               <form
                 key={`${feedbackSession.id}:${displayUnits}`}
                 id="workout-feedback"
-                className="card space-y-3"
+                className="card space-y-3 [&_.input]:min-h-11"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const f = new FormData(e.currentTarget);
@@ -369,8 +382,7 @@ function TodayPageContent() {
                     {["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </label>
-                <SessionMeasurementsFields saved={feedbackForForm} details={feedbackSession.actualDetails} actualMinutes={feedbackActualMinutes} es={es} units={displayUnits} />
-                <ActualFuelingFields key={`${feedbackSession.id}-${feedbackSession.revision}`} details={feedbackSession.actualDetails} actualDurationMin={feedbackActualMinutes} es={es} />
+                <p className="text-sm">{es?"¿Cómo te sentiste? Añade molestias, lo que cambió o qué necesita revisar el coach. Las notas se guardan para revisión; no diagnostican ni ajustan por sí solas el plan.":"How did you feel? Add discomfort, what changed or what the coach should review. Notes are saved for review; they do not diagnose or independently adjust the plan."}</p>
                 <textarea
                   aria-label="Workout feedback"
                   name="feedbackNote"
@@ -382,8 +394,10 @@ function TodayPageContent() {
                       : "Actual sport if substituted, difficulty, discomfort…"
                   }
                 />
+                <SessionMeasurementsFields saved={feedbackForForm} details={feedbackSession.actualDetails} actualMinutes={feedbackActualMinutes} es={es} units={displayUnits} />
+                <ActualFuelingFields key={`${feedbackSession.id}-${feedbackSession.revision}`} details={feedbackSession.actualDetails} actualDurationMin={feedbackActualMinutes} es={es} />
                 {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-                <button disabled={busy || offline} className="btn-primary">
+                <button disabled={busy || offline} className="btn-primary min-h-11">
                   {es ? "Guardar resultado" : "Save result"}
                 </button>
               </form>
