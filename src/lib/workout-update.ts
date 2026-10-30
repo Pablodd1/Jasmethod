@@ -277,6 +277,9 @@ export async function updateWorkout(
       data.type = base.type;
       data.durationMin = base.durationMin;
       data.intensity = base.intensity;
+      if (changedPrescriptionFields.includes("sport") && body.title === undefined) {
+        base.title = `${base.sport.charAt(0).toUpperCase()}${base.sport.slice(1)} session`;
+      }
       data.title = base.title;
       data.notes = base.description;
       data.originalPlan = invalidateDoubleDay(JSON.stringify(base));
