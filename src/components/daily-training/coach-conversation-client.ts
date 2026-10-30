@@ -56,8 +56,8 @@ export function coachExternalPermissions(capabilities: CoachCapabilities, textCo
 }
 
 export function coachTextStatusMessage(status: string, es: boolean): string | null {
-  if (status === "unavailable") return es ? "OpenAI no pudo responder. Se muestra la respuesta local de JMM; no se utilizó otro proveedor de texto." : "OpenAI could not answer. JMM's local reply is shown; no other text provider was used.";
-  if (status === "not_configured") return es ? "OpenAI no está configurado. Se muestra la respuesta local de JMM." : "OpenAI is not configured. JMM's local reply is shown.";
+  if (status === "unavailable") return es ? "El coach con IA no pudo responder. Se muestra la respuesta local de JMM; no se utilizó otro proveedor de texto." : "The AI coach could not answer. JMM's local reply is shown; no other text provider was used.";
+  if (status === "not_configured") return es ? "La conversación con IA no está conectada. Se muestra la respuesta local de JMM." : "Personal AI is not connected. JMM's local reply is shown.";
   if (status === "policy_local") return es ? "Respuesta dentro de JMM: las decisiones de seguridad, cálculos verificados, datos restringidos y cambios propuestos se gestionan en la app." : "Answered within JMM: safety decisions, verified calculations, restricted data and proposed changes stay in the app.";
   return null;
 }

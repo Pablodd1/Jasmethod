@@ -175,7 +175,7 @@ async function main() {
       await page.goto(base+'/coach');await page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true}).waitFor();
       const routeBounds=await page.locator('.coach-chat-route').boundingBox();assert.ok(routeBounds&&routeBounds.y===0&&routeBounds.height===900,'Coach uses the full viewport without app navigation');
       assert.equal(await page.getByRole('navigation',{name:es?'Navegación principal':'Main navigation',exact:true}).count(),0);
-      await page.getByText(es?'Conversación personal con OpenAI':'Personal conversation with OpenAI',{exact:true}).click();
+      await page.getByText(es?'Conversación personal':'Personal conversation',{exact:true}).click();
       const consent=page.getByRole('checkbox',{name:es?/Permito enviar a OpenAI mis mensajes/:/Allow OpenAI to receive my own/});assert.equal(await consent.isChecked(),false);assert.equal(sends,0);await consent.check();
       const composer=page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true});await composer.fill(es?'Ayúdame a desarrollar mi entrenamiento alrededor del trabajo.':'Help me develop my training around work.');await page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}).click();
       await page.getByText(es?'Revisemos tu objetivo y disponibilidad. ¿Cuál es tu prioridad?':"Let's review your goal and availability. What is your priority?",{exact:true}).waitFor();
@@ -183,7 +183,7 @@ async function main() {
       await composer.fill(es?'¿Cómo podemos hablar de una lesión?':'How can we discuss an injury concern?');await page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}).click();
       await page.getByText(es?'Puedo ayudarte a preparar preguntas para una evaluación médica; no puedo diagnosticar una lesión.':'I can help prepare questions for a medical assessment; I cannot diagnose an injury.',{exact:true}).waitFor();assert.equal(sends,2);
       await page.screenshot({path:dir+'/personal-dialogue-'+language+'-390.png'});
-      await page.reload();await page.getByText(es?'Conversación personal con OpenAI':'Personal conversation with OpenAI',{exact:true}).click();assert.equal(await consent.isChecked(),false,'Personal consent resets on reload');assert.equal(sends,2);
+      await page.reload();await page.getByText(es?'Conversación personal':'Personal conversation',{exact:true}).click();assert.equal(await consent.isChecked(),false,'Personal consent resets on reload');assert.equal(sends,2);
       results.push({language,width:390,immersiveConversation:'pass',explicitManualDialogueConsent:'pass',followupAndProtectedReview:'pass',reloadConsentReset:'pass'});await context.close();
     }
     for (const language of ['en','es']) {

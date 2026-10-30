@@ -371,7 +371,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const lastAnswer = [...history.conversation.messages].reverse().find(message => message.role === "assistant");
       return { ...result, ...history, answer: lastAnswer?.content ?? "", externalStatus: provider.status };
     }
-    const disclosure = manualDialogue ? (actor.language === "es" ? "OpenAI · Solo tus mensajes propios consentidos; los registros y tarjetas de JMM no se comparten." : "OpenAI · Your consented own messages only; JMM records and cards are not shared.") : actor.language === "es" ? "OpenAI · educación general sin contexto personal ni memoria. Los cambios se revisan en JMM." : "OpenAI · general education without personal context or memory. Changes are reviewed in JMM.";
+    const disclosure = manualDialogue ? (actor.language === "es" ? "JMM Coach · Solo tus mensajes propios consentidos; los registros y tarjetas de JMM no se comparten." : "JMM Coach · Your consented own messages only; JMM records and cards are not shared.") : actor.language === "es" ? "JMM Coach · educación general sin contexto personal ni memoria. Los cambios se revisan en JMM." : "JMM Coach · general education without personal context or memory. Changes are reviewed in JMM.";
     try {
       return await prisma.$transaction(async tx => {
         const current = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
