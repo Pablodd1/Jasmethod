@@ -168,9 +168,9 @@ for (const es of [false, true]) test(`conversation first render is labeled, cons
 import { coachExternalPermissions } from "./coach-conversation-client";
 import { coachTextStatusMessage } from "./coach-conversation-client";
 test("OpenAI availability and local-policy messages never fabricate provider success or fallback", () => {
-  assert.match(coachTextStatusMessage("unavailable",false)!, /OpenAI could not answer.*local reply.*no other text provider/);
-  assert.match(coachTextStatusMessage("unavailable",true)!, /OpenAI no pudo responder/);
-  assert.match(coachTextStatusMessage("not_configured",false)!, /not configured/);
+  assert.match(coachTextStatusMessage("unavailable",false)!, /AI coach could not answer.*local reply.*no other text provider/);
+  assert.match(coachTextStatusMessage("unavailable",true)!, /coach con IA no pudo responder/);
+  assert.match(coachTextStatusMessage("not_configured",false)!, /not connected/);
   assert.match(coachTextStatusMessage("policy_local",false)!, /Answered within JMM/);
   assert.equal(coachTextStatusMessage("not_requested",false),null);
 });
