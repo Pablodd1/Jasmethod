@@ -83,6 +83,7 @@ async function main() {
       assert.equal(sends, 0, 'Dictation never auto-sends');
       assert.match(await textarea.inputValue(),/Synthetic reviewed question/,'Speech appears directly in the main message box');
       const reviewSend=page.getByRole('button',{name:language==='es'?'Enviar mensaje revisado':'Send reviewed message',exact:true});assert.equal(await reviewSend.isDisabled(),true,'Unreviewed voice cannot send');
+      assert.equal(await page.getByRole('button',{name:language==='es'?'Micrófono':'Microphone',exact:true}).isDisabled(),true,'Retry cannot bypass pending transcript review');
       await transcript.fill(language==='es'?'Mi disponibilidad es 10 horas semanales':'My availability is 10 hours per week');
       assert.match(await textarea.inputValue(),/10/,'Transcript correction updates the main message draft');
 
