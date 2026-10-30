@@ -33,6 +33,7 @@ import { buildSessionDetail } from "@/lib/science";
 import { dayOffProtocol, temperatureAdjustment } from "@/lib/adaptive";
 import { WeekStrip } from "@/components/week-strip";
 import { endpointText } from "@/lib/universal-workout-card";
+import { savedCycleSummary } from "@/lib/training-cycle-summary";
 
 const SPORT_COLOR: Record<string, string> = {
   swim: "bg-sky-100 text-sky-700",
@@ -58,8 +59,8 @@ export default function CalendarPage() {
   const [races, setRaces] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [displayWorkouts,setDisplayWorkouts]=useState<any[]>([]);
-  const [possibleCopyGroups,setPossibleCopyGroups]=useState(0);
   const [plan, setPlan] = useState<any>(null);
+  const cycleSummary = plan ? savedCycleSummary(plan, user?.timezone || "UTC") : null;
   const [showForm, setShowForm] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [activityBusy, setActivityBusy] = useState(false);
@@ -91,7 +92,6 @@ export default function CalendarPage() {
     setEvents(d.events || []);
     setWorkouts(d.workouts || []);
     setDisplayWorkouts(d.displayWorkouts||d.workouts||[]);
-    setPossibleCopyGroups(d.calendarReview?.possibleCopyGroups||0);
     setRaces(d.races || []);
     setPlan(d.plan);
     // The concurrent wider request supplies the week strip without stale data.
@@ -274,7 +274,6 @@ export default function CalendarPage() {
         {mutationError && <p role="alert" className="text-red-700">{mutationError}</p>}
         <nav className="flex flex-wrap gap-3" aria-label={es ? "Navegación de entrenamiento" : "Training navigation"}><a href="/today" className="btn-primary min-h-12">{es ? "Entrenamiento de hoy" : "Today’s workout"}</a><a href="/training" className="btn-secondary min-h-12">{es ? "Ciclo y meses guardados" : "Saved cycle and months"}</a></nav>
         <p className="text-sm text-slate-600">{es?'Solo se muestran las sesiones pendientes del ciclo activo y los informes guardados. Los planes reemplazados sin resultados no son entrenamiento adicional.':'Only pending sessions from your active cycle and saved reports are shown. Replaced plans without results are not extra training.'}</p>
-        {possibleCopyGroups>0&&<p role="status" className="card text-sm">{es?'Posibles copias de dispositivos agrupadas para revisión; no se suman ni se fusionan. Abre el día para ver cada registro.':'Possible device copies are bundled for review, not summed or merged. Open the day to see each source record.'} <a className="underline" href="/onboard?redo=1&advanced=1&step=race">{es?'Revisar importaciones':'Review imports'}</a></p>}
         <details className="card space-y-2">
           <summary className="cursor-pointer min-h-11 content-center font-semibold">{es ? "Usar mi calendario de Apple u otra app" : "Use Apple Calendar or another calendar app"}</summary>
           <a className="btn-secondary min-h-11" href="/api/training/export?format=ics">{es ? "Descargar calendario (.ics)" : "Download calendar (.ics)"}</a>
@@ -667,14 +666,12 @@ export default function CalendarPage() {
             </span>
             <span className="chip bg-slate-200 text-slate-600">☁️ day off</span>
           </div>
-          {plan && (
+          {plan && cycleSummary && (
             <p className="text-sm text-slate-500 mt-3">
-              Active: <strong>{plan.name}</strong> —{" "}
-              {format(new Date(plan.startDate), "MMM d")} →{" "}
-              {plan.raceDate
-                ? format(new Date(plan.raceDate), "MMM d, yyyy")
-                : "—"}{" "}
-              ({plan.weeks} weeks)
+              {es ? "Plan guardado:" : "Saved plan:"} <strong>{plan.name}</strong> —{" "}
+              {cycleSummary.start} → {cycleSummary.end}{" "}
+              ({cycleSummary.weeks} {es ? "semanas" : "weeks"})
+              {cycleSummary.raceDate && <span className="block">{es ? "Evento principal:" : "Primary event:"} {cycleSummary.raceDate}</span>}
             </p>
           )}
         </div>

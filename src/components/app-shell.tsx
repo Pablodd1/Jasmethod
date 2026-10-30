@@ -62,6 +62,7 @@ const TOOL_GROUPS = [
   { href: "/gear", key: "nav.gear", icon: Bike },
   { href: "/reminders", key: "nav.reminders", icon: Bell },
   { href: "/help", key: "nav.help", icon: LifeBuoy },
+  { href: "/policies", key: "nav.help", icon: Shield, en: "Policies & data rights", es: "Políticas y derechos de datos" },
   ] },
 ];
 
@@ -264,10 +265,10 @@ export function AppShell({ children, immersive = false }: { children: React.Reac
             }}>{lang === "es" ? "Tarjeta del entrenamiento" : "Workout card"}</Link>
           </nav>}
           {children}
-          <footer className="mt-8 text-xs text-slate-500">
+          {pathname !== "/calendar" && <footer className="mt-8 text-xs text-slate-500">
             <Link href="/policies" className="mb-3 block underline">{lang === "es" ? "Políticas, privacidad y derechos de datos" : "Policies, privacy and data rights"}</Link>
             {lang === "es" ? "Los registros guardados pueden proceder de dispositivos Garmin u otras fuentes. Las importaciones de actividades de origen Garmin mediante Intervals.icu siguen bloqueadas hasta verificar los permisos." : "Saved records may originate from Garmin devices or other sources. Garmin-origin activity imports through Intervals.icu remain blocked pending permission verification."}
-          </footer>
+          </footer>}
         </div>
       </main>
     </div>
