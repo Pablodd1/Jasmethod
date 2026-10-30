@@ -29,3 +29,18 @@ test("manual email transport distinguishes matching SMTP acceptance, rejection a
     if (from === undefined) delete process.env.SMTP_FROM; else process.env.SMTP_FROM = from;
   }
 });
+
+test("SMTP authentication rejection is definite, sanitized and never retried", async () => {
+  const original = nodemailer.createTransport, host=process.env.SMTP_HOST, from=process.env.SMTP_FROM;
+  let calls=0,closed=0;
+  process.env.SMTP_HOST="smtp.example.invalid";process.env.SMTP_FROM="sender@example.invalid";
+  (nodemailer as any).createTransport=()=>({sendMail:async()=>{calls++;throw Object.assign(Error("PRIVATE_PROVIDER_RESPONSE"),{code:"EAUTH",response:"PRIVATE_CREDENTIAL"});},close:()=>{closed++;}});
+  try {
+    const result=await sendManualEmail({to:"athlete@example.invalid",subject:"Fixture",text:"Fixture",html:"Fixture"});
+    assert.deepEqual(result,{status:"rejected",reason:"authentication"});assert.doesNotMatch(JSON.stringify(result),/PRIVATE/);assert.equal(calls,1);assert.equal(closed,1);
+  } finally {
+    nodemailer.createTransport=original;
+    if(host===undefined)delete process.env.SMTP_HOST;else process.env.SMTP_HOST=host;
+    if(from===undefined)delete process.env.SMTP_FROM;else process.env.SMTP_FROM=from;
+  }
+});

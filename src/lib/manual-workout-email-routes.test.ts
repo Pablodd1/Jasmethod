@@ -7,7 +7,7 @@ import ts from 'typescript';
 import crypto from 'node:crypto';
 import { MANUAL_EMAIL_CONSENT, parseManualEmailSettings } from './manual-workout-email';
 function fixture() {
-  let user: any = { id: 'athlete-a', email: 'athlete-a@example.invalid', timezone: 'UTC', language: 'en' }, pref: any = null, sends: any[] = [], writes: any[] = [];
+  let user: any = { id: 'athlete-a', email: 'athlete-a@example.invalid', timezone: 'UTC', language: 'en' }, pref: any = null, sends: any[] = [], writes: any[] = [], receipt:any={status:'accepted'};
   const model = {
     findUnique: async ({where}) => { assert.equal(where.userId, 'athlete-a'); return pref; },
     upsert: async a => { writes.push(a); pref = pref ? {...pref,...a.update} : {...a.create}; return pref; },
@@ -24,7 +24,7 @@ function fixture() {
   const deps={
     '@/lib/manual-workout-email-locale':{manualEmailLanguage:language=>['en','es'].includes(language)?language:null}, '@/lib/auth':{getCurrentUser:async()=>user}, '@/lib/db':{prisma:db}, 'node:crypto':crypto,
     '@/lib/manual-workout-email':{manualEmailConfigured:()=>true, MANUAL_EMAIL_CONSENT, parseManualEmailSettings},
-    '@/lib/manual-workout-email-transport':{sendManualEmail:async msg=>{sends.push(msg);return {status:'accepted'}}},
+    '@/lib/manual-workout-email-transport':{sendManualEmail:async msg=>{sends.push(msg);return receipt}},
   };
   function load(file) {
     const compiled=ts.transpileModule(fs.readFileSync(`src/app/api/workout-email/${file}/route.ts`,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -32,7 +32,7 @@ function fixture() {
     vm.runInNewContext(compiled,{module:sandboxModule,exports:sandboxModule.exports,require:key=>{if(!(key in deps))throw Error(`Unmocked ${key}`);return deps[key]},Response,Date,Buffer,Intl});
     return sandboxModule.exports;
   }
-  return {load,sends,writes,setLanguage:language=>{user.language=language},getPref:()=>pref,setPref:p=>{pref=p},signOut:()=>{user=null}};
+  return {load,sends,writes,setReceipt:value=>{receipt=value},setLanguage:language=>{user.language=language},getPref:()=>pref,setPref:p=>{pref=p},signOut:()=>{user=null}};
 }
 const req=(body)=>new Request('https://app.example.invalid/api/workout-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const settings={enabled:true,daily:true,revisions:true,timezone:'UTC',minuteOfDay:360,leadMinutes:60,consentVersion:MANUAL_EMAIL_CONSENT};
@@ -74,4 +74,17 @@ test('verification email and preferences use saved Spanish and reject unsupporte
   assert.equal((await g.load('verify').POST(req({action:'request',sendCodeToAccountEmail:true}))).status,409);assert.equal(g.sends.length,0);
   assert.equal((await g.load('preferences').PUT(req(settings))).status,409);
   assert.equal((await g.load('preferences').PUT(req({...settings,enabled:false,calendarGuidance:true}))).status,200);
+});
+
+test('verification distinguishes service authentication failure from ambiguous SMTP delivery in both languages',async()=>{
+  for(const language of ['en','es']) {
+    const f=fixture();f.setLanguage(language);f.setReceipt({status:'rejected',reason:'authentication'});
+    const response=await f.load('verify').POST(req({action:'request',sendCodeToAccountEmail:true}));
+    assert.equal(response.status,503);const body=await response.json();assert.equal(body.code,'email_service_authentication');
+    assert.match(body.error,language==='es'?/No se envió el código/:/No verification email was sent/);assert.equal(f.getPref().enabled,false);assert.equal(f.getPref().verifiedAt,null);
+    assert.equal((await f.load('verify').POST(req({action:'request',sendCodeToAccountEmail:true}))).status,429);assert.equal(f.sends.length,1);
+    const g=fixture();g.setLanguage(language);g.setReceipt({status:'unknown'});
+    const unknown=await g.load('verify').POST(req({action:'request',sendCodeToAccountEmail:true}));assert.equal(unknown.status,502);
+    assert.match((await unknown.json()).message,language==='es'?/aún puedes usar el código/:/still use the code/);
+  }
 });

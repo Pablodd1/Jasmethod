@@ -341,10 +341,51 @@ async function journey(browser, language, width) {
   } finally { releaseRich(); await context.close(); }
 }
 
+async function emailJourney(browser,language) {
+  const es=language==='es',context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();
+  let mode='auth',verified=false,sends=0;
+  await page.route('**/api/**',async route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path==='/api/auth/me')return route.fulfill({json:{user:fixtures(language).user}});
+    if(path==='/api/workout-email/preferences'&&route.request().method()==='GET')return route.fulfill({json:{configured:true,language,languageSupported:true,email:'synthetic@example.invalid',consentVersion:'synthetic',preference:{enabled:false,daily:false,revisions:false,calendarGuidance:false,timezone:'UTC',minuteOfDay:360,leadMinutes:60,verified}}});
+    if(path==='/api/workout-email/verify') {
+      const body=route.request().postDataJSON();
+      if(body.action==='confirm') {
+        if(mode==='malformed')return route.fulfill({json:{}});
+        verified=true;return route.fulfill({json:{verified:true}});
+      }
+      sends++;assert.equal(body.sendCodeToAccountEmail,true);assert.equal(body.to,undefined);
+      if(mode==='auth')return route.fulfill({status:503,json:{code:'email_service_authentication',error:es?'No se envió el código. El responsable de JMM debe reparar la autorización del correo.':'No verification email was sent. The JMM operator must repair email authorization.'}});
+      if(mode==='unknown')return route.fulfill({status:502,json:{status:'unknown',message:es?'No se pudo confirmar el correo. Si llega, aún puedes usar el código.':'The verification email could not be confirmed. If it arrives, you can still use the code.'}});
+      return route.fulfill({status:202,json:{status:'accepted',message:es?'Mensaje aceptado; revisa tu bandeja.':'Message accepted; check your inbox.'}});
+    }
+    unexpected.push({path,scope:'email'});return route.fulfill({status:503,json:{error:'Unexpected synthetic endpoint'}});
+  });
+  page.on('pageerror',error=>errors.push(String(error)));
+  try {
+    await page.goto(`${base}/workout-email/settings`);
+    const send=page.getByRole('button',{name:es?'Envíame un código de verificación':'Email me a verification code',exact:true});
+    await send.click();await page.getByRole('alert').filter({hasText:es?'No se envió':'No verification email'}).waitFor();assert.equal(sends,1);
+    await assertMobile(page,'email-authentication',language,390,page.locator('main'));
+    mode='unknown';await send.click();await page.getByRole('alert').filter({hasText:es?'aún puedes usar':'still use the code'}).waitFor();
+    mode='accepted';await send.click();await page.getByRole('status').filter({hasText:es?'Mensaje aceptado':'Message accepted'}).waitFor();
+    await page.getByLabel(es?'Código de verificación':'Verification code',{exact:true}).fill('123456ABCDEF');
+    mode='malformed';await page.getByRole('button',{name:es?'Verificar código':'Verify code',exact:true}).click();await page.getByRole('alert').filter({hasText:es?'No se pudo verificar':'could not be verified'}).waitFor();
+    assert.equal(await page.getByLabel(es?'Código de verificación':'Verification code',{exact:true}).inputValue(),'123456ABCDEF');
+    mode='accepted';await page.getByRole('button',{name:es?'Verificar código':'Verify code',exact:true}).click();await page.getByRole('status').filter({hasText:es?'Correo verificado':'Email verified'}).waitFor();
+    await page.reload();await page.getByText(es?/· Verificado/:/· Verified/).waitFor();
+    assert.equal(await page.getByLabel(es?'Activar estos correos':'Enable these emails',{exact:true}).isChecked(),false);
+    await page.getByText(es?'Qué incluyen estos correos':'What these emails include',{exact:true}).click();
+    await page.getByRole('link',{name:es?'Abrir mis conversaciones con el coach':'Open my coach conversations',exact:true}).waitFor();
+    results.push({language,width:390,emailAuthenticationFailure:'pass',ambiguousDelivery:'pass',verifiedReceiptRequired:'pass',verifiedInboxDoesNotEnableSchedule:'pass',scope:'synthetic only'});
+  } finally {await context.close();}
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox'] });
   try {
     for (const language of ['en', 'es']) for (const width of [390, 412]) await journey(browser, language, width);
+    for (const language of ['en','es']) await emailJourney(browser,language);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   } finally {
     await browser.close();

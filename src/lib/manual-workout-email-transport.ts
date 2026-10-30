@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-export type ManualEmailReceipt = { status: "accepted" | "rejected" | "unknown"; receiptId?: string };
+export type ManualEmailReceipt = { status: "accepted" | "rejected" | "unknown"; receiptId?: string; reason?: "authentication" };
 export interface ManualEmailMessage { to: string; subject: string; text: string; html: string; attachments?: { filename: string; content: Buffer; cid?: string }[] }
 /** Provider acceptance is not inbox delivery. Never retry an ambiguous send. */
 export async function sendManualEmail(message: ManualEmailMessage): Promise<ManualEmailReceipt> {
@@ -15,6 +15,10 @@ export async function sendManualEmail(message: ManualEmailMessage): Promise<Manu
     const accepted = (result.accepted || []).some((v: string | { address: string }) => (typeof v === "string" ? v : v.address).toLowerCase() === message.to.toLowerCase());
     const rejected = (result.rejected || []).some((v: string | { address: string }) => (typeof v === "string" ? v : v.address).toLowerCase() === message.to.toLowerCase());
     return accepted ? { status: "accepted", receiptId: result.messageId } : { status: rejected ? "rejected" : "unknown" };
-  } catch { return { status: "unknown" }; }
+  } catch (error) {
+    // Authentication fails before SMTP DATA. Never return raw errors, credentials or responses.
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    return code === "EAUTH" ? { status: "rejected", reason: "authentication" } : { status: "unknown" };
+  }
   finally { transport.close(); }
 }
