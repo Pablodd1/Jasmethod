@@ -4,6 +4,7 @@ import {readFileSync} from "node:fs";
 import {runInNewContext} from "node:vm";
 import ts from "typescript";
 import * as policy from "./assistant-policy";
+import { appMutationOriginAllowed } from "./request-origin";
 
 function route(path:string, modules:Record<string,any>, fetcher:any, env:Record<string,string>={}) {
  const output=ts.transpileModule(readFileSync(path,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -30,7 +31,8 @@ function assistant(overrides: Record<string, any> = {}) {
  };
  return {api:route("src/app/api/assistant/route.ts", {
   "@/lib/coach-conversation-service": service,
-  "@/lib/access": {errorResponse:(error: any)=>Response.json({error:error.message},{status:error.status||500})},
+  "@/lib/request-origin": {appMutationOriginAllowed:(req:Request)=>appMutationOriginAllowed(req,{NEXT_PUBLIC_APP_URL:"https://jmm.test"})},
+  "@/lib/access": {ApiError:class extends Error { constructor(message:string,public status:number){super(message);} },errorResponse:(error: any)=>Response.json({error:error.message},{status:error.status||500})},
  }, async()=>{externalCalls++;throw Error("Unexpected external network");}), externalCalls:()=>externalCalls};
 }
 const request=(body:any)=>new Request("https://jmm.test/api/assistant",{method:"POST",body:JSON.stringify(body)});
@@ -55,6 +57,19 @@ test("assistant GET and DELETE preserve owner access boundary",async()=>{
 test("failed assistant writes remain failures, never fabricated success",async()=>{
  const {api}=assistant({appendConversation:async()=>{throw Object.assign(new Error("Stale proposal"),{status:409});}});
  const response=await api.POST(request({message:"my hours are 4"}));assert.equal(response.status,409);const result=await response.json();assert.equal(result.ok,undefined);assert.match(result.error,/Stale/);
+});
+
+test("personal conversation requires the application origin and JSON before service dispatch",async()=>{
+ let calls=0;const {api}=assistant({appendConversation:async()=>{calls++;return {ok:true};}});
+ const body=JSON.stringify({message:"Review my goals",manualDialogueConsent:true});
+ for(const origin of [undefined,"https://other.example.invalid"]){
+  const headers:Record<string,string>={"Content-Type":"application/json"};if(origin)headers.Origin=origin;
+  assert.equal((await api.POST(new Request("https://jmm.test/api/assistant",{method:"POST",headers,body}))).status,403);
+ }
+ assert.equal((await api.POST(new Request("https://jmm.test/api/assistant",{method:"POST",headers:{Origin:"https://jmm.test","Content-Type":"text/plain"},body}))).status,415);
+ assert.equal(calls,0);
+ assert.equal((await api.POST(new Request("https://jmm.test/api/assistant",{method:"POST",headers:{Origin:"https://jmm.test","Content-Type":"application/json"},body}))).status,200);
+ assert.equal(calls,1);
 });
 test("legacy command parsing still produces review-only proposals",()=>{
  const parsed=policy.trainingProposal("make it a rest day");assert.ok(parsed);assert.equal(parsed.requiresConfirmation,true);
