@@ -205,7 +205,7 @@ export default function SettingsPage() {
           vo2maxSource={vo2Source}
         />
 
-        <PrsCard lang={lang === "es" ? "es" : "en"} />
+        <PrsCard lang={lang === "es" ? "es" : "en"} timezone={user?.timezone || "UTC"} units={displayUnits} />
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="card">
@@ -478,9 +478,10 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <div className="card">
               <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2">
-                <HeartPulse className="w-5 h-5 text-coral-500" /> Your HR Zones
-                — max HR {zones?.anchorHr || "—"} bpm
+                <HeartPulse className="w-5 h-5 text-coral-500" /> {lang==="es"?"Zonas de FC calculadas":"Calculated HR zones"}
+                — {lang==="es"?"FC máxima guardada":"saved max HR"} {zones?.anchorHr || "—"} bpm
               </h2>
+              <p className="text-sm text-slate-600 mb-3">{lang==="es"?"Estas zonas usan la referencia guardada del perfil, no las zonas configuradas en tu reloj. La fecha y fuente de esta referencia no están verificadas aquí. Una FC máxima observada en un entrenamiento no prueba tu FC máxima fisiológica. Revisa los datos de origen antes de cambiarla.":"These ranges use your saved profile reference, not the zones configured on your watch. Its observation date and source are not verified here. A workout’s highest recorded HR does not establish physiological maximum HR. Review source records before changing the reference."} <Link href="/sport-data" className="underline">{lang==="es"?"Revisar datos por deporte":"Review sport data"}</Link></p>
               {zones?.hr ? (
                 <div className="space-y-1.5">
                   {HR_ZONES.map((z) => {
@@ -489,7 +490,7 @@ export default function SettingsPage() {
                     return (
                       <div
                         key={z.key}
-                        className="flex items-center gap-3 text-sm"
+                        className="flex flex-wrap items-center gap-3 text-sm"
                       >
                         <span
                           className={`chip ${`chip-${z.key}`} w-28 justify-center`}
@@ -527,7 +528,7 @@ export default function SettingsPage() {
                   )}
                   {zones.vo2maxHr && (
                     <div className="border-t border-sand-200 pt-2 mt-2 text-xs text-slate-500">
-                      VO2max ≈ {fmtNum(zones.vo2maxHr, lang, 1)} ml/kg/min (Uth
+                      {lang==="es"?"Estimación por cociente de FC, no medida":"HR-ratio estimate, not measured VO₂max"} ≈ {fmtNum(zones.vo2maxHr, lang, 1)} ml/kg/min (Uth
                       2004: 15.3 × HRmax ÷ HRrest)
                     </div>
                   )}
@@ -538,10 +539,7 @@ export default function SettingsPage() {
                 </p>
               )}
               <p className="text-[11px] text-slate-400 mt-3">
-                Zones follow the MyProCoach 5-zone model anchored on max HR
-                (run). Bike = run − 6 bpm. Swim uses CSS/threshold pace. Gym,
-                Strength &amp; HYROX use the same zones guided by RPE. Run the
-                tests in{" "}
+                {lang==="es"?"Plantilla de cinco zonas basada en FC máxima. Ciclismo: ajuste fijo de −6 lpm, no medición individual. Natación usa CSS/ritmo umbral. Estas zonas no están verificadas para estaciones HYROX ni sustituyen una revisión individual. Referencias y pruebas en ":"Five-zone template based on max HR. Cycling uses a fixed −6 bpm adjustment, not an individual measurement. Swimming uses CSS/threshold pace. These are not verified HYROX station zones or a substitute for individual review. References and tests in "}
                 <a href="/labs" className="text-ocean-600 underline">
                   Labs &amp; Tests
                 </a>{" "}
