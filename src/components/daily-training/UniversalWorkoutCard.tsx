@@ -25,7 +25,7 @@ const n = (s: CanonicalStep, mode: Mode): number | null =>
         ? (s.target.high ?? null)
         : null;
 
-export function WorkoutHeader({ card }: { card: Card }) {
+export function WorkoutHeader({ card, compactReadiness = false }: { card: Card; compactReadiness?: boolean }) {
   const s = card.session,
     es = card.language === "es";
   return (
@@ -35,7 +35,7 @@ export function WorkoutHeader({ card }: { card: Card }) {
           {s.sport.toUpperCase()} · {s.dateLocal} · {s.timezone}
         </p>
         <h1>{s.title}</h1>
-        <p>{s.verdict === "ready" ? card.content.summary : readinessReasonText(s.reason, es)}</p>
+        {compactReadiness && s.verdict === "blocked" ? <details className="text-sm"><summary>{es ? "Adaptación diaria sin revisar" : "Daily adaptation not reviewed"}</summary><p>{readinessReasonText(s.reason, es)}</p></details> : <p>{s.verdict === "ready" ? card.content.summary : readinessReasonText(s.reason, es)}</p>}
       </div>
       <div className="uwc-stats">
         <b>
@@ -683,16 +683,18 @@ export function UniversalWorkoutCard({
   card,
   onSaved,
   heldPreview,
+  compactReadiness = false,
 }: {
   card: Card;
   onSaved?: () => void | Promise<void>;
   heldPreview?: React.ReactNode;
+  compactReadiness?: boolean;
 }) {
   const es = card.language === "es";
   return (
     <div className="uwc" data-revision={card.session.revision}>
-      <WorkoutHeader card={card} />
-      {card.session.verdict !== "ready" && (
+      <WorkoutHeader card={card} compactReadiness={compactReadiness} />
+      {card.session.verdict !== "ready" && !compactReadiness && (
         <div role="status" className="uwc-controls">
           <a href="/checkin">
             {es ? "Revisar check-in de hoy" : "Review today's check-in"}
@@ -703,7 +705,7 @@ export function UniversalWorkoutCard({
         </div>
       )}
       {card.session.verdict !== "ready" && heldPreview && <section aria-label={es ? "Plan guardado durante la revisión" : "Saved plan during readiness review"}>
-        <p role="status">{es ? "La sesión de hoy aún no está autorizada para entrenar. Puedes consultar el plan guardado abajo; sus pasos no eliminan la pausa ni autorizan la ejecución." : "Today's workout is not cleared to train. You can still view the saved plan below; its steps do not remove the hold or authorize execution."}</p>
+        {!compactReadiness && <p role="status">{es ? "La sesión de hoy aún no está autorizada para entrenar. Puedes consultar el plan guardado abajo; sus pasos no eliminan la pausa ni autorizan la ejecución." : "Today's workout is not cleared to train. You can still view the saved plan below; its steps do not remove the hold or authorize execution."}</p>}
         {heldPreview}
       </section>}
       {card.session.verdict === "ready" && <>
@@ -756,6 +758,7 @@ type WorkoutCardLoaderProps = {
   es?: boolean;
   onSaved?: () => void | Promise<void>;
   heldPreview?: React.ReactNode;
+  compactReadiness?: boolean;
 };
 
 export function UniversalWorkoutCardLoader(props: WorkoutCardLoaderProps) {
@@ -763,7 +766,7 @@ export function UniversalWorkoutCardLoader(props: WorkoutCardLoaderProps) {
   return <WorkoutCardLoader key={props.sessionId} {...props} />;
 }
 
-function WorkoutCardLoader({ sessionId, es = false, onSaved, heldPreview }: WorkoutCardLoaderProps) {
+function WorkoutCardLoader({ sessionId, es = false, onSaved, heldPreview, compactReadiness }: WorkoutCardLoaderProps) {
   const [card, setCard] = useState<Card | null>(null),
     [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -785,6 +788,7 @@ function WorkoutCardLoader({ sessionId, es = false, onSaved, heldPreview }: Work
       key={card.session.revision}
       card={card}
       heldPreview={heldPreview}
+      compactReadiness={compactReadiness}
       onSaved={async () => {
         setRetry((v) => v + 1);
         await onSaved?.();

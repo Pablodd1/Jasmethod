@@ -58,6 +58,7 @@ function TodayPageContent() {
     [feedback, setFeedback] = useState(false),
     [expandReports, setExpandReports] = useState(false),
     [message, setMessage] = useState("");
+  const [plannedOnlyId, setPlannedOnlyId] = useState<string | null>(null);
   const [savedPlan, setSavedPlan] = useState<any>(null);
   const [syncStatus, setSyncStatus] = useState("");
   useEffect(() => {
@@ -253,10 +254,13 @@ function TodayPageContent() {
             const id = event.target.value; const url = new URL(window.location.href); url.searchParams.set("sessionId", id); window.history.pushState({}, "", url);
             setSelected(id); setReportActivityId(null); setFeedback(false); setMessage(""); setError("");
           }}>{!session && <option value="" disabled>{es ? "Elige una sesión actual" : "Choose a current session"}</option>}{data.sessions.map((s: any) => <option key={s.id} value={s.id}>{s.title} · {s.plannedDurationMin ?? s.durationMin} min</option>)}</select></label>}
-        {data && <DailyReadinessPath es={es} date={data.date} cycle={data.cycle} week={data.weekReview} context={data.inputContext} mode={data.recovery?.mode} safetyStatus={data.recovery?.safetyStatus} reviewedSessionId={data.recovery?.reviewedSessionId} hasSession={!!session} offline={offline} />}
+        {data && <DailyReadinessPath es={es} date={data.date} cycle={data.cycle} week={data.weekReview} context={data.inputContext} mode={data.recovery?.mode} safetyStatus={data.recovery?.safetyStatus} reviewedSessionId={data.recovery?.reviewedSessionId} hasSession={!!session} offline={offline} skipped={plannedOnlyId === session?.id} onSkip={() => { setPlannedOnlyId(session?.id ?? null); requestAnimationFrame(() => document.getElementById("today-workout")?.scrollIntoView({block:"start",behavior:"smooth"})); }} />}
         {session && <section id="today-workout" className="space-y-3 scroll-mt-4">
-          <UniversalWorkoutCardLoader key={`card:${session.id}-${session.revision}`} sessionId={session.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={session.id} es={es} />} onSaved={() => load()} />
-          {session.verdict === "blocked" && session.existingReview && <ExistingWorkoutReview key={`review:${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} candidate={session.existingReview} es={es} disabled={busy || offline} onSaved={load} />}
+          {plannedOnlyId === session.id && data?.recovery?.mode !== "hold" && !["hold", "urgent"].includes(data?.recovery?.safetyStatus) ? <>
+            <SavedWorkoutPreviewCard sessionId={session.id} es={es} compact plannedSession={{title:session.title,sport:session.sport,durationMin:session.plannedDurationMin ?? session.durationMin}} />
+            <button type="button" className="text-sm underline min-h-11" onClick={() => setPlannedOnlyId(null)}>{es ? "Volver a la revisión diaria" : "Return to daily review"}</button>
+          </> : <UniversalWorkoutCardLoader compactReadiness key={`card:${session.id}-${session.revision}`} sessionId={session.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={session.id} es={es} compact embedded plannedSession={{title:session.title,sport:session.sport,durationMin:session.plannedDurationMin ?? session.durationMin}} />} onSaved={() => load()} />}
+          {plannedOnlyId !== session.id && session.verdict === "blocked" && session.existingReview && <ExistingWorkoutReview key={`review:${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} candidate={session.existingReview} es={es} disabled={busy || offline} onSaved={load} />}
         </section>}
         {syncStatus && <p role="status" className="text-sm text-slate-600">{syncStatus === "refreshing" ? (es ? "Actualizando conexiones en segundo plano. Tu plan guardado sigue visible." : "Refreshing connections in the background. Your saved plan stays visible.") : syncStatus === "complete" ? (es ? "La actualización terminó. Revisa las fechas de las mediciones." : "Refresh completed. Check measurement dates.") : (es ? "No se confirmó una actualización completa. El plan guardado está disponible; no asumimos datos nuevos." : "A complete refresh was not confirmed. The saved plan remains available; no new data is assumed.")}</p>}
         <DailyInputSummary context={data?.inputContext} es={es} />

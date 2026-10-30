@@ -167,8 +167,16 @@ async function journey(browser, language, width) {
     const pathCard=page.getByRole('region',{name:language==='es'?'Tu semana y preparación':'Your week and readiness',exact:true});
     await pathCard.waitFor();
     assert.match(await pathCard.innerText(),language==='es'?/3 mediciones actuales/:/3 current measurements/);
-    assert.match(await pathCard.innerText(),language==='es'?/Faltan tus respuestas/:/Your answers are still needed/);
+    assert.match(await pathCard.innerText(),language==='es'?/Adaptación diaria sin revisar/:/Daily adaptation not reviewed/);
     await assertMobile(page,'week-readiness',language,width,pathCard);
+    assert.equal(await pathCard.getByText(language==='es'?'Dispositivo o prueba opcional':'Device or optional app test',{exact:true}).count(),0);
+    const beforeSkip=mutations.length;
+    await pathCard.getByRole('button',{name:language==='es'?'Omitir por ahora':'Skip for now',exact:true}).click();
+    await page.locator('#today-workout').getByText(language==='es'?'SESIÓN PREVISTA · SIN ADAPTAR':'PLANNED WORKOUT · NOT ADAPTED',{exact:true}).waitFor();
+    assert.equal(await page.locator('#today-workout').getByRole('link',{name:language==='es'?'Revisar check-in de hoy':"Review today's check-in",exact:true}).count(),0);
+    assert.equal(mutations.length,beforeSkip,'Skipping only changes presentation; it cannot save answers or approve/export');
+    await assertMobile(page,'planned-after-skip',language,width,page.locator('#today-workout'));
+    await page.getByRole('button',{name:language==='es'?'Volver a la revisión diaria':'Return to daily review',exact:true}).click();
     const review = page.getByTestId('existing-workout-review'); await review.waitFor({ state: 'visible' });
     await review.locator('summary').click();
     const checks = review.locator('input[type="checkbox"]'); assert.equal(await checks.count(), 3);

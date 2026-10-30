@@ -166,6 +166,14 @@ test("preview presentation keeps shared graphics and missing-target reasons with
   assert.match(renderToStaticMarkup(createElement(SavedWorkoutPreviewCard, { sessionId: workout.id })), /role="status"/);
 });
 
+test("compact planned view keeps structure visible with one status and collapses explanations",()=>{
+ const html=renderToStaticMarkup(createElement(SavedWorkoutPreviewView,{preview:preview(),compact:true,embedded:true}));
+ assert.match(html,/PLANNED WORKOUT · NOT ADAPTED/);assert.match(html,/<svg/);assert.doesNotMatch(html,/<header|<h1/);
+ assert.match(html,/<details[^>]*><summary>About this view/);
+ const missing=renderToStaticMarkup(createElement(SavedWorkoutPreviewView,{preview:{...preview(),available:false,session:null},compact:true,plannedSession:{sport:"swim",title:"Run: Easy + Strides",durationMin:30}}));
+ assert.match(missing,/Swim session/);assert.match(missing,/30 min/);assert.doesNotMatch(missing,/Run: Easy|<svg|READY/);assert.match(missing,/Review structure/);
+});
+
 test("preview fetch requests only its ID and rejects stale IDs, malformed JSON, auth failures, aborts and timeouts", async () => {
   const signal = () => new AbortController().signal;
   let calls = 0;
