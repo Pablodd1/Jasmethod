@@ -13,7 +13,7 @@ export interface DailyRecoveryView {
   reviewedSessionId?:string|null;
 }
 
-export function DailyRecoveryCard({ recovery, es = false, offline = false }: { recovery?: DailyRecoveryView | null; es?: boolean; offline?: boolean }) {
+export function DailyRecoveryCard({ recovery, es = false, offline = false, plannedView = false }: { recovery?: DailyRecoveryView | null; es?: boolean; offline?: boolean; plannedView?: boolean }) {
   const mode = recovery?.mode ?? "unplanned";
   const scopedReview = !!recovery?.reviewedSessionId && ["training","easy-day"].includes(mode);
   const unknown = !recovery || (recovery.safetyStatus === "unknown" && !scopedReview) || offline;
@@ -21,6 +21,7 @@ export function DailyRecoveryCard({ recovery, es = false, offline = false }: { r
   const urgent = recovery?.safetyStatus === "urgent";
   const reviewNeeded = mode === "review-needed";
   const missingReadiness = !held && (reviewNeeded || mode === "checkin-needed" || (unknown && mode !== "planned-rest" && mode !== "event-day"));
+  if (plannedView && missingReadiness && !held && !offline) return null;
   if (missingReadiness) return <section id="daily-recovery" className="card space-y-2 border-ocean-200" aria-labelledby="daily-recovery-title">
     <h2 id="daily-recovery-title" className="font-display text-lg font-bold">{reviewNeeded ? (es ? "Revisar entrenamiento" : "Review training") : (es ? "Falta el check-in" : "Check-in needed")}</h2>
     <p role="status" className="text-sm">{offline

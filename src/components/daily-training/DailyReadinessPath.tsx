@@ -14,6 +14,15 @@ interface Props {
   hasSession: boolean;
   skipped?: boolean; onSkip?: () => void;
 }
+/** Select a read-only initial view only. These readings never establish readiness. */
+export function hasCurrentHealthReadings(context: DailyInputContext | null | undefined, date: string): boolean {
+  if (!context || context.dateLocal !== date || context.readStatus !== "available" || context.bounded.observationsTruncated) return false;
+  const usable = (key: keyof DailyInputContext["metrics"]) => {
+    const metric = context.metrics[key];
+    return metric.status === "usable" && metric.selected?.observedDay === date && metric.selected.freshness === "fresh";
+  };
+  return usable("sleepHours") && usable("restingHr") && (usable("hrvRmssd") || usable("hrvSdnn"));
+}
 /** Status comes from the canonical daily resolver, never a second client score. */
 export function DailyReadinessPath({ es, date, offline, cycle, week, context, mode, safetyStatus, reviewedSessionId, hasSession, skipped = false, onSkip }: Props) {
   const t = (en: string, spanish: string) => es ? spanish : en;

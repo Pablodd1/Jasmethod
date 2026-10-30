@@ -4,15 +4,33 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildDailyInputContext } from "./daily-input-context";
 import { resolveCheckinSafety } from "./checkin-safety";
-import { DailyReadinessPath } from "../components/daily-training/DailyReadinessPath";
+import { DailyReadinessPath, hasCurrentHealthReadings } from "../components/daily-training/DailyReadinessPath";
 import { sportConsistentTitle } from "./session-purpose-title";
 import { canonicalSession } from "./canonical-session";
 import { updateWorkout, workoutRevision } from "./workout-update";
 import { UniversalWorkoutCard } from "../components/daily-training/UniversalWorkoutCard";
 import { universalWorkoutExample } from "./universal-workout-example";
+import { DailyRecoveryCard, type DailyRecoveryView } from "../components/daily-recovery-card";
 
 const now = new Date("2026-10-30T12:00:00Z");
 const observation = (source="whoop",value=7.5,observedAt=now) => ({id:source,userId:"owner",metricType:"sleep_hours",value,unit:"h",source,observedAt,qualityFlag:"ok",measurementMethod:"device_sync"});
+test("Planned view suppresses only a duplicate unanswered check-in demand, not actual holds or offline warnings",()=>{
+ const recovery:DailyRecoveryView={mode:"checkin-needed",safetyStatus:"unknown",allowMovement:false,recoveryNeedsReview:false,noAdditionalTraining:true,optionalMovementMinutes:null};
+ const render=(patch:Partial<DailyRecoveryView>={},offline=false)=>renderToStaticMarkup(React.createElement(DailyRecoveryCard,{recovery:{...recovery,...patch},plannedView:true,offline}));
+ assert.equal(render(),"");assert.match(render({},true),/Reconnect/);
+ assert.match(render({mode:"hold",safetyStatus:"hold"}),/training on hold/);
+ assert.match(render({mode:"hold",safetyStatus:"urgent"}),/training on hold/);
+});
+test("Automatic planned view requires current usable sleep, resting HR and one HRV method; it grants no readiness",()=>{
+ const observations=[observation(),{...observation(),id:"rhr",metricType:"resting_hr",value:52,unit:"bpm"},{...observation(),id:"hrv",metricType:"hrv_sdnn",value:80,unit:"ms"}];
+ const context=buildDailyInputContext({athleteId:"owner",timezone:"UTC",now,observations});
+ assert.equal(hasCurrentHealthReadings(context,"2026-10-30"),true);
+ assert.equal(hasCurrentHealthReadings(context,"2026-10-31"),false);
+ for(const removed of observations){const incomplete=buildDailyInputContext({athleteId:"owner",timezone:"UTC",now,observations:observations.filter(row=>row.id!==removed.id)});assert.equal(hasCurrentHealthReadings(incomplete,"2026-10-30"),false);}
+ assert.equal(hasCurrentHealthReadings({...context,readStatus:"unavailable"},"2026-10-30"),false);
+ assert.equal(hasCurrentHealthReadings({...context,bounded:{...context.bounded,observationsTruncated:true}},"2026-10-30"),false);
+ assert.equal(resolveCheckinSafety(null).status,"unknown");
+});
 function markup(observations:ReturnType<typeof observation>[], options:{es?:boolean;offline?:boolean;skipped?:boolean;mode?:string}={}) {
  const context=buildDailyInputContext({athleteId:"owner",timezone:"UTC",now,observations});
  return renderToStaticMarkup(React.createElement(DailyReadinessPath,{es:false,date:"2026-10-30",offline:false,hasSession:true,mode:"checkin-needed",context,onSkip:()=>{},...options}));

@@ -172,6 +172,10 @@ test("compact planned view keeps structure visible with one status and collapses
  assert.match(html,/<details[^>]*><summary>About this view/);
  const missing=renderToStaticMarkup(createElement(SavedWorkoutPreviewView,{preview:{...preview(),available:false,session:null},compact:true,plannedSession:{sport:"swim",title:"Run: Easy + Strides",durationMin:30}}));
  assert.match(missing,/Swim session/);assert.match(missing,/30 min/);assert.doesNotMatch(missing,/Run: Easy|<svg|READY/);assert.match(missing,/Review structure/);
+ for(const reason of ["A current injury restriction blocks training.","Rest day has no workout to export."]){
+  const held=renderToStaticMarkup(createElement(SavedWorkoutPreviewView,{preview:{...preview(),available:false,session:null,reason},compact:true}));
+  assert.ok(held.includes(reason));assert.doesNotMatch(held,/Steps need review|Review structure|<svg/);
+ }
 });
 
 test("preview fetch requests only its ID and rejects stale IDs, malformed JSON, auth failures, aborts and timeouts", async () => {

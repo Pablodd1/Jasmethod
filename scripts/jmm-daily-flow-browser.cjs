@@ -167,6 +167,13 @@ async function journey(browser, language, width) {
     const pathCard=page.getByRole('region',{name:language==='es'?'Tu semana y preparación':'Your week and readiness',exact:true});
     await pathCard.waitFor();
     assert.match(await pathCard.innerText(),language==='es'?/3 mediciones actuales/:/3 current measurements/);
+
+    assert.match(await pathCard.innerText(),language==='es'?/Mostrando la sesión prevista/:/Showing the planned workout/);
+    await page.locator('#today-workout').getByText(language==='es'?'SESIÓN PREVISTA · SIN ADAPTAR':'PLANNED WORKOUT · NOT ADAPTED',{exact:true}).waitFor();
+    assert.equal(mutations.length,0,'Current health readings choose the planned view without auto answers or approval');
+    assert.equal(await page.locator('#daily-recovery').count(),0,'Planned view has no repeated check-in demand below the workout');
+    await assertMobile(page,'synced-health-plan',language,width,page.locator('#today-workout'));
+    await page.getByRole('button',{name:language==='es'?'Volver a la revisión diaria':'Return to daily review',exact:true}).click();
     assert.match(await pathCard.innerText(),language==='es'?/Adaptación diaria sin revisar/:/Daily adaptation not reviewed/);
     await assertMobile(page,'week-readiness',language,width,pathCard);
     assert.equal(await pathCard.getByText(language==='es'?'Dispositivo o prueba opcional':'Device or optional app test',{exact:true}).count(),0);
@@ -175,6 +182,7 @@ async function journey(browser, language, width) {
     await page.locator('#today-workout').getByText(language==='es'?'SESIÓN PREVISTA · SIN ADAPTAR':'PLANNED WORKOUT · NOT ADAPTED',{exact:true}).waitFor();
     assert.equal(await page.locator('#today-workout').getByRole('link',{name:language==='es'?'Revisar check-in de hoy':"Review today's check-in",exact:true}).count(),0);
     assert.equal(mutations.length,beforeSkip,'Skipping only changes presentation; it cannot save answers or approve/export');
+    assert.equal(await page.locator('#daily-recovery').count(),0);
     await assertMobile(page,'planned-after-skip',language,width,page.locator('#today-workout'));
     await page.getByRole('button',{name:language==='es'?'Volver a la revisión diaria':'Return to daily review',exact:true}).click();
     const review = page.getByTestId('existing-workout-review'); await review.waitFor({ state: 'visible' });

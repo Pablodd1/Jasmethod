@@ -21,6 +21,9 @@ const previewStyles = `
 export function SavedWorkoutPreviewView({ preview, es = false, compact = false, embedded = false, plannedSession }: { preview: SavedWorkoutPreview; es?: boolean } & PreviewDisplay) {
   const card = savedPreviewPresentation(preview, es);
   const notice = savedPreviewNotice(es);
+  if (compact && !card && ["A current injury restriction blocks training.", "Rest day has no workout to export."].includes(preview.reason)) return <section className="uwc saved-workout-preview" aria-label={es ? "Revisión de la sesión" : "Workout review"}>
+    <p role="status">{es ? preview.reason.startsWith("A current injury") ? "Una restricción de lesión actual mantiene el entrenamiento en pausa." : "Día de descanso previsto; no hay una sesión para ejecutar." : preview.reason}</p>
+  </section>;
   if (compact && !card) return <section className="uwc saved-workout-preview" aria-label={es ? "Sesión prevista" : "Planned workout"}>
     {!embedded && plannedSession && <header className="uwc-header"><div><p>{plannedSession.sport.toUpperCase()}</p><h1>{sportConsistentTitle(plannedSession.title,plannedSession.sport)}</h1></div><div className="uwc-stats"><b>{Number.isFinite(plannedSession.durationMin) && plannedSession.durationMin > 0 ? `${plannedSession.durationMin} min` : "—"}<small>{es ? "TIEMPO PREVISTO" : "PLANNED TIME"}</small></b></div></header>}
     {embedded && plannedSession && Number.isFinite(plannedSession.durationMin) && plannedSession.durationMin > 0 && <p>{es ? "Tiempo previsto" : "Planned time"}: {plannedSession.durationMin} min</p>}
