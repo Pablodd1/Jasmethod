@@ -704,7 +704,7 @@ export function UniversalWorkoutCard({
           </a>
         </div>
       )}
-      {card.session.verdict !== "ready" && heldPreview && <section aria-label={es ? "Plan guardado durante la revisión" : "Saved plan during readiness review"}>
+      {card.session.verdict !== "ready" && (!compactReadiness || card.session.verdict === "blocked") && heldPreview && <section aria-label={es ? "Plan guardado durante la revisión" : "Saved plan during readiness review"}>
         {!compactReadiness && <p role="status">{es ? "La sesión de hoy aún no está autorizada para entrenar. Puedes consultar el plan guardado abajo; sus pasos no eliminan la pausa ni autorizan la ejecución." : "Today's workout is not cleared to train. You can still view the saved plan below; its steps do not remove the hold or authorize execution."}</p>}
         {heldPreview}
       </section>}
