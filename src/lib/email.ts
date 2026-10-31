@@ -3,6 +3,7 @@
 // never breaks in dev.
 
 import nodemailer from "nodemailer";
+import { smtpAuth } from "./smtp-auth";
 import { prisma } from "./db";
 
 interface EmailOpts {
@@ -27,10 +28,7 @@ function getTransporter(): import("nodemailer").Transporter | null {
       port: parseInt(process.env.SMTP_PORT || "587", 10),
       secure: process.env.SMTP_SECURE === "true",
       requireTLS: process.env.SMTP_SECURE !== "true",
-      auth: {
-        user: process.env.SMTP_USER || "",
-        pass: process.env.SMTP_PASS || "",
-      },
+      auth: smtpAuth(process.env),
     });
   }
   return transporter;

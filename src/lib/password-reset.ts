@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 import nodemailer from "nodemailer";
+import { smtpAuth } from "./smtp-auth";
 import { prisma } from "./db";
 import { hashPassword, isRevokedDemoPassword } from "./auth";
 import { signInBase } from "./sign-in-config";
@@ -26,7 +27,7 @@ async function sendResetEmail(email: string, link: string): Promise<boolean> {
     host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587),
     secure: process.env.SMTP_SECURE === "true", requireTLS: process.env.SMTP_SECURE !== "true",
     connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
-    auth: { user: process.env.SMTP_USER || "", pass: process.env.SMTP_PASS || "" },
+    auth: smtpAuth(process.env),
   });
   try {
     const result = await transport.sendMail({
