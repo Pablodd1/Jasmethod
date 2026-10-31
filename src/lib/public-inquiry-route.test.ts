@@ -7,6 +7,7 @@ import * as parser from "./public-inquiry";
 import * as once from "./public-inquiry-receipt";
 import { publicInquiryOriginAllowed } from "./public-inquiry-origin";
 import { PUBLIC_CONTACT_EMAIL } from "./public-contact";
+import { smtpAuth } from "./smtp-auth";
 const requestId="12345678-1234-4123-8123-123456789abc",base="https://app.example.invalid";
 const payload={name:"Synthetic visitor",email:"visitor@example.invalid",topic:"question",message:"Synthetic product-only inquiry without health information.",website:"",consent:true,requestId};
 function fixture(opts:{telegram?:boolean;telegramReceipt?:unknown;accepted?:string[];fail?:boolean}={}){
@@ -15,6 +16,7 @@ function fixture(opts:{telegram?:boolean;telegramReceipt?:unknown;accepted?:stri
   const db:any={appEvent:event,$executeRaw:async()=>1};db.$transaction=async(fn:any)=>fn(db);
   const deps:Record<string,unknown>={"next/server":{NextResponse:{json:Response.json}},"@/lib/db":{prisma:db},"@/lib/public-inquiry-origin":{publicInquiryOriginAllowed:(req:Request)=>publicInquiryOriginAllowed(req,{NODE_ENV:"production",NEXT_PUBLIC_APP_URL:base})},"@/lib/public-inquiry":parser,"@/lib/public-inquiry-receipt":once,"@/lib/public-contact":{PUBLIC_CONTACT_EMAIL},
     "@/lib/support-delivery":{supportTelegramConfigured:()=>!!opts.telegram,deliverSupportMessage:async()=>{telegram++;return opts.telegramReceipt??null;}},
+    "@/lib/smtp-auth":{smtpAuth},
     nodemailer:{__esModule:true,default:{createTransport:()=>({async sendMail(options:any){smtp++;assert.equal(options.to,PUBLIC_CONTACT_EMAIL);assert.equal(options.replyTo,payload.email);if(opts.fail)throw Error("Synthetic timeout");return {accepted:opts.accepted??[PUBLIC_CONTACT_EMAIL]};},close(){}})}}};
   const compiled=ts.transpileModule(readFileSync("src/app/api/public-inquiry/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
   const loaded={exports:{} as any};runInNewContext(compiled,{module:loaded,exports:loaded.exports,Buffer,Response,URL,process:{env:{SMTP_HOST:"mail.example.invalid",SMTP_FROM:"sender@example.invalid",SMTP_USER:"synthetic",SMTP_PASS:"synthetic"}},require:(name:string)=>{if(name in deps)return deps[name];throw Error("Unexpected inquiry dependency: "+name);}});

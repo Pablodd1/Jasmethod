@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { smtpAuth } from "./smtp-auth";
 
 export type SmokeResult = { status: "provider_accepted" | "rejected" | "unknown"; receiptId: string | null };
 export const SMOKE_CONTENT = "JMM SMOKE TEST";
@@ -64,7 +65,7 @@ async function sendSmokeEmailContent(to: string, text: string, options: MailOpti
   try {
     const settings = { host: env.SMTP_HOST, port: Number(env.SMTP_PORT || 587), secure: env.SMTP_SECURE === "true", requireTLS: env.SMTP_SECURE !== "true",
       connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
-      auth: { user: env.SMTP_USER || "", pass: env.SMTP_PASS || "" } };
+      auth: smtpAuth(env) };
     transport = options.createTransport ? options.createTransport(settings) : nodemailer.createTransport(settings);
     const result = await transport.sendMail({ from: env.SMTP_FROM, to: { address: to, name: "" }, subject: SMOKE_CONTENT, text, html: text.split("\n").map(line => `<p>${line}</p>`).join("") });
     const address = (value: unknown) => typeof value === "string" ? value.toLowerCase() : typeof object(value)?.address === "string" ? String(object(value)!.address).toLowerCase() : null;

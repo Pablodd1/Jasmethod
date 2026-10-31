@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { smtpAuth, gmailSmtpFormatHint } from "./smtp-auth";
 import { coachTextConfigured } from "./coach-text-provider";
 import { manualEmailOrigin } from "./manual-workout-email";
 
@@ -14,7 +15,7 @@ function smtpProviderDetail(env: Environment): string {
     : host === "smtp.office365.com" ? "Microsoft 365"
     : host === "smtp.sendgrid.net" ? "SendGrid"
     : host === "smtp.resend.com" ? "Resend" : null;
-  return provider ? `Configured SMTP provider: ${provider}. ` : "SMTP provider is not identified by the safe host allowlist. ";
+  return (provider ? `Configured SMTP provider: ${provider}. ` : "SMTP provider is not identified by the safe host allowlist. ") + gmailSmtpFormatHint(env);
 }
 export function telegramWebhookTarget(env: Environment): string | null {
   try {
@@ -93,7 +94,7 @@ async function verifySmtp(env: Environment): Promise<boolean> {
   const transport = nodemailer.createTransport({ host: env.SMTP_HOST, port: Number(env.SMTP_PORT || 587),
     secure: env.SMTP_SECURE === "true", requireTLS: env.SMTP_SECURE !== "true",
     connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 15_000,
-    auth: { user: env.SMTP_USER || "", pass: env.SMTP_PASS || "" } });
+    auth: smtpAuth(env) });
   try { return await transport.verify(); } finally { transport.close(); }
 }
 /** Allowlisted categories only: SMTP errors can contain credentials or server responses. */

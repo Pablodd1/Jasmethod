@@ -1,3 +1,4 @@
+import { smtpAuth } from "@/lib/smtp-auth";
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { prisma } from "@/lib/db";
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
       finish:async(id,receipt)=>{const current=await prisma.appEvent.findUniqueOrThrow({where:{id},select:{meta:true}});const stored=JSON.parse(current.meta||"null");await prisma.appEvent.update({where:{id},data:{meta:JSON.stringify({...stored,receipt})}});},
     },deliver:async()=>{
       if(telegram){const receipt=await deliverSupportMessage({category:"question",replyEmail:data.email,message:"Public inquiry ("+data.topic+") from "+data.name+":\n"+data.message});return receipt!==null?{channel:"telegram"}:null;}
-      const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==="true",requireTLS:process.env.SMTP_SECURE!=="true",auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS},connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000});
+      const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==="true",requireTLS:process.env.SMTP_SECURE!=="true",auth:smtpAuth(process.env),connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000});
       try {const receipt=await transport.sendMail({from:process.env.SMTP_FROM,to:PUBLIC_CONTACT_EMAIL,replyTo:data.email,subject:"JMM website inquiry: "+data.topic,text:inquiryEmailText(data)});
         return (receipt.accepted||[]).some((a:string|{address:string})=>(typeof a==="string"?a:a.address).toLowerCase()===PUBLIC_CONTACT_EMAIL.toLowerCase())?{channel:"smtp"}:null;
       }finally{transport.close();}

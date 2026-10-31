@@ -12,6 +12,7 @@ import { buildPrivateSafeSessionDownload } from "./fit-export";
 import { CYCLE_MOVEMENT_GUIDANCE } from "./cycle-movement-guidance";
 import { deliveryWorkoutPreview } from "./delivery-workout-preview";
 import { dateKey } from "./dates";
+import { smtpAuth } from "./smtp-auth";
 
 const session = (note = "PRIVATE_MEDICAL_NOTE", group = "PRIVATE_CONTEXT") => canonicalSession({
   athleteId: "synthetic-athlete", workout: { id: "synthetic-session", sport: "bike", title: "PRIVATE_TITLE", durationMin: 1 },
@@ -39,15 +40,16 @@ test("provider FIT keeps allowlisted safety guidance only and refuses split arti
   assert.throws(() => buildPrivateSafeSessionDownload({ ...source, capability: { ...source.capability, mode: "split", downloadFormat: "zip" } }), /single FIT/);
   assert.throws(() => buildPrivateSafeSessionDownload({ ...source, verdict: "blocked" }));
 });
-function transportFixture(secure: boolean, sourcePath = "src/lib/manual-workout-email-transport.ts") {
+function transportFixture(secure: boolean, sourcePath = "src/lib/manual-workout-email-transport.ts", env:Record<string,string>={}) {
   const state = { options: null as any, closed: false, messages: [] as any[] };
   const deps: Record<string, any> = {
     nodemailer: { createTransport: (options: any) => { state.options = options; return { sendMail: async (message: any) => { state.messages.push(message); return { accepted: [message.to], messageId: "synthetic-receipt" }; }, close: () => { state.closed = true; } }; } },
     "./db": { prisma: {} },
+    "./smtp-auth": { smtpAuth },
   };
   const compiled = ts.transpileModule(fs.readFileSync(sourcePath, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const mod = { exports: {} as any };
-  vm.runInNewContext(compiled, { module: mod, exports: mod.exports, require: (id: string) => { assert.ok(id in deps, id); return deps[id]; }, process: { env: { SMTP_HOST: "smtp.example.invalid", SMTP_FROM: "sender@example.invalid", SMTP_SECURE: String(secure) } } });
+  vm.runInNewContext(compiled, { module: mod, exports: mod.exports, require: (id: string) => { assert.ok(id in deps, id); return deps[id]; }, process: { env: { SMTP_HOST: "smtp.example.invalid", SMTP_FROM: "sender@example.invalid", SMTP_SECURE: String(secure), ...env } } });
   return { state, send: mod.exports.sendManualEmail || mod.exports.sendEmail };
 }
 test("all workout SMTP transports require STARTTLS or implicit TLS", async () => {
@@ -57,6 +59,14 @@ test("all workout SMTP transports require STARTTLS or implicit TLS", async () =>
     assert.equal(state.options.secure, secure); assert.equal(state.options.requireTLS, !secure);
     assert.equal(state.options.tls?.rejectUnauthorized ?? true, true);
     assert.equal(state.messages.length, 1);
+  }
+});
+
+test("both workout email transports authenticate with Google's ungrouped app password without relaxing TLS",async()=>{
+  for(const path of ["src/lib/manual-workout-email-transport.ts","src/lib/email.ts"]) {
+    const {state,send}=transportFixture(false,path,{SMTP_HOST:"smtp.gmail.com",SMTP_USER:" sender@example.invalid ",SMTP_PASS:" abcd efgh ijkl mnop\n"});
+    await send({to:"synthetic@example.invalid",subject:"Synthetic",text:"Synthetic",html:"Synthetic"});
+    assert.equal(state.options.auth.user,"sender@example.invalid");assert.equal(state.options.auth.pass,"abcdefghijklmnop");assert.equal(state.options.requireTLS,true);assert.equal(state.messages.length,1);
   }
 });
 test("email service calls privacy-safe builder at attachment boundary", () => {
