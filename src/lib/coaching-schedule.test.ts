@@ -230,3 +230,28 @@ test('411-minute capacity with ninety-minute days honors Monday strength and Wed
     assert.ok(week.sessions.some(s=>s.sport==='brick'));
   }
 });
+
+test('excluded, taper, race and test pair weeks preserve a feasible gym preference on that weekday',()=>{
+  for(const exclusion of ['excluded','taper','race','test']){
+    const planning=setup([0,1,2,3,4,5,6],480,180);planning.strengthWeekdays=[3];
+    planning.doubleDay={version:DOUBLE_DAY_VERSION,weekday:3,purpose:'Familiar optional pair',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true};
+    const raw=generatePlan({distance:'half',level:'advanced',weeks:1,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:8,reviewedCycle:true,sessionLimitMinutes:180});
+    if(exclusion==='taper')raw[0].theme+=' · taper';
+    if(exclusion==='race'||exclusion==='test')raw[0].sessions[0].type=exclusion;
+    const week=boundPlanWeeks(raw,planning,8,1,'advanced',exclusion==='excluded'?[0]:[]).weeks[0];
+    assert.ok(week.sessions.some(s=>s.sport==='strength'&&s.daySlot===2),'An ineligible pair must not reserve Wednesday away from the preferred gym session.');
+    assert.ok(week.sessions.every(s=>!s.doubleDayRole));
+    assert.match(week.doubleDayNote,/omitted.*race\/test\/taper/);
+  }
+});
+
+test('more preferred gym days than strength units allows endurance on unused preferred days',()=>{
+  const planning=setup([1,2,3,4,5,6],480,180);planning.strengthWeekdays=[1,4,6];
+  const raw=generatePlan({distance:'half',level:'advanced',weeks:1,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:8,reviewedCycle:true,sessionLimitMinutes:180});
+  const week=boundPlanWeeks(raw,planning,8,1,'advanced').weeks[0];
+  assert.equal(week.sessions.length,6);
+  assert.equal(week.sessions.filter(s=>s.sport==='strength').length,2);
+  assert.equal(week.sessions.filter(s=>s.sport!=='strength').length,4);
+  const preference=week.doseAllocation&&'strengthPreference' in week.doseAllocation?week.doseAllocation.strengthPreference as {honoredSlots:number[]}:null;
+  assert.equal(preference?.honoredSlots.length,2);
+});

@@ -48,7 +48,6 @@ export function scheduleCoachingWeek(week:GeneratedWeek, availableSlots:number[]
       for(const daySlot of slots){
         if(!availableSlots.includes(daySlot)||placed.some(s=>s.daySlot===daySlot))continue;
         if(preferCompatiblePairs&&preferredEnduranceSlots.includes(daySlot)&&!compatiblePairPrimary(session))continue;
-        if(preferStrength&&strengthSlots.includes(daySlot)&&session.sport!=='strength'&&!['race','test'].includes(session.type))continue;
         if(preferPrimaryOpening&&openingSport&&daySlot===availableSlots[0]&&session.sport!==openingSport&&!['race','test'].includes(session.type))continue;
         const absolute=weekIndex*7+daySlot;
         if(hard(session)&&(previousHardDays.some(day=>Math.abs(day-absolute)<=1)||placed.some(s=>hard(s)&&Math.abs(s.daySlot-daySlot)<=1)))continue;
