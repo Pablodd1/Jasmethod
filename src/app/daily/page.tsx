@@ -3,7 +3,8 @@ import "@/components/daily-training/universal-workout-card.css";
 // /daily — the developer-kit daily training screen fed by /api/v1/training/today.
 // Distinct visual format (dark, card-numbered guidance) living alongside Today;
 // both read the same plan. This page handles loading/empty/error states.
-import { useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/components/auth";
 import { unitsOf } from "@/lib/units";
@@ -31,20 +32,19 @@ async function postEvent(path: string, session: DailyTraining["session"], body: 
   if (!response.ok || data.ok !== true) throw new Error(data.error || `Save could not be verified (${response.status})`);
 }
 
-export default function DailyTrainingPage() {
+function DailyTrainingPageContent() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const requestSequence = useRef(0);
   const loadController = useRef<AbortController | null>(null);
   const [state, setState] = useState<State>({ kind: "loading" });
-  const [selected, setSelected] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("sessionId"));
-  useEffect(() => {
-    const onHistory = () => setSelected(new URLSearchParams(window.location.search).get("sessionId"));
-    window.addEventListener("popstate", onHistory);
-    return () => window.removeEventListener("popstate", onHistory);
-  }, []);
+  // The URL owns selection across Link navigation, reload and browser history.
+  // A useState initializer can retain an earlier /daily record in the router.
+  const selected = searchParams.get("sessionId");
   function selectSession(id: string) {
     const url = new URL(window.location.href); url.searchParams.set("sessionId", id);
-    window.history.pushState({}, "", url); setSelected(id);
+    router.push(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
   }
   const load = useCallback(async () => {
     loadController.current?.abort();
@@ -58,7 +58,7 @@ export default function DailyTrainingPage() {
       const json = await readTrainingJson<DailyTraining | null>(`/api/v1/training/today${selected ? `?sessionId=${encodeURIComponent(selected)}` : ""}`, {
         signal,
         label: "Daily training",
-        validate: (value): value is DailyTraining | null => isDailyTraining(value),
+        validate: (value): value is DailyTraining | null => isDailyTraining(value) && (!selected || value.session.id === selected),
         emptyValue: null,
       });
       if (json === null) {
@@ -79,6 +79,9 @@ export default function DailyTrainingPage() {
     void load();
     return () => loadController.current?.abort();
   }, [load]);
+
+  if (state.kind === "ready" && selected && state.plan.session.id !== selected)
+    return <main className="jmm-screen" role="status"><p>Loading selected workout… / Cargando la sesión seleccionada…</p></main>;
 
   const es = state.kind === "ready" ? state.plan.language === "es" : user?.language === "es";
   const displayNavigation = <nav aria-label={es ? "Vista del entrenamiento de hoy" : "Today's training display"} className="mx-auto max-w-[540px] px-4 py-3 flex flex-wrap gap-4 items-center text-sm">
@@ -145,4 +148,8 @@ export default function DailyTrainingPage() {
     />
     </>
   );
+}
+
+export default function DailyTrainingPage() {
+  return <Suspense fallback={<main className="jmm-screen" role="status"><p>Loading training… / Cargando entrenamiento…</p></main>}><DailyTrainingPageContent /></Suspense>;
 }

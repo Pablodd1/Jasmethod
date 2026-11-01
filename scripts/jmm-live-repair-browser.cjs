@@ -180,7 +180,8 @@ async function main() {
       const logResult=page.getByRole('link',{name:language==='es'?'Registrar resultado':'Log result',exact:true});
       assert.equal(await page.getByRole('button',{name:'Done',exact:true}).count(),0,'A plan cannot be marked completed by an empty shortcut');
       assert.equal(await logResult.getAttribute('href'),`/daily?sessionId=${encodeURIComponent(f.card.session.id)}&feedback=1#workout-feedback`);
-      await logResult.click();
+      const selectedResultRead=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/v1/training/today'&&new URL(response.url()).searchParams.get('sessionId')===f.card.session.id);
+      await logResult.click();await selectedResultRead;
       const feedback=page.locator('#workout-feedback');await feedback.waitFor({state:'visible'});
       await page.getByLabel(language==='es'?'Minutos realizados (en blanco si no lo sabes)':'Actual minutes (leave blank if unknown)',{exact:true}).waitFor({state:'visible'});
       assert.ok(selectedDailyReads.includes(f.card.session.id),'Result logging resolves the selected owned session');
