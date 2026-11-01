@@ -9,6 +9,10 @@ function pairSportPriority(primary:string|undefined,secondary:string) {
   return secondary === primary ? 3 : 1;
 }
 export type BoundedPlanSession = PlanSession & {daySlot:number; startTime?:string; doubleDayRole?:"primary"|"secondary"; movedFromSlot?:number};
+/** Availability is a ceiling, not evidence that the athlete tolerates that dose. */
+export function planningWeeklyBudget(setup:PlanningSetup){
+  return Math.min(setup.baselineWeeklyMinutes??0,setup.availableWeeklyMinutes??Infinity,(setup.maxSessionMinutes??0)*setup.trainingDays.length);
+}
 const demandingSession=(session:PlanSession)=>Number(session.zone.slice(1))>=4
   || ["strength","hyrox"].includes(session.sport) || ["speed","plyo"].includes(session.type)
   || (session.sport==="brick"&&Number(session.zone.slice(1))>=3);
@@ -26,7 +30,7 @@ export function levelRecoveryPolicy(level?: string | null) {
  * These are product constraints, not a validated individual response model. */
 export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _legacyWeeklyHours: number | null | undefined, startWeekday: number, level?: string | null, doubleDayExcludedWeeks: number[] = [], options:{preserveWeeklyDose?:boolean}={}) {
   const recoveryPolicy = setup.restPreference==='no_fixed_rest'?{minimumRestDays:0,maximumTrainingDays:7,note:'Explicit no-fixed-rest preference. Easy recovery practice uses existing weekly minutes. Safety, events and availability can still require rest.'}:levelRecoveryPolicy(level);
-  const weeklyBudget = Math.min(setup.baselineWeeklyMinutes ?? 0, (setup.maxSessionMinutes ?? 0)*setup.trainingDays.length);
+  const weeklyBudget = planningWeeklyBudget(setup);
   const hardAbsoluteDays: number[] = [];
   return {weeklyBudget, recoveryPolicy, weeks:weeks.map((week, weekIndex)=>{
     const hardDays:number[]=[];
@@ -34,17 +38,18 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _le
     if(week.templateVersion==='coaching-structure-v1') {
       const preference=setup.doubleDay;
       const consent=doubleDayReadiness(preference,setup.trainingDays);
-      const pairSlots=consent.ready?doubleDayWeekdays(preference).slice(0,level==='pro'?2:1).map(day=>(day-startWeekday+7)%7):[];
-      const scheduled=scheduleCoachingWeek(week,availableSlots,recoveryPolicy.maximumTrainingDays,weeklyBudget,setup.maxSessionMinutes??0,weekIndex,hardAbsoluteDays,pairSlots);
-      let doubleDayNote=preference?consent.reasons.join(' '):'No optional double day selected; single-session scheduling retained.';
+      const pairWeekEligible=!doubleDayExcludedWeeks.includes(weekIndex)&&!/taper|race|test|freshness|sharpening|deload/i.test(week.theme)&&!week.sessions.some(s=>['race','test'].includes(s.type));
+      const pairSlots=consent.ready&&pairWeekEligible?doubleDayWeekdays(preference).slice(0,level==='pro'?2:1).map(day=>(day-startWeekday+7)%7):[];
+      const strengthSlots=(setup.strengthWeekdays??[]).map(day=>(day-startWeekday+7)%7);
+      const scheduled=scheduleCoachingWeek(week,availableSlots,recoveryPolicy.maximumTrainingDays,weeklyBudget,setup.maxSessionMinutes??0,weekIndex,hardAbsoluteDays,pairSlots,strengthSlots);
+      let doubleDayNote=preference?consent.ready&&!pairWeekEligible?'Optional pair omitted in this race/test/taper week; keep the single-session schedule.':consent.reasons.join(' '):'No optional double day selected; single-session scheduling retained.';
       const omittedTitles=new Set(scheduled.decision.omitted.map(item=>item.title));
       const pairedTitles=new Set<string>();
       const vacatedSlots=new Set<number>();
-      if(preference&&consent.ready){
+      if(preference&&consent.ready&&pairWeekEligible){
         for(const weekday of doubleDayWeekdays(preference).slice(0,level==='pro'?2:1)){
           const slot=(weekday-startWeekday+7)%7;
           const primary=scheduled.sessions.find(s=>s.daySlot===slot);
-          if(doubleDayExcludedWeeks.includes(weekIndex)||/taper|race|test|freshness|sharpening|deload/i.test(week.theme)||week.sessions.some(s=>['race','test'].includes(s.type))){doubleDayNote='Optional pair omitted in this race/test/taper week; keep the single-session schedule.';break;}
           const existingTotal=scheduled.sessions.reduce((n,s)=>n+s.minutes,0);
           // Only a complete, already-generated easy endurance unit may become
           // the consented second session. No extra work or shortened hard set.

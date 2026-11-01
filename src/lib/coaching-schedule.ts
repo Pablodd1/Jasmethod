@@ -6,12 +6,12 @@ import {validCoachingMetadata} from './coaching-prescription';
  * are selected within time and recovery constraints; no discarded work is made
  * up, no strength dose is stretched and no second daily session is invented. */
 export function scheduleCoachingWeek(week:GeneratedWeek, availableSlots:number[], maximumDays:number,
-  weeklyBudget:number, dailyLimit:number, weekIndex:number, previousHardDays:readonly number[], preferredEnduranceSlots:readonly number[]=[]) {
+  weeklyBudget:number, dailyLimit:number, weekIndex:number, previousHardDays:readonly number[], preferredEnduranceSlots:readonly number[]=[], preferredStrengthSlots:readonly number[]=[]) {
   const hard=(s:PlanSession)=>s.coaching?.demanding ?? (Number(s.zone.slice(1))>=4 || ['strength','hyrox'].includes(s.sport));
   const entries=week.sessions.map((session,index)=>({session,index}));
   const eligible=entries.filter(({session})=>session.sport!=='recovery' && session.minutes>0 &&
     session.minutes<=dailyLimit && session.minutes>=(session.coaching?.minimumMinutes??1));
-  const compatiblePairPrimary=(primary:PlanSession)=>['swim','bike','run'].includes(primary.sport)&&eligible.some(({session:donor})=>donor!==primary&&['swim','bike','run'].includes(donor.sport)&&/^z[12]$/.test(donor.zone)&&!hard(donor)&&!['race','test','speed','interval','threshold','plyo'].includes(donor.type)&&primary.minutes+donor.minutes<=dailyLimit);
+  const compatiblePairPrimary=(primary:PlanSession)=>['swim','bike','run'].includes(primary.sport)&&eligible.some(({session:donor})=>donor.title!==primary.title&&['swim','bike','run'].includes(donor.sport)&&/^z[12]$/.test(donor.zone)&&!hard(donor)&&!['race','test','speed','interval','threshold','plyo'].includes(donor.type)&&primary.minutes+donor.minutes<=dailyLimit);
   // Sport coverage is prioritized before supporting dose; a brick contributes
   // only the explicitly represented legs, never an assumed swim component.
   const score=(chosen:typeof entries)=>{
@@ -37,10 +37,14 @@ export function scheduleCoachingWeek(week:GeneratedWeek, availableSlots:number[]
     const openingSport=chosen.find(({session})=>['swim','bike','run'].includes(session.sport))?.session.sport;
     let preferPrimaryOpening=true;
     let preferCompatiblePairs=preferredEnduranceSlots.length>0&&chosen.some(({session})=>compatiblePairPrimary(session));
+    let preferStrength=preferredStrengthSlots.some(slot=>availableSlots.includes(slot))&&chosen.some(({session})=>session.sport==='strength');
+    const strengthSlots=preferredStrengthSlots.filter(slot=>availableSlots.includes(slot));
+    const strengthTarget=Math.min(strengthSlots.length,chosen.filter(({session})=>session.sport==='strength').length);
     const assign=(index:number):boolean=>{
-      if(index===ordered.length)return true;
+      if(index===ordered.length)return (!preferStrength||placed.filter(s=>s.sport==='strength'&&strengthSlots.includes(s.daySlot)).length>=strengthTarget)
+        &&(!preferCompatiblePairs||preferredEnduranceSlots.every(slot=>placed.some(s=>s.daySlot===slot&&compatiblePairPrimary(s))));
       const {session,index:sourceIndex}=ordered[index];
-      const slots=['race','test'].includes(session.type)?[sourceIndex%7]:availableSlots;
+      const slots=['race','test'].includes(session.type)?[sourceIndex%7]:preferStrength&&session.sport==='strength'?[...strengthSlots,...availableSlots.filter(slot=>!strengthSlots.includes(slot))]:availableSlots;
       for(const daySlot of slots){
         if(!availableSlots.includes(daySlot)||placed.some(s=>s.daySlot===daySlot))continue;
         if(preferCompatiblePairs&&preferredEnduranceSlots.includes(daySlot)&&!compatiblePairPrimary(session))continue;
@@ -57,9 +61,12 @@ export function scheduleCoachingWeek(week:GeneratedWeek, availableSlots:number[]
     // Primary-sport opening is a presentation/coaching preference, never a
     // reason to discard a feasible complete unit or violate recovery spacing.
     if(!assigned){preferPrimaryOpening=false;assigned=assign(0);}
+    // A gym weekday is a preference; preserve complete units and a feasible
+    // consented pair if joint placement conflicts with recovery or availability.
+    if(!assigned&&preferStrength){preferStrength=false;preferPrimaryOpening=true;assigned=assign(0);if(!assigned){preferPrimaryOpening=false;assigned=assign(0);}}
     // Optional pairing must not remove otherwise feasible complete units. If
     // the joint placement cannot fit, return to ordinary single-day placement.
-    if(!assigned&&preferCompatiblePairs){preferCompatiblePairs=false;preferPrimaryOpening=true;assigned=assign(0);if(!assigned){preferPrimaryOpening=false;assigned=assign(0);}}
+    if(!assigned&&preferCompatiblePairs){preferCompatiblePairs=false;preferStrength=strengthTarget>0;preferPrimaryOpening=true;assigned=assign(0);if(!assigned){preferPrimaryOpening=false;assigned=assign(0);}if(!assigned&&preferStrength){preferStrength=false;assigned=assign(0);}}
     if(assigned){sessions=placed.sort((a,b)=>a.daySlot-b.daySlot);selected=new Set(chosen.map(e=>e.index));break;}
   }
   let introductoryFallback=false;
@@ -87,8 +94,12 @@ export function scheduleCoachingWeek(week:GeneratedWeek, availableSlots:number[]
       session.minutes<(session.coaching?.minimumMinutes??1)?'Complete session is below its minimum executable dose.':
       'Complete session does not fit available days, weekly time, rest or demanding-session separation. No catch-up work was added.'}));
   const total=sessions.reduce((n,s)=>n+s.minutes,0);
+  const honoredStrengthSlots=preferredStrengthSlots.filter(slot=>sessions.some(s=>s.daySlot===slot&&s.sport==='strength'));
+  const unmetStrengthSlots=preferredStrengthSlots.filter(slot=>!honoredStrengthSlots.includes(slot));
   return {sessions,hardDays:sessions.filter(hard).map(s=>weekIndex*7+s.daySlot),
     decision:{method:'coaching-complete-units-v1',templateTargetMinutes:week.totalMinutes,allocatedMinutes:total,
       unallocatedMinutes:Math.max(0,Math.min(weeklyBudget,week.totalMinutes)-total),omitted,
+      strengthPreference:{requestedSlots:[...preferredStrengthSlots],honoredSlots:honoredStrengthSlots,unmetSlots:unmetStrengthSlots,
+        note:!preferredStrengthSlots.length?'No preferred strength weekday supplied.':unmetStrengthSlots.length?'Some preferred gym days could not fit complete strength units, available time, recovery spacing or the agreed pair. Review the actual scheduled dates.':'Preferred gym weekdays honored within available time, recovery and consent limits.'},
       note:introductoryFallback?'Reduced component coverage: short introductory aerobic alternatives only. Original units did not fit; review omitted purposes and tolerance before progressing.':omitted.length?'Reduced component coverage: review omitted purposes before accepting this schedule.':'Complete template units fit the reviewed limits. No extra minutes or double sessions added.'}};
 }

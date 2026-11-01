@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {boundPlanWeeks} from './planning-bounds';
+import {boundPlanWeeks,planningWeeklyBudget} from './planning-bounds';
 import {parsePlanningSetup} from './planning-setup';
 import {generatePlan,generateSingleSport,type GeneratedWeek,type PlanSession} from './science';
 import {coachingWeekTemplate} from './coaching-week-template';
@@ -174,4 +174,84 @@ test('moving a triathlon easy unit into a consented pair restores a complete omi
   assert.equal(first.restDaySlots.length,1);
   const totals=new Map<number,number>();for(const s of first.sessions)totals.set(s.daySlot,(totals.get(s.daySlot)??0)+s.minutes);
   assert.ok([...totals.values()].every(minutes=>minutes<=180));
+});
+
+test('Monday gym and Wednesday agreed pair coexist without turning ten available hours into tolerated load',()=>{
+  const planning=setup([0,1,2,3,4,5,6],480,180);
+  planning.availableWeeklyMinutes=600;planning.strengthWeekdays=[1];
+  planning.doubleDay={version:DOUBLE_DAY_VERSION,weekday:3,purpose:'Familiar Wednesday pair',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true};
+  const raw=generatePlan({distance:'half',level:'advanced',weeks:4,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:planningWeeklyBudget(planning)/60,reviewedCycle:true,sessionLimitMinutes:180});
+  const out=boundPlanWeeks(raw,planning,10,1,'advanced');
+  assert.equal(out.weeklyBudget,480);
+  for(const week of out.weeks){
+    assert.ok(week.sessions.some(s=>s.sport==='strength'&&s.daySlot===0));
+    assert.equal(week.sessions.filter(s=>s.doubleDayRole&&s.daySlot===2).length,2);
+    assert.equal(week.sessions.filter(s=>s.sport==='strength').length,2);
+    assert.equal(week.sessions.filter(s=>s.sport==='swim').length,2);
+    assert.ok(week.sessions.some(s=>s.sport==='brick'));
+    assert.ok(week.totalMinutes<=480);
+    assert.ok(week.doseAllocation&&'strengthPreference' in week.doseAllocation);
+    if(week.doseAllocation&&'strengthPreference' in week.doseAllocation)assert.deepEqual((week.doseAllocation.strengthPreference as {honoredSlots:number[]}).honoredSlots,[0]);
+  }
+  planning.availableWeeklyMinutes=240;
+  assert.equal(planningWeeklyBudget(planning),240);
+  assert.ok(boundPlanWeeks(raw,planning,10,1,'advanced').weeks.every(w=>w.totalMinutes<=240));
+});
+
+test('unavailable or conflicting gym preference reports the tradeoff without losing complete feasible units',()=>{
+  const planning=setup([1,3,5],240,90);planning.strengthWeekdays=[0];
+  const raw=generateSingleSport({sport:'run',level:'advanced',weeks:1,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:4,reviewedCycle:true,sessionLimitMinutes:90});
+  const result=boundPlanWeeks(raw,planning,4,1,'advanced').weeks[0];
+  assert.ok(result.sessions.length>0);assert.ok(result.sessions.every(s=>[0,2,4].includes(s.daySlot)));
+  const decision=result.doseAllocation;
+  assert.ok(decision&&'strengthPreference' in decision);
+  if(decision&&'strengthPreference' in decision){const preference=decision.strengthPreference as {unmetSlots:number[];note:string};assert.deepEqual(preference.unmetSlots,[6]);assert.match(preference.note,/could not fit/);}
+});
+
+test('411-minute capacity with ninety-minute days honors Monday strength and Wednesday pairs only where complete units fit',()=>{
+  const planning=setup([0,1,2,3,4,5,6],411,90);
+  planning.availableWeeklyMinutes=600;planning.strengthWeekdays=[1];
+  planning.doubleDay={version:DOUBLE_DAY_VERSION,weekday:3,purpose:'Familiar Wednesday pair',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true};
+  const raw=generatePlan({distance:'half',level:'advanced',weeks:4,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:planningWeeklyBudget(planning)/60,reviewedCycle:true,sessionLimitMinutes:90});
+  const weeks=boundPlanWeeks(raw,planning,10,1,'advanced').weeks;
+  for(const [index,week] of weeks.entries()){
+    const pair=week.sessions.filter(s=>s.doubleDayRole);
+    const originalEasy=raw[index].sessions.filter(s=>['swim','bike','run'].includes(s.sport)&&!s.coaching?.demanding&&/^z[12]$/.test(s.zone));
+    const pairFits=originalEasy.some((s,i)=>originalEasy.some((other,j)=>i!==j&&s.minutes+other.minutes<=90));
+    assert.equal(pair.length,pairFits?2:0);
+    if(index===0)assert.equal(pair.length,2,'The first-week compatible swim pair must occupy Wednesday.');
+    if(!pairFits)assert.match(week.doubleDayNote,/No complete existing easy unit fits/);
+    assert.ok(pair.every(s=>s.daySlot===2));
+    assert.ok(pair.reduce((sum,s)=>sum+s.minutes,0)<=90);
+    assert.ok(week.sessions.some(s=>s.sport==='strength'&&s.daySlot===0));
+    assert.ok(week.totalMinutes<=411);
+    if(pairFits)assert.equal(week.sessions.filter(s=>s.sport==='swim').length,2);
+    assert.equal(week.sessions.filter(s=>s.sport==='strength').length,2);
+    assert.ok(week.sessions.some(s=>s.sport==='brick'));
+  }
+});
+
+test('excluded, taper, race and test pair weeks preserve a feasible gym preference on that weekday',()=>{
+  for(const exclusion of ['excluded','taper','race','test']){
+    const planning=setup([0,1,2,3,4,5,6],480,180);planning.strengthWeekdays=[3];
+    planning.doubleDay={version:DOUBLE_DAY_VERSION,weekday:3,purpose:'Familiar optional pair',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true};
+    const raw=generatePlan({distance:'half',level:'advanced',weeks:1,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:8,reviewedCycle:true,sessionLimitMinutes:180});
+    if(exclusion==='taper')raw[0].theme+=' · taper';
+    if(exclusion==='race'||exclusion==='test')raw[0].sessions[0].type=exclusion;
+    const week=boundPlanWeeks(raw,planning,8,1,'advanced',exclusion==='excluded'?[0]:[]).weeks[0];
+    assert.ok(week.sessions.some(s=>s.sport==='strength'&&s.daySlot===2),'An ineligible pair must not reserve Wednesday away from the preferred gym session.');
+    assert.ok(week.sessions.every(s=>!s.doubleDayRole));
+    assert.match(week.doubleDayNote,/omitted.*race\/test\/taper/);
+  }
+});
+
+test('more preferred gym days than strength units allows endurance on unused preferred days',()=>{
+  const planning=setup([1,2,3,4,5,6],480,180);planning.strengthWeekdays=[1,4,6];
+  const raw=generatePlan({distance:'half',level:'advanced',weeks:1,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:8,reviewedCycle:true,sessionLimitMinutes:180});
+  const week=boundPlanWeeks(raw,planning,8,1,'advanced').weeks[0];
+  assert.equal(week.sessions.length,6);
+  assert.equal(week.sessions.filter(s=>s.sport==='strength').length,2);
+  assert.equal(week.sessions.filter(s=>s.sport!=='strength').length,4);
+  const preference=week.doseAllocation&&'strengthPreference' in week.doseAllocation?week.doseAllocation.strengthPreference as {honoredSlots:number[]}:null;
+  assert.equal(preference?.honoredSlots.length,2);
 });

@@ -99,6 +99,57 @@ async function scenario(name: string, work: () => Promise<void>) {
 async function main() {
   const runner = await actor("runner"), other = await actor("other"), coach = await actor("coach", "run-only", "coach");
   await setup(runner); await setup(other);
+  await scenario('Athlete weekly availability and gym preferences persist independently of tolerated load and bind paired plan approval',async()=>{
+    const who=await actor('schedule-preferences','half');await setup(who,'half',4);
+    const weekday=new Date(`${today}T12:00:00Z`).getUTCDay();
+    const startKey=addDaysKey(today,((1-weekday+7)%7)||7);
+    const initial=await api('/api/profile',who);
+    const preference={...initial.setup,baselineWeeklyMinutes:411,availableWeeklyMinutes:600,strengthWeekdays:[1],restPreference:'no_fixed_rest',
+      trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:90,
+      doubleDay:{version:'optional-double-day-v1',weekday:3,purpose:'Familiar Wednesday swim and endurance pair',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true}};
+    const saved=await api('/api/profile',who,{expectedRevision:initial.revision,expectedSetupRevision:initial.setupRevision,experience:'advanced',weeklyHours:10,setup:preference},200,'PUT');
+    assert.equal(saved.planningReadiness.ready,true,'Explicit experience and current complete setup must satisfy the real profile gate');
+    const reload=await api('/api/profile',who);
+    assert.equal(reload.setupRevision,saved.setupRevision);
+    assert.equal(reload.profile.weeklyHours,10);assert.equal(reload.setup.availableWeeklyMinutes,600);
+    assert.equal(reload.setup.baselineWeeklyMinutes,411);assert.deepEqual(reload.setup.strengthWeekdays,[1]);
+    assert.equal(reload.setup.restPreference,'no_fixed_rest','This synthetic athlete explicitly allows all seven days; no mandatory seven-day training is inferred');
+    assert.deepEqual(reload.setup.doubleDay,preference.doubleDay);
+    const update={expectedRevision:reload.revision,expectedSetupRevision:reload.setupRevision,experience:'advanced',setup:reload.setup};
+    await api(`/api/profile?athleteId=${who.id}`,other,update,403,'PUT');
+    await api('/api/profile',undefined,update,401,'PUT');
+    await api('/api/profile',who,{...update,expectedSetupRevision:initial.setupRevision},409,'PUT');
+    await api('/api/profile',who,{...update,setup:{...reload.setup,trainingDays:[1,3],strengthWeekdays:[2]}},400,'PUT');
+    await api('/api/profile',who,{...update,setup:{...reload.setup,availableWeeklyMinutes:-1}},400,'PUT');
+    assert.equal((await api('/api/profile',who)).setupRevision,reload.setupRevision,'Rejected writes cannot alter schedule preferences');
+    const body={distance:'half',weeks:4,startDate:startKey};
+    const draft=await api('/api/plan/generate',who,{...body,preview:true});
+    assert.equal(draft.preview.weeklyBudgetMin,411,'Ten available hours cannot create ten tolerated training hours');
+    assert.equal(draft.preview.cycle.availability.weeklyMinutes,600);assert.equal(draft.preview.cycle.baseline.weeklyMinutes,411);
+    assert.deepEqual(draft.preview.cycle.availability.strengthWeekdays,[1]);
+    const first=draft.preview.weeksPreview[0];
+    assert.ok(first.sessions.some((s:Json)=>s.sport==='strength'&&s.daySlot===0),'Monday gym preference must survive final shape');
+    const paired=first.sessions.filter((s:Json)=>s.daySlot===2&&s.doubleDayRole);
+    assert.equal(paired.length,2,'Feasible agreed Wednesday pair must survive final preview');
+    assert.deepEqual(paired.map((s:Json)=>s.doubleDayRole).sort(),['primary','secondary']);
+    assert.ok(paired.reduce((sum:number,s:Json)=>sum+s.minutes,0)<=90);
+    assert.equal(draft.doubleDayAgreementRequired,true);assertBudgets(draft,411,90);
+    const reduced=await api('/api/profile',who,{...update,setup:{...reload.setup,availableWeeklyMinutes:240}},200,'PUT');
+    await api('/api/plan/generate',who,{...body,previewToken:draft.previewToken,confirmDoubleDay:true},409);
+    assert.equal(await db.trainingPlan.count({where:{userId:who.id}}),0,'A stale availability preview cannot save a plan');
+    const limited=await api('/api/plan/generate',who,{...body,preview:true});
+    assert.equal(limited.preview.weeklyBudgetMin,240);assertBudgets(limited,240,90);
+    await api('/api/profile',who,{expectedRevision:reduced.revision,expectedSetupRevision:reduced.setupRevision,experience:'advanced',setup:{...reduced.setup,availableWeeklyMinutes:600}},200,'PUT');
+    const final=await api('/api/plan/generate',who,{...body,preview:true});
+    await api('/api/plan/generate',who,{...body,previewToken:final.previewToken},422);
+    const plan=await api('/api/plan/generate',who,{...body,previewToken:final.previewToken,confirmDoubleDay:true});
+    const stored=await db.workout.findMany({where:{userId:who.id,planDay:{planId:plan.plan.id}},orderBy:[{date:'asc'},{startTime:'asc'}]});
+    const firstWeek=stored.filter(row=>dateKey(row.date,who.timezone)<addDaysKey(startKey,7));
+    assert.ok(firstWeek.some(row=>row.sport==='strength'&&dateKey(row.date,who.timezone)===startKey));
+    assert.equal(firstWeek.filter(row=>dateKey(row.date,who.timezone)===addDaysKey(startKey,2)&&JSON.parse(row.originalPlan!).doubleDay).length,2);
+    const finalProfile=await api('/api/profile',who);assert.equal(finalProfile.setup.availableWeeklyMinutes,600);assert.equal(finalProfile.setup.baselineWeeklyMinutes,411);assert.deepEqual(finalProfile.setup.strengthWeekdays,[1]);
+    assert.equal((await api('/api/profile',other)).setup.availableWeeklyMinutes,null,'Another athlete must not inherit these preferences');
+  });
   await scenario("Real check-in reductions rebuild JMM strength, HYROX and brick structures without holding stale budgets",async()=>{
     for(const sport of ['strength','hyrox','brick'] as const){
       const goal=sport==='hyrox'?'hyrox':'half';
