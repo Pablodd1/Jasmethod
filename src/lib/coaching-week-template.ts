@@ -23,13 +23,15 @@ type Candidate = { sport: Sport; title: string; recipe: CoachingRecipe; purpose:
  * after this raw template; its output is not clearance to train. */
 export function coachingWeekTemplate(options: {
   sport: 'swim' | 'bike' | 'run' | 'triathlon' | 'hyrox';
-  weeks: number; weeklyHours: number; level: string; distance?: string;
+  weeks: number; weeklyHours: number; level: string; distance?: string; sessionLimitMinutes?: number;
   volume: (index: number) => number;
 }): GeneratedWeek[] {
   return Array.from({length: Math.max(0, Math.floor(options.weeks))}, (_, index) => {
     const rawFactor = options.volume(index);
     const factor = Number.isFinite(rawFactor) ? Math.max(0, Math.min(1, rawFactor)) : 0;
     const budget = Number.isFinite(options.weeklyHours) ? Math.max(0, Math.floor(options.weeklyHours * 60 * factor)) : 0;
+    const sessionLimit = options.sessionLimitMinutes === undefined ? Infinity
+      : Number.isFinite(options.sessionLimitMinutes) ? Math.max(0,Math.floor(options.sessionLimitMinutes)) : 0;
     const recovery = index % 6 === 5;
     const introductory = options.level === 'beginner';
     const phase: CoachingSessionMetadata['phase'] = recovery ? 'recovery' : index % 6 < 2 ? 'foundation' : index % 6 < 4 ? 'development' : 'specific';
@@ -40,7 +42,7 @@ export function coachingWeekTemplate(options: {
         : ['threshold', 'short-interval', 'over-under', 'vo2'][Math.floor(index / 6) % 4] as CoachingRecipe;
     const hard = quality !== 'aerobic';
     const candidates: Candidate[] = [];
-    const add = (sport: Sport, title: string, recipe: CoachingRecipe, purpose: string, minimum: number, cap: number, weight: number, priority: number, demanding = false, role: 'primary'|'support' = 'primary') => candidates.push({sport,title,recipe,purpose,minimum,cap: recovery ? Math.max(minimum,Math.floor(cap*factor)) : cap,weight,priority,demanding,role});
+    const add = (sport: Sport, title: string, recipe: CoachingRecipe, purpose: string, minimum: number, cap: number, weight: number, priority: number, demanding = false, role: 'primary'|'support' = 'primary') => candidates.push({sport,title,recipe,purpose,minimum,cap: Math.min(sessionLimit,recovery ? Math.max(minimum,Math.floor(cap*factor)) : cap),weight,priority,demanding,role});
     const strength = () => {
       add('strength','Supporting strength A','strength-a','Develop familiar whole-body force capacity with controlled technique and repetitions in reserve',15,40,0.09,3,!introductory && !recovery,'support');
       add('strength','Supporting strength B · technique','strength-b','Practice complementary unilateral, trunk and sport-supporting patterns without exhaustive loading',15,35,0.08,3,false,'support');
@@ -73,13 +75,13 @@ export function coachingWeekTemplate(options: {
     // component is explicit in the week theme, not a one-minute fake workout.
     let remaining = budget;
     const selected = [...candidates].sort((a,b)=>a.priority-b.priority).filter(c => {
-      if (remaining < c.minimum) return false;
+      if (remaining < c.minimum || c.cap < c.minimum) return false;
       remaining -= c.minimum; return true;
     });
-    const introductoryAlternative = selected.length === 0 && budget >= 5;
+    const introductoryAlternative = selected.length === 0 && budget >= 5 && sessionLimit >= 5;
     if (introductoryAlternative) {
       const sport = options.sport === 'triathlon' || options.sport === 'hyrox' ? 'run' : options.sport;
-      selected.push({sport,title:`${sport} · brief familiar introduction`,recipe:'aerobic',purpose:sport === 'run'?'Familiar comfortable walk/run observation; not a replacement for the full program':'Brief familiar comfortable practice; not a replacement for the full program',minimum:5,cap:10,weight:1,priority:1,demanding:false,role:'primary'});
+      selected.push({sport,title:`${sport} · brief familiar introduction`,recipe:'aerobic',purpose:sport === 'run'?'Familiar comfortable walk/run observation; not a replacement for the full program':'Brief familiar comfortable practice; not a replacement for the full program',minimum:5,cap:Math.min(10,sessionLimit),weight:1,priority:1,demanding:false,role:'primary'});
       remaining-=5;
     }
     const minutes = selected.map(c=>c.minimum);
@@ -96,7 +98,7 @@ export function coachingWeekTemplate(options: {
         ...(c.sport==='strength'?{emphasis:options.sport,note:'Plyometrics require separate eligibility; otherwise use controlled non-jumping movements.'}:{})}}));
     const omitted = candidates.filter(c=>!selected.includes(c)).map(c=>c.title);
     return {week:index+1,templateVersion:'coaching-structure-v1',periodizationFactor:factor,
-      theme:`${options.sport} · ${phase} · reviewed capacity ceiling${introductoryAlternative?' · Brief introduction only; full program does not fit':''}${omitted.length?` · Time budget excludes: ${omitted.join('; ')}`:''}`,
+      theme:`${options.sport} · ${phase} · reviewed capacity ceiling${introductoryAlternative?' · Brief introduction only; full program does not fit':''}${omitted.length?` · Time budget/session limit excludes complete components: ${omitted.join('; ')}`:''}`,
       sessions,totalMinutes:sessions.reduce((sum,s)=>sum+s.minutes,0)};
   });
 }

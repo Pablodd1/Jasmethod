@@ -28,9 +28,31 @@ test('limited budgets explicitly omit components rather than fabricate tiny unit
     const week=coachingWeekTemplate({sport,level:'beginner',weeks:1,weeklyHours:budget/60,volume:()=>1})[0];
     assert.ok(week.totalMinutes<=budget);
     assert.ok(week.sessions.every(s=>s.minutes>=s.coaching!.minimumMinutes));
-    if(budget<=45)assert.match(week.theme,/Time budget excludes/);
+    if(budget<=45)assert.match(week.theme,/Time budget.*excludes/);
   }
   assert.equal(coachingWeekTemplate({sport:'run',level:'pro',weeks:1,weeklyHours:NaN,volume:()=>1})[0].totalMinutes,0);
+});
+
+test('known daily ceiling shapes complete sport recipes before allocating weekly time',()=>{
+  for(const weeklyHours of [8,12]){
+    const tri=generatePlan({level:'advanced',distance:'half',weeks:12,startDate:new Date('2026-11-02T12:00:00Z'),weeklyHours,sessionLimitMinutes:90,reviewedCycle:true});
+    for(const week of tri){
+      const brick=week.sessions.find(s=>s.coaching?.recipe==='brick');
+      assert.ok(brick&&brick.minutes>=40&&brick.minutes<=90,`Week${week.week} retains a viable brick.`);
+      assert.ok(week.totalMinutes<=weeklyHours*60);
+    }
+  }
+  for(const sport of ['swim','bike','run','triathlon','hyrox'] as const)for(const limit of [4,5,10,20,39,90]){
+    const week=coachingWeekTemplate({sport,level:'advanced',weeks:1,weeklyHours:12,sessionLimitMinutes:limit,volume:()=>1})[0];
+    assert.ok(week.sessions.every(s=>s.minutes<=limit&&s.minutes>=s.coaching!.minimumMinutes));
+    assert.ok(week.totalMinutes<=720);
+    if(limit<15)assert.ok(!week.sessions.some(s=>s.sport==='strength'));
+    if(limit<40&&sport==='triathlon'){
+      assert.ok(!week.sessions.some(s=>s.sport==='brick'));
+      assert.match(week.theme,/excludes complete components:.*Brick/);
+    }
+    if(limit<5)assert.equal(week.sessions.length,0);
+  }
 });
 
 test('reviewed public generators dispatch into the coaching allocator without changing legacy generation',()=>{

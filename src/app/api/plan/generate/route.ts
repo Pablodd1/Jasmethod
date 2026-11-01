@@ -182,6 +182,7 @@ export async function POST(req: Request) {
           weeks: weeksCount,
           startDate: start,
           weeklyHours: setup.baselineWeeklyMinutes! / 60,
+          sessionLimitMinutes: setup.maxSessionMinutes!,
           hasRace: false, // One normalized event controller below owns reductions.
         })
       : isHyrox
@@ -191,6 +192,7 @@ export async function POST(req: Request) {
               weeks: weeksCount,
               startDate: start,
               weeklyHours: setup.baselineWeeklyMinutes! / 60,
+              sessionLimitMinutes: setup.maxSessionMinutes!,
             })
           : generatePlan({
               reviewedCycle: true,
@@ -199,6 +201,7 @@ export async function POST(req: Request) {
               weeks: weeksCount,
               startDate: start,
               weeklyHours: setup.baselineWeeklyMinutes! / 60,
+              sessionLimitMinutes: setup.maxSessionMinutes!,
               easyPct: splitTarget,
               // Template only. The normalized bounded-cycle controller below
               // applies all event reductions once across every supported sport.

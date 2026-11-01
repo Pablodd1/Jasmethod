@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {boundPlanWeeks} from './planning-bounds';
 import {parsePlanningSetup} from './planning-setup';
-import type {GeneratedWeek,PlanSession} from './science';
+import {generateSingleSport,type GeneratedWeek,type PlanSession} from './science';
 import {coachingWeekTemplate} from './coaching-week-template';
 import {DOUBLE_DAY_VERSION, type DoubleDayPreference} from './double-day';
 
@@ -146,4 +146,15 @@ test('expressly consented complete easy pair preserves dose, timing and readines
     base.doubleDay={...preference,athleteAgreed:false};
     assert.ok(boundPlanWeeks(raw,base,8,1,'advanced').weeks.every(w=>w.sessions.every(s=>!s.doubleDayRole)));
   }
+});
+
+test('actual reviewed cycling generator chooses a compatible primary for the agreed pair within daily capacity',()=>{
+  const raw=generateSingleSport({sport:'bike',level:'advanced',weeks:4,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:8,reviewedCycle:true,sessionLimitMinutes:180,hasRace:false});
+  const planning=parsePlanningSetup({adultConfirmed:true,profileConfirmed:true,goalDescription:'Sustainable cycling with an optional easy pair',baselineWeeklyMinutes:480,baselineObservedAt:'2026-11-01',interruptions:'none',restrictions:'none',qualifiedReview:'none_needed',restPreference:'no_fixed_rest',trainingDays:[0,1,2,3,4,5,6],maxSessionMinutes:180,equipmentAccess:'Familiar stationary bike and safe movement space',planWeeks:4,doubleDay:{version:DOUBLE_DAY_VERSION,weekday:1,purpose:'Keep one convenient optional pair without adding weekly work',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true}});
+  const first=boundPlanWeeks(raw,planning,8,1,'advanced').weeks[0];
+  const pair=first.sessions.filter(s=>s.doubleDayRole);
+  assert.equal(pair.length,2);
+  assert.ok(pair.every(s=>s.sport==='bike'&&s.daySlot===0));
+  assert.ok(pair.reduce((sum,s)=>sum+s.minutes,0)<=180);
+  assert.ok(first.totalMinutes<=480&&first.totalMinutes<=raw[0].totalMinutes);
 });

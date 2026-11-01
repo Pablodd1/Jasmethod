@@ -68,7 +68,7 @@ export function buildCoachingPrescription(sport: string, minutes: number, zone: 
       {id:'run',title:'Comfortable run off the bike',sport:'run' as const,durationMin:run/60,steps:coachingEnduranceSteps('run',run/60,zone,'aerobic')},
     ];
     const transitions = [{afterComponentId:'bike',instruction:'T2: stop safely, park bike, remove helmet, change shoes. Extend transition or stop if unsafe; do not rush.',endpoint:{type:'time' as const,seconds:transition}}];
-    return {steps:[...components[0].steps,timed('T2 · safe bike-to-run transition',transition,'z1','recovery'),...components[1].steps],sportStructure:{schemaVersion:1,kind:'brick',components,transitions}};
+    return {steps:[...components[0].steps.map(step=>({...step,name:`Bike · ${step.name}`})),timed('T2 · safe bike-to-run transition',transition,'z1','recovery'),...components[1].steps.map(step=>({...step,name:`Run · ${step.name}`}))],sportStructure:{schemaVersion:1,kind:'brick',components,transitions}};
   }
   if (sport === 'strength') {
     const structure: StrengthStructure={schemaVersion:1,kind:'strength',steps:[]};

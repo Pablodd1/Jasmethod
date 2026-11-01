@@ -83,6 +83,20 @@ test('custom event from a different date or sport does not silently reclassify t
   }
 });
 
+test('daily capacity reaches triathlon template before allocation so complete ninety-minute bricks remain executable',async()=>{
+  const {run,profile,setup}=fixture();profile.goal='half';profile.experience='advanced';
+  setup.baselineWeeklyMinutes=480;setup.maxSessionMinutes=90;
+  const response=await run();assert.equal(response.status,200);const draft=await response.json();
+  const first=draft.preview.weeksPreview[0];
+  const brick=first.sessions.find((s:any)=>s.sport==='brick');
+  assert.ok(brick,'A complete capacity-bounded brick should survive allocation.');
+  assert.ok(brick.minutes>=40&&brick.minutes<=90);
+  assert.equal(brick.coaching.recipe,'brick');
+  assert.ok(first.sessions.every((s:any)=>s.minutes<=90));
+  assert.ok(first.totalMinutes<=480);
+  assert.equal(first.sessions.filter((s:any)=>s.sport==='strength').length,2);
+});
+
 test("easy-training preference changes invalidate the actual route preview before or during its transaction",async()=>{
   for(const duringTransaction of [false,true]) {
     const {state,run}=fixture();state.plans=[{id:"existing-cycle",easyPct:70}];
