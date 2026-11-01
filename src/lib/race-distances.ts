@@ -25,10 +25,12 @@ export function customTriathlonFromInputs(values: { swim: string; bike: string; 
   };
   return formatCustomTriathlonDistance({swimM:metres("swim"),bikeM:metres("bike"),runM:metres("run")});
 }
+/** Presentation only, at the canonical distance's millimetre precision. */
+export function raceKilometres(metres: number): number { return Number((metres / 1000).toFixed(6)); }
 export function customTriathlonLabel(value: unknown, es = false): string | null {
   const legs = parseCustomTriathlonDistance(value);
   if (!legs) return null;
-  return `${es ? "Triatlón personalizado" : "Custom triathlon"}: ${legs.swimM / 1000} km ${es ? "natación" : "swim"} · ${legs.bikeM / 1000} km ${es ? "bici" : "bike"} · ${legs.runM / 1000} km ${es ? "carrera" : "run"}`;
+  return `${es ? "Triatlón personalizado" : "Custom triathlon"}: ${raceKilometres(legs.swimM)} km ${es ? "natación" : "swim"} · ${raceKilometres(legs.bikeM)} km ${es ? "bici" : "bike"} · ${raceKilometres(legs.runM)} km ${es ? "carrera" : "run"}`;
 }
 
 /** Coaching classification only: custom legs stay explicit, never silently

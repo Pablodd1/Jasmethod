@@ -7,7 +7,7 @@ import { readWriteReceipt } from "@/lib/client-save-receipt";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { TrainingWorkflowNav } from "@/components/training-workflow-nav";
-import { customTriathlonFromInputs, customTriathlonLabel, parseCustomTriathlonDistance } from "@/lib/race-distances";
+import { customTriathlonFromInputs, customTriathlonLabel, parseCustomTriathlonDistance, raceKilometres } from "@/lib/race-distances";
 
 const DISTANCES = ["custom-triathlon", "sprint", "olympic", "half", "full", "5k", "10k", "half-marathon", "marathon", "40k", "100k", "180k", "gran-fondo", "750m", "1500m", "1900m", "3800m", "hyrox"];
 const TERRAINS = ["flat", "rolling", "hilly", "mountain", "trail"];
@@ -202,7 +202,7 @@ export default function RacesPage() {
                 {(["sprint","olympic","half","full"].includes(r.distance) || parseCustomTriathlonDistance(r.distance)) && <details className="mt-2"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{t("Set exact swim, bike & run distances", "Indicar distancias de natación, bici y carrera")}</summary>
                   <form key={`${r.id}-${r.distance}`} onSubmit={event=>saveLegDistances(event,r.id)} className="space-y-3">
                     {(["swim","bike","run"] as const).map(leg=><div key={leg} className="grid grid-cols-2 gap-3">
-                      <label className="label">{leg==="swim"?t("Swim distance","Distancia de natación"):leg==="bike"?t("Bike distance","Distancia de ciclismo"):t("Run distance","Distancia de carrera")}<input name={leg} type="number" required min="0.001" step="any" className="input min-h-11 !text-base" defaultValue={parseCustomTriathlonDistance(r.distance)?.[`${leg}M`] == null ? "" : parseCustomTriathlonDistance(r.distance)![`${leg}M`] / 1000}/></label>
+                      <label className="label">{leg==="swim"?t("Swim distance","Distancia de natación"):leg==="bike"?t("Bike distance","Distancia de ciclismo"):t("Run distance","Distancia de carrera")}<input name={leg} type="number" required min="0.001" step="any" className="input min-h-11 !text-base" defaultValue={parseCustomTriathlonDistance(r.distance)?.[`${leg}M`] == null ? "" : raceKilometres(parseCustomTriathlonDistance(r.distance)![`${leg}M`])}/></label>
                       <label className="label">{t("Unit","Unidad")}<select name={`${leg}Unit`} className="input min-h-11 !text-base" defaultValue="km"><option value="m">m</option><option value="km">km</option><option value="mi">mi</option></select></label>
                     </div>)}
                     <p className="text-sm text-slate-600">{t("These athlete-reported distances replace the preset for this event. Your saved training plan stays unchanged until reviewed.","Estas distancias indicadas por el atleta reemplazan el formato de este evento. Tu plan guardado no cambia hasta revisarlo.")}</p>
