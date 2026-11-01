@@ -5,6 +5,7 @@ import { trustedCycleMovementGuidance } from "@/lib/cycle-movement-guidance";
 import { TrainingWorkflowNav } from "@/components/training-workflow-nav";
 import { TrainingCycleOverview } from "@/components/training-cycle-overview";
 import { PlanTargetPreview } from "@/components/plan-target-preview";
+import { raceKilometres } from "@/lib/race-distances";
 import { TargetProgressPanel } from "@/components/target-progress-panel";
 import { RestPreference } from "@/components/rest-preference";
 import { StartingCycle } from "@/components/StartingCycle";
@@ -425,7 +426,7 @@ function TrainingPageContent() {
           {preview && <section className="mt-4 border rounded-xl p-4" aria-label="Plan preview">
             <h3 className="font-semibold">Review before assigning</h3>
             <p>{preview.preview.distance}, {preview.preview.weeks} weeks. Weekly time ceiling: {preview.preview.weeklyBudgetMin} minutes. Event date: {preview.preview.raceDate ? String(preview.preview.raceDate).slice(0,10) : "No event date supplied"}.</p>
-            {preview.preview.raceTarget?.distance==='custom'&&<p className="my-2 text-sm">{es ? "Distancias declaradas del evento" : "Reported event distances"}: {preview.preview.raceTarget.legs.swimM/1000} km {es ? "natación" : "swim"} · {preview.preview.raceTarget.legs.bikeM/1000} km {es ? "bici" : "bike"} · {preview.preview.raceTarget.legs.runM/1000} km {es ? "carrera" : "run"}. {es ? "No se ha sustituido por una distancia estándar." : "No standard-distance substitution was made."}</p>}
+            {preview.preview.raceTarget?.distance==='custom'&&<p className="my-2 text-sm">{es ? "Distancias declaradas del evento" : "Reported event distances"}: {raceKilometres(preview.preview.raceTarget.legs.swimM)} km {es ? "natación" : "swim"} · {raceKilometres(preview.preview.raceTarget.legs.bikeM)} km {es ? "bici" : "bike"} · {raceKilometres(preview.preview.raceTarget.legs.runM)} km {es ? "carrera" : "run"}. {es ? "No se ha sustituido por una distancia estándar." : "No standard-distance substitution was made."}</p>}
             {preview.preview.recoveryPolicy && <div className="my-3 rounded-lg border border-ink-200 bg-paper p-3 space-y-2">
               <p><strong>Recovery planning:</strong> {preview.preview.recoveryPolicy.minimumRestDays === 0 ? "No fixed minimum off-days for this saved preference/profile. Easy recovery practice stays within the weekly budget; complete rest can still be required." : `At least ${preview.preview.recoveryPolicy.minimumRestDays} planned off-day${preview.preview.recoveryPolicy.minimumRestDays === 1 ? "" : "s"} per seven-day plan block for your current experience level.`}</p>
               <p className="text-sm">These are coaching defaults, not universal research-established off-day counts. Your unavailable days, symptoms, fatigue and coach review can require more rest. Review the dates below before confirming.</p>

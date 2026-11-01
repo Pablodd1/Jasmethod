@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { customTriathlonFromInputs, formatCustomTriathlonDistance, parseCustomTriathlonDistance, triathlonCoachingDistance } from "./race-distances";
+import { customTriathlonFromInputs, customTriathlonLabel, formatCustomTriathlonDistance, parseCustomTriathlonDistance, triathlonCoachingDistance, raceKilometres } from "./race-distances";
 import { parseRaceCreate, parseRaceUpdate } from "./race-update";
 import { classifyDistance } from "./raceforecast";
 import { generatePlan } from "./science";
@@ -27,6 +27,16 @@ test("custom race legs reject incomplete, invalid and unreasonable distances at 
   assert.throws(()=>customTriathlonFromInputs({swim:"1",bike:"35",run:"9"},{swim:"yards",bike:"mi",run:"mi"}));
   assert.throws(()=>formatCustomTriathlonDistance({swimM:NaN,bikeM:35000,runM:9000}));
   assert.equal(parseCustomTriathlonDistance("half"),null);
+});
+
+test('custom distance labels and edit values omit binary float noise without changing stored metres',()=>{
+  const encoded='triathlon-custom:1609.344:56327.04:14484.096';
+  assert.equal(raceKilometres(56327.04),56.32704);
+  assert.equal(customTriathlonLabel(encoded),'Custom triathlon: 1.609344 km swim · 56.32704 km bike · 14.484096 km run');
+  assert.equal(customTriathlonLabel(encoded,true),'Triatlón personalizado: 1.609344 km natación · 56.32704 km bici · 14.484096 km carrera');
+  const metres=parseCustomTriathlonDistance(encoded)!;
+  assert.equal(formatCustomTriathlonDistance(metres),encoded);
+  assert.equal(customTriathlonFromInputs({swim:String(raceKilometres(metres.swimM)),bike:String(raceKilometres(metres.bikeM)),run:String(raceKilometres(metres.runM))},{swim:'km',bike:'km',run:'km'}),encoded);
 });
 
 test("custom event selects a triathlon coaching template without standard forecast substitution",()=>{
