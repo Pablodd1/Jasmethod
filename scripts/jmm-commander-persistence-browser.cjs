@@ -67,6 +67,7 @@ async function main() {
       assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id } }), 1);
       assert.equal((await api(other, '/api/assistant/plan')).receipt, null);
       await page.reload();
+      await page.getByRole('button',{name:es?'Opciones del chat':'Chat options',exact:true}).click();
       await page.getByRole('button', { name: es ? 'Vista previa del plan' : 'Plan preview', exact: true }).click();
       await panel.getByText(saved.receipt.id, { exact: false }).waitFor();
       assert.ok(await composer.isVisible());

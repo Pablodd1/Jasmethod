@@ -12,6 +12,10 @@ const { historySafeLocalReply } = require('../src/lib/ai-data-policy.ts');
 const { calendarWorkoutView } = require('../src/lib/calendar-workouts.ts');
 const today = new Date().toISOString().slice(0, 10);
 const reason = "Training is on hold until today's safety, recovery and available-time answers are known. Missing: sleep, soreness, motivation, energy, stress, sick, newPain, urgentSymptoms, availableMin. Unknown or skipped answers are not evidence of readiness. No device data is required.";
+async function openChatOptions(page,es) {
+  const options=page.getByRole('button',{name:es?'Opciones del chat':'Chat options',exact:true});
+  if(await options.getAttribute('aria-expanded')!=='true')await options.click();
+}
 function fixtures(language) {
   const source = universalWorkoutExample(language);
   source.session.dateLocal = today;
@@ -30,7 +34,7 @@ function fixtures(language) {
 async function main() {
   const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox'] });
   try {
-    for (const language of ['en', 'es']) for (const width of [390, 412, 1173]) {
+    for (const language of ['en', 'es']) for (const width of [390, 412, 1173, 1600]) {
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       await context.addInitScript(() => {
         window.__speechMode = 'denied';
@@ -44,7 +48,7 @@ async function main() {
       const page = await context.newPage(), f = fixtures(language);
       const history = Array.from({length:12},(_,i)=>({id:'old-'+i,role:i%2?'assistant':'user',source:'local',content:'Synthetic earlier conversation '.repeat(12),createdAt:new Date().toISOString()})); let sends = 0;
       page.on('pageerror', error => errors.push(String(error)));
-      let planRelease, profileFailure = false, todayState = "error", todayReads = 0;
+      let planRelease, profileFailure = false, todayState = "error", todayReads = 0, cardReads = 0; const selectedDailyReads=[];
       await page.route('**/api/**', async route => {
         const url = new URL(route.request().url()), path = url.pathname;
         if (route.request().method() === 'POST' && path === '/api/assistant') {
@@ -57,18 +61,24 @@ async function main() {
         if (route.request().method() !== 'GET') { unexpected.push(`${route.request().method()} ${path}`); return route.fulfill({status: 500, json: { error: 'Mutations are forbidden in this fixture' }}); }
         if (path === '/api/auth/me') return route.fulfill({json:{user:f.user}});
         if (path === '/api/today') { todayReads++; return route.fulfill(todayState === 'error' ? {status:503,json:{error:'Synthetic unavailable'}} : {json:{date:today,sessions:todayState === 'empty' ? [] : [{id:f.card.session.id,title:f.card.session.title,sport:f.card.session.sport}]}}); }
-        if (path === '/api/assistant') return route.fulfill({json:{ok:true,conversation:{id:'synthetic-conversation',messages:history},proposal:null,sessions:[],capabilities:{externalAi:false,imageUnderstanding:false,textProvider:null,imageProvider:null}}});
-        if (path === '/api/v1/training/today') return route.fulfill({json:f.daily});
+        if (path === '/api/assistant') return route.fulfill({json:{ok:true,conversation:{id:'synthetic-conversation',messages:history},proposal:null,sessions:[{id:f.card.session.id,title:f.card.session.title,sport:f.card.session.sport,date:today}],capabilities:{externalAi:false,imageUnderstanding:false,textProvider:null,imageProvider:null}}});
+        if (path === '/api/v1/training/today') { selectedDailyReads.push(url.searchParams.get('sessionId')); return route.fulfill({json:f.daily}); }
         if (path.endsWith('/preview')) return route.fulfill({json:f.preview});
-        if (path.endsWith('/card')) return route.fulfill({json:f.card});
-        if (path === '/api/plan') { if (planRelease) await planRelease; return route.fulfill({json:{plans:[f.plan],cycle:null}}); }
+        if (path.endsWith('/card')) {cardReads++;return route.fulfill({json:f.card});}
+        if (path === '/api/plan') { if (planRelease) await planRelease; return route.fulfill({json:{plans:[f.plan],cycle:{weeks:[]}}}); }
         if (path === '/api/profile') return route.fulfill(profileFailure ? {status:503,json:{error:'Synthetic profile unavailable'}} : {json:{profile:{goal:'run-only'},zones:null,setup:{planWeeks:12},planningReadiness:{ready:false,missing:[],review:[]}}});
         return route.fulfill({json:{ok:true}});
       });
       await page.goto(`${base}/coach`);
-      const textarea = page.locator('textarea').first(); await textarea.waitFor({state:'visible'});
+      const textarea = page.locator('.coach-chat-composer textarea'); await textarea.waitFor({state:'visible'});
       await page.waitForFunction(()=>document.querySelector('textarea')?.disabled===false);
       assert.equal(await textarea.isDisabled(), false, 'Composer becomes usable');
+      const chatBox=await page.locator('.coach-chat-page').boundingBox(),routeBox=await page.locator('.coach-chat-route').boundingBox();
+      assert.ok(routeBox&&routeBox.width===width&&routeBox.y===0&&routeBox.height===900,'Dedicated chat fills the browser viewport');
+      assert.ok(chatBox&&chatBox.width>=width-32,'Chat does not retain the former desktop width cap');
+      assert.equal(await page.getByRole('button',{name:language==='es'?'Opciones del chat':'Chat options',exact:true}).getAttribute('aria-expanded'),'false');
+      assert.equal(await page.getByRole('region',{name:language==='es'?'Opciones del chat':'Chat options',exact:true}).isVisible(),false,'Optional controls start collapsed');
+      assert.equal(await page.getByRole('region',{name:language==='es'?'Comandos y revisión del coach':'Coach commands and review',exact:true}).count(),0,'No empty dashboard/tool shell occupies the timeline');
       assert.equal(await page.getByRole('button', {name: language === 'es' ? /^Enviar mensaje$/ : /^Send message$/}).isDisabled(), true, 'Empty submit stays disabled');
       const dictation = page.getByRole('button', {name: language === 'es' ? 'Micrófono' : 'Microphone', exact:true}).first();
       if (await dictation.count()) assert.equal(await dictation.isVisible(), true, 'Dictation entry is outside closed tools');
@@ -95,25 +105,38 @@ async function main() {
       await page.getByRole('list', {name:language === 'es' ? 'Historial de conversación' : 'Conversation history'}).getByText(language==='es'?/No se conserva un resumen/:/not retained in chat/).waitFor({state:'visible'});
       assert.equal(sends,1,'One explicit click produces one synthetic send');
       const reviewButton=page.getByRole('button',{name:language==='es'?'Ver entrenamiento de hoy':'Review today’s workout',exact:true});
-      await reviewButton.click();
+      const reviewToday=async()=>{await openChatOptions(page,language==='es');await reviewButton.click();};
+      await reviewToday();
       const privateReview=page.getByRole('region',{name:language==='es'?'Revisión protegida de hoy':'Protected today review',exact:true});
       await privateReview.getByRole('alert').waitFor();
       const privateRect=await privateReview.boundingBox();assert.ok(privateRect&&privateRect.y>=0&&privateRect.y<900,'Opening a card reveals it even after a long conversation');
       todayState='empty';
       await privateReview.getByRole('button',{name:language==='es'?'Reintentar':'Retry',exact:true}).click();
       await privateReview.getByText(language==='es'?/No hay sesiones guardadas/:/No saved sessions/).waitFor();
-      await privateReview.getByRole('button',{name:language==='es'?'Cerrar tarjeta':'Close card',exact:true}).click();todayState='session';await reviewButton.click();
+      await privateReview.getByRole('button',{name:language==='es'?'Cerrar tarjeta':'Close card',exact:true}).click();todayState='session';await reviewToday();
       await privateReview.getByRole('button',{name:f.card.session.title+' · '+f.card.session.sport,exact:true}).click();await privateReview.locator('.uwc').waitFor();
       assert.equal(sends,1,'Read-only card/retry never sends a chat message');
       await privateReview.getByRole('button',{name:language==='es'?'Cerrar tarjeta':'Close card',exact:true}).click();
-      await page.getByRole('button',{name:language==='es'?'Alimentación':'Fueling',exact:true}).click();
+      await textarea.fill(language==='es'?'Ayúdame con la alimentación de hoy.':"Help me with today's fueling.");
       await page.getByRole('button',{name:language==='es'?'Enviar mensaje':'Send message',exact:true}).click();
       await page.waitForFunction(()=>document.querySelector('.coach-chat-composer textarea')?.value==='');
-      await privateReview.waitFor();assert.equal(sends,2,'Fueling starter opens protected review despite a general human-help fallback');
+      await privateReview.waitFor();assert.equal(sends,2,'Fueling question opens protected review despite a general human-help fallback');
       await privateReview.locator('.uwc').waitFor();assert.equal(todayReads,4,'Another conversation review reloads the current daily record');
-      const refreshed=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/today');await reviewButton.click();await refreshed;assert.equal(todayReads,5,'Repeated review clicks also refresh an open card');
+      const refreshed=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/today');await reviewToday();await refreshed;assert.equal(todayReads,5,'Repeated review clicks also refresh an open card');
 
 
+      await privateReview.getByRole('button',{name:language==='es'?'Cerrar tarjeta':'Close card',exact:true}).click();
+      const priorCardReads=cardReads;
+      await textarea.fill(language==='es'?'Muestra mi historial de entrenamiento.':'Show my training history.');
+      await page.getByRole('button',{name:language==='es'?'Enviar mensaje':'Send message',exact:true}).click();
+      const inline=page.getByRole('region',{name:language==='es'?'Comandos y revisión del coach':'Coach commands and review',exact:true});
+      const chosen=inline.getByRole('combobox',{name:language==='es'?'Sesión que quieres revisar':'Workout to review',exact:true});await chosen.waitFor();
+      assert.equal(await chosen.inputValue(),'','History review never guesses which workout to display');
+      assert.equal(cardReads,priorCardReads,'No workout record is loaded before explicit selection');
+      await chosen.selectOption(f.card.session.id);await inline.locator('.uwc').waitFor();
+      assert.equal(cardReads,priorCardReads+1);assert.equal(sends,3,'Selecting a protected record does not send its content as another chat turn');
+      assert.equal(await page.getByRole('region',{name:language==='es'?'Opciones del chat':'Chat options',exact:true}).isVisible(),false,'Relevant inline tools work while optional controls remain closed');
+      const inlineBox=await inline.boundingBox();assert.ok(inlineBox&&inlineBox.y>=0&&inlineBox.y<900,'Requested inline review is brought into the chat viewport');
       const rect=await textarea.boundingBox();assert.ok(rect&&rect.y>=0&&rect.y+rect.height<=900,'Composer remains in mobile/desktop viewport after card review');
       await page.screenshot({path:`${dir}/coach-${language}-${width}.png`});
       await page.goto(`${base}/daily`);
@@ -151,9 +174,20 @@ async function main() {
       release(); planRelease = null;
       await page.getByRole('region', {name: language === 'es' ? 'Ciclo de entrenamiento guardado' : 'Saved training cycle'}).waitFor({state:'visible'});
       body = await page.locator('body').innerText(); assert.match(body, /Synthetic saved cycle/, 'Plan survives profile failure');
+      assert.match(body, language==='es'?/resumen de este ciclo anterior necesita revisión/:/older cycle summary needs review/, 'Optional legacy metadata is isolated with an honest review state');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Training has no horizontal overflow');
       await page.screenshot({path:`${dir}/training-${language}-${width}.png`});
-      results.push({language,width,coach:'pass',heldCard:'pass',delayedPlanAndProfileFailure:'pass'});
+      const logResult=page.getByRole('link',{name:language==='es'?'Registrar resultado':'Log result',exact:true});
+      assert.equal(await page.getByRole('button',{name:'Done',exact:true}).count(),0,'A plan cannot be marked completed by an empty shortcut');
+      assert.equal(await logResult.getAttribute('href'),`/daily?sessionId=${encodeURIComponent(f.card.session.id)}&feedback=1#workout-feedback`);
+      await logResult.click();
+      const feedback=page.locator('#workout-feedback');await feedback.waitFor({state:'visible'});
+      await page.getByLabel(language==='es'?'Minutos realizados (en blanco si no lo sabes)':'Actual minutes (leave blank if unknown)',{exact:true}).waitFor({state:'visible'});
+      assert.ok(selectedDailyReads.includes(f.card.session.id),'Result logging resolves the selected owned session');
+      assert.equal(await page.getByLabel(language==='es'?'Minutos realizados (en blanco si no lo sabes)':'Actual minutes (leave blank if unknown)',{exact:true}).inputValue(),'','Planned time is never copied into actual minutes');
+      assert.equal(await page.getByRole('button',{name:language==='es'?'Guardar comentario del entrenamiento':'Save workout feedback',exact:true}).isVisible(),true);
+      await page.screenshot({path:`${dir}/training-log-result-${language}-${width}.png`});
+      results.push({language,width,coach:'pass',heldCard:'pass',delayedPlanAndProfileFailure:'pass',legacyCycleMetadataRecovery:'pass',matchingResultFormWithoutMutation:'pass'});
       await context.close();
     }
     for (const language of ['en','es']) {
@@ -175,7 +209,7 @@ async function main() {
       await page.goto(base+'/coach');await page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true}).waitFor();
       const routeBounds=await page.locator('.coach-chat-route').boundingBox();assert.ok(routeBounds&&routeBounds.y===0&&routeBounds.height===900,'Coach uses the full viewport without app navigation');
       assert.equal(await page.getByRole('navigation',{name:es?'Navegación principal':'Main navigation',exact:true}).count(),0);
-      await page.getByText(es?'Conversación personal':'Personal conversation',{exact:true}).click();
+      await openChatOptions(page,es);await page.getByText(es?'Conversación personal':'Personal conversation',{exact:true}).click();
       const consent=page.getByRole('checkbox',{name:es?/Permito enviar a OpenAI mis mensajes/:/Allow OpenAI to receive my own/});assert.equal(await consent.isChecked(),false);assert.equal(sends,0);await consent.check();
       const composer=page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true});await composer.fill(es?'Ayúdame a desarrollar mi entrenamiento alrededor del trabajo.':'Help me develop my training around work.');await page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}).click();
       await page.getByText(es?'Revisemos tu objetivo y disponibilidad. ¿Cuál es tu prioridad?':"Let's review your goal and availability. What is your priority?",{exact:true}).waitFor();
@@ -183,7 +217,7 @@ async function main() {
       await composer.fill(es?'¿Cómo podemos hablar de una lesión?':'How can we discuss an injury concern?');await page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}).click();
       await page.getByText(es?'Puedo ayudarte a preparar preguntas para una evaluación médica; no puedo diagnosticar una lesión.':'I can help prepare questions for a medical assessment; I cannot diagnose an injury.',{exact:true}).waitFor();assert.equal(sends,2);
       await page.screenshot({path:dir+'/personal-dialogue-'+language+'-390.png'});
-      await page.reload();await page.getByText(es?'Conversación personal':'Personal conversation',{exact:true}).click();assert.equal(await consent.isChecked(),false,'Personal consent resets on reload');assert.equal(sends,2);
+      await page.reload();await openChatOptions(page,es);await page.getByText(es?'Conversación personal':'Personal conversation',{exact:true}).click();assert.equal(await consent.isChecked(),false,'Personal consent resets on reload');assert.equal(sends,2);
       results.push({language,width:390,immersiveConversation:'pass',explicitManualDialogueConsent:'pass',followupAndProtectedReview:'pass',reloadConsentReset:'pass'});await context.close();
     }
     for (const language of ['en','es']) {
@@ -219,7 +253,7 @@ async function main() {
       const send=page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}),message=page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true});
       await message.fill('My weight is 75 kg');await send.click();
       const card=page.getByRole('group',{name:es?'Peso corporal':'Body weight',exact:true});await card.waitFor();
-      await page.getByRole('button',{name:es?'Ver entrenamiento de hoy':'Review today’s workout',exact:true}).click();
+      await openChatOptions(page,es);await page.getByRole('button',{name:es?'Ver entrenamiento de hoy':'Review today’s workout',exact:true}).click();
       await page.getByText(es?/No hay sesiones guardadas/:/No saved sessions/).waitFor();assert.equal(todayReads,1);
 
       assert.match(await card.innerText(),es?/70\.0 kg/:/154\.3 lb/);assert.match(await card.innerText(),es?/75\.0 kg/:/165\.3 lb/);assert.equal(writes,0);
@@ -263,7 +297,7 @@ async function main() {
         unexpected.push(`${req.method()} ${path}`);return route.fulfill({status:500,json:{error:'Unexpected synthetic operation'}});
       });
       await page.goto(`${base}/coach`);
-      await page.getByText('Optional tools: logging, images & AI',{exact:true}).click();
+      await openChatOptions(page,false);await page.getByText('Optional tools: logging, images & AI',{exact:true}).click();
       const ai=page.getByLabel('Use OpenAI only for general education while this page is open',{exact:true});await ai.waitFor();
       assert.equal(await ai.isChecked(),false);await ai.check();
       const memory=page.getByLabel(/Also include up to two previous OpenAI replies/);assert.equal(await memory.count(),0);
@@ -282,7 +316,7 @@ async function main() {
       assert.equal(sends,2);assert.equal(shares,1);assert.equal(await ai.isChecked(),true);
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
       await page.screenshot({path:`${dir}/confirmed-actions-${width}.png`});
-      await page.reload();await page.getByText('Optional tools: logging, images & AI',{exact:true}).click();await ai.waitFor();assert.equal(await ai.isChecked(),false);assert.equal(await memory.count(),0);
+      await page.reload();await openChatOptions(page,false);await page.getByText('Optional tools: logging, images & AI',{exact:true}).click();await ai.waitFor();assert.equal(await ai.isChecked(),false);assert.equal(await memory.count(),0);
       results.push({width,confirmedActionReview:'pass',pageScopedAiConsent:'pass',legacyMemoryAbsent:'pass',humanHandoff:'pass'});
       await context.close();
     }
@@ -302,6 +336,48 @@ async function main() {
       });
       await page.goto(`${base}/training`);await page.getByText('Targets & rest days',{exact:true}).click();const choice=page.getByRole('combobox',{name:'Rest-day preference',exact:true});await choice.waitFor();await choice.selectOption('no_fixed_rest');await page.getByRole('button',{name:'Save rest-day preference',exact:true}).click();await page.getByText(/Preference saved. Preview and confirm a replacement plan/).waitFor();assert.equal(saves,1);assert.equal(state.setup.confirmedAt,'2020-01-01T00:00:00.000Z');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${dir}/rest-preference-390.png`});
       await page.reload();await page.getByText('Targets & rest days',{exact:true}).click();await choice.waitFor();await page.waitForFunction(()=>{const el=document.querySelector('select[aria-label="Rest-day preference"]');return el&&!el.disabled;});assert.equal(await choice.inputValue(),'no_fixed_rest');results.push({width:390,restPreferenceSave:'pass',noSilentPlanReplacement:'pass'});await context.close();
+    }
+    for(const language of ['en','es']) {
+      const es=language==='es',context=await browser.newContext({viewport:{width:390,height:900}}),page=await context.newPage(),f=fixtures(language);
+      let invalidPreview=true,invalidSave=true,savedPlan=null,previews=0,saves=0;
+      page.on('pageerror',e=>errors.push(String(e)));
+      const planPreview={ok:true,previewToken:'a'.repeat(64),warning:'Synthetic reviewed preview only.',doubleDayAgreementRequired:false,eventTradeoffAgreementRequired:false,
+        preview:{distance:'run-only',weeks:4,startDate:`${today}T12:00:00Z`,weeklyBudgetMin:120,existingPlans:0,weeksPreview:Array.from({length:4},(_,index)=>({week:index+1,theme:'Foundation',totalMinutes:56,restDaySlots:[1,2,3,4,5,6],sessions:[{daySlot:0,title:'Synthetic saved session',sport:'run',zone:'z2',minutes:56,steps:[{name:'Familiar easy work',zone:'z2',seconds:3360}]}]}))}};
+      await page.route('**/api/**',async route=>{
+        const req=route.request(),path=new URL(req.url()).pathname;
+        if(path==='/api/plan/generate'&&req.method()==='POST') {
+          const body=req.postDataJSON();assert.equal(body.distance,'run-only');assert.equal(body.weeks,'4');
+          if(body.preview===true){previews++;return route.fulfill({json:invalidPreview?{ok:true}:planPreview});}
+          saves++;assert.equal(body.previewToken,planPreview.previewToken);
+          if(invalidSave)return route.fulfill({json:{ok:true}});
+          await new Promise(resolve=>setTimeout(resolve,150));
+          savedPlan={...f.plan,id:'synthetic-confirmed-plan',name:'Confirmed synthetic cycle',weeks:4};
+          return route.fulfill({json:{ok:true,plan:{id:savedPlan.id,name:savedPlan.name,sessions:savedPlan.days.flatMap(day=>day.sessions.map(session=>({...session,userId:f.user.id})))}}});
+        }
+        if(req.method()!=='GET'){unexpected.push(`${req.method()} ${path}`);return route.fulfill({status:500,json:{error:'Unexpected synthetic write'}});}
+        if(path==='/api/auth/me')return route.fulfill({json:{user:f.user}});
+        if(path==='/api/plan')return route.fulfill({json:{plans:savedPlan?[savedPlan]:[],cycle:null}});
+        if(path==='/api/profile')return route.fulfill({json:{profile:{goal:'run-only'},zones:null,setup:{planWeeks:4},planningReadiness:{ready:true,missing:[],review:[]}}});
+        if(path.endsWith('/preview'))return route.fulfill({json:f.preview});
+        if(path.endsWith('/card'))return route.fulfill({json:f.card});
+        return route.fulfill({json:{ok:true}});
+      });
+      await page.goto(`${base}/training`);
+      const previewButton=page.getByRole('button',{name:es?'Vista previa del plan':'Preview Plan',exact:true});
+      await previewButton.waitFor();await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(button=>/Preview Plan|Vista previa del plan/.test(button.textContent)&&!button.disabled));
+      await previewButton.click();await page.getByRole('alert').filter({hasText:es?/estructura de la vista previa/:/preview structure/}).waitFor();
+      assert.equal(await page.getByRole('region',{name:'Plan preview',exact:true}).count(),0,'Malformed 2xx preview never reaches confirmation');assert.equal(saves,0);
+      invalidPreview=false;await previewButton.click();const confirm=page.getByRole('button',{name:es?'Confirmar y guardar este plan':'Confirm and save this plan',exact:true});await confirm.waitFor();
+      await confirm.click();await page.getByRole('alert').filter({hasText:es?/confirmar el guardado/:/save could not be confirmed/}).waitFor();
+      assert.equal(savedPlan,null);assert.equal(await confirm.count(),0,'Uncertain saves require fresh review before another confirmation');assert.equal(await page.getByText(/Your structured training cycle is saved|Tu ciclo estructurado está guardado/).count(),0);
+      invalidSave=false;await previewButton.click();await confirm.waitFor();await confirm.dblclick();
+      await page.getByText(/Your structured training cycle is saved|Tu ciclo estructurado está guardado/).waitFor();
+      const saved=page.getByRole('region',{name:es?'Ciclo de entrenamiento guardado':'Saved training cycle',exact:true});await saved.getByText('Confirmed synthetic cycle',{exact:true}).waitFor();
+      const details=page.getByRole('button',{name:new RegExp((es?'Detalles del entrenamiento':'Workout details')+':')});assert.equal(await details.getAttribute('aria-expanded'),'true','New plan automatically exposes the next saved session');
+      assert.equal(previews,3);assert.equal(saves,2);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+      await page.screenshot({path:`${dir}/training-confirmed-${language}-390.png`});
+      await page.reload();await saved.getByText('Confirmed synthetic cycle',{exact:true}).waitFor();assert.equal(saves,2,'Reload never repeats plan assignment');
+      results.push({language,width:390,invalidPreviewRejected:'pass',unconfirmedSaveNeverClaimsSuccess:'pass',confirmedPlanReload:'pass',duplicateConfirmGuard:'pass',nextSessionExpanded:'pass'});await context.close();
     }
     for(const width of [390,1173]){
       const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),f=fixtures('en');page.on('pageerror',e=>errors.push(String(e)));

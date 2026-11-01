@@ -6,6 +6,9 @@ import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { buildCycleBaselineReviews, requiredCycleSports } from "@/lib/cycle-review";
 import { cycleActivityEvidence, shapeTrainingCycle, TRAINING_CYCLE_VERSION } from "@/lib/training-cycle";
 import { evidencedTargetProfile } from "@/lib/anchor-evidence";
+import { planTargetPreview } from "@/lib/plan-target-preview";
+import type { SessionSport } from "@/lib/canonical-session";
+import { assessCycleSportCoverage } from "@/lib/cycle-sport-coverage";
 import { setupNumber } from "@/lib/planning-target";
 import { type BoundedPlanSession, boundPlanWeeks } from "@/lib/planning-bounds";
 import { DOUBLE_DAY_VERSION, doubleDayTiming, doubleDayWeekdays } from "@/lib/double-day";
@@ -212,7 +215,14 @@ export async function POST(req: Request) {
     });
     const {weeks: bounded, weeklyBudget, recoveryPolicy} = boundPlanWeeks(rawGenerated, setup, profile.weeklyHours, startWeekday, level, excludedDoubleWeeks, {preserveWeeklyDose:true});
     const structuredDraft = (session: BoundedPlanSession) => ({ ...prescribeToday({ session: { cycleVersion:TRAINING_CYCLE_VERSION, title:session.title, sport:session.sport, type:session.type, intensity:session.zone, durationMin:session.minutes, description:session.description, startTime:session.startTime ?? sessionStartTime }, adaptation: { verdict:"planned", durationFactor:1, intensityCap:session.zone } }), planningStatus: "provisional", planningNote:session.description });
-    const generated = shapeTrainingCycle(bounded, { startKey, raceKey: race ? dateKey(race, user.timezone) : null, events, baselineReviews, needsAssessment, templatePeriodized:true, recoveryReview: activityEvidence.recoveryReview, protectedDays: activityEvidence.protectedDays }).map(week => ({ ...week, sessions: week.sessions.map(session => ({ ...session, steps: structuredDraft(session).steps })) }));
+    const projectionNow = new Date();
+    const generated = shapeTrainingCycle(bounded, { startKey, raceKey: race ? dateKey(race, user.timezone) : null, events, baselineReviews, needsAssessment, templatePeriodized:true, recoveryReview: activityEvidence.recoveryReview, protectedDays: activityEvidence.protectedDays }).map((week, weekIndex) => ({ ...week, sessions: week.sessions.map(session => {
+      const steps = structuredDraft(session).steps;
+      return { ...session, steps, targetPreview: planTargetPreview({ steps, sport: session.sport as SessionSport,
+        profile, tests: benchmarkTests, appliedIds: appliedAnchors.flatMap(row => row.entityId ? [row.entityId] : []),
+        now: projectionNow, sessionDate: localDate(addDaysKey(startKey, weekIndex * 7 + session.daySlot), user.timezone), timezone: user.timezone, language: user.language }) };
+    }) }));
+    const sportCoverage = assessCycleSportCoverage(dist, generated, bounded);
     const baselineEvidence = [
       { label:"Cycling power", value:profile.ftp, observedAt:anchors.referenceEvidence.ftp?.observedAt??null, source:anchors.ftp ? anchors.referenceEvidence.ftp?.source??"measured_test" : profile.ftp ? "unverified_profile_reference" : "unavailable" },
       { label:"Running threshold pace", value:profile.runPaceBase, observedAt:anchors.referenceEvidence.runPaceBase?.observedAt??null, source:anchors.runPaceBase ? anchors.referenceEvidence.runPaceBase?.source??"estimated_from_5k_test" : profile.runPaceBase ? "unverified_profile_reference" : "unavailable" },
@@ -220,7 +230,7 @@ export async function POST(req: Request) {
     ];
     const assessmentScheduled = generated.some(week => week.sessions.some(session => session.title.includes("Comfortable baseline observation")));
     const assessmentNote = ["track-sprint", "hyrox"].includes(dist) ? " Sprint technique, maximal-speed ability and station competence are not established by a running threshold. Use only controlled familiar practice; sport-specific coaching review is required for maximal or loaded progression." : "";
-    const cycle = { version: TRAINING_CYCLE_VERSION, events:eventReview, baselineReviews, baselineEvidence, goal: setup.goalDescription, target: setup.targetGoal, baseline: { weeklyMinutes: setup.baselineWeeklyMinutes, observedAt: setup.baselineObservedAt, source: setup.source }, assessment: needsAssessment ? (assessmentScheduled ? "A comfortable non-maximal baseline observation is included; no threshold or performance value is invented. Record actual effort and recovery, then review before progressing." : "A baseline observation does not fit the available sessions. Review sport-specific availability and recent tolerated training with your coach before progressing; no threshold or performance value is invented.") + assessmentNote : "Current dated sport references are available. Reported references are not verified tests; no reference guarantees recovery or future performance.", activity: activityEvidence, weeks: generated.map(week => ({ week: week.week, templateVersion:week.templateVersion, theme: week.theme, totalMinutes: week.totalMinutes, reviewNote: week.reviewNote, observations:week.observations, eventDays:week.eventDays, volumeDecision:week.volumeDecision, doseAllocation:week.doseAllocation })), evidenceNote: "Goal values are aspirations. Reported training, measured test results and derived estimates retain their source records. Session zones are effort labels; no new physiological estimate is created." };
+    const cycle = { version: TRAINING_CYCLE_VERSION, sportCoverage, events:eventReview, baselineReviews, baselineEvidence, goal: setup.goalDescription, target: setup.targetGoal, baseline: { weeklyMinutes: setup.baselineWeeklyMinutes, observedAt: setup.baselineObservedAt, source: setup.source }, assessment: needsAssessment ? (assessmentScheduled ? "A comfortable non-maximal baseline observation is included; no threshold or performance value is invented. Record actual effort and recovery, then review before progressing." : "A baseline observation does not fit the available sessions. Review sport-specific availability and recent tolerated training with your coach before progressing; no threshold or performance value is invented.") + assessmentNote : "Current dated sport references are available. Reported references are not verified tests; no reference guarantees recovery or future performance.", activity: activityEvidence, weeks: generated.map(week => ({ week: week.week, templateVersion:week.templateVersion, theme: week.theme, totalMinutes: week.totalMinutes, reviewNote: week.reviewNote, observations:week.observations, eventDays:week.eventDays, volumeDecision:week.volumeDecision, doseAllocation:week.doseAllocation })), evidenceNote: "Goal values are aspirations. Reported training, measured test results and derived estimates retain their source records. Session zones are effort labels; no new physiological estimate is created." };
     if (!generated.some(week=>week.sessions.length)) throw new ApiError("The current template does not fit your available days/time. A coach should review the schedule; no sessions were assigned.", 422);
     for(const [index,week] of generated.entries()) {
       for(const slot of new Set(week.sessions.filter(s=>s.doubleDayRole).map(s=>s.daySlot))) {
@@ -229,6 +239,8 @@ export async function POST(req: Request) {
         catch(error){throw new ApiError((error as Error).message,422);}
       }
     }
+    if (!sportCoverage.canSaveCompleteCycle) return NextResponse.json({ error: user.language === "es" ? sportCoverage.messageEs : sportCoverage.message, sportCoverage,
+      nextStep: "Review available days and per-session time, or use the separate initial assessment before creating a complete cycle." }, { status: 422 });
     const doubleDayAgreementRequired=generated.some(w=>w.sessions.some(s=>s.doubleDayRole));
     const currentPlans = await prisma.trainingPlan.findMany({where: {userId: user.id, status: "active"}, orderBy: {id: "asc"}, select: {id:true,easyPct:true}});
     const previewToken = createHash("sha256").update(JSON.stringify({ userId: user.id, profile: profileRevision(profile), setup: setupState.revision, plans: currentPlans, dist, weeksCount, start, race, splitTarget, window, generated, storedRaces, recentActivity, activityDecisions, benchmarkTests, appliedAnchors })).digest("hex");

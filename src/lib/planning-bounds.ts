@@ -30,8 +30,12 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _le
   return {weeklyBudget, recoveryPolicy, weeks:weeks.map((week, weekIndex)=>{
     const hardDays:number[]=[];
     const availableSlots=Array.from({length:7},(_,slot)=>slot).filter(slot=>setup.trainingDays.includes((startWeekday+slot)%7));
-    const multisport=["swim","bike","run"].every(sport=>week.sessions.some(s=>s.sport===sport));
-    const candidates = week.sessions.map((session,index)=>({...session,daySlot:options.preserveWeeklyDose&&multisport ? availableSlots[index%Math.max(1,availableSlots.length)]??index%7 : index%7}))
+    // A reviewed template is an ordered set of suggestions, not a requirement
+    // to be available on the first five calendar days. Fit ordinary sessions
+    // to actual available slots for every goal; otherwise weekend-only runners,
+    // cyclists and swimmers can receive an entirely empty plan. Explicit
+    // event/test dates remain fixed and cannot be moved to make them fit.
+    const candidates = week.sessions.map((session,index)=>({...session,daySlot:options.preserveWeeklyDose&&!['race','test'].includes(session.type) ? availableSlots[index%Math.max(1,availableSlots.length)]??index%7 : index%7}))
       .filter(session=>setup.trainingDays.includes((startWeekday+session.daySlot)%7))
       // A template rest suggestion is not compulsory training or an activity
       // completion. Optional recovery movement is offered separately on Today.

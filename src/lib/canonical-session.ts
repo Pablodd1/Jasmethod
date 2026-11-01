@@ -101,17 +101,22 @@ export function resolveStepTarget(step: Pick<WorkoutStep, "zone" | "target">, sp
   if (!["run", "bike"].includes(sport)) return { type: "open", source: "effort", label: `Open effort · RPE ${rpe}/10` };
   if (sport === "bike" && profile?.ftp != null) {
     const ftp = positive(profile.ftp, 1000, "FTP anchor");
+    // Z7 is an unbounded analysis bucket, not a finite training power range.
+    if (z === 7) return { type: "open", source: "effort", label: `Open effort · RPE ${rpe}/10`, missingReason: "This zone needs an explicit coach-reviewed power target; FTP does not define its upper bound." };
     const high = Math.round(ftp * POWER_ZONE_UPPER_FACTORS[z]);
-    return { type: "power", low: 0, high, source: "profile_reference", label: `${label("power", 0, high)} (FTP plan reference)` };
+    const low = z === 1 ? 0 : Math.min(high, Math.round(ftp * POWER_ZONE_UPPER_FACTORS[z - 1]) + 1);
+    return { type: "power", low, high, source: "profile_reference", label: `${label("power", low, high)} (FTP plan reference)` };
   }
   if (sport === "run" && profile?.runPaceBase != null) {
     const pace = positive(profile.runPaceBase, 3600, "running pace anchor") * [0, 1.4, 1.2, 1.08, 1, .95, .9, .85][z];
     return { type: "pace", low: pace, high: pace, source: "profile_reference", label: label("pace", pace, pace) };
   }
   if (profile?.lthr != null) {
+    if (z === 7) return { type: "open", source: "effort", label: `Open effort · RPE ${rpe}/10`, missingReason: "This zone needs an explicit coach-reviewed target; LTHR does not define its upper bound." };
     const high = Math.round(positive(profile.lthr, 240, "LTHR anchor") * HR_ZONE_UPPER_FACTORS[z]);
     if (high > 250) fail("Resolved heart-rate target exceeds the supported range.");
-    return { type: "heartRate", low: 1, high, source: "profile_reference", label: `≤${high} bpm (LTHR plan reference)` };
+    const low = z === 1 ? 1 : Math.min(high, Math.round(profile.lthr * HR_ZONE_UPPER_FACTORS[z - 1]) + 1);
+    return { type: "heartRate", low, high, source: "profile_reference", label: `${z === 1 ? `≤${high} bpm` : label("heartRate", low, high)} (LTHR plan reference)` };
   }
   return { type: "open", source: "effort", label: `Open effort · RPE ${rpe}/10`, missingReason: sport === "bike" ? "No validated, dated FTP or sport-specific LTHR benchmark is available." : "No validated, dated running pace or sport-specific LTHR benchmark is available." };
 }

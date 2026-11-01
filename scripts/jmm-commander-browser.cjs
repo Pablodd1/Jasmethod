@@ -22,7 +22,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
       }
       if(url.pathname==='/api/assistant/plan'){
         if(req.method()==='GET')return route.fulfill({json:{ok:true,localToday:'2026-10-24',readiness:{ready:true,missing:[],review:[]},defaults:{distance:'run-only',weeks:8,easyPct:70,trainingWindow:'any'},activePlans:saved?[{id:saved.planId,name:saved.name}]:[],receipt:saved}});
-        const body=req.postDataJSON();assert.equal(body.sourceMessageId,'message-source');
+        const body=req.postDataJSON();assert.equal(body.sourceMessageId,'message-source');assert.equal(body.easyPct,undefined,'Ignored easy-allocation preferences are not requested by chat');
         if(body.action==='preview'){
           previews++;return route.fulfill({json:{ok:true,previewToken:'a'.repeat(64),warning:'Synthetic preview; not saved',doubleDayAgreementRequired:false,eventTradeoffAgreementRequired:false,preview:{weeks:body.weeks,startDate:'2026-11-02T05:00Z',weeklyBudgetMin:120,weeksPreview:[{week:1,theme:'Controlled foundation',totalMinutes:20,sessions:[{daySlot:0,title:'Synthetic easy session',sport:'run',minutes:20,zone:'z2',description:'Familiar controlled practice',steps:[{name:'Short step',seconds:15,zone:'z2'},{name:'Easy',seconds:1185,zone:'z2'}]}]}]}}});
         }
@@ -45,6 +45,8 @@ async function main(){const browser=await chromium.launch({headless:true});try{
     await page.getByRole('button',{name:es?'Enviar mensaje':'Send message',exact:true}).first().click();
     const panel=page.getByRole('region',{name:es?'Comandos y revisión del coach':'Coach commands and review',exact:true});
     await panel.getByRole('button',{name:es?'Preparar vista previa aquí':'Prepare plan preview here',exact:true}).waitFor();
+    assert.equal(await panel.getByLabel(es?'Distribución fácil planificada (%)':'Planned easy allocation (%)',{exact:true}).count(),0,'Chat does not ask for an ignored split');
+    assert.doesNotMatch(await panel.innerText(),/default planned easy allocation is 70%/);
     assert.equal(await panel.getByLabel(es?'Semanas (4–30)':'Weeks (4–30)').inputValue(),'8');
     assert.equal(await panel.getByLabel(es?'Fecha de inicio local':'Local start date').inputValue(),'2026-11-02');
     assert.equal(confirmations,0);
@@ -63,6 +65,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
     await panel.getByRole('button',{name:es?'Confirmar y guardar este plan':'Confirm and save this plan',exact:true}).click();
     await panel.getByText(/receipt-synthetic/).waitFor();assert.equal(confirmations,2);assert.equal(previews,3);
     await page.reload();
+    await page.getByRole('button',{name:es?'Opciones del chat':'Chat options',exact:true}).click();
     await page.getByRole('button',{name:es?'Vista previa del plan':'Plan preview',exact:true}).click();
     await page.getByText(/receipt-synthetic/).waitFor();
     assert.ok(await page.getByRole('textbox',{name:es?'Tu mensaje':'Your message',exact:true}).isVisible());

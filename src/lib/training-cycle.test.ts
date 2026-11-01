@@ -189,6 +189,24 @@ test("an unperformed planned match never hides a completed imported session", ()
   assert.deepEqual(cycleActivityEvidence([...rows].reverse(), options.startKey, "UTC"), evidence);
 });
 
+test("reviewed sport purpose survives cycle shaping only while it agrees with the final intensity", async () => {
+  const { buildCycleBaselineReviews } = await import("./cycle-review");
+  const { generatePlan } = await import("./science");
+  const baselineReviews = buildCycleBaselineReviews({ profile: { ftp: 200 }, tests: [{ id: "ftp", date: new Date("2026-10-10T12:00Z"), type: "ftp", result: 200, completed: true, skipped: false }], appliedIds: ["ftp"], sports: ["bike", "swim", "run"], now: new Date("2026-10-12T12:00Z") });
+  const raw = generatePlan({ level: "advanced", distance: "olympic", weeks: 4, startDate: new Date("2026-10-12T12:00Z"), weeklyHours: 5, reviewedCycle: true });
+  const source = boundPlanWeeks(raw, setup, 5, 1, "advanced", [], { preserveWeeklyDose: true }).weeks;
+  const cycle = shapeTrainingCycle(source, { ...options, needsAssessment: false, baselineReviews, templatePeriodized: true });
+  const bike = cycle[2].sessions.find(s => s.sport === "bike" && s.zone === "z4")!;
+  assert.ok(bike, "A current cycling anchor retains the supported threshold purpose.");
+  assert.match(bike.description, /Purpose: controlled threshold intervals/);
+  const reduced = shapeTrainingCycle(source, { ...options, needsAssessment: true, templatePeriodized: true });
+  const easy = reduced[2].sessions.find(s => s.daySlot === bike.daySlot)!;
+  assert.ok(Number(easy.zone.slice(1)) <= 3);
+  assert.doesNotMatch(easy.description, /controlled threshold intervals/);
+  assert.doesNotMatch(easy.title, /threshold intervals/);
+  assert.ok(reduced[0].sessions.filter(s => /observation/.test(s.title)).every(s => /does not measure/.test(s.description)));
+});
+
 test("matched partial and completed reports merge known duration without duplicate sessions and retain all actual dates", () => {
   const previous = addDaysKey(options.startKey, -1);
   const rows = [

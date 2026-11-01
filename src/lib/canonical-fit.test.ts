@@ -90,7 +90,7 @@ test("FIT exact times, phases, notes and power raw fields use the shared FTP con
   assert.equal(steps.reduce((n: number, s: any) => n + s.durationTime, 0), c.exactTimeSeconds);
   assert.equal(c.exactTimeSeconds, 150);
   assert.deepEqual(steps.map((s: any) => s.intensity), ["warmup", "active", "cooldown"]);
-  assert.equal(steps[1].targetType, "power"); assert.equal(steps[1].customTargetValueLow, 1000); assert.equal(steps[1].customTargetValueHigh, 1210);
+  assert.equal(steps[1].targetType, "power"); assert.equal(steps[1].customTargetValueLow, 1181); assert.equal(steps[1].customTargetValueHigh, 1210);
   assert.equal(c.steps[1].target.high, 210); assert.match(c.steps[1].target.label, /210 W/); assert.match(steps[1].notes, /Main.*Stay seated/);
 });
 test("explicit power and absolute HR use numeric custom fields", () => {

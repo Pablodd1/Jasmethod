@@ -808,3 +808,35 @@ test("consented personal dialogue reuses only its isolated messages and returns 
 
  }finally{global.fetch=oldFetch;for(const [key,value] of Object.entries({EXTERNAL_AI_ENABLED:previous.enabled,OPENAI_API_KEY:previous.key,OPENAI_TEXT_MODEL:previous.model})){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
 });
+
+test("local educational follow-ups retain only an approved topic, never legacy or protected prose", async () => {
+  const f=fixture([]),originalFetch=globalThis.fetch;let calls=0;
+  globalThis.fetch=async()=>{calls++;throw Error("No provider request authorized");};
+  try {
+    const first=await appendConversation(actor,{message:"What is RPE?",clientRequestId:"local-topic-first",externalConsent:false});
+    assert.match(first.answer,/perceived/);
+    const expanded=await appendConversation(actor,{message:"Tell me more",clientRequestId:"local-topic-more",externalConsent:false});
+    assert.ok(expanded.answer.length>first.answer.length);assert.match(expanded.answer,/perceived/);assert.equal(calls,0);
+    f.state.messages.push({id:"protected-latest",userId:actor.id,conversationId:"conversation-a",role:"assistant",source:"local",content:"PROTECTED_NUMBER_CANARY_771234",createdAt:new Date(),metadata:JSON.stringify({historyPolicy:"openai-generic-education-v3",ruleId:"coach-conversation-v1:local-data-review",localContextSummary:"DEVICE_CANARY_88991"})});
+    const unrelated=await appendConversation(actor,{message:"Tell me more",clientRequestId:"local-topic-withheld",externalConsent:false});
+    assert.doesNotMatch(unrelated.answer,/PROTECTED_NUMBER|DEVICE_CANARY|771234|88991|perceived/);assert.equal(calls,0);assert.deepEqual(f.state.writes,[]);
+  } finally {globalThis.fetch=originalFetch;f.restore();}
+});
+
+test("consented concept elaboration exports only a fixed topic and language, never prior protected text", async () => {
+  const f=fixture([]),originalFetch=globalThis.fetch;
+  const prior=Object.fromEntries(["EXTERNAL_AI_ENABLED","OPENAI_API_KEY","OPENAI_TEXT_MODEL"].map(key=>[key,process.env[key]]));
+  process.env.EXTERNAL_AI_ENABLED="true";process.env.OPENAI_API_KEY="synthetic-only";process.env.OPENAI_TEXT_MODEL="gpt-4.1-mini-2025-04-14";
+  f.state.messages.push({id:"local-education-source",userId:actor.id,conversationId:"conversation-a",role:"assistant",source:"local",content:"PRIVATE_LOCAL_TEXT_CANARY_90651",createdAt:new Date(),metadata:JSON.stringify({historyPolicy:"openai-generic-education-v3",ruleId:"coach-conversation-v1:education-rpe",localContextSummary:"DERIVED_DEVICE_CANARY_44921"})});
+  let calls=0;
+  globalThis.fetch=async(_url,init)=>{
+    calls++;const body=String(init?.body),payload=JSON.parse(JSON.parse(body).messages[1].content);
+    assert.equal(payload.topic,"education-rpe");assert.deepEqual(payload.context,{version:"openai-generic-education-v3",language:"en"});
+    assert.equal(payload.history,undefined);assert.equal(payload.message,undefined);assert.doesNotMatch(body,/PRIVATE_LOCAL_TEXT|DERIVED_DEVICE|90651|44921|session-a|athlete-a/);
+    return Response.json({choices:[{finish_reason:"stop",message:{role:"assistant",content:JSON.stringify({answer:"RPE describes perceived effort. Changes need local review.",sourceIds:[]})}}]});
+  };
+  try {
+    const result=await appendConversation(actor,{message:"Tell me more",clientRequestId:"fixed-topic-external",externalConsent:true,textProviderConsent:"openai"});
+    assert.equal(result.externalStatus,"answered");assert.equal(calls,1);assert.deepEqual(f.state.writes,[]);
+  } finally {globalThis.fetch=originalFetch;for(const [key,value] of Object.entries(prior)){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
+});

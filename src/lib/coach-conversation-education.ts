@@ -1,3 +1,4 @@
+import { AI_DATA_POLICY_VERSION } from "./ai-data-policy";
 export type EducationalLanguage = "en" | "es";
 export type ApprovedParagraph = { id: string; en: string; es: string };
 // Trusted bilingual definitions for local answers and the optional OpenAI
@@ -141,4 +142,25 @@ export function localCoachEducation(message: string, language: string, detail = 
   const paragraphs = educationalCatalog[topic];
   const selected = detail || /\b(?:why|how|por que|como)\b/.test(text) ? paragraphs : paragraphs.slice(0, 1);
   return { answer: selected.map(paragraph => paragraph[language === "es" ? "es" : "en"]).join("\n\n"), topic };
+}
+
+// Follow-up continuity carries only one fixed educational label. It never
+// reuses arbitrary prior text or a protected record/summary as chat context.
+const educationQuestions = {
+  rpe:"What is RPE?", endurance:"What is endurance?", polarized:"What is polarized training?",
+  periodization:"What is periodization?", warmup:"What is a warm-up?", technique:"What is technique?",
+  recovery:"What is recovery?", jmetrics:"What is JMetrics?", vo2:"What is VO2max?",
+} as const;
+export type CoachEducationTopic = keyof typeof educationQuestions;
+export function coachEducationQuestion(topic: unknown): string {
+  return typeof topic === "string" && Object.hasOwn(educationQuestions,topic) ? educationQuestions[topic as CoachEducationTopic] : "";
+}
+export function coachEducationTopic(row: { source?:unknown; metadata?:unknown } | null | undefined): CoachEducationTopic | null {
+  if (row?.source !== "local" || typeof row.metadata !== "string") return null;
+  try {
+    const metadata = JSON.parse(row.metadata);
+    if (!metadata || typeof metadata !== "object" || metadata.historyPolicy !== AI_DATA_POLICY_VERSION || typeof metadata.ruleId !== "string") return null;
+    const match = /^coach-conversation-v1:education-([a-z]+)$/.exec(metadata.ruleId);
+    return match && coachEducationQuestion(match[1]) ? match[1] as CoachEducationTopic : null;
+  } catch { return null; }
 }

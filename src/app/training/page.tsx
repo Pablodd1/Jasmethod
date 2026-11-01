@@ -4,6 +4,7 @@ import "@/components/daily-training/universal-workout-card.css";
 import { trustedCycleMovementGuidance } from "@/lib/cycle-movement-guidance";
 import { TrainingWorkflowNav } from "@/components/training-workflow-nav";
 import { TrainingCycleOverview } from "@/components/training-cycle-overview";
+import { PlanTargetPreview } from "@/components/plan-target-preview";
 import { TargetProgressPanel } from "@/components/target-progress-panel";
 import { RestPreference } from "@/components/rest-preference";
 import { StartingCycle } from "@/components/StartingCycle";
@@ -28,7 +29,7 @@ import {
   Swords,
   Download,
 } from "lucide-react";
-import { readTrainingJson, isSavedPlanResponse, isTrainingProfileResponse } from "@/components/daily-training/training-read";
+import { readTrainingJson, isSavedPlanResponse, isTrainingProfileResponse, readSavedCycleMetadata, isPlanPreviewResponse, isGeneratedPlanResponse } from "@/components/daily-training/training-read";
 import { SavedWorkoutPreviewCard } from "@/components/daily-training/SavedWorkoutPreviewCard";
 import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
 import { addDaysKey, dateKey } from "@/lib/dates";
@@ -68,6 +69,7 @@ function TrainingPageContent() {
   const es = user?.language === "es";
   const [plans, setPlans] = useState<any[]>([]);
   const [cycle, setCycle] = useState<any>(null);
+  const [cycleNeedsReview, setCycleNeedsReview] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState("");
   const [savedMessage, setSavedMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -78,11 +80,11 @@ function TrainingPageContent() {
   const loadController = useRef<AbortController | null>(null);
   const mounted = useRef(false);
   const [generating, setGenerating] = useState(false);
+  const generationPending = useRef(false);
   const [form, setForm] = useState({
     distance: "",
     weeks: "",
     startDate: dateKey(new Date(), user?.timezone),
-    easyPct: "70",
     trainingWindow: "",
   });
   const [error, setError] = useState("");
@@ -125,16 +127,19 @@ function TrainingPageContent() {
           if (!mounted.current || signal.aborted) return;
           setPlans(p.plans);
           setPlanLoaded(true);
-          if (user && initialPreviewFor.current !== user.id) {
+          const loadedPlanKey = `${user?.id}:${p.plans[0]?.id ?? "empty"}`;
+          if (user && initialPreviewFor.current !== loadedPlanKey) {
             const todayKey = dateKey(new Date(), user.timezone);
             const pendingSession = (session: any) => !session.completed && session.feedbackStatus !== "skipped";
             const nextDay = (p.plans[0]?.days || []).find((day: any) => !day.dayOff && dateKey(new Date(day.date), user.timezone) >= todayKey && day.sessions?.some(pendingSession));
             const nextSession = nextDay?.sessions.find(pendingSession);
             setExpanded(new Set(nextSession ? [nextSession.id] : []));
             if (nextDay) setSelectedMonth(dateKey(new Date(nextDay.date), user.timezone).slice(0, 7));
-            initialPreviewFor.current = user.id;
+            initialPreviewFor.current = loadedPlanKey;
           }
-          setCycle(p.cycle ?? null);
+          const savedCycle = readSavedCycleMetadata(p.cycle);
+          setCycle(savedCycle);
+          setCycleNeedsReview(p.cycleSummaryNeedsReview === true || p.cycle != null && savedCycle === null);
         })
         .catch(err => { if (!signal.aborted) setLoadError(err instanceof Error ? err.message : "Could not load training."); })
         .finally(() => { if (!signal.aborted) setLoading(false); }),
@@ -170,9 +175,11 @@ function TrainingPageContent() {
 
   async function generate(e?: React.FormEvent, confirmed = false) {
     e?.preventDefault();
-    if (!planningReadiness?.ready || generating || loading || setupLoading || loadError || setupError) return;
+    if (!planningReadiness?.ready || generationPending.current || loading || setupLoading || loadError || setupError || form.distance !== planningGoal(profile?.goal)) return;
+    generationPending.current = true;
     setGenerating(true);
     setError("");
+    setSavedMessage("");
     try {
       const res = await fetch("/api/plan/generate", {
         method: "POST",
@@ -181,13 +188,19 @@ function TrainingPageContent() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      if (!confirmed) { setEventTradeoffsConfirmed(false); setDoubleDayConfirmed(false); setPreview(data); return; }
+      if (!confirmed) {
+        if (!isPlanPreviewResponse(data)) throw new Error(es ? "No se pudo verificar la estructura de la vista previa. No se ha guardado un plan; vuelve a intentarlo." : "The preview structure could not be verified. No plan was saved; please retry.");
+        setEventTradeoffsConfirmed(false); setDoubleDayConfirmed(false); setPreview(data); return;
+      }
+      if (!isGeneratedPlanResponse(data)) throw new Error(es ? "No se pudo confirmar el guardado. Recarga tu plan antes de volver a confirmar para evitar duplicados." : "The save could not be confirmed. Reload your plan before confirming again to avoid duplicates.");
       setPreview(null);
       setSavedMessage(es ? "Tu ciclo estructurado está guardado. Abre Hoy para un nuevo chequeo o elige un mes. Se conserva tu historial completado." : "Your structured training cycle is saved. Open Today for a fresh check-in, or choose a month below. Completed history is retained.");
       await load();
     } catch (err: any) {
+      if (confirmed) setPreview(null);
       setError(err.message);
     } finally {
+      generationPending.current = false;
       setGenerating(false);
     }
   }
@@ -201,15 +214,6 @@ function TrainingPageContent() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed");
     return data;
-  }
-
-  async function toggleComplete(session: any) {
-    try {
-      await api({ sessionId: session.id, completed: !session.completed });
-    } catch (e: any) {
-      setError(e.message);
-    }
-    load();
   }
 
   async function toggleDayOff(day: any) {
@@ -269,6 +273,7 @@ function TrainingPageContent() {
   }
 
   const plan = plans[0];
+  const goalChanged = !!profile && form.distance !== planningGoal(profile.goal);
   const setupHref = `/onboard?redo=1&advanced=1&step=race&return=training&goal=${encodeURIComponent(form.distance)}&weeks=${encodeURIComponent(form.weeks)}`;
   const months: string[] = Array.from(new Set<string>((plan?.days || []).map((day: any) => dateKey(new Date(day.date), user?.timezone).slice(0,7)))).sort();
   const visibleMonth = months.includes(selectedMonth) ? selectedMonth : months.includes(dateKey(new Date(), user?.timezone).slice(0,7)) ? dateKey(new Date(), user?.timezone).slice(0,7) : months[0] || "";
@@ -278,7 +283,6 @@ function TrainingPageContent() {
   const totalCount = sessions.length;
   const plannedDistribution=plannedAerobicDistribution(sessions);
   const actualEasy = plannedDistribution.easyPct;
-  const targetEasy = plan?.easyPct ?? 70;
 
   return (
     <ProtectedPage>
@@ -310,6 +314,7 @@ function TrainingPageContent() {
         {loadError && <div role="alert" className="card border-red-300"><p>{loadError}</p><button type="button" className="btn-secondary mt-2" disabled={loading} onClick={() => void load()}>{es ? "Reintentar entrenamiento" : "Retry loading training"}</button></div>}
         {setupError && <div role="alert" className="card border-amber-300"><p>{setupError} {es ? "El ciclo guardado se carga por separado." : "Your saved cycle loads separately."}</p><button type="button" className="btn-secondary mt-2" disabled={setupLoading} onClick={() => void load()}>{es ? "Reintentar configuración" : "Retry planning setup"}</button></div>}
         {savedMessage && <p role="status" className="card border-emerald-300">{savedMessage}</p>}
+        {cycleNeedsReview && <p role="status" className="card border-amber-300 text-sm">{es ? "Tus sesiones guardadas están disponibles. El resumen de este ciclo anterior necesita revisión; no se han modificado las sesiones." : "Your saved sessions are available. This older cycle summary needs review; the sessions have not been changed."}</p>}
         {plan && <TrainingCycleOverview es={es} plan={plan} cycle={cycle} timezone={user?.timezone || "America/New_York"} selectedMonth={visibleMonth} onMonthChange={setSelectedMonth} />}
         <details className="rounded-xl border border-sand-200 bg-white px-4"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{es ? "Objetivos y días de descanso" : "Targets & rest days"}</summary><div className="space-y-4 pb-4"><RestPreference es={es} onSaved={()=>{setPreview(null);void load();}} /><TargetProgressPanel key={user?.id} language={user?.language} /></div></details>
 
@@ -354,6 +359,7 @@ function TrainingPageContent() {
                 <option value="run-only">Running only</option>
                 <option value="swim-only">Swimming only</option>
               </select>
+              {goalChanged && <p role="status" className="text-sm mt-2">{es ? "Guarda este cambio de objetivo antes de crear otro ciclo." : "Save this goal change before creating another cycle."} <Link className="underline" href={setupHref}>{es ? "Revisar y guardar objetivo" : "Review and save goal"}</Link></p>}
             </div>
             <div>
               <label htmlFor="plan-weeks" className="label">Weeks</label>
@@ -402,27 +408,9 @@ function TrainingPageContent() {
                 ))}
               </select>
             </div>
-            <div>
-              <label htmlFor="plan-split" className="label">
-                Minimum easy aerobic minutes: {form.easyPct}%
-              </label>
-              <input
-                id="plan-split"
-                type="range"
-                min={45}
-                max={90}
-                step={5}
-                className="w-full accent-cyan-600"
-                value={form.easyPct}
-                onChange={(e) => updatePlanForm({ ...form, easyPct: e.target.value })}
-              />
-              <div className="text-[10px] text-slate-400 mt-0.5">
-                Minimum planned aerobic minutes in Z1–Z2. The remainder is a ceiling for quality, not a hard-session quota; recovery and safety can require more easy work.
-              </div>
-            </div>
             {planningReadiness && !planningReadiness.ready ? <a href={setupHref} className="btn-primary justify-center">Complete setup to preview</a> : <button
               type="submit"
-              disabled={generating || loading || setupLoading || !!loadError || !!setupError || !planningReadiness?.ready}
+              disabled={generating || loading || setupLoading || !!loadError || !!setupError || !planningReadiness?.ready || goalChanged}
               className="btn-primary justify-center"
             >
               {loading || setupLoading ? "Loading setup…" : generating ? (
@@ -455,7 +443,7 @@ function TrainingPageContent() {
                 const isOff=week.restDaySlots?.includes(slot) || sessions.length===0;
                 return <li key={slot} className="border-l-2 border-ink-200 pl-3">
                   <strong>{localDay}{isEvent ? (es ? " · Evento" : " · Event") : isOff?" · Planned off-day":""}</strong>
-                  {isOff?<p className="text-sm">{isEvent ? (es ? "Día protegido: no se añade entrenamiento. Registra solo lo que realices; no se presume descanso ni participación." : "Protected event day: no added workout. Record only what you do; neither rest nor participation is assumed.") : "No compulsory workout. Optional recovery guidance remains separate; record only what you actually do."}</p>:sessions.map((session:any,index:number)=><p key={index}>{session.startTime ? `${session.startTime} · ` : ""}{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.movedFromSlot!==undefined ? `Moved from ${addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+session.movedFromSlot)}. ` : ""}{session.description}{session.steps?.length > 0 && <span className="block mt-1 text-xs">{session.steps.map((step:any) => `${step.name}: ${step.reps ? `${step.reps} reps (time allocation estimated)` : `${Math.round(step.seconds / 6) / 10} min`} · ${step.zone}${trustedCycleMovementGuidance(step, es ? "es" : "en") ? `. ${trustedCycleMovementGuidance(step, es ? "es" : "en")}` : ""}`).join(" → ")}</span>}</p>)}
+                  {isOff?<p className="text-sm">{isEvent ? (es ? "Día protegido: no se añade entrenamiento. Registra solo lo que realices; no se presume descanso ni participación." : "Protected event day: no added workout. Record only what you do; neither rest nor participation is assumed.") : "No compulsory workout. Optional recovery guidance remains separate; record only what you actually do."}</p>:sessions.map((session:any,index:number)=><p key={index}>{session.startTime ? `${session.startTime} · ` : ""}{session.sport}: {session.title}, {session.minutes} min, {session.zone}. {session.movedFromSlot!==undefined ? `Moved from ${addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+session.movedFromSlot)}. ` : ""}{session.description}{session.steps?.length > 0 && <span className="block mt-1 text-xs">{session.steps.map((step:any) => `${step.name}: ${step.reps ? `${step.reps} reps (time allocation estimated)` : `${Math.round(step.seconds / 6) / 10} min`} · ${step.zone}${trustedCycleMovementGuidance(step, es ? "es" : "en") ? `. ${trustedCycleMovementGuidance(step, es ? "es" : "en")}` : ""}`).join(" → ")}</span>}{session.targetPreview && <PlanTargetPreview preview={session.targetPreview} steps={session.steps} es={es} />}</p>)}
                 </li>;
               })}</ul>
             </div>)}</details>
@@ -481,10 +469,9 @@ function TrainingPageContent() {
 
         {/* Zone table — compact. Full zone-by-zone descriptions live in Profile & Zones. */}
         {zones?.hr && (
-          <div className="card">
-            <h2 className="font-display font-bold text-lg mb-1">
-              Your Training Zones (max HR {zones.anchorHr} bpm)
-            </h2>
+          <details className="card">
+            <summary className="min-h-11 cursor-pointer font-display font-bold text-lg">{es ? "Referencias de zonas del perfil" : "Profile zone references"}</summary>
+            <p className="text-sm mt-2">{es ? "Calculadas a partir del perfil guardado; no son zonas medidas de una sesión." : "Calculated from your saved profile; these are not measured workout zones."} {zones.anchorHr ? `${zones.anchorHr} bpm` : "—"}</p>
             <p className="text-xs text-slate-400 mb-3">
               Z1 = recovery · Z2 = all-day pace · Z3 = comfortably hard · Z4 =
               threshold · Z5 = max. RPE = how hard it feels, 1–10. Full
@@ -521,17 +508,15 @@ function TrainingPageContent() {
                 );
               })}
             </div>
-          </div>
+          </details>
         )}
 
         {/* Intensity distribution — target vs actual */}
         {plan && actualEasy !== null && (
-          <div className="card">
-            <h2 className="font-display font-bold text-lg mb-1">
-              Planned aerobic allocation
-            </h2>
+          <details className="card">
+            <summary className="min-h-11 cursor-pointer font-display font-bold text-lg">{es ? "Distribución aeróbica prevista" : "Planned aerobic allocation"}</summary>
             <p className="text-xs text-slate-400 mb-3">
-              Minimum easy preference: {targetEasy}% · Planned allocation: {actualEasy}% easy / {100 - actualEasy}% quality.
+              Planned allocation: {actualEasy}% easy / {100 - actualEasy}% quality.
               {" "}Entire saved cycle: {plan.days?.[0]?.date?.slice(0,10)} – {plan.days?.at(-1)?.date?.slice(0,10)}; denominator {plannedDistribution.totalMinutes} planned aerobic minutes across {plannedDistribution.sessionCount} sessions. Strength and station work are excluded.
             </p>
             <p className="text-xs text-slate-600 mb-3">Achieved physiological zone distribution: —. These are prescribed session labels, not measured completed time in zones. No achieved ratio is inferred from this plan.</p>
@@ -549,20 +534,7 @@ function TrainingPageContent() {
                 Quality {100 - actualEasy}%
               </div>
             </div>
-            <div className="flex gap-1 h-1.5 mt-1 rounded-full overflow-hidden opacity-60">
-              <div
-                className="bg-slate-300"
-                style={{ width: `${targetEasy}%` }}
-              />
-              <div
-                className="bg-slate-400"
-                style={{ width: `${100 - targetEasy}%` }}
-              />
-            </div>
-            <div className="text-[10px] text-slate-400 mt-1">
-              ▁ minimum easy preference
-            </div>
-          </div>
+          </details>
         )}
 
         {/* Plan view */}
@@ -620,14 +592,14 @@ function TrainingPageContent() {
                             key={s.id}
                             className={`rounded-xl mb-1.5 ${done ? "bg-emerald-50 border border-emerald-200" : "hover:bg-sand-100"}`}
                           >
-                            <div className="flex items-center gap-3 p-2.5">
+                            <div className="flex flex-wrap items-center gap-2 p-2.5">
                               <div
                                 className={`w-9 h-9 rounded-lg flex items-center justify-center ${done ? "bg-emerald-500 text-white" : "bg-ocean-100 text-ocean-700"}`}
                               >
                                 <Icon className="w-5 h-5" />
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-sm truncate">
+                              <div className="flex-1 min-w-36">
+                                <div className="font-semibold text-sm">
                                   {s.title}
                                 </div>
                                 <div className="text-xs text-slate-500 truncate">
@@ -645,14 +617,15 @@ function TrainingPageContent() {
                               </span>
                               <button
                                 onClick={() => startEdit(s)}
-                                className="text-xs p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"
-                                title="Edit session"
+                                className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs p-1.5 rounded-lg text-slate-500 hover:bg-slate-100"
+                                title={es ? "Editar sesión" : "Edit session"}
+                                aria-label={es ? "Editar sesión" : "Edit session"}
                               >
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => toggleExpand(s.id)}
-                                className="text-xs p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"
+                                className="inline-flex min-h-11 items-center text-xs p-1.5 rounded-lg text-slate-500 hover:bg-slate-100"
                                 title={es ? "Detalles del entrenamiento" : "Workout details"}
                                 aria-label={`${es ? "Detalles del entrenamiento" : "Workout details"}: ${s.title}`}
                                 aria-expanded={isExpanded}
@@ -663,17 +636,17 @@ function TrainingPageContent() {
                                   <ChevronDown className="w-3.5 h-3.5" />
                                 )}
                               </button>
-                              <button
-                                onClick={() => toggleComplete(s)}
-                                className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${done ? "bg-emerald-600 text-white" : "bg-white border border-ocean-200 text-ocean-700"}`}
+                              <Link
+                                href={`/daily?sessionId=${encodeURIComponent(s.id)}&feedback=1#workout-feedback`}
+                                className={`inline-flex min-h-11 items-center text-xs font-semibold px-3 py-1.5 rounded-lg ${done ? "bg-emerald-600 text-white" : "bg-white border border-ocean-200 text-ocean-700"}`}
                               >
-                                {done ? "✓" : "Done"}
-                              </button>
+                                {done ? (es ? "Revisar resultado" : "Review result") : (es ? "Registrar resultado" : "Log result")}
+                              </Link>
                             </div>
 
                             {isExpanded && (
                               <div className="px-3 pb-3 -mt-1 space-y-2">
-                                {dateKey(new Date(day.date), user?.timezone) === dateKey(new Date(), user?.timezone) ? <UniversalWorkoutCardLoader key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={s.id} es={es} />} onSaved={() => load()} /> : <SavedWorkoutPreviewCard key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} />}
+                                {dateKey(new Date(day.date), user?.timezone) === dateKey(new Date(), user?.timezone) ? <UniversalWorkoutCardLoader key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={s.id} es={es} compact plannedSession={s} />} onSaved={() => load()} /> : <SavedWorkoutPreviewCard key={`${s.id}-${s.revision}`} sessionId={s.id} es={es} compact plannedSession={s} />}
                                 <Link className="btn-secondary inline-flex" href={`/daily?sessionId=${encodeURIComponent(s.id)}`}>{es ? "Abrir entrenamiento actual" : "Open current workout"}</Link>
                                 {s.preWeightKg &&
                                   s.postWeightKg &&

@@ -493,7 +493,11 @@ export function generatePlan(opts: {
     ...(extraRaces || []),
   ];
 
-  if(opts.reviewedCycle&&weeklyHours!=null&&distance==="half"&&["advanced","pro"].includes(level))return reviewedTriathlonTemplate({weeks,weeklyHours:targetHours,volume:index=>mesoVolumeRaces(index,level,races,startDate).vol});
+  // Every reviewed triathlon uses independently bounded swim/bike/run bouts.
+  // The legacy branch puts the whole weekly swim allocation in one session;
+  // selecting a different distance or experience label must not re-enable it.
+  // The athlete's reported dose supplies the ceiling, not the distance label.
+  if(opts.reviewedCycle&&weeklyHours!=null&&["sprint","olympic","half","full"].includes(distance))return reviewedTriathlonTemplate({weeks,weeklyHours:targetHours,distance,volume:index=>mesoVolumeRaces(index,level,races,startDate).vol});
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
     const { vol: volumeFactor, phase: ph, block } = mesoVolumeRaces(w - 1, level, races, startDate);
@@ -1170,7 +1174,15 @@ export function generateSingleSport(opts: {
       sessions.push({ sport: "mobility", title: "Mobility + Core", minutes: Math.round(totalMin * 0.2), zone: "z1", type: "recovery", description: "Hips, shoulders, spine + anti-rotation core. Mobility is what lets you keep loading heavy." });
     }
 
-    weeksOut.push({ week: w, ...(opts.reviewedCycle?{periodizationFactor:vol}:{}), theme: opts.reviewedCycle && phase(w)==='taper' ? 'Recovery and response review' : ph === "taper" ? "Freshness & Sharpening" : ph === "peak" ? "Peak Intensity" : ph === "build" ? "Build: Raise the Ceiling" : "Base: Aerobic Foundation", sessions: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)), totalMinutes: sessions.map((x) => capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined)).reduce((a, x) => a + x.minutes, 0) });
+    const cappedSessions = sessions.map((x) => {
+      const capped = capSessionMinutes(x, totalMin, opts.sport === "run" ? "half" : undefined);
+      // These generic templates have no reviewed pool/open-water structure.
+      // Keep even threshold-labelled swims inside the same product review
+      // boundary as canonicalSession, rather than saving an unusable 90-minute
+      // prescription and weakening the execution guard later.
+      return opts.reviewedCycle && x.sport === "swim" ? { ...capped, minutes: Math.min(75, capped.minutes) } : capped;
+    });
+    weeksOut.push({ week: w, ...(opts.reviewedCycle?{periodizationFactor:vol}:{}), theme: opts.reviewedCycle && phase(w)==='taper' ? 'Recovery and response review' : ph === "taper" ? "Freshness & Sharpening" : ph === "peak" ? "Peak Intensity" : ph === "build" ? "Build: Raise the Ceiling" : "Base: Aerobic Foundation", sessions: cappedSessions, totalMinutes: cappedSessions.reduce((a, x) => a + x.minutes, 0) });
   }
   return weeksOut;
 }
