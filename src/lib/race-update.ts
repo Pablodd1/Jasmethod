@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { parseCustomTriathlonDistance } from "./race-distances";
 
 export class RaceUpdateError extends Error {}
 
@@ -29,6 +30,7 @@ export function parseRaceUpdate(value: unknown): { id: string; data: Prisma.Race
       if ((raw === null || raw === "") && !["name", "distance"].includes(key)) { data[key] = null; continue; }
       if (typeof raw !== "string" || !raw.trim() || raw.length > strings[key]) throw new RaceUpdateError(`Invalid race ${key}`);
       data[key] = raw.trim();
+      if (key === "distance" && (raw.trim() === "custom-triathlon" || raw.trim().startsWith("triathlon-custom")) && !parseCustomTriathlonDistance(raw.trim())) throw new RaceUpdateError("Custom triathlon requires valid swim, bike and run distances.");
     } else if (Object.hasOwn(numbers, key) || key === "priority") {
       if ((raw === null || raw === "") && key !== "priority") { data[key] = null; continue; }
       if ((typeof raw !== "number" && typeof raw !== "string") || (typeof raw === "string" && !/^-?(?:\d+\.?\d*|\.\d+)$/.test(raw))) throw new RaceUpdateError(`Invalid race ${key}`);

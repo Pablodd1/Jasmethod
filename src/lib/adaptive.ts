@@ -894,6 +894,9 @@ export function postWorkoutFuel(opts: {
 // calendar busy time, and their own HR/power baselines. Science-backed detail
 // comes from buildSessionDetail (WU/CD templates, main-set generator).
 import { buildSessionDetail } from "./science";
+import { buildCoachingPrescription } from "./coaching-prescription";
+import type { CoachingSessionMetadata } from "./coaching-week-template";
+import type { SportStructure } from "./sport-structure";
 import {
   structuredSteps,
   cycleMovementSteps,
@@ -903,6 +906,8 @@ import {
 } from "./prescription";
 
 export interface DailyPrescription {
+  sportStructure?: SportStructure;
+  coaching?: CoachingSessionMetadata;
   protocol?: ProtocolSpec;
   intensity: string;
   type: string;
@@ -936,6 +941,7 @@ export function prescribeToday(opts: {
     variantSeed?: number;
     cycleVersion?: string;
     protocol?: ProtocolSpec;
+    coaching?: CoachingSessionMetadata;
   };
   adaptation: { verdict: string; durationFactor: number; intensityCap: string };
   busyNote?: string | null;
@@ -983,7 +989,7 @@ export function prescribeToday(opts: {
       }
     }
   }
-  const rest = adaptation.verdict === "rest" || session.durationMin <= 0;
+  let rest = adaptation.verdict === "rest" || session.durationMin <= 0;
   if (session.protocol && !rest) {
     const budget = Math.min(session.durationMin * Math.min(1, adaptation.durationFactor), (opts.busyHrs || 0) >= 6 ? 25 : Infinity, opts.timeBudgetMin == null ? Infinity : Math.max(0, Math.floor(opts.timeBudgetMin)));
     const capped = Number(adaptation.intensityCap.slice(1)) < Number((session.intensity || "z2").slice(1));
@@ -1007,7 +1013,7 @@ export function prescribeToday(opts: {
   // TIME BUDGET ENFORCED LAST: availability clamps the FINAL duration — after
   // readiness factors AND the coach multiplier (a 30-min limit stays ≤30 min
   // even at 120% intensity). Steps then regenerate inside the clamped time.
-  const durationMin = (() => {
+  let durationMin = (() => {
     const d = rest
       ? 0
       : Math.max(
@@ -1021,9 +1027,9 @@ export function prescribeToday(opts: {
       ? Math.min(d, Math.max(0, Math.round(opts.timeBudgetMin)))
       : d;
   })();
-  const intensity =
-    "z" + Math.min(originalZone, Number(adaptation.intensityCap.slice(1)) || 2);
-  const type = rest
+  let intensity =
+    "z" + Math.min(originalZone, Number(adaptation.intensityCap.slice(1)) || 2, session.coaching && adaptation.verdict === "easy" ? 2 : 7);
+  let type = rest
     ? "recovery"
     : ["strength", "mobility", "hyrox", "boxing"].includes(session.sport)
       ? session.type
@@ -1032,7 +1038,11 @@ export function prescribeToday(opts: {
         : Number(intensity.slice(1)) <= 2
           ? "endurance"
           : session.type;
-  const steps = session.cycleVersion === "bounded-cycle-v1" && ["strength", "hyrox", "mobility"].includes(session.sport)
+  const coached = session.coaching && !rest && durationMin > 0
+    ? buildCoachingPrescription(session.sport, durationMin, intensity, session.coaching, adaptation.verdict === "easy")
+    : undefined;
+  if (coached?.paused) { rest = true; durationMin = 0; }
+  const steps = coached ? coached.steps : session.cycleVersion === "bounded-cycle-v1" && ["strength", "hyrox", "mobility"].includes(session.sport)
     ? cycleMovementSteps(durationMin, intensity, session.title)
     : structuredSteps(
     durationMin,
@@ -1041,6 +1051,10 @@ export function prescribeToday(opts: {
     session.variantSeed,
     session.sport,
   );
+  if (coached && steps.length) {
+    intensity = `z${Math.max(...steps.map(step => Number(step.zone.slice(1)) || 1))}`;
+    if (["run", "bike", "swim"].includes(session.sport) && Number(intensity.slice(1)) <= 2) type = intensity === "z1" ? "recovery" : "endurance";
+  }
   // Per-step considered metrics: every step carries the targets that govern
   // it — zone + HR (LTHR-based) + pace (run) or power (bike) — same math as
   // the session-level targets, applied per step zone.
@@ -1059,8 +1073,8 @@ export function prescribeToday(opts: {
     ? `Warm up for ${steps[0].seconds / 60} min at Z1.`
     : "No warm-up needed.";
   detail.main = rest
-    ? "Rest today. The planned hard session is paused."
-    : `${session.cycleVersion === "bounded-cycle-v1" && session.description ? `${session.description} ` : ""}${stepsText(steps)}`;
+    ? `Rest today. The planned session is paused.${coached?.note ? ` ${coached.note}` : ""}`
+    : `${session.cycleVersion === "bounded-cycle-v1" && session.description ? `${session.description} ` : ""}${stepsText(steps)}${coached?.note ? ` ${coached.note}` : ""}`;
   detail.cd = steps.length
     ? `Cool down for ${steps[steps.length - 1].seconds / 60} min at Z1.`
     : "Resume training after reassessing readiness.";
@@ -1069,14 +1083,16 @@ export function prescribeToday(opts: {
     detail.study = "Conservative JMM planning template. Exact session dose and progression are coaching choices, not an individually validated result.";
   }
   return {
+    ...(coached?.sportStructure ? { sportStructure: coached.sportStructure } : {}),
+    ...(session.coaching ? { coaching: session.coaching } : {}),
     title: rest ? "Rest and recover" : session.title,
     sport: session.sport,
     durationMin,
-    intensity,
-    type,
+    intensity: rest ? "z1" : intensity,
+    type: rest ? "recovery" : type,
     steps: stepsWithTargets,
     startTime: session.startTime ?? null,
-    verdict: adaptation.verdict,
+    verdict: coached?.paused ? "rest" : adaptation.verdict,
     detail,
     targets: rest ? { rpe: 0 } : zoneTargets(intensity, session.sport, profile),
     scaled: {

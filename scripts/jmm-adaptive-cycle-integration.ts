@@ -132,7 +132,12 @@ async function main() {
     for(const [source,minutes] of [['garmin',40],['whoop',60]] as const)await db.workout.create({data:{userId:a.id,date:localDate(addDaysKey(today,-1),a.timezone,'08:00'),sport:'bike',title:'Synthetic ambiguous provider record',source,externalId:`${source}-${randomUUID()}`,durationMin:minutes,actualDurationMin:minutes,completed:true,planned:false,rpe:3,feedbackStatus:'completed',type:'endurance',intensity:'z2'}});
     const draft=await api('/api/plan/generate',a,{distance:'half',weeks:12,startDate:addDaysKey(today,1),preview:true});
     assert.equal(draft.preview.cycle.activity.historyReview,true);assert.equal(draft.preview.cycle.activity.recoveryReview,false);
-    const first=draft.preview.weeksPreview[0];assert.equal(first.cycleFactor,1);assert.equal(first.totalMinutes,first.doseAllocation.allocatedMinutes);assert.ok(first.totalMinutes>300);assert.equal(first.restDaySlots.length,0);assert.ok(first.sessions.some((s:Json)=>s.sport==='mobility'&&s.type==='recovery'&&s.minutes<=20));
+    const first=draft.preview.weeksPreview[0];assert.equal(first.cycleFactor,1);assert.equal(first.totalMinutes,first.doseAllocation.allocatedMinutes);assert.ok(first.totalMinutes>0&&first.totalMinutes<=411);
+    assert.equal(first.sessions.filter((s:Json)=>s.sport==='mobility'&&s.type==='recovery').length,0,'No-fixed-rest permits availability; it does not require invented recovery padding.');
+    assert.equal(new Set(first.sessions.map((s:Json)=>s.daySlot)).size,first.sessions.length);
+    assert.equal(first.restDaySlots.length,7-first.sessions.length);
+    assert.ok(first.sessions.every((s:Json)=>s.coaching&&s.minutes>=s.coaching.minimumMinutes));
+    if(first.doseAllocation.omitted.length)assert.match(first.doseAllocation.note,/Reduced component coverage/);
     assertBudgets(draft,411,90);assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),0);
     const saved=await api('/api/plan/generate',a,{distance:'half',weeks:12,startDate:addDaysKey(today,1),previewToken:draft.previewToken});
     assert.equal(await db.trainingPlan.count({where:{userId:a.id,status:'active'}}),1);assert.ok(saved.plan.id);

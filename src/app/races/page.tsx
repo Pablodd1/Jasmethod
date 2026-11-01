@@ -7,8 +7,9 @@ import { readWriteReceipt } from "@/lib/client-save-receipt";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
 import { TrainingWorkflowNav } from "@/components/training-workflow-nav";
+import { customTriathlonFromInputs, customTriathlonLabel, parseCustomTriathlonDistance } from "@/lib/race-distances";
 
-const DISTANCES = ["sprint", "olympic", "half", "full", "5k", "10k", "half-marathon", "marathon", "40k", "100k", "180k", "gran-fondo", "750m", "1500m", "1900m", "3800m", "hyrox"];
+const DISTANCES = ["custom-triathlon", "sprint", "olympic", "half", "full", "5k", "10k", "half-marathon", "marathon", "40k", "100k", "180k", "gran-fondo", "750m", "1500m", "1900m", "3800m", "hyrox"];
 const TERRAINS = ["flat", "rolling", "hilly", "mountain", "trail"];
 const VENUES = ["pool", "lake", "ocean", "river"];
 const FEDERATIONS = ["USAT", "WORLD_TRIATHLON", "BRITISH_TRIATHLON", "IRONMAN"];
@@ -16,6 +17,7 @@ const CATEGORIES = ["age_group", "elite"];
 
 // Persist existing format identifiers; labels explain them in the athlete's language.
 const OPTION_LABELS: Record<string, [string, string]> = {
+  "custom-triathlon": ["Custom triathlon — enter each leg", "Triatlón personalizado — cada segmento"],
   sprint: ["Sprint triathlon", "Triatlón sprint"], olympic: ["Olympic triathlon", "Triatlón olímpico"],
   half: ["70.3 triathlon", "Triatlón 70.3"], full: ["Full-distance triathlon", "Triatlón de larga distancia"],
   "5k": ["5 km run", "Carrera de 5 km"], "10k": ["10 km run", "Carrera de 10 km"],
@@ -43,6 +45,8 @@ export default function RacesPage() {
   const [races, setRaces] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<any>(empty);
+  const [legValues, setLegValues] = useState({swim:"",bike:"",run:""});
+  const [legUnits, setLegUnits] = useState({swim:"m",bike:"km",run:"km"});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [saved, setSaved] = useState(false);
@@ -70,11 +74,12 @@ export default function RacesPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          distance: form.distance === "custom-triathlon" ? customTriathlonFromInputs(legValues,legUnits) : form.distance,
           date: form.date ? `${form.date}T00:00:00.000Z` : undefined,
         }),
       });
       await readWriteReceipt(res,"race");
-      setForm(empty); setSaved(true); await load();
+      setForm(empty); setLegValues({swim:"",bike:"",run:""}); setSaved(true); await load();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
@@ -100,6 +105,21 @@ export default function RacesPage() {
       await readWriteReceipt(await fetch("/api/races", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, resultMin: v }),signal:AbortSignal.timeout(15000) }),"race",id);
       await load();
     }catch(error){setErr((error as Error).message+" Reload saved races to verify the result before retrying.");}
+  }
+
+  async function saveLegDistances(event: React.FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault();
+    if (busy || !verified) return;
+    const values = new FormData(event.currentTarget);
+    setBusy(true); setErr(""); setSaved(false);
+    try {
+      const distance = customTriathlonFromInputs(
+        {swim:String(values.get("swim") ?? ""),bike:String(values.get("bike") ?? ""),run:String(values.get("run") ?? "")},
+        {swim:String(values.get("swimUnit")),bike:String(values.get("bikeUnit")),run:String(values.get("runUnit"))});
+      await readWriteReceipt(await fetch("/api/races",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,distance})}),"race",id);
+      setSaved(true); await load();
+    } catch(error) {setErr(error instanceof Error ? error.message : "Could not save leg distances");}
+    finally {setBusy(false);}
   }
 
   async function del(id: string) {
@@ -132,7 +152,7 @@ export default function RacesPage() {
 
   const es = lang === "es";
   const t = (en: string, spanish: string) => es ? spanish : en;
-  const optionLabel = (value: string) => OPTION_LABELS[value]?.[es ? 1 : 0] ?? value;
+  const optionLabel = (value: string) => customTriathlonLabel(value,es) ?? OPTION_LABELS[value]?.[es ? 1 : 0] ?? value;
   const field = (key: string, label: string, type = "text", required = false) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><input id={`race-${key}`} type={type} step={type === "number" ? "any" : undefined} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)} required={required} /></div>;
   const select = (key: string, label: string, options: string[]) => <div><label htmlFor={`race-${key}`} className="label">{label}</label><select id={`race-${key}`} className="input min-h-11 !text-base" value={form[key]} onChange={event => set(key, event.target.value)}><option value="">{t("Not known yet", "Aún no lo sé")}</option>{options.map(option => <option key={option} value={option}>{optionLabel(option)}</option>)}</select></div>;
 
@@ -170,6 +190,7 @@ export default function RacesPage() {
                   </div>
                   <button type="button" aria-label={`${t("Delete race", "Eliminar carrera")}: ${r.name}`} onClick={() => del(r.id)} className="flex min-h-11 min-w-11 items-center justify-center text-slate-500 hover:text-coral-600"><Trash2 className="w-4 h-4" /></button>
                 </div>
+                {parseCustomTriathlonDistance(r.distance) && <p className="mt-2 text-xs text-slate-600">{t("Athlete-reported distances; course verification pending.", "Distancias indicadas por el atleta; recorrido pendiente de verificar.")}</p>}
                 <details className="mt-2"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{t("Edit date, priority or venue", "Editar fecha, prioridad o lugar")}</summary>
                 <form key={`${r.id}-${r.date}-${r.priority}-${r.location}`} onSubmit={event=>saveTiming(event,r.id)} className="mt-3 flex flex-wrap items-end gap-2">
                   <label className="text-sm">{lang === "es" ? "Fecha del evento" : "Event date"}<input name="date" type="date" className="input" defaultValue={String(r.date).slice(0,10)} required/></label>
@@ -178,6 +199,16 @@ export default function RacesPage() {
                   <button className="btn-secondary min-h-11" disabled={busy}>{t("Save event details", "Guardar datos del evento")}</button>
                 </form>
                 </details>
+                {(["sprint","olympic","half","full"].includes(r.distance) || parseCustomTriathlonDistance(r.distance)) && <details className="mt-2"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{t("Set exact swim, bike & run distances", "Indicar distancias de natación, bici y carrera")}</summary>
+                  <form key={`${r.id}-${r.distance}`} onSubmit={event=>saveLegDistances(event,r.id)} className="space-y-3">
+                    {(["swim","bike","run"] as const).map(leg=><div key={leg} className="grid grid-cols-2 gap-3">
+                      <label className="label">{leg==="swim"?t("Swim distance","Distancia de natación"):leg==="bike"?t("Bike distance","Distancia de ciclismo"):t("Run distance","Distancia de carrera")}<input name={leg} type="number" required min="0.001" step="any" className="input min-h-11 !text-base" defaultValue={parseCustomTriathlonDistance(r.distance)?.[`${leg}M`] == null ? "" : parseCustomTriathlonDistance(r.distance)![`${leg}M`] / 1000}/></label>
+                      <label className="label">{t("Unit","Unidad")}<select name={`${leg}Unit`} className="input min-h-11 !text-base" defaultValue="km"><option value="m">m</option><option value="km">km</option><option value="mi">mi</option></select></label>
+                    </div>)}
+                    <p className="text-sm text-slate-600">{t("These athlete-reported distances replace the preset for this event. Your saved training plan stays unchanged until reviewed.","Estas distancias indicadas por el atleta reemplazan el formato de este evento. Tu plan guardado no cambia hasta revisarlo.")}</p>
+                    <button className="btn-secondary min-h-11" disabled={busy}>{t("Save exact distances","Guardar distancias exactas")}</button>
+                  </form>
+                </details>}
                 <details className="mt-3 border-t pt-2"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{t("Result & course details", "Resultado y recorrido")}</summary>
                 <div className="mt-2 flex flex-wrap items-end gap-2">
                   <div>
@@ -253,6 +284,13 @@ export default function RacesPage() {
               {field("date", t("Date", "Fecha"), "date", true)}
               {field("location", t("Venue or city (optional)", "Lugar o ciudad (opcional)"))}
             </div>
+            {form.distance === "custom-triathlon" && <fieldset className="rounded-xl border p-3 space-y-3"><legend className="font-semibold">{t("Exact race distances", "Distancias exactas de la carrera")}</legend>
+              {(["swim","bike","run"] as const).map(leg=><div key={leg} className="grid grid-cols-2 gap-3">
+                <label className="label" htmlFor={`race-leg-${leg}`}>{leg==="swim"?t("Swim distance","Distancia de natación"):leg==="bike"?t("Bike distance","Distancia de ciclismo"):t("Run distance","Distancia de carrera")}<input id={`race-leg-${leg}`} type="number" required min="0.001" step="any" className="input min-h-11 !text-base" value={legValues[leg]} onChange={e=>setLegValues({...legValues,[leg]:e.target.value})}/></label>
+                <label className="label" htmlFor={`race-leg-unit-${leg}`}>{t("Unit","Unidad")}<select id={`race-leg-unit-${leg}`} className="input min-h-11 !text-base" value={legUnits[leg]} onChange={e=>setLegUnits({...legUnits,[leg]:e.target.value})}><option value="m">m</option><option value="km">km</option><option value="mi">mi</option></select></label>
+              </div>)}
+              <p className="text-sm text-slate-600">{t("Saved as athlete-reported distances, separately for each leg. This does not verify the official course or replace your saved plan.","Se guardan como distancias indicadas por el atleta, por segmento. No verifica el recorrido oficial ni reemplaza tu plan guardado.")}</p>
+            </fieldset>}
             <details className="border-t border-sand-200 pt-2">
               <summary className="min-h-11 cursor-pointer content-center font-semibold text-sm">{t("Timing & goal (optional)", "Horario y objetivo (opcional)")}</summary>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">

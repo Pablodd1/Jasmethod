@@ -54,14 +54,16 @@ test("easy-volume trimming removes the computed excess without shrinking the ret
   assert.equal(first.totalMinutes, first.sessions.reduce((sum, s) => sum + s.minutes, 0));
 });
 
-test("reviewed volume still yields to availability, performed dates and recovery review without a minimum workout duration", () => {
+test("reviewed volume yields to availability and recovery with explicitly smaller introductory alternatives", () => {
   const restricted = { ...setup, trainingDays: [2, 4], maxSessionMinutes: 10 };
   const bounded = boundPlanWeeks(generate("sprint"), restricted, 14, 2, "advanced", [], { preserveWeeklyDose: true }).weeks;
   const cycle = shapeTrainingCycle(bounded, { startKey: "2026-10-20", needsAssessment: true, templatePeriodized: true, recoveryReview: true, protectedDays: ["2026-10-20"] });
   assert.ok(cycle[0].totalMinutes < bounded[0].totalMinutes);
+  assert.ok(cycle[0].sessions.length>0,'Limited time still permits complete familiar introductory alternatives.');
   assert.ok(cycle[0].sessions.every(s => s.daySlot !== 0));
   for (const week of cycle) {
     assert.ok(week.totalMinutes <= 20);
-    assert.ok(week.sessions.every(s => [2, 4].includes((2 + s.daySlot) % 7) && s.minutes <= 10));
+    assert.ok(week.sessions.every(s => [2, 4].includes((2 + s.daySlot) % 7) && s.minutes <= 10 && s.minutes>=s.coaching!.minimumMinutes && s.coaching!.recipe==='aerobic' && !s.coaching!.demanding));
+    assert.match(week.doseAllocation!.note,/alternatives only/,'Short introductions cannot pretend the full sport/strength/brick program fitted.');
   }
 });

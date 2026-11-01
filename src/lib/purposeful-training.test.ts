@@ -33,7 +33,7 @@ test('optional pairing preserves every requested available day and does not add 
 
 test('reviewed cycles compare existing recovery waves and event reductions without two taper cuts',()=>{
  const source=generatePlan({level:'advanced',distance:'half',weeks:12,startDate:new Date('2026-10-18T12:00Z'),weeklyHours:411/60,easyPct:60,reviewedCycle:true});
- assert.equal(source[5].theme,'Recovery and response review');assert.ok(!source[5].sessions.some(s=>/taper|sharpening/i.test(s.title)));
+ assert.match(source[5].theme,/recovery/i);assert.ok(source[5].sessions.every(s=>s.coaching?.phase==='recovery'&&!s.coaching?.demanding));assert.ok(!source[5].sessions.some(s=>/taper|sharpening/i.test(s.title)));
  const b=boundPlanWeeks(source,setup(),11,0,'advanced',[],{preserveWeeklyDose:true}).weeks;
  const shaped=shapeTrainingCycle(b,{startKey:'2026-10-18',needsAssessment:true,recoveryReview:false,protectedDays:[],templatePeriodized:true,events:[{id:'a',dateKey:'2026-12-06',priority:'A',name:'Synthetic A race',source:'stored'}]});
  assert.equal(shaped[5].cycleFactor,1,'A 0.55 template recovery is already below the 0.65 event ceiling');assert.equal(shaped[5].totalMinutes,b[5].totalMinutes);assert.ok(shaped[5].totalMinutes>180);assert.ok(shaped.every(w=>w.totalMinutes<=411));

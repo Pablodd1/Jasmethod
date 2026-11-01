@@ -198,12 +198,15 @@ test("reviewed sport purpose survives cycle shaping only while it agrees with th
   const cycle = shapeTrainingCycle(source, { ...options, needsAssessment: false, baselineReviews, templatePeriodized: true });
   const bike = cycle[2].sessions.find(s => s.sport === "bike" && s.zone === "z4")!;
   assert.ok(bike, "A current cycling anchor retains the supported threshold purpose.");
-  assert.match(bike.description, /Purpose: controlled threshold intervals/);
+  assert.match(bike.description, /Purpose: Develop controlled sport-specific work/);
+  assert.equal(bike.coaching?.recipe, 'threshold');
+  assert.equal(bike.coaching?.demanding, true);
   const reduced = shapeTrainingCycle(source, { ...options, needsAssessment: true, templatePeriodized: true });
   const easy = reduced[2].sessions.find(s => s.daySlot === bike.daySlot)!;
   assert.ok(Number(easy.zone.slice(1)) <= 3);
   assert.doesNotMatch(easy.description, /controlled threshold intervals/);
   assert.doesNotMatch(easy.title, /threshold intervals/);
+  assert.equal(easy.coaching?.demanding, false);
   assert.ok(reduced[0].sessions.filter(s => /observation/.test(s.title)).every(s => /does not measure/.test(s.description)));
 });
 

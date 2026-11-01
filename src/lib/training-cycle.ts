@@ -82,6 +82,7 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
       : options.needsAssessment && index === 0 ? "Baseline assessment and easy foundation"
       : options.templatePeriodized ? week.theme || 'Planned practice · review response' : `Block ${Math.floor(index / 4) + 1} · ${index % 4 === 0 ? "Foundation" : "Progressive practice"}`;
     const observations: { sport: Sport; dateKey: string; minutes: number; status: string; reason: string }[] = [];
+    const cycleOmissions: string[] = [];
     const sessions = week.sessions.flatMap(session => {
       const key = addDaysKey(weekStart, session.daySlot);
       if (protectedDays.has(key)) return [];
@@ -90,11 +91,17 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
       if (eventLimited && session.doubleDayRole === "secondary") return [];
       const minutes = Math.floor(session.minutes * factor);
       if (minutes < 1) return [];
+      const reviewedCoaching = week.templateVersion === 'coaching-structure-v1' && session.coaching;
+      if (reviewedCoaching && minutes < reviewedCoaching.minimumMinutes) {
+        cycleOmissions.push(`${session.title}: reduced budget cannot fit the complete minimum prescription; no catch-up added.`);
+        return [];
+      }
       const review = reviewBySport.get(session.sport);
       const status = review ? cycleBaselineStatus(review, key) : "missing";
       const missingAnchor = options.baselineReviews !== undefined ? status === "missing" || status === "expired" : options.needsAssessment;
       const observationDue = key >= (nextReview.get(session.sport) ?? options.startKey);
-      const eligibleSport = !["recovery", "brick"].includes(session.sport)&&!(session.sport==='mobility'&&session.type==='recovery');
+      const eligibleSport = reviewedCoaching ? ['swim','bike','run'].includes(session.sport)
+        : !["recovery", "brick"].includes(session.sport)&&!(session.sport==='mobility'&&session.type==='recovery');
       // A placeholder on a calendar is never proof of recovery or a new test.
       // Defer the observation in event/rebuild weeks and optional pairs.
       const observation = eligibleSport && observationDue && !eventLimited && !rebuild && !session.doubleDayRole;
@@ -118,19 +125,35 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
       // claims, so it cannot be carried across reductions as instructions.
       const retainedPurpose = week.templateVersion === "triathlon-foundation-v3"
         && zone === session.zone && status !== "expired" && !technicalOrTest && !movementSport ? session.description : null;
-      const description = session.sport==='mobility'&&session.type==='recovery' ? session.description : observation ? comfortableObservationDescription(session.sport)
+      const loweredIntensity = Number(zone.slice(1)) < Number(session.zone.slice(1));
+      // Reviewed recipes contain no fixed unscaled dose. Preserve the sport
+      // identity, but replace quality claims when the effective effort falls.
+      const coachingPurpose = reviewedCoaching && loweredIntensity && !movementSport
+        ? `${Number(zone.slice(1)) <= 2 ? 'Comfortable' : 'Controlled reduced-intensity'} ${session.sport === 'brick' ? 'bike-to-run transition' : session.sport} practice; original quality work withheld for review`
+        : reviewedCoaching ? reviewedCoaching.purpose : null;
+      const description = reviewedCoaching ? observation ? comfortableObservationDescription(session.sport)
+        : loweredIntensity && !movementSport ? `Purpose: ${coachingPurpose}. Follow the reduced, duration-matched steps at the effective effort. No original threshold or hard-interval dose is retained. No missed work is added later.`
+          : `${session.description}${factor < 1 ? ' The session duration is reduced for the current recovery/event window; the executable steps must fit this duration.' : ''}${eventLimited || rebuild ? ' Use controlled familiar work; no progression of load or complexity in this review window.' : ''}`
+        : session.sport==='mobility'&&session.type==='recovery' ? session.description : observation ? comfortableObservationDescription(session.sport)
         : retainedPurpose ?? `Provisional ${theme.toLowerCase()} session. Follow the duration-matched steps, adjusted by the session-day check-in. Effort labels are not measured physiological zones. No missed work is added later.${movementSport ? " Familiar controlled movement only; do not add load, maximal speed, sparring or unfamiliar skills. Review before progressing." : ""}${status === "expired" && review ? " The prior sport-specific anchor expires within this cycle; this plan does not renew it. Use comfortable effort and review current evidence." : ""}`;
       const title = observation ? `${session.sport}: Comfortable ${firstObservation && missingAnchor ? "baseline observation" : "review observation"}`
+        : reviewedCoaching ? loweredIntensity && !movementSport ? `${session.sport === 'brick' ? 'Brick · bike to run' : session.sport} · ${Number(zone.slice(1)) <= 2 ? 'comfortable' : 'controlled reduced-intensity'} practice` : session.title
         : technicalOrTest ? `${session.sport}: Controlled familiar practice`
         : movementSport ? `${session.title} · controlled familiar practice`
         : Number(zone.slice(1)) < Number(session.zone.slice(1)) ? `${session.sport}: ${zone === "z2" ? "Easy" : "Controlled"} practice` : session.title;
-      return [{ ...session, minutes, zone, type, description, title }];
+      const coaching = reviewedCoaching ? { ...reviewedCoaching,
+        ...(minutes !== session.minutes && reviewedCoaching.legs ? {legs:undefined} : {}),
+        purpose: observation ? `Comfortable ${session.sport} observation; not a measured baseline` : coachingPurpose!,
+        demanding: reviewedCoaching.demanding && !observation && !recoveryWeek && !eventLimited && !rebuild && !loweredIntensity,
+        ...(observation || loweredIntensity || eventLimited || rebuild ? {note:'Effective effort and current duration override original quality work. This observation does not renew a measured reference.'} : {}),
+      } : session.coaching;
+      return [{ ...session, minutes, zone, type, description, title, ...(coaching ? {coaching} : {}) }];
     });
     // Removing a performed/event date must not leave an orphaned optional pair.
     for (const session of sessions) if (session.doubleDayRole && sessions.filter(other => other.daySlot === session.daySlot && other.doubleDayRole).length !== 2) {
       delete session.doubleDayRole; delete session.movedFromSlot;
     }
-    return { ...week, theme, sessions, totalMinutes: sessions.reduce((sum, session) => sum + session.minutes, 0),
+    return { ...week, theme, sessions, cycleOmissions, totalMinutes: sessions.reduce((sum, session) => sum + session.minutes, 0),
       restDaySlots: Array.from({ length: 7 }, (_, slot) => slot).filter(slot => !sessions.some(session => session.daySlot === slot)),
       cycleFactor: factor, volumeDecision:{scheduledMinutes:week.totalMinutes,cycleFactor:factor,remainingPlannedMinutes:sessions.reduce((sum,s)=>sum+s.minutes,0),protectedDates:eventDays.filter(day=>day.protected||options.protectedDays.includes(day.key)).map(day=>day.key),reason:rebuild?'Recent reported difficult/incomplete work: conservative review':eventLimited?'Event preparation/recovery':options.templatePeriodized?'Template progression applied once; no second generic ramp':'Legacy conservative cycle'}, observations, eventDays: eventDays.filter(day => day.protected).map(day => day.key),
       eventIds: [...new Set(eventDays.flatMap(day => day.eventIds))],
