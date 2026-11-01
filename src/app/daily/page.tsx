@@ -42,6 +42,7 @@ function DailyTrainingPageContent() {
   // The URL owns selection across Link navigation, reload and browser history.
   // A useState initializer can retain an earlier /daily record in the router.
   const selected = searchParams.get("sessionId");
+  const feedbackFirst = searchParams.get("feedback") === "1";
   function selectSession(id: string) {
     const url = new URL(window.location.href); url.searchParams.set("sessionId", id);
     router.push(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
@@ -86,7 +87,7 @@ function DailyTrainingPageContent() {
   const es = state.kind === "ready" ? state.plan.language === "es" : user?.language === "es";
   const displayNavigation = <nav aria-label={es ? "Vista del entrenamiento de hoy" : "Today's training display"} className="mx-auto max-w-[540px] px-4 py-3 flex flex-wrap gap-4 items-center text-sm">
     <Link className="underline font-semibold" href={selected ? `/today?sessionId=${encodeURIComponent(selected)}` : "/today"}>{es ? "Hoy: vista completa" : "Today: full view"}</Link>
-    <span aria-current="page">{es ? "Tarjeta del entrenamiento" : "Workout card view"}</span>
+    <span aria-current="page">{feedbackFirst ? (es ? "Registrar resultado" : "Log result") : (es ? "Tarjeta del entrenamiento" : "Workout card view")}</span>
     <Link className="underline" href="/coach">J Koach</Link>
     <Link className="underline" href="/calendar">{es ? "Plan y calendario" : "Plan & Calendar"}</Link>
   </nav>;
@@ -125,10 +126,11 @@ function DailyTrainingPageContent() {
     <>
     {displayNavigation}
     {state.plan.sessions && state.plan.sessions.length > 1 && <nav aria-label={es ? "Sesiones de hoy" : "Today's sessions"} className="jmm-screen jmm-session-switcher"><label>{es ? "Elige la sesión de hoy " : "Select today's session "}<select value={session.id} onChange={e => selectSession(e.target.value)}>{state.plan.sessions.map(s => <option key={s.id} value={s.id}>{s.startTime ? `${s.startTime} · ` : ""}{s.title} · {s.sport}</option>)}</select></label></nav>}
-    <div className="mx-auto max-w-[540px] px-4 py-3"><DailyEnvironmentCard key={`environment-${session.id}-${session.sourceRevision}`} sessionId={session.id} dateLocal={session.dateLocal} timezone={session.timezone} startTime={state.plan.sessions?.find(s => s.id === session.id)?.startTime} environment={state.plan.environment} units={unitsOf(user?.profile?.units,user?.language)} es={state.plan.language === "es"} onSaved={() => load()} /></div>
+    {!feedbackFirst && <div className="mx-auto max-w-[540px] px-4 py-3"><DailyEnvironmentCard key={`environment-${session.id}-${session.sourceRevision}`} sessionId={session.id} dateLocal={session.dateLocal} timezone={session.timezone} startTime={state.plan.sessions?.find(s => s.id === session.id)?.startTime} environment={state.plan.environment} units={unitsOf(user?.profile?.units,user?.language)} es={state.plan.language === "es"} onSaved={() => load()} /></div>}
     <DailyTrainingScreen
       key={`${session.id}-${session.revision}`}
       plan={state.plan}
+      feedbackFirst={feedbackFirst}
       onSaved={() => load()}
       onFocusReady={(ready) =>
         postEvent(
