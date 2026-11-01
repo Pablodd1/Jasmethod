@@ -184,6 +184,8 @@ async function main() {
       await logResult.click();await selectedResultRead;
       const feedback=page.locator('#workout-feedback');await feedback.waitFor({state:'visible'});
       await page.getByLabel(language==='es'?'Minutos realizados (en blanco si no lo sabes)':'Actual minutes (leave blank if unknown)',{exact:true}).waitFor({state:'visible'});
+      const feedbackBox=await feedback.boundingBox();assert.ok(feedbackBox&&feedbackBox.y>=0&&feedbackBox.y<400,'Result questions stay in the opening viewport after asynchronous data loads');
+      assert.equal(await page.locator('.uwc').count(),0,'Result entry does not mount a preceding workout preview that can shift the form away');
       assert.ok(selectedDailyReads.includes(f.card.session.id),'Result logging resolves the selected owned session');
       assert.equal(await page.getByLabel(language==='es'?'Minutos realizados (en blanco si no lo sabes)':'Actual minutes (leave blank if unknown)',{exact:true}).inputValue(),'','Planned time is never copied into actual minutes');
       assert.equal(await page.getByRole('button',{name:language==='es'?'Guardar comentario del entrenamiento':'Save workout feedback',exact:true}).isVisible(),true);

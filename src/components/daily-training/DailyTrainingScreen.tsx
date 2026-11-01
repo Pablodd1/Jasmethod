@@ -13,6 +13,7 @@ import { observationsFromForm, type SessionObservations } from '@/lib/session-ob
 export type CompletionActual = { durationMinutes: number | null; actualSport: string | null; sessionRpe: number | null; comments: string | null; status: "completed" | "partial" | "substituted" | "skipped" | "unknown"; actualFueling?: ActualFuelingPatch | null; measurements?: SessionObservations };
 type Props = {
   plan: DailyTraining;
+  feedbackFirst?: boolean;
   onFocusReady: (ready: boolean) => Promise<void>;
   onCompletion: (actual: CompletionActual) => Promise<void>;
   onSaved?: () => void | Promise<void>;
@@ -47,7 +48,7 @@ export function TrainingReferenceDetails({ plan }: { plan: DailyTraining }) {
   </details>;
 }
 
-export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved }: Props) {
+export function DailyTrainingScreen({ plan, feedbackFirst = false, onFocusReady, onCompletion, onSaved }: Props) {
   const { session, profile, blocks, guidance } = plan;
   const copy = (en: string, es: string) => plan.language === "es" ? es : en;
   const [focus, setFocus] = useState(plan.completion.focusReady);
@@ -60,13 +61,8 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved 
   const [comments, setComments] = useState(plan.completion.actual?.comments ?? "");
   const [outcome, setOutcome] = useState<CompletionActual["status"] | "">(plan.completion.actual?.status ?? "");
   const [saved, setSaved] = useState(Boolean(plan.completion.submittedAt));
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("feedback") === "1") {
-      setFeedbackOpen(true);
-      requestAnimationFrame(() => document.getElementById("workout-feedback")?.scrollIntoView({ block: "start" }));
-    }
-  }, [session.id]);
+  const [feedbackOpen, setFeedbackOpen] = useState(feedbackFirst);
+  useEffect(() => { setFeedbackOpen(feedbackFirst); }, [session.id, feedbackFirst]);
   const [remaining, setRemaining] = useState<number | null>(null);
   const timerActive = remaining != null && remaining > 0;
   useEffect(() => {
@@ -98,7 +94,10 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved 
     catch (cause) { setError((cause as Error).message || "Could not save feedback. Your entries are still here; try again."); }
     finally { pending.current = false; setBusy(false); }
   }
+  const feedbackPanel = <details id="workout-feedback" className="jmm-panel scroll-mt-20" open={feedbackOpen} onToggle={event => setFeedbackOpen(event.currentTarget.open)}><summary><span className="jmm-num">06</span><b>{copy("Close the loop", "Cuéntanos cómo fue")}</b><span className="jmm-plus" aria-hidden="true">+</span></summary><div className="jmm-panel-body"><p>{guidance.checkIn.items.join(" ")}</p><form onSubmit={submit}><label>{copy("What happened?", "¿Qué ocurrió?")}<select required value={outcome} onChange={e => setOutcome(e.target.value as CompletionActual["status"])}><option value="">{copy("Choose an outcome", "Elige el resultado")}</option><option value="completed">{copy("Completed", "Completado")}</option><option value="partial">{copy("Partly completed", "Parcialmente completado")}</option><option value="substituted">{copy("Substituted (describe actual sport below)", "Sustituido (indica el deporte realizado abajo)")}</option><option value="skipped">{copy("Skipped", "Omitido")}</option><option value="unknown">{copy("Unknown / not reported", "Desconocido / sin informar")}</option></select></label><label>{copy("Actual sport (optional)", "Deporte realizado (opcional)")}<select value={actualSport} onChange={e => setActualSport(e.target.value)}><option value="">{copy("Unknown / not reported", "Desconocido / sin informar")}</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{copy(s, ({run:"carrera",bike:"bicicleta",swim:"natación",strength:"fuerza",mobility:"movilidad",recovery:"recuperación",brick:"combinado",hyrox:"HYROX",other:"otro"} as Record<string,string>)[s])}</option>)}</select></label><label>{copy("Actual minutes (leave blank if unknown)", "Minutos realizados (en blanco si no lo sabes)")}<input type="number" min="0" max="1440" value={minutes} onChange={e => setMinutes(e.target.value === "" ? "" : Number(e.target.value))} /></label><label>{copy("Session effort · 0 no effort, 10 maximal (optional)", "Esfuerzo · 0 sin esfuerzo, 10 máximo (opcional)")}<input type="number" min="0" max="10" value={rpe} onChange={e => setRpe(e.target.value === "" ? "" : Number(e.target.value))} /></label><SessionMeasurementsFields saved={plan.completion.actual?.measurements} details={{schemaVersion:1,values:{},fueling:plan.completion.actual?.actualFueling}} actualMinutes={plan.completion.actual?.durationMinutes} es={plan.language === "es"} units={plan.profile.unitSystem} /><ActualFuelingFields details={{schemaVersion:1,fueling:plan.completion.actual?.actualFueling}} actualDurationMin={plan.completion.actual?.durationMinutes} es={plan.language === "es"} /><label>{copy("How did it go?", "¿Cómo te fue?")}<textarea maxLength={1000} value={comments} onChange={e => setComments(e.target.value)} /></label><button className="jmm-button" type="submit" disabled={busy}>{busy ? copy("Saving…", "Guardando…") : copy("Save workout feedback", "Guardar comentario del entrenamiento")}</button>{saved && <p role="status">{copy("Workout feedback saved.", "Comentario del entrenamiento guardado.")}</p>}</form></div></details>;
   return <main className="jmm-screen">
+    {feedbackFirst && <><header className="jmm-panel-body"><h1 className="text-2xl font-bold">{copy("Log workout result", "Registrar resultado")}</h1><p>{session.dateLocal} · {session.title}</p></header>{error && <p role="alert" className="jmm-alert">{error}</p>}{feedbackPanel}</>}
+    {!feedbackFirst && <>
     {plan.workoutCard && <UniversalWorkoutCard key={plan.workoutCard.session.revision} card={plan.workoutCard} heldPreview={<SavedWorkoutPreviewCard sessionId={session.id} es={plan.language === "es"} />} onSaved={onSaved}/>}
     {plan.workoutCard && <div className="jmm-panel-body"><button type="button" className="jmm-button" disabled={busy||!ready} aria-pressed={focus} onClick={toggleFocus}>{focus?(plan.language==="es"?"Preparación lista ✓":"Focus ready ✓"):(plan.language==="es"?"Marcar preparación lista":"Mark focus ready")}</button>{error&&<p role="alert">{error}</p>}</div>}
     {plan.workoutCard && <TrainingReferenceDetails plan={plan} />}
@@ -118,7 +117,8 @@ export function DailyTrainingScreen({ plan, onFocusReady, onCompletion, onSaved 
     <GuidanceCard number="04" title="After training · Recovery food" guide={guidance.postFuel} />
     <GuidanceCard number="05" title="Downshift · Optional breathing" guide={guidance.downshift}><button type="button" className="jmm-button" onClick={() => setRemaining(remaining == null || remaining === 0 ? guidance.downshift.timerSeconds : null)} disabled={!guidance.downshift.timerSeconds}>{remaining == null || remaining === 0 ? "Start optional timer" : "Stop timer"}</button><p role="status">{remaining == null ? "Wait until breathing is comfortable." : remaining === 0 ? "Done. Resume natural breathing." : `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")} left`}</p></GuidanceCard>
     </>}
-    <details id="workout-feedback" className="jmm-panel scroll-mt-20" open={feedbackOpen} onToggle={event => setFeedbackOpen(event.currentTarget.open)}><summary><span className="jmm-num">06</span><b>{copy("Close the loop", "Cuéntanos cómo fue")}</b><span className="jmm-plus" aria-hidden="true">+</span></summary><div className="jmm-panel-body"><p>{guidance.checkIn.items.join(" ")}</p><form onSubmit={submit}><label>{copy("What happened?", "¿Qué ocurrió?")}<select required value={outcome} onChange={e => setOutcome(e.target.value as CompletionActual["status"])}><option value="">{copy("Choose an outcome", "Elige el resultado")}</option><option value="completed">{copy("Completed", "Completado")}</option><option value="partial">{copy("Partly completed", "Parcialmente completado")}</option><option value="substituted">{copy("Substituted (describe actual sport below)", "Sustituido (indica el deporte realizado abajo)")}</option><option value="skipped">{copy("Skipped", "Omitido")}</option><option value="unknown">{copy("Unknown / not reported", "Desconocido / sin informar")}</option></select></label><label>{copy("Actual sport (optional)", "Deporte realizado (opcional)")}<select value={actualSport} onChange={e => setActualSport(e.target.value)}><option value="">{copy("Unknown / not reported", "Desconocido / sin informar")}</option>{["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "other"].map(s => <option key={s} value={s}>{copy(s, ({run:"carrera",bike:"bicicleta",swim:"natación",strength:"fuerza",mobility:"movilidad",recovery:"recuperación",brick:"combinado",hyrox:"HYROX",other:"otro"} as Record<string,string>)[s])}</option>)}</select></label><label>{copy("Actual minutes (leave blank if unknown)", "Minutos realizados (en blanco si no lo sabes)")}<input type="number" min="0" max="1440" value={minutes} onChange={e => setMinutes(e.target.value === "" ? "" : Number(e.target.value))} /></label><label>{copy("Session effort · 0 no effort, 10 maximal (optional)", "Esfuerzo · 0 sin esfuerzo, 10 máximo (opcional)")}<input type="number" min="0" max="10" value={rpe} onChange={e => setRpe(e.target.value === "" ? "" : Number(e.target.value))} /></label><SessionMeasurementsFields saved={plan.completion.actual?.measurements} details={{schemaVersion:1,values:{},fueling:plan.completion.actual?.actualFueling}} actualMinutes={plan.completion.actual?.durationMinutes} es={plan.language === "es"} units={plan.profile.unitSystem} /><ActualFuelingFields details={{schemaVersion:1,fueling:plan.completion.actual?.actualFueling}} actualDurationMin={plan.completion.actual?.durationMinutes} es={plan.language === "es"} /><label>{copy("How did it go?", "¿Cómo te fue?")}<textarea maxLength={1000} value={comments} onChange={e => setComments(e.target.value)} /></label><button className="jmm-button" type="submit" disabled={busy}>{busy ? copy("Saving…", "Guardando…") : copy("Save workout feedback", "Guardar comentario del entrenamiento")}</button>{saved && <p role="status">{copy("Workout feedback saved.", "Comentario del entrenamiento guardado.")}</p>}</form></div></details>
+    {!feedbackFirst && feedbackPanel}
     {!plan.workoutCard && <footer className="jmm-foot">Session revision {session.revision}. Full web instructions remain available without a watch.</footer>}
+    </>}
   </main>;
 }

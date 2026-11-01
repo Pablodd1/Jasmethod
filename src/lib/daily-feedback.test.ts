@@ -25,7 +25,7 @@ function findElement(root: any, type: unknown): any {
 function plan() { return JSON.parse(fs.readFileSync("src/components/daily-training/sample-session.json", "utf8")); }
 
 test("daily debrief can submit an existing zero-RPE report; invalid ratings keep the draft without a write", async () => {
-  for (const rating of [0, -1, 10.5, 11]) {
+  for (const feedbackFirst of [false, true]) for (const rating of [0, -1, 10.5, 11]) {
     const saved = plan(); saved.completion.actual = { durationMinutes: 30, actualSport: "run", sessionRpe: rating, comments: "Reported effort", status: "completed" };
     const errors: string[] = [], writes: any[] = [];
     const { DailyTrainingScreen } = compile("src/components/daily-training/DailyTrainingScreen.tsx", {
@@ -38,8 +38,13 @@ test("daily debrief can submit an existing zero-RPE report; invalid ratings keep
       "./SessionMeasurementsFields": { SessionMeasurementsFields: "measurements-fields" },
       "@/lib/actual-fueling": { actualFuelingFromForm }, "@/lib/session-observations": { observationsFromForm },
     }, { FormData: class { get() { return null; } has() { return false; } } });
-    const tree = DailyTrainingScreen({ plan: saved, onFocusReady: async () => {}, onCompletion: async (actual: unknown) => { writes.push(actual); } });
+    const tree = DailyTrainingScreen({ plan: saved, feedbackFirst, onFocusReady: async () => {}, onCompletion: async (actual: unknown) => { writes.push(actual); } });
     const form = findElement(tree, "form"); assert.ok(form);
+    if (feedbackFirst) {
+      assert.equal(findElement(tree,"h1").props.children,"Log workout result");
+      assert.equal(findElement(tree,"details").props.open,true);
+      assert.equal(findElement(tree,"workout-card"),null);
+    }
     await form.props.onSubmit({ preventDefault() {}, currentTarget: {} });
     if (rating === 0) { assert.equal(writes.length, 1); assert.equal(writes[0].sessionRpe, 0); }
     else { assert.equal(writes.length, 0); assert.ok(errors.some(error => /between 0 and 10/.test(error))); }
