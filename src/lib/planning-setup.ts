@@ -21,6 +21,10 @@ export interface PlanningSetup {
   restrictions: "none" | "present" | "unknown";
   qualifiedReview: "none_needed" | "required" | "unknown";
   trainingDays: number[];
+  /** Availability is a time ceiling, never evidence of tolerated training. */
+  availableWeeklyMinutes?: number | null;
+  /** Optional gym preference, in JS weekdays (Sunday=0), subordinate to recovery. */
+  strengthWeekdays?: number[];
   restPreference?: "level_default" | "no_fixed_rest";
   maxSessionMinutes: number | null;
   equipmentAccess: string;
@@ -46,6 +50,8 @@ export function parsePlanningSetup(value: unknown, now = new Date(), timezone = 
   };
   const days = v.trainingDays == null ? [] : v.trainingDays;
   if (!Array.isArray(days) || days.some(d => !Number.isInteger(d) || d < 0 || d > 6)) throw new Error("Invalid training days");
+  const strengthDays = v.strengthWeekdays;
+  if (strengthDays != null && (!Array.isArray(strengthDays) || strengthDays.some(d=>!Number.isInteger(d)||d<0||d>6||!days.includes(d)))) throw new Error("Preferred strength days must be valid available training days");
   const date = v.baselineObservedAt ? String(v.baselineObservedAt) : null;
   if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0,10) !== date || date > dateKey(now, timezone))) throw new Error("Invalid baseline observation date");
   return {
@@ -61,6 +67,8 @@ export function parsePlanningSetup(value: unknown, now = new Date(), timezone = 
     restrictions: option("restrictions", ["none", "present", "unknown"], "unknown"),
     qualifiedReview: option("qualifiedReview", ["none_needed", "required", "unknown"], "unknown"),
     trainingDays: [...new Set(days as number[])].sort(), restPreference: option<"level_default"|"no_fixed_rest">("restPreference", ["level_default", "no_fixed_rest"], "level_default"), maxSessionMinutes: number("maxSessionMinutes", 10, 300),
+    availableWeeklyMinutes: number('availableWeeklyMinutes',0,2400),
+    ...(strengthDays != null ? {strengthWeekdays:[...new Set(strengthDays as number[])].sort()} : {}),
     equipmentAccess: typeof v.equipmentAccess === "string" ? v.equipmentAccess.trim().slice(0,1000) : "",
     planWeeks: number("planWeeks", 4, 30),
     baselinePlanOptIn: v.baselinePlanOptIn === true,

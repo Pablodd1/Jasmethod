@@ -11,7 +11,7 @@ export const EMPTY_SETUP = {
   doubleDay: null as DoubleDayPreference | null, travel: null as TravelContext | null,
   coachPreference: "", adultConfirmed: false, profileConfirmed: false, goalDescription: "",
   baselineWeeklyMinutes: "", baselineObservedAt: "", interruptions: "unknown", restrictions: "unknown",
-  qualifiedReview: "unknown", trainingDays: [] as number[], restPreference: "level_default", maxSessionMinutes: "", equipmentAccess: "",
+  qualifiedReview: "unknown", trainingDays: [] as number[], strengthWeekdays:[] as number[], availableWeeklyHours:"", restPreference: "level_default", maxSessionMinutes: "", equipmentAccess: "",
   planWeeks: "", trackEvent: "", baselinePlanOptIn: false,
   targetGoal: null as { context?: string; contextDescription?: string; metric: string; sport: string; value?: string | number; unit?: string; targetDate?: string } | null,
 };
@@ -42,6 +42,9 @@ export function hydrateOnboarding(profile: Record<string, unknown> | null, setup
       }
     }
     context.trainingDays = Array.isArray(setup.trainingDays) ? setup.trainingDays.filter((d): d is number => Number.isInteger(d) && Number(d) >= 0 && Number(d) <= 6) : [];
+    context.strengthWeekdays = Array.isArray(setup.strengthWeekdays) ? setup.strengthWeekdays.filter((d):d is number=>Number.isInteger(d)&&context.trainingDays.includes(Number(d))) : [];
+    context.availableWeeklyHours = typeof setup.availableWeeklyHours==='string' ? setup.availableWeeklyHours
+      : typeof setup.availableWeeklyMinutes==='number'&&Number.isFinite(setup.availableWeeklyMinutes)&&setup.availableWeeklyMinutes>=0 ? String(setup.availableWeeklyMinutes/60) : '';
     context.travel = record(setup.travel) ? setup.travel as unknown as TravelContext : null;
     context.doubleDay = record(setup.doubleDay) ? setup.doubleDay as unknown as DoubleDayPreference : null;
     context.targetGoal = record(setup.targetGoal) && typeof setup.targetGoal.metric === "string" && typeof setup.targetGoal.sport === "string" ? setup.targetGoal as SetupForm["targetGoal"] : null;

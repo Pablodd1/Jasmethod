@@ -97,6 +97,27 @@ test('daily capacity reaches triathlon template before allocation so complete ni
   assert.equal(first.sessions.filter((s:any)=>s.sport==='strength').length,2);
 });
 
+test('actual route respects Monday gym, Wednesday consent and independent availability ceiling without replacing recent dose',async()=>{
+  const {run,profile,setup}=fixture();profile.goal='half';profile.experience='advanced';
+  setup.baselineWeeklyMinutes=480;setup.maxSessionMinutes=180;setup.availableWeeklyMinutes=600;setup.strengthWeekdays=[1];
+  setup.doubleDay={version:doubleDay.DOUBLE_DAY_VERSION,weekday:3,purpose:'Familiar Wednesday pair',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true};
+  const response=await run();assert.equal(response.status,200);const draft=await response.json();
+  assert.equal(draft.preview.weeklyBudgetMin,480);
+  assert.equal(draft.preview.cycle.baseline.weeklyMinutes,480);
+  assert.equal(draft.preview.cycle.availability.weeklyMinutes,600);
+  const mondayStart=dates.addDaysKey(draft.preview.startDateKey,(1-new Date(`${draft.preview.startDateKey}T12:00Z`).getUTCDay()+7)%7);
+  // Re-preview from Monday so the expected preferred dates do not depend on CI's weekday.
+  const mondayResponse=await run({startDate:mondayStart});assert.equal(mondayResponse.status,200);const monday=await mondayResponse.json();
+  const first=monday.preview.weeksPreview[0];
+  assert.ok(first.sessions.some((s:any)=>s.sport==='strength'&&s.daySlot===0));
+  assert.equal(first.sessions.filter((s:any)=>s.doubleDayRole&&s.daySlot===2).length,2);
+  setup.availableWeeklyMinutes=240;
+  const reduced=await run({startDate:mondayStart});assert.equal(reduced.status,200);const limited=await reduced.json();
+  assert.equal(limited.preview.weeklyBudgetMin,240);
+  assert.ok(limited.preview.weeksPreview.every((w:any)=>w.totalMinutes<=240));
+  assert.equal(limited.preview.cycle.baseline.weeklyMinutes,480);
+});
+
 test("easy-training preference changes invalidate the actual route preview before or during its transaction",async()=>{
   for(const duringTransaction of [false,true]) {
     const {state,run}=fixture();state.plans=[{id:"existing-cycle",easyPct:70}];

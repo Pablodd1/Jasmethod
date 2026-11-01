@@ -60,6 +60,27 @@ async function scenario(name, work) {
 }
 (async () => {
   browser = await chromium.launch({ executablePath: process.env.JMM_QA_BROWSER, headless: true, args: ['--no-sandbox'] });
+  await scenario('390px availability hours and preferred strength weekday save and reload independently of recent load', async () => {
+    const who = await actor('schedule-preferences'); await setup(who);
+    const page = await pageFor(who, 390);
+    await page.goto(base + '/onboard?redo=1&advanced=1&step=race&return=training');
+    await page.getByText('Details needed for a personalized plan', { exact: true }).click();
+    await page.getByLabel('Time available each week (hours, optional)', { exact: true }).fill('3');
+    await page.getByRole('group', { name: 'Preferred strength days (optional)', exact: true }).getByLabel('Mon', { exact: true }).check();
+    const saved = page.waitForResponse(response => response.url().endsWith('/api/profile') && response.request().method() === 'PUT');
+    await page.getByRole('button', { name: 'Save setup and return to training', exact: true }).click();
+    assert.equal((await saved).status(), 200);
+    await page.waitForURL(base + '/training');
+    const profile = await api(who, '/api/profile');
+    assert.equal(profile.setup.availableWeeklyMinutes, 180);
+    assert.equal(profile.setup.baselineWeeklyMinutes, 200);
+    assert.deepEqual(profile.setup.strengthWeekdays, [1]);
+    await page.goto(base + '/onboard?redo=1&advanced=1&step=race&return=training');
+    await page.getByText('Details needed for a personalized plan', { exact: true }).click();
+    assert.equal(await page.getByLabel('Time available each week (hours, optional)', { exact: true }).inputValue(), '3');
+    assert.equal(await page.getByRole('group', { name: 'Preferred strength days (optional)', exact: true }).getByLabel('Mon', { exact: true }).isChecked(), true);
+    await shot(page, '00-saved-athlete-schedule-preferences');
+  });
   await scenario('390px event review: agreement, cancel, edited preview invalidation, stale event and saved protection', async () => {
     const who = await actor('events'); await setup(who);
     const events = await Promise.all([1, 2, 3].map((priority, index) => db.race.create({ data: { userId: who.id, name: `Synthetic ${['A', 'B', 'C'][index]} event`, priority, distance: '10k', date: new Date(day(8 + index * 3) + 'T00:00:00Z') } })));

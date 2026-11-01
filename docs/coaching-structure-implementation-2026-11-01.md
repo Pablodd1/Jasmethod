@@ -293,4 +293,12 @@ Run typecheck, lint, all tests, clean production build, database/browser regress
 | H3 | [Errors in hydration estimates from body mass, 2007](https://pubmed.ncbi.nlm.nih.gov/17454547/) | Explains limits of the simple mass-change proxy |
 | REC1 | [Athlete sleep consensus, 2021](https://pubmed.ncbi.nlm.nih.gov/33144349/) | Individual sleep needs and monitoring limitations |
 
-No production changes, real athlete plan edits, messages, provider grants or credentials were made while preparing this contract. Coaching-engine implementation and release acceptance remain outstanding.
+The contract drafting phase made no production changes, athlete plan edits, messages, provider grants or credential changes. Subsequent implementation covers the bounded components described at the beginning of this document; the complete advanced-coaching contract remains outstanding.
+
+## Athlete scheduling preferences
+
+Weekly availability is stored separately from dated recently tolerated training. The weekly ceiling is the smaller of these values and the capacity of the available days. Entering ten available hours cannot establish ten hours of tolerated training. Unknown availability remains null; explicit zero prevents assignment.
+
+Athletes can choose preferred strength weekdays from their available days. Complete units, recovery spacing, protected events and time limits take priority. The review shows the final scheduled dates, including unmet gym preferences after event/recovery adjustments. Agreed double sessions require a compatible primary on the selected weekday when feasible; no complete unit is compressed merely to force a pair.
+
+Acceptance includes a synthetic 411-minute recent baseline, 600-minute availability, Monday strength, Wednesday pair and 90-minute daily ceiling. Complete pairs fit in early weeks; later weeks may explicitly omit the pair when both complete sessions exceed the daily ceiling. API/database coverage checks persistence, tenant isolation, validation and invalidation of approvals after availability changes. Mobile browser acceptance checks editing in hours, saving canonical minutes and reloading the preferred weekday. These are synthetic checks, not proof of any real athlete's training tolerance or watch delivery.

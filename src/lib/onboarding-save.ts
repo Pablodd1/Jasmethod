@@ -1,5 +1,6 @@
 import { PLANNABLE_GOALS, planningGoal } from "./planning-setup";
 import { onboardingProfileFields } from "./profile-client";
+import { weeklyAvailabilityMinutes } from './planning-availability';
 
 export type OnboardingSection = "profile" | "essentials" | "zones" | "intent" | "goals" | "travel";
 export interface SavedOnboarding { profile: Record<string, unknown>; setup: Record<string, unknown> | null }
@@ -21,12 +22,14 @@ export function onboardingSectionPayload(section: OnboardingSection, profile: Re
     return {...answers,setupSection:"intent",setup:{goalDescription:setup.goalDescription,planWeeks:setup.planWeeks},expectedSetupRevision:setupRevision};
   }
   if (section === "goals") {
+    const {availableWeeklyHours,...canonicalSetup}=setup;
+    if(Object.hasOwn(setup,'availableWeeklyHours')) canonicalSetup.availableWeeklyMinutes=weeklyAvailabilityMinutes(availableWeeklyHours);
     const answers = onboardingProfileFields(pick(["experience", "goal"]));
     // Preserve historical goals on an unrelated edit, but never offer them as a new planning choice.
     if (typeof answers.goal === "string" && answers.goal === saved.profile.goal && !PLANNABLE_GOALS.includes(planningGoal(answers.goal)!)) delete answers.goal;
     return {
       ...answers,
-      setup: { ...setup, profileAnswers: { experience: !!profile.experience, weeklyHours: (saved.setup?.profileAnswers as {weeklyHours?:boolean}|undefined)?.weeklyHours === true }, travel: saved.setup?.travel ?? null }, expectedSetupRevision: setupRevision,
+      setup: { ...canonicalSetup, profileAnswers: { experience: !!profile.experience, weeklyHours: (saved.setup?.profileAnswers as {weeklyHours?:boolean}|undefined)?.weeklyHours === true }, travel: saved.setup?.travel ?? null }, expectedSetupRevision: setupRevision,
     };
   }
   return {
