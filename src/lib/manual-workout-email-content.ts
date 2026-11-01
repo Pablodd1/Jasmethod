@@ -46,8 +46,8 @@ function targetEs(target: ResolvedTarget): string {
   }
   const { low, high } = target;
   if (low === undefined || high === undefined || !Number.isFinite(low) || !Number.isFinite(high)) return `Objetivo numérico no disponible [${source}]`;
-  const lthr = target.type === "heartRate" && target.label === `≤${high} bpm (LTHR plan reference)`;
-  const value = low === high ? numberEs(high) : low === 0 || lthr ? `≤${numberEs(high)}` : `${numberEs(low)}–${numberEs(high)}`;
+  const lthr = target.type === "heartRate" && target.source === "profile_reference" && target.label.endsWith(" (LTHR plan reference)");
+  const value = low === high ? numberEs(high) : low === 0 || lthr && low === 1 ? `≤${numberEs(high)}` : `${numberEs(low)}–${numberEs(high)}`;
   const label = target.type === "power" ? `Potencia: ${value} W` : target.type === "heartRate" ? `Frecuencia cardíaca: ${value} latidos/min` : `Velocidad: ${value} m/s`;
   const reference = lthr ? " (referencia LTHR del plan)" : target.type === "power" && target.label.endsWith(" (FTP plan reference)") ? " (referencia FTP del plan)" : "";
   return `${label}${reference} [${source}]`;

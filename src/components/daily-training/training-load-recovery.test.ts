@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { readTrainingJson, TrainingReadError, isSavedPlanResponse, isTrainingProfileResponse, isTodayTrainingResponse, todayOfflineSnapshot } from "./training-read";
+import { readTrainingJson, TrainingReadError, isSavedPlanResponse, isTrainingProfileResponse, isTodayTrainingResponse, todayOfflineSnapshot, readSavedCycleMetadata, isPlanPreviewResponse, isGeneratedPlanResponse } from "./training-read";
 import { athleteDayReview } from "../../lib/athlete-day-review";
 import { readinessReasonText } from "./readiness-copy";
 import { UniversalWorkoutCard, WorkoutHeader } from "./UniversalWorkoutCard";
 import { universalWorkoutExample } from "../../lib/universal-workout-example";
 import { buildUniversalWorkoutCard } from "../../lib/universal-workout-card-server";
 import { resolveCheckinSafety } from "../../lib/checkin-safety";
+import { TrainingCycleOverview } from "../training-cycle-overview";
 
 const options = () => ({ signal: new AbortController().signal, label: "Saved training", validate: isSavedPlanResponse });
 
@@ -129,7 +130,8 @@ test("nested missing days, sessions and prescription data fail closed instead of
   for (const malformed of [null, {date:"2026-10-14"}, {...plan.days[0],sessions:[null]}, {...plan.days[0],sessions:[{...summary,intensity:{}}]}]) {
     assert.equal(isSavedPlanResponse({plans:[{...plan,days:[malformed]}]}), false);
   }
-  assert.equal(isSavedPlanResponse({plans:[plan],cycle:{weeks:[]}}), false);
+  assert.equal(isSavedPlanResponse({plans:[plan],cycle:{weeks:[]}}), true, "Optional legacy audit metadata cannot hide the verified schedule");
+  assert.equal(readSavedCycleMetadata({weeks:[]}), null);
   const session = {...summary, verdict:"blocked", prescription:{steps:[],targets:{},verdict:"rest"}, fuel:null, fuelCurve:[]};
   const today = {date:"2026-10-14",timezone:"UTC",sessions:[session],connectors:[]};
   assert.equal(isTodayTrainingResponse(today), true);
@@ -140,6 +142,63 @@ test("nested missing days, sessions and prescription data fail closed instead of
   assert.equal(isTodayTrainingResponse({...today,activityReports:[null]}), false);
   assert.equal(isTrainingProfileResponse({profile:null,zones:null,planningReadiness:{ready:false,missing:[],review:[]}}), true);
   assert.equal(isTrainingProfileResponse({profile:null,zones:null,planningReadiness:{ready:false,missing:[],review:null}}), false);
+});
+
+test("legacy or malformed cycle summaries are isolated from saved schedule and never rendered as measured context", async () => {
+  const plan = { id:"saved", name:"Saved cycle", startDate:"2026-10-14", weeks:4, days:[{id:"day",date:"2026-10-14",sessions:[{id:"session",title:"Saved easy ride",sport:"bike",durationMin:35}]}] };
+  for (const cycle of [{weeks:[]}, {baseline:null,activity:{}}, {baseline:{weeklyMinutes:{}},activity:{}}, {baseline:{},activity:{}}, {baseline:{},activity:{reportedSessions:{}}}, {baseline:{},activity:{},weeks:[{week:1,theme:null,totalMinutes:20}]}]) {
+    const loaded = await readTrainingJson("/api/plan", { ...options(), fetcher: async () => jsonResponse({plans:[plan],cycle}) });
+    assert.equal(loaded.plans[0].days[0].sessions[0].durationMin,35);
+    assert.equal(readSavedCycleMetadata(loaded.cycle),null);
+  }
+  const valid={baseline:{weeklyMinutes:180,source:"athlete_reported",observedAt:"2026-10-14"},activity:{reportedSessions:0,reportedMinutes:null},weeks:[]};
+  assert.equal(readSavedCycleMetadata(valid),valid);
+  assert.equal(isSavedPlanResponse({plans:[{...plan,days:[{...plan.days[0],sessions:[{...plan.days[0].sessions[0],durationMin:null}]}]}]}),false,"Bad session data still fails closed");
+});
+
+test("plan preview and save require verified structured responses rather than any successful HTTP status", () => {
+  const session={daySlot:0,title:"Easy run",sport:"run",zone:"z2",minutes:30,steps:[{name:"Easy familiar running",zone:"z2",seconds:1800}]};
+  const preview={ok:true,previewToken:"a".repeat(64),warning:"Provisional; review before saving",doubleDayAgreementRequired:false,eventTradeoffAgreementRequired:false,
+    preview:{distance:"run-only",weeks:4,startDate:"2026-10-14",weeklyBudgetMin:120,existingPlans:0,weeksPreview:Array.from({length:4},(_,index)=>({week:index+1,theme:"Foundation",totalMinutes:30,restDaySlots:[1,2,3,4,5,6],sessions:[session]}))}};
+  assert.equal(isPlanPreviewResponse(preview),true);
+  for(const steps of [null,undefined,[]]) assert.equal(isPlanPreviewResponse({...preview,preview:{...preview.preview,weeksPreview:preview.preview.weeksPreview.map(week=>({...week,sessions:[{...session,steps}]}))}}),false,"An unstructured generated workout never reaches confirmation");
+  for(const invalid of [null,{ok:true},{...preview,previewToken:""},{...preview,preview:{...preview.preview,weeksPreview:[]}},{...preview,preview:{...preview.preview,weeksPreview:[{week:1,sessions:[null]}]}},{...preview,preview:{...preview.preview,cycle:{baseline:null,activity:{}}}}]) assert.equal(isPlanPreviewResponse(invalid),false);
+  const saved={ok:true,plan:{id:"saved",name:"Saved cycle",sessions:[{id:"session",userId:"athlete",title:"Easy run",sport:"run",durationMin:30}]}};
+  assert.equal(isGeneratedPlanResponse(saved),true);
+  for(const invalid of [{ok:true},{...saved,ok:false},{...saved,plan:{...saved.plan,id:""}},{...saved,plan:{...saved.plan,sessions:[]}},{...saved,plan:{...saved.plan,sessions:[null]}}]) assert.equal(isGeneratedPlanResponse(invalid),false);
+});
+
+test("optional preview target projections require matching steps, source dates and bounded numeric ranges", () => {
+  const session={daySlot:0,title:"Easy bike",sport:"bike",zone:"z2",minutes:30,steps:[{name:"Steady",zone:"z2",seconds:1800}],
+    targetPreview:{steps:[{targetLabel:"111–150 W",speedLabel:null,reference:{source:"applied_field_test",observedAt:"2026-10-14T12:00:00.000Z",unit:"W",value:200}}],mechanicalWork:{lowKj:199.8,highKj:270}}};
+  const response=(targetPreview:unknown)=>({ok:true,previewToken:"a".repeat(64),warning:"Preview",doubleDayAgreementRequired:false,eventTradeoffAgreementRequired:false,
+    preview:{distance:"cycle",weeks:4,startDate:"2026-10-14",weeklyBudgetMin:120,existingPlans:0,weeksPreview:Array.from({length:4},(_,index)=>({week:index+1,theme:"Foundation",totalMinutes:30,restDaySlots:[1,2,3,4,5,6],sessions:[{...session,targetPreview}]}))}});
+  assert.equal(isPlanPreviewResponse(response(session.targetPreview)),true);
+  assert.equal(isPlanPreviewResponse(response(undefined)),true,"Older preview fixtures can omit projections");
+  for(const targetPreview of [{steps:[],mechanicalWork:null}, {...session.targetPreview,mechanicalWork:{lowKj:300,highKj:200}}, {...session.targetPreview,mechanicalWork:{lowKj:-1,highKj:200}},
+    ...[{source:"device_guess"},{observedAt:"2026-02-31"},{unit:"bpm"},{value:Infinity}].map(patch=>({...session.targetPreview,steps:[{...session.targetPreview.steps[0],reference:{...session.targetPreview.steps[0].reference,...patch}}]})),
+    {...session.targetPreview,steps:[{targetLabel:{},speedLabel:null,reference:null}]}]) assert.equal(isPlanPreviewResponse(response(targetPreview)),false);
+});
+
+test("malformed profile HR tables fail locally instead of crashing an independently loaded saved schedule", () => {
+  const hr=Object.fromEntries(["z1","z2","z3","z4","z5"].map((key,index)=>[key,{low:100+index*10,high:110+index*10}]));
+  const profile={profile:{goal:"run-only"},zones:{hr,bikeHr:hr,anchorHr:180},planningReadiness:{ready:true,missing:[],review:[]}};
+  assert.equal(isTrainingProfileResponse(profile),true);
+  for(const zones of [{hr:{}},{hr:{...hr,z1:null}},{hr:{...hr,z2:{low:140,high:120}}},{hr:{...hr,z3:{low:"120",high:130}}},{hr,bikeHr:{}},{hr,anchorHr:{}}]) assert.equal(isTrainingProfileResponse({...profile,zones}),false);
+  assert.equal(isSavedPlanResponse({plans:[]}),true,"Profile errors do not change the schedule read contract");
+});
+
+test("all old triathlon lengths request a replacement review while the corrected saved template remains readable", () => {
+  const cycle={goal:"Familiar triathlon practice",baseline:{weeklyMinutes:180,source:"athlete_reported",observedAt:"2026-10-14"},activity:{reportedSessions:0,reportedMinutes:null,note:"No performed records supplied"},weeks:[{week:1,theme:"Foundation",totalMinutes:180,doseAllocation:{},templateVersion:"triathlon-foundation-v3"}],evidenceNote:"References retain their source",assessment:"Comfortable observations"};
+  for(const distance of ["sprint","olympic","half","full"]) {
+    const plan={id:"saved",name:"Saved triathlon",startDate:"2026-10-14",weeks:4,days:[],distance,level:"beginner"};
+    const props={plan,cycle,timezone:"UTC",selectedMonth:"2026-10",onMonthChange:()=>{}};
+    const current=render(React.createElement(TrainingCycleOverview,props));
+    assert.match(current,/Saved training cycle/);assert.doesNotMatch(current,/needs review against the sport-allocation correction/);
+    const legacy=render(React.createElement(TrainingCycleOverview,{...props,cycle:{...cycle,weeks:[{...cycle.weeks[0],templateVersion:"triathlon-foundation-v2"}]}}));
+    assert.match(legacy,/needs review against the sport-allocation correction/);
+    assert.match(legacy,/History is retained/);
+  }
 });
 
 test("held headers use an unknown executable duration and readable missing check-in fields in both languages", () => {

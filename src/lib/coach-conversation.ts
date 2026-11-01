@@ -7,7 +7,7 @@ import { dayOffProtocol, dayOffProtocolText } from "./day-off";
 import type { dailyRecoveryContext } from "./daily-recovery";
 import type { JMetrics } from "./j-metrics";
 import { resolveCheckinSafety, type CheckinSafetyInput } from "./checkin-safety";
-import { isGeneralCoachEducationQuestion, localCoachEducation, wantsCoachDetail } from "./coach-conversation-education";
+import { coachEducationQuestion, type CoachEducationTopic, isGeneralCoachEducationQuestion, localCoachEducation, wantsCoachDetail } from "./coach-conversation-education";
 import { heightFromFeetInches } from "./units";
 
 /** Proposals only. The authenticated review service owns binding and all writes. */
@@ -315,6 +315,7 @@ export interface CoachReplyContext {
   setupReady?: boolean;
   unresolvedSafetyConcernAt?: string | null;
   unreviewedImageConcern?: "urgent" | "symptom";
+  previousEducationTopic?: CoachEducationTopic | null;
   recentMessages?: { role: "user" | "assistant"; content: string; createdAt?: string;source?:string;externalContextVersion?:string }[];
   candidateContext?: Pick<CandidateContext, "sessionId" | "sessionDate">;
   profile?: { goal?: string | null; experience?: string | null; weeklyHours?: number | null; weightKg?: number | null } | null;
@@ -389,7 +390,7 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
     "Podemos revisar un ciclo completo aquí. Primero revisa y confirma los datos de perfil propuestos; después abre Vista previa del plan en Revisar y actuar aquí. Comprueba la fecha, semanas, disponibilidad guardada y cada sesión. No se guarda nada hasta confirmar la vista previa actual. Los datos ausentes, conflictos de eventos y bloqueos diarios se mantienen visibles.");
   const detail = wantsCoachDetail(message);
   const followupDetail = detail && /^(?:tell me more|more details?|elaborate|expand|explain more|go (?:deeper|on)|mas detalles?|explica mas|amplia|profundiza)[.!?\s]*$/.test(t.trim());
-  const previousTopic = [...priorMessages].reverse().find(entry => !wantsCoachDetail(entry.content))?.content ?? "";
+  const previousTopic = [...priorMessages].reverse().find(entry => !wantsCoachDetail(entry.content))?.content ?? coachEducationQuestion(context.previousEducationTopic);
   const overviewRequested = coachContextNeeds(message).overview;
   const educational = !overviewRequested && (localCoachEducation(message, es ? "es" : "en", detail)
     || (followupDetail

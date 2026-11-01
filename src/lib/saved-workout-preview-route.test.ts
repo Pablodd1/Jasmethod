@@ -21,7 +21,7 @@ function load(file: string, dependencies: Record<string, unknown>): Record<strin
 function fixture() {
   const calls: { model: string; query: any }[] = [];
   const state = { signedOut: false, role: "athlete", assigned: false, exists: true, injured: false,
-    applied: false, tested: false, malformed: false, offDay: false };
+    applied: false, tested: false, malformed: false, offDay: false, future: false };
   const user = (id: string) => ({ id, role: state.role, timezone: "UTC", language: "en", profile: { ftp: 200, lthr: 175, units: "metric", injured: state.injured } });
   const db = {
     coachAssignment: { findUnique: async () => state.assigned ? { status: "active", consent: "granted" } : null },
@@ -30,7 +30,7 @@ function fixture() {
       calls.push({ model: "workout", query });
       if (!state.exists || query.where.id !== "saved-session") return null;
       assert.equal(query.where.planned, true);
-      return { id: query.where.id, userId: query.where.userId, planned: true, date: new Date("2026-10-13T12:00:00Z"), title: "Stored ride", sport: "bike", durationMin: 10, planDay: { dayOff: state.offDay },
+      return { id: query.where.id, userId: query.where.userId, planned: true, date: state.future ? new Date(Date.now() + 100 * 86400000) : new Date("2026-10-13T12:00:00Z"), title: "Stored ride", sport: "bike", durationMin: 10, planDay: { dayOff: state.offDay },
         prescription: state.malformed ? "not-json" : JSON.stringify({ steps: [{ name: "Easy", zone: "z2", phase: "active", seconds: 600 }] }) };
     } },
     auditLog: { findMany: async (query: any) => { calls.push({ model: "auditLog", query }); return state.applied ? [{ entityId: "benchmark" }] : []; } },
@@ -77,6 +77,10 @@ test("preview reads one scoped planned session and athlete evidence without writ
   assert.equal((await (await f.get()).json()).session.steps[0].target.type, "open");
   f.state.applied = true;
   assert.equal((await (await f.get()).json()).session.steps[0].target.high, 150);
+  f.state.future = true;
+  const future = await (await f.get()).json();
+  assert.equal(future.session.steps[0].target.type, "open", "A future saved session cannot extend a current reference beyond its validity");
+  assert.equal(future.session.steps[0].target.reference, undefined);
 });
 
 test("route validates single IDs, conceals absent sessions, and fails closed for malformed/offday/injury", async () => {

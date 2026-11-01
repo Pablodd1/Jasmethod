@@ -14,6 +14,7 @@ import { WorkoutEditor } from "./WorkoutEditor";
 import { IntervalCoachEditor } from "./IntervalCoachEditor";
 import { StructuredSportEditor } from "@/components/StructuredSportEditor";
 import { additionalStepInstruction, stepExecutionGuide } from "@/lib/workout-execution-guide";
+import { plannedWorkLabel, targetSpeedLabel, targetReferenceSource } from "@/lib/session-metrics";
 
 type Mode = "zone" | "RPE" | "heartRate" | "pace" | "power";
 const n = (s: CanonicalStep, mode: Mode): number | null =>
@@ -314,6 +315,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
 
 export function WorkoutIntervalDetails({ card }: { card: Card }) {
   const es = card.language === "es";
+  const work = plannedWorkLabel(card.session.steps, card.session.sport, es);
   const groups: { title: string; start: number; steps: CanonicalStep[] }[] = [];
   card.session.steps.forEach((step, index) => {
     const title = step.group || step.name;
@@ -327,6 +329,7 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
         <span>02</span>
         {es ? "LOS DETALLES" : "THE DETAILS"}
       </h2>
+      {work && <p className="uwc-mechanical-work"><strong>{work}</strong><br /><small>{es ? "Rango calculado con potencia y tiempo previstos; no es trabajo medido ni calorías de alimentación." : "Calculated from planned power and time; not measured work or fueling calories."}</small></p>}
       {[...new Set(card.session.steps.map(step => stepExecutionGuide(step, card.session.sport, es).technique))].map(text => <p key={text} className="uwc-execution-overview">{text}</p>)}
       <div className="uwc-step-grid">
         {groups.map((group, i) => {
@@ -363,6 +366,8 @@ export function WorkoutIntervalDetails({ card }: { card: Card }) {
                   : endpointText(group.steps[0], card.language)}
               </b>
               <p className="uwc-execution-target"><strong>{guide.target}</strong><br />{guide.target.includes("RPE") ? first.zone.toUpperCase() : `${guide.effort} · ${first.zone.toUpperCase()}`}</p>
+              {targetSpeedLabel(first.target, card.units) && <p>{targetSpeedLabel(first.target, card.units)}</p>}
+              {first.target.reference && <small>{targetReferenceSource(first.target.reference.source, es)} · {first.target.reference.observedAt.slice(0, 10)}</small>}
               <p>{guide.phase}</p>
               {first.target.missingReason && <p className="uwc-muted">{es ? "Referencia pendiente: " : ""}{first.target.missingReason}</p>}
               {group.steps.length > 1 ? (

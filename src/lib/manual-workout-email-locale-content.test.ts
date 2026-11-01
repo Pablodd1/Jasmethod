@@ -130,8 +130,8 @@ test("Spanish localized target sources and exact units cover power, HR, pace and
   assert.match(source({ type: "speed", low: 2.5, high: 3 }), /Velocidad: 2,5–3 m\/s/);
   assert.match(source({ type: "pace", low: 240, high: 300 }), /Ritmo: 4:00–5:00 min\/km/);
   assert.match(source({ type: "pace", low: 240, high: 300 }, { units: "imperial" }), /Ritmo: 6:26–8:03 min\/mi/);
-  assert.match(spanish(null, session("bike", { ftp: 200 })).steps[0], /≤150 W.*referencia FTP del plan.*referencia del perfil/);
-  assert.match(spanish(null, session("run", { lthr: 180 })).steps[0], /≤160 latidos\/min.*referencia LTHR del plan/);
+  assert.match(spanish(null, session("bike", { ftp: 200 })).steps[0], /111–150 W.*referencia FTP del plan.*referencia del perfil/);
+  assert.match(spanish(null, session("run", { lthr: 180 })).steps[0], /145–160 latidos\/min.*referencia LTHR del plan/);
   assert.match(spanish(null, session()).steps[0], /percepción del esfuerzo 3\/10.*esfuerzo orientativo/);
 });
 

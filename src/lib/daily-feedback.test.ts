@@ -73,24 +73,34 @@ test("daily feedback refresh waits for verified saving, uses the new revision, a
   let releaseRead: (() => void) | undefined;
   const readGate = new Promise<void>(resolve => { releaseRead = resolve; });
   const DailyTrainingScreen = "daily-screen";
+  let selectedSessionId = "owned-session";
   const { default: Page } = compile("src/app/daily/page.tsx", {
     "@/lib/units": units,
-    react: { useState: (value: any) => value?.kind === "loading" ? [current, (next: any) => { current = next; }] : [value, () => {}], useRef: (value: unknown) => ({ current: value }), useEffect: () => {}, useCallback: (callback: unknown) => callback },
+    react: { Suspense: React.Suspense, useState: (value: any) => value?.kind === "loading" ? [current, (next: any) => { current = next; }] : [value, () => {}], useRef: (value: unknown) => ({ current: value }), useEffect: () => {}, useCallback: (callback: unknown) => callback },
+    "next/navigation": { useSearchParams: () => new URLSearchParams({ sessionId: selectedSessionId }), useRouter: () => ({ push: () => {} }) },
     "@/components/auth": { useAuth: () => ({ user: { language: "en" } }) }, "next/link": { default: "a" },
     "@/components/daily-training/DailyEnvironmentCard": { DailyEnvironmentCard: "environment" },
     "@/components/daily-training/DailyTrainingScreen": { DailyTrainingScreen },
-    "@/components/daily-training/training-read": { TrainingReadError: Error, readTrainingJson: async () => { readCount++; await readGate; return { ...original, session: { ...original.session, sourceRevision: "new-revision", revision: 2 } }; } },
+    "@/components/daily-training/training-read": { TrainingReadError: Error, readTrainingJson: async (path: string, options: any) => {
+      assert.equal(path, "/api/v1/training/today?sessionId=owned-session");
+      assert.equal(options.validate({ session: { id: "another-session" } }), false, "A response for another workout cannot reach this form");
+      readCount++; await readGate; return { ...original, session: { ...original.session, sourceRevision: "new-revision", revision: 2 } };
+    } },
     "@/components/daily-training/training-contract": { isDailyTraining: () => true },
     "@/components/daily-training/universal-workout-card.css": {}, "@/components/daily-training/daily-training.css": {},
   }, { AbortController, crypto: { randomUUID: () => "request-id" }, fetch: async (_path: unknown, options: any) => { requests.push(JSON.parse(options.body)); return response; } });
-  const screen = findElement(Page(), DailyTrainingScreen); assert.ok(screen);
+  const renderPage = () => { const content = React.Children.only(Page().props.children) as any; return content.type(content.props); };
+  const screen = findElement(renderPage(), DailyTrainingScreen); assert.ok(screen);
   const pending = screen.props.onCompletion({ status: "completed", sessionRpe: 0 });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(requests.length, 1); assert.equal(requests[0].expectedRevision, "old-revision");
   assert.equal(readCount, 1); assert.equal(current.kind, "loading");
   releaseRead!(); await pending;
   assert.equal(current.kind, "ready"); assert.equal(current.plan.session.sourceRevision, "new-revision");
-  const corrected = findElement(Page(), DailyTrainingScreen);
+  selectedSessionId = "another-session";
+  assert.equal(findElement(renderPage(), DailyTrainingScreen), null, "Changing the route hides the prior workout form until its matching response arrives");
+  selectedSessionId = "owned-session";
+  const corrected = findElement(renderPage(), DailyTrainingScreen);
   response = Response.json({ error: "Could not save" }, { status: 409 });
   await assert.rejects(corrected.props.onCompletion({ status: "completed", sessionRpe: 3 }), /Could not save/);
   assert.equal(requests.length, 2); assert.equal(requests[1].expectedRevision, "new-revision"); assert.equal(readCount, 1);

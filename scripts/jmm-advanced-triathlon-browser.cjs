@@ -2,6 +2,8 @@
 const assert=require('node:assert/strict'),{randomUUID,randomBytes}=require('node:crypto'),{mkdirSync,writeFileSync}=require('node:fs');
 const {PrismaClient}=require('@prisma/client'),bcrypt=require('bcryptjs'),{chromium}=require('playwright'),{Decoder,Stream}=require('@garmin/fitsdk');
 const {hashToken}=require('../src/lib/auth.ts'),{dateKey,localDate,addDaysKey}=require('../src/lib/dates.ts'),{recordReportedAnchors}=require('../src/lib/reported-anchors.ts');
+const {isPlanPreviewResponse,isGeneratedPlanResponse}=require('../src/components/daily-training/training-read.ts');
+const {targetSpeedLabel}=require('../src/lib/session-metrics.ts');
 for(const key of ['DATABASE_URL','DIRECT_URL']){const u=new URL(process.env[key]||'');assert.equal(u.hostname,'127.0.0.1');assert.equal(u.port,'55432');assert.equal(u.pathname,'/jmm_launch_integration_test');assert.equal(u.search,'');}
 assert.notEqual(process.env.VERCEL_ENV,'production');assert.ok(process.env.NODE_OPTIONS?.includes('jmm-test-egress-guard.cjs'));
 const db=new PrismaClient(),base='http://127.0.0.1:3220',timezone='America/New_York',now=new Date(),today=dateKey(now,timezone),monday=localDate(today,timezone).getDay()===1,dir='.local/jmm-advanced-triathlon',ids=[],checks=[],errors=[],unexpected=[];mkdirSync(dir,{recursive:true});
@@ -14,10 +16,36 @@ async function main(){const who=await actor(),other=await actor();const before=a
  await call(who,'/api/profile',{...fields,setup,expectedRevision:before.revision,expectedSetupRevision:before.setupRevision},200,'PUT');
  const reloaded=await call(who,'/api/profile');for(const key of ['sex','heightCm','weightKg','ftp','runPaceBase','swimPaceBase'])assert.equal(reloaded.profile[key],fields[key]);assert.equal(reloaded.setup.baselineWeeklyMinutes,720);
  for(const [offset,name,distance,priority] of [[81,'Miami 10K QA Mock','10k',3],[116,'Fort Lauderdale Olympic QA Mock','olympic',2],[165,'Miami 70.3 QA Mock','half',1]])await call(who,'/api/races',{name,date:addDaysKey(today,offset),distance,priority});
- const body={distance:'half',weeks:24,startDate:today,preview:true};const preview=await call(who,'/api/plan/generate',body);assert.equal(preview.preview.weeksPreview.length,24);
+ const body={distance:'half',weeks:24,startDate:today,preview:true};const preview=await call(who,'/api/plan/generate',body);assert.equal(isPlanPreviewResponse(preview),true,'Real HTTP preview passes the confirmation rendering guard');assert.equal(preview.preview.weeksPreview.length,24);
  for(const w of preview.preview.weeksPreview){assert.ok(w.sessions.every(s=>s.sport!=='swim'||s.minutes<=75));for(let slot=0;slot<7;slot++)assert.ok(w.sessions.filter(s=>s.daySlot===slot).reduce((n,s)=>n+s.minutes,0)<=300);}
  assert.ok(preview.preview.weeksPreview.slice(2,10).some(w=>w.sessions.some(s=>Number(s.zone.slice(1))>2)));
- const saved=await call(who,'/api/plan/generate',{...body,preview:false,previewToken:preview.previewToken,confirmDoubleDay:true,confirmEventTradeoffs:true});assert.ok(saved.plan.id);
+ const nearTermReferences={};
+ for(const sport of ['bike','run','swim']) {
+  const session=preview.preview.weeksPreview[0].sessions.find(session=>session.sport===sport);assert.ok(session,`Opening week retains ${sport}`);
+  const projection=session.targetPreview;assert.equal(projection.steps.length,session.steps.length);
+  const numeric=projection.steps.filter(step=>step.reference);assert.ok(numeric.length>0,`${sport} uses explicitly dated current references`);
+  for(const step of numeric){assert.equal(step.reference.source,'athlete_reported_reference');assert.equal(step.reference.observedAt,today);assert.equal(step.reference.unit,sport==='bike'?'W':sport==='run'?'sec/km':'sec/100m');}
+  assert.match(numeric[0].targetLabel,sport==='bike'?/W/:sport==='run'?/\/mi/:/\/100 yd/);
+  if(sport==='bike'){assert.ok(projection.mechanicalWork&&projection.mechanicalWork.highKj>projection.mechanicalWork.lowKj);assert.equal(projection.steps.every(step=>step.speedLabel===null),true,'Power does not invent bike speed');}
+  else{assert.equal(projection.mechanicalWork,null,'Pace is not mechanical cycling work');assert.ok(numeric.some(step=>/mph$/.test(step.speedLabel)),'Imperial pace projection includes correctly labeled speed');}
+  nearTermReferences[sport]=session;
+ }
+ const saved=await call(who,'/api/plan/generate',{...body,preview:false,previewToken:preview.previewToken,confirmDoubleDay:true,confirmEventTradeoffs:true});assert.equal(isGeneratedPlanResponse(saved),true,'Real HTTP save includes a verified plan receipt and stored sessions');assert.ok(saved.plan.id);
+ for(const sport of ['bike','run']) {
+  const draft=nearTermReferences[sport],sessionDate=addDaysKey(today,draft.daySlot);
+  const row=saved.plan.sessions.find(row=>row.sport===sport&&row.title===draft.title&&dateKey(new Date(row.date),timezone)===sessionDate&&(row.startTime??null)===(draft.startTime??null));assert.ok(row,`Saved ${sport} matches the reviewed calendar day and session`);
+  assert.doesNotMatch(row.prescription,/targetPreview/,'Display projection is not persisted as execution authority');
+  const canonical=await call(who,`/api/plan/preview?sessionId=${row.id}`);assert.equal(canonical.available,true,canonical.reason);
+  assert.equal(canonical.session.steps.length,draft.targetPreview.steps.length);
+  canonical.session.steps.forEach((step,index)=>{
+   const projection=draft.targetPreview.steps[index];assert.equal(projection.targetLabel,step.target.label);assert.deepEqual(projection.reference,step.target.reference??null);assert.equal(projection.speedLabel,targetSpeedLabel(step.target,'imperial'));
+  });
+  if(sport==='bike'){
+   const work=canonical.session.steps.reduce((total,step)=>{assert.equal(step.endpoint.type,'time');assert.equal(step.target.type,'power');return {lowKj:total.lowKj+step.target.low*step.endpoint.seconds/1000,highKj:total.highKj+step.target.high*step.endpoint.seconds/1000};},{lowKj:0,highKj:0});
+   assert.ok(Math.abs(work.lowKj-draft.targetPreview.mechanicalWork.lowKj)<1e-7);assert.ok(Math.abs(work.highKj-draft.targetPreview.mechanicalWork.highKj)<1e-7);
+  }
+ }
+ checks.push({name:'current dated run/bike/swim previews expose source/unit/speed/work; saved near-term run/bike canonical targets match without persisting display projections or claiming readiness',status:'PASS'});
  checks.push({name:'one profile save/reload preserves body, explicit references and training context; 24-week preview/save retains bounded sport allocation and event protection',status:'PASS'});
  const current=await db.workout.findMany({where:{userId:who.user.id,planned:true,date:{gte:localDate(today,timezone),lt:localDate(addDaysKey(today,1),timezone)}}});
  // A generated cycle need not prescribe swimming on every weekday. The canonical
@@ -83,6 +111,7 @@ async function main(){const who=await actor(),other=await actor();const before=a
  await page.getByRole('region',{name:'Protected today review',exact:true}).waitFor();
  const afterHistory=await call(who,'/api/assistant');assert.equal(afterHistory.conversation.messages.length,2);assert.doesNotMatch(afterHistory.conversation.messages.find(m=>m.role==='assistant').content,/525|330|78|700/,'Private numeric workout evidence is absent from persisted assistant text');
  await page.reload();await composer.waitFor();assert.equal(await page.getByRole('region',{name:'Protected today review',exact:true}).count(),0,'Protected cards are ephemeral');
+ await page.getByRole('button',{name:'Chat options',exact:true}).click();await page.getByText('Help & supported actions',{exact:true}).click();
  const popup=page.getByRole('link',{name:'Open chat in another window',exact:true});assert.equal(await popup.getAttribute('target'),'_blank');assert.equal(await popup.getAttribute('href'),'/coach');
  checks.push({name:'real authenticated mobile chat opens canonical workout/fueling card, keeps composer visible, records only explicit sends, retains no protected card in history, and offers separate-window access',status:'PASS'});
  await page.goto(base+'/today?sessionId='+swim.id);await page.getByRole('heading',{level:1}).waitFor();

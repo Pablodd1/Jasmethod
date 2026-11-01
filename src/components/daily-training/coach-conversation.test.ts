@@ -264,3 +264,13 @@ for (const es of [false, true]) test(`dictation is visible beside the composer, 
   // Support is unknown until hydration; do not falsely label capable devices unsupported.
   assert.ok(!markup.includes(es ? "El dictado no está disponible" : "Dictation is unavailable"));
 });
+
+for (const es of [false, true]) test(`standalone Coach starts as focused chat with optional controls collapsed (${es ? "ES" : "EN"})`, () => {
+  const markup = renderToStaticMarkup(React.createElement(CoachConversation, { fullPage:true, es, athleteId:"synthetic-owner", onConfirmed:()=>undefined }));
+  assert.match(markup, /aria-expanded="false" aria-controls="[^"]+-options"/);
+  assert.match(markup, /<section[^>]*id="[^"]+-options"[^>]*hidden=""/);
+  assert.doesNotMatch(markup, /Keep the conversation open while reviewing|La conversaci[oó]n prepara el siguiente paso/);
+  assert.equal((markup.match(/class="coach-chat-composer/g)||[]).length, 1);
+  assert.ok(markup.includes(es?"Micrófono":"Microphone"));
+  assert.ok(markup.includes(es?"Permito enviar a OpenAI":"Allow OpenAI to receive"));
+});

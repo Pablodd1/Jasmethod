@@ -2,7 +2,7 @@ import {test} from "node:test";
 import assert from "node:assert/strict";
 import {boundPlanWeeks,levelRecoveryPolicy} from "./planning-bounds";
 import {parsePlanningSetup} from "./planning-setup";
-import {generatePlan,type GeneratedWeek,type PlanSession} from "./science";
+import {generatePlan,generateSingleSport,generateHyroxPlan,type GeneratedWeek,type PlanSession} from "./science";
 const session=(zone:"z2"|"z4"="z2"):PlanSession=>({sport:"run",title:"Run",minutes:60,zone,type:"endurance",description:"Run by effort"});
 const week=(sessions:PlanSession[]):GeneratedWeek=>({week:1,theme:"Base",sessions,totalMinutes:sessions.length*60});
 test("bounds never invent available days or make up missed work",()=>{
@@ -107,4 +107,36 @@ test('triathlon overflow keeps a brick and strength purpose instead of duplicate
  assert.equal(JSON.stringify(raw),before);
  const restricted=boundPlanWeeks(raw,{...setup,trainingDays:[1,3],maxSessionMinutes:30},undefined,4,'advanced');
  for(const w of restricted.weeks){assert.ok(w.sessions.every(s=>[1,3].includes((4+s.daySlot)%7)&&s.minutes<=30));assert.ok(w.totalMinutes<=60);}
+});
+
+test('reviewed single-sport and HYROX templates fit every start weekday and single available weekday',()=>{
+ for(const startWeekday of [0,1,2,3,4,5,6]) for(const weekday of [0,1,2,3,4,5,6]) for(const sport of ['run','bike','swim','hyrox'] as const){
+  const setup=parsePlanningSetup({trainingDays:[weekday],maxSessionMinutes:60,baselineWeeklyMinutes:180});
+  const opts={level:'amateur',weeks:6,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:3,reviewedCycle:true};
+  const raw=sport==='hyrox'?generateHyroxPlan(opts):generateSingleSport({...opts,sport});
+  const before=JSON.stringify(raw);
+  const result=boundPlanWeeks(raw,setup,3,startWeekday,'amateur',[],{preserveWeeklyDose:true});
+  for(const week of result.weeks){
+   assert.equal(week.sessions.length,1,`${sport}/start${startWeekday}/available${weekday}/week${week.week}`);
+   assert.equal(week.sessions[0].sport,sport==='hyrox'?'run':sport);
+   assert.equal((startWeekday+week.sessions[0].daySlot)%7,weekday);
+   assert.ok(week.sessions[0].minutes>0&&week.sessions[0].minutes<=60);
+   assert.equal(week.sessions[0].doubleDayRole,undefined);
+   assert.equal(week.totalMinutes,week.sessions[0].minutes);
+   assert.equal(week.restDaySlots.length,6);
+  }
+  assert.equal(JSON.stringify(raw),before);
+ }
+});
+
+test('reviewed availability fitting cannot relocate an explicit event/test or invent a missing dose',()=>{
+ const setup=parsePlanningSetup({trainingDays:[0],maxSessionMinutes:60,baselineWeeklyMinutes:180});
+ const race={...session(),type:'race',title:'Fixed event'};
+ const measuredTest={...session(),type:'test',title:'Fixed measured test'};
+ const result=boundPlanWeeks([week([race,measuredTest,session()])],setup,3,1,'amateur',[],{preserveWeeklyDose:true}).weeks[0];
+ assert.equal(result.sessions.length,1);assert.equal(result.sessions[0].type,'endurance');assert.equal(result.sessions[0].daySlot,6);
+ const noDose=boundPlanWeeks([week([session()])],{...setup,baselineWeeklyMinutes:0},3,1,'amateur',[],{preserveWeeklyDose:true}).weeks[0];
+ assert.deepEqual(noDose.sessions,[]);assert.equal(noDose.totalMinutes,0);
+ const restOnly=boundPlanWeeks([week([{...session(),sport:'recovery',type:'recovery'}])],setup,3,1,'amateur',[],{preserveWeeklyDose:true}).weeks[0];
+ assert.deepEqual(restOnly.sessions,[]);
 });

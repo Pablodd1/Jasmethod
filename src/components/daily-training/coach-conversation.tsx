@@ -1,6 +1,6 @@
 "use client";
 import { CoachTodayReview } from "./CoachTodayReview";
-import { opensTodayWorkout } from "./coach-chat-intent";
+import { coachReviewArea, opensTodayWorkout } from "./coach-chat-intent";
 import { CoachAiConsent } from "./CoachAiConsent";
 import { CoachReviewRequest } from './CoachReviewRequest';
 import { CoachCommanderWorkspace } from './CoachCommanderWorkspace';
@@ -63,6 +63,7 @@ export function ProfileProposalComparison({ candidate, beforeValue, afterValue, 
 export function CoachConversation({ fullPage = false, es, athleteId, offline = false, sessions: todaySessions = NO_SESSIONS, onConfirmed }: Props) {
   const id = useId();
   const [showTodayReview, setShowTodayReview] = useState(false);
+  const [chatOptions, setChatOptions] = useState(false);
   const [reviewVersion, setReviewVersion] = useState(0);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [proposal, setProposal] = useState<CoachProposal | null>(null);
@@ -76,7 +77,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
   const [sessionId, setSessionId] = useState("");
   const [externalConsent, setExternalConsent] = useState(false);
   const [personalDialogue, setPersonalDialogue] = useState(false);
-  const [commanderRequest, setCommanderRequest] = useState<{area:"profile"|"plan"|"race";key:string}|null>(null);
+  const [commanderRequest, setCommanderRequest] = useState<{area:"profile"|"plan"|"race"|"session";key:string}|null>(null);
   const [aiReplyMemory,setAiReplyMemory]=useState(false);
   const [imageConsent, setImageConsent] = useState(false);
   const [imageSource,setImageSource]=useState("unknown");
@@ -122,6 +123,8 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
   const history = useRef<HTMLOListElement>(null);
   const conversationScroll = useRef<HTMLDivElement>(null);
   const todayReviewAnchor = useRef<HTMLDivElement>(null);
+  const optionsAnchor = useRef<HTMLElement>(null);
+  const commanderAnchor = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const allSessions = mergeCoachSessions(serverSessions, todaySessions);
   const textConfigured = capabilities.externalAi === true && capabilities.textProvider === "OpenAI";
@@ -149,6 +152,20 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     anchor.focus({ preventScroll: true });
   }, [fullPage]);
   useEffect(() => { if (showTodayReview) focusTodayReview(); }, [showTodayReview, reviewVersion, latestMessageId, focusTodayReview]);
+
+
+  useEffect(() => {
+    if (!fullPage || !chatOptions || !optionsAnchor.current || !conversationScroll.current) return;
+    const anchor = optionsAnchor.current, scroll = conversationScroll.current;
+    scroll.scrollTop += anchor.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+    anchor.focus({ preventScroll: true });
+  }, [chatOptions, fullPage]);
+  useEffect(() => {
+    if (!fullPage || !commanderRequest || !commanderAnchor.current || !conversationScroll.current) return;
+    const anchor = commanderAnchor.current, scroll = conversationScroll.current;
+    scroll.scrollTop += anchor.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+    anchor.focus({ preventScroll: true });
+  }, [commanderRequest, fullPage]);
 
   const stopVoice = useCallback(() => {
     voiceEpoch.current += 1;
@@ -317,6 +334,12 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
       const reviewToday = (payload.dialogueAction === "review_today" || opensTodayWorkout(outgoing.message)) && latestReply?.safetyReviewRequired !== true;
       setShowTodayReview(reviewToday);
       if (reviewToday) setReviewVersion(value => value + 1);
+      const reviewArea = !reviewToday && latestReply?.safetyReviewRequired !== true ? coachReviewArea(outgoing.message) : null;
+      if (reviewArea && (!payload.dialogueAction || payload.dialogueAction === "none")) {
+        if (reviewArea === "history") setSessionId("");
+        setChatOptions(false);
+        setCommanderRequest({area:reviewArea === "history" ? "session" : reviewArea,key:latestReply?.id || clientRequestId});
+      }
       sendAttempt.current = null; setMessage(""); setSource("text"); if (outgoingImage) setScreenshot(null);
       setStatus(payload.replayed
         ? (es ? "Esta solicitud ya estaba registrada. Se muestra la conversación actual." : "This request was already recorded. Showing the current conversation.")
@@ -442,23 +465,25 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     <header className="space-y-2">
       {fullPage && <Link href="/today" className={`text-sm underline ${focus}`}>{es ? "← Volver a Hoy" : "← Back to Today"}</Link>}
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 id={`${id}-title`} className="font-display text-xl font-bold">JMM Coach</h2>
-        <a href="/coach" target="_blank" rel="noopener noreferrer" className={`text-sm underline min-h-11 inline-flex items-center ${focus}`}>{es ? "Abrir chat en otra ventana" : "Open chat in another window"}</a>
+        {fullPage ? <button type="button" className={`${secondaryClass} min-h-11`} aria-expanded={chatOptions} aria-controls={`${id}-options`} onClick={()=>setChatOptions(value=>!value)}>{es ? "Opciones del chat" : "Chat options"}</button> : <a href="/coach" target="_blank" rel="noopener noreferrer" className={`text-sm underline min-h-11 inline-flex items-center ${focus}`}>{es ? "Abrir chat en otra ventana" : "Open chat in another window"}</a>}
       </div>
-      <p className="text-xs text-slate-600" role="status">{personalDialogue ? (es ? "Conversación personal activa" : "Personal conversation active") : textConfigured ? (es ? "Conversación personal disponible en opciones" : "Personal conversation available in options") : (es ? "JMM local · Conversación con IA sin conectar" : "Local JMM · Personal AI not connected")}</p>
+      <p className="text-xs text-slate-600" role="status">{personalDialogue ? (es ? "Conversación personal activa" : "Personal conversation active") : textConfigured ? (es ? "Conversación personal disponible en Opciones del chat" : "Personal conversation available in Chat options") : (es ? "JMM local · Conversación con IA sin conectar" : "Local JMM · Personal AI not connected")}</p>
     </header>
     <div ref={conversationScroll} className={fullPage ? "coach-chat-scroll space-y-4" : "space-y-4"}>
+    {(!fullPage || !messages.length) && <>
     <div className="flex flex-wrap gap-2" aria-label={es ? "Iniciar conversación" : "Conversation starters"}>
       <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setReviewVersion(value => value + 1); setShowTodayReview(true); focusTodayReview(); }}>{es ? "Ver entrenamiento de hoy" : "Review today’s workout"}</button>
       <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setMessage(es ? "Ayúdame con la alimentación de hoy." : "Help me with today’s fueling."); textInput.current?.focus(); }}>{es ? "Alimentación" : "Fueling"}</button>
       <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setMessage(es ? "Quiero registrar el resultado de mi sesión." : "I want to log my workout result."); textInput.current?.focus(); }}>{es ? "Registrar resultado" : "Log a result"}</button>
     </div>
+    </>}
     {operation && <div role="status" className="flex flex-wrap items-center gap-3 text-sm"><span>{operation === "load" ? (es ? "Cargando conversación…" : "Loading conversation…") : operation === "confirm" ? (es ? "Comprobando y guardando…" : "Verifying and saving…") : (es ? "Procesando solicitud…" : "Processing request…")}</span><button type="button" className={secondaryClass} onClick={cancelRequest}>{es ? "Dejar de esperar" : "Stop waiting"}</button></div>}
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
     {status && <p role="status" className="rounded-lg bg-slate-50 p-3 text-sm text-slate-800">{status}</p>}
     {(!loaded || needsReload) && !operation && <button type="button" className={secondaryClass} disabled={offline} onClick={() => void load()}>{es ? "Recargar conversación" : "Reload conversation"}</button>}
     {offline && <p role="status" className="text-sm text-amber-900">{es ? "Sin conexión. Conéctate antes de enviar mensajes o confirmar cambios." : "Offline. Reconnect before sending messages or confirming changes."}</p>}
     <ol ref={history} className={fullPage ? "space-y-4 min-w-0" : "min-h-32 max-h-[40vh] sm:max-h-[55vh] overflow-y-auto overscroll-contain space-y-3 rounded-lg border p-3"} aria-label={es ? "Historial de conversación" : "Conversation history"} aria-live="polite" aria-relevant="additions" tabIndex={0}>
-      {messages.map(entry => <li key={entry.id} className={`rounded-2xl p-3 sm:p-4 ${entry.role === "user" ? "bg-ocean-50 ml-6 sm:ml-20" : "bg-white border border-slate-100 mr-2"}`}>
+      {messages.map(entry => <li key={entry.id} className={`coach-chat-message rounded-2xl p-3 sm:p-4 ${entry.role === "user" ? "coach-chat-message-user bg-ocean-50 ml-6 sm:ml-20" : "bg-white border border-slate-100 mr-2"}`}>
         <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "JMM Coach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
         <p className="mt-1 whitespace-pre-wrap break-words">{entry.content}</p>
         {entry.role==="assistant"&&<button type="button" className="underline text-sm mt-2" onClick={()=>readReply(entry.content)}>{es?"Escuchar con voz local":"Read aloud with local voice"}</button>}
@@ -469,6 +494,68 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
 
 
     {showTodayReview && <div ref={todayReviewAnchor} tabIndex={-1} className={focus}><CoachTodayReview key={`${athleteId}:${reviewVersion}`} es={es} selectedId={sessionId} onSelect={setSessionId} onSaved={async () => { await onConfirmed(); await load(); }} onClose={() => setShowTodayReview(false)} /></div>}
+    <div ref={commanderAnchor} tabIndex={-1} className={focus}><CoachCommanderWorkspace compact={fullPage} requestedArea={commanderRequest?.area} requestKey={commanderRequest?.key} athleteId={athleteId} es={es} messages={messages} sessionId={sessionId} sessions={allSessions} onSelectSession={setSessionId} disabled={offline||!loaded||needsReload||!!operation} onBusy={setCommanderBusy} onSaved={async()=>{setReviewVersion(value=>value+1);await onConfirmed();await load();}}/></div>
+
+    {(!fullPage || messages.filter(entry=>entry.role==="assistant").at(-1)?.needsHumanReview===true) && <CoachReviewRequest messages={messages} es={es} disabled={blocked} />}
+    {coachTextStatusMessage(externalStatus, es) && <p role="status" className="text-xs text-slate-700">{coachTextStatusMessage(externalStatus, es)}</p>}
+    {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}
+    {(imageStatus === "unavailable" || imageStatus === "not_configured") && <p className="text-xs text-amber-900">{es ? "No se pudo analizar la captura. Escribe los datos visibles para revisarlos; no se han inventado valores." : "The screenshot could not be analyzed. Type its visible details for review; no values were guessed."}</p>}
+    {activeProposal && <details open key={activeProposal.id} className="rounded-xl border border-ocean-300 p-4 space-y-3">
+      <summary className={`cursor-pointer font-semibold ${focus}`}>{es ? `Revisar ${activeProposal.candidates.length} datos propuestos · Sin guardar` : `Review ${activeProposal.candidates.length} proposed facts · Not saved`}</summary>
+      <p className="text-sm text-slate-700">{es ? "Selecciona solo los datos correctos. Puedes editar el valor o dejarlo sin seleccionar. El perfil, los resultados y los cambios de una sesión seleccionada se guardan al confirmar. El check-in mantiene su revisión; editar retira la aprobación anterior." : "Select only correct facts. Edit a value or leave it unselected. Profile facts, workout results and selected unfinished workout edits save on confirmation. Check-in keeps its own review; an edit removes previous approval."}</p>
+      {activeProposal.candidates.some(c => c.kind === "profile") && <>
+        <p className="text-sm">{es ? "Los cambios del perfil no reescriben un plan aprobado. Una propuesta de plan se revisa por separado y cada sesión mantiene su aprobación." : "Profile changes do not rewrite an approved plan. A plan preview is reviewed separately, and each workout keeps its own approval."}</p>
+        <p className="text-xs">{es ? "Unidades del perfil" : "Profile display units"}: {displayUnits === "imperial" ? (es ? "Imperiales" : "Imperial") : (es ? "Métricas" : "Metric")} · {unitPreference === "auto" ? (es ? "automáticas por idioma" : "automatic by language") : (es ? "elección guardada" : "saved choice")}. <Link href="/settings" className="underline">{es ? "Cambiar unidades" : "Change display units"}</Link></p>
+      </>}
+      {activeProposal.candidates.map(candidate => {
+        const target = allSessions.find(session => session.id === candidate.sessionId);
+        const ambiguous = (candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") && !candidate.sessionId;
+        const candidateId = `${id}-${candidate.id}`;
+        let previewValue: CoachCandidate["value"] | undefined;
+        try { previewValue = editedCoachCandidate(candidate, edits[candidate.id] ?? "", displayUnits).value; } catch { /* Invalid edits cannot be approved by the service. */ }
+        const displayUnit = coachCandidateUnit(candidate, displayUnits);
+        return <fieldset key={candidate.id} disabled={blocked || ambiguous} className="rounded-lg border p-3 space-y-2 min-w-0">
+          <legend className="px-1 font-semibold">{fieldLabel(candidate.field, es)}</legend>
+          <label className="flex items-center gap-2 min-h-8"><input type="checkbox" className={`h-5 w-5 ${focus}`} checked={!!selected[candidate.id]} onChange={event => setSelected(current => ({ ...current, [candidate.id]: event.target.checked }))} />{es ? "Incluir al confirmar" : "Include in confirmation"}</label>
+          {candidate.kind === "profile" && <ProfileProposalComparison candidate={candidate} beforeValue={activeProposal.beforeValues?.[candidate.field]} afterValue={previewValue} units={displayUnits} es={es} />}
+          <button type="button" className={secondaryClass} onClick={() => setEditing(current => ({ ...current, [candidate.id]: true }))}>{es ? "Editar" : "Edit"}</button>
+          <label htmlFor={candidateId} className="block text-sm font-medium">{es ? "Valor" : "Value"}{displayUnit ? ` (${displayUnit})` : ""}</label>
+          {typeof candidate.value === "boolean" ? <select id={candidateId} disabled={!editing[candidate.id]} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}><option value="true">{es ? "Sí" : "Yes"}</option><option value="false">{es ? "No" : "No"}</option></select> : VALUE_CHOICES[candidate.field] ? <select id={candidateId} disabled={!editing[candidate.id]} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}>{VALUE_CHOICES[candidate.field].map(([value, en, spanish]) => <option key={value} value={value}>{es ? spanish : en}</option>)}</select> : <input id={candidateId} disabled={!editing[candidate.id]} className={inputClass} type={typeof candidate.value === "number" && !(candidate.field === "heightCm" && displayUnits === "imperial") ? "number" : "text"} step="any" maxLength={500} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))} />}
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-slate-700">
+            <div><dt className="inline font-medium">{es ? "Campo: " : "Field: "}</dt><dd className="inline break-words">{candidate.field}</dd></div>
+            <div><dt className="inline font-medium">{es ? "Unidad: " : "Unit: "}</dt><dd className="inline">{displayUnit || (es ? "No aplica" : "Not applicable")}</dd></div>
+            <div><dt className="inline font-medium">{es ? "Fecha: " : "Date: "}</dt><dd className="inline">{candidate.observedDate || (es ? "Perfil, sin fecha" : "Profile, no date")}</dd></div>
+            <div><dt className="inline font-medium">{es ? "Fuente: " : "Source: "}</dt><dd className="inline">{sourceLabel(candidate.source, es)}</dd></div>
+          </dl>
+          <p className="text-sm break-words"><span className="font-medium">{es ? "Evidencia: " : "Evidence: "}</span>{candidate.evidence}</p>
+          {(candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") && <p className="text-sm font-medium">{es ? "Sesión: " : "Workout: "}{target ? `${target.date} · ${target.title} · ${target.sport}` : candidate.sessionId || (es ? "Sin seleccionar. Elige una sesión en Herramientas opcionales y vuelve a enviar los detalles." : "Not selected. Choose a workout in Optional tools and send the details again.")}</p>}
+          {candidate.kind === "profile" && candidate.field === "goal" && <p className="text-sm text-slate-700">{es ? "Este es tu objetivo aspiracional. No demuestra tu capacidad actual ni cambia el plan por sí solo." : "This is your aspirational goal. It does not establish current ability or change the plan by itself."}</p>}
+          {!isSaveable(candidate) && <p className="text-sm font-medium text-amber-900">{es ? "Pendiente: confirmar aquí no aplica este cambio." : "Pending: confirming here does not apply this change."}</p>}
+          {candidate.warnings?.map((warning, index) => <p key={index} className="text-sm text-amber-900">{warning}</p>)}
+        </fieldset>;
+      })}
+      <div className="flex flex-wrap gap-2"><button type="button" className={primaryClass} disabled={blocked || selectedCount === 0} onClick={() => void confirm()}>{es ? `Aprobar cambios (${selectedCount})` : `Approve changes (${selectedCount})`}</button><button type="button" className={secondaryClass} disabled={blocked} onClick={() => void dismissProposal()}>{es ? "Cancelar" : "Cancel"}</button></div>
+      <p className="text-xs text-slate-700">{es ? "Si la fecha, unidad o sesión no es correcta, descarta la propuesta y aclárala en un mensaje nuevo." : "If the date, unit or workout is wrong, dismiss the proposal and clarify it in a new message."}</p>
+    </details>}
+    {confirmationReceipt && <details open className="rounded-lg border border-green-700 bg-green-50 p-3 space-y-2" role="status">
+      <summary className={`cursor-pointer font-semibold ${focus}`}>{confirmationReceipt.applied.length ? (es ? "Cambios guardados con comprobante" : "Saved changes with receipt") : (es ? "Revisión registrada; cambios pendientes" : "Review recorded; changes pending")}</summary>
+      {confirmationReceipt.applied.length > 0 && <ul className="text-sm list-disc pl-5">{confirmationReceipt.applied.map(entry => <li key={entry.candidateId}>{fieldLabel(entry.field, es)}: {entry.kind === "profile" ? `${displayValue({ field: entry.field, unit: entry.field === "ftp" ? "W" : entry.field === "weeklyHours" ? "h/week" : null }, entry.previousValue, displayUnits, es)} → ` : ""}{displayValue({ field: entry.field, unit: entry.field === "ftp" ? "W" : entry.field === "weeklyHours" ? "h/week" : null }, entry.value, displayUnits, es)}{entry.observedDate ? ` · ${entry.observedDate}` : ""}</li>)}</ul>}
+      {confirmationReceipt.applied.some(entry => entry.kind === "profile") && <p className="text-sm">{es ? "El perfil se guardó; el plan aprobado no se reescribió. Para corregir un valor, revisa el perfil actual y guarda una nueva revisión." : "Profile saved; the approved plan was not rewritten. To correct a value, review the current profile and save a new revision."} <Link href="/settings" className="underline">{es ? "Revisar perfil guardado" : "Revise saved profile"}</Link> <Link href="/training" className="underline">{es ? "Revisar una propuesta de plan por separado" : "Review a separate plan preview"}</Link></p>}
+      <p className="text-xs text-slate-700 break-all">{es ? "Comprobante" : "Receipt"}: {confirmationReceipt.id} · <time dateTime={confirmationReceipt.confirmedAt}>{new Date(confirmationReceipt.confirmedAt).toLocaleString(es ? "es" : "en")}</time></p>
+    </details>}
+    {!!pendingActions.length && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2">
+      <h3 className="font-semibold">{es ? "Siguiente paso pendiente" : "Pending next step"}</h3>
+      <p className="text-sm">{es ? "Los valores del check-in aún requieren revisión. Después de guardar cambios de entrenamiento, revisa el check-in y la estructura antes de entrenar o publicar." : "Check-in values still need review. After saving workout changes, review your check-in and the structure before training or publishing."}</p>
+      {pendingDrafts.length > 0 && <><p className="text-sm">{es ? "Valores revisados para introducir en esa pantalla:" : "Reviewed values to enter in that screen:"}</p><ul className="list-disc pl-5 text-sm">{pendingDrafts.map(candidate => <li key={candidate.id}>{fieldLabel(candidate.field, es)}: {displayValue(candidate, candidate.value, displayUnits, es)} · {candidate.observedDate || "—"} · {sourceLabel(candidate.source, es)}</li>)}</ul></>}
+      <div className="flex flex-wrap gap-2">{pendingActions.includes("review_checkin") && <Link className={secondaryClass} href="/checkin">{es ? "Completar check-in actual" : "Complete current check-in"}</Link>}{pendingActions.includes("review_plan") && <Link className={secondaryClass} href="/training">{es ? "Revisar plan" : "Review plan"}</Link>}</div>
+    </div>}
+
+    <section ref={optionsAnchor} id={`${id}-options`} tabIndex={-1} hidden={fullPage && !chatOptions && !listening && !voiceReview && !dictationError} className="space-y-3" aria-label={es ? "Opciones del chat" : "Chat options"}>
+      {fullPage && messages.filter(entry=>entry.role==="assistant").at(-1)?.needsHumanReview!==true && <CoachReviewRequest messages={messages} es={es} disabled={blocked} />}
+      {fullPage && <div className="flex flex-wrap gap-2" aria-label={es ? "Revisar datos en JMM" : "Review records in JMM"}>
+        {!!messages.length && <button type="button" className={secondaryClass} disabled={blocked} onClick={() => { setChatOptions(false); setReviewVersion(value=>value+1); setShowTodayReview(true); }}>{es ? "Ver entrenamiento de hoy" : "Review today’s workout"}</button>}
+        {([['profile','Profile & schedule','Perfil y horario'],['plan','Plan preview','Vista previa del plan'],['race','Race & venue','Carrera y sede'],['session','Workout steps','Pasos de la sesión']] as const).map(([area,en,spanish])=><button key={area} type="button" className={secondaryClass} disabled={blocked} onClick={()=>{setChatOptions(false);setCommanderRequest({area,key:crypto.randomUUID()});}}>{es?spanish:en}</button>)}
+      </div>}
       <details open={listening || voiceReview || !!dictationError || undefined} className="text-sm"><summary className={`cursor-pointer ${focus}`}>{es ? "Voz: privacidad y revisión" : "Voice: privacy & review"}</summary>
       <div role="group" aria-labelledby={`${id}-dictation-title`} className="rounded-lg border border-ocean-200 bg-ocean-50 p-3 space-y-2 min-w-0">
         <h3 id={`${id}-dictation-title`} className="text-sm font-semibold">{es ? "Dictar un mensaje" : "Dictate a message"}</h3>
@@ -514,51 +601,10 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     </details>
     <details className="rounded-lg border p-3"><summary className={`cursor-pointer ${focus}`}>{es ? "Ayuda y acciones disponibles" : "Help & supported actions"}</summary>
       <p className="mt-2 text-sm">{es ? "Pregunta o dicta; revisa la transcripción antes de enviar. Los cambios requieren tu confirmación. Las tarjetas protegidas muestran los registros originales dentro de JMM. La conversación personal opcional usa solo tus mensajes consentidos; las tarjetas protegidas se quedan en JMM." : "Ask or dictate; review the transcript before sending. Changes need your confirmation. Protected cards show the original records inside JMM. Optional personal conversation uses only your consented messages; protected cards stay inside JMM."}</p>
+      {fullPage && <a href="/coach" target="_blank" rel="noopener noreferrer" className={`text-sm underline min-h-11 inline-flex items-center ${focus}`}>{es ? "Abrir chat en otra ventana" : "Open chat in another window"}</a>}
       <p className="text-sm"><Link className="underline" href="/settings">{es ? "Perfil" : "Profile"}</Link> · <Link className="underline" href="/training">{es ? "Entrenamiento" : "Training"}</Link> · <Link className="underline" href="/today">{es ? "Hoy" : "Today"}</Link></p>
     </details>
     <p className="text-xs text-slate-600" role="status">{liveStatus|| (es?"Los cambios de conversación se comprueban cada 15 segundos mientras la página está visible.":"Conversation changes are checked every 15 seconds while this page is visible.")}</p>
-    <CoachCommanderWorkspace requestedArea={commanderRequest?.area} requestKey={commanderRequest?.key} athleteId={athleteId} es={es} messages={messages} sessionId={sessionId} disabled={offline||!loaded||needsReload||!!operation} onBusy={setCommanderBusy} onSaved={async()=>{setReviewVersion(value=>value+1);await onConfirmed();await load();}}/>
-    <CoachReviewRequest messages={messages} es={es} disabled={blocked} />
-    {coachTextStatusMessage(externalStatus, es) && <p role="status" className="text-xs text-slate-700">{coachTextStatusMessage(externalStatus, es)}</p>}
-    {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}
-    {(imageStatus === "unavailable" || imageStatus === "not_configured") && <p className="text-xs text-amber-900">{es ? "No se pudo analizar la captura. Escribe los datos visibles para revisarlos; no se han inventado valores." : "The screenshot could not be analyzed. Type its visible details for review; no values were guessed."}</p>}
-    {activeProposal && <details open key={activeProposal.id} className="rounded-xl border border-ocean-300 p-4 space-y-3">
-      <summary className={`cursor-pointer font-semibold ${focus}`}>{es ? `Revisar ${activeProposal.candidates.length} datos propuestos · Sin guardar` : `Review ${activeProposal.candidates.length} proposed facts · Not saved`}</summary>
-      <p className="text-sm text-slate-700">{es ? "Selecciona solo los datos correctos. Puedes editar el valor o dejarlo sin seleccionar. El perfil, los resultados y los cambios de una sesión seleccionada se guardan al confirmar. El check-in mantiene su revisión; editar retira la aprobación anterior." : "Select only correct facts. Edit a value or leave it unselected. Profile facts, workout results and selected unfinished workout edits save on confirmation. Check-in keeps its own review; an edit removes previous approval."}</p>
-      {activeProposal.candidates.some(c => c.kind === "profile") && <>
-        <p className="text-sm">{es ? "Los cambios del perfil no reescriben un plan aprobado. Una propuesta de plan se revisa por separado y cada sesión mantiene su aprobación." : "Profile changes do not rewrite an approved plan. A plan preview is reviewed separately, and each workout keeps its own approval."}</p>
-        <p className="text-xs">{es ? "Unidades del perfil" : "Profile display units"}: {displayUnits === "imperial" ? (es ? "Imperiales" : "Imperial") : (es ? "Métricas" : "Metric")} · {unitPreference === "auto" ? (es ? "automáticas por idioma" : "automatic by language") : (es ? "elección guardada" : "saved choice")}. <Link href="/settings" className="underline">{es ? "Cambiar unidades" : "Change display units"}</Link></p>
-      </>}
-      {activeProposal.candidates.map(candidate => {
-        const target = allSessions.find(session => session.id === candidate.sessionId);
-        const ambiguous = (candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") && !candidate.sessionId;
-        const candidateId = `${id}-${candidate.id}`;
-        let previewValue: CoachCandidate["value"] | undefined;
-        try { previewValue = editedCoachCandidate(candidate, edits[candidate.id] ?? "", displayUnits).value; } catch { /* Invalid edits cannot be approved by the service. */ }
-        const displayUnit = coachCandidateUnit(candidate, displayUnits);
-        return <fieldset key={candidate.id} disabled={blocked || ambiguous} className="rounded-lg border p-3 space-y-2 min-w-0">
-          <legend className="px-1 font-semibold">{fieldLabel(candidate.field, es)}</legend>
-          <label className="flex items-center gap-2 min-h-8"><input type="checkbox" className={`h-5 w-5 ${focus}`} checked={!!selected[candidate.id]} onChange={event => setSelected(current => ({ ...current, [candidate.id]: event.target.checked }))} />{es ? "Incluir al confirmar" : "Include in confirmation"}</label>
-          {candidate.kind === "profile" && <ProfileProposalComparison candidate={candidate} beforeValue={activeProposal.beforeValues?.[candidate.field]} afterValue={previewValue} units={displayUnits} es={es} />}
-          <button type="button" className={secondaryClass} onClick={() => setEditing(current => ({ ...current, [candidate.id]: true }))}>{es ? "Editar" : "Edit"}</button>
-          <label htmlFor={candidateId} className="block text-sm font-medium">{es ? "Valor" : "Value"}{displayUnit ? ` (${displayUnit})` : ""}</label>
-          {typeof candidate.value === "boolean" ? <select id={candidateId} disabled={!editing[candidate.id]} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}><option value="true">{es ? "Sí" : "Yes"}</option><option value="false">{es ? "No" : "No"}</option></select> : VALUE_CHOICES[candidate.field] ? <select id={candidateId} disabled={!editing[candidate.id]} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}>{VALUE_CHOICES[candidate.field].map(([value, en, spanish]) => <option key={value} value={value}>{es ? spanish : en}</option>)}</select> : <input id={candidateId} disabled={!editing[candidate.id]} className={inputClass} type={typeof candidate.value === "number" && !(candidate.field === "heightCm" && displayUnits === "imperial") ? "number" : "text"} step="any" maxLength={500} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))} />}
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-slate-700">
-            <div><dt className="inline font-medium">{es ? "Campo: " : "Field: "}</dt><dd className="inline break-words">{candidate.field}</dd></div>
-            <div><dt className="inline font-medium">{es ? "Unidad: " : "Unit: "}</dt><dd className="inline">{displayUnit || (es ? "No aplica" : "Not applicable")}</dd></div>
-            <div><dt className="inline font-medium">{es ? "Fecha: " : "Date: "}</dt><dd className="inline">{candidate.observedDate || (es ? "Perfil, sin fecha" : "Profile, no date")}</dd></div>
-            <div><dt className="inline font-medium">{es ? "Fuente: " : "Source: "}</dt><dd className="inline">{sourceLabel(candidate.source, es)}</dd></div>
-          </dl>
-          <p className="text-sm break-words"><span className="font-medium">{es ? "Evidencia: " : "Evidence: "}</span>{candidate.evidence}</p>
-          {(candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") && <p className="text-sm font-medium">{es ? "Sesión: " : "Workout: "}{target ? `${target.date} · ${target.title} · ${target.sport}` : candidate.sessionId || (es ? "Sin seleccionar. Elige una sesión en Herramientas opcionales y vuelve a enviar los detalles." : "Not selected. Choose a workout in Optional tools and send the details again.")}</p>}
-          {candidate.kind === "profile" && candidate.field === "goal" && <p className="text-sm text-slate-700">{es ? "Este es tu objetivo aspiracional. No demuestra tu capacidad actual ni cambia el plan por sí solo." : "This is your aspirational goal. It does not establish current ability or change the plan by itself."}</p>}
-          {!isSaveable(candidate) && <p className="text-sm font-medium text-amber-900">{es ? "Pendiente: confirmar aquí no aplica este cambio." : "Pending: confirming here does not apply this change."}</p>}
-          {candidate.warnings?.map((warning, index) => <p key={index} className="text-sm text-amber-900">{warning}</p>)}
-        </fieldset>;
-      })}
-      <div className="flex flex-wrap gap-2"><button type="button" className={primaryClass} disabled={blocked || selectedCount === 0} onClick={() => void confirm()}>{es ? `Aprobar cambios (${selectedCount})` : `Approve changes (${selectedCount})`}</button><button type="button" className={secondaryClass} disabled={blocked} onClick={() => void dismissProposal()}>{es ? "Cancelar" : "Cancel"}</button></div>
-      <p className="text-xs text-slate-700">{es ? "Si la fecha, unidad o sesión no es correcta, descarta la propuesta y aclárala en un mensaje nuevo." : "If the date, unit or workout is wrong, dismiss the proposal and clarify it in a new message."}</p>
-    </details>}
     <details className="rounded-lg border p-3 space-y-2">
       <summary className={`cursor-pointer font-semibold ${focus}`}>{es ? "Pruebas y orientación personal" : "Testing and personal coaching"}</summary>
       <p className="text-sm">{es ? "RMR y VO₂max, bicicleta, carrera o ambas: llama a Eric y dile que Jasmel te envió. Confirma disponibilidad, precio y preparación." : "RMR and VO₂max, bike, run or both: call Eric and say Jasmel sent you. Confirm availability, price and preparation."}</p>
@@ -566,19 +612,6 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
       <p className="text-sm">{es ? "Para orientación o entrenamiento personal, contacta con Jasmel." : "For guidance or personal coaching, contact Jasmel."}</p>
       <a className={secondaryClass} href={COACH_REFERRALS.coaching.href}>{es ? "Llamar a Jasmel" : "Call Jasmel"} · {COACH_REFERRALS.coaching.phone}</a>
     </details>
-    {confirmationReceipt && <details open className="rounded-lg border border-green-700 bg-green-50 p-3 space-y-2" role="status">
-      <summary className={`cursor-pointer font-semibold ${focus}`}>{confirmationReceipt.applied.length ? (es ? "Cambios guardados con comprobante" : "Saved changes with receipt") : (es ? "Revisión registrada; cambios pendientes" : "Review recorded; changes pending")}</summary>
-      {confirmationReceipt.applied.length > 0 && <ul className="text-sm list-disc pl-5">{confirmationReceipt.applied.map(entry => <li key={entry.candidateId}>{fieldLabel(entry.field, es)}: {entry.kind === "profile" ? `${displayValue({ field: entry.field, unit: entry.field === "ftp" ? "W" : entry.field === "weeklyHours" ? "h/week" : null }, entry.previousValue, displayUnits, es)} → ` : ""}{displayValue({ field: entry.field, unit: entry.field === "ftp" ? "W" : entry.field === "weeklyHours" ? "h/week" : null }, entry.value, displayUnits, es)}{entry.observedDate ? ` · ${entry.observedDate}` : ""}</li>)}</ul>}
-      {confirmationReceipt.applied.some(entry => entry.kind === "profile") && <p className="text-sm">{es ? "El perfil se guardó; el plan aprobado no se reescribió. Para corregir un valor, revisa el perfil actual y guarda una nueva revisión." : "Profile saved; the approved plan was not rewritten. To correct a value, review the current profile and save a new revision."} <Link href="/settings" className="underline">{es ? "Revisar perfil guardado" : "Revise saved profile"}</Link> <Link href="/training" className="underline">{es ? "Revisar una propuesta de plan por separado" : "Review a separate plan preview"}</Link></p>}
-      <p className="text-xs text-slate-700 break-all">{es ? "Comprobante" : "Receipt"}: {confirmationReceipt.id} · <time dateTime={confirmationReceipt.confirmedAt}>{new Date(confirmationReceipt.confirmedAt).toLocaleString(es ? "es" : "en")}</time></p>
-    </details>}
-    {!!pendingActions.length && <div className="rounded-lg border border-amber-400 bg-amber-50 p-3 space-y-2">
-      <h3 className="font-semibold">{es ? "Siguiente paso pendiente" : "Pending next step"}</h3>
-      <p className="text-sm">{es ? "Los valores del check-in aún requieren revisión. Después de guardar cambios de entrenamiento, revisa el check-in y la estructura antes de entrenar o publicar." : "Check-in values still need review. After saving workout changes, review your check-in and the structure before training or publishing."}</p>
-      {pendingDrafts.length > 0 && <><p className="text-sm">{es ? "Valores revisados para introducir en esa pantalla:" : "Reviewed values to enter in that screen:"}</p><ul className="list-disc pl-5 text-sm">{pendingDrafts.map(candidate => <li key={candidate.id}>{fieldLabel(candidate.field, es)}: {displayValue(candidate, candidate.value, displayUnits, es)} · {candidate.observedDate || "—"} · {sourceLabel(candidate.source, es)}</li>)}</ul></>}
-      <div className="flex flex-wrap gap-2">{pendingActions.includes("review_checkin") && <Link className={secondaryClass} href="/checkin">{es ? "Completar check-in actual" : "Complete current check-in"}</Link>}{pendingActions.includes("review_plan") && <Link className={secondaryClass} href="/training">{es ? "Revisar plan" : "Review plan"}</Link>}</div>
-    </div>}
-
     <details className="text-sm text-slate-700">
       <summary className={`cursor-pointer ${focus}`}>{es ? "Privacidad y detalles de la conversación" : "Privacy & conversation details"}</summary>
       <div className="mt-3 space-y-3">
@@ -591,6 +624,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     </div>}
       </div>
     </details>
+    </section>
     </div>
     <form onSubmit={send} className={fullPage ? "coach-chat-composer space-y-2" : "space-y-3"}>
       <label className={fullPage ? "sr-only" : "block font-medium"} htmlFor={`${id}-message`}>{source === "voice" ? (es ? "Mensaje con transcripción revisada" : "Message with reviewed transcript") : (es ? "Tu mensaje" : "Your message")}</label>

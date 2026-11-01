@@ -1,3 +1,4 @@
+import { coachEducationTopic, wantsCoachDetail } from "./coach-conversation-education";
 import { coachDialogueAnswer, manualDialogueAllowed, manualDialogueHistory, MANUAL_DIALOGUE_POLICY } from "./coach-dialogue-provider";
 import { AI_DATA_POLICY_VERSION, historySafeLocalReply } from "./ai-data-policy";
 import {ACTIVITY_EVIDENCE_SELECT} from "./activity-evidence";
@@ -262,7 +263,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const current = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
       if (!current || current.id !== guard.conversationId || current.generation !== guard.generation || current.revision !== guard.revision) throw new ApiError("The conversation changed while this message was processing. Review the current conversation before sending again.", 409);
       const conversation = await tx.coachConversation.update({ where: { id: current.id, userId: actor.id }, data: { revision: { increment: 1 } } });
-      const [profile, setup, checkin, selected, planned, recentFeedback, safetyConcern, loadWorkouts, restObservations, plannedRestDay, todayRecoverySessions, latestMetrics, nextRace] = await Promise.all([
+      const [profile, setup, checkin, selected, planned, recentFeedback, safetyConcern, loadWorkouts, restObservations, plannedRestDay, todayRecoverySessions, latestMetrics, nextRace, previousEducation] = await Promise.all([
         tx.athleteProfile.findUnique({ where: { userId: actor.id } }),
         readPlanningSetup(actor.id, tx),
         tx.dailyCheckin.findUnique({ where: { userId_date: { userId: actor.id, date: today.start } } }),
@@ -287,6 +288,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           where: { userId: actor.id, date: { gte: new Date(`${today.key}T00:00:00Z`) } },
           orderBy: [{ priority: "asc" }, { date: "asc" }], select: { name: true, date: true, distance: true },
         }) : Promise.resolve(null),
+        wantsCoachDetail(input.message) ? tx.coachConversationMessage.findFirst({where:{userId:actor.id,conversationId:conversation.id,role:"assistant"},orderBy:[{createdAt:"desc"},{id:"desc"}],select:{source:true,metadata:true}}) : Promise.resolve(null),
       ]);
       if (sessionId && !selected) throw new ApiError("Session not found", 404);
       if (selected && guard.sessionRevision !== workoutRevision(selected)) throw new ApiError("The selected session changed while this message was processing. Review it before sending again.", 409);
@@ -331,7 +333,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
         } : undefined,
         profile: profile ? { goal: profile.goal, experience: profile.experience, weeklyHours: profile.weeklyHours, weightKg: profile.weightKg } : null,
         recentFeedback: recentFeedback.map(row => ({ ...row, actualDurationMin:row.actualDurationMin ?? (!row.planned && row.completed ? row.durationMin : null), actualSport:row.actualSport ?? (!row.planned && row.completed ? row.sport : null), feedbackStatus:row.feedbackStatus ?? (row.completed ? "completed" : null), date: dateKey(row.date, actor.timezone) })),
-        recentMessages: [],
+        recentMessages: [], previousEducationTopic: coachEducationTopic(previousEducation),
         checkin: checkin ? { ...answers, ...(profile?.injured ? { newPain: true } : {}), observedDate: today.key, recordedAt: (() => { const meta = answers.inputMetadata; if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null; const value = (meta as Record<string, unknown>).recordedAt; return typeof value === "string" && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.now() ? value : null; })() } : undefined,
         approvedSession: !unreviewedCurrentCheckin && effective?.canonical.verdict === "ready" && planned ? { id: planned.id, title: planned.title, sport: planned.sport, durationMin: effective.canonical.durationMin, date: today.key, isRestDay: planned.planDay?.dayOff ?? false, hasWarmup: effective.canonical.steps.some(step => step.phase === "warmup"), approved: true } : undefined,
       };

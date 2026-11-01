@@ -113,8 +113,13 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
       // A low zone label cannot legitimize maximal/loaded sprint or station work.
       const type = technicalOrTest ? (movementSport ? "strength" : "endurance")
         : Number(zone.slice(1)) <= 2 && !movementSport ? "endurance" : session.type;
+      // Keep the reviewed duration-neutral purpose when it still agrees with
+      // the final steps. Legacy prose contains fixed doses and race-effort
+      // claims, so it cannot be carried across reductions as instructions.
+      const retainedPurpose = week.templateVersion === "triathlon-foundation-v3"
+        && zone === session.zone && status !== "expired" && !technicalOrTest && !movementSport ? session.description : null;
       const description = session.sport==='mobility'&&session.type==='recovery' ? session.description : observation ? comfortableObservationDescription(session.sport)
-        : `Provisional ${theme.toLowerCase()} session. Follow the duration-matched steps, adjusted by the session-day check-in. Effort labels are not measured physiological zones. No missed work is added later.${movementSport ? " Familiar controlled movement only; do not add load, maximal speed, sparring or unfamiliar skills. Review before progressing." : ""}${status === "expired" && review ? " The prior sport-specific anchor expires within this cycle; this plan does not renew it. Use comfortable effort and review current evidence." : ""}`;
+        : retainedPurpose ?? `Provisional ${theme.toLowerCase()} session. Follow the duration-matched steps, adjusted by the session-day check-in. Effort labels are not measured physiological zones. No missed work is added later.${movementSport ? " Familiar controlled movement only; do not add load, maximal speed, sparring or unfamiliar skills. Review before progressing." : ""}${status === "expired" && review ? " The prior sport-specific anchor expires within this cycle; this plan does not renew it. Use comfortable effort and review current evidence." : ""}`;
       const title = observation ? `${session.sport}: Comfortable ${firstObservation && missingAnchor ? "baseline observation" : "review observation"}`
         : technicalOrTest ? `${session.sport}: Controlled familiar practice`
         : movementSport ? `${session.title} · controlled familiar practice`

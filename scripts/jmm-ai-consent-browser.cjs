@@ -24,7 +24,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
   await page.getByText(/Save confirmed by the server|Guardado confirmado/).waitFor();assert.equal(mealCalls,1);assert.equal(photoCalls,0);
   await consent.check();await analyze.click();await page.getByText('Review this estimate',{exact:true}).waitFor();assert.equal(photoCalls,1);assert.equal(await consent.isChecked(),false);assert.equal(await analyze.isEnabled(),false);
   await page.screenshot({path:`${dir}/nutrition-${language}-390.png`,fullPage:true});
-  await page.goto(base+'/coach');await page.getByText(es?'Herramientas opcionales: registro, imágenes e IA':'Optional tools: logging, images & AI',{exact:true}).click();
+  await page.goto(base+'/coach');await page.getByRole('button',{name:es?'Opciones del chat':'Chat options',exact:true}).click();await page.getByText(es?'Herramientas opcionales: registro, imágenes e IA':'Optional tools: logging, images & AI',{exact:true}).click();
   await page.locator('input[type=file]').setInputFiles(file);
   const source=page.getByRole('combobox',{name:es?'Origen de la captura':'Screenshot source'}),imageConsent=page.getByRole('checkbox',{name:es?/Permitir a OpenAI/:/Allow OpenAI/});
   assert.equal(await source.inputValue(),'unknown');assert.equal(await imageConsent.isEnabled(),false);

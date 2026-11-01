@@ -442,7 +442,7 @@ test("Spanish canonical content keeps exact fuel/target quantities and safety qu
   const { plan, graphic } = manualWorkoutEmailContent(current, nutrition, "08:00", true, "es");
   assert.ok(Buffer.isBuffer(graphic));
   assert.match(plan.summary, /08:00 \(UTC\).*ciclismo.*180 min de tiempo estructurado/);
-  assert.match(plan.steps[0], /180 min.*Zona Z4.*Potencia: ≤210 W.*referencia del perfil/);
+  assert.match(plan.steps[0], /180 min.*Zona Z4.*Potencia: 181–210 W.*referencia del perfil/);
   assert.match(plan.before.join(" "), /140 g de carbohidratos.*70 g \(1 g\/kg\)/);
   assert.match(plan.during.join(" "), /50 g de carbohidratos TOTALES\/hora/);
   assert.match(plan.during.join(" "), /700 ml de líquidos\/hora \(estimado\)/);

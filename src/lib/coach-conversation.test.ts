@@ -502,3 +502,26 @@ test('selected half-hour requests remain local proposals with no ambiguous unit 
  for(const text of ['Do not make this session half an hour','Make this session about half an hour','Make this session half an hour or one hour','Make this session 45 minutes or half an hour'])assert.equal(extractLocalCandidates(text,selected).find(c=>c.field==='durationMin'),undefined);
  assert.equal(extractLocalCandidates('Make this session half an hour',context).find(c=>c.field==='durationMin'),undefined);
 });
+
+test("fixed local concept continuity never needs prior athlete text or device context", () => {
+  const context = {localToday:"2026-10-31",language:"en",recentMessages:[],previousEducationTopic:"rpe" as const};
+  const expanded=buildCoachReply("Tell me more",context);
+  assert.match(expanded.ruleId,/education-rpe$/);assert.match(expanded.answer,/0.?10|perceived/);
+  assert.match(buildCoachReply("Explica más",{...context,language:"es",previousEducationTopic:"vo2"}).ruleId,/education-vo2$/);
+  assert.doesNotMatch(buildCoachReply("Tell me more and can I run?",context).ruleId,/education-/);
+});
+
+import { coachEducationQuestion, coachEducationTopic } from "./coach-conversation-education";
+test("only current-policy local education metadata supplies a fixed continuity label", () => {
+  const metadata={historyPolicy:"openai-generic-education-v3",ruleId:"coach-conversation-v1:education-rpe",localContextSummary:"RESTRICTED_CONTEXT_CANARY_7098"};
+  assert.equal(coachEducationTopic({source:"local",metadata:JSON.stringify(metadata)}),"rpe");
+  for (const row of [
+    {source:"openai",metadata:JSON.stringify(metadata)}, {source:"deepseek",metadata:JSON.stringify(metadata)},
+    {source:"local",metadata:JSON.stringify({...metadata,historyPolicy:"legacy"})},
+    {source:"local",metadata:JSON.stringify({...metadata,ruleId:"coach-conversation-v1:local-data-review"})},
+    {source:"local",metadata:JSON.stringify({...metadata,ruleId:"coach-conversation-v1:education-RESTRICTED_CONTEXT_CANARY_7098"})},
+    {source:"local",metadata:"not JSON"},
+  ]) assert.equal(coachEducationTopic(row),null);
+  assert.equal(coachEducationQuestion("rpe"),"What is RPE?");
+  for (const value of ["__proto__","constructor","RESTRICTED_CONTEXT_CANARY_7098",null,{}]) assert.equal(coachEducationQuestion(value),"");
+});
