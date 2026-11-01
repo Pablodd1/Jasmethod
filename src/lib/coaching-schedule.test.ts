@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {boundPlanWeeks} from './planning-bounds';
 import {parsePlanningSetup} from './planning-setup';
-import {generateSingleSport,type GeneratedWeek,type PlanSession} from './science';
+import {generatePlan,generateSingleSport,type GeneratedWeek,type PlanSession} from './science';
 import {coachingWeekTemplate} from './coaching-week-template';
 import {DOUBLE_DAY_VERSION, type DoubleDayPreference} from './double-day';
 
@@ -157,4 +157,21 @@ test('actual reviewed cycling generator chooses a compatible primary for the agr
   assert.ok(pair.every(s=>s.sport==='bike'&&s.daySlot===0));
   assert.ok(pair.reduce((sum,s)=>sum+s.minutes,0)<=180);
   assert.ok(first.totalMinutes<=480&&first.totalMinutes<=raw[0].totalMinutes);
+});
+
+test('moving a triathlon easy unit into a consented pair restores a complete omitted swim on the vacated day',()=>{
+  const raw=generatePlan({distance:'half',level:'advanced',weeks:4,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:8,reviewedCycle:true,sessionLimitMinutes:180});
+  const planning=setup([1,2,3,4,5,6],480,180);
+  planning.doubleDay={version:DOUBLE_DAY_VERSION,weekday:1,purpose:'Familiar convenient pair',firstStart:'07:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true};
+  const first=boundPlanWeeks(raw,planning,8,1,'advanced').weeks[0];
+  assert.equal(first.sessions.filter(s=>s.sport==='swim').length,2);
+  assert.equal(first.sessions.filter(s=>s.sport==='strength').length,2);
+  assert.equal(first.sessions.filter(s=>s.sport==='brick').length,1);
+  assert.equal(first.sessions.filter(s=>s.sport==='bike').length,1);
+  assert.equal(first.sessions.filter(s=>s.sport==='run').length,1);
+  assert.equal(first.sessions.filter(s=>s.doubleDayRole).length,2);
+  assert.equal(first.totalMinutes,raw[0].totalMinutes);
+  assert.equal(first.restDaySlots.length,1);
+  const totals=new Map<number,number>();for(const s of first.sessions)totals.set(s.daySlot,(totals.get(s.daySlot)??0)+s.minutes);
+  assert.ok([...totals.values()].every(minutes=>minutes<=180));
 });
