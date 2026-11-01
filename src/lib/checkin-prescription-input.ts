@@ -1,5 +1,6 @@
 import { evidenceWorkout } from "./evidence-workouts";
 import { TRAINING_PROTOCOLS, currentProtocolVersion } from "./protocols";
+import { validCoachingMetadata } from "./coaching-prescription";
 const sports = ["run", "bike", "swim", "strength", "mobility", "recovery", "brick", "hyrox", "boxing"];
 /** Reject corrupt source plans before a generator can normalize them into a workout. */
 export function checkinPrescriptionInputError(workout: { originalPlan?: string | null; [key: string]: unknown }): string | null {
@@ -17,5 +18,6 @@ export function checkinPrescriptionInputError(workout: { originalPlan?: string |
     if (evidenceWorkout(p.id) && p.familiarityReviewed !== true) return "Reviewed interval familiarity must be confirmed before generating a prescription.";
     if (!protocol || !currentProtocolVersion(p) || p.sport !== source.sport || !protocol.sports.includes(p.sport) || !Number.isInteger(p.minutes) || p.minutes <= 0 || p.minutes > 1440) return "Saved protocol structure or version is invalid.";
   }
+  if (source.coaching != null && (source.cycleVersion !== 'bounded-cycle-v1' || !validCoachingMetadata(source.coaching, source.sport))) return "Saved coaching recipe is invalid. Review the session before generating a replacement.";
   return null;
 }

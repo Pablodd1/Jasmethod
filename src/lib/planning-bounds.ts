@@ -2,6 +2,7 @@ import { clockMinutes, doubleDayReadiness, doubleDayWeekdays } from "./double-da
 import type {GeneratedWeek,PlanSession} from "./science";
 import type {PlanningSetup} from "./planning-setup";
 import {allocateWeeklyDose} from './weekly-dose';
+import {scheduleCoachingWeek} from './coaching-schedule';
 function pairSportPriority(primary:string|undefined,secondary:string) {
   if(primary === "run") return secondary === "swim" ? 0 : secondary === "bike" ? 1 : 3;
   if(primary === "bike" || primary === "swim") return secondary === "run" ? 0 : secondary === primary ? 3 : 2;
@@ -30,6 +31,56 @@ export function boundPlanWeeks(weeks: GeneratedWeek[], setup: PlanningSetup, _le
   return {weeklyBudget, recoveryPolicy, weeks:weeks.map((week, weekIndex)=>{
     const hardDays:number[]=[];
     const availableSlots=Array.from({length:7},(_,slot)=>slot).filter(slot=>setup.trainingDays.includes((startWeekday+slot)%7));
+    if(week.templateVersion==='coaching-structure-v1') {
+      const preference=setup.doubleDay;
+      const consent=doubleDayReadiness(preference,setup.trainingDays);
+      const pairSlots=consent.ready?doubleDayWeekdays(preference).slice(0,level==='pro'?2:1).map(day=>(day-startWeekday+7)%7):[];
+      const scheduled=scheduleCoachingWeek(week,availableSlots,recoveryPolicy.maximumTrainingDays,weeklyBudget,setup.maxSessionMinutes??0,weekIndex,hardAbsoluteDays,pairSlots);
+      let doubleDayNote=preference?consent.reasons.join(' '):'No optional double day selected; single-session scheduling retained.';
+      const omittedTitles=new Set(scheduled.decision.omitted.map(item=>item.title));
+      const pairedTitles=new Set<string>();
+      const vacatedSlots=new Set<number>();
+      if(preference&&consent.ready){
+        for(const weekday of doubleDayWeekdays(preference).slice(0,level==='pro'?2:1)){
+          const slot=(weekday-startWeekday+7)%7;
+          const primary=scheduled.sessions.find(s=>s.daySlot===slot);
+          if(doubleDayExcludedWeeks.includes(weekIndex)||/taper|race|test|freshness|sharpening|deload/i.test(week.theme)||week.sessions.some(s=>['race','test'].includes(s.type))){doubleDayNote='Optional pair omitted in this race/test/taper week; keep the single-session schedule.';break;}
+          const existingTotal=scheduled.sessions.reduce((n,s)=>n+s.minutes,0);
+          // Only a complete, already-generated easy endurance unit may become
+          // the consented second session. No extra work or shortened hard set.
+          const existingDonors=scheduled.sessions.filter(s=>s.daySlot!==slot&&!pairSlots.includes(s.daySlot)&&!s.doubleDayRole&&!/long/i.test(s.title));
+          const donor=[...week.sessions.filter(s=>omittedTitles.has(s.title)),...existingDonors].filter(s=>!pairedTitles.has(s.title)&&['run','bike','swim'].includes(s.sport)&&/^z[12]$/.test(s.zone)&&!s.coaching?.demanding&&!['race','test','speed','interval','threshold','plyo'].includes(s.type)&&s.minutes>=(s.coaching?.minimumMinutes??1))
+            .sort((a,b)=>pairSportPriority(primary?.sport,a.sport)-pairSportPriority(primary?.sport,b.sport))
+            .find(s=>primary&&!primary.doubleDayRole&&primary.minutes+s.minutes<=(setup.maxSessionMinutes??0)&&existingTotal+(existingDonors.includes(s as BoundedPlanSession)?0:s.minutes)<=Math.min(weeklyBudget,week.totalMinutes)&&clockMinutes(preference.firstStart)+primary.minutes<clockMinutes(preference.secondStart)&&clockMinutes(preference.secondStart)+s.minutes<=1440);
+          if(!primary||!donor){doubleDayNote='No complete existing easy unit fits the agreed pair, daily/weekly time and separation. No extra work was invented.';continue;}
+          primary.startTime=preference.firstStart;primary.doubleDayRole='primary';
+          const donorIndex=scheduled.sessions.indexOf(donor as BoundedPlanSession);
+          if(donorIndex>=0){vacatedSlots.add(scheduled.sessions[donorIndex].daySlot);scheduled.sessions.splice(donorIndex,1);}
+          scheduled.sessions.push({...donor,daySlot:slot,startTime:preference.secondStart,doubleDayRole:'secondary',description:donor.description+' Optional second session: report the first session and complete a new check-in before proceeding. Declining never creates catch-up work.'});
+          pairedTitles.add(donor.title);
+          doubleDayNote=`Optional pair scheduled: ${primary.title} at ${preference.firstStart}, then ${donor.title} at ${preference.secondStart}. Purpose: ${preference.purpose}. Complete existing units only; no weekly minutes added beyond the reviewed template and capacity.`;
+        }
+      }
+      // Moving an existing easy unit into an agreed pair can free a day. Restore
+      // a complete omitted easy unit there when it fits, rather than silently
+      // losing sport frequency despite unchanged capacity and availability.
+      for(const daySlot of vacatedSlots){
+        if(!availableSlots.includes(daySlot)||scheduled.sessions.some(s=>s.daySlot===daySlot)||new Set(scheduled.sessions.map(s=>s.daySlot)).size>=recoveryPolicy.maximumTrainingDays)continue;
+        const total=scheduled.sessions.reduce((n,s)=>n+s.minutes,0);
+        const restored=week.sessions.find(s=>omittedTitles.has(s.title)&&!pairedTitles.has(s.title)&&!scheduled.sessions.some(retained=>retained.title===s.title)&&['swim','bike','run'].includes(s.sport)&&/^z[12]$/.test(s.zone)&&!s.coaching?.demanding&&!['race','test','speed','interval','threshold','plyo'].includes(s.type)&&s.minutes>=(s.coaching?.minimumMinutes??1)&&s.minutes<=(setup.maxSessionMinutes??0)&&total+s.minutes<=Math.min(weeklyBudget,week.totalMinutes));
+        if(restored){scheduled.sessions.push({...restored,daySlot});pairedTitles.add(restored.title);}
+      }
+      scheduled.sessions.sort((a,b)=>a.daySlot-b.daySlot||(a.startTime||'').localeCompare(b.startTime||''));
+      scheduled.decision.omitted=scheduled.decision.omitted.filter(item=>!pairedTitles.has(item.title));
+      scheduled.decision.allocatedMinutes=scheduled.sessions.reduce((n,s)=>n+s.minutes,0);
+      scheduled.decision.unallocatedMinutes=Math.max(0,Math.min(weeklyBudget,week.totalMinutes)-scheduled.decision.allocatedMinutes);
+      if(pairedTitles.size&&!scheduled.decision.omitted.length)scheduled.decision.note='Complete template units fit the reviewed limits, including an expressly agreed optional pair. No additional template dose was invented.';
+      hardAbsoluteDays.push(...scheduled.hardDays);
+      const populated=new Set(scheduled.sessions.map(s=>s.daySlot));
+      return {...week,sessions:scheduled.sessions,restDaySlots:Array.from({length:7},(_,slot)=>slot).filter(slot=>!populated.has(slot)),
+        doubleDayNote,
+        doseAllocation:scheduled.decision,totalMinutes:scheduled.sessions.reduce((n,s)=>n+s.minutes,0)};
+    }
     // A reviewed template is an ordered set of suggestions, not a requirement
     // to be available on the first five calendar days. Fit ordinary sessions
     // to actual available slots for every goal; otherwise weekend-only runners,

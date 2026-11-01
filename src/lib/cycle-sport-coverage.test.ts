@@ -8,6 +8,15 @@ import { shapeTrainingCycle } from './training-cycle';
 
 const session = (sport: string) => ({ sport, minutes: 30 });
 const week = (number: number, sports: string[], extra: Partial<CoverageWeek> = {}): CoverageWeek => ({ week: number, sessions: sports.map(session), ...extra });
+test('custom triathlon counts only explicit complete ordered brick components within the time budget',()=>{
+  const brick={sport:'brick',minutes:50,coaching:{legs:[{sport:'bike',minutes:35},{sport:'run',minutes:14}]}};
+  const covered=assessCycleSportCoverage('custom',[{week:1,sessions:[session('swim'),brick]}]);
+  assert.equal(covered.canSaveCompleteCycle,true);
+  for(const bad of [{...brick,coaching:undefined},{...brick,minutes:40},{...brick,coaching:{legs:[{sport:'run',minutes:14},{sport:'bike',minutes:35}]}},{...brick,coaching:{legs:[{sport:'bike',minutes:NaN},{sport:'run',minutes:14}]}}]){
+    const coverage=assessCycleSportCoverage('custom',[{week:1,sessions:[session('swim'),bad]}]);
+    assert.equal(coverage.canSaveCompleteCycle,false);assert.deepEqual(coverage.persistentMissingComponents,['bike','run']);
+  }
+});
 test('persistent missing triathlon sports block a complete-cycle claim without treating occasional missing work as permanent', () => {
   const partial = assessCycleSportCoverage('full', [week(1, ['swim', 'bike']), week(2, ['swim', 'bike'])]);
   assert.equal(partial.status, 'incomplete'); assert.equal(partial.canSaveCompleteCycle, false);
@@ -16,6 +25,10 @@ test('persistent missing triathlon sports block a complete-cycle claim without t
   const intermittent = assessCycleSportCoverage('full', [week(1, ['swim', 'bike']), week(2, ['swim', 'bike', 'run'])]);
   assert.equal(intermittent.status, 'incomplete'); assert.equal(intermittent.canSaveCompleteCycle, true);
   assert.deepEqual(intermittent.incompleteWeeks, [1]); assert.deepEqual(intermittent.persistentMissingComponents, []);
+  const alternating=assessCycleSportCoverage('full',[week(1,['swim','bike']),week(2,['swim','run'])]);
+  assert.equal(alternating.canSaveCompleteCycle,false);
+  assert.deepEqual(alternating.persistentMissingComponents,[]);
+  assert.match(alternating.message,/no complete week/);
 });
 
 test('event, performed and additional recovery constraints are explicit exclusions rather than prose-derived missing-sport failures', () => {
@@ -54,8 +67,10 @@ test('real bounded generator output exposes unavailable triathlon legs and HYROX
     const shaped = shapeTrainingCycle(boundPlanWeeks(raw, setup, 3, 1, 'amateur', [], { preserveWeeklyDose: true }).weeks,
       { startKey, needsAssessment: true, recoveryReview: false, protectedDays: [], templatePeriodized: true });
     const coverage = assessCycleSportCoverage('olympic', shaped);
-    assert.equal(coverage.canSaveCompleteCycle, days.length >= 3);
-    if (days.length < 3) assert.ok(coverage.persistentMissingComponents.includes('run'));
+    // A validated brick legitimately covers bike and run on one day. This is
+    // component presence only, not a claim that two days prepare an athlete.
+    assert.equal(coverage.canSaveCompleteCycle, days.length >= 2);
+    if (days.length < 2) assert.ok(coverage.planningBasisWeeks.every(w=>w.missingComponents.length>0));
   }
   const setup = parsePlanningSetup({ baselineWeeklyMinutes: 180, maxSessionMinutes: 60, trainingDays: [0] });
   const hyrox = generateHyroxPlan({ level: 'amateur', weeks: 6, startDate: start, weeklyHours: 3, reviewedCycle: true });

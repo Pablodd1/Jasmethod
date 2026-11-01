@@ -26,7 +26,7 @@ test('dated manual references preserve exact units, source and local date; no te
  assert.equal(recordReportedAnchors(profile.manualPrs,entered,today,today),profile.manualPrs);
  assert.equal(reportedAnchor({...profile,ftp:331},'ftp',now,timezone),null);
 });
-test('the exact advanced triathlon allocation retains two swims and two runs, bounded duration and purposeful work without renewing expired anchors',()=>{
+test('advanced triathlon preserves complete sport, brick and supporting strength units, reporting unavailable frequency without renewing expired anchors',()=>{
  const setup=parsePlanningSetup({trainingDays:[2,3,4,5,6,0],maxSessionMinutes:300,baselineWeeklyMinutes:720,baselineObservedAt:today,doubleDay:{version:'optional-double-day-v1',weekday:3,purpose:'Optional second familiar easy sport',firstStart:'06:00',secondStart:'18:00',athleteAgreed:true,priorTolerance:true,foodFluidsAvailable:true,recheckBetween:true}},now,timezone);
  const raw=generatePlan({level:'advanced',distance:'half',weeks:24,startDate:new Date('2026-10-28T12:00Z'),weeklyHours:12,reviewedCycle:true});
  assert.ok(raw.every(week=>week.sessions.filter(s=>s.sport==='swim').every(s=>!/review required/i.test(s.title))),'Mutable review state must not be baked into the session identity.');
@@ -34,7 +34,23 @@ test('the exact advanced triathlon allocation retains two swims and two runs, bo
  const baselineReviews=buildCycleBaselineReviews({profile,tests:[],appliedIds:[],sports:['swim','bike','run'],now,timezone});
  assert.ok(baselineReviews.every(r=>r.source==='athlete_reported_reference'));
  const cycle=shapeTrainingCycle(bounded.weeks,{startKey:today,needsAssessment:false,recoveryReview:false,protectedDays:[],baselineReviews,templatePeriodized:true,events:[{id:'c',name:'Mock 10K',dateKey:'2027-01-17',priority:3},{id:'b',name:'Mock Olympic',dateKey:'2027-02-21',priority:2},{id:'a',name:'Mock half',dateKey:'2027-04-11',priority:1}]});
- for(const week of cycle){assert.ok(week.totalMinutes<=720);for(const s of week.sessions){assert.ok(s.sport!=='swim'||s.minutes<=75);assert.ok(s.sport!=='run'||s.minutes<=120);}for(let day=0;day<7;day++)assert.ok(week.sessions.filter(s=>s.daySlot===day).reduce((n,s)=>n+s.minutes,0)<=300);if(!week.theme.includes('Event')&&!week.theme.includes('event')){assert.ok(week.sessions.filter(s=>s.sport==='swim').length>=2);assert.ok(week.sessions.filter(s=>s.sport==='run').length>=2);}assert.ok(!week.sessions.some(s=>s.doubleDayRole==='secondary'&&/long/i.test(s.title)));}
+ for(const [index,week] of cycle.entries()){
+  assert.ok(week.totalMinutes<=720);
+  for(const s of week.sessions){assert.ok(s.sport!=='swim'||s.minutes<=75);assert.ok(s.sport!=='run'||s.minutes<=120);assert.ok(s.minutes>=s.coaching!.minimumMinutes);}
+  for(let day=0;day<7;day++)assert.ok(week.sessions.filter(s=>s.daySlot===day).reduce((n,s)=>n+s.minutes,0)<=300);
+  if(!week.theme.includes('Event')&&!week.theme.includes('event')){
+   for(const sport of ['swim','bike','run'])assert.ok(week.sessions.some(s=>s.sport===sport),`${week.week}: ${sport} coverage`);
+   assert.equal(week.sessions.filter(s=>s.sport==='strength').length,2,'Supporting strength is part of the budget, not added on top.');
+   assert.equal(week.sessions.filter(s=>s.sport==='brick'&&s.coaching?.recipe==='brick').length,1,'Bike-run prescription has a deliberate combined slot.');
+   assert.ok(week.sessions.filter(s=>s.sport==='run'||s.coaching?.recipe==='brick').length>=2,'Independent run and transition-run opportunities remain.');
+   if(week.sessions.filter(s=>s.sport==='swim').length<raw[index].sessions.filter(s=>s.sport==='swim').length){
+    assert.match(bounded.weeks[index].doseAllocation!.note,/Reduced component coverage/);
+    const allocation=bounded.weeks[index].doseAllocation!;
+    assert.ok('omitted' in allocation && Array.isArray(allocation.omitted) && allocation.omitted.some(item=>/swim/i.test(item.title)),'A missing second swim must be explicitly disclosed by name.');
+   }
+  }
+  assert.ok(!week.sessions.some(s=>s.doubleDayRole==='secondary'&&/long/i.test(s.title)));
+ }
  assert.ok(cycle.slice(2,10).some(w=>w.sessions.some(s=>Number(s.zone.slice(1))>2)));
  for(const date of ['2027-01-17','2027-02-21','2027-04-11'])assert.ok(!cycle.some((w,wi)=>w.sessions.some(s=>new Date(Date.parse(today+'T12:00Z')+(wi*7+s.daySlot)*86400000).toISOString().slice(0,10)===date)));
 });

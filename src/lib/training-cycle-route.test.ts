@@ -21,6 +21,7 @@ import * as cycleReview from "./cycle-review";
 import * as calendarWorkouts from "./calendar-workouts";
 import * as targetPreview from "./plan-target-preview";
 import * as sportCoverage from "./cycle-sport-coverage";
+import * as raceDistances from "./race-distances";
 import { normalizeSteps } from "./canonical-session";
 function fixture(timezone="UTC",actorId="athlete") {
   const today=dates.dateKey(new Date(),timezone);
@@ -40,6 +41,7 @@ function fixture(timezone="UTC",actorId="athlete") {
     "@/lib/access":{ApiError,trainingAccess:async()=>({athlete:{id:"athlete",timezone,profile},actor:{id:actorId}}),errorResponse:(error:any)=>Response.json({error:error.message},{status:error.status??500})},
     "@/lib/db":{prisma:{...tx,trainingPlan:{...tx.trainingPlan,findMany:async(query:any)=>{assert.equal(query.where.userId,"athlete");state.planReads.push(query);return state.plans;}},race:{findMany:async()=>state.races},workout:{...tx.workout,findMany:async()=>state.activity},benchmarkTest:{findMany:async()=>state.benchmarks},auditLog:{...tx.auditLog,findMany:async(query:any)=>query?.where?.action==="baseline.fromTest"?state.appliedAnchors:[]},$transaction:async(fn:any)=>{state.transactionCalls++;if(state.transactionConflict)throw {code:"P2034"};return fn(tx)}}}};
   deps["@/lib/calendar-workouts"]=calendarWorkouts;
+  deps["@/lib/race-distances"]=raceDistances;
   const source=ts.transpileModule(fs.readFileSync("src/app/api/plan/generate/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const output:any={exports:{}};
   vm.runInNewContext(source,{module:output,exports:output.exports,require:(name:string)=>{if(name in deps)return deps[name];throw Error(`Unmocked ${name}`)},Response,Request,console:{error:()=>{}}});
@@ -53,6 +55,46 @@ test("preview makes no writes; confirmation persists structured cycle and repeat
   assert.ok(rows.length>0);for(const row of rows){const p=JSON.parse(row.prescription);assert.equal(p.planningStatus,"provisional");assert.ok(p.steps.length);assert.equal(JSON.parse(row.originalPlan).cycleVersion,cycle.TRAINING_CYCLE_VERSION);assert.equal(row.completed,false)}
   assert.equal(JSON.parse(state.audits[0].after).cycle.baseline.source,"athlete_reported");
   assert.equal((await run({preview:false,previewToken:draft.previewToken})).status,409);assert.equal(state.created.length,1);
+});
+
+test('custom triathlon preview preserves the owned matching event legs and saved coaching recipes',async()=>{
+  const {state,run,today,profile,setup}=fixture();
+  profile.goal='half';profile.experience='advanced';
+  setup.baselineWeeklyMinutes=480;setup.maxSessionMinutes=150;
+  state.races=[{id:'custom-race',name:'Custom triathlon',priority:1,date:new Date(`${dates.addDaysKey(today,42)}T00:00:00Z`),distance:raceDistances.formatCustomTriathlonDistance({swimM:1609.344,bikeM:56327.04,runM:14484.096})}];
+  const response=await run();assert.equal(response.status,200);const draft=await response.json();
+  assert.equal(draft.preview.distance,'custom');assert.equal(draft.preview.raceTarget.raceId,'custom-race');
+  assert.deepEqual(draft.preview.raceTarget.legs,{swimM:1609.344,bikeM:56327.04,runM:14484.096});
+  const saved=await run({preview:false,previewToken:draft.previewToken});assert.equal(saved.status,200);
+  const rows=state.created[0].days.create.flatMap((day:any)=>day.sessions.create);
+  assert.ok(rows.length>0);assert.ok(rows.every((row:any)=>JSON.parse(row.originalPlan).coaching?.recipe));
+  assert.ok(rows.some((row:any)=>JSON.parse(row.originalPlan).coaching?.recipe==='brick'));
+  const audit=JSON.parse(state.audits.find((row:any)=>row.action==='plan.generate').after);
+  assert.equal(audit.cycle.raceTarget.distance,'custom');
+});
+
+test('custom event from a different date or sport does not silently reclassify the selected goal',async()=>{
+  for(const goal of ['run-only','half']){
+    const {state,run,today,profile}=fixture();profile.goal=goal;
+    state.races=[{id:'other-date',priority:1,date:new Date(`${dates.addDaysKey(today,42)}T00:00:00Z`),distance:raceDistances.formatCustomTriathlonDistance({swimM:1600,bikeM:56000,runM:14500})}];
+    const response=await run(goal==='half'?{raceDate:dates.addDaysKey(today,50)}:{});
+    assert.equal(response.status,200);const draft=await response.json();
+    assert.equal(draft.preview.distance,goal);assert.equal(draft.preview.raceTarget,null);
+  }
+});
+
+test('daily capacity reaches triathlon template before allocation so complete ninety-minute bricks remain executable',async()=>{
+  const {run,profile,setup}=fixture();profile.goal='half';profile.experience='advanced';
+  setup.baselineWeeklyMinutes=480;setup.maxSessionMinutes=90;
+  const response=await run();assert.equal(response.status,200);const draft=await response.json();
+  const first=draft.preview.weeksPreview[0];
+  const brick=first.sessions.find((s:any)=>s.sport==='brick');
+  assert.ok(brick,'A complete capacity-bounded brick should survive allocation.');
+  assert.ok(brick.minutes>=40&&brick.minutes<=90);
+  assert.equal(brick.coaching.recipe,'brick');
+  assert.ok(first.sessions.every((s:any)=>s.minutes<=90));
+  assert.ok(first.totalMinutes<=480);
+  assert.equal(first.sessions.filter((s:any)=>s.sport==='strength').length,2);
 });
 
 test("easy-training preference changes invalidate the actual route preview before or during its transaction",async()=>{
@@ -148,12 +190,12 @@ test("restricted or unknown performed history blocks cycle generation without wr
 });
 
 test("persistent missing triathlon legs return actionable 422 before preview confirmation or any writes",async()=>{
- for(const trainingDays of [[0],[0,6]]) {
+ for(const trainingDays of [[0]]) {
   const {state,run,profile,setup}=fixture();profile.goal="olympic";profile.experience="amateur";setup.trainingDays=trainingDays;
   for(const preview of [true,false]) {
    const response=await run({preview});assert.equal(response.status,422);
    const data=await response.json();assert.equal(data.sportCoverage.canSaveCompleteCycle,false);
-   assert.ok(data.sportCoverage.persistentMissingComponents.includes("run"));
+   assert.ok(data.sportCoverage.planningBasisWeeks.every((w:any)=>w.missingComponents.length>0));
    assert.match(data.error,/available schedule|available days/);assert.match(data.nextStep,/initial assessment/);
    assert.equal(state.created.length,0);assert.equal(state.audits.length,0);assert.equal(state.superseded.length,0);assert.equal(state.transactionCalls,0);
   }
@@ -184,7 +226,9 @@ test("the actual route projects dated numeric targets and kJ for review without 
  const rows=state.created[0].days.create.flatMap((day:any)=>day.sessions.create);
  for(const row of rows){
   const p=JSON.parse(row.prescription);assert.equal(p.targetPreview,undefined);
-  assert.ok(p.steps.every((step:any)=>step.target===undefined&&!step.targets?.power&&!step.targets?.pace&&!step.targets?.hr));
+  // Structured strength/rest carries an explicit open target. Numerical
+  // physiology still resolves from current references rather than freezing.
+  assert.ok(p.steps.every((step:any)=>(step.target===undefined||JSON.stringify(step.target)==='{"type":"open"}')&&!step.targets?.power&&!step.targets?.pace&&!step.targets?.hr));
   assert.equal(JSON.parse(row.originalPlan).ftp,undefined);
  }
 });

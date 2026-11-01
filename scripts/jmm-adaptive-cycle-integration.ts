@@ -9,6 +9,8 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { hashToken } from "../src/lib/auth";
 import { addDaysKey, dateKey, localDate } from "../src/lib/dates";
+import { prescribeToday } from "../src/lib/adaptive";
+import type { CoachingSessionMetadata } from "../src/lib/coaching-week-template";
 
 for (const key of ["DATABASE_URL", "DIRECT_URL"]) {
   const value = new URL(process.env[key] || "");
@@ -97,6 +99,60 @@ async function scenario(name: string, work: () => Promise<void>) {
 async function main() {
   const runner = await actor("runner"), other = await actor("other"), coach = await actor("coach", "run-only", "coach");
   await setup(runner); await setup(other);
+  await scenario("Real check-in reductions rebuild JMM strength, HYROX and brick structures without holding stale budgets",async()=>{
+    for(const sport of ['strength','hyrox','brick'] as const){
+      const goal=sport==='hyrox'?'hyrox':'half';
+      const who=await actor(`structured-reduction-${sport}`,goal);await setup(who,goal);
+      const minutes=sport==='brick'?60:45;
+      const coaching:CoachingSessionMetadata={
+        recipe:sport==='strength'?'strength-a':sport==='hyrox'?'hyrox-hybrid':'brick',
+        phase:'foundation',purpose:`Synthetic ${sport} complete-unit check-in regression`,
+        demanding:false,minimumMinutes:sport==='brick'?40:sport==='hyrox'?35:15,
+        ...(sport==='strength'?{emphasis:'triathlon'}:{}),
+      };
+      const original={sport,title:`Synthetic generated ${sport}`,type:sport==='strength'?'strength':sport==='brick'?'brick':'endurance',
+        intensity:sport==='strength'?'z1':'z2',durationMin:minutes,description:'Synthetic effort-based complete coaching unit; no physiological values supplied.',
+        cycleVersion:'bounded-cycle-v1',coaching};
+      const planned=prescribeToday({session:original,adaptation:{verdict:'planned',durationFactor:1,intensityCap:'z2'}});
+      assert.equal(planned.sportStructure?.kind,sport);
+      const workout=await db.workout.create({data:{userId:who.id,date:localDate(today,who.timezone),sport,title:original.title,type:original.type,
+        intensity:original.intensity,durationMin:minutes,planned:true,completed:false,source:'manual',
+        originalPlan:JSON.stringify(original),prescription:JSON.stringify(planned)}});
+      let previousMinutes=minutes;
+      for(const availableMinutes of [30,20,20]){
+        const result=await api('/api/checkin',who,{sleep:4,soreness:2,motivation:4,energy:4,stress:2,sick:false,newPain:false,urgentSymptoms:false,availableMinutes});
+        const generated=result.prescriptions?.find((p:Json)=>p.sessionId===workout.id);
+        assert.ok(generated,`${sport}: real check-in must include the owned current workout`);
+        const stored=await db.workout.findUniqueOrThrow({where:{id:workout.id}});
+        const p=JSON.parse(stored.prescription!),base=JSON.parse(stored.originalPlan!);
+        assert.notEqual(p.verdict,'rest',`${sport}/${availableMinutes}: complete reduced structure fits and must not hold the original duration`);
+        assert.ok(p.durationMin>0&&p.durationMin<=availableMinutes&&p.durationMin<=previousMinutes);
+        assert.equal(stored.durationMin,p.durationMin);
+        assert.equal(p.sportStructure?.kind,sport);
+        assert.equal(p.coaching?.recipe,coaching.recipe);
+        assert.equal(base.durationMin,minutes,'Original source duration survives repeated daily adaptation');
+        assert.deepEqual(base.coaching,coaching,'Original recipe metadata remains available for correct regeneration');
+        assert.equal(base.cycleVersion,'bounded-cycle-v1');
+        assert.equal(p.steps.reduce((total:number,step:Json)=>total+step.seconds,0),p.durationMin*60);
+        assert.notEqual(p.sportStructureBudgetMin,minutes,'No stale original structure budget is grafted over newly generated steps');
+        if(sport==='brick'){
+          assert.deepEqual(p.sportStructure.components.map((component:Json)=>component.sport),['bike','run']);
+          const seconds=p.sportStructure.components.reduce((total:number,component:Json)=>total+component.durationMin*60,0)
+            +p.sportStructure.transitions.reduce((total:number,transition:Json)=>total+transition.endpoint.seconds,0);
+          assert.equal(seconds,p.durationMin*60);
+        } else if(sport==='strength') assert.ok(p.sportStructure.steps.some((step:Json)=>step.kind==='set'&&step.endpoint.type==='reps'));
+        else assert.ok(p.sportStructure.steps.some((step:Json)=>step.kind==='station'));
+        const state=await api('/api/today',who),current=state.sessions.find((s:Json)=>s.id===workout.id);
+        assert.ok(current,`${sport}: persisted workout remains visible today`);
+        assert.equal(current.verdict,'ready',`${sport}/${availableMinutes}: ${current.resolutionReason}`);
+        assert.ok(current.durationMin>0&&current.durationMin<=availableMinutes);
+        assert.equal(current.prescription.sportStructure?.kind,sport);
+        assert.ok(current.prescription.steps.every((step:Json)=>step.target.type==='open'),'No missing physiological references become numerical targets');
+        previousMinutes=p.durationMin;
+      }
+      assert.equal(await db.workout.count({where:{userId:who.id}}),1,'Repeated check-ins update one workout without creating duplicates');
+    }
+  });
   await scenario("Private commander previews, rejects stale/foreign writes, saves and reloads one receipt",async()=>{
     const who=await actor("commander");await setup(who,"run-only",8);
     await api("/api/assistant/plan",undefined,undefined,401);
@@ -132,7 +188,12 @@ async function main() {
     for(const [source,minutes] of [['garmin',40],['whoop',60]] as const)await db.workout.create({data:{userId:a.id,date:localDate(addDaysKey(today,-1),a.timezone,'08:00'),sport:'bike',title:'Synthetic ambiguous provider record',source,externalId:`${source}-${randomUUID()}`,durationMin:minutes,actualDurationMin:minutes,completed:true,planned:false,rpe:3,feedbackStatus:'completed',type:'endurance',intensity:'z2'}});
     const draft=await api('/api/plan/generate',a,{distance:'half',weeks:12,startDate:addDaysKey(today,1),preview:true});
     assert.equal(draft.preview.cycle.activity.historyReview,true);assert.equal(draft.preview.cycle.activity.recoveryReview,false);
-    const first=draft.preview.weeksPreview[0];assert.equal(first.cycleFactor,1);assert.equal(first.totalMinutes,first.doseAllocation.allocatedMinutes);assert.ok(first.totalMinutes>300);assert.equal(first.restDaySlots.length,0);assert.ok(first.sessions.some((s:Json)=>s.sport==='mobility'&&s.type==='recovery'&&s.minutes<=20));
+    const first=draft.preview.weeksPreview[0];assert.equal(first.cycleFactor,1);assert.equal(first.totalMinutes,first.doseAllocation.allocatedMinutes);assert.ok(first.totalMinutes>0&&first.totalMinutes<=411);
+    assert.equal(first.sessions.filter((s:Json)=>s.sport==='mobility'&&s.type==='recovery').length,0,'No-fixed-rest permits availability; it does not require invented recovery padding.');
+    assert.equal(new Set(first.sessions.map((s:Json)=>s.daySlot)).size,first.sessions.length);
+    assert.equal(first.restDaySlots.length,7-first.sessions.length);
+    assert.ok(first.sessions.every((s:Json)=>s.coaching&&s.minutes>=s.coaching.minimumMinutes));
+    if(first.doseAllocation.omitted.length)assert.match(first.doseAllocation.note,/Reduced component coverage/);
     assertBudgets(draft,411,90);assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),0);
     const saved=await api('/api/plan/generate',a,{distance:'half',weeks:12,startDate:addDaysKey(today,1),previewToken:draft.previewToken});
     assert.equal(await db.trainingPlan.count({where:{userId:a.id,status:'active'}}),1);assert.ok(saved.plan.id);
