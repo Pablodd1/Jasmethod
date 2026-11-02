@@ -2,6 +2,7 @@ import { appMutationOriginAllowed } from "@/lib/request-origin";
 import { ApiError, errorResponse } from "@/lib/access";
 import { assistantAccess, readConversationBody, getConversation, appendConversation, clearConversation } from "@/lib/coach-conversation-service";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 export async function GET(req: Request) {
   try { return Response.json(await getConversation(await assistantAccess(req)), { headers: { "Cache-Control": "private, no-store" } }); }
   catch (error) { return errorResponse(error); }
