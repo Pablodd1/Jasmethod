@@ -100,6 +100,7 @@ const fieldRules: Record<CoachCandidate["kind"], Record<string, Rule>> = {
     // Equipment the engine may pivot to (perf-engine-v2). Never inferred: explicit first-person statements only.
     hasSmartTrainer: {type:"boolean",unit:null},
     bikeType: {type:"string",unit:null,values:["road","tt","tri","gravel","mountain"]},
+    sex: {type:"string",unit:null,values:["female","male"]},
   },
   workout_feedback: {
     feedbackStatus: { type: "string", unit: null, values: ["completed", "partial", "substituted", "skipped"] },
@@ -223,6 +224,8 @@ export function extractLocalCandidates(message: string, context: CandidateContex
       const values=unique(allNumbers(text,pattern));
       if(values.length===1) add("profile",field,values[0],globalDate.date,message,field==="ftp"?"Athlete-reported reference only. A dated, reviewed benchmark test is required before treating this as an applied training anchor.":undefined);
     }
+    const sex=/\b(?:i am|i'm|im) (?:a )?(?:(female|woman)|(male|man))(?: athlete| triathlete| runner| cyclist)?\b|\bsoy (?:una )?(mujer)\b|\bsoy (?:un )?(hombre)\b/.exec(text);
+    if(sex&&!/\b(?:not|no)\s+(?:a\s+)?(?:female|woman|male|man|mujer|hombre)\b/.test(text)) add("profile","sex",sex[1]||sex[3]?"female":"male",null,message);
     if(/\b(?:i (?:have|own|got) (?:a |an )?(?:smart trainer|indoor trainer|turbo trainer|wahoo kickr|zwift trainer)|tengo (?:un )?(?:rodillo|smart trainer))\b/.test(text)&&!/\b(?:don't|do not|no)\s+(?:have|own|tengo)\b/.test(text)) add("profile","hasSmartTrainer",true,null,message);
     const bike=/\bi (?:have|own|ride) (?:a |an |my )?(road|tt|time trial|tri|triathlon|gravel|mountain) bike\b/.exec(text)?.[1]??/\btengo una bici(?:cleta)? de (ruta|carretera|triatlon|gravel|montana)\b/.exec(text)?.[1];
     if(bike&&!/\b(?:don't|do not|no)\s+(?:have|own|tengo)\b/.test(text)) add("profile","bikeType",({"time trial":"tt",triathlon:"tri",triatlon:"tri",ruta:"road",carretera:"road",montana:"mountain"} as Record<string,string>)[bike]??bike,null,message);
@@ -393,6 +396,9 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
 
   // perf-engine-v2: brainstorm and "why today" use only the message text and static science —
   // no stored athlete data enters chat prose (structural isolation of chatContext).
+  if (/\b(?:(?:set up|setup|build|create|start) (?:my )?(?:daily )?coach(?:ing)?|get started|onboarding|configura(?:r)? (?:mi )?coach|empezar con el coach|crear mi coach)\b/.test(t)) return reply("coach-onboarding",
+    "Let's build your daily coach. Fastest: connect Garmin or COROS (or import files) in athlete setup. I'll read your last 3 months and only ask what's missing. Otherwise tell me here: 1) your goal race, distance and date; 2) birth year and sex (used only for evidence-based adjustments such as recovery spacing, never to lower your plan); 3) experience level and how long you've trained consistently; 4) hours per week over the last month and your longest session per sport; 5) a recent race or test result; 6) injuries in the last 12 months or pain now; 7) bike, indoor trainer or pool access. Each answer is shown for you to confirm before anything is saved. Today shows exactly what is still missing.",
+    "Construyamos tu coach diario. Lo más rápido: conecta Garmin o COROS (o importa archivos) en la configuración. Leeré tus últimos 3 meses y solo preguntaré lo que falte. Si no, dímelo aquí: 1) carrera objetivo, distancia y fecha; 2) año de nacimiento y sexo (solo para ajustes con evidencia, como la separación entre días duros, nunca para rebajar tu plan); 3) nivel y tiempo entrenando con constancia; 4) horas por semana el último mes y tu sesión más larga por deporte; 5) un resultado reciente de carrera o test; 6) lesiones en los últimos 12 meses o dolor ahora; 7) acceso a bici, rodillo o piscina. Cada respuesta se muestra para que la confirmes antes de guardarla. Hoy muestra exactamente qué falta.");
   if (/\b(?:training ideas|workout ideas|session ideas|brainstorm|ideas (?:for|de) (?:my )?(?:training|entren\w*)|ideas de entrenamiento|lluvia de ideas|what (?:should|can) i (?:work on|focus on))\b/.test(t)) {
     const goal = ([["full", /\b(ironman|140\.6|full distance)\b/], ["half", /\b(70\.3|half ironman)\b/], ["marathon", /\b(?<!half[ -])(marathon|maraton)\b/], ["half-marathon", /\b(half[ -]marathon|media maraton)\b/], ["10k", /\b10\s?k\b/], ["5k", /\b5\s?k\b/], ["olympic", /\b(olympic|olimpic[oa])\b/], ["sprint", /\bsprint\b/], ["hyrox", /\bhyrox\b/]] as [string, RegExp][]).find(([, re]) => re.test(t))?.[0];
     const phase = (["taper", "base", "build", "specific", "recovery"] as const).find(p => new RegExp(`\\b${p}\\b`).test(t)) ?? (/\b(?:race week|semana de carrera)\b/.test(t) ? "taper" : /\b(?:construccion)\b/.test(t) ? "build" : /\b(?:especific\w*)\b/.test(t) ? "specific" : null);

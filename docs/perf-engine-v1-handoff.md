@@ -1,4 +1,4 @@
-# perf-engine v1 + v2 — handoff (2026-11-02)
+# perf-engine v1–v3 — handoff (2026-11-02)
 
 Branch: `feat/perf-engine-v1`. Author: Claude (session with Dr. Jeffrey Draesel Jr.). To be completed by Codex.
 
@@ -28,7 +28,7 @@ Branch: `feat/perf-engine-v1`. Author: Claude (session with Dr. Jeffrey Draesel 
 
 ## Verification status
 - `npx tsc --noEmit` clean.
-- `npm test` (after v2): 2,244/2,245 pass. The one failure (`sync-pilot-isolation.test.ts` "50 synthetic athletes … WHOOP lifecycle") **fails on the untouched baseline too** in this sandbox (prisma engine binary unavailable). Not caused by this change.
+- `npm test` (after v3): 2,251/2,252 pass. ESLint clean on changed files. The one failure (`sync-pilot-isolation.test.ts` "50 synthetic athletes … WHOOP lifecycle") **fails on the untouched baseline too** in this sandbox (prisma engine binary unavailable). Not caused by this change.
 - **NOT done:** `npm run build`, preview deploy, live probe (AGENTS.md §3 ladder). Prisma client was generated with `--no-engine` here.
 
 ## Open tasks for Codex (in priority order)
@@ -85,6 +85,39 @@ Bosquet 2007 / Mujika: cut volume 41–60% over 8–14 days, keep intensity, kee
 12. **i18n:** narratives exist in en/es only. ht/fr/ru fall back to English.
 13. **Canonical/FIT export:** confirm engine step names, notes and groups pass `canonical-session` validation and the FIT note limit (≤180 bytes per companion instruction) on a real device export.
 14. **Weekly view:** show the key-session count and polarized split (Z1–2 vs Z3+) per week in the training-cycle overview.
+
+## v3 — individual athlete model, rep-by-rep compliance, onboarding (commit 4)
+
+| Area | File | Change |
+|---|---|---|
+| Athlete model (new, pure) | `src/lib/athlete-model.ts` | Builds the coach's picture of one athlete from 90 d of imported history (Garmin/COROS/Apple/manual; Strava rows used locally only) and overnight metrics: coverage, actual h/week, sports, longest session, **cold start** (<21 d or <6 sessions), level (stated, else a labelled estimate from volume, else beginner), age band, sex, personal spacing, key cap, RPE bias, personal HRV recovery time, stale targets, and the **onboarding questions** still unanswered. `inferZone` gives imported HR-only rows a zone from LTHR/HRmax |
+| Compliance (new, pure) | `src/lib/execution-compliance.ts` | Aligns prescribed steps with the recorded stream (power → bike, speed → run/swim, HR fallback with lag skip): hit rate, first→last rep fade, aerobic decoupling, verdict `on_target / faded / missed / too_easy / insufficient_data` |
+| Engine | `src/lib/performance-engine.ts` | `quality.keyCap`, `quality.pushAllowed` (+ reason), `quality.lastKeyExecution` (a faded/missed key session blocks the next overload: repeat the dose before raising it). `selectStimulus({ spacingH })` uses the personal spacing |
+| Check-in | `src/app/api/checkin/route.ts` | 90 d history/metrics; builds the model; level falls back to the model; personal spacing and key cap; compliance of the last key session (only when `ENABLE_ACTIVITY_STREAMS=1` and stream consent exist). Saves `adaptation.athleteModel` and `adaptation.lastKeyCompliance` |
+| API (new) | `src/app/api/athlete-model/route.ts` | `GET` → model + onboarding questions for the signed-in athlete (own data, auth required, provenance-gated) |
+| Today | `src/components/coach-onboarding-card.tsx`, `src/app/today/page.tsx` | "Build your daily coach" card: what the coach knows (level, spacing, cap), what's missing, link to answer in chat. Hidden once onboarding is complete |
+| Chat | `src/lib/coach-conversation.ts`, service | `coach-onboarding` intent (connect Garmin/COROS or answer 7 questions). New confirmable profile field `sex` ("I'm a female triathlete"; third-person and negations ignored) |
+| Tests | `src/lib/athlete-model.test.ts` | 7 tests: history baseline vs cold start, stated vs estimated level, age/sex rules, HRV-based personal spacing, RPE-bias cap, HR-zone inference, compliance verdicts, engine gates |
+
+### Age, sex, level rules (evidence-limited on purpose)
+| Factor | Rule | Basis |
+|---|---|---|
+| Age ≥50 | spacing 60 h unless personal HRV data says otherwise | slower recovery after eccentric/HIIT work (Easthope 2010; Borges 2018) |
+| Age ≥65 | spacing 72 h, ≤2 key sessions/week | as above |
+| Age <18 | no automatic overload; key cap 2 | NSCA youth guidance; existing `youthPolicy` |
+| Female | **no automatic penalty** (menstrual phase stays contextual) | McNulty 2020 |
+| Everyone | RED-S / energy-availability screening question | IOC consensus 2023 |
+| Level | beginner 0.6 / amateur 0.8 / advanced 1.0 / pro 1.15 dose; beginner cap 2 | v2 table |
+| No history | beginner dose, no overload until 21 days of history | cold start |
+| Personal data | HRV-recovery spacing (36–72 h) overrides age defaults; RPE bias ≥1.5 lowers the cap by 1 | athlete's own response |
+
+### Additional open tasks for Codex (v3)
+15. **Persist compliance** per workout (new column or JSON on the import row) so the athlete model can trend fade/decoupling across weeks. Today it is computed for the last key session only.
+16. **Stream consent:** compliance requires `ENABLE_ACTIVITY_STREAMS=1` plus per-activity consent. Surface the consent prompt after Garmin/COROS import.
+17. **Onboarding answers → fields:** chat already proposes `goal`, `weeklyHours`, `birthYear`, `experience`, `ftp`, `sex`, `hasSmartTrainer`, `bikeType`. Add extraction for longest session per sport, recent race result (to seed pace/power anchors), injury history (store as a coach-review note, not a diagnosis), and pool access.
+18. **Anchor retests:** when `anchorsStale` is non-empty, offer a scheduled test session (the protocols module has test templates) rather than only a question.
+19. **RED-S "yes" answer:** route to a clinician-review hold. Do not store the answer in AI-eligible context.
+20. **Build verification:** `next build` could not run in the sandbox (Google Fonts download blocked). Run it in CI or Vercel preview.
 
 ## AI model recommendation
 **Primary: OpenAI `gpt-6-luna`** via the existing direct-OpenAI path (`OPENAI_COACH_MODEL=gpt-6-luna`).

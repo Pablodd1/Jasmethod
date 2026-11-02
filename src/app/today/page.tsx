@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { Watch } from "lucide-react";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { WorkoutSparkline } from "@/components/workout-sparkline";
+import { CoachOnboardingCard } from "@/components/coach-onboarding-card";
 import { fmtVolumeDual } from "@/lib/units";
 import { fmtDistance } from "@/lib/units";
 import { unitsOf } from "@/lib/units";
@@ -303,6 +304,7 @@ function TodayPageContent() {
             {message}
           </p>
         )}
+        <CoachOnboardingCard es={es} />
         {data?.athleteReview && <div id="today-reports" className="scroll-mt-20"><AthleteDayReview review={data.athleteReview} plannedMinutes={session?.prescription?.scaled?.originalMin ?? session?.durationMin} es={es} expandRecords={expandReports} onRecordsToggle={setExpandReports} onReport={id => { const record = data.athleteReview.records.find((item: any) => item.id === id); if (!record || record.matchedPlanId) return; setReportActivityId(id); setFeedback(true); requestAnimationFrame(() => document.getElementById('workout-feedback')?.scrollIntoView({behavior:'smooth',block:'start'})); }} />
           {expandReports && session && !session.matchedPlanId && !data.athleteReview.records.some((record: any) => record.id === session.id) && <button type="button" className="btn-secondary mt-3" onClick={() => { setReportActivityId(null); setFeedback(true); requestAnimationFrame(() => document.getElementById('workout-feedback')?.scrollIntoView({behavior:'smooth',block:'start'})); }}>{es ? `Registrar la sesión planificada: ${session.title}` : `Log planned session: ${session.title}`}</button>}
         </div>}

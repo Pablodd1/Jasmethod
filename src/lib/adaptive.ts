@@ -274,6 +274,8 @@ export interface Adaptation {
   intensityCap: string; // e.g. "z4" — don't exceed
   message: string;
   performance?: PerformanceDecision; // perf-engine-v1: central/peripheral split, ACWR, PUSH gates
+  athleteModel?: { coldStart: boolean; level: string; levelSource: string; ageBand: string; spacingH: number; keyCap: number; rpeBias: number | null; personalRecoveryH: number | null; anchorsStale: string[]; notes: string[] };
+  lastKeyCompliance?: { workoutId: string; verdict: string; hitRate: number | null; fadePct: number | null; decouplingPct: number | null; note: string };
 }
 
 /** Layer the deterministic performance engine on top of the subjective check-in.

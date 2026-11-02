@@ -38,6 +38,9 @@ import { effectivePrescription } from "@/lib/effective-prescription";
 import { applyPerformance } from "@/lib/adaptive";
 import { decidePerformance, selectStimulus, isKeySession, type LoadRow, type MetricRow, type PlanContext } from "@/lib/performance-engine";
 import { goalFamily, normalizeLevel, resolvePhase } from "@/lib/periodization";
+import { buildAthleteModel, inferZone } from "@/lib/athlete-model";
+import { analyzeCompliance } from "@/lib/execution-compliance";
+import { loadStreams, prismaStreamRepo, streamStorageEnabled, type StreamDelegate } from "@/lib/activity-stream-store";
 import { trainingViewDisclosureAllowed, ACTIVITY_DISCLOSURE_REASON } from "@/lib/activity-disclosure";
 
 const sources = () =>
@@ -284,7 +287,8 @@ export async function POST(req: Request) {
     let availableSports: string[] = [];
     // Goal × phase × level context (perf-engine-v2). Race date from the active plan, else the profile.
     const family = goalFamily(activePlan?.distance ?? profile?.goal);
-    const level = normalizeLevel(activePlan?.level ?? profile?.experience);
+    let level = normalizeLevel(activePlan?.level ?? profile?.experience);
+    let spacingH: number | undefined;
     const raceAt = [activePlan?.raceDate, profile?.raceDate].find(d => d instanceof Date && Number.isFinite(d.getTime()) && d.getTime() >= start.getTime());
     const daysToRace = raceAt ? Math.floor((raceAt.getTime() - start.getTime()) / 86400000) : null;
     const weekIndex = activePlan?.startDate instanceof Date ? Math.max(0, Math.floor((start.getTime() - activePlan.startDate.getTime()) / (7 * 86400000))) : null;
@@ -295,16 +299,37 @@ export async function POST(req: Request) {
     if (adaptation.safetyStatus === "clear" && adaptation.verdict !== "rest" && setupGate.ready && !starterReady) {
       try {
         const [metrics60, loadWindow] = await Promise.all([
-          prisma.dailyMetrics.findMany({ where: { userId: user.id, date: { gte: new Date(start.getTime() - 60 * 86400000), lt: end } }, orderBy: { date: "asc" } }),
-          prisma.workout.findMany({ where: { userId: user.id, date: { gte: new Date(start.getTime() - 28 * 86400000), lt: new Date(end.getTime() + 86400000) } }, orderBy: { date: "asc" } }),
+          prisma.dailyMetrics.findMany({ where: { userId: user.id, date: { gte: new Date(start.getTime() - 90 * 86400000), lt: end } }, orderBy: { date: "asc" } }),
+          prisma.workout.findMany({ where: { userId: user.id, date: { gte: new Date(start.getTime() - 90 * 86400000), lt: new Date(end.getTime() + 86400000) } }, orderBy: { date: "asc" } }),
         ]);
-        const load28 = loadWindow.filter(w => w.date < end);
+        const history90 = loadWindow.filter(w => w.date < end);
+        const load28 = history90.filter(w => w.date >= new Date(start.getTime() - 28 * 86400000));
+        // Individual model from imported Garmin/COROS/manual history (Strava rows count locally, never for AI).
+        const model = buildAthleteModel({ history: activityPolicy.status === "allowed" ? history90 : [], metrics: biometricPolicy.status === "allowed" ? metrics60 : [], profile: profile as any, now: new Date() });
+        if (!activePlan?.level) level = model.level;
+        spacingH = model.spacingH;
+        adaptation = { ...adaptation, athleteModel: { coldStart: model.coldStart, level: model.level, levelSource: model.levelSource, ageBand: model.ageBand, spacingH: model.spacingH, keyCap: model.keyCap, rpeBias: model.rpeBias, personalRecoveryH: model.personalRecoveryH, anchorsStale: model.anchorsStale, notes: model.notes } };
+        // Rep-by-rep compliance of the most recent key session (streams only with consent + storage flag).
+        let lastKeyExecution: ReturnType<typeof analyzeCompliance>["verdict"] | null = null;
+        try {
+          const recentKey = [...load28].reverse().find(w => !w.planned && w.completed && w.date >= new Date(start.getTime() - 4 * 86400000) && isKeySession({ date: w.date, sport: w.sport, type: w.type, intensity: inferZone(w as any, profile as any) ?? w.intensity, rpe: w.rpe, minutes: null }));
+          const plannedTwin = recentKey ? load28.find(w => w.planned && w.matchedPlanId === recentKey.id) : null;
+          if (recentKey && plannedTwin && streamStorageEnabled()) {
+            const steps = JSON.parse(plannedTwin.prescription || "null")?.steps;
+            const streams = await loadStreams(prismaStreamRepo((prisma as unknown as { activityStream: StreamDelegate }).activityStream), user.id, recentKey.id);
+            if (Array.isArray(steps)) {
+              const c = analyzeCompliance(steps, streams, { sport: recentKey.sport, rpe: recentKey.rpe, intendedRpe: null });
+              lastKeyExecution = c.verdict;
+              adaptation = { ...adaptation, lastKeyCompliance: { workoutId: recentKey.id, verdict: c.verdict, hitRate: c.hitRate, fadePct: c.fadePct, decouplingPct: c.decouplingPct, note: c.note } };
+            }
+          }
+        } catch { /* compliance is advisory; missing streams never block */ }
         const tomorrow = loadWindow.filter(w => w.date >= end && w.planned && !w.completed);
         const todayPlanned = loadWindow.filter(w => w.date >= start && w.date < end && w.planned && !w.completed);
         const loadAllowed = activityPolicy.status === "allowed" && !groupedHistory.unresolvedGroups;
         const loadRows: LoadRow[] = (loadAllowed ? load28 : [])
           .filter(w => !w.matchedPlanId && w.feedbackStatus !== "skipped" && (w.completed || w.feedbackStatus === "completed" || w.feedbackStatus === "partial"))
-          .map(w => ({ date: w.date, sport: w.actualSport || w.sport, type: w.type, intensity: w.intensity, rpe: w.rpe,
+          .map(w => ({ date: w.date, sport: w.actualSport || w.sport, type: w.type, intensity: inferZone(w as any, profile as any) ?? w.intensity, rpe: w.rpe,
             // A plain "completed" planned session counts at its planned duration; partial without actual minutes stays unknown.
             minutes: w.actualDurationMin ?? (w.feedbackStatus === "partial" ? null : w.planned ? w.durationMin : activityActualMinutes(w as any)) }));
         const deviceMetrics: MetricRow[] = biometricPolicy.status === "allowed" ? metrics60 : [];
@@ -312,9 +337,10 @@ export async function POST(req: Request) {
         const dayPhase = planContextFor(firstCoaching).phase;
         const asLoad = (w: (typeof loadWindow)[number]): LoadRow => ({ date: w.date, sport: w.sport, type: w.type, intensity: w.intensity, rpe: null, minutes: w.durationMin });
         const decision = decidePerformance({ base: adaptation, subjective: checkin, metrics: deviceMetrics, loadRows, pushEnabled: process.env.ADAPTIVE_PUSH_ENABLED === "true",
-          quality: { level, phase: dayPhase, plannedHard: todayPlanned.some(w => isKeySession(asLoad(w))), nextDayKey: tomorrow.some(w => isKeySession(asLoad(w))) } });
+          quality: { level, phase: dayPhase, plannedHard: todayPlanned.some(w => isKeySession(asLoad(w))), nextDayKey: tomorrow.some(w => isKeySession(asLoad(w))),
+            keyCap: model.keyCap, pushAllowed: model.pushAllowed, pushBlockReason: model.coldStart ? `first block: ${model.coverageDays} d of history (<21)` : model.ageBand === "youth" ? "youth athlete: no automatic overload" : profile?.injured ? "injury flag" : undefined, lastKeyExecution } });
         adaptation = applyPerformance(adaptation, decision);
-        availableSports = Array.from(new Set([...load28.map(w => w.actualSport || w.sport), ...(profile?.bikeType || profile?.hasSmartTrainer ? ["bike"] : []), ...(profile?.swimPaceBase ? ["swim"] : [])]));
+        availableSports = Array.from(new Set([...model.sports, ...load28.map(w => w.actualSport || w.sport), ...(profile?.bikeType || profile?.hasSmartTrainer ? ["bike"] : []), ...(profile?.swimPaceBase ? ["swim"] : [])]));
       } catch (error) {
         console.error("perf-engine skipped", error instanceof Error ? error.message : "unknown");
       }
@@ -376,7 +402,7 @@ export async function POST(req: Request) {
         // Coach-authored sport structures, protocols and starter sessions keep their design.
         let priorStructure = false; try { priorStructure = JSON.parse(w.prescription || "null")?.sportStructure !== undefined; } catch {}
         const performance = adaptation.performance && effective === adaptation && remaining > 0 && !priorStructure && !base.protocol && !isStarterSession(w)
-          ? { decision: adaptation.performance, stimulus: selectStimulus({ planned: { sport: base.sport, type: base.type, intensity: base.intensity, durationMin: base.durationMin }, decision: adaptation.performance, availMin: Math.floor(remaining), availableSports, raceBuild: profile?.goal === "hyrox", plan: planContextFor(base.coaching?.phase, adaptation.performance.load.chronic28) }) }
+          ? { decision: adaptation.performance, stimulus: selectStimulus({ planned: { sport: base.sport, type: base.type, intensity: base.intensity, durationMin: base.durationMin }, decision: adaptation.performance, availMin: Math.floor(remaining), availableSports, spacingH, raceBuild: profile?.goal === "hyrox", plan: planContextFor(base.coaching?.phase, adaptation.performance.load.chronic28) }) }
           : undefined;
         const p = preserveSportStructure(w, prescribeToday({
           performance,

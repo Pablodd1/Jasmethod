@@ -236,7 +236,13 @@ export function decidePerformance(input: {
   pushEnabled: boolean;
   now?: Date;
   /** Quality-over-quantity guard (polarized distribution). Absent → no weekly cap applied. */
-  quality?: { level: Level; phase?: CyclePhase; plannedHard: boolean; nextDayKey: boolean | null };
+  quality?: {
+    level: Level; phase?: CyclePhase; plannedHard: boolean; nextDayKey: boolean | null;
+    /** From the athlete model (athlete-model.ts): personal key cap, overload permission and reason. */
+    keyCap?: number; pushAllowed?: boolean; pushBlockReason?: string;
+    /** Compliance of the most recent key session (execution-compliance.ts). */
+    lastKeyExecution?: "on_target" | "faded" | "missed" | "too_easy" | "insufficient_data" | null;
+  };
 }): PerformanceDecision {
   const now = input.now ?? new Date();
   const central = normalizeCentral(input.metrics, input.subjective, now);
@@ -289,7 +295,10 @@ export function decidePerformance(input: {
     const lastKeyH = keys.length ? Math.round((+now - Math.max(...keys.map(r => t(r.date)))) / 3600000) : null;
     if (q.phase === "taper" || q.phase === "race" || q.phase === "recovery") blocked.push(`${q.phase} phase: no overload`);
     if (lastKeyH != null && lastKeyH < 36) blocked.push(`key session ${lastKeyH} h ago (no back-to-back hard days)`);
-    if (!q.plannedHard && keys.length >= maxKeySessions(q.level)) blocked.push(`${keys.length} key sessions in 7 d (cap ${maxKeySessions(q.level)}): keep easy days easy`);
+    const cap = q.keyCap ?? maxKeySessions(q.level);
+    if (!q.plannedHard && keys.length >= cap) blocked.push(`${keys.length} key sessions in 7 d (cap ${cap}): keep easy days easy`);
+    if (q.pushAllowed === false) blocked.push(q.pushBlockReason || "athlete model: overload not allowed yet");
+    if (q.lastKeyExecution === "faded" || q.lastKeyExecution === "missed") blocked.push(`last key session ${q.lastKeyExecution}: repeat the dose before raising it`);
     if (!q.plannedHard && q.nextDayKey === true) blocked.push("key session planned tomorrow");
   }
   if (!blocked.length) return mk("push", `PUSH: readiness ${readiness}, ACWR ${load.acwr}, central ${central.status}.`);
@@ -315,6 +324,7 @@ export function selectStimulus(input: {
   availableSports: string[]; // modalities the athlete actually has (from plan history/equipment)
   raceBuild?: boolean;       // HYROX/multisport race-specific block
   plan?: PlanContext;        // goal × phase × level; absent → time-only legacy choice
+  spacingH?: number;         // personal hours between high-eccentric sessions (athlete model); default 48
 }): Stimulus {
   const base = selectSportStimulus(input);
   const plan = input.plan;
@@ -336,12 +346,13 @@ export function selectStimulus(input: {
 
 function selectSportStimulus(input: {
   planned: { sport: string; type: string; intensity?: string | null; durationMin: number };
-  decision: PerformanceDecision; availMin: number; availableSports: string[]; raceBuild?: boolean;
+  decision: PerformanceDecision; availMin: number; availableSports: string[]; raceBuild?: boolean; spacingH?: number;
 }): Stimulus {
+  const SPACING = input.spacingH ?? ECCENTRIC_SPACING_H;
   const { planned, decision, availMin } = input;
   const sport = planned.sport, z = zoneNum(planned.intensity), hard = z >= 4 || ["interval", "threshold"].includes(planned.type);
   const p = decision.peripheral, centralOk = decision.central.status !== "suppressed" && decision.central.confidence !== "none";
-  const legsBlocked = p.status === "high" || (p.hoursSinceHighEccentric != null && p.hoursSinceHighEccentric < ECCENTRIC_SPACING_H);
+  const legsBlocked = p.status === "high" || (p.hoursSinceHighEccentric != null && p.hoursSinceHighEccentric < SPACING);
   const has = (s: string) => input.availableSports.includes(s);
   const push = decision.verdict === "push";
   const r = decision.readiness ?? 0;
@@ -349,8 +360,8 @@ function selectSportStimulus(input: {
 
   if (sport === "run") {
     if ((hard || push) && legsBlocked) {
-      const why = p.hoursSinceHighEccentric != null && p.hoursSinceHighEccentric < ECCENTRIC_SPACING_H
-        ? `last high-eccentric session ${p.hoursSinceHighEccentric} h ago (<${ECCENTRIC_SPACING_H} h)` : `peripheral load ${p.status}`;
+      const why = p.hoursSinceHighEccentric != null && p.hoursSinceHighEccentric < SPACING
+        ? `last high-eccentric session ${p.hoursSinceHighEccentric} h ago (<${SPACING} h)` : `peripheral load ${p.status}`;
       if (centralOk && has("bike")) return { sport: "bike", kind: push ? longPushKind : planned.type === "interval" ? "vo2" : "threshold", zone: push ? (availMin < 45 ? "z5" : "z4") : `z${Math.min(z, 4)}`, pivotedFrom: "run", reason: `Run → Bike: ${why}; central stable, keep metabolic stimulus concentric.` };
       if (centralOk && has("swim")) return { sport: "swim", kind: "threshold", zone: "z4", pivotedFrom: "run", reason: `Run → Swim: ${why}; zero-impact threshold.` };
       return { sport: "run", kind: "aerobic", zone: "z2", reason: `${why}; no concentric modality on record, run held at Z2.` };
@@ -368,7 +379,7 @@ function selectSportStimulus(input: {
     return { sport, kind: "planned", zone: `z${z}`, reason: "As planned." };
   }
   if (sport === "strength" || sport === "hyrox") {
-    const nmOk = r >= NEUROMUSCULAR_READINESS && p.status !== "high" && !(p.hoursSinceHighEccentric != null && p.hoursSinceHighEccentric < ECCENTRIC_SPACING_H);
+    const nmOk = r >= NEUROMUSCULAR_READINESS && p.status !== "high" && !(p.hoursSinceHighEccentric != null && p.hoursSinceHighEccentric < SPACING);
     if (sport === "hyrox" || input.raceBuild) {
       if (push || hard) return { sport: "hyrox", kind: "compromised", zone: "z4", reason: legsBlocked ? "Compromised intervals with erg (ski/row) replacing run: legs loaded." : "Compromised run + station lactate-clearance intervals." };
       return { sport, kind: "planned", zone: `z${z}`, reason: "As planned." };
