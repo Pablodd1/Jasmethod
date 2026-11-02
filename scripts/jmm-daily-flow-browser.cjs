@@ -271,6 +271,8 @@ async function journey(browser, language, width) {
     await page.locator('#answer-sleep').waitFor();
     for(const key of ['sleep','soreness','energy','stress','motivation'])assert.equal(await page.locator(`#answer-${key}`).inputValue(),'');
     assert.equal(await page.getByTestId('daily-input-context').count(),0);
+    for(const placeholder of ['e.g. 48','e.g. 62','e.g. 7.5'])assert.equal(await page.getByPlaceholder(placeholder,{exact:true}).isVisible(),false,'Optional objective entry is collapsed even without a device');
+    await page.getByText(language==='es'?'Mediciones y contexto adicionales (opcional)':'Additional measurements and context (optional)',{exact:true}).click();
     for(const placeholder of ['e.g. 48','e.g. 62','e.g. 7.5'])await page.getByPlaceholder(placeholder,{exact:true}).waitFor();
     await assertMobile(page,'no-device-questions',language,width,page.locator('#daily-questions'));
 
