@@ -93,6 +93,7 @@ function TrainingPageContent() {
   const [doubleDayConfirmed,setDoubleDayConfirmed]=useState(false);
   const [eventTradeoffsConfirmed,setEventTradeoffsConfirmed]=useState(false);
   const [preview, setPreview] = useState<any>(null);
+  const [manualBaselinePlanning, setManualBaselinePlanning] = useState(false);
   const [zones, setZones] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -167,6 +168,13 @@ function TrainingPageContent() {
     return () => { mounted.current = false; loadController.current?.abort(); };
   }, [user, load]);
 
+  useEffect(() => {
+    setManualBaselinePlanning(false);
+    setPreview(null);
+    setDoubleDayConfirmed(false);
+    setEventTradeoffsConfirmed(false);
+  }, [user?.id]);
+
   function updatePlanForm(next: typeof form) {
     setForm(next);
     setPreview(null);
@@ -185,7 +193,7 @@ function TrainingPageContent() {
       const res = await fetch("/api/plan/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({...form, confirmDoubleDay:confirmed&&doubleDayConfirmed, confirmEventTradeoffs:confirmed&&eventTradeoffsConfirmed, preview: !confirmed, previewToken: confirmed ? preview?.previewToken : undefined}),
+        body: JSON.stringify({...form, manualBaselinePlanning, confirmDoubleDay:confirmed&&doubleDayConfirmed, confirmEventTradeoffs:confirmed&&eventTradeoffsConfirmed, preview: !confirmed, previewToken: confirmed ? preview?.previewToken : undefined}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
@@ -409,6 +417,7 @@ function TrainingPageContent() {
                 ))}
               </select>
             </div>
+            <label className="flex gap-2 items-start text-sm"><input type="checkbox" checked={manualBaselinePlanning} onChange={e=>{setManualBaselinePlanning(e.target.checked);setPreview(null);setDoubleDayConfirmed(false);setEventTradeoffsConfirmed(false);}}/>{es ? "Usar mi volumen reciente declarado para un plan provisional si el historial importado no se puede analizar. La carga real sigue sin conocerse; revisaré el día antes de entrenar." : "Use my separately reported recent baseline for provisional planning when imported history cannot be analyzed. Actual load remains unknown; I will review the day before training."}</label>
             {planningReadiness && !planningReadiness.ready ? <a href={setupHref} className="btn-primary justify-center">Complete setup to preview</a> : <button
               type="submit"
               disabled={generating || loading || setupLoading || !!loadError || !!setupError || !planningReadiness?.ready || goalChanged}
