@@ -1,4 +1,4 @@
-# perf-engine v1–v3 — handoff (2026-11-02)
+# perf-engine v1–v4 — handoff (2026-11-02)
 
 Branch: `feat/perf-engine-v1`. Author: Claude (session with Dr. Jeffrey Draesel Jr.). To be completed by Codex.
 
@@ -28,7 +28,7 @@ Branch: `feat/perf-engine-v1`. Author: Claude (session with Dr. Jeffrey Draesel 
 
 ## Verification status
 - `npx tsc --noEmit` clean.
-- `npm test` (after v3): 2,251/2,252 pass. ESLint clean on changed files. The one failure (`sync-pilot-isolation.test.ts` "50 synthetic athletes … WHOOP lifecycle") **fails on the untouched baseline too** in this sandbox (prisma engine binary unavailable). Not caused by this change.
+- `npm test` (after v4): 2,256/2,257 pass. ESLint clean on changed files. `next build` passes (Google Fonts mocked in the sandbox). The one failure (`sync-pilot-isolation.test.ts` "50 synthetic athletes … WHOOP lifecycle") **fails on the untouched baseline too** in this sandbox (prisma engine binary unavailable). Not caused by this change.
 - **NOT done:** `npm run build`, preview deploy, live probe (AGENTS.md §3 ladder). Prisma client was generated with `--no-engine` here.
 
 ## Open tasks for Codex (in priority order)
@@ -117,7 +117,35 @@ Bosquet 2007 / Mujika: cut volume 41–60% over 8–14 days, keep intensity, kee
 17. **Onboarding answers → fields:** chat already proposes `goal`, `weeklyHours`, `birthYear`, `experience`, `ftp`, `sex`, `hasSmartTrainer`, `bikeType`. Add extraction for longest session per sport, recent race result (to seed pace/power anchors), injury history (store as a coach-review note, not a diagnosis), and pool access.
 18. **Anchor retests:** when `anchorsStale` is non-empty, offer a scheduled test session (the protocols module has test templates) rather than only a question.
 19. **RED-S "yes" answer:** route to a clinician-review hold. Do not store the answer in AI-eligible context.
-20. **Build verification:** `next build` could not run in the sandbox (Google Fonts download blocked). Run it in CI or Vercel preview.
+20. **Build verification:** done in v4 with mocked fonts; still run a real CI/Vercel preview build.
+
+## v4 — every step in every unit + kilojoule energy accounting (commit 5)
+
+**Goal:** every step, work *and* rest, is described so the athlete can use whatever tool they have (heart rate, power, running power, pace, CSS, zones, RPE). Each session gets a kilojoule (kJ) cost to compare workouts, size fueling and tie into pre/post weigh-ins for hydration.
+
+| Area | File | Change |
+|---|---|---|
+| Energy + guides (new, pure) | `src/lib/workout-energy.ts` | `stepGuide`: zone · RPE + feel · W (%FTP) · pace (/km or /mi, %threshold) · %run-CP · bpm (%LTHR; swim HR note) · ≈kJ, in en/es. Absolute numbers only from the evidence-gated `TargetProfile`; percentages always shown. `sessionEnergy`: work kJ, kcal, kJ/h, kJ/kg, high-intensity kJ (Z4+) and %, carbs burned (CHO fraction by zone), carb intake target (canonical fuel curve) and % replaced, fluid plan from measured sweat rate or weigh-in prompt, recovery-carb note when ≥200 g used. `actualSessionKj`: measured power → device calories → MET estimate. `compareSessions` |
+| Prescription | `src/lib/effective-prescription.ts` | Ready sessions: each canonical step gets `guide` + `guideEs`; the prescription gets `energy` + `energyEs`. Display-only fields, **not part of the revision hash or FIT export** |
+| Athlete model | `src/lib/athlete-model.ts` | `kjLast7`, `kjWeeklyAvg28`, `kjSources` (power / device-calories / estimate) + note "this week X kJ vs 4-week average Y kJ" |
+| Today UI | `src/app/today/page.tsx` | Step cards and list rows show the full guide line. New "Energy and load (kJ)" panel: work, kcal, kJ/h, high-intensity kJ, carbs used vs carbs to take, method note, hydration (weigh before/after), recovery carbs |
+| Build fix | `src/app/api/coach/route.ts` | `GET(request: Request)`: the optional parameter from v1 failed Next's route type check. **`next build` now passes** (fonts mocked in the sandbox) |
+| Tests | `src/lib/workout-energy.test.ts` | 5 tests: units per sport incl. rest steps, no invented absolute HR, power vs MET methods, carb/recovery logic, actual kJ sources, weekly kJ |
+
+### How kJ is computed (and what it is not)
+- **Bike with FTP:** mechanical work = Σ zone-midpoint watts × seconds / 1000, which is what a power meter reports. With ~24% gross efficiency, **1 kJ of work ≈ 1 kcal burned**.
+- **Run / swim / HYROX / strength without power:** METs (Ainsworth 2011) × body mass × hours, reported on the same kJ ≈ kcal scale and always labelled *estimate*.
+- **Completed sessions:** measured average power × time first, then device calories, then the estimate.
+- **Carbs burned:** kcal × CHO fraction (Z1 35%, Z2 45%, Z3 65%, Z4 85%, Z5+ 95%; Romijn 1993, van Loon 2001) ÷ 4.
+- **kJ is not tissue damage.** Session cost is shown as two parts: *metabolic* (high-intensity kJ, which empties glycogen) and *musculoskeletal* (eccentric load from the engine, used for run/plyo spacing).
+
+### Additional open tasks for Codex (v4)
+21. **Running power:** no run-CP profile field exists, so the guide shows %run-CP only. Add `runCp` (W) + evidence test type to show watts.
+22. **Bike-specific vs run LTHR:** one `lthr` is used for all sports, with a note for swim. Add sport-specific LTHR if athletes provide them.
+23. **Actual vs planned kJ** on the post-workout review (`activity-analysis`), using stream power when available. Persist actual kJ per workout to trend weekly kJ.
+24. **Sweat rate loop:** after pre/post weights are saved, recompute `profile.sweatRateMlH` (observed, dated) so the fluid plan becomes personal automatically.
+25. **FIT/Garmin export:** consider adding the guide text to the workout step description where the device supports it (keep ≤180 bytes).
+26. **CI build:** the sandbox needed `NEXT_FONT_GOOGLE_MOCKED_RESPONSES`; CI/Vercel builds fetch real fonts.
 
 ## AI model recommendation
 **Primary: OpenAI `gpt-6-luna`** via the existing direct-OpenAI path (`OPENAI_COACH_MODEL=gpt-6-luna`).

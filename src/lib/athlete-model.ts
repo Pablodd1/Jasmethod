@@ -19,11 +19,12 @@
 
 import { ZONE_RPE } from "./performance-engine";
 import type { Level } from "./periodization";
+import { actualSessionKj } from "./workout-energy";
 
 export interface HistoryWorkout {
   date: Date | string; sport: string; type?: string | null; intensity?: string | null;
   durationMin?: number | null; actualDurationMin?: number | null; rpe?: number | null;
-  avgHr?: number | null; avgPower?: number | null; distanceKm?: number | null;
+  avgHr?: number | null; avgPower?: number | null; distanceKm?: number | null; calories?: number | null;
   completed?: boolean | null; planned?: boolean | null; feedbackStatus?: string | null;
   matchedPlanId?: string | null; source?: string | null;
 }
@@ -31,7 +32,7 @@ export interface HistoryMetric { date: Date | string; hrv?: number | null; hrvTy
 export interface ProfileFacts {
   sex?: string | null; birthYear?: number | null; experience?: string | null; weeklyHours?: number | null;
   goal?: string | null; lthr?: number | null; maxHr?: number | null; ftp?: number | null; runPaceBase?: number | null; swimPaceBase?: number | null;
-  raceDate?: Date | null; injured?: boolean | null; hasSmartTrainer?: boolean | null; bikeType?: string | null;
+  raceDate?: Date | null; injured?: boolean | null; hasSmartTrainer?: boolean | null; bikeType?: string | null; weightKg?: number | null;
 }
 export interface OnboardingQuestion { id: string; field: string | null; en: string; es: string; why: string }
 
@@ -54,6 +55,9 @@ export interface AthleteModel {
   rpeBias: number | null;            // mean(actual − intended RPE), last 28 d
   personalRecoveryH: number | null;  // median hours for HRV to return within SWC after key sessions
   anchorsStale: string[];            // targets that need a retest
+  kjLast7: number | null;            // work-equivalent kJ, last 7 days (power, device kcal, or estimate)
+  kjWeeklyAvg28: number | null;      // 4-week weekly average, same scale
+  kjSources: Record<string, number>; // how each session's kJ was obtained
   onboarding: OnboardingQuestion[];
   notes: string[];
 }
@@ -159,5 +163,14 @@ export function buildAthleteModel(input: { history: HistoryWorkout[]; metrics: H
   ask("energy", null, "In the last 3 months: frequent illness, unexplained fatigue, stress fractures, or (if applicable) missed periods?", "En los últimos 3 meses: ¿enfermedades frecuentes, fatiga sin explicación, fracturas por estrés o (si aplica) reglas ausentes?", "RED-S screening (IOC 2023). A yes means review with a clinician before hard training.");
   if (!p.hasSmartTrainer && !p.bikeType && !sports.includes("bike")) ask("equipment", "hasSmartTrainer", "Do you have access to a bike or indoor trainer? A pool?", "¿Tienes bici o rodillo? ¿Piscina?", "Lets the coach move hard work off your legs when needed.");
 
-  return { version: "athlete-model-v1", coverageDays, sessions28: last28.length, hoursPerWeek28, sports, longestRecentMin, coldStart, level, levelSource, ageYears, ageBand, sex, spacingH, keyCap, pushAllowed, rpeBias, personalRecoveryH, anchorsStale, onboarding: q, notes };
+  // Energy workload on one scale (kJ ≈ kcal): compare this week with the 4-week norm.
+  const kjSources: Record<string, number> = {};
+  const kjOf = (w: HistoryWorkout) => { const r = actualSessionKj({ sport: w.sport, avgPower: w.avgPower, actualDurationMin: w.actualDurationMin, durationMin: actualMinutes(w), calories: w.calories ?? null, intensity: inferZone(w, p) }, { weightKg: p.weightKg ?? null }); kjSources[r.source] = (kjSources[r.source] ?? 0) + 1; return r.kj; };
+  const kj28 = last28.map(kjOf);
+  const allKnown = kj28.every(k => k != null) && kj28.length > 0;
+  const kjLast7 = allKnown ? last28.reduce((a, w, i) => a + (t(w.date) > nowT - 7 * DAY ? kj28[i]! : 0), 0) : null;
+  const kjWeeklyAvg28 = allKnown && coverageDays >= 21 ? Math.round(kj28.reduce((a, k) => a + k!, 0) / 4) : null;
+  if (kjLast7 != null && kjWeeklyAvg28) notes.push(`This week ${kjLast7} kJ vs 4-week average ${kjWeeklyAvg28} kJ (${Math.round((kjLast7 / kjWeeklyAvg28 - 1) * 100)}%).`);
+
+  return { version: "athlete-model-v1", kjLast7, kjWeeklyAvg28, kjSources, coverageDays, sessions28: last28.length, hoursPerWeek28, sports, longestRecentMin, coldStart, level, levelSource, ageYears, ageBand, sex, spacingH, keyCap, pushAllowed, rpeBias, personalRecoveryH, anchorsStale, onboarding: q, notes };
 }

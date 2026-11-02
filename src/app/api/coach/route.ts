@@ -12,7 +12,7 @@ import { estimateTss } from "@/lib/performance-engine";
 import { stepsText } from "@/lib/prescription";
 
 // GET /api/coach — gathers the athlete's day and asks JASAI for a briefing
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const now = new Date(), { start, end } = dayBounds(user.timezone, now);
@@ -149,7 +149,7 @@ export async function GET(request?: Request) {
     };
     // External narration requires: per-request named consent (?aiConsent=openai), no Strava rows,
     // no Strava connector, no Strava-adopted profile values (Strava API Agreement: no AI use).
-    const consent = request ? new URL(request.url).searchParams.get("aiConsent") === "openai" : false;
+    const consent = request?.url ? new URL(request.url).searchParams.get("aiConsent") === "openai" : false;
     const stravaConnector = consent ? await prisma.connector.findFirst({ where: { userId: user.id, provider: "strava" }, select: { id: true } }) : null;
     const eligible = consent && !stravaConnector && restricted4w.length === 0 && workouts4w.every(w => w.source !== "strava") && !Object.values(profile || {}).includes("strava");
     science = await getScienceBriefing(telemetry, { eligible });

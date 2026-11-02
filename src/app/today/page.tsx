@@ -572,6 +572,7 @@ function TodayPageContent() {
                               </span>
                             </div>
                             <div className="pl-9 text-sm mt-1">{s.target?.label}</div>
+                            {s.guide?.text && <div className="pl-9 text-xs text-slate-700 mt-1 leading-snug">{es && s.guideEs ? s.guideEs : s.guide.text}</div>}
                             {s.target?.missingReason && <p className="pl-9 text-xs">{s.target.missingReason}</p>}
                             <div className="mt-1.5 pl-9 font-semibold">{endpointLabel(s.endpoint, data?.units !== "imperial", session.sport, es ? "es" : "en")}</div>
                             {s.note && (
@@ -603,6 +604,7 @@ function TodayPageContent() {
                               </strong>
                             </div>
                             <p className="text-sm mt-1">{s.target?.label}</p>
+                            {s.guide?.text && <p className="text-xs text-slate-700 mt-1 leading-snug">{es && s.guideEs ? s.guideEs : s.guide.text}</p>}
                             {s.target?.missingReason && <p className="text-xs">{s.target.missingReason}</p>}
                             {s.note && (
                               <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
@@ -618,6 +620,31 @@ function TodayPageContent() {
                     <p>{session.verdict === "blocked" ? readinessReasonText(session.resolutionReason, es) : (es ? "Descanso hoy." : "Rest today.")}</p>
                   </div>
                 )}
+                {session.durationMin > 0 && session.prescription.energy && (() => {
+                  const en = es && session.prescription.energyEs ? session.prescription.energyEs : session.prescription.energy;
+                  const cell = (label: string, value: unknown, unit = "") => (
+                    <div className="rounded-lg bg-white border border-slate-200 px-2 py-1.5">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
+                      <div className="text-sm font-semibold">{value == null ? "—" : `${String(value)}${unit}`}</div>
+                    </div>
+                  );
+                  return (
+                    <section aria-label={es ? "Energía de la sesión" : "Session energy"} className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-600">{es ? "Energía y carga (kJ)" : "Energy and load (kJ)"}</div>
+                      <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+                        {cell(es ? "Trabajo" : "Work", en.workKj, " kJ")}
+                        {cell("kcal", en.kcal)}
+                        {cell(es ? "kJ/hora" : "kJ/hour", en.kjPerHour)}
+                        {cell(es ? "Alta intensidad" : "High-intensity", en.highIntensityKj == null ? null : `${en.highIntensityKj} kJ (${en.highIntensityPct}%)`)}
+                        {cell(es ? "CHO usado" : "Carbs used", en.carbsBurnedG, " g")}
+                        {cell(es ? "CHO a tomar" : "Carbs to take", en.carbsIntakeTargetG, " g")}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-600">{en.note}</p>
+                      <p className="mt-1 text-xs text-slate-700">💧 {en.hydrationNote}</p>
+                      {en.recoveryCarbNote && <p className="mt-1 text-xs text-slate-700">🍚 {en.recoveryCarbNote}</p>}
+                    </section>
+                  );
+                })()}
                 {session.durationMin > 0 && (
                   <details>
                     <summary className="cursor-pointer font-medium">
