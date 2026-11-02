@@ -1,3 +1,5 @@
+import { verifiedDeviceReview } from "./device-checkin";
+import { readDailyInputContext, type DailyInputContext } from "./daily-input-context";
 import { isStarterSession, starterRestriction } from "./starter-session";
 import { isUnperformedSupersededWorkout } from "./superseded-workout";
 import { currentOrReportedWorkoutWhere, isCurrentOrReportedWorkout, isCurrentWorkout, hasWorkoutReport } from "./calendar-workouts";
@@ -59,6 +61,7 @@ export interface EffectiveRecords {
   currentCheckin?: { date: Date; answers?: string | null; adaptation?: string | null } | null;
   planning?: ReturnType<typeof assessPlanningSetup>;
   maxDailyMinutes?: number | null;
+  deviceContext?: DailyInputContext | null;
   revisionContext?: unknown;
   reportedActivity?: ReportedActivity[];
   sameDaySessions?: Record<string, any>[];
@@ -78,7 +81,7 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
   const environment = assessDailyEnvironment({ record: input.environment?.record ?? null, revision: input.environment?.revision ?? null, athleteId: userId, sessionId: workout.id, dateLocal: key, timezone, startTime: workout.startTime, now });
   const dateValid = input.checkin && dateKey(input.checkin.date, timezone) === key;
   const answers = dateValid ? parsed(input.checkin?.answers) : null;
-  const reportedSafety = resolveCheckinSafety(answers);
+  const reportedSafety = resolveCheckinSafety(answers, verifiedDeviceReview(answers, input.deviceContext, userId, now));
   const current = input.currentCheckin && dateKey(input.currentCheckin.date, timezone) === today
     ? resolveCheckinSafety(parsed(input.currentCheckin.answers)) : null;
   const adaptation = dateValid ? parsed(input.checkin?.adaptation) : null;
@@ -208,7 +211,7 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
     durationMin: canonical.durationMin, intensity: canonicalFuelIntensity(canonical, prescription.intensity, profile), startTime: workout.startTime, verdict: canonical.verdict }, now);
   return { workout, prescription, canonical, targetProfile: profile, nutrition, existingReview: review };
 }
-type EffectivePrescriptionReader = Pick<typeof prisma, "workout" | "trainingPlan" | "athleteProfile" | "user" | "auditLog" | "supplementProfile" | "dailyCheckin" | "benchmarkTest" | "race">;
+type EffectivePrescriptionReader = Pick<typeof prisma, "workout" | "trainingPlan" | "athleteProfile" | "user" | "auditLog" | "supplementProfile" | "dailyCheckin" | "benchmarkTest" | "race" | "metricObservation" | "connector">;
 export async function effectivePrescription(userId: string, workoutId: string, db: EffectivePrescriptionReader = prisma) {
   const [workout, profile, user, setup, applied, supplement, environment,activityDecisions, activePlan] = await Promise.all([
     db.workout.findFirst({ where: { id: workoutId, userId }, include: { planDay: { select: { dayOff: true, plan: { select: { id: true, status: true, userId: true } } } } } }),
@@ -240,7 +243,9 @@ export async function effectivePrescription(userId: string, workoutId: string, d
     readExistingReviewResetAudits(userId,timezone,db),
   ]);
   if(profile?.raceDate && dateKey(profile.raceDate,timezone)===dateKey(workout.date,timezone)) currentEvents.push({id:"profile-event",userId,date:new Date(`${dateKey(profile.raceDate,timezone)}T00:00:00Z`)});
+  const deviceContext = parsed(checkin?.answers)?.inputMetadata?.deviceReview
+    ? await readDailyInputContext(userId, timezone, db) : null;
   const restrictedStarter = isStarterSession(workout) && starterRestriction(profile,setup.setup);
   const currentPrescription = isCurrentWorkout(workout, userId, activePlan?.id ?? null);
-  return effectiveSessionFromRecords({ userId, timezone, workout: restrictedStarter ? {...workout, source:"restricted-starter"} : workout, currentPrescription, environment, currentEvents, profile: evidencedTargetProfile(profile ? {...profile, units: unitsOf(profile.units, user.language)} : null, tests, appliedIds, new Date(), timezone), checkin, currentCheckin, reportedActivity, sameDaySessions, activityDecisions, resetAudits, doubleDayContext:{preference:setup.setup?.doubleDay,setupRevision:setup.revision,source:setup.setup?.source}, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
+  return effectiveSessionFromRecords({ userId, timezone, deviceContext, workout: restrictedStarter ? {...workout, source:"restricted-starter"} : workout, currentPrescription, environment, currentEvents, profile: evidencedTargetProfile(profile ? {...profile, units: unitsOf(profile.units, user.language)} : null, tests, appliedIds, new Date(), timezone), checkin, currentCheckin, reportedActivity, sameDaySessions, activityDecisions, resetAudits, doubleDayContext:{preference:setup.setup?.doubleDay,setupRevision:setup.revision,source:setup.setup?.source}, planning: assessPlanningSetup(profile, setup.setup, new Date(), "daily"), maxDailyMinutes: setup.setup?.maxSessionMinutes, revisionContext: { sourceProfile: profile, setupRevision: setup.revision, supplement, anchorEvidence: tests.map(t => [t.id, t.type, t.date, t.result]) } });
 }

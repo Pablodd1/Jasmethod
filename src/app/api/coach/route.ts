@@ -147,12 +147,9 @@ export async function GET(request: Request) {
       fuelGPerH: rx.durationMin ? carbsPerHourFor(rx.durationMin, rx.intensity || "z1", profile?.gutTrained === true) : null,
       pivot: rx.engine?.pivot ?? null,
     };
-    // External narration requires: per-request named consent (?aiConsent=openai), no Strava rows,
-    // no Strava connector, no Strava-adopted profile values (Strava API Agreement: no AI use).
-    const consent = request?.url ? new URL(request.url).searchParams.get("aiConsent") === "openai" : false;
-    const stravaConnector = consent ? await prisma.connector.findFirst({ where: { userId: user.id, provider: "strava" }, select: { id: true } }) : null;
-    const eligible = consent && !stravaConnector && restricted4w.length === 0 && workouts4w.every(w => w.source !== "strava") && !Object.values(profile || {}).includes("strava");
-    science = await getScienceBriefing(telemetry, { eligible });
+    // Device-derived telemetry needs verified permission for every ancestor.
+    // A query flag and absence of Strava cannot establish that permission.
+    science = await getScienceBriefing(telemetry, { eligible: false });
   }
 
   return NextResponse.json({ briefing, science, cached: briefing.mode === "fallback" ? false : true });

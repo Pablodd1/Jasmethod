@@ -1,3 +1,4 @@
+import { deviceCheckinEvidence, verifiedDeviceReview, deviceReviewRequiresManual } from "@/lib/device-checkin";
 import { isStarterSession, starterRestriction } from "@/lib/starter-session";
 import { isUnperformedSupersededWorkout } from "@/lib/superseded-workout";
 import { currentOrReportedWorkoutWhere, currentWorkoutWhere, hasWorkoutReport } from "@/lib/calendar-workouts";
@@ -96,7 +97,7 @@ export async function GET(req: Request) {
     const starterReady = !!starter && isStarterSession(starter) && !starterRestriction(profile,planning.setup);
     const biometricPolicy = derivedActivityPolicy(metrics);
     const sameType = (biometricPolicy.status === "allowed" ? metrics : []).filter(
-      (m) => Number.isFinite(m.hrv) && m.hrv! > 0 && m.hrv! <= 300 && m.source === metrics[0]?.source && (m.hrvType || "rmssd") === (metrics[0]?.hrvType || "rmssd"),
+      (m) => Number.isFinite(m.hrv) && m.hrv! > 0 && m.hrv! <= 300 && m.source === metrics[0]?.source && ["rmssd", "sdnn"].includes(m.hrvType ?? "") && m.hrvType === metrics[0]?.hrvType,
     );
     let readiness: ReturnType<typeof hrvReadiness> | null = null;
     if (sameType.length >= 4 && sameType[0].date >= start && sameType[0].date < end) {
@@ -111,12 +112,16 @@ export async function GET(req: Request) {
       );
       if (hrvComparison.hrvStatus !== "insufficient") readiness = { ...hrvComparison, advice: "Derived comparison with your recent HRV readings. It is not a diagnosis or permission to increase training; current symptoms and the reviewed plan take priority." };
     }
+    const inputContext = await readDailyInputContext(user.id, user.timezone, prisma);
+    let reportedHold = profile?.injured === true;
+    try { const prior = JSON.parse(checkin?.answers || "{}"); reportedHold ||= deviceReviewRequiresManual(prior, JSON.parse(checkin?.adaptation || "null")); } catch { reportedHold = true; }
+    const deviceReview = actor.id === user.id && !reportedHold ? deviceCheckinEvidence(inputContext, user.id) : null;
     let displayedCheckin = checkin;
     let currentSafetyClear = false;
     if (checkin) {
       let answers: Checkin = {};
       try { const parsed = JSON.parse(checkin.answers || "{}"); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) answers = parsed; } catch { /* Fail closed below. */ }
-      const safety = resolveCheckinSafety(profile?.injured ? { ...answers, newPain: true } : answers);
+      const safety = resolveCheckinSafety(profile?.injured ? { ...answers, newPain: true } : answers, verifiedDeviceReview(answers, inputContext, user.id));
       const setup = assessPlanningSetup(profile, planning.setup, new Date(), "daily");
       currentSafetyClear = safety.status === "clear" && (setup.ready || starterReady);
       let savedAdaptation: any = null;
@@ -133,7 +138,7 @@ export async function GET(req: Request) {
       currentSafetyClear = currentSafetyClear && Boolean(validSaved);
       if (safety.status === "clear" && !setup.ready && !starterReady) displayedCheckin = { ...checkin, adaptation: JSON.stringify({ score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "unknown", ruleId: setup.ruleId, message: `Complete or review athlete setup before individualized training. ${[...setup.missing, ...setup.review].join("; ")}` }) };
     }
-    const inputContext = await readDailyInputContext(user.id, user.timezone, prisma);
+
     if (!trainingViewDisclosureAllowed(actor.id, user.id, [...previousSessions, ...metrics], inputContext)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
     const currentWorkouts=checkin?await prisma.workout.findMany({where:{AND:[currentWorkoutWhere(user.id,activePlan?.id??null),{date:{gte:start,lt:end}}]},orderBy:[{startTime:"asc"},{id:"asc"}],take:50}):[];
     if(!trainingViewDisclosureAllowed(actor.id,user.id,currentWorkouts,inputContext))throw new ApiError(ACTIVITY_DISCLOSURE_REASON,403);
@@ -141,6 +146,7 @@ export async function GET(req: Request) {
     const prescriptions=currentResolved.flatMap(r=>r?[{...r.prescription,sessionId:r.canonical.id,canonical:r.canonical,nutrition:r.nutrition}]:[]);
     return NextResponse.json({
       inputContext,
+      deviceReview,
       prescriptions,
       checkin: displayedCheckin,
       feedbackDate,
@@ -169,7 +175,10 @@ export async function POST(req: Request) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ApiError("Expected a check-in object");
     const b: Record<string, any> = { ...raw };
     if (b.mode === "review_existing") return NextResponse.json(await reviewExistingWorkout(actor.id, user, b), { headers: { "Cache-Control": "private, no-store" } });
-    if (b.mode !== undefined) throw new ApiError("Unknown check-in mode");
+    const deviceMode = b.mode === "device_assisted";
+    if (b.mode !== undefined && !deviceMode) throw new ApiError("Unknown check-in mode");
+    if (deviceMode && (actor.id !== user.id || b.recoveryUnchanged !== true || b.confirmed !== true)) throw new ApiError("Confirm your current recovery and symptoms yourself", 400);
+    if (deviceMode && [...SUBJECTIVE_FIELDS, "mood", "sessionFelt", "rhr", "hrv", "sleepHours"].some(k => b[k] != null && b[k] !== "")) throw new ApiError("Use the manual review to report recovery ratings or correct measurements");
     const checkin: Checkin = {};
     try {
       for (const field of SUBJECTIVE_FIELDS) checkin[field] = optionalCheckinNumber(b[field], field, 1, 5, true);
@@ -237,6 +246,8 @@ export async function POST(req: Request) {
         readDailyInputContext(user.id, user.timezone, prisma),
       ],
     );
+    const deviceEvidence = deviceMode ? deviceCheckinEvidence(inputContext, user.id) : null;
+    if (deviceMode && (!deviceEvidence || b.deviceRevision !== deviceEvidence.revision)) throw new ApiError("Device readings changed or are unavailable. Reload or use the manual check-in.", 409);
     const history = metrics.filter((m) => m.date < start);
     const biometricPolicy = derivedActivityPolicy(metrics);
     const importedRhr = inputContext.metrics.restingHr.selected;
@@ -250,13 +261,13 @@ export async function POST(req: Request) {
     if (rhrs.length >= 3)
       checkin.rhrBaseline = rhrs.reduce((a, b) => a + b, 0) / rhrs.length;
     // Profile restriction influences the decision without rewriting the athlete's report.
-    let adaptation = adaptSession(profile?.injured ? { ...checkin, newPain: true } : checkin);
+    let adaptation = adaptSession(profile?.injured ? { ...checkin, newPain: true } : checkin, !!deviceEvidence);
     const importedHrv = inputContext.metrics.hrvRmssd.selected ?? inputContext.metrics.hrvSdnn.selected;
     const hrv = b.hrv != null ? Number(b.hrv) : importedHrv?.value;
     const hrvType = b.hrv != null ? "rmssd" : inputContext.metrics.hrvRmssd.selected ? "rmssd" : "sdnn";
     const hrvSource = b.hrv != null ? "manual" : importedHrv?.source;
     const hrvs = (biometricPolicy.status === "allowed" ? history : [])
-      .filter((m) => m.hrv != null && Number.isFinite(m.hrv) && m.hrv > 0 && m.hrv <= 300 && hrvSource && m.source === hrvSource && (m.hrvType || "rmssd") === hrvType)
+      .filter((m) => m.hrv != null && Number.isFinite(m.hrv) && m.hrv > 0 && m.hrv <= 300 && hrvSource && m.source === hrvSource && m.hrvType === hrvType)
       .slice(-7)
       .map((m) => m.hrv!);
     const hrvMean =
@@ -332,11 +343,15 @@ export async function POST(req: Request) {
           .map(w => ({ date: w.date, sport: w.actualSport || w.sport, type: w.type, intensity: inferZone(w as any, profile as any) ?? w.intensity, rpe: w.rpe,
             // A plain "completed" planned session counts at its planned duration; partial without actual minutes stays unknown.
             minutes: w.actualDurationMin ?? (w.feedbackStatus === "partial" ? null : w.planned ? w.durationMin : activityActualMinutes(w as any)) }));
-        const deviceMetrics: MetricRow[] = biometricPolicy.status === "allowed" ? metrics60 : [];
+        const deviceMetrics: MetricRow[] = biometricPolicy.status === "allowed" ? (deviceEvidence ? [
+          ...metrics60.filter(m => m.source === deviceEvidence.source && m.date < start && m.hrvType === hrvType),
+          { date: new Date(importedHrv!.observedAt), source: deviceEvidence.source, hrv: importedHrv!.value, hrvType,
+            restingHr: importedRhr!.value, sleepHours: inputContext.metrics.sleepHours.selected!.value },
+        ] : metrics60) : [];
         let firstCoaching: string | null = null; try { firstCoaching = todayPlanned[0] ? baseWorkout(todayPlanned[0])?.coaching?.phase ?? null : null; } catch {}
         const dayPhase = planContextFor(firstCoaching).phase;
         const asLoad = (w: (typeof loadWindow)[number]): LoadRow => ({ date: w.date, sport: w.sport, type: w.type, intensity: w.intensity, rpe: null, minutes: w.durationMin });
-        const decision = decidePerformance({ base: adaptation, subjective: checkin, metrics: deviceMetrics, loadRows, pushEnabled: process.env.ADAPTIVE_PUSH_ENABLED === "true",
+        const decision = decidePerformance({ base: adaptation, subjective: checkin, metrics: deviceMetrics, loadRows, pushEnabled: !deviceMode && process.env.ADAPTIVE_PUSH_ENABLED === "true",
           quality: { level, phase: dayPhase, plannedHard: todayPlanned.some(w => isKeySession(asLoad(w))), nextDayKey: tomorrow.some(w => isKeySession(asLoad(w))),
             keyCap: model.keyCap, pushAllowed: model.pushAllowed, pushBlockReason: model.coldStart ? `first block: ${model.coverageDays} d of history (<21)` : model.ageBand === "youth" ? "youth athlete: no automatic overload" : profile?.injured ? "injury flag" : undefined, lastKeyExecution } });
         adaptation = applyPerformance(adaptation, decision);
@@ -348,9 +363,31 @@ export async function POST(req: Request) {
     const busyHrs = busyHours(appointments, key, user.timezone);
     const busyNote = `${appointments.length} calendar commitments, ${busyHrs.toFixed(1)} hours busy.`;
     const saved = await prisma.$transaction(async (tx) => {
+      if (deviceEvidence) {
+        const prior = await tx.dailyCheckin.findUnique({where:{userId_date:{userId:user.id,date:start}}});
+        let priorAnswers: any;
+        try { priorAnswers = JSON.parse(prior?.answers || "{}"); } catch { throw new ApiError("Review the existing check-in manually",409); }
+        if (profile?.injured || deviceReviewRequiresManual(priorAnswers, JSON.parse(prior?.adaptation || "null"), checkin.availableMin)) throw new ApiError("Review today's reported symptoms manually",409);
+        const [latestFeedback, latestReports, latestDecisions] = await Promise.all([
+          tx.workout.findMany({where:{AND:[currentOrReportedWorkoutWhere(user.id, activePlan?.id ?? null),{date:{gte:new Date(start.getTime()-3*86400000),lt:start}}]},orderBy:{date:"desc"}}),
+          tx.workout.findMany({where:{userId:user.id,date:{gte:start,lt:end},OR:[{feedbackAt:{not:null}},{planned:false},{completed:true}]}}),
+          readActivityDecisions(user.id,tx),
+        ]);
+        const rowsRevision = (rows: {id:string}[]) => JSON.stringify([...rows].sort((a,b)=>a.id.localeCompare(b.id)));
+        if (rowsRevision(latestFeedback) !== rowsRevision(feedback) || rowsRevision(latestReports) !== rowsRevision(sameDayReports) || JSON.stringify(latestDecisions) !== JSON.stringify(activityDecisions)) throw new ApiError("Training reports changed. Reload before confirming.",409);
+        const freshContext = await readDailyInputContext(user.id, user.timezone, tx);
+        if (deviceCheckinEvidence(freshContext, user.id)?.revision !== deviceEvidence.revision) throw new ApiError("Device readings changed. Reload before confirming.", 409);
+      }
       // Read the authoritative current plan in the same transaction that
       // allocates today's minutes. Replaced suggestions cannot spend them.
+      if (deviceEvidence) {
+        const [currentProfile, currentSetup] = await Promise.all([
+          tx.athleteProfile.findUnique({where:{userId:user.id}}), readPlanningSetup(user.id,tx),
+        ]);
+        if (JSON.stringify(currentProfile) !== JSON.stringify(profile) || currentSetup.revision !== planning.revision) throw new ApiError("Athlete setup changed. Reload before confirming.",409);
+      }
       const currentPlan = await tx.trainingPlan.findFirst({ where: { userId: user.id, status: "active" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
+      if (deviceEvidence && currentPlan?.id !== activePlan?.id) throw new ApiError("Training cycle changed. Reload before confirming.",409);
       const candidates = await tx.workout.findMany({
         where: {
           AND: [currentWorkoutWhere(user.id, currentPlan?.id ?? null)],
@@ -482,7 +519,7 @@ export async function POST(req: Request) {
         availableMin: checkin.availableMin ?? null,
         sleepHours: b.sleepHours ?? inputContext.metrics.sleepHours.selected?.value ?? null,
         hrv: hrv ?? null,
-        inputMetadata: { version: CHECKIN_SAFETY_VERSION, source: actor.id !== user.id ? "coach-entered" : b.voiceReviewConfirmed === true ? "athlete-confirmed-voice" : "athlete-reported", observedOn: key, recordedAt: new Date().toISOString(), missingFields: adaptation.missingFields || [],
+        inputMetadata: { deviceReview: deviceEvidence ? { ...deviceEvidence, athleteId: user.id, recoveryUnchanged: true } : null, version: CHECKIN_SAFETY_VERSION, source: actor.id !== user.id ? "coach-entered" : b.voiceReviewConfirmed === true ? "athlete-confirmed-voice" : "athlete-reported", observedOn: key, recordedAt: new Date().toISOString(), missingFields: adaptation.missingFields || [],
           rhrSource: b.rhr != null ? "athlete-reported" : importedRhr?.source ?? "unknown",
           hrvType: hrv == null ? null : hrvType, hrvSource: b.hrv != null ? "athlete-reported" : importedHrv?.source ?? "unknown",
           sleepHoursSource: b.sleepHours != null ? "athlete-reported" : inputContext.metrics.sleepHours.selected?.source ?? "unknown" },

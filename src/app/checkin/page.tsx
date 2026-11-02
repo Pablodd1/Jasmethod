@@ -86,6 +86,9 @@ function CheckinPageContent() {
   const [draftNotice,setDraftNotice] = useState("");
   const [result, setResult] = useState<any>(null);
   const [inputContext, setInputContext] = useState<DailyInputContext | null>(null);
+  const [deviceReview, setDeviceReview] = useState<{revision:string;source:string;dateLocal:string} | null>(null);
+  const [manualReview, setManualReview] = useState(false);
+  const [deviceConfirmed, setDeviceConfirmed] = useState(false);
   const [correctImported, setCorrectImported] = useState(false);
   const [previousSessions, setPreviousSessions] = useState<any[]>([]);
   const [feedbackDate, setFeedbackDate] = useState("");
@@ -147,6 +150,8 @@ function CheckinPageContent() {
   function applyHeard() {
     if(unitErrors.voiceWeight){setErr(unitErrors.voiceWeight);return;}
     if (!heard || !heard.supportedLanguage) return;
+    setManualReview(true);
+    setDeviceConfirmed(false);
     const fields = ["sleep", "soreness", "energy", "motivation", "stress", "weightKg", "rhr", "hrv", "sleepHours", "availableMinutes", "sick", "menstrual", "newPain", "urgentSymptoms"] as const;
     setAnswers((a: any) => {
       const next = { ...a, voiceReviewConfirmed: true };
@@ -162,6 +167,8 @@ function CheckinPageContent() {
     const d = await res.json();
     if (!res.ok) throw new Error(d.error || "Could not load check-in");
     setInputContext(d.inputContext || null);
+    setDeviceReview(d.deviceReview || null);
+    setDeviceConfirmed(false);
     if (user?.id && typeof d.localToday === "string") {
       try {
         const savedBasis=d.checkin?.answers ?? null,manual=savedCheckinAnswers(savedBasis);
@@ -290,7 +297,9 @@ function CheckinPageContent() {
     setBusy(true); setErr("");
     try {
       if(unitErrors.morningWeight)throw Error(unitErrors.morningWeight);
-      const submitted = { ...answers };
+      const short = deviceReview && !manualReview;
+      if (short && !deviceConfirmed) throw Error(lang === "es" ? "Confirma tu estado o usa la revisi\u00f3n manual." : "Confirm how you feel or use the manual review.");
+      const submitted: any = short ? { mode: "device_assisted", deviceRevision: deviceReview.revision, recoveryUnchanged: true, confirmed: true, sick: false, newPain: false, urgentSymptoms: false, availableMinutes: answers.availableMinutes, weightKg: answers.weightKg, menstrual: answers.menstrual, cycleDay: answers.cycleDay } : { ...answers };
       if (!correctImported) {
         if (inputContext?.metrics.restingHr.selected) delete submitted.rhr;
         if (inputContext?.objectiveFields.hrv === false) delete submitted.hrv;
@@ -304,6 +313,7 @@ function CheckinPageContent() {
       try { if(user?.id)sessionStorage.removeItem(checkinDraftKey(user.id)); }catch{}
       setDraftNotice("");
       setAnswers((current:any)=>({...current}));
+      setDeviceConfirmed(false);
       setResult(d); setDownloaded(false); setSelectedSessionId(d.prescriptions?.[0]?.sessionId || "");
       // An unanswered question is explained in the result card and its input receives focus.
       const view = checkinAdaptationView(d.adaptation, lang === "es");
@@ -311,7 +321,7 @@ function CheckinPageContent() {
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
-  const setQ = (k: string, v: any) => {dirtyAnswers.current.add(k);dirtyAnswers.current.add("voiceReviewConfirmed");setAnswers((a: any) => ({ ...a, [k]: v, voiceReviewConfirmed: false }));};
+  const setQ = (k: string, v: any) => {if (["mood", "sessionFelt", "rhr", "hrv", "sleepHours", "sick", "newPain", "urgentSymptoms", "painAffectsMovement"].includes(k)) {setManualReview(true);setDeviceConfirmed(false);}dirtyAnswers.current.add(k);dirtyAnswers.current.add("voiceReviewConfirmed");setAnswers((a: any) => ({ ...a, [k]: v, voiceReviewConfirmed: false }));};
   // Only render the adaptation card when a REAL verdict exists — on a fresh
   // day (no submitted check-in yet) `result` holds loading data (recovery,
   // fuel brands, readiness) but no adaptation, and verdict would be undefined.
@@ -344,7 +354,13 @@ function CheckinPageContent() {
           <div className="card">
             <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-ocean-500" /> {lang === "es" ? "Cómo estás hoy" : "How you feel today"}</h2>
             <form onSubmit={submit} className="space-y-4">
-              {QUESTIONS.map((q) => (
+              {deviceReview && <div className="rounded-xl border p-3 space-y-3">
+                <p className="text-sm">{lang === "es" ? "Usaremos tus registros actuales de sue\u00f1o, pulso y VFC" : "Using your current sleep, resting pulse and HRV readings"} · {deviceReview.source} · {deviceReview.dateLocal}</p>
+                {!manualReview && <label className="flex gap-2 text-sm"><input type="checkbox" checked={deviceConfirmed} onChange={e => setDeviceConfirmed(e.target.checked)} />{lang === "es" ? "Confirmo que no tengo enfermedad, dolor nuevo o que empeora, s\u00edntomas urgentes ni fatiga o recuperaci\u00f3n inusual. Si algo cambi\u00f3, usar\u00e9 la revisi\u00f3n manual." : "I confirm no illness, new or worsening pain, urgent symptoms, or unusual fatigue or recovery concerns. If anything changed, I will use the manual review."}</label>}
+                <button type="button" className="underline text-sm" onClick={() => {setManualReview(v => !v);setDeviceConfirmed(false);}}>{manualReview ? (lang === "es" ? "Usar datos del dispositivo" : "Use device readings") : (lang === "es" ? "Algo cambi\u00f3 / revisi\u00f3n manual" : "Something changed / manual review")}</button>
+              </div>}
+              {(!deviceReview || manualReview) && <>
+              {QUESTIONS.filter(q => q.key !== "mood").map((q) => (
                 <div key={q.key}>
                   <label className="label" htmlFor={`answer-${q.key}`}>{lang === "es" ? QUESTION_ES[q.key].label : q.label}</label>
                   <select id={`answer-${q.key}`} className="input" value={answers[q.key] ?? ""} onChange={(e) => setQ(q.key, e.target.value)}>
@@ -354,15 +370,11 @@ function CheckinPageContent() {
                   <div className="text-[11px] text-slate-400">{lang === "es" ? QUESTION_ES[q.key].hint : q.hint}</div>
                 </div>
               ))}
-              {([ ["sick", lang === "es" ? "¿Enfermedad, fiebre u otros síntomas hoy?" : "Illness, fever or other illness symptoms today?"], ["urgentSymptoms", lang === "es" ? "¿Molestias en el pecho, desmayo, falta de aire grave sin explicación, confusión o colapso actualmente?" : "Current chest discomfort, fainting, severe unexplained breathlessness, confusion or collapse?"], ["menstrual", lang === "es" ? "Fase menstrual (opcional; no reduce la preparación por sí sola)" : "Menstrual phase (optional; does not reduce readiness by itself)"] ] as const).map(([key, label]) => (
+              {([ ["sick", lang === "es" ? "¿Enfermedad, fiebre u otros síntomas hoy?" : "Illness, fever or other illness symptoms today?"], ["urgentSymptoms", lang === "es" ? "¿Molestias en el pecho, desmayo, falta de aire grave sin explicación, confusión o colapso actualmente?" : "Current chest discomfort, fainting, severe unexplained breathlessness, confusion or collapse?"] ] as const).map(([key, label]) => (
                 <label key={key} className="block text-sm">{label}<select id={`answer-${key}`} className="input mt-1" value={typeof answers[key] === "boolean" ? String(answers[key]) : ""} onChange={(e) => setQ(key, e.target.value === "" ? "" : e.target.value === "true")}><option value="">{lang === "es" ? "No sé / prefiero no responder" : "Unknown / prefer not to answer"}</option><option value="false">No</option><option value="true">{lang === "es" ? "Sí" : "Yes"}</option></select></label>
               ))}
               {answers.urgentSymptoms === true && <p role="alert" className="text-sm text-coral-700">{lang === "es" ? "Detén el ejercicio. Busca atención médica urgente; si los síntomas son graves o continúan, contacta emergencias locales ahora." : "Stop exercise. Seek urgent medical assessment; if symptoms are severe or ongoing, contact local emergency services now."}</p>}
-              <label className="flex items-center gap-2 text-sm">
-                {lang === "es" ? "Día del ciclo (1–35):" : "Cycle day (1–35):"}
-                <input type="number" min={1} max={35} value={answers.cycleDay || ""} onChange={(e) => setQ("cycleDay", e.target.value)} className="input w-20 !py-1 !px-2 text-xs" placeholder="—" />
-              </label>
-
+              </>}
               {/* Device-free daily loop — the three questions that make the
                   session fit real life (Saw 2015 self-report monitoring). */}
               <div className="rounded-xl border border-ocean-200 bg-ocean-50/50 p-3 space-y-3">
@@ -385,7 +397,7 @@ function CheckinPageContent() {
                       : "The session is fitted to this window — 0 means no workout is prescribed."}
                   </div>
                 </div>
-                <div>
+                {(!deviceReview || manualReview) && <div>
                   <label className="block text-sm">
                     {lang === "es" ? "¿Dolor nuevo o que empeora en un punto concreto? (distinto de agujetas generales)" : "Any new or worsening pain in a specific spot? (different from general soreness)"}
                     <select id="answer-newPain" className="input mt-1" value={typeof answers.newPain === "boolean" ? String(answers.newPain) : ""} onChange={(e) => setQ("newPain", e.target.value === "" ? "" : e.target.value === "true")}><option value="">{lang === "es" ? "No sé / prefiero no responder" : "Unknown / prefer not to answer"}</option><option value="false">No</option><option value="true">{lang === "es" ? "Sí" : "Yes"}</option></select>
@@ -408,8 +420,8 @@ function CheckinPageContent() {
                       </label>
                     </div>
                   )}
-                </div>
-                <div>
+                </div>}
+                <details><summary className="cursor-pointer text-sm">{lang === "es" ? "Nota de recuperaci\u00f3n (opcional)" : "Recovery note (optional)"}</summary>
                   <label className="label">{lang === "es" ? "La sesión de ayer se sintió…" : "Yesterday's session felt…"}</label>
                   <select
                     className="input"
@@ -426,8 +438,18 @@ function CheckinPageContent() {
                       ? "Detecta si la dosis actual es demasiado grande."
                       : "Detects whether the current dose is too big."}
                   </div>
-                </div>
+                </details>
               </div>
+              <details><summary className="cursor-pointer text-sm">{lang === "es" ? "Mediciones y contexto adicionales (opcional)" : "Additional measurements and context (optional)"}</summary>
+              <label className="block text-sm">{lang === "es" ? "Estado de \u00e1nimo (1\u20135)" : "Mood (1\u20135)"}<input aria-label={lang === "es" ? "Estado de \u00e1nimo" : "Mood"} className="input" type="number" min={1} max={5} value={answers.mood ?? ""} onChange={e => setQ("mood",e.target.value)} /></label>
+              <details><summary className="cursor-pointer text-sm">{lang === "es" ? "Contexto menstrual (opcional)" : "Menstrual context (optional)"}</summary>
+                <label className="block text-sm">{lang === "es" ? "Fase menstrual" : "Menstrual phase"}<select className="input" value={typeof answers.menstrual === "boolean" ? String(answers.menstrual) : ""} onChange={e => setQ("menstrual", e.target.value === "" ? "" : e.target.value === "true")}><option value="">{lang === "es" ? "Sin respuesta" : "Unanswered"}</option><option value="false">No</option><option value="true">{lang === "es" ? "S\u00ed" : "Yes"}</option></select></label>
+              <label className="flex items-center gap-2 text-sm">
+                {lang === "es" ? "Día del ciclo (1–35):" : "Cycle day (1–35):"}
+                <input type="number" min={1} max={35} value={answers.cycleDay || ""} onChange={(e) => setQ("cycleDay", e.target.value)} className="input w-20 !py-1 !px-2 text-xs" placeholder="—" />
+              </label>
+
+              </details>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <ProfileMeasurementInput field="weightKg" id="answer-weightKg" value={answers.weightKg} units={displayUnits} label={lang==="es"?"Peso de la mañana":"Morning weight"} es={lang==="es"} onChange={canonical=>setQ("weightKg",canonical)} onValidityChange={(_,message)=>setUnitErrors(current=>({...current,morningWeight:message}))}/>
@@ -451,7 +473,8 @@ function CheckinPageContent() {
                   <div className="text-[11px] text-slate-400">{lang === "es" ? "Informadas por ti o por tu dispositivo. Si dormiste menos de 7 horas, prioriza acostarte temprano." : "Reported or from your device. Under 7h — prioritize an early night."}</div>
                 </div>}
               </div>
-              {inputContext && <button type="button" className="text-sm underline" onClick={() => setCorrectImported(v => !v)}>{correctImported ? (lang === "es" ? "Usar observaciones importadas" : "Use imported observations") : (lang === "es" ? "Corregir una observación importada" : "Correct an imported observation")}</button>}
+              {inputContext && <button type="button" className="text-sm underline" onClick={() => {setCorrectImported(v => !v);setManualReview(true);setDeviceConfirmed(false);}}>{correctImported ? (lang === "es" ? "Usar observaciones importadas" : "Use imported observations") : (lang === "es" ? "Corregir una observación importada" : "Correct an imported observation")}</button>}
+              </details>
               <p className="text-xs text-slate-600">{lang === "es" ? "Para registrar duración real, esfuerzo y finalización de cada sesión, selecciona la sesión en Hoy o Calendario." : "To report actual duration, exertion and completion for each session, select it in Today or Calendar."} <a className="underline" href="/today">{lang === "es" ? "Ver sesiones" : "Open sessions"}</a></p>
               <button type="submit" disabled={busy} className="btn-primary w-full justify-center"><Zap className="w-4 h-4" /> {busy ? (lang === "es" ? "Revisando…" : "Reviewing…") : (lang === "es" ? "Revisar mi plan guardado" : "Review my saved plan")}</button>
             </form>

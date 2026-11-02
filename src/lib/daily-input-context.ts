@@ -166,7 +166,7 @@ export function buildDailyInputContext(input: DailyInputContextOptions) {
     actualDurationMin: summary.durationMinutes, rpe: summary.rpe, date: summary.observedAt!,
     feedbackAt: workouts.find(row => row.id === summary.id)?.feedbackAt ?? null }));
   const workoutsTruncated = input.workoutsTruncated === true || ownWorkouts.length > DAILY_INPUT_LIMIT;
-  return { version: DAILY_INPUT_CONTEXT_VERSION, dateLocal: today, timezone: input.timezone, metrics,
+  return { version: DAILY_INPUT_CONTEXT_VERSION, athleteId: input.athleteId, dateLocal: today, timezone: input.timezone, metrics,
     readStatus: observationsUnavailable ? "unavailable" as const : "available" as const,
     dataAvailability: { observations: observationsUnavailable ? "unavailable" as const : "available" as const,
       limitations: observationsUnavailable ? ["Optional measurement storage is unavailable. Saved workout history remains available; current measurements are unknown."] : observationsTruncated ? ["The observation read limit was reached. Stored readings remain visible, but current numeric evidence is incomplete."] : [] },
