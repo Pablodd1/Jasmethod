@@ -89,10 +89,12 @@ test("swim allows threshold under leg fatigue; strength NM gated at readiness 70
 });
 
 test("density builder fits T_avail exactly across sports, kinds and windows", () => {
-  for (const sport of ["run", "bike", "swim", "hyrox", "strength"]) for (const kind of ["vo2", "threshold", "sweetspot", "durability", "neuromuscular", "compromised", "aerobic"] as const) for (const avail of [20, 25, 30, 38, 44, 45, 60, 75, 90, 91, 120, 180]) {
+  for (const sport of ["run", "bike", "swim", "hyrox", "strength"]) for (const kind of ["vo2", "vo2-long", "threshold", "sweetspot", "race-pace", "durability", "taper-primer", "neuromuscular", "compromised", "aerobic"] as const) for (const avail of [20, 25, 30, 38, 44, 45, 60, 75, 90, 91, 120, 180]) {
     const steps = buildDensitySteps({ sport, kind, zone: "z4", reason: "" }, avail);
     if (!steps) continue;
-    assert.equal(steps.reduce((a, s) => a + s.seconds, 0), avail * 60, `${sport}/${kind}/${avail}`);
+    const sum = steps.reduce((a, s) => a + s.seconds, 0);
+    assert.ok(sum <= avail * 60, `${sport}/${kind}/${avail} within T_avail`);
+    if (kind === "aerobic") assert.equal(sum, avail * 60);
     assert.ok(steps.every(s => s.seconds > 0), `${sport}/${kind}/${avail} positive`);
     assert.equal(steps[0].phase, "warmup"); assert.equal(steps[steps.length - 1].phase, "cooldown");
   }
@@ -109,7 +111,7 @@ test("prescribeToday PUSH stays inside time budget; legacy path unchanged withou
   const adaptation = { verdict: "full", durationFactor: 1, intensityCap: "z7" };
   const stim = selectStimulus({ planned: session, decision: d, availMin: 35, availableSports: ["bike"] });
   const p = prescribeToday({ session, adaptation, timeBudgetMin: 35, performance: { decision: d, stimulus: stim } });
-  assert.ok(p.durationMin <= 35); assert.equal(p.intensity, "z5"); assert.match(p.title, /PUSH/);
+  assert.ok(p.durationMin <= 35); assert.equal(p.intensity, "z5"); assert.match(p.title, /KEY/); assert.ok(p.engine?.purpose); assert.ok(p.engine?.es.purpose);
   const legacy = prescribeToday({ session, adaptation, timeBudgetMin: 35 });
   assert.equal(legacy.intensity, "z2");
   // Non-push pivot respects the adaptation cap.

@@ -487,6 +487,32 @@ function TodayPageContent() {
                     ? "revisa la secuencia, el lugar, el ritmo y la técnica. Es una preparación opcional."
                     : "review the sequence, setting, effort and technique. This is optional preparation."}
                 </div>
+                {session.prescription.engine && session.prescription.steps?.length > 0 && (() => {
+                  const e = session.prescription.engine, text = es && e.es ? e.es : e;
+                  const chip = (label: string, value: unknown) => (
+                    <span className="rounded-full border border-ocean-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-ocean-800">{label} {value == null ? "—" : String(value)}</span>
+                  );
+                  return (
+                    <section aria-label={es ? "Por qué esta sesión" : "Why this session"} className="mb-3 rounded-xl border border-ocean-200 bg-ocean-50/60 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-ocean-700">
+                        {es ? "Por qué esta sesión" : "Why this session"}{e.phase ? ` · ${e.phase}` : ""}{e.family ? ` · ${e.family}` : ""}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-800">{text.purpose}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {chip(es ? "Disposición" : "Readiness", e.readiness)}
+                        {chip("ACWR", e.acwr)}
+                        {chip("HRV", e.hrvZ == null ? null : `${e.hrvZ > 0 ? "+" : ""}${e.hrvZ} SD`)}
+                        {chip(es ? "TSS est." : "Est. TSS", e.estTss)}
+                        {e.pivot && chip(es ? "Cambio" : "Pivot", e.pivot)}
+                      </div>
+                      {Array.isArray(text.cues) && text.cues.length > 0 && (
+                        <ul className="mt-2 list-disc pl-5 text-xs text-slate-700">{text.cues.map((c: string, i: number) => <li key={i}>{c}</li>)}</ul>
+                      )}
+                      <p className="mt-2 text-xs font-semibold text-slate-700">{text.stopRule}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">{e.science}</p>
+                    </section>
+                  );
+                })()}
                 {session.prescription.steps.length > 2 && session.prescription.steps.every((step: any) => step.endpoint?.type === "time") && (
                   <WorkoutSparkline steps={session.prescription.steps} />
                 )}

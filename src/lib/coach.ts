@@ -173,15 +173,6 @@ export function buildCompactTelemetryDigest(c: CoachTelemetry): string {
   ].join("|");
 }
 
-/** Deterministic CHO target (Jeukendrup 2014): <60 min none/rinse, 60–150 min 30–60 g/h, >150 min up to 90 g/h (gut-trained). */
-export function carbTargetGPerH(minutes: number | null, zone: string, gutTrained = false): number | null {
-  if (minutes == null || minutes <= 0) return null;
-  const z = Number(zone.replace(/[^0-9]/g, "")) || 2;
-  if (minutes < 60) return z >= 4 && minutes >= 45 ? 30 : 0;
-  if (minutes <= 150) return z >= 3 ? 60 : 45;
-  return gutTrained ? 90 : 60;
-}
-
 export interface ScienceBriefing { mode: "ai" | "local"; headline: string; briefing: string; adaptation: string; rx_intervals: string; fuel: string; digest: string }
 const CONTRACT_KEYS = ["headline", "briefing", "adaptation", "fuel"] as const;
 const BANNED = /(?:https?:\/\/|www\.|<[^>]*>|```)|\b(?:diagnos\w*|cleared|clearance|cure\w*|guarantee\w*|mg\b|caffeine|cafe[ií]na|supplement\w*|suplement\w*)\b/i;

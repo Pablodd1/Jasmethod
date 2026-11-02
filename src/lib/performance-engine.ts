@@ -19,11 +19,12 @@
 // Seiler 2010 (intensity distribution), Wallace 2014 (sRPE).
 
 import type { WorkoutStep } from "./prescription";
+import { qualityFor, doseScale, repsFor, maxKeySessions, type GoalFamily, type CyclePhase, type Level, type QualityKind } from "./periodization";
 
 // ---------------- Types ----------------
 export type WearableSource = "whoop" | "oura" | "garmin" | "apple" | "manual" | "strava" | "checkin";
 export type EngineVerdict = "rest" | "easy" | "modulate" | "planned" | "push";
-export type StimulusKind = "vo2" | "threshold" | "sweetspot" | "neuromuscular" | "compromised" | "aerobic" | "durability" | "recovery" | "planned";
+export type StimulusKind = QualityKind | "recovery" | "planned";
 
 export interface MetricRow {
   date: Date | string;
@@ -178,6 +179,10 @@ export function isHighEccentric(r: LoadRow): boolean {
   const z = zoneNum(r.intensity);
   return z >= 4 || (r.rpe ?? 0) >= 7 || ["interval", "threshold", "plyo", "power"].includes(String(r.type)) || (r.sport === "strength" && (r.rpe ?? 0) >= 6);
 }
+/** A key (hard) session for the polarized guard: Z4+, interval/threshold type, or RPE ≥7 — any sport. */
+export function isKeySession(r: LoadRow): boolean {
+  return zoneNum(r.intensity) >= 4 || ["interval", "threshold", "race", "test"].includes(String(r.type)) || (r.rpe ?? 0) >= 7;
+}
 export function normalizePeripheral(rows: LoadRow[], soreness: number | null | undefined, now = new Date()): PeripheralState {
   const nowT = +now;
   let ecc = 0, lastHigh: number | null = null;
@@ -230,6 +235,8 @@ export function decidePerformance(input: {
   loadRows: LoadRow[];
   pushEnabled: boolean;
   now?: Date;
+  /** Quality-over-quantity guard (polarized distribution). Absent → no weekly cap applied. */
+  quality?: { level: Level; phase?: CyclePhase; plannedHard: boolean; nextDayKey: boolean | null };
 }): PerformanceDecision {
   const now = input.now ?? new Date();
   const central = normalizeCentral(input.metrics, input.subjective, now);
@@ -276,14 +283,30 @@ export function decidePerformance(input: {
   if (central.rhrDelta != null && central.rhrDelta > 5) blocked.push(`RHR +${central.rhrDelta} bpm`);
   if (input.subjective.newPain || input.subjective.sick) blocked.push("pain/illness reported");
 
+  const q = input.quality;
+  if (q) {
+    const keys = input.loadRows.filter(r => isKeySession(r) && t(r.date) <= +now && t(r.date) > +now - 7 * DAY);
+    const lastKeyH = keys.length ? Math.round((+now - Math.max(...keys.map(r => t(r.date)))) / 3600000) : null;
+    if (q.phase === "taper" || q.phase === "race" || q.phase === "recovery") blocked.push(`${q.phase} phase: no overload`);
+    if (lastKeyH != null && lastKeyH < 36) blocked.push(`key session ${lastKeyH} h ago (no back-to-back hard days)`);
+    if (!q.plannedHard && keys.length >= maxKeySessions(q.level)) blocked.push(`${keys.length} key sessions in 7 d (cap ${maxKeySessions(q.level)}): keep easy days easy`);
+    if (!q.plannedHard && q.nextDayKey === true) blocked.push("key session planned tomorrow");
+  }
   if (!blocked.length) return mk("push", `PUSH: readiness ${readiness}, ACWR ${load.acwr}, central ${central.status}.`);
   return mk(verdict, verdict === "planned" ? "Execute the planned session." : "Modulated: keep intent, trim volume.");
 }
 
-// ---------------- 5. SPORT GATING ----------------
+// ---------------- 5. SPORT GATING + GOAL/PHASE QUALITY ----------------
+export interface PlanContext {
+  family: GoalFamily; phase: CyclePhase; level: Level;
+  weekInPhase?: number | null; chronicLoad?: number | null; daySeed: number;
+}
 export interface Stimulus {
   sport: string; kind: StimulusKind; zone: string; pivotedFrom?: string; reason: string;
+  reps?: number; family?: GoalFamily; phase?: CyclePhase;
 }
+
+const KIND_ZONE: Record<string, string> = { vo2: "z5", "vo2-long": "z5", threshold: "z4", sweetspot: "z3", "race-pace": "z4", durability: "z4", "taper-primer": "z4", neuromuscular: "z5", compromised: "z4", aerobic: "z2" };
 
 export function selectStimulus(input: {
   planned: { sport: string; type: string; intensity?: string | null; durationMin: number };
@@ -291,6 +314,29 @@ export function selectStimulus(input: {
   availMin: number;
   availableSports: string[]; // modalities the athlete actually has (from plan history/equipment)
   raceBuild?: boolean;       // HYROX/multisport race-specific block
+  plan?: PlanContext;        // goal × phase × level; absent → time-only legacy choice
+}): Stimulus {
+  const base = selectSportStimulus(input);
+  const plan = input.plan;
+  if (!plan) return base;
+  const out: Stimulus = { ...base, family: plan.family, phase: plan.phase };
+  const z = zoneNum(input.planned.intensity), plannedHard = z >= 4 || ["interval", "threshold"].includes(input.planned.type);
+  // Taper / race week: a planned key session keeps intensity, loses volume. Never a new stimulus.
+  if ((plan.phase === "taper" || plan.phase === "race") && plannedHard && out.kind !== "aerobic")
+    return { ...out, kind: "taper-primer", zone: "z4", reps: repsFor("taper-primer", doseScale(plan)), reason: `${plan.phase} phase: keep intensity, cut volume (Bosquet 2007).` };
+  if (input.decision.verdict !== "push" || out.kind === "planned" || out.kind === "aerobic") return out;
+  // PUSH: choose the stimulus from goal × phase × level, on the (possibly pivoted) sport.
+  const q = qualityFor({ family: plan.family, phase: plan.phase, sport: out.sport, level: plan.level, availMin: input.availMin, daySeed: plan.daySeed });
+  let kind: StimulusKind = q.kind;
+  if (out.kind === "compromised" && out.sport === "hyrox") kind = q.kind === "neuromuscular" || q.kind === "vo2-long" || q.kind === "race-pace" ? q.kind : "compromised";
+  if (out.sport === "strength" && out.kind !== "neuromuscular") kind = "threshold"; // NM gate closed upstream
+  if (out.kind === "sweetspot" && (kind === "vo2" || kind === "vo2-long")) kind = "sweetspot"; // high soreness on bike caps at sweet spot
+  return { ...out, kind, zone: KIND_ZONE[kind] || out.zone, reps: repsFor(kind as QualityKind, doseScale(plan)), reason: `${out.reason} ${q.reason}.` };
+}
+
+function selectSportStimulus(input: {
+  planned: { sport: string; type: string; intensity?: string | null; durationMin: number };
+  decision: PerformanceDecision; availMin: number; availableSports: string[]; raceBuild?: boolean;
 }): Stimulus {
   const { planned, decision, availMin } = input;
   const sport = planned.sport, z = zoneNum(planned.intensity), hard = z >= 4 || ["interval", "threshold"].includes(planned.type);
@@ -299,11 +345,8 @@ export function selectStimulus(input: {
   const has = (s: string) => input.availableSports.includes(s);
   const push = decision.verdict === "push";
   const r = decision.readiness ?? 0;
-
-  // Long window on a push day → mitochondrial volume + late threshold durability.
   const longPushKind: StimulusKind = availMin > 90 ? "durability" : availMin < 45 ? "vo2" : "threshold";
 
-  // RUN / PLYO — eccentric-heavy: 48 h spacing, pivot metabolic stimulus instead of watering down.
   if (sport === "run") {
     if ((hard || push) && legsBlocked) {
       const why = p.hoursSinceHighEccentric != null && p.hoursSinceHighEccentric < ECCENTRIC_SPACING_H
@@ -315,21 +358,15 @@ export function selectStimulus(input: {
     if (push) return { sport, kind: longPushKind, zone: longPushKind === "vo2" ? "z5" : "z4", reason: "Central + peripheral clear, ≥48 h since eccentric load." };
     return { sport, kind: "planned", zone: `z${z}`, reason: "As planned." };
   }
-
-  // BIKE — concentric/metabolic: primary vehicle even with moderate soreness.
   if (sport === "bike") {
     if (push && p.status === "high" && has("swim")) return { sport: "swim", kind: "threshold", zone: "z4", pivotedFrom: "bike", reason: "High lower-body soreness → swim threshold." };
     if (push) return { sport, kind: p.status === "high" ? "sweetspot" : longPushKind, zone: p.status === "high" ? "z3" : longPushKind === "vo2" ? "z5" : "z4", reason: p.status === "high" ? "High soreness: sweet-spot cap on bike." : "Bike carries peak metabolic load." };
     return { sport, kind: "planned", zone: `z${z}`, reason: "As planned." };
   }
-
-  // SWIM — zero impact: hard pace work allowed under leg fatigue.
   if (sport === "swim") {
     if (push) return { sport, kind: availMin < 45 ? "vo2" : "threshold", zone: availMin < 45 ? "z5" : "z4", reason: "Zero-impact: lower-body fatigue does not gate swim intensity." };
     return { sport, kind: "planned", zone: `z${z}`, reason: "As planned." };
   }
-
-  // STRENGTH / HYROX — neuromuscular gate at readiness ≥ 70; compromised running for race durability.
   if (sport === "strength" || sport === "hyrox") {
     const nmOk = r >= NEUROMUSCULAR_READINESS && p.status !== "high" && !(p.hoursSinceHighEccentric != null && p.hoursSinceHighEccentric < ECCENTRIC_SPACING_H);
     if (sport === "hyrox" || input.raceBuild) {
@@ -347,9 +384,11 @@ export function selectStimulus(input: {
 const step = (name: string, seconds: number, zone: string, phase: WorkoutStep["phase"], extra: Partial<WorkoutStep> = {}): WorkoutStep =>
   ({ name, seconds: Math.round(seconds), zone, phase, endpoint: { type: "time", seconds: Math.round(seconds) }, ...extra });
 
-/** Builds an exact step list whose seconds sum to availMin × 60. Returns null when the window is too short for the stimulus. */
+/** Exact step list that never exceeds availMin. Quality over quantity: the work dose is
+ * capped by `stim.reps`; when the capped dose leaves >15 min unused the session ends
+ * early instead of padding with more intervals. Returns null when the stimulus can't fit. */
 export function buildDensitySteps(stim: Stimulus, availMin: number): WorkoutStep[] | null {
-  if (stim.kind === "planned" || availMin < 20) return null;
+  if (stim.kind === "planned" || stim.kind === "recovery" || availMin < 20) return null;
   const total = Math.floor(availMin) * 60;
   const wu = (availMin < 30 ? 8 : availMin < 45 ? 10 : availMin <= 90 ? 15 : 20) * 60;
   const cd = (availMin < 45 ? 5 : 10) * 60;
@@ -357,83 +396,105 @@ export function buildDensitySteps(stim: Stimulus, availMin: number): WorkoutStep
   if (main < 10 * 60) return null;
   const out: WorkoutStep[] = [step("Warm-up (progressive, include 3×20 s pick-ups)", wu, "z2", "warmup")];
   let used = 0;
-  const push = (s: WorkoutStep) => { out.push(s); used += s.seconds; };
-  const repeat = (label: string, n: number, on: [string, number, string], off: [string, number, string] | null) => {
+  const add = (x: WorkoutStep) => { out.push(x); used += x.seconds; };
+  const cap = (fit: number, fallback: number) => Math.max(1, Math.min(fit, stim.reps ?? fallback));
+  const repeat = (label: string, n: number, on: [string, number, string], off: [string, number, string] | null, note?: string) => {
     for (let i = 0; i < n; i++) {
-      push(step(on[0], on[1], on[2], "active", { group: label }));
-      if (off && i < n - 1) push(step(off[0], off[1], off[2], "recovery", { group: label }));
+      add(step(on[0], on[1], on[2], "active", { group: label, ...(i === 0 && note ? { note } : {}) }));
+      if (off && i < n - 1) add(step(off[0], off[1], off[2], "recovery", { group: label }));
     }
   };
-  const s = stim.sport;
-  const k = stim.kind;
+  const fits = (work: number, rest: number) => Math.floor((main + rest) / (work + rest));
+  const s = stim.sport, k = stim.kind, fam = stim.family ?? "middle";
+  let fillToEnd = false;
 
   if (k === "vo2") {
-    if (availMin < 45) {
-      // Rønnestad 30/15: sets of 13 × (30 s Z5 / 15 s easy), 3 min between sets.
-      const setSec = 13 * 45, between = 180;
-      const sets = Math.max(1, Math.min(3, Math.floor((main + between) / (setSec + between))));
-      if (sets * setSec + (sets - 1) * between <= main) {
-        for (let i = 0; i < sets; i++) {
-          repeat(`Set ${i + 1}: 13 × 30/15 (Rønnestad)`, 13, [s === "swim" ? "30 s fast (CSS −5 s/100)" : "30 s hard (≈110–120% FTP / 3k effort)", 30, "z5"], ["15 s easy", 15, "z2"]);
-          if (i < sets - 1) push(step("Set recovery", between, "z1", "recovery"));
-        }
-      } else {
-        const reps = Math.floor((main + 15) / 45);
-        repeat(`${reps} × 30/15 micro-intervals`, reps, ["30 s hard", 30, "z5"], ["15 s easy", 15, "z2"]);
+    const setSec = 13 * 45 - 15, between = 180;
+    const sets = cap(Math.min(3, fits(setSec, between)), availMin < 45 ? 3 : 2);
+    if (fits(setSec, between) >= 1) {
+      for (let i = 0; i < sets; i++) {
+        repeat(`Set ${i + 1}/${sets}: 13 × 30/15 (fast VO2max)`, 13, [s === "swim" ? "30 s fast (CSS −5 s/100 m)" : "30 s hard (≈110–120% FTP / 3k effort)", 30, "z5"], ["15 s easy", 15, "z2"], i === 0 ? "Even effort every rep; breathing near max by rep 5." : undefined);
+        if (i < sets - 1) add(step("Set recovery", between, "z1", "recovery"));
       }
     } else {
-      const work = s === "swim" ? 120 : 240, rest = s === "swim" ? 30 : 180;
-      const reps = clamp(Math.floor((main + rest) / (work + rest)), 2, 6);
-      repeat(`${reps} × ${work / 60} min VO2max`, reps, [`${work / 60} min at VO2max effort`, work, "z5"], ["Easy recovery", rest, "z2"]);
+      repeat("30/15 micro-intervals", Math.floor((main + 15) / 45), ["30 s hard", 30, "z5"], ["15 s easy", 15, "z2"], "Even effort, no sprint start.");
     }
+  } else if (k === "vo2-long") {
+    const work = s === "swim" ? 180 : availMin < 45 ? 180 : 240, rest = s === "swim" ? 45 : work === 180 ? 120 : 180;
+    const n = cap(Math.min(6, fits(work, rest)), 5);
+    if (fits(work, rest) < 2) return null;
+    repeat(`${n} × ${work / 60} min slow VO2max (90–95% MAS/MAP)`, n, [`${work / 60} min at VO2max pace/power`, work, "z5"], ["Easy recovery (keep moving)", rest, "z2"], "Reach target within 60 s, then hold.");
   } else if (k === "threshold" || k === "sweetspot") {
     const zone = k === "sweetspot" ? "z3" : "z4";
-    if (availMin < 45 && k === "threshold") {
-      // Over-unders: continuous threshold with surges — max strain per minute.
-      const block = 6 * 60, n = Math.floor(main / (block + 120));
-      for (let i = 0; i < Math.max(1, n); i++) {
-        for (let j = 0; j < 2; j++) { push(step("2 min under (95% FTP / LT)", 120, "z4", "active", { group: `Over-under ${i + 1}` })); push(step("1 min over (105–110%)", 60, "z5", "active", { group: `Over-under ${i + 1}` })); }
-        if (i < n - 1) push(step("Recovery", 120, "z2", "recovery"));
+    if (availMin < 45 && k === "threshold" && s !== "swim") {
+      const block = 6 * 60, n = cap(Math.max(1, Math.floor(main / (block + 120))), 3);
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < 2; j++) { add(step("2 min under (95% FTP / LT)", 120, "z4", "active", { group: `Over-under ${i + 1}/${n}`, ...(i === 0 && j === 0 ? { note: "Unders comfortably hard; overs a controlled surge." } : {}) })); add(step("1 min over (105–110%)", 60, "z5", "active", { group: `Over-under ${i + 1}/${n}` })); }
+        if (i < n - 1) add(step("Recovery", 120, "z2", "recovery"));
       }
     } else if (s === "swim") {
-      const reps = clamp(Math.floor((main + 20) / 135), 4, 16);
-      repeat(`${reps} × 100 m CSS`, reps, ["100 m at CSS pace", 115, zone], ["Rest", 20, "z1"]);
+      const n = Math.max(4, Math.min(16, fits(115, 20), stim.reps ? stim.reps * 4 : 12));
+      if (fits(115, 20) < 4) return null;
+      repeat(`${n} × 100 m CSS`, n, ["100 m at CSS pace", 115, zone], ["Rest", 20, "z1"], "Hold the same split every 100.");
     } else {
-      const work = k === "sweetspot" ? 12 * 60 : 10 * 60, rest = k === "sweetspot" ? 4 * 60 : 3 * 60;
-      const reps = clamp(Math.floor((main + rest) / (work + rest)), 1, 5);
-      repeat(`${reps} × ${work / 60} min ${k === "sweetspot" ? "sweet spot (88–94% FTP)" : "threshold"}`, reps, [`${work / 60} min at ${k === "sweetspot" ? "sweet spot" : "threshold (LT2)"}`, work, zone], ["Easy", rest, "z2"]);
+      const work = k === "sweetspot" ? (fam === "long" || fam === "ultra" ? 15 : 12) * 60 : 10 * 60, rest = k === "sweetspot" ? 4 * 60 : 3 * 60;
+      const n = cap(Math.min(5, fits(work, rest)), 3);
+      if (fits(work, rest) < 1) return null;
+      repeat(`${n} × ${work / 60} min ${k === "sweetspot" ? "sweet spot (88–94% FTP)" : "threshold (LT2)"}`, n, [`${work / 60} min at ${k === "sweetspot" ? "sweet spot" : "threshold"}`, work, zone], ["Easy", rest, "z2"], "Comfortably hard; last rep matches the first.");
     }
+  } else if (k === "race-pace") {
+    const spec = { short: [240, 120, "z5", 6], middle: [480, 120, "z4", 4], long: [900, 180, "z3", 3], ultra: [1800, 300, "z3", 2], hyrox: [240, 90, "z4", 6] }[fam] as [number, number, string, number];
+    const [work, rest, zone, maxN] = spec;
+    if (fits(work, rest) < 1) return null;
+    const n = Math.min(maxN, cap(fits(work, rest), maxN));
+    repeat(`${n} × ${Math.round(work / 60)} min at goal race pace`, n, [`${Math.round(work / 60)} min at race pace`, work, zone], ["Easy", rest, "z2"], "Race pace with relaxed form; rehearse fueling.");
   } else if (k === "durability") {
-    // Mitochondrial volume + glycogen depletion, then threshold under fatigue.
-    const late = 2 * 10 * 60 + 3 * 60;
-    if (main < late + 20 * 60) return null; // durability needs real volume before the late block
-    push(step("Steady Z2 aerobic volume (fuel per plan)", main - late, "z2", "active"));
-    push(step("Late block 1: 10 min threshold (fatigued)", 600, "z4", "active", { group: "Late-session threshold" }));
-    push(step("Easy", 180, "z2", "recovery", { group: "Late-session threshold" }));
-    push(step("Late block 2: 10 min threshold (fatigued)", 600, "z4", "active", { group: "Late-session threshold" }));
+    const blocks = Math.max(1, Math.min(3, stim.reps ?? 2)), late = blocks * 600 + (blocks - 1) * 180;
+    if (main < late + 20 * 60) return null;
+    add(step("Steady Z2 aerobic volume (fuel 60–90 g/h as practised)", main - late, "z2", "active", { note: "Keep Z2 honest; this sets up the late blocks." }));
+    for (let i = 0; i < blocks; i++) {
+      add(step(`Late block ${i + 1}: 10 min threshold (fatigued)`, 600, "z4", "active", { group: "Late-session threshold" }));
+      if (i < blocks - 1) add(step("Easy", 180, "z2", "recovery", { group: "Late-session threshold" }));
+    }
+  } else if (k === "taper-primer") {
+    const zone = fam === "short" ? "z5" : fam === "long" || fam === "ultra" ? "z3" : "z4";
+    const n = Math.max(3, Math.min(6, stim.reps ?? 5));
+    const work = fam === "long" || fam === "ultra" ? 180 : 90, rest = 150;
+    const primer = n * work + (n - 1) * rest;
+    if (primer > main) return null;
+    const easy = Math.max(0, Math.min(main - primer, 15 * 60));
+    if (easy >= 60) add(step("Easy aerobic", easy, "z2", "active"));
+    repeat(`${n} × ${work >= 120 ? `${work / 60} min` : `${work} s`} race-pace primer`, n, [`${work >= 120 ? `${work / 60} min` : `${work} s`} at race pace`, work, zone], ["Easy", rest, "z2"], "Sharp, not tiring. Finish fresher than you started.");
   } else if (k === "neuromuscular") {
-    // Only movements the athlete is already coached and loaded on.
-    repeat("Heavy compound: 4 × 3–5 reps @ RPE 8 (familiar lift only)", 4, ["3–5 reps heavy, fast concentric", 60, "z5"], ["Full rest", 180, "z1"]);
-    repeat("SSC contrast: 4 × 5 pogo / low-box rebounds (if previously coached)", 4, ["5 reactive contacts, minimal ground time", 20, "z5"], ["Rest", 90, "z1"]);
+    const sets = cap(4, 4);
+    if (sets * 240 + sets * 110 > main + 270) return null;
+    repeat(`Heavy compound: ${sets} × 3–5 reps @ RPE 8 (familiar lift only)`, sets, ["3–5 reps heavy, fast concentric", 60, "z5"], ["Full rest", 180, "z1"], "Bar speed matters: stop the set if it slows sharply.");
+    repeat(`SSC contrast: ${sets} × 5 pogo / low-box rebounds (if previously coached)`, sets, ["5 reactive contacts, minimal ground time", 20, "z5"], ["Rest", 90, "z1"]);
   } else if (k === "compromised") {
     const erg = stim.reason.includes("erg");
     const unit = 240 + 120 + 90;
-    const n = clamp(Math.floor(main / unit), 2, 8);
+    const fit = Math.floor((main + 90) / unit);
+    if (fit < 2) return null;
+    const n = Math.max(2, Math.min(8, fit, stim.reps ?? 8));
     for (let i = 0; i < n; i++) {
-      push(step(erg ? "1000 m SkiErg/Row at race pace" : "1 km run at HYROX race pace", 240, "z4", "active", { group: `Compromised round ${i + 1}` }));
-      push(step(["Wall balls ×20", "Sled push 25 m", "Burpee broad jumps ×10", "Sandbag lunges 20 m"][i % 4], 120, "z4", "active", { group: `Compromised round ${i + 1}` }));
-      push(step("Jog/walk flush (lactate clearance)", 90, "z2", "recovery", { group: `Compromised round ${i + 1}` }));
+      add(step(erg ? "1000 m SkiErg/Row at race pace" : "1 km run at HYROX race pace", 240, "z4", "active", { group: `Compromised round ${i + 1}/${n}`, ...(i === 0 ? { note: "Controlled first 200 m after each station." } : {}) }));
+      add(step(["Wall balls ×20", "Sled push 25 m", "Burpee broad jumps ×10", "Sandbag lunges 20 m"][i % 4], 120, "z4", "active", { group: `Compromised round ${i + 1}/${n}` }));
+      if (i < n - 1) add(step("Jog/walk flush (lactate clearance)", 90, "z2", "recovery", { group: `Compromised round ${i + 1}/${n}` }));
     }
   } else if (k === "aerobic") {
-    push(step("Steady aerobic", main, "z2", "active"));
+    add(step("Steady aerobic", main, "z2", "active", { note: "Conversational; nose-breathing pace." }));
+    fillToEnd = true;
   } else {
     return null;
   }
-  // Any unused main time goes to aerobic filler before cool-down; never over T_avail.
   if (used > main) return null;
-  if (main - used >= 60) out.push(step("Aerobic filler", main - used, "z2", "active"));
-  const remainder = total - wu - out.slice(1).reduce((a, x) => a + x.seconds, 0);
-  out.push(step("Cool-down", remainder, "z1", "cooldown"));
+  const spare = main - used;
+  // Quality over quantity: pad at most 10 min of easy aerobic; otherwise end early.
+  // Taper primers never pad: shorter is the point (volume cut, intensity kept).
+  const filler = fillToEnd ? spare : k === "taper-primer" ? 0 : spare > 15 * 60 ? 10 * 60 : spare;
+  if (filler >= 60) out.push(step("Easy aerobic", filler, "z2", "active"));
+  const cooldown = cd + (filler >= 60 || k === "taper-primer" ? 0 : filler);
+  out.push(step("Cool-down", cooldown, "z1", "cooldown"));
   return out;
 }
 

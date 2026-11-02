@@ -29,7 +29,7 @@ export const CONVERSATION_MESSAGE_LIMIT = 60;
 function coachCapabilities() { const externalAi = coachTextConfigured(), imageUnderstanding = coachVisionConfiguration().configured; return { externalAi, personalDialogue: externalAi, textProvider: externalAi ? "OpenAI" : null, imageUnderstanding, imageProvider: imageUnderstanding ? "OpenAI" : null }; }
 const SAFETY_RULES = ["urgent-symptoms", "illness-or-pain", "clarify-fatigue", "clarify-prior-safety", "clarify-symptom-timing", "clarify-current-symptoms", "unreviewed-image-urgent", "unreviewed-image-symptoms"];
 const mutationFields: Record<string, readonly string[]> = {
-  profile: ["goal", "weeklyHours", "weightKg", "heightCm", "birthYear", "experience", "ftp"],
+  profile: ["goal", "weeklyHours", "weightKg", "heightCm", "birthYear", "experience", "ftp", "hasSmartTrainer", "bikeType"],
   workout_feedback: ["feedbackStatus", "actualDurationMin", "rpe", "actualSport",'avgHr','avgPower','calories','preWeightKg','postWeightKg'],
   workout_plan:["durationMin","sport","intensity"],
 };

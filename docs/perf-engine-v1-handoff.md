@@ -1,4 +1,4 @@
-# perf-engine-v1 — handoff (2026-11-02)
+# perf-engine v1 + v2 — handoff (2026-11-02)
 
 Branch: `feat/perf-engine-v1`. Author: Claude (session with Dr. Jeffrey Draesel Jr.). To be completed by Codex.
 
@@ -28,7 +28,7 @@ Branch: `feat/perf-engine-v1`. Author: Claude (session with Dr. Jeffrey Draesel 
 
 ## Verification status
 - `npx tsc --noEmit` clean.
-- `npm test`: 2,237/2,238 pass. The one failure (`sync-pilot-isolation.test.ts` "50 synthetic athletes … WHOOP lifecycle") **fails on the untouched baseline too** in this sandbox (prisma engine binary unavailable). Not caused by this change.
+- `npm test` (after v2): 2,244/2,245 pass. The one failure (`sync-pilot-isolation.test.ts` "50 synthetic athletes … WHOOP lifecycle") **fails on the untouched baseline too** in this sandbox (prisma engine binary unavailable). Not caused by this change.
 - **NOT done:** `npm run build`, preview deploy, live probe (AGENTS.md §3 ladder). Prisma client was generated with `--no-engine` here.
 
 ## Open tasks for Codex (in priority order)
@@ -40,6 +40,51 @@ Branch: `feat/perf-engine-v1`. Author: Claude (session with Dr. Jeffrey Draesel 
 6. **T_avail from Google Calendar:** today T_avail = min(athlete-reported minutes, daily budget), plus the existing busy ≥6 h → 25 min cap. Compute the largest free window inside the training window from `calendarEvent` busy blocks and pass the min as `timeBudgetMin`.
 7. **Model switch:** set `OPENAI_COACH_MODEL=gpt-6-luna` (see below). Verify the `max_completion_tokens` / JSON-mode behavior against OpenAI's live docs before enabling. If OpenAI requires a reasoning-effort setting for structured output, set it to the lowest value in `scienceRequestBody()`.
 8. **Coach review:** a coach should sign off on the PUSH thresholds (`PUSH_READINESS`, `PUSH_ACWR_MAX`, `NEUROMUSCULAR_READINESS`, `ECCENTRIC_SPACING_H`) and the neuromuscular step copy before the flag goes on in production.
+
+## v2 — goal × phase periodization, quality caps, structured detail, chat (commit 3)
+
+**Principle: quality over quantity.** The engine decides *which* stimulus fits the athlete's race, sport, cycle phase and level, and *how much* of it (dose). Unused time is not filled with more intervals: a key session ends early instead.
+
+| Area | File | Change |
+|---|---|---|
+| Periodization (new, pure) | `src/lib/periodization.ts` | `goalFamily` (short/middle/long/ultra/hyrox), `resolvePhase` (base/build/specific/taper/race/recovery from coaching phase, race date, week index), `qualityFor` (goal × phase matrix, rotation, time window, level), `doseScale`/`repsFor` (level × within-phase progression × phase), `taperVolumeFactor`, `narrativeFor` (purpose/science/cues/stop rule, en+es), `trainingIdeas` |
+| Engine | `src/lib/performance-engine.ts` | New kinds `vo2-long`, `race-pace`, `taper-primer`. `selectStimulus({ plan })` applies goal/phase/level on PUSH days; in taper/race week a planned key session becomes a **taper primer** (keep intensity, cut volume). Builder honors `reps`, ends early (pads at most 10 min), and never pads taper primers. `decidePerformance({ quality })` adds the polarized guard |
+| Prescription | `src/lib/adaptive.ts` | `DailyPrescription.engine` = kind, phase, family, readiness, ACWR, HRV Z, pivot, est. TSS, purpose, science, cues, stop rule (+ `es`). Step `note` carries the cue for each set |
+| Check-in | `src/app/api/checkin/route.ts` | Reads plan `distance`/`level`/`startDate`/`raceDate` (falls back to profile). Builds `PlanContext` per session. Looks one day ahead for planned key sessions. Ergogenics: race-pace in the specific phase = race rehearsal (opted-in aids only); none on aerobic or taper engine sessions |
+| Today UI | `src/app/today/page.tsx` | "Why this session" panel (phase, goal family, readiness/ACWR/HRV/TSS/pivot chips, cues, stop rule, citation) above the existing sparkline and step cards. Unknown values render `—`. Hidden on held/rest days |
+| Coach route | `src/app/api/coach/route.ts` | Fuel g/h now uses the canonical `fueling.carbsPerHourFor` (single source of truth); pivot read from `prescription.engine` |
+| Chat | `src/lib/coach-conversation.ts`, `coach-conversation-service.ts` | New local intents: `training-ideas` (goal + phase from the message), `training-ideas-clarify`, `engine-explain` (generic rules, points to Today for personal numbers). New profile settings via the existing propose → confirm flow: `hasSmartTrainer`, `bikeType` (enable bike pivots). All after the safety rules |
+| Tests | `src/lib/periodization.test.ts` | 7 tests: families/phases, matrix choices, dose/progression/taper factor, quality-over-quantity, polarized guard, taper primer, chat intents + equipment proposals |
+
+### Goal × phase matrix (PUSH / key-session stimulus; rotates by day)
+| Family (goals) | Base | Build | Specific | Taper / race week |
+|---|---|---|---|---|
+| short (5k, sprint tri, track) | threshold, slow VO2 | **fast VO2 (30/15)**, slow VO2, threshold | race pace (1 km @ 5k), fast VO2 | taper primer |
+| middle (10k, Olympic, half marathon, run/bike/swim-only) | sweet spot, threshold | threshold, slow VO2 | race pace (8 min @ 10k/Olympic), threshold, fast VO2 | taper primer |
+| long (70.3, marathon) | durability, sweet spot | threshold, sweet spot, slow VO2 | race pace (15 min blocks), durability | taper primer |
+| ultra (Ironman) | durability | sweet spot, durability, threshold | race pace (30 min blocks), durability | taper primer |
+| hyrox | threshold, neuromuscular | compromised, slow VO2, neuromuscular | compromised, race pace | taper primer |
+
+Overrides: window under 45 min → fast VO2 (short/middle) or over-unders (long/ultra); beginners → threshold instead of VO2/neuromuscular; durability only with more than 90 min.
+
+### Dose and progression
+`doseScale = level (beginner 0.6, amateur 0.8, advanced 1.0, pro 1.15) × (1 + 0.08 × (weekInPhase − 1), max +24%) × phase (taper 0.5, race 0.35, recovery 0.6) × 0.85 if chronic sRPE < 1200/wk`. Reference reps at 1.0: fast VO2 3 sets, slow VO2 5 × 4 min, threshold 3 × 10 min, sweet spot 3 × 12–15 min, race pace 5 blocks (capped per family), durability 2 late blocks, taper primer 5 × 90 s.
+
+### Polarized / quality guard (PUSH blocked when any is true)
+- Taper, race or recovery phase.
+- A key session (Z4+, interval/threshold, or RPE ≥ 7) in the last 36 h: no back-to-back hard days.
+- When upgrading a planned *easy* day: already at the cap of key sessions in 7 days (beginner 2, others 3), or a key session is planned tomorrow.
+
+### Taper science
+Bosquet 2007 / Mujika: cut volume 41–60% over 8–14 days, keep intensity, keep frequency at 80% or more. **Plan volume** is already reduced by `training-cycle.ts` / `cycle-events.ts`, so the daily engine never multiplies a second taper. It only (a) blocks overload, (b) turns planned key sessions into short race-pace primers, and (c) never pads them. Taper length: short 8 d, middle 10, long 14, ultra 14, hyrox 10.
+
+### Additional open tasks for Codex (v2)
+9. **Coach-set phase:** `PlanDay` has no phase column. Phase comes from `session.coaching.phase`, then race date, then `weekIndex % 6`. Consider persisting the cycle phase per week.
+10. **Per-athlete PUSH opt-in:** today only the `ADAPTIVE_PUSH_ENABLED` env flag. Add an athlete/coach setting (planning-setup JSON or profile column) plus a chat proposal field.
+11. **Pool access:** there is no profile field, so swim pivots only happen when swim appears in plan history or `swimPaceBase` is set. Add `hasPoolAccess` and a chat extraction phrase.
+12. **i18n:** narratives exist in en/es only. ht/fr/ru fall back to English.
+13. **Canonical/FIT export:** confirm engine step names, notes and groups pass `canonical-session` validation and the FIT note limit (≤180 bytes per companion instruction) on a real device export.
+14. **Weekly view:** show the key-session count and polarized split (Z1–2 vs Z3+) per week in the training-cycle overview.
 
 ## AI model recommendation
 **Primary: OpenAI `gpt-6-luna`** via the existing direct-OpenAI path (`OPENAI_COACH_MODEL=gpt-6-luna`).

@@ -15,6 +15,7 @@ import { resolveCheckinSafety } from "./checkin-safety";
 import { heatIndex, altitudeFactor } from "./fitness";
 import { wetsuitVerdict } from "./wetsuit";
 import { buildProtocol, type ProtocolSpec } from "./protocols";
+import { narrativeFor, type QualityKind } from "./periodization";
 import { decidePerformance, buildDensitySteps, estimateTss, type MetricRow, type LoadRow, type PerformanceDecision, type Stimulus } from "./performance-engine";
 
 // ---------- 1. AUTONOMIC NERVOUS SYSTEM RECOVERY (post-workout) ----------
@@ -948,6 +949,13 @@ export interface DailyPrescription {
   targets: { hr?: string; power?: string; pace?: string; effort?: string; rpe: number };
   scaled: { originalMin: number; factor: number; reason: string };
   sources: string[];
+  /** Present only when the performance engine shaped the session: the "why" behind it. */
+  engine?: {
+    version: "perf-engine-v2"; verdict: string; kind: string; family: string | null; phase: string | null;
+    readiness: number | null; acwr: number | null; hrvZ: number | null; source: string;
+    purpose: string; science: string; cues: string[]; stopRule: string; pivot: string | null; reason: string; estTss: number; availMin: number;
+    es: { purpose: string; cues: string[]; stopRule: string };
+  };
 }
 
 export function prescribeToday(opts: {
@@ -1180,7 +1188,7 @@ function engineOverride(
 ): DailyPrescription | null {
   const { decision, stimulus } = perf;
   const isPush = decision.verdict === "push";
-  if (stimulus.kind === "planned" || (!isPush && !stimulus.pivotedFrom && stimulus.kind !== "aerobic")) return null;
+  if (stimulus.kind === "planned" || (!isPush && !stimulus.pivotedFrom && stimulus.kind !== "aerobic" && stimulus.kind !== "taper-primer")) return null;
   const planned = Math.round(session.durationMin * (isPush ? 1.25 : Math.min(1, adaptation.durationFactor)));
   const availMin = Math.max(0, Math.floor(Math.min(
     planned,
@@ -1194,27 +1202,33 @@ function engineOverride(
   const capped = isPush ? steps : steps.map(s => Number(s.zone.slice(1)) > cap ? { ...s, zone: `z${cap}` } : s);
   const durationMin = Math.round(capped.reduce((a, s) => a + s.seconds, 0) / 60);
   const intensity = `z${Math.max(...capped.map(s => Number(s.zone.slice(1)) || 1))}`;
-  const type = stimulus.kind === "vo2" ? "interval" : stimulus.kind === "threshold" || stimulus.kind === "sweetspot" ? "threshold" : stimulus.kind === "neuromuscular" ? "strength" : stimulus.kind === "compromised" ? "brick" : "endurance";
+  const type = stimulus.kind === "vo2" || stimulus.kind === "vo2-long" ? "interval" : ["threshold", "sweetspot", "race-pace", "taper-primer"].includes(stimulus.kind) ? "threshold" : stimulus.kind === "neuromuscular" ? "strength" : stimulus.kind === "compromised" ? "brick" : "endurance";
   const sportLabel = stimulus.sport[0].toUpperCase() + stimulus.sport.slice(1);
-  const kindLabel: Record<string, string> = { vo2: "VO2max", threshold: "Threshold", sweetspot: "Sweet Spot", durability: "Aerobic Durability + Late Threshold", neuromuscular: "Neuromuscular Power", compromised: "Compromised Intervals", aerobic: "Aerobic" };
+  const kindLabel: Record<string, string> = { vo2: "Fast VO2max (30/15)", "vo2-long": "Slow VO2max (long intervals)", threshold: "Threshold", sweetspot: "Sweet Spot", "race-pace": "Race-Pace Specific", durability: "Aerobic Durability + Late Threshold", "taper-primer": "Taper Primer", neuromuscular: "Neuromuscular Power", compromised: "Compromised Intervals", aerobic: "Aerobic" };
   const profile = opts.profile;
+  const narrative = narrativeFor(stimulus.kind as QualityKind, stimulus.family ?? "middle", stimulus.phase ?? "build");
   return {
-    title: `${sportLabel}: ${kindLabel[stimulus.kind] || "Session"}${isPush ? " · PUSH" : ""}`,
+    title: `${sportLabel}: ${kindLabel[stimulus.kind] || "Session"}${isPush ? " · KEY" : ""}`,
     sport: stimulus.sport,
     durationMin,
     intensity,
     type,
     steps: capped.map(s => ({ ...s, targets: zoneTargets(s.zone, stimulus.sport, profile) })),
+    engine: {
+      version: "perf-engine-v2", verdict: decision.verdict, kind: stimulus.kind, family: stimulus.family ?? null, phase: stimulus.phase ?? null,
+      readiness: decision.readiness, acwr: decision.load.acwr, hrvZ: decision.central.hrvZ, source: decision.central.source,
+      purpose: narrative.purpose, science: narrative.science, cues: narrative.cues, stopRule: narrative.stopRule,
+      pivot: stimulus.pivotedFrom ? `${stimulus.pivotedFrom}→${stimulus.sport}` : null, reason: stimulus.reason, estTss: estimateTss(capped), availMin,
+      es: (({ purpose, cues, stopRule }) => ({ purpose, cues, stopRule }))(narrativeFor(stimulus.kind as QualityKind, stimulus.family ?? "middle", stimulus.phase ?? "build", true)),
+    },
     startTime: session.startTime ?? null,
     verdict: adaptation.verdict,
     detail: {
       wu: `Warm up for ${Math.round(capped[0].seconds / 60)} min, progressive to Z2.`,
-      main: `${stimulus.reason} ${stepsText(capped)}`,
+      main: `${narrative.purpose} ${stepsText(capped)}`,
       cd: `Cool down for ${Math.round(capped[capped.length - 1].seconds / 60)} min at Z1.`,
       breathing: "Optional: a brief comfortable breathing pause after the session.",
-      study: isPush
-        ? "Controlled overload on a high-readiness, ACWR-safe day to drive supercompensation (Rønnestad 2020; Plews 2013; Gabbett 2016). Stop the set if form breaks or pain appears."
-        : "Sport-specific gating: eccentric load protected, metabolic stimulus kept (Clarkson & Hubal 2002).",
+      study: `${narrative.science} ${narrative.stopRule}`,
     },
     targets: zoneTargets(intensity, stimulus.sport, profile),
     scaled: {

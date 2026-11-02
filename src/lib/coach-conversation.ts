@@ -1,6 +1,7 @@
 import { assertScreenshotSource, type ScreenshotSource } from "./ai-data-policy";
 import { coachReferral } from "./coach-referrals";
 import { commanderDraft } from "./coach-commander";
+import { goalFamily, trainingIdeas } from "./periodization";
 import { savedTrainingReply } from "./coach-saved-training";
 import { endpointText } from "./universal-workout-card";
 import { dayOffProtocol, dayOffProtocolText } from "./day-off";
@@ -96,6 +97,9 @@ const fieldRules: Record<CoachCandidate["kind"], Record<string, Rule>> = {
     birthYear: {type:"number",unit:"year",min:1900,max:new Date().getFullYear()-13,integer:true},
     experience: {type:"string",unit:null,values:["beginner","amateur","advanced","pro"]},
     ftp: {type:"number",unit:"W",min:20,max:700},
+    // Equipment the engine may pivot to (perf-engine-v2). Never inferred: explicit first-person statements only.
+    hasSmartTrainer: {type:"boolean",unit:null},
+    bikeType: {type:"string",unit:null,values:["road","tt","tri","gravel","mountain"]},
   },
   workout_feedback: {
     feedbackStatus: { type: "string", unit: null, values: ["completed", "partial", "substituted", "skipped"] },
@@ -219,6 +223,9 @@ export function extractLocalCandidates(message: string, context: CandidateContex
       const values=unique(allNumbers(text,pattern));
       if(values.length===1) add("profile",field,values[0],globalDate.date,message,field==="ftp"?"Athlete-reported reference only. A dated, reviewed benchmark test is required before treating this as an applied training anchor.":undefined);
     }
+    if(/\b(?:i (?:have|own|got) (?:a |an )?(?:smart trainer|indoor trainer|turbo trainer|wahoo kickr|zwift trainer)|tengo (?:un )?(?:rodillo|smart trainer))\b/.test(text)&&!/\b(?:don't|do not|no)\s+(?:have|own|tengo)\b/.test(text)) add("profile","hasSmartTrainer",true,null,message);
+    const bike=/\bi (?:have|own|ride) (?:a |an |my )?(road|tt|time trial|tri|triathlon|gravel|mountain) bike\b/.exec(text)?.[1]??/\btengo una bici(?:cleta)? de (ruta|carretera|triatlon|gravel|montana)\b/.exec(text)?.[1];
+    if(bike&&!/\b(?:don't|do not|no)\s+(?:have|own|tengo)\b/.test(text)) add("profile","bikeType",({"time trial":"tt",triathlon:"tri",triatlon:"tri",ruta:"road",carretera:"road",montana:"mountain"} as Record<string,string>)[bike]??bike,null,message);
     const experience=/\b(?:my experience is|my level is|mi experiencia es|mi nivel es)\s*(beginner|amateur|intermediate|advanced|pro|principiante|intermedio|avanzado|profesional)\b/.exec(text)?.[1];
     if(experience) add("profile","experience",({intermediate:"amateur",principiante:"beginner",intermedio:"amateur",avanzado:"advanced",profesional:"pro"} as Record<string,string>)[experience]??experience,null,message);
   }
@@ -384,6 +391,19 @@ export function buildCoachReply(message: string, context: CoachReplyContext): Co
     `This reply uses the local rules assistant, without an external AI model. I cannot prescribe a personalized VO₂max session or infer a VO₂max pace from a threshold value. Review a structured protocol preview and current, dated sport references with your coach before saving it. ${swimDuration?`Your reported ${Number(swimDuration[1])}-minute swim`:'The swim session'} needs review of actual swim history, pool/open-water context, repetitions, rests and duration; the daily time limit alone does not establish suitability. No workout has been changed.`,
     `Esta respuesta usa reglas locales, no IA externa. No puedo prescribir una sesión personalizada de VO₂max ni deducir su ritmo de un umbral. Revisa un protocolo estructurado y referencias deportivas actuales y fechadas con tu entrenador antes de guardarlo. ${swimDuration?`La natación declarada de ${Number(swimDuration[1])} minutos`:'La sesión de natación'} necesita revisar historial real, piscina/aguas abiertas, repeticiones, descansos y duración; el límite diario no establece idoneidad. No se ha cambiado ninguna sesión.`);
 
+  // perf-engine-v2: brainstorm and "why today" use only the message text and static science —
+  // no stored athlete data enters chat prose (structural isolation of chatContext).
+  if (/\b(?:training ideas|workout ideas|session ideas|brainstorm|ideas (?:for|de) (?:my )?(?:training|entren\w*)|ideas de entrenamiento|lluvia de ideas|what (?:should|can) i (?:work on|focus on))\b/.test(t)) {
+    const goal = ([["full", /\b(ironman|140\.6|full distance)\b/], ["half", /\b(70\.3|half ironman)\b/], ["marathon", /\b(?<!half[ -])(marathon|maraton)\b/], ["half-marathon", /\b(half[ -]marathon|media maraton)\b/], ["10k", /\b10\s?k\b/], ["5k", /\b5\s?k\b/], ["olympic", /\b(olympic|olimpic[oa])\b/], ["sprint", /\bsprint\b/], ["hyrox", /\bhyrox\b/]] as [string, RegExp][]).find(([, re]) => re.test(t))?.[0];
+    const phase = (["taper", "base", "build", "specific", "recovery"] as const).find(p => new RegExp(`\\b${p}\\b`).test(t)) ?? (/\b(?:race week|semana de carrera)\b/.test(t) ? "taper" : /\b(?:construccion)\b/.test(t) ? "build" : /\b(?:especific\w*)\b/.test(t) ? "specific" : null);
+    if (!goal) return reply("training-ideas-clarify", "Happy to brainstorm. Which race or goal is this for (5k, 10k, half or full marathon, sprint/Olympic/70.3/Ironman, HYROX), and which phase are you in (base, build, specific, taper)? Quality ideas depend on both.", "Encantado de pensar ideas. ¿Para qué carrera u objetivo (5k, 10k, media o maratón, sprint/olímpico/70.3/Ironman, HYROX) y en qué fase estás (base, construcción, específica, taper)? Las ideas de calidad dependen de ambos.");
+    const fam = goalFamily(goal), ph = phase ?? "build", goalLabel = ({ half: "70.3", full: "Ironman", "half-marathon": "half marathon" } as Record<string, string>)[goal] ?? goal;
+    const tail = (sp: boolean) => sp ? "Regla: 2–3 sesiones clave por semana, nunca en días seguidos; el resto suave. Estas son ideas generales; tu sesión diaria la decide el motor con tu check-in, tiempo disponible y recuperación. Nada se ha cambiado." : "Rule: 2–3 key sessions a week, never on consecutive days; everything else easy. These are general ideas; your daily session is set by the engine from your check-in, available time and recovery. Nothing has been changed.";
+    return reply("training-ideas", `Quality ideas for ${goalLabel} · ${ph} phase:\n- ${trainingIdeas(fam, ph, false).join("\n- ")}\n${tail(false)}`, `Ideas de calidad para ${goalLabel} · fase ${ph}:\n- ${trainingIdeas(fam, ph, true).join("\n- ")}\n${tail(true)}`);
+  }
+  if (/\b(?:why (?:is|was) (?:today|my (?:workout|session)|this (?:session|workout))|explain today'?s (?:workout|session|training)|why did (?:my|the) (?:workout|session) change|por que (?:esta|la|mi) sesion|por que (?:cambio|hoy))\b/.test(t)) return reply("engine-explain",
+    "Today's session comes from fixed, science-based rules, not guesswork: your safety check-in first; then autonomic readiness (HRV vs your own baseline, resting heart rate, sleep); then muscle and tendon load (soreness and recent running/jumping); then your training-load ratio and how many hard sessions you've done this week; then your race goal, cycle phase, fitness level and the minutes you have. A key session only goes up when every check passes, and easy days stay easy. Open Today → \"Why this session\" to see your own numbers.",
+    "La sesión de hoy sale de reglas fijas basadas en ciencia, no de suposiciones: primero tu check-in de seguridad; luego la disposición autonómica (VFC frente a tu propia base, pulso en reposo, sueño); después la carga muscular y tendinosa (agujetas y carrera/saltos recientes); luego tu ratio de carga y cuántas sesiones duras llevas esta semana; y por último tu objetivo, la fase del ciclo, tu nivel y los minutos que tienes. Una sesión clave solo sube si todo se cumple, y los días suaves siguen siendo suaves. Abre Hoy → \"Por qué esta sesión\" para ver tus datos.");
   const command=commanderDraft(message);
   if(command?.area==="plan"&&/\b(?:plan|cycle|ciclo)\b/i.test(message)&&/\b(?:build|create|generate|revise|replace|change|want|make|crea|genera|cambia|quiero|prepara)\b/i.test(message)) return reply("plan-workspace",
     "We can review a complete cycle here. First review and confirm any proposed profile facts, then open Plan preview in Review and act here. Check the start date, planning horizon, saved availability and every proposed session. Nothing is saved until you confirm the exact current preview. Missing evidence or event conflicts remain visible, and daily check-in holds still apply.",

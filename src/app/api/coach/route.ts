@@ -6,7 +6,8 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { currentHrvReadiness } from "@/lib/coach-readiness";
 import { dayBounds, addDaysKey, dateKey } from "@/lib/dates";
-import { getCoachBriefing, getScienceBriefing, carbTargetGPerH, type CoachTelemetry } from "@/lib/coach";
+import { getCoachBriefing, getScienceBriefing, type CoachTelemetry } from "@/lib/coach";
+import { carbsPerHourFor } from "@/lib/fueling";
 import { estimateTss } from "@/lib/performance-engine";
 import { stepsText } from "@/lib/prescription";
 
@@ -143,8 +144,8 @@ export async function GET(request?: Request) {
       acwr: perf.load?.acwr ?? null, recentRpeDelta: perf.rpeDelta ?? null,
       availMin: rx.durationMin ?? null, sport: rx.sport, targetZone: rx.intensity || "z1",
       estTss: rx.steps.length ? estimateTss(rx.steps) : null, rxIntervals: rx.steps.length ? stepsText(rx.steps) : "Rest",
-      fuelGPerH: carbTargetGPerH(rx.durationMin ?? null, rx.intensity || "z1", profile?.gutTrained === true),
-      pivot: /pivot (\w+→\w+)/.exec(rx.scaled?.reason || "")?.[1] ?? null,
+      fuelGPerH: rx.durationMin ? carbsPerHourFor(rx.durationMin, rx.intensity || "z1", profile?.gutTrained === true) : null,
+      pivot: rx.engine?.pivot ?? null,
     };
     // External narration requires: per-request named consent (?aiConsent=openai), no Strava rows,
     // no Strava connector, no Strava-adopted profile values (Strava API Agreement: no AI use).
