@@ -4,7 +4,7 @@ import { normalizeCentral, normalizePeripheral, computeLoad, decidePerformance, 
 import { prescribeToday, applyPerformance, adaptSession } from "./adaptive";
 import { alternateFor } from "./regen";
 import { compromisedRunSession } from "./hyrox";
-import { buildCompactTelemetryDigest, parseScienceReply, getScienceBriefing, localScienceBriefing, SCIENCE_COACH_SKILL, type CoachTelemetry } from "./coach";
+import { scienceRequestBody, buildCompactTelemetryDigest, parseScienceReply, getScienceBriefing, localScienceBriefing, SCIENCE_COACH_SKILL, type CoachTelemetry } from "./coach";
 
 const NOW = new Date("2026-11-02T12:00:00Z");
 const day = (n: number) => new Date(+NOW - n * 86400000);
@@ -164,4 +164,12 @@ test("science briefing never calls a provider unless eligible; max 300 output to
   const ai = await getScienceBriefing(telemetry, { eligible: true, env, fetch: fake });
   assert.equal(ai.mode, "ai"); assert.equal(body.max_tokens, 300); assert.equal(body.messages.length, 2);
   assert.equal(localScienceBriefing(telemetry).headline, "DÍA DE EMPUJE");
+});
+
+test("reasoning models get max_completion_tokens; unknown model stays local", async () => {
+  assert.equal((scienceRequestBody("gpt-6-luna", "x") as any).max_completion_tokens, 300);
+  assert.equal((scienceRequestBody("gpt-4.1-mini", "x") as any).max_tokens, 300);
+  let calls = 0; const fake = (async () => { calls++; return new Response("{}"); }) as typeof fetch;
+  assert.equal((await getScienceBriefing(telemetry, { eligible: true, env: { EXTERNAL_AI_ENABLED: "true", OPENAI_API_KEY: "k", OPENAI_COACH_MODEL: "made-up" }, fetch: fake })).mode, "local");
+  assert.equal(calls, 0);
 });

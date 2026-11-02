@@ -213,22 +213,31 @@ export function localScienceBriefing(t: CoachTelemetry): ScienceBriefing {
   return { mode: "local", headline, briefing, adaptation: parts || (es ? "Sin datos de dispositivo; basado en el check-in." : "No device baseline; based on check-in."), rx_intervals: t.rxIntervals, fuel, digest: buildCompactTelemetryDigest(t) };
 }
 
-export interface ScienceEnv { EXTERNAL_AI_ENABLED?: string; OPENAI_API_KEY?: string; OPENAI_TEXT_MODEL?: string }
+export interface ScienceEnv { EXTERNAL_AI_ENABLED?: string; OPENAI_API_KEY?: string; OPENAI_TEXT_MODEL?: string; OPENAI_COACH_MODEL?: string }
+// Allowlist: an unknown model string falls back to local, never to an unreviewed model.
+// gpt-6-luna is the recommended production model (docs/perf-engine-v1-handoff.md).
+export const SCIENCE_COACH_MODELS = new Set(["gpt-4.1-mini-2025-04-14", "gpt-4.1-mini", "gpt-6-luna"]);
+/** Reasoning-family models (gpt-5+, gpt-6) take max_completion_tokens; 4.1 takes max_tokens. */
+export function scienceRequestBody(model: string, digest: string) {
+  const reasoning = /^gpt-(?:5|6)/.test(model);
+  return { model, store: false, response_format: { type: "json_object" }, ...(reasoning ? { max_completion_tokens: 300 } : { max_tokens: 300, temperature: 0.2 }),
+    messages: [{ role: "system", content: SCIENCE_COACH_SKILL }, { role: "user", content: digest }] };
+}
 /** External narration only when (a) the route proved the context is provider-eligible
  * (no Strava-derived data — Strava API Agreement), (b) AI is enabled server-side.
  * Any failure → deterministic local briefing in the same contract. */
 export async function getScienceBriefing(t: CoachTelemetry, opts: { eligible: boolean; env?: ScienceEnv; fetch?: typeof fetch; timeoutMs?: number } = { eligible: false }): Promise<ScienceBriefing> {
   const local = localScienceBriefing(t);
-  const env = opts.env ?? { EXTERNAL_AI_ENABLED: process.env.EXTERNAL_AI_ENABLED, OPENAI_API_KEY: process.env.OPENAI_API_KEY, OPENAI_TEXT_MODEL: process.env.OPENAI_TEXT_MODEL };
-  if (opts.eligible !== true || t.wearableSource === "strava" || env.EXTERNAL_AI_ENABLED !== "true" || !env.OPENAI_API_KEY) return local;
+  const env = opts.env ?? { EXTERNAL_AI_ENABLED: process.env.EXTERNAL_AI_ENABLED, OPENAI_API_KEY: process.env.OPENAI_API_KEY, OPENAI_TEXT_MODEL: process.env.OPENAI_TEXT_MODEL, OPENAI_COACH_MODEL: process.env.OPENAI_COACH_MODEL };
+  const model = env.OPENAI_COACH_MODEL || env.OPENAI_TEXT_MODEL || "gpt-4.1-mini-2025-04-14";
+  if (opts.eligible !== true || t.wearableSource === "strava" || env.EXTERNAL_AI_ENABLED !== "true" || !env.OPENAI_API_KEY || !SCIENCE_COACH_MODELS.has(model)) return local;
   const digest = local.digest;
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 6000);
   try {
     const res = await (opts.fetch ?? fetch)("https://api.openai.com/v1/chat/completions", {
       method: "POST", signal: controller.signal, redirect: "error",
       headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY}` },
-      body: JSON.stringify({ model: env.OPENAI_TEXT_MODEL || "gpt-4.1-mini-2025-04-14", store: false, temperature: 0.2, max_tokens: 300, response_format: { type: "json_object" },
-        messages: [{ role: "system", content: SCIENCE_COACH_SKILL }, { role: "user", content: digest }] }),
+      body: JSON.stringify(scienceRequestBody(model, digest)),
     });
     if (!res.ok) return local;
     const text = await res.text();
