@@ -35,6 +35,8 @@ import { readDailyInputContext } from "@/lib/daily-input-context";
 import { workoutRevision } from "@/lib/workout-update";
 import { derivedActivityPolicy } from "@/lib/derived-activity-policy";
 import { effectivePrescription } from "@/lib/effective-prescription";
+import { applyPerformance } from "@/lib/adaptive";
+import { decidePerformance, selectStimulus, type LoadRow, type MetricRow } from "@/lib/performance-engine";
 import { trainingViewDisclosureAllowed, ACTIVITY_DISCLOSURE_REASON } from "@/lib/activity-disclosure";
 
 const sources = () =>
@@ -275,6 +277,30 @@ export async function POST(req: Request) {
     const dailyBudgetRemaining = Math.max(0, (planning.setup?.maxSessionMinutes ?? (starterReady ? 20 : 0)) - usedDailyMinutes);
     if (adaptation.safetyStatus === "clear" && (uncertainSameDay || dailyBudgetRemaining === 0)) adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", ruleId: "checkin-safety-v1:daily-budget", message: uncertainSameDay ? "Confirm actual duration for today's reported activity before adding a workout. Unknown duration is not zero." : "Today's reviewed training-time budget is already used. No further workout is prescribed." };
     if(starterReady && adaptation.safetyStatus === "clear" && adaptation.verdict !== "rest") adaptation = {...adaptation,intensityCap:"z1",durationFactor:Math.min(1,adaptation.durationFactor),message:"Your starter session stays comfortable and within today's available time. Report actual minutes and effort afterward; no pace, power or performance baseline is inferred."};
+    // ---- Performance engine (perf-engine-v1): device normalization, central/peripheral split, ACWR, PUSH ----
+    // Runs only after every safety/setup/provenance/budget hold above; it can never lift a hold.
+    // Unknown provenance or reconciliation → empty load rows → ACWR unknown → no PUSH.
+    let availableSports: string[] = [];
+    if (adaptation.safetyStatus === "clear" && adaptation.verdict !== "rest" && setupGate.ready && !starterReady) {
+      try {
+        const [metrics60, load28] = await Promise.all([
+          prisma.dailyMetrics.findMany({ where: { userId: user.id, date: { gte: new Date(start.getTime() - 60 * 86400000), lt: end } }, orderBy: { date: "asc" } }),
+          prisma.workout.findMany({ where: { userId: user.id, date: { gte: new Date(start.getTime() - 28 * 86400000), lt: end } }, orderBy: { date: "asc" } }),
+        ]);
+        const loadAllowed = activityPolicy.status === "allowed" && !groupedHistory.unresolvedGroups;
+        const loadRows: LoadRow[] = (loadAllowed ? load28 : [])
+          .filter(w => !w.matchedPlanId && w.feedbackStatus !== "skipped" && (w.completed || w.feedbackStatus === "completed" || w.feedbackStatus === "partial"))
+          .map(w => ({ date: w.date, sport: w.actualSport || w.sport, type: w.type, intensity: w.intensity, rpe: w.rpe,
+            // A plain "completed" planned session counts at its planned duration; partial without actual minutes stays unknown.
+            minutes: w.actualDurationMin ?? (w.feedbackStatus === "partial" ? null : w.planned ? w.durationMin : activityActualMinutes(w as any)) }));
+        const deviceMetrics: MetricRow[] = biometricPolicy.status === "allowed" ? metrics60 : [];
+        const decision = decidePerformance({ base: adaptation, subjective: checkin, metrics: deviceMetrics, loadRows, pushEnabled: process.env.ADAPTIVE_PUSH_ENABLED === "true" });
+        adaptation = applyPerformance(adaptation, decision);
+        availableSports = Array.from(new Set([...load28.map(w => w.actualSport || w.sport), ...(profile?.bikeType || profile?.hasSmartTrainer ? ["bike"] : []), ...(profile?.swimPaceBase ? ["swim"] : [])]));
+      } catch (error) {
+        console.error("perf-engine skipped", error instanceof Error ? error.message : "unknown");
+      }
+    }
     const busyHrs = busyHours(appointments, key, user.timezone);
     const busyNote = `${appointments.length} calendar commitments, ${busyHrs.toFixed(1)} hours busy.`;
     const saved = await prisma.$transaction(async (tx) => {
@@ -329,7 +355,13 @@ export async function POST(req: Request) {
                 ),
               }
             : base;
+        // Coach-authored sport structures, protocols and starter sessions keep their design.
+        let priorStructure = false; try { priorStructure = JSON.parse(w.prescription || "null")?.sportStructure !== undefined; } catch {}
+        const performance = adaptation.performance && effective === adaptation && remaining > 0 && !priorStructure && !base.protocol && !isStarterSession(w)
+          ? { decision: adaptation.performance, stimulus: selectStimulus({ planned: { sport: base.sport, type: base.type, intensity: base.intensity, durationMin: base.durationMin }, decision: adaptation.performance, availMin: Math.floor(remaining), availableSports, raceBuild: profile?.goal === "hyrox" }) }
+          : undefined;
         const p = preserveSportStructure(w, prescribeToday({
+          performance,
           session: limitedBase,
           adaptation:
             remaining <= 0

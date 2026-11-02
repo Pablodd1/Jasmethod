@@ -6,10 +6,12 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { currentHrvReadiness } from "@/lib/coach-readiness";
 import { dayBounds, addDaysKey, dateKey } from "@/lib/dates";
-import { getCoachBriefing } from "@/lib/coach";
+import { getCoachBriefing, getScienceBriefing, carbTargetGPerH, type CoachTelemetry } from "@/lib/coach";
+import { estimateTss } from "@/lib/performance-engine";
+import { stepsText } from "@/lib/prescription";
 
 // GET /api/coach — gathers the athlete's day and asks JASAI for a briefing
-export async function GET() {
+export async function GET(request?: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const now = new Date(), { start, end } = dayBounds(user.timezone, now);
@@ -123,5 +125,34 @@ export async function GET() {
     externalAiEligible: false,
   });
 
-  return NextResponse.json({ briefing, cached: briefing.mode === "fallback" ? false : true });
+  // ---- Science briefing: one deterministic telemetry line (perf-engine-v1) ----
+  // Reads the decision the check-in already saved; never recomputes or invents state.
+  let science = null;
+  const todayCheckin = checkins7.find(c => dateKey(c.date, user.timezone) === dateKey(now, user.timezone));
+  let saved: any = null, rx: any = null;
+  try { saved = JSON.parse(todayCheckin?.adaptation || "null"); } catch {}
+  try { const raw = currentSession?.prescription; rx = typeof raw === "string" ? JSON.parse(raw) : raw; } catch {}
+  const perf = saved?.performance;
+  if (perf?.version === "perf-engine-v1" && rx && Array.isArray(rx.steps)) {
+    let answers: any = {}; try { answers = JSON.parse(todayCheckin?.answers || "{}"); } catch {}
+    const telemetry: CoachTelemetry = {
+      language: user.language, wearableSource: perf.central?.source ?? "checkin",
+      readiness: perf.readiness ?? null, verdict: rx.verdict === "rest" ? "rest" : perf.verdict,
+      hrvZScore: perf.central?.hrvZ ?? null, rhrDelta: perf.central?.rhrDelta ?? null, sleepHours: perf.central?.sleepHours ?? answers.sleepHours ?? null,
+      soreness: perf.peripheral?.soreness ?? null, eccentricBand: perf.peripheral?.eccentricBand ?? "low", hoursSinceHighEccentric: perf.peripheral?.hoursSinceHighEccentric ?? null,
+      acwr: perf.load?.acwr ?? null, recentRpeDelta: perf.rpeDelta ?? null,
+      availMin: rx.durationMin ?? null, sport: rx.sport, targetZone: rx.intensity || "z1",
+      estTss: rx.steps.length ? estimateTss(rx.steps) : null, rxIntervals: rx.steps.length ? stepsText(rx.steps) : "Rest",
+      fuelGPerH: carbTargetGPerH(rx.durationMin ?? null, rx.intensity || "z1", profile?.gutTrained === true),
+      pivot: /pivot (\w+→\w+)/.exec(rx.scaled?.reason || "")?.[1] ?? null,
+    };
+    // External narration requires: per-request named consent (?aiConsent=openai), no Strava rows,
+    // no Strava connector, no Strava-adopted profile values (Strava API Agreement: no AI use).
+    const consent = request ? new URL(request.url).searchParams.get("aiConsent") === "openai" : false;
+    const stravaConnector = consent ? await prisma.connector.findFirst({ where: { userId: user.id, provider: "strava" }, select: { id: true } }) : null;
+    const eligible = consent && !stravaConnector && restricted4w.length === 0 && workouts4w.every(w => w.source !== "strava") && !Object.values(profile || {}).includes("strava");
+    science = await getScienceBriefing(telemetry, { eligible });
+  }
+
+  return NextResponse.json({ briefing, science, cached: briefing.mode === "fallback" ? false : true });
 }

@@ -121,8 +121,33 @@ export function variantFor(sport: string, type: string, zone: string, minutes: n
 // ---- CROSS-MODALITY ALTERNATES ----
 // Recovery remains recovery. Other modalities change the training stimulus;
 // specific movement and experience review is required before optional power work.
-export function alternateFor(sport: string, type: string, zone: string, minutes: number, athleteGoal: string): RegenSession {
+export interface AlternateContext {
+  /** Autonomic state is stable (HRV within/above SWC). */
+  centralOk: boolean;
+  /** Lower-body peripheral fatigue: soreness ≥4/5, high 48 h eccentric load, or <48 h since a high-eccentric session. */
+  legsLoaded: boolean;
+  /** Modalities the athlete actually has; never invent a pool or a bike. */
+  availableSports: string[];
+}
+
+export function alternateFor(sport: string, type: string, zone: string, minutes: number, athleteGoal: string, ctx?: AlternateContext): RegenSession {
   const z = zone.toUpperCase();
+  // Central-vs-peripheral pivot: keep the METABOLIC stimulus on a concentric or
+  // zero-impact modality instead of converting a hard day into generic strength.
+  const hardZone = z === "Z4" || z === "Z5" || z === "Z6" || type === "interval" || type === "threshold";
+  if (ctx?.centralOk && ctx.legsLoaded && hardZone && type !== "recovery" && ["run", "hyrox", "boxing"].includes(sport)) {
+    const pick = ctx.availableSports.includes("bike") ? "bike" : ctx.availableSports.includes("swim") ? "swim" : null;
+    if (pick) {
+      const m = Math.max(20, minutes), work = Math.max(10, m - 25);
+      const vo2 = z === "Z5" || z === "Z6" || type === "interval";
+      const description = pick === "bike"
+        ? (vo2 ? `Main: ${Math.max(1, Math.min(3, Math.floor((work + 3) / 12.75)))} set(s) of 13×(30s @110-120% FTP / 15s easy), 3 min between — Rønnestad 30/15, same VO2 stimulus, concentric only.`
+               : `Main: ${Math.max(1, Math.floor((work + 3) / 13))}×10 min at 91-100% FTP with 3 min spin — threshold kept, eccentric load removed.`)
+        : (vo2 ? `Main: ${Math.max(6, Math.floor(work / 1.5))}×50m fast (CSS −5s/100m) with 15-20s rest — VO2 stimulus, zero impact.`
+               : `Main: ${Math.max(4, Math.floor(work / 2.25))}×100m at CSS with 20s rest — threshold kept, zero impact.`);
+      return { sport: pick, type: vo2 ? "interval" : "threshold", intensity: vo2 ? "z5" : "z4", title: `Pivot: ${pick === "bike" ? "Bike" : "Swim"} ${vo2 ? "VO2max" : "Threshold"} (legs protected)`, description: `${description} Your ${sport} session was moved because lower-body tissue load is high while autonomic readiness is stable.` };
+    }
+  }
   const aerobic = z === "Z1" || z === "Z2" || type === "endurance";
   const speed = z === "Z5" || z === "Z6" || z === "Z7" || type === "interval";
   const m = Math.max(20, minutes);

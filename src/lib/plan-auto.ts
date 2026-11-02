@@ -3,6 +3,14 @@ import { prisma } from "./db";
 import { assessPlanningSetup, planningGoal, PLANNABLE_GOALS, type PlanningSetup } from "./planning-setup";
 import { readPlanningSetup } from "./planning-setup-store";
 export { parseDate } from "./dates";
+import { enforceEccentricSpacing } from "./performance-engine";
+
+/** Plan-level biomechanical gate: ≥48 h between high-eccentric (run Z4+/plyo/heavy lower-body)
+ * sessions. A later conflicting session moves to bike/swim if the athlete has one, else drops to Z2.
+ * Pure; apply to a generated week before preview/confirmation. */
+export function spaceHighEccentricSessions<T extends { date: Date | string; sport: string; type: string; intensity?: string | null }>(week: T[], availableSports: string[]) {
+  return enforceEccentricSpacing(week, availableSports);
+}
 
 export function starterPlanInputs(profile: {
   goal?: string | null; experience?: string | null; weeklyHours?: number | null; raceDate?: Date | null;
