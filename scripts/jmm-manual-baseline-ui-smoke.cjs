@@ -21,6 +21,7 @@ const fs=require('node:fs');
     if(!input.manualBaselinePlanning){status=409;body={error:'Synthetic restricted history requires an explicit baseline choice.'};}
     else body={ok:true,previewToken:'a'.repeat(64),warning:'Synthetic preview only. No training saved.',doubleDayAgreementRequired:false,eventTradeoffAgreementRequired:false,preview:{distance:'half',weeks:4,startDate:'2026-11-03T05:00:00.000Z',raceDate:null,weeklyBudgetMin:300,existingPlans:0,weeksPreview:[1,2,3,4].map(week=>({week,theme:'Synthetic foundation',totalMinutes:30,restDaySlots:[1,2,3,4,5,6],sessions:[{title:'Synthetic familiar practice',sport:'bike',zone:'z2',minutes:30,daySlot:0,description:'Synthetic effort instructions.',steps:[{name:'Familiar effort',zone:'z2',seconds:1800}]}]})),recoveryPolicy:{minimumRestDays:1}}};
    }
+   if(body.preview) body.preview.cycle={planningBasis:'athlete_reported_baseline',baseline:{weeklyMinutes:300,source:'athlete_reported',observedAt:'2026-11-01'},activity:{reportedSessions:null,reportedMinutes:null,unknownDurationSessions:null,recoveryReview:true,note:'Synthetic imported load remains unknown.'},assessment:'Synthetic familiar observations.',weeks:[]};
    return route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   });
   await page.goto('http://127.0.0.1:3147/training');
@@ -33,6 +34,7 @@ const fs=require('node:fs');
   await page.getByRole('button',{name:language==='en'?'Preview Plan':'Vista previa del plan',exact:true}).click();
   const confirm=page.getByRole('button',{name:language==='en'?'Confirm and save this plan':'Confirmar y guardar este plan',exact:true});
   await confirm.waitFor();assert.equal(requests[1].manualBaselinePlanning,true);assert.equal(requests[1].preview,true);
+  await page.getByText(language==='en'?/Provisional plan based on your reported baseline/:/Plan provisional basado en tu volumen declarado/).waitFor();
   await choice.scrollIntoViewIfNeeded();
   await page.screenshot({path:`.local/coach-baseline-mobile-${language}.png`});
   await choice.uncheck();assert.equal(await confirm.count(),0);
