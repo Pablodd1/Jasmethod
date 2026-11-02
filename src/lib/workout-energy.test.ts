@@ -1,0 +1,53 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { stepGuide, sessionEnergy, actualSessionKj, compareSessions } from "./workout-energy";
+import { buildAthleteModel } from "./athlete-model";
+
+const full = { ftp: 250, lthr: 165, runPaceBase: 270, swimPaceBase: 100, weightKg: 70 };
+
+test("every step shows every unit the athlete may use; absolute numbers only with a reference", () => {
+  const bike = stepGuide({ seconds: 600, zone: "z4" }, "bike", full);
+  assert.match(bike.text, /RPE 7/); assert.match(bike.text, /226–263 W/); assert.match(bike.text, /90–105% FTP/); assert.match(bike.text, /bpm/); assert.match(bike.text, /kJ/);
+  const rest = stepGuide({ seconds: 180, zone: "z1", phase: "recovery" }, "bike", full);
+  assert.match(rest.text, /RPE 2/); assert.match(rest.text, /≤138 W/); assert.match(rest.text, /≤132 bpm/);
+  const run = stepGuide({ seconds: 600, zone: "z4" }, "run", full);
+  assert.match(run.text, /\/km/); assert.match(run.text, /run CP/); assert.match(run.text, /bpm/);
+  const swim = stepGuide({ seconds: 115, zone: "z4" }, "swim", full);
+  assert.match(swim.text, /\/100 m/); assert.match(swim.text, /CSS/); assert.match(swim.text, /~10 bpm lower/);
+  const hyrox = stepGuide({ seconds: 240, zone: "z4" }, "hyrox", {});
+  assert.match(hyrox.text, /Z4 · RPE 7/); assert.match(hyrox.text, /% LTHR/); assert.doesNotMatch(hyrox.text, /\d+ bpm/, "no invented absolute HR");
+  assert.match(stepGuide({ seconds: 60, zone: "z5" }, "bike", {}, true).text, /muy duro|duro/);
+});
+
+test("kJ: bike from power (1 kJ ≈ 1 kcal), others from METs × weight; unknown when neither", () => {
+  const steps = [{ seconds: 900, zone: "z2" }, { seconds: 1200, zone: "z4" }, { seconds: 600, zone: "z1" }];
+  const b = sessionEnergy(steps, "bike", full, 60);
+  assert.equal(b.method, "power"); assert.ok(b.workKj! > 400 && b.workKj! < 600, String(b.workKj)); assert.equal(b.kcal, b.workKj);
+  assert.ok(b.highIntensityPct! > 50); assert.ok(b.carbsBurnedG! > 60); assert.equal(b.carbsIntakeTargetG, 45);
+  const r = sessionEnergy(steps, "run", { weightKg: 70 }, 20);
+  assert.equal(r.method, "met-estimate"); assert.ok(r.workKj! > 0);
+  const u = sessionEnergy(steps, "run", {}, 20);
+  assert.equal(u.method, "unavailable"); assert.equal(u.workKj, null); assert.match(u.hydrationNote, /Weigh yourself before and after/);
+  assert.match(sessionEnergy(steps, "bike", { ...full, sweatRateMlH: 900 }, 60).hydrationNote, /900 ml\/h/);
+});
+
+test("big carbohydrate cost triggers recovery-carb guidance", () => {
+  const long = sessionEnergy([{ seconds: 3 * 3600, zone: "z3" }], "bike", full, 60);
+  assert.ok(long.carbsBurnedG! >= 200); assert.match(long.recoveryCarbNote!, /1\.0–1\.2 g\/kg\/h/);
+});
+
+test("actual kJ: measured power first, device calories second, estimate last; comparison on one scale", () => {
+  assert.deepEqual(actualSessionKj({ sport: "bike", avgPower: 200, actualDurationMin: 60 }, null), { kj: 720, source: "power" });
+  assert.deepEqual(actualSessionKj({ sport: "run", calories: 650, actualDurationMin: 50 }, null), { kj: 650, source: "device-calories" });
+  assert.equal(actualSessionKj({ sport: "run", actualDurationMin: 50 }, { weightKg: 70 }).source, "estimate");
+  assert.equal(actualSessionKj({ sport: "run" }, null).kj, null);
+  const c = compareSessions({ kj: 720, minutes: 60, highIntensityKj: 200 }, { kj: 900, minutes: 60, highIntensityKj: 350 })!;
+  assert.equal(c.kjDeltaPct, 25); assert.equal(c.highIntensityDeltaKj, 150);
+});
+
+test("athlete model reports weekly kJ vs 4-week norm from imported history", () => {
+  const NOW = new Date("2026-11-02T12:00:00Z");
+  const hist = Array.from({ length: 30 }, (_, i) => ({ date: new Date(+NOW - (30 - i) * 86400000), sport: "bike", durationMin: 60, completed: true, planned: false, avgPower: 180, source: "garmin" }));
+  const m = buildAthleteModel({ history: hist, metrics: [], profile: { weightKg: 70 }, now: NOW });
+  assert.ok(m.kjLast7! > 0 && m.kjWeeklyAvg28! > 0); assert.equal(m.kjSources.power, m.sessions28);
+});

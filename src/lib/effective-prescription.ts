@@ -23,6 +23,14 @@ import { existingReviewResetHold, readExistingReviewResetAudits, type ExistingRe
 import { readPlanningSetup } from "./planning-setup-store";
 import { assessPlanningSetup } from "./planning-setup";
 import { evidencedTargetProfile } from "./anchor-evidence";
+import { stepGuide, sessionEnergy } from "./workout-energy";
+import { carbsPerHourFor } from "./fueling";
+
+/** Every step — work and rest — described in every unit (zone, RPE, HR, power, run power, pace, kJ).
+ * Uses the same evidence-gated profile as the canonical targets. Display only: not part of the revision hash. */
+function withGuide<T extends { zone: string; seconds: number; name?: string; phase?: string }>(step: T, sport: string, profile: any): T & { guide: ReturnType<typeof stepGuide>; guideEs: string } {
+  return { ...step, guide: stepGuide(step, sport, profile), guideEs: stepGuide(step, sport, profile, true).text };
+}
 import { canonicalSession, type CanonicalSession, type TargetProfile } from "./canonical-session";
 
 function parsed(value: unknown): any {
@@ -192,7 +200,9 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
     }
   }
   const prescription = canonical.verdict === "ready"
-    ? { ...p, title: canonical.title, sport: canonical.sport, durationMin: canonical.durationMin, steps: canonical.steps, targets: {}, revision: canonical.revision }
+    ? { ...p, title: canonical.title, sport: canonical.sport, durationMin: canonical.durationMin, steps: canonical.steps.map(step => withGuide(step, canonical.sport, profile)), targets: {}, revision: canonical.revision,
+        energy: sessionEnergy(canonical.steps, canonical.sport, profile, canonical.durationMin ? carbsPerHourFor(canonical.durationMin, `z${Math.max(1, ...canonical.steps.map(st => Number(st.zone.slice(1)) || 1))}`, profile?.gutTrained === true) : null),
+        energyEs: sessionEnergy(canonical.steps, canonical.sport, profile, canonical.durationMin ? carbsPerHourFor(canonical.durationMin, `z${Math.max(1, ...canonical.steps.map(st => Number(st.zone.slice(1)) || 1))}`, profile?.gutTrained === true) : null, true) }
     : { ...p, title: canonical.verdict === "rest" ? "Rest and recover" : canonical.title, sport: workout.sport, type: canonical.verdict === "rest" ? "recovery" : parsed(workout.originalPlan)?.type ?? workout.type, intensity: canonical.verdict === "rest" ? "z1" : null, verdict: canonical.verdict, durationMin: 0, steps: [], targets: canonical.verdict === "rest" ? { rpe: 0 } : {}, why: canonical.reason, safetyStatus: canonical.verdict, revision: canonical.revision, detail: { wu: "No warm-up prescribed.", main: canonical.reason, cd: "Reassess before training.", breathing: "", study: "" }, scaled: { originalMin: parsed(workout.originalPlan)?.durationMin ?? workout.durationMin, factor: 0, reason: canonical.reason }, sources: [] };
   const nutrition = buildSessionNutrition(profile, { id: canonical.id, revision:canonical.revision, dateLocal: key, timezone, sport: canonical.sport,
     durationMin: canonical.durationMin, intensity: canonicalFuelIntensity(canonical, prescription.intensity, profile), startTime: workout.startTime, verdict: canonical.verdict }, now);

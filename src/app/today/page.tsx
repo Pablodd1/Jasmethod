@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { Watch } from "lucide-react";
 import { FuelTimeline } from "@/components/fuel-timeline";
 import { WorkoutSparkline } from "@/components/workout-sparkline";
+import { CoachOnboardingCard } from "@/components/coach-onboarding-card";
 import { fmtVolumeDual } from "@/lib/units";
 import { fmtDistance } from "@/lib/units";
 import { unitsOf } from "@/lib/units";
@@ -303,6 +304,7 @@ function TodayPageContent() {
             {message}
           </p>
         )}
+        <CoachOnboardingCard es={es} />
         {data?.athleteReview && <div id="today-reports" className="scroll-mt-20"><AthleteDayReview review={data.athleteReview} plannedMinutes={session?.prescription?.scaled?.originalMin ?? session?.durationMin} es={es} expandRecords={expandReports} onRecordsToggle={setExpandReports} onReport={id => { const record = data.athleteReview.records.find((item: any) => item.id === id); if (!record || record.matchedPlanId) return; setReportActivityId(id); setFeedback(true); requestAnimationFrame(() => document.getElementById('workout-feedback')?.scrollIntoView({behavior:'smooth',block:'start'})); }} />
           {expandReports && session && !session.matchedPlanId && !data.athleteReview.records.some((record: any) => record.id === session.id) && <button type="button" className="btn-secondary mt-3" onClick={() => { setReportActivityId(null); setFeedback(true); requestAnimationFrame(() => document.getElementById('workout-feedback')?.scrollIntoView({behavior:'smooth',block:'start'})); }}>{es ? `Registrar la sesión planificada: ${session.title}` : `Log planned session: ${session.title}`}</button>}
         </div>}
@@ -487,6 +489,32 @@ function TodayPageContent() {
                     ? "revisa la secuencia, el lugar, el ritmo y la técnica. Es una preparación opcional."
                     : "review the sequence, setting, effort and technique. This is optional preparation."}
                 </div>
+                {session.prescription.engine && session.prescription.steps?.length > 0 && (() => {
+                  const e = session.prescription.engine, text = es && e.es ? e.es : e;
+                  const chip = (label: string, value: unknown) => (
+                    <span className="rounded-full border border-ocean-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-ocean-800">{label} {value == null ? "—" : String(value)}</span>
+                  );
+                  return (
+                    <section aria-label={es ? "Por qué esta sesión" : "Why this session"} className="mb-3 rounded-xl border border-ocean-200 bg-ocean-50/60 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-ocean-700">
+                        {es ? "Por qué esta sesión" : "Why this session"}{e.phase ? ` · ${e.phase}` : ""}{e.family ? ` · ${e.family}` : ""}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-800">{text.purpose}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {chip(es ? "Disposición" : "Readiness", e.readiness)}
+                        {chip("ACWR", e.acwr)}
+                        {chip("HRV", e.hrvZ == null ? null : `${e.hrvZ > 0 ? "+" : ""}${e.hrvZ} SD`)}
+                        {chip(es ? "TSS est." : "Est. TSS", e.estTss)}
+                        {e.pivot && chip(es ? "Cambio" : "Pivot", e.pivot)}
+                      </div>
+                      {Array.isArray(text.cues) && text.cues.length > 0 && (
+                        <ul className="mt-2 list-disc pl-5 text-xs text-slate-700">{text.cues.map((c: string, i: number) => <li key={i}>{c}</li>)}</ul>
+                      )}
+                      <p className="mt-2 text-xs font-semibold text-slate-700">{text.stopRule}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">{e.science}</p>
+                    </section>
+                  );
+                })()}
                 {session.prescription.steps.length > 2 && session.prescription.steps.every((step: any) => step.endpoint?.type === "time") && (
                   <WorkoutSparkline steps={session.prescription.steps} />
                 )}
@@ -544,6 +572,7 @@ function TodayPageContent() {
                               </span>
                             </div>
                             <div className="pl-9 text-sm mt-1">{s.target?.label}</div>
+                            {s.guide?.text && <div className="pl-9 text-xs text-slate-700 mt-1 leading-snug">{es && s.guideEs ? s.guideEs : s.guide.text}</div>}
                             {s.target?.missingReason && <p className="pl-9 text-xs">{s.target.missingReason}</p>}
                             <div className="mt-1.5 pl-9 font-semibold">{endpointLabel(s.endpoint, data?.units !== "imperial", session.sport, es ? "es" : "en")}</div>
                             {s.note && (
@@ -575,6 +604,7 @@ function TodayPageContent() {
                               </strong>
                             </div>
                             <p className="text-sm mt-1">{s.target?.label}</p>
+                            {s.guide?.text && <p className="text-xs text-slate-700 mt-1 leading-snug">{es && s.guideEs ? s.guideEs : s.guide.text}</p>}
                             {s.target?.missingReason && <p className="text-xs">{s.target.missingReason}</p>}
                             {s.note && (
                               <div className="text-[11px] text-slate-500 mt-1 leading-snug">{s.note}</div>
@@ -590,6 +620,31 @@ function TodayPageContent() {
                     <p>{session.verdict === "blocked" ? readinessReasonText(session.resolutionReason, es) : (es ? "Descanso hoy." : "Rest today.")}</p>
                   </div>
                 )}
+                {session.durationMin > 0 && session.prescription.energy && (() => {
+                  const en = es && session.prescription.energyEs ? session.prescription.energyEs : session.prescription.energy;
+                  const cell = (label: string, value: unknown, unit = "") => (
+                    <div className="rounded-lg bg-white border border-slate-200 px-2 py-1.5">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
+                      <div className="text-sm font-semibold">{value == null ? "—" : `${String(value)}${unit}`}</div>
+                    </div>
+                  );
+                  return (
+                    <section aria-label={es ? "Energía de la sesión" : "Session energy"} className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-600">{es ? "Energía y carga (kJ)" : "Energy and load (kJ)"}</div>
+                      <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+                        {cell(es ? "Trabajo" : "Work", en.workKj, " kJ")}
+                        {cell("kcal", en.kcal)}
+                        {cell(es ? "kJ/hora" : "kJ/hour", en.kjPerHour)}
+                        {cell(es ? "Alta intensidad" : "High-intensity", en.highIntensityKj == null ? null : `${en.highIntensityKj} kJ (${en.highIntensityPct}%)`)}
+                        {cell(es ? "CHO usado" : "Carbs used", en.carbsBurnedG, " g")}
+                        {cell(es ? "CHO a tomar" : "Carbs to take", en.carbsIntakeTargetG, " g")}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-600">{en.note}</p>
+                      <p className="mt-1 text-xs text-slate-700">💧 {en.hydrationNote}</p>
+                      {en.recoveryCarbNote && <p className="mt-1 text-xs text-slate-700">🍚 {en.recoveryCarbNote}</p>}
+                    </section>
+                  );
+                })()}
                 {session.durationMin > 0 && (
                   <details>
                     <summary className="cursor-pointer font-medium">

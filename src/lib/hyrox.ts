@@ -1,3 +1,5 @@
+import { buildDensitySteps, estimateTss } from "./performance-engine";
+import type { WorkoutStep } from "./prescription";
 // HYROX scenario calculator: allocations are illustrative, not validated predictions.
 export interface SplitSegment { n: number; kind: "run" | "station"; key: string; name: string; targetSec: number; cumulativeSec: number }
 export interface SplitPlan { targetTotalMin: number; runPaceSecPerKm: number; runsTotalSec: number; stationsTotalSec: number; transitionsTotalSec: number; segments: SplitSegment[]; notes: string[] }
@@ -55,4 +57,14 @@ export function analyzeHyroxSplits(plan: SplitPlan, actualSecs: (number | null)[
   const worst = stationGaps.find(g => g.deltaSec > 0);
   const summary = !logged.length ? "No splits logged yet." : `Compared ${logged.length}/16 logged segments: ${fmt(actualTotalSec)} vs scenario ${fmt(planTotalSec)}. Transitions excluded; this is not a finish-time comparison. ${worst ? "Largest station overrun: " + worst.name + " (+" + worst.deltaSec + "s)." : "No logged station exceeded its scenario allocation."} ${runFade ? "The last run was slower relative to target than the first; review pacing and station fatigue." : ""}`;
   return { planTotalSec, actualTotalSec, totalDeltaSec, stationGaps, runGaps, weakest: worst?.name || "", summary };
+}
+
+/** Compromised-running durability session (run or erg + station + flush) fitted to T_avail.
+ * legsLoaded swaps the 1 km run for SkiErg/Row so eccentric load stays protected.
+ * Readiness < 70 returns null: the caller keeps the planned/easy session. */
+export function compromisedRunSession(opts: { availMin: number; readiness: number | null; legsLoaded: boolean }): { steps: WorkoutStep[]; estTss: number; note: string } | null {
+  if (opts.readiness == null || opts.readiness < 70) return null;
+  const steps = buildDensitySteps({ sport: "hyrox", kind: "compromised", zone: "z4", reason: opts.legsLoaded ? "erg substitution: legs loaded" : "run" }, opts.availMin);
+  if (!steps) return null;
+  return { steps, estTss: estimateTss(steps), note: opts.legsLoaded ? "SkiErg/Row replaces the run: lower-body eccentric load is high." : "Race-pace 1 km + station + 90 s flush builds lactate clearance under fatigue." };
 }

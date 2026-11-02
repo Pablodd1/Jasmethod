@@ -15,6 +15,8 @@ import { resolveCheckinSafety } from "./checkin-safety";
 import { heatIndex, altitudeFactor } from "./fitness";
 import { wetsuitVerdict } from "./wetsuit";
 import { buildProtocol, type ProtocolSpec } from "./protocols";
+import { narrativeFor, type QualityKind } from "./periodization";
+import { decidePerformance, buildDensitySteps, estimateTss, type MetricRow, type LoadRow, type PerformanceDecision, type Stimulus } from "./performance-engine";
 
 // ---------- 1. AUTONOMIC NERVOUS SYSTEM RECOVERY (post-workout) ----------
 // Vagal / parasympathetic techniques. Rotate daily (index), layer weekly theme
@@ -271,6 +273,28 @@ export interface Adaptation {
   durationFactor: number; // multiply session duration
   intensityCap: string; // e.g. "z4" — don't exceed
   message: string;
+  performance?: PerformanceDecision; // perf-engine-v1: central/peripheral split, ACWR, PUSH gates
+  athleteModel?: { coldStart: boolean; level: string; levelSource: string; ageBand: string; spacingH: number; keyCap: number; rpeBias: number | null; personalRecoveryH: number | null; anchorsStale: string[]; notes: string[] };
+  lastKeyCompliance?: { workoutId: string; verdict: string; hitRate: number | null; fadePct: number | null; decouplingPct: number | null; note: string };
+}
+
+/** Layer the deterministic performance engine on top of the subjective check-in.
+ * Safety holds, rest and easy verdicts are floors the engine can never lift. */
+export function adaptSessionWithBiometrics(checkin: Checkin, signals: { metrics: MetricRow[]; loadRows: LoadRow[]; pushEnabled: boolean; now?: Date }): Adaptation {
+  const base = adaptSession(checkin);
+  return applyPerformance(base, decidePerformance({ base, subjective: checkin, metrics: signals.metrics, loadRows: signals.loadRows, pushEnabled: signals.pushEnabled, now: signals.now }));
+}
+
+/** Fold an engine decision into an existing adaptation (used after every route-level hold has run). */
+export function applyPerformance(base: Adaptation, performance: PerformanceDecision): Adaptation {
+  if (base.safetyStatus && base.safetyStatus !== "clear") return base;
+  if (performance.verdict === "easy" && (base.verdict === "full" || base.verdict === "trim"))
+    return { ...base, verdict: "easy", durationFactor: Math.min(base.durationFactor, 0.6), intensityCap: "z2", ruleId: `${base.ruleId}:central-suppressed`, message: `${performance.message} Easy aerobic only today.`, performance };
+  if (performance.verdict === "modulate" && base.verdict === "full")
+    return { ...base, verdict: "trim", durationFactor: 0.85, intensityCap: "z4", ruleId: `${base.ruleId}:central-modulate`, message: `${performance.message} Keep the session intent, trim the final set.`, performance };
+  if (performance.verdict === "push" && base.verdict === "full")
+    return { ...base, intensityCap: "z7", ruleId: `${base.ruleId}:push`, message: performance.message, performance };
+  return { ...base, performance };
 }
 
 export function adaptSession(checkin: Checkin): Adaptation {
@@ -927,6 +951,13 @@ export interface DailyPrescription {
   targets: { hr?: string; power?: string; pace?: string; effort?: string; rpe: number };
   scaled: { originalMin: number; factor: number; reason: string };
   sources: string[];
+  /** Present only when the performance engine shaped the session: the "why" behind it. */
+  engine?: {
+    version: "perf-engine-v2"; verdict: string; kind: string; family: string | null; phase: string | null;
+    readiness: number | null; acwr: number | null; hrvZ: number | null; source: string;
+    purpose: string; science: string; cues: string[]; stopRule: string; pivot: string | null; reason: string; estTss: number; availMin: number;
+    es: { purpose: string; cues: string[]; stopRule: string };
+  };
 }
 
 export function prescribeToday(opts: {
@@ -951,6 +982,8 @@ export function prescribeToday(opts: {
   // of settings can exceed what the athlete actually has (review finding:
   // 120% multiplier turned a 30-min limit into 38 min).
   timeBudgetMin?: number;
+  // Deterministic performance engine: PUSH upgrades and sport-gated pivots.
+  performance?: { decision: PerformanceDecision; stimulus: Stimulus };
   profile?: {
     lthr?: number | null;
     ftp?: number | null;
@@ -1008,6 +1041,10 @@ export function prescribeToday(opts: {
     easy.scaled.reason = "The protocol was paused because readiness or available time cannot support its complete work and recovery periods.";
     easy.detail.main = `${easy.detail.main} Use gentle, comfortable movement; no hard repetitions or loaded power work.`;
     return easy;
+  }
+  if (opts.performance && !rest) {
+    const engine = engineOverride(session, adaptation, opts, opts.performance);
+    if (engine) return engine;
   }
   const originalZone = Number((session.intensity || "z2").slice(1)) || 2;
   // TIME BUDGET ENFORCED LAST: availability clamps the FINAL duration — after
@@ -1138,5 +1175,69 @@ export function progressionAdvice(
     status: "on_track",
     pct,
     message: `${last3Pct}% completion across ${last3.length} recorded week${last3.length === 1 ? "" : "s"}. ${last3Pct < 60 ? "Review missed sessions and availability with your coach." : "Review effort, recovery and performance trends before changing training load."}`,
+  };
+}
+
+// ---------- PERFORMANCE ENGINE OVERRIDE ----------
+// Applies only when the engine upgraded (PUSH) or re-routed (sport gating) the
+// session and a complete stimulus fits inside T_avail. Otherwise the legacy
+// path runs unchanged. Time budget is still the last, absolute clamp.
+function engineOverride(
+  session: Parameters<typeof prescribeToday>[0]["session"],
+  adaptation: { verdict: string; durationFactor: number; intensityCap: string },
+  opts: Parameters<typeof prescribeToday>[0],
+  perf: { decision: PerformanceDecision; stimulus: Stimulus },
+): DailyPrescription | null {
+  const { decision, stimulus } = perf;
+  const isPush = decision.verdict === "push";
+  if (stimulus.kind === "planned" || (!isPush && !stimulus.pivotedFrom && stimulus.kind !== "aerobic" && stimulus.kind !== "taper-primer")) return null;
+  const planned = Math.round(session.durationMin * (isPush ? 1.25 : Math.min(1, adaptation.durationFactor)));
+  const availMin = Math.max(0, Math.floor(Math.min(
+    planned,
+    (opts.busyHrs || 0) >= 6 ? 25 : Infinity,
+    opts.timeBudgetMin == null ? Infinity : opts.timeBudgetMin,
+  )));
+  const steps = buildDensitySteps(stimulus, availMin);
+  if (!steps) return null;
+  // Non-push pivots must never exceed the adaptation's intensity cap.
+  const cap = Number(adaptation.intensityCap.slice(1)) || 2;
+  const capped = isPush ? steps : steps.map(s => Number(s.zone.slice(1)) > cap ? { ...s, zone: `z${cap}` } : s);
+  const durationMin = Math.round(capped.reduce((a, s) => a + s.seconds, 0) / 60);
+  const intensity = `z${Math.max(...capped.map(s => Number(s.zone.slice(1)) || 1))}`;
+  const type = stimulus.kind === "vo2" || stimulus.kind === "vo2-long" ? "interval" : ["threshold", "sweetspot", "race-pace", "taper-primer"].includes(stimulus.kind) ? "threshold" : stimulus.kind === "neuromuscular" ? "strength" : stimulus.kind === "compromised" ? "brick" : "endurance";
+  const sportLabel = stimulus.sport[0].toUpperCase() + stimulus.sport.slice(1);
+  const kindLabel: Record<string, string> = { vo2: "Fast VO2max (30/15)", "vo2-long": "Slow VO2max (long intervals)", threshold: "Threshold", sweetspot: "Sweet Spot", "race-pace": "Race-Pace Specific", durability: "Aerobic Durability + Late Threshold", "taper-primer": "Taper Primer", neuromuscular: "Neuromuscular Power", compromised: "Compromised Intervals", aerobic: "Aerobic" };
+  const profile = opts.profile;
+  const narrative = narrativeFor(stimulus.kind as QualityKind, stimulus.family ?? "middle", stimulus.phase ?? "build");
+  return {
+    title: `${sportLabel}: ${kindLabel[stimulus.kind] || "Session"}${isPush ? " · KEY" : ""}`,
+    sport: stimulus.sport,
+    durationMin,
+    intensity,
+    type,
+    steps: capped.map(s => ({ ...s, targets: zoneTargets(s.zone, stimulus.sport, profile) })),
+    engine: {
+      version: "perf-engine-v2", verdict: decision.verdict, kind: stimulus.kind, family: stimulus.family ?? null, phase: stimulus.phase ?? null,
+      readiness: decision.readiness, acwr: decision.load.acwr, hrvZ: decision.central.hrvZ, source: decision.central.source,
+      purpose: narrative.purpose, science: narrative.science, cues: narrative.cues, stopRule: narrative.stopRule,
+      pivot: stimulus.pivotedFrom ? `${stimulus.pivotedFrom}→${stimulus.sport}` : null, reason: stimulus.reason, estTss: estimateTss(capped), availMin,
+      es: (({ purpose, cues, stopRule }) => ({ purpose, cues, stopRule }))(narrativeFor(stimulus.kind as QualityKind, stimulus.family ?? "middle", stimulus.phase ?? "build", true)),
+    },
+    startTime: session.startTime ?? null,
+    verdict: adaptation.verdict,
+    detail: {
+      wu: `Warm up for ${Math.round(capped[0].seconds / 60)} min, progressive to Z2.`,
+      main: `${narrative.purpose} ${stepsText(capped)}`,
+      cd: `Cool down for ${Math.round(capped[capped.length - 1].seconds / 60)} min at Z1.`,
+      breathing: "Optional: a brief comfortable breathing pause after the session.",
+      study: `${narrative.science} ${narrative.stopRule}`,
+    },
+    targets: zoneTargets(intensity, stimulus.sport, profile),
+    scaled: {
+      originalMin: session.durationMin,
+      factor: session.durationMin ? durationMin / session.durationMin : 0,
+      reason: `Engine ${decision.verdict.toUpperCase()} · readiness ${decision.readiness ?? "—"} · ACWR ${decision.load.acwr ?? "—"} · T_avail ${availMin} min · est. TSS ${estimateTss(capped)}${stimulus.pivotedFrom ? ` · pivot ${stimulus.pivotedFrom}→${stimulus.sport}` : ""}`,
+    },
+    sources: isPush ? ["Rønnestad 2020", "Plews 2013", "Gabbett 2016"] : ["Clarkson & Hubal 2002", "Plews 2013"],
   };
 }
