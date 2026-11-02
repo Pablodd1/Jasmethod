@@ -32,3 +32,9 @@ export function restoreCheckinDraft(raw:string|null,userId:string,dateLocal:stri
 export function hydrateCheckinDraft(saved:CheckinFormAnswers,current:CheckinFormAnswers,dirty:readonly string[]) {
   return {...saved,...Object.fromEntries(dirty.filter(field=>Object.hasOwn(current,field)).map(field=>[field,current[field]]))};
 }
+
+/** Restored or edited recovery answers cannot disappear behind device mode. */
+export function requiresManualCheckinReview(answers: CheckinFormAnswers, dirty: readonly string[], correctImported: boolean) {
+  const manualFields = new Set(["sleep","mood","soreness","motivation","energy","stress","sick","newPain","urgentSymptoms","painLocation","painAffectsMovement","sessionFelt","rhr","hrv","sleepHours"]);
+  return correctImported || dirty.some(key => manualFields.has(key) && answers[key] != null && answers[key] !== "") || (dirty.includes("voiceReviewConfirmed") && answers.voiceReviewConfirmed === true);
+}

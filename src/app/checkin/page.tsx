@@ -14,7 +14,7 @@ import { checkinAdaptationView } from "@/components/daily-training/checkin-resul
 import { DailyInputSummary } from "@/components/daily-training/DailyInputSummary";
 import type { DailyInputContext } from "@/lib/daily-input-context";
 import { readinessReasonText } from "@/components/daily-training/readiness-copy";
-import { checkinDraftKey, emptyCheckinAnswers, hydrateCheckinDraft, restoreCheckinDraft, savedCheckinAnswers } from "@/lib/checkin-draft";
+import { checkinDraftKey, emptyCheckinAnswers, hydrateCheckinDraft, restoreCheckinDraft, savedCheckinAnswers, requiresManualCheckinReview } from "@/lib/checkin-draft";
 import { unitsOf, distanceToDisplay, weightToDisplay } from "@/lib/units";
 import { actualActivityFormValues, actualActivityUnitPatch } from "@/lib/activity-unit-fields";
 import { ProfileMeasurementInput } from "@/components/ProfileMeasurementInput";
@@ -292,12 +292,15 @@ function CheckinPageContent() {
     } catch (e: any) { setErr(e.message); } finally { setFeedbackBusy(null); }
   }
 
+  const manualDraft = requiresManualCheckinReview(answers,[...dirtyAnswers.current],correctImported);
+  const manualMode = manualReview || manualDraft;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true); setErr("");
     try {
       if(unitErrors.morningWeight)throw Error(unitErrors.morningWeight);
-      const short = deviceReview && !manualReview;
+      const short = deviceReview && !manualMode;
       if (short && !deviceConfirmed) throw Error(lang === "es" ? "Confirma tu estado o usa la revisi\u00f3n manual." : "Confirm how you feel or use the manual review.");
       const submitted: any = short ? { mode: "device_assisted", deviceRevision: deviceReview.revision, recoveryUnchanged: true, confirmed: true, sick: false, newPain: false, urgentSymptoms: false, availableMinutes: answers.availableMinutes, weightKg: answers.weightKg, menstrual: answers.menstrual, cycleDay: answers.cycleDay } : { ...answers };
       if (!correctImported) {
@@ -356,10 +359,11 @@ function CheckinPageContent() {
             <form onSubmit={submit} className="space-y-4">
               {deviceReview && <div className="rounded-xl border p-3 space-y-3">
                 <p className="text-sm">{lang === "es" ? "Usaremos tus registros actuales de sue\u00f1o, pulso y VFC" : "Using your current sleep, resting pulse and HRV readings"} · {deviceReview.source} · {deviceReview.dateLocal}</p>
-                {!manualReview && <label className="flex gap-2 text-sm"><input type="checkbox" checked={deviceConfirmed} onChange={e => setDeviceConfirmed(e.target.checked)} />{lang === "es" ? "Confirmo que no tengo enfermedad, dolor nuevo o que empeora, s\u00edntomas urgentes ni fatiga o recuperaci\u00f3n inusual. Si algo cambi\u00f3, usar\u00e9 la revisi\u00f3n manual." : "I confirm no illness, new or worsening pain, urgent symptoms, or unusual fatigue or recovery concerns. If anything changed, I will use the manual review."}</label>}
-                <button type="button" className="underline text-sm" onClick={() => {setManualReview(v => !v);setDeviceConfirmed(false);}}>{manualReview ? (lang === "es" ? "Usar datos del dispositivo" : "Use device readings") : (lang === "es" ? "Algo cambi\u00f3 / revisi\u00f3n manual" : "Something changed / manual review")}</button>
+                {!manualMode && <label className="flex gap-2 text-sm"><input type="checkbox" checked={deviceConfirmed} onChange={e => setDeviceConfirmed(e.target.checked)} />{lang === "es" ? "Confirmo que no tengo enfermedad, dolor nuevo o que empeora, s\u00edntomas urgentes ni fatiga o recuperaci\u00f3n inusual. Si algo cambi\u00f3, usar\u00e9 la revisi\u00f3n manual." : "I confirm no illness, new or worsening pain, urgent symptoms, or unusual fatigue or recovery concerns. If anything changed, I will use the manual review."}</label>}
+                <button type="button" disabled={manualDraft} className="underline text-sm disabled:opacity-50" onClick={() => {setManualReview(v => !v);setDeviceConfirmed(false);}}>{manualMode ? (lang === "es" ? "Usar datos del dispositivo" : "Use device readings") : (lang === "es" ? "Algo cambi\u00f3 / revisi\u00f3n manual" : "Something changed / manual review")}</button>
               </div>}
-              {(!deviceReview || manualReview) && <>
+              {manualDraft && <p role="status" className="text-sm">{lang === "es" ? "Tus cambios sin guardar se conservan en la revisi\u00f3n manual." : "Your unsaved changes are kept in the manual review."}</p>}
+              {(!deviceReview || manualMode) && <>
               {QUESTIONS.filter(q => q.key !== "mood").map((q) => (
                 <div key={q.key}>
                   <label className="label" htmlFor={`answer-${q.key}`}>{lang === "es" ? QUESTION_ES[q.key].label : q.label}</label>
@@ -397,7 +401,7 @@ function CheckinPageContent() {
                       : "The session is fitted to this window — 0 means no workout is prescribed."}
                   </div>
                 </div>
-                {(!deviceReview || manualReview) && <div>
+                {(!deviceReview || manualMode) && <div>
                   <label className="block text-sm">
                     {lang === "es" ? "¿Dolor nuevo o que empeora en un punto concreto? (distinto de agujetas generales)" : "Any new or worsening pain in a specific spot? (different from general soreness)"}
                     <select id="answer-newPain" className="input mt-1" value={typeof answers.newPain === "boolean" ? String(answers.newPain) : ""} onChange={(e) => setQ("newPain", e.target.value === "" ? "" : e.target.value === "true")}><option value="">{lang === "es" ? "No sé / prefiero no responder" : "Unknown / prefer not to answer"}</option><option value="false">No</option><option value="true">{lang === "es" ? "Sí" : "Yes"}</option></select>

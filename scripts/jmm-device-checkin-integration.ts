@@ -157,6 +157,22 @@ async function main() {
       assert.equal((await api("/api/checkin", owner)).deviceReview, null);
       await api("/api/checkin", owner, confirmation(current.deviceReview.revision), 409);
     });
+    await scenario("Reloading an unfinished recovery draft keeps manual answers visible", async () => {
+      const owner = await actor();
+      await mobile(browser, owner, async page => {
+        await page.goto(base + "/checkin");
+        await page.getByRole("button", {name:"Something changed / manual review",exact:true}).click();
+        await page.locator("#answer-sleep").selectOption("1");
+        await page.waitForFunction(key => {const raw=sessionStorage.getItem(key);return !!raw && JSON.parse(raw).answers.sleep === "1";}, "jmm_checkin_draft_v1_"+owner.id);
+        await page.reload();
+        await page.waitForFunction(() => (document.querySelector("#answer-sleep") as HTMLSelectElement | null)?.value === "1");
+        assert.equal(await page.locator("#answer-sleep").isVisible(),true);
+        assert.equal(await page.getByRole("checkbox", {name:/I confirm no illness/}).count(),0);
+        assert.equal(await page.getByRole("button", {name:"Use device readings",exact:true}).isDisabled(),true);
+        await screenshot(page,"restored-recovery-draft");
+        assert.equal(await db.dailyCheckin.count({where:{userId:owner.id}}),0);
+      });
+    });
     await scenario("Reported symptoms keep the manual path and cannot be erased by a device confirmation", async () => {
       const owner = await actor(); const current = await api("/api/checkin", owner);
       const manual = await api("/api/checkin", owner, {sleep: 3, soreness: 3, motivation: 3, energy: 3, stress: 3, sick: true, newPain: false, urgentSymptoms: false, availableMinutes: 30});
