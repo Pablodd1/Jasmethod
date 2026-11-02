@@ -152,6 +152,12 @@ async function journey(browser, language, width) {
       sessions: [], capabilities: { externalAi: false, imageUnderstanding: false, textProvider: null, imageProvider: null } } });
     if (path === '/api/coaching/messages') return route.fulfill({ json: { messages: [] } });
     if (path === '/api/coaching/assignments') return route.fulfill({ json: { assignments: [] } });
+    // The existing athlete-model card performs this read on Today. Keep all
+    // unexpected reads and every unapproved mutation guarded below.
+    if (path === '/api/athlete-model') return route.fulfill({ json: { model: {
+      coldStart: true, coverageDays: 0, level: 'amateur', levelSource: 'profile', spacingH: 48, keyCap: 2,
+      onboarding: [{ id: 'injuries', en: 'Review current restrictions if something changed.', es: 'Revisa las restricciones si algo cambió.', why: 'Synthetic optional profile-help topic' }],
+    } } });
     if (path === '/api/fitness') return route.fulfill({ json: { jMetrics: null } });
     unexpected.push(`GET ${path}`); return route.fulfill({ status: 500, json: { error: 'Unexpected synthetic read' } });
   });
@@ -172,6 +178,9 @@ async function journey(browser, language, width) {
     assert.match(await pathCard.innerText(),language==='es'?/Mostrando la sesión prevista/:/Showing the planned workout/);
     await page.locator('#today-workout').getByText(language==='es'?'SESIÓN PREVISTA · SIN ADAPTAR':'PLANNED WORKOUT · NOT ADAPTED',{exact:true}).waitFor();
     assert.equal(mutations.length,0,'Current health readings choose the planned view without auto answers or approval');
+    const profileHelp=page.getByRole('group',{name:language==='es'?'Ayuda opcional con tu perfil':'Optional profile help'});
+    await profileHelp.waitFor();
+    assert.equal(await profileHelp.getAttribute('open'),null,'Optional profile questions stay collapsed');
     assert.equal(await page.locator('#daily-recovery').count(),0,'Planned view has no repeated check-in demand below the workout');
     await assertMobile(page,'synced-health-plan',language,width,page.locator('#today-workout'));
     await page.getByRole('button',{name:language==='es'?'Volver a la revisión diaria':'Return to daily review',exact:true}).click();
@@ -220,6 +229,8 @@ async function journey(browser, language, width) {
       assert.equal(await page.locator(`#answer-${key}`).inputValue(), '', `${key} remains unanswered despite imported measurements`);
     assert.equal(await page.locator('#answer-availableMinutes').inputValue(), '');
     const correction = page.getByRole('button', { name: language === 'es' ? 'Corregir una observación importada' : 'Correct an imported observation', exact: true });
+    assert.equal(await correction.isVisible(),false,'Optional measurement corrections stay collapsed');
+    await page.getByText(language==='es'?'Mediciones y contexto adicionales (opcional)':'Additional measurements and context (optional)',{exact:true}).click();
     await correction.click();
     for (let i = 0; i < imported.length; i++) { await imported[i].waitFor({ state: 'visible' }); assert.equal(await imported[i].inputValue(), '', 'Saved imported values, including SDNN, never prefill manual corrections'); }
     await imported[0].fill('51'); await imported[1].fill('43'); await imported[2].fill('7');
