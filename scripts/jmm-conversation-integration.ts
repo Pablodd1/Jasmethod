@@ -81,8 +81,14 @@ async function main() {
     assert.equal((await json("/api/onboard",a)).onboarded,false);
     await json("/api/onboard",a,{body:{}});assert.equal((await json("/api/onboard",a)).onboarded,true);
     const saved=await json("/api/today?view=plan",a);assert.equal(saved.kind,"saved_today_plan");assert.equal(saved.readOnly,true);assert.ok(saved.sessions.length);
+    assert.equal(saved.date,today,"The saved view is scoped to the athlete's current local day");
     assert.equal(await db.dailyCheckin.count({where:{userId:a.id}}),0,"Saved workout is visible before answering check-in");
-    const starter=await db.workout.findFirstOrThrow({where:{userId:a.id,source:"starter",planned:true}});
+    // First entry now creates several dated observations. SQL row order cannot
+    // select the session covered by today's review; use Today's scoped IDs/date.
+    const tomorrow=localDate(addDaysKey(today,1),"UTC");
+    const starter=await db.workout.findFirstOrThrow({where:{userId:a.id,source:"starter",planned:true,date:{gte:day,lt:tomorrow},id:{in:saved.sessions.map((session:any)=>session.id)}},orderBy:{id:"asc"}});
+    assert.equal(starter.date.toISOString(),day.toISOString());
+    const futureStarter=await db.workout.findFirstOrThrow({where:{userId:a.id,source:"starter",planned:true,date:{gte:tomorrow}},orderBy:[{date:"asc"},{id:"asc"}]});
     // Supported manual file ingestion, not a simulated OAuth grant or automatic provider import.
     const upload=async()=>{
       const form=new FormData();form.set("source","garmin");form.set("distanceUnits","metric");
@@ -99,6 +105,9 @@ async function main() {
     await json("/api/plan",a,{method:"PUT",body:{sessionId:imported.id,expectedRevision:report.feedbackRevision,feedbackStatus:"completed",actualDurationMin:30,actualSport:"run",rpe:3}});
     await reviewPlanningSetup(a);await json("/api/checkin",a,{body:validAnswers});
     const first=await json(`/api/workout/card?id=${starter.id}`,a);assert.equal(first.session.verdict,"ready",JSON.stringify({stage:"starter after imported feedback and full current review",sessionId:starter.id,reason:first.session.reason}));
+    const futureCard=await json(`/api/workout/card?id=${futureStarter.id}`,a);
+    assert.equal(futureCard.session.verdict,"blocked","Today's complete check-in cannot clear a future observation session");
+    assert.equal((await db.workout.findUniqueOrThrow({where:{id:futureStarter.id}})).approved,false);
     await request(`/api/workout/approve?sessionId=${starter.id}&expectedRevision=${first.session.revision}`,a,{method:"POST",status:200});
     const beforeProfileApproval=await db.workout.findMany({where:{userId:a.id},orderBy:{id:"asc"}});
     const proposed=pending(await ask(a,"My weight is 72 kg."));assert.equal(proposed.beforeValues.weightKg,70);
