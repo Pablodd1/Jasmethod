@@ -44,6 +44,7 @@ export function cycleActivityEvidence(rows: CycleActivity[], today: string, time
 export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
   startKey: string; raceKey?: string | null; needsAssessment: boolean;
   recoveryReview: boolean; protectedDays: string[];
+  recoveryReviewBasis?: "reported_execution" | "unknown_history";
   events?: readonly CycleEventInput[];
   baselineReviews?: readonly CycleBaselineReview[];
   templatePeriodized?: boolean;
@@ -155,7 +156,7 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
     }
     return { ...week, theme, sessions, cycleOmissions, totalMinutes: sessions.reduce((sum, session) => sum + session.minutes, 0),
       restDaySlots: Array.from({ length: 7 }, (_, slot) => slot).filter(slot => !sessions.some(session => session.daySlot === slot)),
-      cycleFactor: factor, volumeDecision:{scheduledMinutes:week.totalMinutes,cycleFactor:factor,remainingPlannedMinutes:sessions.reduce((sum,s)=>sum+s.minutes,0),protectedDates:eventDays.filter(day=>day.protected||options.protectedDays.includes(day.key)).map(day=>day.key),reason:rebuild?'Recent reported difficult/incomplete work: conservative review':eventLimited?'Event preparation/recovery':options.templatePeriodized?'Template progression applied once; no second generic ramp':'Legacy conservative cycle'}, observations, eventDays: eventDays.filter(day => day.protected).map(day => day.key),
+      cycleFactor: factor, volumeDecision:{scheduledMinutes:week.totalMinutes,cycleFactor:factor,remainingPlannedMinutes:sessions.reduce((sum,s)=>sum+s.minutes,0),protectedDates:eventDays.filter(day=>day.protected||options.protectedDays.includes(day.key)).map(day=>day.key),reason:rebuild?(options.recoveryReviewBasis === "unknown_history" ? 'Recent training load and recovery are unknown: conservative review from the separately reported baseline' : 'Recent reported difficult/incomplete work: conservative review'):eventLimited?'Event preparation/recovery':options.templatePeriodized?'Template progression applied once; no second generic ramp':'Legacy conservative cycle'}, observations, eventDays: eventDays.filter(day => day.protected).map(day => day.key),
       eventIds: [...new Set(eventDays.flatMap(day => day.eventIds))],
       doubleDayNote: eventLimited && week.sessions.some(session => session.doubleDayRole)
         ? "Optional second session omitted during event preparation/recovery. No catch-up session is added." : week.doubleDayNote,

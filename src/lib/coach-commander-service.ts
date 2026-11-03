@@ -23,12 +23,12 @@ export async function getCommanderState(actor: ConversationActor) {
 
 /** Owner-only route reuses the existing planner, its input evidence and serializable save. */
 export async function commanderPlan(req: Request, actor: ConversationActor, raw: Record<string, unknown>, generate: (request: Request) => Promise<Response>) {
-  const allowed = ["action","weeks","startDate","easyPct","trainingWindow","previewToken","confirmDoubleDay","confirmEventTradeoffs","sourceMessageId"];
+  const allowed = ["action","weeks","startDate","easyPct","trainingWindow","previewToken","confirmDoubleDay","confirmEventTradeoffs","manualBaselinePlanning","sourceMessageId"];
   if (Object.keys(raw).some(key => !allowed.includes(key)) || !["preview","confirm"].includes(String(raw.action))) throw new ApiError("Choose preview or explicit plan confirmation");
   if (typeof raw.weeks!=="number" || !Number.isInteger(raw.weeks) || raw.weeks<4 || raw.weeks>30 || typeof raw.startDate!=="string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw.startDate) || !Number.isFinite(Date.parse(raw.startDate+"T12:00:00Z")) || new Date(raw.startDate+"T12:00:00Z").toISOString().slice(0,10)!==raw.startDate) throw new ApiError("Review planning weeks and start date");
   if (raw.easyPct!==undefined && (typeof raw.easyPct!=="number" || !Number.isFinite(raw.easyPct) || raw.easyPct<45 || raw.easyPct>90)) throw new ApiError("Review the planned easy allocation");
   if (raw.trainingWindow!==undefined && !["any","morning","midday","evening"].includes(String(raw.trainingWindow))) throw new ApiError("Review your training window");
-  for (const field of ["confirmDoubleDay","confirmEventTradeoffs"]) if (raw[field]!==undefined && typeof raw[field]!=="boolean") throw new ApiError("Explicit agreement must be true or false");
+  for (const field of ["confirmDoubleDay","confirmEventTradeoffs","manualBaselinePlanning"]) if (raw[field]!==undefined && typeof raw[field]!=="boolean") throw new ApiError("Explicit agreement must be true or false");
   if (raw.sourceMessageId!==undefined && raw.sourceMessageId!==null) {
     if (!id(raw.sourceMessageId)) throw new ApiError("Invalid source message");
     const source=await prisma.coachConversationMessage.findFirst({where:{id:raw.sourceMessageId as string,userId:actor.id,role:"user"},select:{id:true}});
@@ -44,7 +44,7 @@ export async function commanderPlan(req: Request, actor: ConversationActor, raw:
     }
   }
   const {action,sourceMessageId,...fields}=raw;
-  const body={...fields,preview:action==="preview",commanderContext:{origin:"private_coach",sourceMessageId:sourceMessageId??null,requestHash:commanderRequestHash(raw)}};
+  const body={...fields,manualBaselinePlanning:raw.manualBaselinePlanning===true,preview:action==="preview",commanderContext:{origin:"private_coach",sourceMessageId:sourceMessageId??null,requestHash:commanderRequestHash(raw)}};
   const response=await generate(new Request(req.url,{method:"POST",headers:req.headers,body:JSON.stringify(body)}));
   if (!response.ok || action==="preview") return response;
   const audits=await prisma.auditLog.findMany({where:{subjectId:actor.id,actorId:actor.id,action:"plan.generate",after:{contains:raw.previewToken as string}},take:10,orderBy:{createdAt:"desc"},select:{id:true,entityId:true,after:true,createdAt:true}});

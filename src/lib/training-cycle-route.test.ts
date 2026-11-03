@@ -60,6 +60,8 @@ test("manual baseline route preview keeps restricted records and requires matchi
   assert.equal(draft.preview.cycle.planningBasis,"athlete_reported_baseline");
   assert.equal(draft.preview.cycle.activity.reportedMinutes,null);
   assert.equal(draft.preview.cycle.activity.derivedActivityPolicy.status,"insufficient");
+  assert.match(draft.preview.cycle.weeks[0].volumeDecision.reason,/load and recovery are unknown/);
+  assert.doesNotMatch(draft.preview.cycle.weeks[0].volumeDecision.reason,/reported difficult\/incomplete/);
   assert.equal(state.created.length,0);
   assert.equal((await run({preview:false,startDate:dates.addDaysKey(today,1),previewToken:draft.previewToken})).status,409);
   const saved=await run({manualBaselinePlanning:true,preview:false,startDate:dates.addDaysKey(today,1),previewToken:draft.previewToken});

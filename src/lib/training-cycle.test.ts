@@ -11,6 +11,17 @@ const raw = Array.from({length:24}, (_,index) => ({week:index+1,theme:"Build",se
 const bounded = boundPlanWeeks(raw, setup, 6, 1, "beginner").weeks;
 const options = {startKey:"2026-10-12",raceKey:null,needsAssessment:true,recoveryReview:false,protectedDays:[] as string[]};
 
+test("unknown history review preserves conservative dose without inventing difficult execution", () => {
+  const reported=shapeTrainingCycle(bounded,{...options,recoveryReview:true});
+  const unknown=shapeTrainingCycle(bounded,{...options,recoveryReview:true,recoveryReviewBasis:"unknown_history"});
+  assert.equal(unknown[0].cycleFactor,reported[0].cycleFactor);
+  assert.equal(unknown[0].totalMinutes,reported[0].totalMinutes);
+  assert.deepEqual(unknown[0].sessions,reported[0].sessions);
+  assert.match(unknown[0].volumeDecision.reason,/load and recovery are unknown/);
+  assert.doesNotMatch(unknown[0].volumeDecision.reason,/reported difficult\/incomplete/);
+  assert.match(reported[0].volumeDecision.reason,/reported difficult\/incomplete/);
+});
+
 test("saved 3/6-month cycles have gradual bounded weeks, scheduled recovery and no automatic capacity increase", () => {
   const before=JSON.stringify(bounded); const cycle=shapeTrainingCycle(bounded,options);
   assert.equal(cycle.length,24); assert.equal(JSON.stringify(bounded),before);

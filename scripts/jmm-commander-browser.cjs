@@ -5,7 +5,7 @@ const {chromium}=require('playwright');
 const base=process.env.JMM_UI_TEST_BASE||'http://127.0.0.1:3220';assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/);
 const dir='.local/jmm-commander-browser';mkdirSync(dir,{recursive:true});
 const results=[],errors=[],unexpected=[];
-async function main(){const browser=await chromium.launch({headless:true});try{
+async function main(){const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{})});try{
   for(const lang of ['en','es'])for(const width of [390,412]){
     const es=lang==='es',context=await browser.newContext({viewport:{width,height:844}}),page=await context.newPage();
     let messages=[],saved=null,previews=0,confirmations=0,reject=true;
@@ -22,7 +22,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
       }
       if(url.pathname==='/api/assistant/plan'){
         if(req.method()==='GET')return route.fulfill({json:{ok:true,localToday:'2026-10-24',readiness:{ready:true,missing:[],review:[]},defaults:{distance:'run-only',weeks:8,easyPct:70,trainingWindow:'any'},activePlans:saved?[{id:saved.planId,name:saved.name}]:[],receipt:saved}});
-        const body=req.postDataJSON();assert.equal(body.sourceMessageId,'message-source');assert.equal(body.easyPct,undefined,'Ignored easy-allocation preferences are not requested by chat');
+        const body=req.postDataJSON();assert.equal(body.sourceMessageId,'message-source');assert.equal(body.easyPct,undefined,'Ignored easy-allocation preferences are not requested by chat');assert.equal(body.manualBaselinePlanning,previews>0,'Only an explicit checkbox choice enables manual-baseline planning');
         if(body.action==='preview'){
           previews++;return route.fulfill({json:{ok:true,previewToken:'a'.repeat(64),warning:'Synthetic preview; not saved',doubleDayAgreementRequired:false,eventTradeoffAgreementRequired:false,preview:{weeks:body.weeks,startDate:'2026-11-02T05:00Z',weeklyBudgetMin:120,weeksPreview:[{week:1,theme:'Controlled foundation',totalMinutes:20,sessions:[{daySlot:0,title:'Synthetic easy session',sport:'run',minutes:20,zone:'z2',description:'Familiar controlled practice',steps:[{name:'Short step',seconds:15,zone:'z2'},{name:'Easy',seconds:1185,zone:'z2'}]}]}]}}});
         }
@@ -54,6 +54,8 @@ async function main(){const browser=await chromium.launch({headless:true});try{
     await panel.getByText('Synthetic preview; not saved',{exact:true}).waitFor();
     await panel.locator('summary').filter({hasText:'Controlled foundation'}).click();
     await panel.getByText(/Short step · 15 (?:sec|s) · z2/).waitFor();
+    const manual=panel.getByRole('checkbox').first();assert.equal(await manual.isChecked(),false);await manual.check();
+    assert.equal(await panel.getByRole('button',{name:es?'Confirmar y guardar este plan':'Confirm and save this plan',exact:true}).count(),0,'Changing the baseline choice invalidates the old preview');
     await panel.getByLabel(es?'Semanas (4–30)':'Weeks (4–30)').fill('12');
     assert.equal(await panel.getByRole('button',{name:es?'Confirmar y guardar este plan':'Confirm and save this plan',exact:true}).count(),0);
     await panel.getByRole('button',{name:es?'Preparar vista previa aquí':'Prepare plan preview here',exact:true}).click();
