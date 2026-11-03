@@ -39,6 +39,7 @@ export type CoachPayload = {
   mode?: string;
   disclosure?: string;
   externalStatus?: string;
+  externalFailureReason?: string | null;
   imageStatus?: string;
   applied?: boolean;
   cleared?: boolean;
@@ -55,7 +56,18 @@ export function coachExternalPermissions(capabilities: CoachCapabilities, textCo
   };
 }
 
-export function coachTextStatusMessage(status: string, es: boolean): string | null {
+export function coachTextStatusMessage(status: string, es: boolean, reason?: string): string | null {
+  const reasons:Record<string,[string,string]>={
+    authentication:["The AI service rejected authorization. An operator must review its configuration.","El servicio de IA rechazó la autorización. Un administrador debe revisar la configuración."],
+    rate_limit:["The AI service is temporarily limited. Try again later.","El servicio de IA está limitado temporalmente. Inténtalo más tarde."],
+    invalid_model:["The configured AI model is unavailable. An operator must review its configuration.","El modelo de IA configurado no está disponible. Un administrador debe revisar la configuración."],
+    provider_rejected:["The AI service rejected this request. Your local tools remain available.","El servicio de IA rechazó la solicitud. Las herramientas locales siguen disponibles."],
+    invalid_response:["The AI response could not be validated. No changes were saved from it.","No se pudo validar la respuesta de IA. No se guardaron cambios a partir de ella."],
+    policy_output:["The AI answer was withheld because it did not meet JMM's response safeguards. Use the local review tools.","La respuesta de IA se retuvo porque no cumplió las protecciones de JMM. Usa las herramientas de revisión locales."],
+    timeout:["The AI request timed out. No other model or provider was used.","La solicitud de IA agotó el tiempo. No se utilizó otro modelo ni proveedor."],
+    network:["The AI connection could not complete. No other model or provider was used.","No se pudo completar la conexión con IA. No se utilizó otro modelo ni proveedor."],
+  };
+  if(status==="unavailable"&&reason&&Object.hasOwn(reasons,reason))return reasons[reason][es?1:0];
   if (status === "unavailable") return es ? "El coach con IA no pudo responder. Se muestra la respuesta local de JMM; no se utilizó otro proveedor de texto." : "The AI coach could not answer. JMM's local reply is shown; no other text provider was used.";
   if (status === "not_configured") return es ? "La conversación con IA no está conectada. Se muestra la respuesta local de JMM." : "Personal AI is not connected. JMM's local reply is shown.";
   if (status === "policy_local") return es ? "Respuesta dentro de JMM: las decisiones de seguridad, cálculos verificados, datos restringidos y cambios propuestos se gestionan en la app." : "Answered within JMM: safety decisions, verified calculations, restricted data and proposed changes stay in the app.";

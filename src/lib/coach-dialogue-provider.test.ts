@@ -34,3 +34,19 @@ test("missing configuration, failed provider, invalid actions and false receipts
  assert.equal((await coachDialogueAnswer(input,{env,fetch:fetcher})).status,"unavailable");assert.equal(calls,1);
  for(const output of [response("I have saved your new plan."),response("You are safe to train."),response("Run 20 minutes hard."),response("Your FTP is 330 watts."),response("Review your profile","delete_everything")])assert.equal((await coachDialogueAnswer(input,{env,fetch:async()=>output})).status,"unavailable");
 });
+
+test("numbered explanation markers are formatting, while invented measurements and instructions remain blocked",async()=>{
+ const accepted=await coachDialogueAnswer(input,{env,fetch:async()=>response("1. A proposed workout is a draft.\n2. A completed workout is an athlete's recorded result.","none")});
+ assert.equal(accepted.status,"answered");
+ for(const text of ["1. Your FTP is 330 watts.","1. Run 20 minutes hard.","1. I have saved your plan.","The athlete completed 80 minutes."]){
+  const result=await coachDialogueAnswer(input,{env,fetch:async()=>response(text,"none")});assert.equal(result.status,"unavailable");
+ }
+});
+
+test("provider failure reasons are bounded codes and never expose response errors or credentials",async()=>{
+ for(const [status,reason] of [[401,"authentication"],[403,"authentication"],[429,"rate_limit"],[404,"invalid_model"],[500,"provider_rejected"]] as const){
+  const result=await coachDialogueAnswer(input,{env,fetch:async()=>Response.json({error:{message:"PRIVATE_PROVIDER_ERROR_CANARY"}},{status})});
+  assert.equal(result.status,"unavailable");assert.equal(result.failureReason,reason);assert.doesNotMatch(JSON.stringify(result),/PRIVATE_PROVIDER_ERROR_CANARY|synthetic-test-key/);
+ }
+ const invalid=await coachDialogueAnswer(input,{env,fetch:async()=>response("Your FTP is 330 watts.")});assert.equal(invalid.failureReason,"policy_output");
+});

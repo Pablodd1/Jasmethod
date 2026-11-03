@@ -371,7 +371,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
     if (!provider.answer) {
       const history = await prisma.$transaction(tx => readConversation(actor, tx), { isolationLevel: "Serializable" });
       const lastAnswer = [...history.conversation.messages].reverse().find(message => message.role === "assistant");
-      return { ...result, ...history, answer: lastAnswer?.content ?? "", externalStatus: provider.status };
+      return { ...result, ...history, answer: lastAnswer?.content ?? "", externalStatus: provider.status, externalFailureReason:"failureReason" in provider ? provider.failureReason : null };
     }
     const disclosure = manualDialogue ? (actor.language === "es" ? "JMM Coach · Solo tus mensajes propios consentidos; los registros y tarjetas de JMM no se comparten." : "JMM Coach · Your consented own messages only; JMM records and cards are not shared.") : actor.language === "es" ? "JMM Coach · educación general sin contexto personal ni memoria. Los cambios se revisan en JMM." : "JMM Coach · general education without personal context or memory. Changes are reviewed in JMM.";
     try {
