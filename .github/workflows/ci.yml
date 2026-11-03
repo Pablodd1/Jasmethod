@@ -187,6 +187,11 @@ jobs:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
         run: node --import tsx scripts/jmm-checkin-persistence-browser.cjs
 
+      - name: Device-assisted check-in and minimal EN ES mobile questions
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-device-checkin-integration.ts
+
       - name: Athlete metric entry and incomplete-data starting-week acceptance
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
@@ -271,6 +276,8 @@ jobs:
             .local/jmm-daily-flow-browser/report.json
             .local/jmm-daily-flow-browser/reproduced-stale-card-report.json
             .local/jmm-daily-flow-browser/*.png
+            .local/jmm-device-checkin/report.json
+            .local/jmm-device-checkin/*.png
             .local/jmm-checkin-persistence-browser/report.json
             .local/jmm-checkin-persistence-browser/*.png
             .local/jmm-athlete-entry-browser/report.json

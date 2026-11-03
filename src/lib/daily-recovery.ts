@@ -6,13 +6,15 @@ export interface DailyRecoveryInput {
   sessions: { id?:string; durationMin: number; intensity?: string | null; verdict?: string }[];
   /** Supplied only after the shared canonical resolver verifies this scoped review. */
   reviewedSessionId?:string|null;
+  /** Only from the shared canonical resolver plus current server evidence. */
+  deviceReviewVerified?:boolean;
   injured?: boolean;
   performedToday?: boolean;
   answers?: CheckinSafetyInput | null;
 }
 /** Coaching presentation rules, not validated readiness or autonomic diagnoses. */
 export function dailyRecoveryContext(input: DailyRecoveryInput) {
-  const safety = resolveCheckinSafety(input.answers);
+  const safety = resolveCheckinSafety(input.answers, input.deviceReviewVerified === true && input.sessions.length > 0 && input.sessions.every(s => s.verdict === "ready"));
   const lowRecovery = !!input.answers && ((input.answers.sleep ?? 5) <= 2 || (input.answers.energy ?? 5) <= 2 || (input.answers.soreness ?? 1) >= 4 || (input.answers.stress ?? 1) >= 4);
   // Missing answers block execution, but do not establish illness, injury or rest.
   const held = !!input.injured || safety.status === "hold" || safety.status === "urgent";

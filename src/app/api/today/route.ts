@@ -1,3 +1,4 @@
+import { verifiedDeviceReview } from "@/lib/device-checkin";
 import { unitsOf } from "@/lib/units";
 import { savedCycleSummary } from "@/lib/training-cycle";
 import { dailyRecoveryContext } from "@/lib/daily-recovery";
@@ -190,12 +191,12 @@ export async function GET(req: Request) {
     const scopedReview = recoveryAnswers?.inputMetadata?.existingReview;
     const reviewedSessionId = scopedReview?.version === "existing-workout-review-v1"
       ? sessions.find(session=>session.id===scopedReview.sessionId && session.verdict==="ready" && session.existingReview?.eligible)?.id ?? null : null;
-    const recovery = dailyRecoveryContext({ plannedRest, eventDay, sessions, reviewedSessionId, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     const visibleConnectors = connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled());
     const [inputContext, weekReview] = await Promise.all([
       readDailyInputContext(user.id, user.timezone),
       readTrainingWeekReview(actor.id, user.id, key, user.timezone, currentPlan?.id ?? null, activityDecisions),
     ]);
+    const recovery = dailyRecoveryContext({ plannedRest, eventDay, deviceReviewVerified: verifiedDeviceReview(recoveryAnswers, inputContext, user.id), sessions, reviewedSessionId, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     if (!trainingViewDisclosureAllowed(actor.id, user.id, [...allWorkouts, ...reported], inputContext)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
     // Direct-rendered local evidence. It is never appended to external chat.
     let savedDecision: {verdict?:string} | null = null;

@@ -125,7 +125,7 @@ export function normalizeCentral(metrics: MetricRow[], subjective: SubjectiveInp
 
   for (const src of AUTONOMIC_PRIORITY) {
     const rows = valid.filter(m => m.src === src).sort((a, b) => a.ts - b.ts);
-    const hrvRows = rows.filter(m => m.hrv != null && m.hrv > 0 && m.hrv <= 300 && (m.hrvType || "rmssd") === "rmssd");
+    const hrvRows = rows.filter(m => m.hrv != null && m.hrv > 0 && m.hrv <= 300 && m.hrvType === "rmssd");
     const latest = hrvRows[hrvRows.length - 1];
     if (!latest || latest.ts < todayFloor) continue;
     const ln = (r: typeof latest) => Math.log(r.hrv!);
