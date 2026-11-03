@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 import * as activityEvidence from "./activity-evidence";
+import * as coachModel from "./coach-model";
 import { readActivityDecisions } from "./activity-reconciliation";
 
 function load(file: string, dependencies: Record<string, unknown>, extras = {}) {
@@ -17,6 +18,7 @@ test("rich briefing with unverified derived provenance stays local even when ext
   let calls = 0;
   const forbidden = () => { calls++; throw Error("Unverified context must not reach a model or cache key"); };
   const coach = load("src/lib/coach.ts", {
+    "./coach-model": coachModel,
     "./metric-language": {}, "node:crypto": { createHash: forbidden }, "./protocols": {}, "./gemini-response": {},
   }, { process: { env: { EXTERNAL_AI_ENABLED: "true", GEMINI_API_KEY: "synthetic-key" } }, fetch: forbidden });
   for (const externalAiEligible of [false, undefined, true]) {

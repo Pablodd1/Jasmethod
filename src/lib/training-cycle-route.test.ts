@@ -8,6 +8,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import * as crypto from "node:crypto";
 import * as cycle from "./training-cycle";
+import * as planningBasis from "./cycle-planning-basis";
 import * as bounds from "./planning-bounds";
 import * as setupHelpers from "./planning-setup";
 import * as target from "./planning-target";
@@ -42,12 +43,33 @@ function fixture(timezone="UTC",actorId="athlete") {
     "@/lib/db":{prisma:{...tx,trainingPlan:{...tx.trainingPlan,findMany:async(query:any)=>{assert.equal(query.where.userId,"athlete");state.planReads.push(query);return state.plans;}},race:{findMany:async()=>state.races},workout:{...tx.workout,findMany:async()=>state.activity},benchmarkTest:{findMany:async()=>state.benchmarks},auditLog:{...tx.auditLog,findMany:async(query:any)=>query?.where?.action==="baseline.fromTest"?state.appliedAnchors:[]},$transaction:async(fn:any)=>{state.transactionCalls++;if(state.transactionConflict)throw {code:"P2034"};return fn(tx)}}}};
   deps["@/lib/calendar-workouts"]=calendarWorkouts;
   deps["@/lib/race-distances"]=raceDistances;
+  deps["@/lib/cycle-planning-basis"]=planningBasis;
   const source=ts.transpileModule(fs.readFileSync("src/app/api/plan/generate/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   const output:any={exports:{}};
   vm.runInNewContext(source,{module:output,exports:output.exports,require:(name:string)=>{if(name in deps)return deps[name];throw Error(`Unmocked ${name}`)},Response,Request,console:{error:()=>{}}});
   const run=(extra:object={})=>output.exports.POST(new Request("https://example.test/api/plan/generate",{method:"POST",body:JSON.stringify({distance:profile.goal,startDate:today,weeks:12,preview:true,...extra})}));
   return{state,run,today,profile,setup};
 }
+test("manual baseline route preview keeps restricted records and requires matching confirmation",async()=>{
+  const {state,run,today}=fixture();
+  state.activity=[{id:"restricted-history",date:dates.parseDate(today,"UTC"),source:"strava",planned:false,completed:true,actualDurationMin:99,rpe:3,feedbackStatus:"completed"}];
+  assert.equal((await run()).status,409);
+  const response=await run({manualBaselinePlanning:true,startDate:dates.addDaysKey(today,1)});
+  assert.equal(response.status,200);
+  const draft=await response.json();
+  assert.equal(draft.preview.cycle.planningBasis,"athlete_reported_baseline");
+  assert.equal(draft.preview.cycle.activity.reportedMinutes,null);
+  assert.equal(draft.preview.cycle.activity.derivedActivityPolicy.status,"insufficient");
+  assert.equal(state.created.length,0);
+  assert.equal((await run({preview:false,startDate:dates.addDaysKey(today,1),previewToken:draft.previewToken})).status,409);
+  const saved=await run({manualBaselinePlanning:true,preview:false,startDate:dates.addDaysKey(today,1),previewToken:draft.previewToken});
+  assert.equal(saved.status,200);
+  assert.equal(state.activity[0].source,"strava");
+  const sessions=state.created[0].days.create.flatMap((day:any)=>day.sessions.create);
+  assert.ok(sessions.length>0);
+  assert.ok(sessions.every((row:any)=>row.approved!==true&&row.completed!==true));
+});
+
 test("preview makes no writes; confirmation persists structured cycle and repeated old confirmation cannot duplicate it",async()=>{
   const {state,run}=fixture();const preview=await run();assert.equal(preview.status,200);const draft=await preview.json();assert.equal(state.created.length,0);assert.ok(draft.preview.weeksPreview[0].sessions[0].steps.length);
   const saved=await run({preview:false,previewToken:draft.previewToken});assert.equal(saved.status,200);assert.equal(state.created.length,1);

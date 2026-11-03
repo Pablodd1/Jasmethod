@@ -41,7 +41,9 @@
       "codex/ai-data-consent-followup": false,
       "codex/intervals-approved-pilot": false,
       "codex/openai-garmin-disclosure": false,
-      "codex/public-policy-pages": false
+      "codex/public-policy-pages": false,
+      "codex/dual-domain-shared-app": false,
+      "codex/coach-model-upgrade": false
     }
   }
 }

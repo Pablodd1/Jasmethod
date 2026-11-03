@@ -93,6 +93,7 @@ function TrainingPageContent() {
   const [doubleDayConfirmed,setDoubleDayConfirmed]=useState(false);
   const [eventTradeoffsConfirmed,setEventTradeoffsConfirmed]=useState(false);
   const [preview, setPreview] = useState<any>(null);
+  const [manualBaselinePlanning, setManualBaselinePlanning] = useState(false);
   const [zones, setZones] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -167,6 +168,13 @@ function TrainingPageContent() {
     return () => { mounted.current = false; loadController.current?.abort(); };
   }, [user, load]);
 
+  useEffect(() => {
+    setManualBaselinePlanning(false);
+    setPreview(null);
+    setDoubleDayConfirmed(false);
+    setEventTradeoffsConfirmed(false);
+  }, [user?.id]);
+
   function updatePlanForm(next: typeof form) {
     setForm(next);
     setPreview(null);
@@ -185,7 +193,7 @@ function TrainingPageContent() {
       const res = await fetch("/api/plan/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({...form, confirmDoubleDay:confirmed&&doubleDayConfirmed, confirmEventTradeoffs:confirmed&&eventTradeoffsConfirmed, preview: !confirmed, previewToken: confirmed ? preview?.previewToken : undefined}),
+        body: JSON.stringify({...form, manualBaselinePlanning, confirmDoubleDay:confirmed&&doubleDayConfirmed, confirmEventTradeoffs:confirmed&&eventTradeoffsConfirmed, preview: !confirmed, previewToken: confirmed ? preview?.previewToken : undefined}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
@@ -409,6 +417,7 @@ function TrainingPageContent() {
                 ))}
               </select>
             </div>
+            <label className="flex gap-2 items-start text-sm"><input type="checkbox" checked={manualBaselinePlanning} onChange={e=>{setManualBaselinePlanning(e.target.checked);setPreview(null);setDoubleDayConfirmed(false);setEventTradeoffsConfirmed(false);}}/>{es ? "Usar mi volumen reciente declarado para un plan provisional si el historial importado no se puede analizar. La carga real sigue sin conocerse; revisaré el día antes de entrenar." : "Use my separately reported recent baseline for provisional planning when imported history cannot be analyzed. Actual load remains unknown; I will review the day before training."}</label>
             {planningReadiness && !planningReadiness.ready ? <a href={setupHref} className="btn-primary justify-center">Complete setup to preview</a> : <button
               type="submit"
               disabled={generating || loading || setupLoading || !!loadError || !!setupError || !planningReadiness?.ready || goalChanged}
@@ -434,7 +443,7 @@ function TrainingPageContent() {
             </div>}
             <p>{preview.warning}</p>
             {preview.preview.weeksPreview.some((week:any)=>Array.isArray(week.doseAllocation?.omitted)&&week.doseAllocation.omitted.length>0) && <p role="status" className="my-3 rounded-lg border border-amber-300 p-3 text-sm">{es ? "El horario disponible excluye algunos componentes. Revisa los motivos de cada semana antes de guardar; no se ha añadido trabajo para recuperarlos." : "The available schedule excludes some components. Review each week's omitted purposes before saving; no catch-up work has been added."}</p>}
-            {preview.preview.cycle && <div className="my-3 space-y-2 text-sm"><p><strong>Assessment:</strong> {preview.preview.cycle.assessment}</p><p><strong>Recent training:</strong> {preview.preview.cycle.activity.reportedSessions} performed sessions recorded; missing reports are not counted as zero. {preview.preview.cycle.activity.recoveryReview ? "Recent effort or incomplete work calls for a reduced opening week." : "Daily recovery still needs review."}</p><p>Planned week totals: {preview.preview.cycle.weeks.map((week:any) => `W${week.week}: ${week.totalMinutes} min`).join(" · ")}</p></div>}
+            {preview.preview.cycle && <div className="my-3 space-y-2 text-sm"><p><strong>Assessment:</strong> {preview.preview.cycle.assessment}</p><p><strong>Recent training:</strong> {preview.preview.cycle.activity.reportedSessions ?? "—"} performed sessions recorded; missing reports are not counted as zero. {preview.preview.cycle.planningBasis === "athlete_reported_baseline" ? (es ? "Plan provisional basado en tu volumen declarado; la carga importada y la recuperación siguen sin conocerse." : "Provisional plan based on your reported baseline; imported load and recovery remain unknown.") : preview.preview.cycle.activity.recoveryReview ? "Recent effort or incomplete work calls for a reduced opening week." : "Daily recovery still needs review."}</p><p>Planned week totals: {preview.preview.cycle.weeks.map((week:any) => `W${week.week}: ${week.totalMinutes} min`).join(" · ")}</p></div>}
             <p>{preview.preview.existingPlans ? "Confirming will archive the current plan and supersede its uncompleted future sessions. History is retained." : "Confirming will assign this provisional plan."}</p>
             <details className="my-3"><summary className="cursor-pointer underline">Review every week, off-day and session</summary>{preview.preview.weeksPreview.map((week:any,weekIndex:number)=><div className="my-4" key={week.week}>
               <h4 className="font-semibold">Week {week.week}: {week.theme} · {week.totalMinutes} min</h4>

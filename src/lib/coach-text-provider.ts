@@ -1,4 +1,5 @@
 import { resolveCheckinSafety } from "./checkin-safety";
+import { COACH_TEXT_MODELS, DEFAULT_COACH_MODEL, coachModelParameters, coachModelTimeout } from "./coach-model";
 import { educationalCatalog } from "./coach-conversation-education";
 import { PROTOCOL_SOURCES } from "./protocols";
 import { externalCoachContext } from "./coach-personal-context";
@@ -14,10 +15,9 @@ export interface CoachTextResult {
 export type CoachTextFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 const MAX_REQUEST_BYTES = 32 * 1024, MAX_RESPONSE_BYTES = 64 * 1024;
 
-const models = new Set(["gpt-4.1-mini-2025-04-14", "gpt-4.1-mini"]);
 function currentEnvironment(): CoachTextEnvironment { return { EXTERNAL_AI_ENABLED: process.env.EXTERNAL_AI_ENABLED, OPENAI_API_KEY: process.env.OPENAI_API_KEY, OPENAI_TEXT_MODEL: process.env.OPENAI_TEXT_MODEL }; }
 export function coachTextConfigured(env: CoachTextEnvironment = currentEnvironment()): boolean {
-  return typeof window === "undefined" && env.EXTERNAL_AI_ENABLED === "true" && typeof env.OPENAI_API_KEY === "string" && /^[\x21-\x7e]{1,1024}$/.test(env.OPENAI_API_KEY) && models.has(env.OPENAI_TEXT_MODEL || "gpt-4.1-mini-2025-04-14");
+  return typeof window === "undefined" && env.EXTERNAL_AI_ENABLED === "true" && typeof env.OPENAI_API_KEY === "string" && /^[\x21-\x7e]{1,1024}$/.test(env.OPENAI_API_KEY) && COACH_TEXT_MODELS.has(env.OPENAI_TEXT_MODEL || DEFAULT_COACH_MODEL);
 }
 // Safety, personal context, proposals and all writes remain server-owned.
 // The external model receives only a fixed educational topic.
@@ -76,13 +76,14 @@ export async function coachTextAnswer(input: {
     approvedEducation:Object.entries(educationalCatalog).map(([topic, paragraphs])=>({topic,paragraphs:paragraphs.map(p=>p[context.language])})),
     references:PROTOCOL_SOURCES,
   });
-  const body=JSON.stringify({model:env.OPENAI_TEXT_MODEL || "gpt-4.1-mini-2025-04-14",stream:false,store:false,temperature:.2,max_tokens:1400,response_format:{type:"json_object"},messages:[
+  const model = env.OPENAI_TEXT_MODEL || DEFAULT_COACH_MODEL;
+  const body=JSON.stringify({model,stream:false,store:false,...coachModelParameters(model,1400),response_format:{type:"json_object"},messages:[
     {role:"system",content:"You provide general sports education in the supplied language using only the supplied topic and reviewed catalog. No athlete context, user text, session, device data or chat history is provided. Do not infer or request those data, personalize an answer, claim to know a goal/history, diagnose, clear exercise, prescribe doses, create workouts, predict results or propose changes. Return JSON {\"answer\":\"brief general explanation\",\"sourceIds\":[],\"changes\":[]}. Only supplied source IDs may be referenced. Never claim anything was saved, sent or approved."},
     {role:"user",content:payload},
   ]});
   if(Buffer.byteLength(body,"utf8") > MAX_REQUEST_BYTES)return {status:"policy_local"};
   const controller=new AbortController(); let timer:ReturnType<typeof setTimeout>|undefined;
-  const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error("Provider timeout"));},12000);});
+  const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error("Provider timeout"));},coachModelTimeout(model,12000));});
   try { return await Promise.race([deadline,(async():Promise<CoachTextResult>=>{
     const response=await(options.fetch ?? fetch)("https://api.openai.com/v1/chat/completions",{method:"POST",redirect:"error",referrerPolicy:"no-referrer",cache:"no-store",credentials:"omit",headers:{"Content-Type":"application/json",Authorization:`Bearer ${env.OPENAI_API_KEY!}`},signal:controller.signal,body});
     if(!response.ok)return{status:"unavailable"};

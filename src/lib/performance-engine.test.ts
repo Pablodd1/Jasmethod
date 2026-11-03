@@ -156,7 +156,7 @@ test("reply contract: exact keys, grounded numbers, rx always deterministic", ()
   assert.equal(parseScienceReply({ headline: "x", briefing: "y", adaptation: "z", fuel: "w", extra: 1 }, digest, ""), null);
 });
 
-test("science briefing never calls a provider unless eligible; max 300 output tokens when it does", async () => {
+test("science briefing never calls a provider unless eligible; flagship reasoning has a bounded token budget", async () => {
   let calls = 0, body: any;
   const fake = (async (_u: any, init: any) => { calls++; body = JSON.parse(init.body); return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ headline: "Empuje", briefing: "ACWR 1.08.", adaptation: "Bici.", fuel: "Agua." }) } }] }), { status: 200 }); }) as typeof fetch;
   const env = { EXTERNAL_AI_ENABLED: "true", OPENAI_API_KEY: "synthetic" };
@@ -164,7 +164,7 @@ test("science briefing never calls a provider unless eligible; max 300 output to
   assert.equal((await getScienceBriefing({ ...telemetry, wearableSource: "strava" }, { eligible: true, env, fetch: fake })).mode, "local");
   assert.equal(calls, 0);
   const ai = await getScienceBriefing(telemetry, { eligible: true, env, fetch: fake });
-  assert.equal(ai.mode, "ai"); assert.equal(body.max_tokens, 300); assert.equal(body.messages.length, 2);
+  assert.equal(ai.mode, "ai"); assert.equal(body.model,"gpt-6-astra"); assert.equal(body.max_completion_tokens,8192); assert.equal(body.reasoning_effort,"low"); assert.equal(body.max_tokens,undefined); assert.equal(body.temperature,undefined); assert.equal(body.messages.length, 2);
   assert.equal(localScienceBriefing(telemetry).headline, "DÍA DE EMPUJE");
 });
 
