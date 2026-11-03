@@ -72,6 +72,10 @@ async function backend(){
 }
 async function browserJourney(browser,language){
  const who=await actor(language),es=language==='es',context=await browser.newContext({viewport:{width:390,height:844},locale:es?'es-ES':'en-US'});
+ // This journey specifically tests the explicit preview/confirmation alternative
+ // before onboarding completion. Automatic completed-account entry is exercised
+ // independently in jmm-first-plan-acceptance.cjs against the same real database.
+ await db.user.update({where:{id:who.user.id},data:{onboarded:false}});
  await context.addCookies([{name:'jmm_session',value:who.token,url:base,httpOnly:true,sameSite:'Lax'}]);
  const page=await context.newPage(),errors=[],external=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',route=>{if(new URL(route.request().url()).origin!==base){external.push('external request');return route.abort();}return route.continue();});

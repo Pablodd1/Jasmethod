@@ -57,14 +57,16 @@ async function main() {
       await panel.getByRole('button', { name: es ? 'Preparar vista previa aquí' : 'Prepare plan preview here', exact: true }).click();
       const confirm = panel.getByRole('button', { name: es ? 'Confirmar y guardar este plan' : 'Confirm and save this plan', exact: true });
       await confirm.waitFor();
-      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id } }), 0, 'Preview must not save');
+      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id } }), 1, 'Preview preserves the automatic first week and does not save a replacement');
+      assert.equal((await db.trainingPlan.findFirstOrThrow({where:{userId:who.user.id,status:'active'}})).weeks,1);
       await confirm.click();
       await panel.getByText(es ? 'Comprobante de plan guardado' : 'Saved plan receipt', { exact: true }).waitFor();
       const saved = await api(who, '/api/assistant/plan');
       assert.ok(saved.receipt.id); assert.equal(saved.receipt.planId, saved.activePlans[0].id);
       const plan = await db.trainingPlan.findUniqueOrThrow({ where: { id: saved.receipt.planId } });
       assert.equal(plan.userId, who.user.id);
-      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id } }), 1);
+      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id } }), 2, 'Confirmed cycle preserves the archived first-week record');
+      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id,status:'active' } }), 1);
       assert.equal((await api(other, '/api/assistant/plan')).receipt, null);
       await page.reload();
       await page.getByRole('button',{name:es?'Opciones del chat':'Chat options',exact:true}).click();

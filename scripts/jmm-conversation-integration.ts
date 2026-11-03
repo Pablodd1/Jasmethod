@@ -25,7 +25,7 @@ const yesterday = addDaysKey(today, -1);
 type Actor = User & { cookie:string };
 const validAnswers = {sleep:4,soreness:2,motivation:4,energy:4,stress:2,sick:false,newPain:false,urgentSymptoms:false,availableMinutes:60};
 async function request(path:string, actor?:Actor, options:{method?:string;body?:unknown;status?:number}={}) {
-  const response = await fetch(new URL(path, base), {method:options.method || (options.body === undefined ? "GET" : "POST"),headers:{"Content-Type":"application/json", ...(actor ? {cookie:actor.cookie} : {})}, ...(options.body === undefined ? {} : {body:JSON.stringify(options.body)}),redirect:"manual",signal:AbortSignal.timeout(120000)});
+  const response = await fetch(new URL(path, base), {method:options.method || (options.body === undefined ? "GET" : "POST"),headers:{"Content-Type":"application/json",origin:base.origin, ...(actor ? {cookie:actor.cookie} : {})}, ...(options.body === undefined ? {} : {body:JSON.stringify(options.body)}),redirect:"manual",signal:AbortSignal.timeout(120000)});
   if (options.status !== undefined) assert.equal(response.status, options.status, `${path}: ${response.status}: ${response.status === options.status ? "" : (await response.clone().text()).slice(0,500)}`);
   return response;
 }
@@ -109,7 +109,7 @@ async function main() {
     await request(generate,coach,{body:{preview:true,easyPct:80},status:403});
     await db.coachAssignment.create({data:{coachId:coach.id,athleteId:a.id,status:"active",consent:"granted"}});
     const preview=await json(generate,coach,{body:{preview:true,easyPct:80}});assert.ok(preview.previewToken);
-    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),0,"Coach preview creates no plan");
+    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),1,"Coach preview preserves the automatic first week without creating another plan");
     await json(generate,coach,{body:{preview:false,easyPct:80,previewToken:preview.previewToken}});
     await request(generate,coach,{body:{preview:false,easyPct:80,previewToken:preview.previewToken},status:409});
     const plan=await db.trainingPlan.findFirstOrThrow({where:{userId:a.id,status:"active"}});assert.equal(plan.easyPct,80);
@@ -213,14 +213,15 @@ async function main() {
     await json("/api/onboard",a,{body:{}});
     assert.equal((await json("/api/auth/login",undefined,{body:{email:a.email,password}})).user.onboarded,true);
   });
-  await scenario("Optional onboarding offers a held starter without a full plan and imported observations remain owner-scoped",async()=>{
+  await scenario("Optional onboarding offers a held provisional sport week and imported observations remain owner-scoped",async()=>{
     await request("/api/onboard/import-review",undefined,{status:401});
     const a=await actor("onboarding-a"),b=await actor("onboarding-b");
     const p=await json("/api/profile",a);
     await json("/api/profile",a,{method:"PUT",body:{expectedRevision:p.revision,expectedSetupRevision:p.setupRevision,setup:{travel:{destinationTimezone:"Asia/Tokyo",equipmentNotes:"Hotel gym",maxSessionMinutes:30},coachPreference:"Optional coach"}}});
     const saved=await json("/api/profile",a);assert.equal(saved.setup.travel.destinationTimezone,"Asia/Tokyo");assert.equal(saved.setup.coachPreference,"Optional coach");assert.equal(saved.planningReadiness.ready,false);
-    const completed=await json("/api/onboard",a,{body:{}});assert.equal(completed.ok,true);assert.equal(completed.next,"/today");assert.equal(await db.workout.count({where:{userId:a.id,source:"starter"}}),1);
-    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),0,"optional setup does not invent a full cycle");
+    const completed=await json("/api/onboard",a,{body:{}});assert.equal(completed.ok,true);assert.equal(completed.next,"/today");assert.equal(await db.workout.count({where:{userId:a.id,source:"starter"}}),3);
+    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),1,"selected sport gets one provisional observation week, not a fabricated performance cycle");
+    assert.equal((await db.trainingPlan.findFirstOrThrow({where:{userId:a.id,status:"active"}})).weeks,1);
     const dayZero=await json("/api/today",a);assert.notEqual(dayZero.sessions[0].verdict,"ready","onboarding cannot replace today's safety check-in");
     assert.equal((await db.user.findUniqueOrThrow({where:{id:a.id}})).onboarded,true);
     const own=await db.metricObservation.create({data:{userId:a.id,observedAt:new Date(),metricType:"weight_kg",value:71,unit:"kg",source:"synthetic-test",qualityFlag:"ok"}});

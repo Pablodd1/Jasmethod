@@ -192,6 +192,11 @@ jobs:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
         run: node --import tsx scripts/jmm-athlete-entry-browser.cjs
 
+      - name: First provisional plan entry, PostgreSQL concurrency and mobile retry acceptance
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-first-plan-acceptance.cjs
+
       - name: Advanced triathlon canonical state, nutrition and FIT regression
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
@@ -270,6 +275,8 @@ jobs:
             .local/jmm-checkin-persistence-browser/*.png
             .local/jmm-athlete-entry-browser/report.json
             .local/jmm-athlete-entry-browser/*.png
+            .local/jmm-first-plan-acceptance/report.json
+            .local/jmm-first-plan-acceptance/*.png
             .local/jmm-advanced-triathlon/report.json
             .local/jmm-advanced-triathlon/*.png
             .local/jmm-advanced-triathlon/*.txt

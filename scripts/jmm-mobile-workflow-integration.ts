@@ -52,7 +52,7 @@ async function actor(name: string, onboarded = false): Promise<Actor> {
 async function api(path: string, a: Actor, body?: unknown, method?: string, status = 200) {
     const res = await fetch(`${base}${path}`, {
         method: method || (body === undefined ? "GET" : "POST"),
-        headers: { cookie: a.cookie, "Content-Type": "application/json" },
+        headers: { cookie: a.cookie, "Content-Type": "application/json", origin: base },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(120000)
     });

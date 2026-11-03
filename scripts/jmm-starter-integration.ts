@@ -16,7 +16,7 @@ async function main() {
  const user=await db.user.create({data:{name:"Synthetic day-zero athlete",email:`starter-${randomUUID()}@example.invalid`,passwordHash:bcrypt.hashSync(randomBytes(32).toString("hex"),4),timezone:"UTC",onboarded:false}});userId=user.id;
  const token=randomBytes(32).toString("hex");await db.authSession.create({data:{userId,tokenHash:hashToken(token),expiresAt:new Date(Date.now()+3600000)}});
  async function api(path:string,body?:unknown,status=200) {
-   const response=await fetch(base+path,{method:body===undefined?"GET":"POST",headers:{"Content-Type":"application/json",cookie:`jmm_session=${token}`},...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:"manual"});
+   const response=await fetch(base+path,{method:body===undefined?"GET":"POST",headers:{"Content-Type":"application/json",origin:base,cookie:`jmm_session=${token}`},...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:"manual"});
    const result=await response.json();assert.equal(response.status,status,`${path}: ${JSON.stringify(result).slice(0,500)}`);return result;
  }
  const unauthorized=await fetch(base+"/api/plan/starter",{method:"POST"});assert.equal(unauthorized.status,401);
