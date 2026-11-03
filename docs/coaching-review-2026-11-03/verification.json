@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-03",
+  "scope": "Working checkout with separately preserved dual-domain edits; synthetic browser/API fixtures",
+  "unitTests": {
+    "skipped": 0,
+    "failed": 0,
+    "passed": 2287
+  },
+  "typecheck": "passed",
+  "targetedLint": "passed",
+  "productionBuild": "passed",
+  "browser": {
+    "aiConsentJourneys": 2,
+    "todayCheckinJourneys": 6,
+    "garminStateAssertions": 48,
+    "manualActivityJourneys": 2,
+    "pageErrors": 0,
+    "commanderJourneys": 4,
+    "unexpectedRequests": 0
+  },
+  "liveReadOnlySmoke": {
+    "publicStatus": 200,
+    "anonymousStatus": 401,
+    "publicPolicyPages": 5,
+    "protectedEndpoints": 6
+  },
+  "notVerified": [
+    "Real PostgreSQL concurrent replay",
+    "Hardware microphone recognition",
+    "Live provider delivery",
+    "Complete HYROX station programming",
+    "Automatic first-plan creation/backfill"
+  ],
+  "deployment": "Not authorized; branch deployment disabled"
+}
