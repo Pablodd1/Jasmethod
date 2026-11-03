@@ -105,7 +105,7 @@ async function fixture(a: Actor) {
 }
 
 async function request(path: string, who?: Actor, options: { body?: unknown; method?: string; status?: number } = {}) {
-  const response = await fetch(new URL(path, base), { method: options.method || (options.body === undefined ? "GET" : "POST"), headers: { ...(who ? { cookie: who.cookie } : {}), "Content-Type": "application/json" }, ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }), redirect: "manual", signal: AbortSignal.timeout(120000) });
+  const response = await fetch(new URL(path, base), { method: options.method || (options.body === undefined ? "GET" : "POST"), headers: { ...(who ? { cookie: who.cookie } : {}), origin:base.origin, "Content-Type": "application/json" }, ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }), redirect: "manual", signal: AbortSignal.timeout(120000) });
   if (options.status !== undefined && response.status !== options.status) throw new Error(`${options.method || "GET"} ${path}: expected ${options.status}, received ${response.status}: ${(await response.text()).slice(0,500)}`);
   return response;
 }

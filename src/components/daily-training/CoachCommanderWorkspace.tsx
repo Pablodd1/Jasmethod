@@ -19,10 +19,11 @@ export function CoachCommanderWorkspace({compact=false,requestedArea,requestKey,
   const [area,setArea]=useState<CommanderArea|null>(null),[state,setState]=useState<State|null>(null),[preview,setPreview]=useState<Preview|null>(null);
   const [weeks,setWeeks]=useState(""),[start,setStart]=useState(""),[window,setWindow]=useState("");
   const [error,setError]=useState(""),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[double,setDouble]=useState(false),[events,setEvents]=useState(false);
+  const [manualBaselinePlanning,setManualBaselinePlanning]=useState(false);
   const [receipt,setReceipt]=useState<CommanderReceipt|null>(null),[source,setSource]=useState<string|null>(null);
   const seen=useRef<string|null>(null),hydrated=useRef(false),inFlight=useRef(false),mounted=useRef(true),epoch=useRef(0);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
-  useEffect(()=>{setState(null);setPreview(null);setReceipt(null);setSource(null);setWeeks("");setStart("");setWindow("");setError("");setUncertain(false);seen.current=null;hydrated.current=false;epoch.current++;},[athleteId]);
+  useEffect(()=>{setState(null);setPreview(null);setReceipt(null);setSource(null);setWeeks("");setStart("");setWindow("");setError("");setUncertain(false);setManualBaselinePlanning(false);seen.current=null;hydrated.current=false;epoch.current++;},[athleteId]);
   useEffect(()=>{
     const latest=[...messages].reverse().find(m=>m.role==="user");
     if(!hydrated.current){if(disabled)return;hydrated.current=true;seen.current=latest?.id??null;return;}
@@ -30,7 +31,7 @@ export function CoachCommanderWorkspace({compact=false,requestedArea,requestKey,
     if(seen.current===latest.id)return;seen.current=latest.id;
     const draft=commanderDraft(latest.content);if(!draft)return;
     if(draft.area!=="plan"||!/\b(?:plan|cycle|ciclo)\b/i.test(latest.content)||!/\b(?:build|create|generate|revise|replace|change|want|make|crea|genera|cambia|quiero|prepara)\b/i.test(latest.content))return;
-    setSource(latest.id);setArea(draft.area);setPreview(null);setDouble(false);setEvents(false);
+    setSource(latest.id);setArea(draft.area);setPreview(null);setDouble(false);setEvents(false);setManualBaselinePlanning(false);
     if(draft.weeks!==undefined)setWeeks(String(draft.weeks));if(draft.startDate)setStart(draft.startDate);
     setError(draft.questions.length?(es?"Revisa las semanas y la fecha de inicio; no se han supuesto valores.":draft.questions.join(" ")):"");
   },[messages,es,disabled]);
@@ -54,7 +55,7 @@ export function CoachCommanderWorkspace({compact=false,requestedArea,requestKey,
     inFlight.current=true;setBusy(true);onBusy(true);setError("");
     const ticket=++epoch.current;
     try {
-      const res=await fetch("/api/assistant/plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:confirm?"confirm":"preview",weeks:Number(weeks),startDate:start,...(window?{trainingWindow:window}:{}),sourceMessageId:source,...(confirm?{previewToken:preview!.previewToken,confirmDoubleDay:double,confirmEventTradeoffs:events}:{})}),signal:AbortSignal.timeout(60000)});
+      const res=await fetch("/api/assistant/plan",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:confirm?"confirm":"preview",weeks:Number(weeks),startDate:start,manualBaselinePlanning,...(window?{trainingWindow:window}:{}),sourceMessageId:source,...(confirm?{previewToken:preview!.previewToken,confirmDoubleDay:double,confirmEventTradeoffs:events}:{})}),signal:AbortSignal.timeout(60000)});
       const data=await res.json();
       if(!res.ok||data.ok!==true)throw Error(data.error||"The planner could not verify this request");
       if(!mounted.current||ticket!==epoch.current)return;
@@ -79,6 +80,7 @@ export function CoachCommanderWorkspace({compact=false,requestedArea,requestKey,
       {state&&!state.readiness.ready&&<div role="status"><p>{es?"Datos que faltan o necesitan revisión para un ciclo personalizado:":"Missing information or review needed for a personalized cycle:"}</p><p>{planningReasons[0]&&planningReasonText(planningReasons[0],es)}</p><details><summary className="cursor-pointer underline">{es?"Ver todos los datos pendientes":"Review all pending information"} ({planningReasons.length})</summary><ul className="list-disc pl-5">{planningReasons.map(item=><li key={item}>{planningReasonText(item,es)}</li>)}</ul></details><button className={button} type="button" disabled={disabled||busy} onClick={()=>setArea("profile")}>{es?"Revisar datos aquí":"Review answers here"}</button><StartingCycle key={athleteId} es={es} disabled={disabled||busy} onBusy={value=>{setBusy(value);onBusy(value);}} onSaved={async()=>{await readState();await onSaved();}}/></div>}
       {state&&<><p className="text-sm">{es?"Objetivo guardado":"Saved goal"}: {state.defaults.distance??"—"}. {es?"Plan actual":"Current plan"}: {state.activePlans.map(plan=>plan.name).join("; ")||"—"}</p>
         <div className="grid gap-3 sm:grid-cols-2"><label>{es?"Semanas (4–30)":"Weeks (4–30)"}<input className="input w-full" type="number" min="4" max="30" value={weeks} disabled={busy||disabled} onChange={e=>{edit();setWeeks(e.target.value);}}/></label><label>{es?"Fecha de inicio local":"Local start date"}<input className="input w-full" type="date" min={state.localToday} value={start} disabled={busy||disabled} onChange={e=>{edit();setStart(e.target.value);}}/></label><label>{es?"Horario preferido":"Preferred window"}<select className="input w-full" value={window} disabled={busy||disabled} onChange={e=>{edit();setWindow(e.target.value);}}><option value="">{es?"Usar preferencia guardada":"Use saved preference"}</option><option value="any">{es?"Sin hora fija":"No fixed time"}</option><option value="morning">{es?"Mañana":"Morning"}</option><option value="midday">{es?"Mediodía":"Midday"}</option><option value="evening">{es?"Tarde":"Evening"}</option></select></label></div>
+        <label className="flex gap-2 items-start text-sm"><input type="checkbox" disabled={busy||disabled} checked={manualBaselinePlanning} onChange={event=>{edit();setManualBaselinePlanning(event.target.checked);}}/>{es?"Usar mi volumen reciente declarado para un plan provisional si el historial importado no se puede analizar. La carga real sigue sin conocerse; revisaré el día antes de entrenar.":"Use my separately reported recent baseline for provisional planning when imported history cannot be analyzed. Actual load remains unknown; I will review the day before training."}</label>
         <p className="text-xs">{es?"El contexto y la generación se revisan dentro de JMM. Una sesión futura sigue siendo provisional; guardar no autoriza ejercicio ni confirma entrega al reloj.":"Planning and evidence checks run inside JMM. Future training remains provisional; saving a cycle does not clear exercise or confirm watch delivery."}</p>
         <button type="button" className="btn-primary" disabled={disabled||busy||uncertain||!state.readiness.ready} onClick={()=>void run(false)}>{busy?(es?"Comprobando…":"Checking…"):(es?"Preparar vista previa aquí":"Prepare plan preview here")}</button></>}
       {preview&&<section className="rounded-lg border p-3 space-y-3" aria-label={es?"Plan propuesto sin guardar":"Proposed plan, not saved"}><h4 className="font-semibold">{es?"Plan propuesto · sin guardar":"Proposed plan · not saved"}</h4><p>{preview.warning}</p>{preview.preview.cycle?.assessment&&<p>{preview.preview.cycle.assessment}</p>}

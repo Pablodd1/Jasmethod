@@ -11,6 +11,7 @@ export interface CoachTextEnvironment { EXTERNAL_AI_ENABLED?: string; OPENAI_API
 export interface CoachTextResult {
   status: "not_requested" | "not_configured" | "policy_local" | "answered" | "unavailable";
   answer?: string; sourceIds?: string[]; candidates?:CoachCandidate[];needsHumanReview?:boolean;
+  failureReason?: "authentication" | "rate_limit" | "invalid_model" | "provider_rejected" | "invalid_response" | "policy_output" | "timeout" | "network";
 }
 export type CoachTextFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 const MAX_REQUEST_BYTES = 32 * 1024, MAX_RESPONSE_BYTES = 64 * 1024;

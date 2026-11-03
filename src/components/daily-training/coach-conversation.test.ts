@@ -173,6 +173,9 @@ test("OpenAI availability and local-policy messages never fabricate provider suc
   assert.match(coachTextStatusMessage("not_configured",false)!, /not connected/);
   assert.match(coachTextStatusMessage("policy_local",false)!, /Answered within JMM/);
   assert.equal(coachTextStatusMessage("not_requested",false),null);
+  assert.match(coachTextStatusMessage("unavailable",false,"authentication")!,/rejected authorization/);
+  assert.match(coachTextStatusMessage("unavailable",true,"policy_output")!,/respuesta de IA se retuvo/);
+  assert.doesNotMatch(coachTextStatusMessage("unavailable",false,"PRIVATE_ERROR_CANARY")!,/PRIVATE_ERROR_CANARY/);
 });
 test("external providers each require matching named capability and independent explicit consent", () => {
   const configured = { externalAi: true, textProvider: "OpenAI", imageUnderstanding: true, imageProvider: "OpenAI" };

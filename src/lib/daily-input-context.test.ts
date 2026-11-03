@@ -93,6 +93,10 @@ test("matched plan and completed import count once, retain comparison and do not
   const planned=workout({id:"plan",source:"plan",planned:true,durationMin:40,actualDurationMin:null,matchedPlanId:"imported",createdAt:new Date("2026-10-01")});
   const value=context({completedWorkouts:[actual,planned]});assert.equal(value.completedWorkouts.length,1);assert.equal(value.activity.reportedMinutes,42);
   assert.equal(value.completedWorkouts[0].comparison?.plannedMinutes,40);assert.equal(value.completedWorkouts[0].comparison?.differenceMinutes,2);
+  const execution=applyDailyExecutionContext(full(),value).evaluation!;
+  assert.equal(execution.sessions[0].expectedMinutes,40);assert.equal(execution.sessions[0].actualMinutes,42);
+  assert.equal(execution.sessions[0].differenceMinutes,2);assert.equal(execution.sessions[0].source,"garmin");
+  assert.equal(execution.sessions[0].observedAt,"2026-10-20T15:00:00.000Z");
   assert.equal(value.completedWorkouts[0].questions.durationMinutes,false);assert.equal(value.completedWorkouts[0].questions.rpe,true);
 });
 test("two legitimate sessions and brick work remain separate; absent sync is unknown rather than rest",()=>{
@@ -213,4 +217,24 @@ test("DB reader uses owner-scoped projected evidence with bounded observation an
   assert.equal(workouts.where.userId,"owner");assert.equal(workouts.take,100);assert.equal(workouts.where.date.gte.toISOString(),"2026-10-20T04:00:00.000Z");assert.equal(workouts.where.date.lt.toISOString(),"2026-10-22T04:00:00.000Z");
   assert.equal(workouts.select.feedbackNote,undefined);assert.equal(workouts.select.actualDetails,undefined);assert.equal(workouts.select.title,undefined);
   assert.equal(calls.find(([name])=>name==="decisions")[1].where.subjectId,"owner");
+});
+
+test("device assessment reads a bounded owner baseline and never exports its historical rows",async()=>{
+  const history=Array.from({length:28},(_,i)=>({userId:"owner",date:new Date(+now-(i+1)*86400000),source:"whoop",hrv:60,hrvType:"rmssd",restingHr:52,sleepHours:8}));
+  let query:any;
+  const db:any={metricObservation:{findMany:async()=>[
+    observation({id:"sleep",source:"whoop",value:8}),
+    observation({id:"pulse",source:"whoop",metricType:"resting_hr",unit:"bpm",value:52}),
+    observation({id:"hrv",source:"whoop",metricType:"hrv_rmssd",unit:"ms",value:60}),
+  ]},workout:{findMany:async()=>[]},connector:{findMany:async()=>[]},auditLog:{findMany:async()=>[]},
+    dailyMetrics:{findMany:async(q:any)=>{query=q;return [...history,{...history[0],userId:"other",hrv:300}];}}};
+  const value=await readDailyInputContext("owner","America/New_York",db,now);
+  assert.equal(value.deviceAssessment.state,"eligible");assert.equal(query.where.userId,"owner");assert.equal(query.take,62);
+  assert.equal(query.where.date.gt.toISOString(),new Date(+now-60*86400000).toISOString());assert.equal(query.where.date.lt.toISOString(),"2026-10-21T04:00:00.000Z");
+  assert.deepEqual(Object.keys(value.deviceAssessment).sort(),["fingerprint","reason","state"]);
+  assert.equal(Object.hasOwn(value,"deviceHistory"),false);
+  delete db.dailyMetrics;
+  assert.equal((await readDailyInputContext("owner","America/New_York",db,now)).deviceAssessment.state,"manual");
+  db.dailyMetrics={findMany:async()=>{throw Error("unavailable");}};
+  assert.equal((await readDailyInputContext("owner","America/New_York",db,now)).deviceAssessment.state,"manual");
 });

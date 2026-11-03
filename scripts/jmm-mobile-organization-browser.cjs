@@ -17,6 +17,7 @@ async function main(){const browser=await chromium.launch({headless:true});try{
       const req=route.request(),url=new URL(req.url());
       if(url.origin!==base){unexpected.push('external request');return route.abort();}
       if(!url.pathname.startsWith('/api/'))return route.continue();
+      if(url.pathname==='/api/plan/ensure'){assert.equal(req.method(),'POST');assert.deepEqual(req.postDataJSON(),{});return route.fulfill({json:{ok:true,plan:{created:false,status:'existing',planId:'synthetic-existing-plan'}}});}
       if(url.pathname==='/api/auth/me')return route.fulfill({json:{user:signedIn?{id:'synthetic-mobile-owner',name:'Synthetic athlete',email:'athlete@example.invalid',role:'athlete',language,timezone:'America/New_York',onboarded:true,profile:profile.profile}:null}});
       if(url.pathname==='/api/profile')return route.fulfill({json:profile});
       if(url.pathname==='/api/plan')return route.fulfill({json:{plans:[]}});

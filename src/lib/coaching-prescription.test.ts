@@ -6,7 +6,8 @@ import { boundPlanWeeks } from './planning-bounds';
 import { shapeTrainingCycle } from './training-cycle';
 import { prescribeToday } from './adaptive';
 import { canonicalSession } from './canonical-session';
-import { buildCoachingPrescription } from './coaching-prescription';
+import { buildCoachingPrescription, HYROX_COACHING_STATIONS, type HyroxPrescriptionReview } from './coaching-prescription';
+import { preserveSportStructure } from './preserve-sport-structure';
 import { sessionFitEntries } from './fit-export';
 import { Decoder, Stream } from '@garmin/fitsdk';
 import { addDaysKey } from './dates';
@@ -147,4 +148,103 @@ test('strength support selects sport-specific familiar exercises without inventi
   }
   assert.notDeepEqual(bySport.get('swim'),bySport.get('run'));
   assert.notDeepEqual(bySport.get('run'),bySport.get('bike'));
+});
+
+const hyroxCoaching={recipe:'hyrox-hybrid' as const,phase:'development' as const,purpose:'Synthetic reviewed HYROX practice',demanding:false,minimumMinutes:35};
+function reviewedStations():HyroxPrescriptionReview {
+  return {reviewedAt:'2026-01-01T12:00:00Z',sourceReference:'synthetic-coach-review',stations:(Object.keys(HYROX_COACHING_STATIONS) as (keyof typeof HYROX_COACHING_STATIONS)[]).map(stationId=>({
+    stationId,equipmentConfirmed:true,techniqueReviewed:true,runSeconds:60,recoverySeconds:60,
+    endpoint:stationId==='wallball'?{type:'reps',reps:8}:{type:'distance',meters:stationId==='ski'||stationId==='row'?100:10},estimatedSeconds:60,
+    ...(HYROX_COACHING_STATIONS[stationId].loaded?{load:{value:stationId==='wallball'?4:10,unit:'kg' as const},loadBasis:stationId.startsWith('sled')?'total-including-sled' as const:stationId==='farmers'?'per-hand' as const:'implement' as const}:{}),
+    ...(stationId==='wallball'?{targetHeightMeters:2.5}:{})
+  }))};
+}
+
+test('HYROX preparation actually used without evidence is varied and never claims eight-station execution',()=>{
+  const p=buildCoachingPrescription('hyrox',40,'z2',hyroxCoaching);
+  assert.equal(p.sportStructure?.kind,'hyrox');
+  const stations=p.sportStructure?.kind==='hyrox'?p.sportStructure.steps.filter(step=>step.kind==='station'):[];
+  assert.equal(new Set(stations.map(step=>step.kind==='station'?step.name:'')).size,4);
+  for(const step of stations)if(step.kind==='station'){
+    assert.equal(step.load,undefined);assert.equal(step.endpoint.type,'time');
+    assert.match(step.note??'',/Purpose:/);assert.match(step.note??'',/unloaded preparation, not execution/);
+    assert.ok(!Object.hasOwn(HYROX_COACHING_STATIONS,step.stationId!));
+  }
+  assert.equal(p.steps.reduce((sum,step)=>sum+step.seconds,0),2400);
+});
+
+test('reviewed HYROX covers all eight station identities with exact authored endpoints, loads, purposes and rests',()=>{
+  const review=reviewedStations(),before=JSON.stringify(review);
+  const p=buildCoachingPrescription('hyrox',60,'z5',hyroxCoaching,false,review);
+  assert.equal(p.paused,undefined);assert.equal(p.sportStructure?.kind,'hyrox');
+  const steps=p.sportStructure?.kind==='hyrox'?p.sportStructure.steps:[];
+  const stations=steps.filter(step=>step.kind==='station');
+  assert.equal(stations.length,8);
+  stations.forEach((step,index)=>{
+    if(step.kind!=='station')return;
+    const dose=review.stations[index];
+    assert.equal(step.stationId,dose.stationId);assert.deepEqual(step.endpoint,dose.endpoint);
+    assert.deepEqual(step.load,dose.load);assert.equal(step.estimatedSeconds,60);
+    assert.match(step.note??'',/Purpose:/);assert.match(step.note??'',/synthetic-coach-review/);
+    assert.match(step.note??'',/not race simulation or automatic progression/);
+    const position=steps.indexOf(step);
+    assert.equal(steps[position-1].kind,'run');assert.deepEqual(steps[position+1],{kind:'rest',seconds:60,note:'Recover and set up the next station safely. Extend rest or stop if needed; do not compress recovery to catch up.'});
+  });
+  assert.equal(p.steps.reduce((sum,step)=>sum+step.seconds,0),3600);
+  assert.ok(p.steps.every(step=>step.seconds>0&&Number(step.zone.slice(1))<=2));
+  assert.equal(JSON.stringify(review),before,'generation must not mutate the reviewed dose');
+});
+
+test('HYROX review cannot invent missing equipment, skill, loads, estimates or wall-ball targets',()=>{
+  const mutations:((r:HyroxPrescriptionReview)=>void)[]=[
+    r=>{r.stations[0].equipmentConfirmed=false as unknown as true;},
+    r=>{r.stations[0].techniqueReviewed=false as unknown as true;},
+    r=>{delete r.stations[1].load;},
+    r=>{r.stations[1].loadBasis='per-hand';},
+    r=>{delete r.stations[0].estimatedSeconds;},
+    r=>{delete r.stations[7].targetHeightMeters;},
+    r=>{r.stations[0].load={value:10,unit:'kg'};},
+    r=>{r.stations[1].load={value:NaN,unit:'kg'};},
+    r=>{r.stations[0].recoverySeconds=0;},
+    r=>{r.stations[0].endpoint={type:'distance',meters:-1};},
+    r=>{r.stations[1].stationId='ski';},
+    r=>{r.sourceReference='';},
+    r=>{r.reviewedAt='2099-01-01';},
+  ];
+  for(const mutate of mutations){
+    const review=reviewedStations();mutate(review);
+    const p=buildCoachingPrescription('hyrox',60,'z2',hyroxCoaching,false,review);
+    assert.equal(p.paused,true);assert.deepEqual(p.steps,[]);assert.equal(p.sportStructure,undefined);
+  }
+  for(const [minutes,easy]of [[15,false],[60,true]] as const){
+    const p=buildCoachingPrescription('hyrox',minutes,'z2',hyroxCoaching,easy,reviewedStations());
+    assert.equal(p.paused,true);assert.deepEqual(p.steps,[],'cannot truncate station/rest doses or run a loaded dose on an easy adaptation');
+  }
+});
+
+test('time-based reviewed station practice never acquires invented distance or timing estimates',()=>{
+  const review=reviewedStations();review.stations=review.stations.slice(0,1);
+  review.stations[0].endpoint={type:'time',seconds:90};delete review.stations[0].estimatedSeconds;
+  const p=buildCoachingPrescription('hyrox',20,'z2',hyroxCoaching,false,review);
+  const station=p.sportStructure?.kind==='hyrox'?p.sportStructure.steps.find(step=>step.kind==='station'):undefined;
+  assert.equal(station?.kind,'station');
+  if(station?.kind==='station'){assert.deepEqual(station.endpoint,{type:'time',seconds:90});assert.equal(station.estimatedSeconds,undefined);}
+  assert.equal(p.steps.reduce((sum,step)=>sum+step.seconds,0),1200);
+});
+
+test('authored eight-station HYROX structure survives fallback regeneration and canonical execution unchanged',()=>{
+  const authored=buildCoachingPrescription('hyrox',60,'z2',hyroxCoaching,false,reviewedStations());
+  const originalPlan={sport:'hyrox',durationMin:60,intensity:'z2',cycleVersion:'bounded-cycle-v1',coaching:hyroxCoaching};
+  const prior={...authored,sport:'hyrox',title:'Synthetic authored station practice',verdict:'full',durationMin:60,intensity:'z2',coaching:hyroxCoaching};
+  const workout={id:'synthetic-authored-hyrox',userId:'synthetic',sport:'hyrox',title:prior.title,intensity:'z2',durationMin:60,prescription:JSON.stringify(prior),originalPlan:JSON.stringify(originalPlan)};
+  const generic={...buildCoachingPrescription('hyrox',60,'z2',hyroxCoaching),sport:'hyrox',title:prior.title,verdict:'full',durationMin:60,intensity:'z2',coaching:hyroxCoaching,detail:{main:'Synthetic fallback'}};
+  const retained=preserveSportStructure(workout,generic);
+  assert.deepEqual(retained.sportStructure,authored.sportStructure);assert.equal(retained.structureReviewRequired,undefined);
+  const c=canonicalSession({athleteId:'synthetic',workout,prescription:retained,dateLocal:startKey,timezone:'UTC'});
+  assert.equal(c.verdict,'ready',c.reason);
+  assert.equal(c.steps.filter(step=>step.sportDetail?.kind==='station').length,8);
+  assert.equal(c.exactTimeSeconds,null,'distance/repetition work duration is estimated');
+  assert.deepEqual(c.sportStructure,authored.sportStructure);
+  const reduced=preserveSportStructure(workout,{...generic,durationMin:15});
+  assert.equal(reduced.verdict,'rest');assert.deepEqual(reduced.sportStructure,authored.sportStructure,'a shortened budget must hold authored stations rather than erase them');
 });

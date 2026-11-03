@@ -15,7 +15,7 @@ export interface CheckinSafety {
   message: string;
   missingFields: string[];
 }
-export function resolveCheckinSafety(input: CheckinSafetyInput | null | undefined): CheckinSafety {
+export function resolveCheckinSafety(input: CheckinSafetyInput | null | undefined, deviceReviewVerified = false): CheckinSafety {
   const c = input || {};
   if (c.urgentSymptoms === true) return {
     status: "urgent", ruleId: `${CHECKIN_SAFETY_VERSION}:urgent-symptoms`, missingFields: [],
@@ -27,14 +27,14 @@ export function resolveCheckinSafety(input: CheckinSafetyInput | null | undefine
       ? "Training is on hold because you reported illness symptoms. Rest and seek appropriate medical advice, especially if symptoms are new, worsening or persistent. This app cannot diagnose illness or clear return to training."
       : `Training is on hold for new or worsening focal pain${c.painLocation ? ` (${c.painLocation})` : ""}${c.painAffectsMovement ? " affecting movement" : ""}. Stop painful activity and seek appropriate professional assessment. This app cannot diagnose injury or clear return to training.`,
   };
-  const missingFields: string[] = SUBJECTIVE_FIELDS.filter((key) => !Number.isInteger(c[key]) || c[key]! < 1 || c[key]! > 5);
+  const missingFields: string[] = deviceReviewVerified ? [] : SUBJECTIVE_FIELDS.filter((key) => !Number.isInteger(c[key]) || c[key]! < 1 || c[key]! > 5);
   missingFields.push(...SAFETY_FIELDS.filter((key) => typeof c[key] !== "boolean"));
   if (!Number.isFinite(c.availableMin) || c.availableMin! < 0 || c.availableMin! > 1440) missingFields.push("availableMin");
   if (missingFields.length) return {
     status: "unknown", ruleId: `${CHECKIN_SAFETY_VERSION}:missing-input`, missingFields,
     message: `Training is on hold until today's safety, recovery and available-time answers are known. Missing: ${missingFields.join(", ")}. Unknown or skipped answers are not evidence of readiness. No device data is required.`,
   };
-  return { status: "clear", ruleId: `${CHECKIN_SAFETY_VERSION}:reviewed-input`, missingFields: [], message: "Current self-reported safety questions answered; this is not medical clearance." };
+  return { status: "clear", ruleId: deviceReviewVerified ? "device-checkin-v1:reviewed-input" : `${CHECKIN_SAFETY_VERSION}:reviewed-input`, missingFields: [], message: "Current self-reported safety questions answered; this is not medical clearance." };
 }
 
 /** Parse only scalar values; no booleans/arrays/object coercion into reported numbers. */

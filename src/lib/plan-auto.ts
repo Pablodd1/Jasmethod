@@ -1,7 +1,6 @@
 // Setup never silently assigns a goal, event date or individual plan.
-import { prisma } from "./db";
+import { ensureFirstPlan } from "./first-plan-store";
 import { assessPlanningSetup, planningGoal, PLANNABLE_GOALS, type PlanningSetup } from "./planning-setup";
-import { readPlanningSetup } from "./planning-setup-store";
 export { parseDate } from "./dates";
 import { enforceEccentricSpacing } from "./performance-engine";
 
@@ -21,18 +20,8 @@ export function starterPlanInputs(profile: {
   return { distance, level, weeks: setup?.planWeeks ?? null, hasRace, ...assessPlanningSetup(profile, setup) };
 }
 
-/** Compatibility entry point: only reports an existing plan or explicit gaps.
- * A new/replacement plan must be previewed and confirmed in /training. */
+/** Compatibility entry point. Only a first provisional week may be automatic;
+ * replacing any active plan still requires explicit preview and confirmation. */
 export async function autoGenerateStarterPlan(userId: string) {
-  const [user, existing, setupState] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, include: { profile: true } }),
-    prisma.trainingPlan.findFirst({ where: { userId, status: "active" }, orderBy: { createdAt: "desc" }, select: { id: true, distance: true } }),
-    readPlanningSetup(userId),
-  ]);
-  if (!user) throw new Error("user not found");
-  if (existing) return { planId: existing.id, distance: existing.distance, created: false, status: "existing", missing: [] as string[] };
-  const readiness = assessPlanningSetup(user.profile, setupState.setup);
-  return { planId: null, distance: user.profile?.goal ?? null, created: false,
-    status: readiness.ready ? "preview_confirmation_required" : "setup_incomplete",
-    missing: [...readiness.missing, ...readiness.review] };
+  return ensureFirstPlan(userId);
 }

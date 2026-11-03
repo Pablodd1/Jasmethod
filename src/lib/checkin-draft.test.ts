@@ -1,7 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {emptyCheckinAnswers,hydrateCheckinDraft,restoreCheckinDraft,savedCheckinAnswers,checkinDraftKey} from "./checkin-draft";
+import {emptyCheckinAnswers,hydrateCheckinDraft,restoreCheckinDraft,savedCheckinAnswers,checkinDraftKey,requiresManualCheckinReview} from "./checkin-draft";
 import {clearOnboardingDrafts} from "./onboarding-form";
+
+test("restored recovery drafts retain manual mode while optional weight and time do not repeat the questionnaire",()=>{
+  for (const [key,value] of [["sick",true],["sick",false],["sleep",1],["mood",2],["sessionFelt","harder"],["hrv",30]] as const) {
+    const draft={version:1,userId:"a",dateLocal:"2026-11-02",savedBasis:null,answers:{...emptyCheckinAnswers(),[key]:value},dirty:[key],correctImported:false};
+    const restored=restoreCheckinDraft(JSON.stringify(draft),"a","2026-11-02",null)!;
+    assert.equal(requiresManualCheckinReview(restored.answers,restored.dirty,restored.correctImported),true);
+  }
+  assert.equal(requiresManualCheckinReview({...emptyCheckinAnswers(),weightKg:71,availableMinutes:30},["weightKg","availableMinutes"],false),false);
+  assert.equal(requiresManualCheckinReview(emptyCheckinAnswers(),[],true),true);
+  assert.equal(requiresManualCheckinReview({...emptyCheckinAnswers(),voiceReviewConfirmed:true},["voiceReviewConfirmed"],false),true);
+});
 
 test("sync hydration preserves edited symptoms, cleared fields and real zero without inventing saved answers",()=>{
   const saved=savedCheckinAnswers(JSON.stringify({sleep:5,sick:false,availableMin:60,rhr:52,inputMetadata:{rhrSource:"garmin"}}));

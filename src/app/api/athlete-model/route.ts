@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { buildAthleteModel } from "@/lib/athlete-model";
 import { derivedActivityPolicy } from "@/lib/derived-activity-policy";
+import { athleteHistoryCoverage } from "@/lib/athlete-history-coverage";
 
 // GET /api/athlete-model — the daily coach's individual model for the signed-in athlete:
 // history coverage, level (stated or labelled estimate), age band, personal spacing,
@@ -19,5 +20,5 @@ export async function GET() {
   ]);
   const activity = derivedActivityPolicy(history as any), biometric = derivedActivityPolicy(metrics as any);
   const model = buildAthleteModel({ history: activity.status === "allowed" ? history : [], metrics: biometric.status === "allowed" ? metrics : [], profile: profile as any });
-  return NextResponse.json({ model, language: user.language, provenance: { activity: activity.status, biometric: biometric.status } });
+  return NextResponse.json({ model, historyCoverage:athleteHistoryCoverage(activity.status,model.coverageDays), language: user.language, provenance: { activity: activity.status, biometric: biometric.status } }, { headers:{"Cache-Control":"private, no-store"} });
 }

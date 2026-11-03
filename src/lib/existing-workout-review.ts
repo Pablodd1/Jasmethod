@@ -47,7 +47,7 @@ export function existingReviewCandidate(input: {
   const recentExecution = applyExecutionFeedback({ verdict:"full", score:0, scoreAvailable:false, durationFactor:1,
     intensityCap:"z7", safetyStatus:"clear", ruleId:"existing-review-history", message:"" }, recentEvidence.groups.map(group => ({
       ...group.primary, id:String(group.primary.id), durationMin:group.primary.durationMin ?? undefined,
-      actualDurationMin:group.budgetMinutes,
+      actualDurationMin:group.primary.feedbackStatus === "skipped" ? group.primary.actualDurationMin ?? null : group.budgetMinutes,
       feedbackStatus:group.primary.feedbackStatus ?? (group.members.some(row => row.completed) ? "completed" : "unknown"),
     })));
   if (recentExecution.adaptation.ruleId === "execution-feedback-v1:incomplete-load") return no("Review recent actual minutes, effort and outcome in the full check-in before continuing training.");

@@ -55,7 +55,7 @@ export interface AthleteModel {
   rpeBias: number | null;            // mean(actual − intended RPE), last 28 d
   personalRecoveryH: number | null;  // median hours for HRV to return within SWC after key sessions
   anchorsStale: string[];            // targets that need a retest
-  kjLast7: number | null;            // work-equivalent kJ, last 7 days (power, device kcal, or estimate)
+  kjLast7: number | null;            // mechanical bike work only; incomplete/mixed energy stays unknown
   kjWeeklyAvg28: number | null;      // 4-week weekly average, same scale
   kjSources: Record<string, number>; // how each session's kJ was obtained
   onboarding: OnboardingQuestion[];
@@ -170,7 +170,8 @@ export function buildAthleteModel(input: { history: HistoryWorkout[]; metrics: H
   const allKnown = kj28.every(k => k != null) && kj28.length > 0;
   const kjLast7 = allKnown ? last28.reduce((a, w, i) => a + (t(w.date) > nowT - 7 * DAY ? kj28[i]! : 0), 0) : null;
   const kjWeeklyAvg28 = allKnown && coverageDays >= 21 ? Math.round(kj28.reduce((a, k) => a + k!, 0) / 4) : null;
-  if (kjLast7 != null && kjWeeklyAvg28) notes.push(`This week ${kjLast7} kJ vs 4-week average ${kjWeeklyAvg28} kJ (${Math.round((kjLast7 / kjWeeklyAvg28 - 1) * 100)}%).`);
+  if (kjLast7 != null && kjWeeklyAvg28) notes.push(`Mechanical bike work: this week ${kjLast7} kJ vs 4-week average ${kjWeeklyAvg28} kJ (${Math.round((kjLast7 / kjWeeklyAvg28 - 1) * 100)}%).`);
+  if (last28.length && !allKnown) notes.push("Mechanical-work totals are unavailable because some sessions lack measured bike power. Device calories and metabolic estimates remain separate; missing work is not zero.");
 
   return { version: "athlete-model-v1", kjLast7, kjWeeklyAvg28, kjSources, coverageDays, sessions28: last28.length, hoursPerWeek28, sports, longestRecentMin, coldStart, level, levelSource, ageYears, ageBand, sex, spacingH, keyCap, pushAllowed, rpeBias, personalRecoveryH, anchorsStale, onboarding: q, notes };
 }

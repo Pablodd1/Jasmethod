@@ -11,6 +11,30 @@ const raw = Array.from({length:24}, (_,index) => ({week:index+1,theme:"Build",se
 const bounded = boundPlanWeeks(raw, setup, 6, 1, "beginner").weeks;
 const options = {startKey:"2026-10-12",raceKey:null,needsAssessment:true,recoveryReview:false,protectedDays:[] as string[]};
 
+test("unknown history does not pretend difficult execution or add a second recovery reduction", () => {
+  const reported=shapeTrainingCycle(bounded,{...options,recoveryReview:true});
+  const unknown=shapeTrainingCycle(bounded,{...options,recoveryReview:true,recoveryReviewBasis:"unknown_history"});
+  assert.ok(unknown[0].totalMinutes>reported[0].totalMinutes);
+  assert.equal(unknown[0].totalMinutes,shapeTrainingCycle(bounded,options)[0].totalMinutes);
+  assert.match(unknown[0].volumeDecision.reason,/load and recovery are unknown/);
+  assert.doesNotMatch(unknown[0].volumeDecision.reason,/reported difficult\/incomplete/);
+  assert.match(reported[0].volumeDecision.reason,/reported difficult\/incomplete/);
+});
+
+test("an event reduces only dates within its existing window, not the entire adjacent week",()=>{
+  const week={week:1,theme:'Reviewed practice',templateVersion:'coaching-structure-v1',periodizationFactor:1,sessions:Array.from({length:7},(_,daySlot)=>({sport:'bike' as const,title:'Easy bike',minutes:40,zone:'z2' as const,type:'endurance',description:'Familiar easy bike',daySlot})),totalMinutes:280,restDaySlots:[],doubleDayNote:''};
+  const plain=shapeTrainingCycle([week],{...options,templatePeriodized:true,needsAssessment:false});
+  const shaped=shapeTrainingCycle([week],{...options,templatePeriodized:true,needsAssessment:false,events:[{id:'race-next-week',dateKey:'2026-10-21',priority:'C',distance:'5k'}]});
+  for(const session of shaped[0].sessions){
+    const before=plain[0].sessions.find(row=>row.daySlot===session.daySlot)!;
+    assert.equal(session.minutes,session.daySlot===6?30:before.minutes);
+    assert.equal(session.planningAdjustment.eventPhase,session.daySlot===6?'preparation':'ordinary');
+  }
+  assert.equal(shaped[0].totalMinutes,270);
+  assert.equal(shaped[0].volumeDecision.application,'session_day');
+  assert.equal(shaped[0].volumeDecision.dayFactors.filter(day=>day.factor<1).length,1);
+});
+
 test("saved 3/6-month cycles have gradual bounded weeks, scheduled recovery and no automatic capacity increase", () => {
   const before=JSON.stringify(bounded); const cycle=shapeTrainingCycle(bounded,options);
   assert.equal(cycle.length,24); assert.equal(JSON.stringify(bounded),before);
@@ -148,16 +172,19 @@ test("valid cycling evidence is not downgraded for missing swimming evidence, bu
   assert.equal(baselineReviews[0].observedAt, "2026-10-10");
 });
 
-test("event/rebuild weeks defer observations and optional pairs without catching up or changing original rest slots", () => {
+test("event days defer affected optional pairs while ordinary days retain their reviewed schedule", () => {
   const pairWeek = { week: 1, theme: "Build", totalMinutes: 80, sessions: [
     { sport: "run" as const, daySlot: 0, minutes: 40, zone: "z2" as const, type: "endurance", title: "Run", description: "Template", doubleDayRole: "primary" as const, startTime: "07:00" },
     { sport: "bike" as const, daySlot: 0, movedFromSlot: 2, minutes: 40, zone: "z2" as const, type: "endurance", title: "Bike", description: "Template", doubleDayRole: "secondary" as const, startTime: "18:00" },
   ], restDaySlots: [1, 2, 3, 4, 5, 6], doubleDayNote: "Optional pair" };
   const cycle = shapeTrainingCycle([pairWeek], { ...options, events: [{ dateKey: "2026-10-16", priority: "C" }] });
-  assert.equal(cycle[0].sessions.length, 1); assert.equal(cycle[0].sessions[0].doubleDayRole, undefined);
+  assert.equal(cycle[0].sessions.length, 2); assert.equal(cycle[0].sessions[0].doubleDayRole, "primary");
   assert.equal(cycle[0].observations.length, 0); assert.equal(cycle[0].sessions[0].daySlot, 0);
   assert.deepEqual(cycle[0].restDaySlots, pairWeek.restDaySlots);
-  assert.match(cycle[0].doubleDayNote, /omitted/);
+  assert.equal(cycle[0].doubleDayNote, "Optional pair");
+  const affected=shapeTrainingCycle([{...pairWeek,sessions:pairWeek.sessions.map(row=>({...row,daySlot:1}))}],{...options,events:[{dateKey:"2026-10-16",priority:"C"}]});
+  assert.equal(affected[0].sessions.length,1);assert.equal(affected[0].sessions[0].doubleDayRole,undefined);
+  assert.match(affected[0].doubleDayNote,/omitted/);
   assert.equal(shapeTrainingCycle(bounded, { ...options, recoveryReview: true })[0].observations.length, 0);
 });
 

@@ -125,7 +125,7 @@ export function normalizeCentral(metrics: MetricRow[], subjective: SubjectiveInp
 
   for (const src of AUTONOMIC_PRIORITY) {
     const rows = valid.filter(m => m.src === src).sort((a, b) => a.ts - b.ts);
-    const hrvRows = rows.filter(m => m.hrv != null && m.hrv > 0 && m.hrv <= 300 && (m.hrvType || "rmssd") === "rmssd");
+    const hrvRows = rows.filter(m => m.hrv != null && m.hrv > 0 && m.hrv <= 300 && m.hrvType === "rmssd");
     const latest = hrvRows[hrvRows.length - 1];
     if (!latest || latest.ts < todayFloor) continue;
     const ln = (r: typeof latest) => Math.log(r.hrv!);
@@ -488,7 +488,7 @@ export function buildDensitySteps(stim: Stimulus, availMin: number): WorkoutStep
     if (fit < 2) return null;
     const n = Math.max(2, Math.min(8, fit, stim.reps ?? 8));
     for (let i = 0; i < n; i++) {
-      add(step(erg ? "1000 m SkiErg/Row at race pace" : "1 km run at HYROX race pace", 240, "z4", "active", { group: `Compromised round ${i + 1}/${n}`, ...(i === 0 ? { note: "Controlled first 200 m after each station." } : {}) }));
+      add(step(erg ? "4 min controlled SkiErg/Row effort" : "4 min controlled run effort", 240, "z4", "active", { group: `Compromised round ${i + 1}/${n}`, ...(i === 0 ? { note: "Settle into a controlled effort after each station. This is a timed effort; distance is not prescribed or inferred." } : {}) }));
       add(step(["Wall balls ×20", "Sled push 25 m", "Burpee broad jumps ×10", "Sandbag lunges 20 m"][i % 4], 120, "z4", "active", { group: `Compromised round ${i + 1}/${n}` }));
       if (i < n - 1) add(step("Jog/walk flush (lactate clearance)", 90, "z2", "recovery", { group: `Compromised round ${i + 1}/${n}` }));
     }

@@ -96,6 +96,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
   const [mode, setMode] = useState("");
   const [imageStatus, setImageStatus] = useState("");
   const [externalStatus, setExternalStatus] = useState("");
+  const [externalFailureReason,setExternalFailureReason]=useState("");
   const [clearReview, setClearReview] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceReview, setVoiceReview] = useState(false);
@@ -206,6 +207,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     if (payload.mode) setMode(payload.mode);
     if (payload.imageStatus) setImageStatus(payload.imageStatus);
     setExternalStatus(payload.externalStatus || "");
+    setExternalFailureReason(typeof payload.externalFailureReason==="string"?payload.externalFailureReason:"");
     if (payload.dialogueAction === "review_today") { setShowTodayReview(true); setReviewVersion(value=>value+1); }
     const area = payload.dialogueAction === "review_profile" ? "profile" : payload.dialogueAction === "review_cycle" ? "plan" : payload.dialogueAction === "review_races" ? "race" : null;
     if (area) setCommanderRequest({area,key:payload.conversation.messages.at(-1)?.id || "review"});
@@ -497,7 +499,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     <div ref={commanderAnchor} tabIndex={-1} className={focus}><CoachCommanderWorkspace compact={fullPage} requestedArea={commanderRequest?.area} requestKey={commanderRequest?.key} athleteId={athleteId} es={es} messages={messages} sessionId={sessionId} sessions={allSessions} onSelectSession={setSessionId} disabled={offline||!loaded||needsReload||!!operation} onBusy={setCommanderBusy} onSaved={async()=>{setReviewVersion(value=>value+1);await onConfirmed();await load();}}/></div>
 
     {(!fullPage || messages.filter(entry=>entry.role==="assistant").at(-1)?.needsHumanReview===true) && <CoachReviewRequest messages={messages} es={es} disabled={blocked} />}
-    {coachTextStatusMessage(externalStatus, es) && <p role="status" className="text-xs text-slate-700">{coachTextStatusMessage(externalStatus, es)}</p>}
+    {coachTextStatusMessage(externalStatus, es,externalFailureReason) && <p role="status" className="text-xs text-slate-700">{coachTextStatusMessage(externalStatus, es,externalFailureReason)}</p>}
     {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}
     {(imageStatus === "unavailable" || imageStatus === "not_configured") && <p className="text-xs text-amber-900">{es ? "No se pudo analizar la captura. Escribe los datos visibles para revisarlos; no se han inventado valores." : "The screenshot could not be analyzed. Type its visible details for review; no values were guessed."}</p>}
     {activeProposal && <details open key={activeProposal.id} className="rounded-xl border border-ocean-300 p-4 space-y-3">

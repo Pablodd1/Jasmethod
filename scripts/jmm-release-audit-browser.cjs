@@ -41,6 +41,7 @@ async function main() {
       page.on('pageerror', e => errors.push(e.message));
       await page.route('**/api/**', async route => {
         const path = new URL(route.request().url()).pathname;
+        if(path==='/api/plan/ensure'){assert.equal(route.request().method(),'POST');assert.deepEqual(route.request().postDataJSON(),{});return route.fulfill({json:{ok:true,plan:{created:false,status:'existing',planId:'synthetic-existing-plan'}}});}
         if (path === '/api/auth/me') return route.fulfill({ json: { user: { id: card.session.athleteId, name: 'Synthetic athlete', email: 'fixture@example.invalid', role: 'athlete', timezone: 'UTC', language: lang, onboarded: true, profile: { goal: 'run-only' } } } });
         if (path === '/api/v1/training/today') {
           if (refreshGate) {

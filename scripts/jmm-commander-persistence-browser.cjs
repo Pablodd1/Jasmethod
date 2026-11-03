@@ -57,14 +57,16 @@ async function main() {
       await panel.getByRole('button', { name: es ? 'Preparar vista previa aquí' : 'Prepare plan preview here', exact: true }).click();
       const confirm = panel.getByRole('button', { name: es ? 'Confirmar y guardar este plan' : 'Confirm and save this plan', exact: true });
       await confirm.waitFor();
-      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id } }), 0, 'Preview must not save');
+      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id } }), 1, 'Preview preserves the automatic first week and does not save a replacement');
+      assert.equal((await db.trainingPlan.findFirstOrThrow({where:{userId:who.user.id,status:'active'}})).weeks,1);
       await confirm.click();
       await panel.getByText(es ? 'Comprobante de plan guardado' : 'Saved plan receipt', { exact: true }).waitFor();
       const saved = await api(who, '/api/assistant/plan');
       assert.ok(saved.receipt.id); assert.equal(saved.receipt.planId, saved.activePlans[0].id);
       const plan = await db.trainingPlan.findUniqueOrThrow({ where: { id: saved.receipt.planId } });
       assert.equal(plan.userId, who.user.id);
-      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id } }), 1);
+      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id } }), 2, 'Confirmed cycle preserves the archived first-week record');
+      assert.equal(await db.trainingPlan.count({ where: { userId: who.user.id,status:'active' } }), 1);
       assert.equal((await api(other, '/api/assistant/plan')).receipt, null);
       await page.reload();
       await page.getByRole('button',{name:es?'Opciones del chat':'Chat options',exact:true}).click();
@@ -74,6 +76,26 @@ async function main() {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       assert.deepEqual(errors, []); assert.deepEqual(external, []);
       await page.screenshot({ path: `${dir}/saved-${language}-390.png`, fullPage: true });
+      // Exercise the real route and PostgreSQL advisory lock concurrently, not
+      // a mocked transaction. Only the guarded disposable database is allowed.
+      const activity={sport:'bike',date:today,actualDurationMin:30,rpe:3,title:'Synthetic replay acceptance',clientRequestId:randomUUID()};
+      const postActivity=async(actor,body=activity,origin=base)=>{
+        const response=await fetch(base+'/api/workouts',{method:'POST',headers:{cookie:`jmm_session=${actor.token}`,origin,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
+        return {status:response.status,data:await response.json()};
+      };
+      const concurrent=await Promise.all([postActivity(who),postActivity(who)]);
+      assert.deepEqual(concurrent.map(result=>result.status).sort(),[200,201]);
+      assert.equal(concurrent[0].data.workout.id,concurrent[1].data.workout.id);
+      const activityId=concurrent[0].data.workout.id;
+      assert.equal(await db.workout.count({where:{id:activityId,userId:who.user.id}}),1);
+      assert.equal(await db.auditLog.count({where:{subjectId:who.user.id,entityId:activityId,action:'activity.manual-report'}}),1);
+      assert.equal((await postActivity(who)).data.workout.id,activityId,'Later unchanged retry returns the same row');
+      assert.equal((await postActivity(who,{...activity,actualDurationMin:31})).status,409);
+      const isolated=await postActivity(other);
+      assert.equal(isolated.status,201);assert.notEqual(isolated.data.workout.id,activityId);
+      assert.equal(isolated.data.workout.userId,other.user.id);
+      assert.equal((await postActivity(who,activity,'https://sibling.example.invalid')).status,403);
+      checks.push({language,status:'PASS',cases:['real PostgreSQL concurrent manual activity replay','one row and audit receipt','changed-payload conflict','same request ID isolated between athletes','invalid origin rejected']});
       checks.push({ language, status: 'PASS', cases: ['real chat intent', 'preview makes no write', 'explicit save persists owned plan', 'one saved cycle', 'foreign athlete isolated', 'reload restores audit receipt and conversation', 'mobile geometry'] });
       await context.close();
     }

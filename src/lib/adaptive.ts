@@ -297,13 +297,14 @@ export function applyPerformance(base: Adaptation, performance: PerformanceDecis
   return { ...base, performance };
 }
 
-export function adaptSession(checkin: Checkin): Adaptation {
-  const safety = resolveCheckinSafety(checkin);
+export function adaptSession(checkin: Checkin, deviceReviewVerified = false): Adaptation {
+  const safety = resolveCheckinSafety(checkin, deviceReviewVerified);
   if (safety.status !== "clear") return {
     score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1",
     safetyStatus: safety.status, ruleId: safety.ruleId, missingFields: safety.missingFields, message: safety.message,
   };
   if (checkin.availableMin === 0) return { score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "clear", ruleId: "checkin-safety-v1:no-time", message: "No training time is available today. No workout is prescribed and no missed work is added later." };
+  if (deviceReviewVerified) return { score: 0, scoreAvailable: false, verdict: "full", durationFactor: 1, intensityCap: "z7", safetyStatus: "clear", ruleId: safety.ruleId, missingFields: ["sleep", "soreness", "motivation", "energy", "stress"], message: "Current device readings and your symptom/time confirmation are being used for the existing plan. Subjective ratings remain unknown. No additional training is authorized; device evidence may reduce the session." };
   // The safety resolver verified all subjective values before numeric scoring.
   const sleep = checkin.sleep!, soreness = checkin.soreness!, motivation = checkin.motivation!, energy = checkin.energy!, stress = checkin.stress!;
   const sick = checkin.sick;

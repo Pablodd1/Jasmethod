@@ -1,3 +1,4 @@
+import { verifiedDeviceReview } from "@/lib/device-checkin";
 import { unitsOf } from "@/lib/units";
 import { savedCycleSummary } from "@/lib/training-cycle";
 import { dailyRecoveryContext } from "@/lib/daily-recovery";
@@ -25,6 +26,7 @@ import { readDailyInputContext } from '@/lib/daily-input-context';
 import { readTrainingWeekReview } from '@/lib/training-week-store';
 import { trainingViewDisclosureAllowed, ACTIVITY_DISCLOSURE_REASON } from '@/lib/activity-disclosure';
 import { readVerifiedActivityReport } from '@/lib/activity-report-envelope';
+import { evaluateExecution } from '@/lib/execution-feedback';
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
@@ -189,15 +191,23 @@ export async function GET(req: Request) {
     const scopedReview = recoveryAnswers?.inputMetadata?.existingReview;
     const reviewedSessionId = scopedReview?.version === "existing-workout-review-v1"
       ? sessions.find(session=>session.id===scopedReview.sessionId && session.verdict==="ready" && session.existingReview?.eligible)?.id ?? null : null;
-    const recovery = dailyRecoveryContext({ plannedRest, eventDay, sessions, reviewedSessionId, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     const visibleConnectors = connectors.filter(c => c.provider !== "intervals" || intervalsConnectorEnabled());
     const [inputContext, weekReview] = await Promise.all([
       readDailyInputContext(user.id, user.timezone),
       readTrainingWeekReview(actor.id, user.id, key, user.timezone, currentPlan?.id ?? null, activityDecisions),
     ]);
+    const recovery = dailyRecoveryContext({ plannedRest, eventDay, deviceReviewVerified: verifiedDeviceReview(recoveryAnswers, inputContext, user.id), sessions, reviewedSessionId, performedToday: allWorkouts.some(hasPerformedTraining), injured: !!user.profile?.injured, answers: recoveryAnswers });
     if (!trainingViewDisclosureAllowed(actor.id, user.id, [...allWorkouts, ...reported], inputContext)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
+    // Direct-rendered local evidence. It is never appended to external chat.
+    let savedDecision: {verdict?:string} | null = null;
+    try { savedDecision = checkin ? JSON.parse(checkin.adaptation || "null") : null; } catch { /* Unknown remains reviewable. */ }
+    const executionEvaluation = evaluateExecution({
+      verdict: recovery.safetyStatus !== "clear" || sessions.some(session=>session.verdict === "blocked") ? "rest" : savedDecision?.verdict === "easy" ? "easy" : savedDecision?.verdict === "trim" ? "trim" : "full",
+      safetyStatus: recovery.safetyStatus,
+    }, inputContext.executionFeedback);
     return Response.json({
       inputContext,
+      executionEvaluation,
       weekReview,
       athleteReview: athleteDayReview(allWorkouts.map(w=>({...w,feedbackRevision:workoutRevision(w)})), user.id, key, user.timezone, setupState.setup, activityDecisions),
       recovery,

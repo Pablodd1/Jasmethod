@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./auth";
 import { AppShell, MobileNav } from "./app-shell";
+import { FirstPlanBootstrap } from "./first-plan-bootstrap";
 
 export function AuthGate({ children, immersive = false }: { children: React.ReactNode; immersive?: boolean }) {
   const { user, loading, error, language } = useAuth();
@@ -33,7 +34,7 @@ export function AuthGate({ children, immersive = false }: { children: React.Reac
 
   return (
     <>
-      <AppShell immersive={immersive}>{children}</AppShell>
+      <AppShell immersive={immersive}><FirstPlanBootstrap>{children}</FirstPlanBootstrap></AppShell>
       {!immersive && <MobileNav />}
     </>
   );

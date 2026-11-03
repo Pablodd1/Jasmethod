@@ -25,7 +25,7 @@ const yesterday = addDaysKey(today, -1);
 type Actor = User & { cookie:string };
 const validAnswers = {sleep:4,soreness:2,motivation:4,energy:4,stress:2,sick:false,newPain:false,urgentSymptoms:false,availableMinutes:60};
 async function request(path:string, actor?:Actor, options:{method?:string;body?:unknown;status?:number}={}) {
-  const response = await fetch(new URL(path, base), {method:options.method || (options.body === undefined ? "GET" : "POST"),headers:{"Content-Type":"application/json", ...(actor ? {cookie:actor.cookie} : {})}, ...(options.body === undefined ? {} : {body:JSON.stringify(options.body)}),redirect:"manual",signal:AbortSignal.timeout(120000)});
+  const response = await fetch(new URL(path, base), {method:options.method || (options.body === undefined ? "GET" : "POST"),headers:{"Content-Type":"application/json",origin:base.origin, ...(actor ? {cookie:actor.cookie} : {})}, ...(options.body === undefined ? {} : {body:JSON.stringify(options.body)}),redirect:"manual",signal:AbortSignal.timeout(120000)});
   if (options.status !== undefined) assert.equal(response.status, options.status, `${path}: ${response.status}: ${response.status === options.status ? "" : (await response.clone().text()).slice(0,500)}`);
   return response;
 }
@@ -59,7 +59,10 @@ async function main() {
     for(const body of [{},{photoConsent:false},{photoConsent:"true",photoProviderConsent:"openai"},{photoConsent:true,photoProviderConsent:"google_gemini"},{photoConsent:true,photoProviderConsent:"openai",photoSource:"device"}])await request("/api/nutrition/photo",a,{body,status:403});
     const before=await db.coachConversationMessage.count({where:{userId:a.id}});
     const dialogue={message:"Help me review my goals",manualDialogueConsent:true,messageOrigin:"athlete_authored",externalConsent:true,textProviderConsent:"openai",clientRequestId:randomUUID()};
-    await request("/api/assistant",a,{body:dialogue,status:403});
+    // The normal request helper supplies JMM's Origin. This refusal must omit
+    // it explicitly rather than accidentally test a valid consented request.
+    const missingOrigin=await fetch(new URL("/api/assistant",base),{method:"POST",headers:{"Content-Type":"application/json",cookie:a.cookie},body:JSON.stringify(dialogue),redirect:"manual",signal:AbortSignal.timeout(120000)});
+    assert.equal(missingOrigin.status,403,"Personal dialogue refuses missing Origin before writing");
     const crossOrigin=await fetch(new URL("/api/assistant",base),{method:"POST",headers:{"Content-Type":"application/json",cookie:a.cookie,Origin:"https://other.example.invalid"},body:JSON.stringify(dialogue),redirect:"manual"});
     assert.equal(crossOrigin.status,403,"Personal dialogue refuses cross-origin dispatch before writing");
     assert.equal(await db.coachConversationMessage.count({where:{userId:a.id}}),before);
@@ -78,8 +81,14 @@ async function main() {
     assert.equal((await json("/api/onboard",a)).onboarded,false);
     await json("/api/onboard",a,{body:{}});assert.equal((await json("/api/onboard",a)).onboarded,true);
     const saved=await json("/api/today?view=plan",a);assert.equal(saved.kind,"saved_today_plan");assert.equal(saved.readOnly,true);assert.ok(saved.sessions.length);
+    assert.equal(saved.date,today,"The saved view is scoped to the athlete's current local day");
     assert.equal(await db.dailyCheckin.count({where:{userId:a.id}}),0,"Saved workout is visible before answering check-in");
-    const starter=await db.workout.findFirstOrThrow({where:{userId:a.id,source:"starter",planned:true}});
+    // First entry now creates several dated observations. SQL row order cannot
+    // select the session covered by today's review; use Today's scoped IDs/date.
+    const tomorrow=localDate(addDaysKey(today,1),"UTC");
+    const starter=await db.workout.findFirstOrThrow({where:{userId:a.id,source:"starter",planned:true,date:{gte:day,lt:tomorrow},id:{in:saved.sessions.map((session:any)=>session.id)}},orderBy:{id:"asc"}});
+    assert.equal(starter.date.toISOString(),day.toISOString());
+    const futureStarter=await db.workout.findFirstOrThrow({where:{userId:a.id,source:"starter",planned:true,date:{gte:tomorrow}},orderBy:[{date:"asc"},{id:"asc"}]});
     // Supported manual file ingestion, not a simulated OAuth grant or automatic provider import.
     const upload=async()=>{
       const form=new FormData();form.set("source","garmin");form.set("distanceUnits","metric");
@@ -96,6 +105,9 @@ async function main() {
     await json("/api/plan",a,{method:"PUT",body:{sessionId:imported.id,expectedRevision:report.feedbackRevision,feedbackStatus:"completed",actualDurationMin:30,actualSport:"run",rpe:3}});
     await reviewPlanningSetup(a);await json("/api/checkin",a,{body:validAnswers});
     const first=await json(`/api/workout/card?id=${starter.id}`,a);assert.equal(first.session.verdict,"ready",JSON.stringify({stage:"starter after imported feedback and full current review",sessionId:starter.id,reason:first.session.reason}));
+    const futureCard=await json(`/api/workout/card?id=${futureStarter.id}`,a);
+    assert.equal(futureCard.session.verdict,"blocked","Today's complete check-in cannot clear a future observation session");
+    assert.equal((await db.workout.findUniqueOrThrow({where:{id:futureStarter.id}})).approved,false);
     await request(`/api/workout/approve?sessionId=${starter.id}&expectedRevision=${first.session.revision}`,a,{method:"POST",status:200});
     const beforeProfileApproval=await db.workout.findMany({where:{userId:a.id},orderBy:{id:"asc"}});
     const proposed=pending(await ask(a,"My weight is 72 kg."));assert.equal(proposed.beforeValues.weightKg,70);
@@ -109,7 +121,7 @@ async function main() {
     await request(generate,coach,{body:{preview:true,easyPct:80},status:403});
     await db.coachAssignment.create({data:{coachId:coach.id,athleteId:a.id,status:"active",consent:"granted"}});
     const preview=await json(generate,coach,{body:{preview:true,easyPct:80}});assert.ok(preview.previewToken);
-    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),0,"Coach preview creates no plan");
+    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),1,"Coach preview preserves the automatic first week without creating another plan");
     await json(generate,coach,{body:{preview:false,easyPct:80,previewToken:preview.previewToken}});
     await request(generate,coach,{body:{preview:false,easyPct:80,previewToken:preview.previewToken},status:409});
     const plan=await db.trainingPlan.findFirstOrThrow({where:{userId:a.id,status:"active"}});assert.equal(plan.easyPct,80);
@@ -213,14 +225,15 @@ async function main() {
     await json("/api/onboard",a,{body:{}});
     assert.equal((await json("/api/auth/login",undefined,{body:{email:a.email,password}})).user.onboarded,true);
   });
-  await scenario("Optional onboarding offers a held starter without a full plan and imported observations remain owner-scoped",async()=>{
+  await scenario("Optional onboarding offers a held provisional sport week and imported observations remain owner-scoped",async()=>{
     await request("/api/onboard/import-review",undefined,{status:401});
     const a=await actor("onboarding-a"),b=await actor("onboarding-b");
     const p=await json("/api/profile",a);
     await json("/api/profile",a,{method:"PUT",body:{expectedRevision:p.revision,expectedSetupRevision:p.setupRevision,setup:{travel:{destinationTimezone:"Asia/Tokyo",equipmentNotes:"Hotel gym",maxSessionMinutes:30},coachPreference:"Optional coach"}}});
     const saved=await json("/api/profile",a);assert.equal(saved.setup.travel.destinationTimezone,"Asia/Tokyo");assert.equal(saved.setup.coachPreference,"Optional coach");assert.equal(saved.planningReadiness.ready,false);
-    const completed=await json("/api/onboard",a,{body:{}});assert.equal(completed.ok,true);assert.equal(completed.next,"/today");assert.equal(await db.workout.count({where:{userId:a.id,source:"starter"}}),1);
-    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),0,"optional setup does not invent a full cycle");
+    const completed=await json("/api/onboard",a,{body:{}});assert.equal(completed.ok,true);assert.equal(completed.next,"/today");assert.equal(await db.workout.count({where:{userId:a.id,source:"starter"}}),3);
+    assert.equal(await db.trainingPlan.count({where:{userId:a.id}}),1,"selected sport gets one provisional observation week, not a fabricated performance cycle");
+    assert.equal((await db.trainingPlan.findFirstOrThrow({where:{userId:a.id,status:"active"}})).weeks,1);
     const dayZero=await json("/api/today",a);assert.notEqual(dayZero.sessions[0].verdict,"ready","onboarding cannot replace today's safety check-in");
     assert.equal((await db.user.findUniqueOrThrow({where:{id:a.id}})).onboarded,true);
     const own=await db.metricObservation.create({data:{userId:a.id,observedAt:new Date(),metricType:"weight_kg",value:71,unit:"kg",source:"synthetic-test",qualityFlag:"ok"}});

@@ -5,6 +5,7 @@ import { readinessReasonText } from "@/components/daily-training/readiness-copy"
 import { SavedWorkoutPreviewCard } from "@/components/daily-training/SavedWorkoutPreviewCard";
 import { ExistingWorkoutReview } from "@/components/daily-training/ExistingWorkoutReview";
 import { DailyInputSummary } from "@/components/daily-training/DailyInputSummary";
+import { ExecutionReviewCard } from "@/components/daily-training/ExecutionReviewCard";
 import { DailyReadinessPath, hasCurrentHealthReadings } from "@/components/daily-training/DailyReadinessPath";
 import { readTrainingJson, TrainingReadError, isTodayTrainingResponse, todayOfflineSnapshot } from "@/components/daily-training/training-read";
 import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
@@ -271,7 +272,7 @@ function TodayPageContent() {
             <SavedWorkoutPreviewCard sessionId={session.id} es={es} compact plannedSession={{title:session.title,sport:session.sport,durationMin:session.plannedDurationMin ?? session.durationMin}} />
             <button type="button" className="text-sm underline min-h-11" onClick={() => setViewChoice({sessionId:session.id,mode:"review"})}>{es ? "Volver a la revisión diaria" : "Return to daily review"}</button>
           </> : <UniversalWorkoutCardLoader compactReadiness key={`card:${session.id}-${session.revision}`} sessionId={session.id} es={es} heldPreview={<SavedWorkoutPreviewCard sessionId={session.id} es={es} compact embedded plannedSession={{title:session.title,sport:session.sport,durationMin:session.plannedDurationMin ?? session.durationMin}} />} onSaved={() => load()} />}
-          {!plannedView && session.verdict === "blocked" && session.existingReview && <ExistingWorkoutReview key={`review:${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} candidate={session.existingReview} es={es} disabled={busy || offline} onSaved={load} />}
+          {session.verdict === "blocked" && session.existingReview && <ExistingWorkoutReview key={`review:${session.id}-${session.revision}`} sessionId={session.id} revision={session.revision} candidate={session.existingReview} es={es} disabled={busy || offline} onSaved={async () => { await load(); setViewChoice({sessionId:session.id,mode:"review"}); }} />}
         </section>}
         {syncStatus && <p role="status" className="text-sm text-slate-600">{syncStatus === "refreshing" ? (es ? "Actualizando conexiones en segundo plano. Tu plan guardado sigue visible." : "Refreshing connections in the background. Your saved plan stays visible.") : syncStatus === "complete" ? (es ? "La actualización terminó. Revisa las fechas de las mediciones." : "Refresh completed. Check measurement dates.") : (es ? "No se confirmó una actualización completa. El plan guardado está disponible; no asumimos datos nuevos." : "A complete refresh was not confirmed. The saved plan remains available; no new data is assumed.")}</p>}
         {data && !feedback && feedbackTarget.kind !== 'none' && <section aria-label={es?"Después del entrenamiento":"After training"} className="card space-y-3">
@@ -281,6 +282,7 @@ function TodayPageContent() {
           <p className="text-xs text-slate-600">{es?"Los minutos y el esfuerzo guardados se usan en la revisión de próximas sesiones. El peso se conserva para cálculos de hidratación; no aumenta automáticamente la carga ni cambia tu perfil.":"Saved minutes and effort inform upcoming-session review. Weight is retained for hydration calculations; it does not automatically increase training load or change your profile."}</p>
         </section>}
         <DailyInputSummary context={data?.inputContext} es={es} />
+        <ExecutionReviewCard review={data?.executionEvaluation} es={es} />
         {offline && data && (
           <div role="status" className="card bg-amber-50 text-amber-900">
             {es ? "Copia sin conexión" : "Offline copy"} · {data?.date} ·{" "}
@@ -620,7 +622,7 @@ function TodayPageContent() {
                     <p>{session.verdict === "blocked" ? readinessReasonText(session.resolutionReason, es) : (es ? "Descanso hoy." : "Rest today.")}</p>
                   </div>
                 )}
-                {session.durationMin > 0 && session.prescription.energy && (() => {
+                {session.durationMin > 0 && session.prescription.energy?.version === "energy-v2" && (() => {
                   const en = es && session.prescription.energyEs ? session.prescription.energyEs : session.prescription.energy;
                   const cell = (label: string, value: unknown, unit = "") => (
                     <div className="rounded-lg bg-white border border-slate-200 px-2 py-1.5">
@@ -630,14 +632,15 @@ function TodayPageContent() {
                   );
                   return (
                     <section aria-label={es ? "Energía de la sesión" : "Session energy"} className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-600">{es ? "Energía y carga (kJ)" : "Energy and load (kJ)"}</div>
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-600">{es ? "Estimaciones de energía" : "Energy estimates"}</div>
                       <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
-                        {cell(es ? "Trabajo" : "Work", en.workKj, " kJ")}
-                        {cell("kcal", en.kcal)}
-                        {cell(es ? "kJ/hora" : "kJ/hour", en.kjPerHour)}
-                        {cell(es ? "Alta intensidad" : "High-intensity", en.highIntensityKj == null ? null : `${en.highIntensityKj} kJ (${en.highIntensityPct}%)`)}
-                        {cell(es ? "CHO usado" : "Carbs used", en.carbsBurnedG, " g")}
-                        {cell(es ? "CHO a tomar" : "Carbs to take", en.carbsIntakeTargetG, " g")}
+                        {cell(es ? "Trabajo mecánico" : "Mechanical work", en.workKj, " kJ")}
+                        {cell(es ? "Energía metabólica" : "Metabolic energy", en.kcal, " kcal")}
+                        {cell(es ? "Energía metabólica" : "Metabolic energy", en.metabolicKj, " kJ")}
+                        {cell(es ? "Trabajo por hora" : "Mechanical work/hour", en.kjPerHour, " kJ/h")}
+                        {cell(es ? "Trabajo de alta intensidad" : "High-intensity mechanical work", en.highIntensityKj == null ? null : `${en.highIntensityKj} kJ (${en.highIntensityPct}%)`)}
+                        {cell(es ? "CHO usado estimado" : "Estimated carbs used", en.carbsBurnedG, " g")}
+                        {cell(es ? "Ingesta prevista" : "Planned carb intake", en.carbsIntakeTargetG, " g")}
                       </div>
                       <p className="mt-2 text-xs text-slate-600">{en.note}</p>
                       <p className="mt-1 text-xs text-slate-700">💧 {en.hydrationNote}</p>

@@ -163,6 +163,9 @@ jobs:
       - name: EN and ES private commander preview and save-error acceptance
         run: node scripts/jmm-commander-browser.cjs
 
+      - name: Manual activity uncertain-save retry browser acceptance
+        run: node scripts/jmm-manual-activity-browser.cjs
+
       - name: Garmin consent, unavailable configuration and revocation browser acceptance
         run: node scripts/jmm-garmin-browser.cjs
 
@@ -184,10 +187,20 @@ jobs:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
         run: node --import tsx scripts/jmm-checkin-persistence-browser.cjs
 
+      - name: Device-assisted check-in and minimal EN ES mobile questions
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-device-checkin-integration.ts
+
       - name: Athlete metric entry and incomplete-data starting-week acceptance
         env:
           NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
         run: node --import tsx scripts/jmm-athlete-entry-browser.cjs
+
+      - name: First provisional plan entry, PostgreSQL concurrency and mobile retry acceptance
+        env:
+          NODE_OPTIONS: --require ./scripts/jmm-test-egress-guard.cjs
+        run: node --import tsx scripts/jmm-first-plan-acceptance.cjs
 
       - name: Advanced triathlon canonical state, nutrition and FIT regression
         env:
@@ -263,10 +276,14 @@ jobs:
             .local/jmm-daily-flow-browser/report.json
             .local/jmm-daily-flow-browser/reproduced-stale-card-report.json
             .local/jmm-daily-flow-browser/*.png
+            .local/jmm-device-checkin/report.json
+            .local/jmm-device-checkin/*.png
             .local/jmm-checkin-persistence-browser/report.json
             .local/jmm-checkin-persistence-browser/*.png
             .local/jmm-athlete-entry-browser/report.json
             .local/jmm-athlete-entry-browser/*.png
+            .local/jmm-first-plan-acceptance/report.json
+            .local/jmm-first-plan-acceptance/*.png
             .local/jmm-advanced-triathlon/report.json
             .local/jmm-advanced-triathlon/*.png
             .local/jmm-advanced-triathlon/*.txt
@@ -290,6 +307,8 @@ jobs:
             .local/jmm-ai-consent-browser/*.png
             .local/jmm-commander-browser/report.json
             .local/jmm-commander-browser/*.png
+            .local/jmm-manual-activity-browser/report.json
+            .local/jmm-manual-activity-browser/*.png
             .local/jmm-commander-persistence-browser/report.json
             .local/jmm-commander-persistence-browser/*.png
             .local/jmm-adaptive-cycle-integration/report.json

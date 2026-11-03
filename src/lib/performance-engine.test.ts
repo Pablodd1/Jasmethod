@@ -136,6 +136,26 @@ test("HYROX compromised session swaps run for erg on loaded legs and is gated at
   assert.ok(s.steps.some(x => /SkiErg/.test(x.name)));
 });
 
+test("HYROX density prescribes timed run and erg efforts without inventing distance or changing dose", () => {
+  const run = buildDensitySteps({sport:"hyrox",kind:"compromised",zone:"z4",reason:"run"},50)!;
+  const erg = buildDensitySteps({sport:"hyrox",kind:"compromised",zone:"z4",reason:"erg substitution: legs loaded"},50)!;
+  assert.ok(run && erg);
+  const runEfforts=run.filter(step=>step.name==="4 min controlled run effort");
+  const ergEfforts=erg.filter(step=>step.name==="4 min controlled SkiErg/Row effort");
+  assert.equal(runEfforts.length,3);
+  assert.equal(ergEfforts.length,runEfforts.length);
+  for(const effort of [...runEfforts,...ergEfforts]) {
+    assert.equal(effort.seconds,240);
+    assert.deepEqual(effort.endpoint,{type:"time",seconds:240});
+    assert.equal(effort.zone,"z4");
+    assert.doesNotMatch(effort.name,/\b(?:1\s?km|1000\s?m|race pace)\b/i);
+  }
+  assert.match(runEfforts[0].note!,/distance is not prescribed or inferred/);
+  assert.match(ergEfforts[0].note!,/distance is not prescribed or inferred/);
+  assert.equal(run.reduce((sum,step)=>sum+step.seconds,0),3000);
+  assert.deepEqual(erg.map(step=>[step.seconds,step.zone,step.endpoint]),run.map(step=>[step.seconds,step.zone,step.endpoint]));
+});
+
 const telemetry: CoachTelemetry = { language: "es", wearableSource: "whoop", readiness: 82, verdict: "push", hrvZScore: 0.4, rhrDelta: -1, sleepHours: 7.6, soreness: 2, eccentricBand: "low", hoursSinceHighEccentric: null, acwr: 1.08, recentRpeDelta: 0.3, availMin: 40, sport: "bike", targetZone: "z5", estTss: 52, rxIntervals: "13 × 30/15", fuelGPerH: 0 };
 
 test("telemetry digest is one compact line, honest about unknowns", () => {
