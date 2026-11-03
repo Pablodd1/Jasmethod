@@ -2,7 +2,7 @@ import { prisma } from "./db";
 import { addDaysKey, dateKey, localDate } from "./dates";
 import { activityActualMinutes, groupActivityEvidence, type ActivityDecision, type ActivityEvidenceRow } from "./activity-evidence";
 import { readActivityDecisions } from "./activity-reconciliation";
-import { applyExecutionFeedback, type ExecutionFeedback } from "./execution-feedback";
+import { applyExecutionFeedback, evaluateExecution, type ExecutionFeedback } from "./execution-feedback";
 import type { Adaptation } from "./adaptive";
 import { INTERVALS_ALLOWED_UPSTREAM, intervalsUpstreamFromNotes, provenanceOf } from "./strava-provenance";
 import { derivedActivityPolicy } from "./derived-activity-policy";
@@ -164,6 +164,9 @@ export function buildDailyInputContext(input: DailyInputContextOptions) {
   });
   const executionFeedback: ExecutionFeedback[] = activityPolicy.status !== "allowed" ? [] : summaries.map(summary => ({ id: summary.id, feedbackStatus: summary.outcome,
     actualDurationMin: summary.durationMinutes, rpe: summary.rpe, date: summary.observedAt!,
+    sport: workouts.find(row => row.id === summary.id)?.sport, actualSport: workouts.find(row => row.id === summary.id)?.actualSport,
+    source: summary.sourceRecords.find(row => row.id === summary.id)?.source ?? "unknown",
+    expectedDurationMin: summary.comparison?.plannedMinutes ?? null,
     feedbackAt: workouts.find(row => row.id === summary.id)?.feedbackAt ?? null }));
   const workoutsTruncated = input.workoutsTruncated === true || ownWorkouts.length > DAILY_INPUT_LIMIT;
   return { version: DAILY_INPUT_CONTEXT_VERSION, dateLocal: today, timezone: input.timezone, metrics,
@@ -194,12 +197,13 @@ export type DailyInputContext = ReturnType<typeof buildDailyInputContext>;
  * second readiness score or increase duration/intensity from a completion. */
 export function applyDailyExecutionContext(adaptation: Adaptation, context: DailyInputContext) {
   const policy = context.activity.derivedActivityPolicy;
-  if (policy.status !== "allowed") return {
-    adaptation: adaptation.verdict === "rest" || ["unknown","hold","urgent"].includes(adaptation.safetyStatus ?? "") ? adaptation : {
+  if (policy.status !== "allowed") {
+    const held: Adaptation = adaptation.verdict === "rest" || ["unknown","hold","urgent"].includes(adaptation.safetyStatus ?? "") ? adaptation : {
       ...adaptation, score:0, scoreAvailable:false, verdict:"rest" as const, durationFactor:0, intensityCap:"z1",
       safetyStatus:"unknown" as const, ruleId:"derived-activity-policy-v1:insufficient", message:policy.reason!,
-    }, inputs:[], notes:[policy.reason!],
-  };
+    };
+    return {adaptation:held,inputs:[],notes:[policy.reason!],evaluation:evaluateExecution(held,[])};
+  }
   return applyExecutionFeedback(adaptation, context.executionFeedback);
 }
 type DailyInputReader = Pick<typeof prisma, "metricObservation" | "workout" | "connector" | "auditLog">;

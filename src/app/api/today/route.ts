@@ -25,6 +25,7 @@ import { readDailyInputContext } from '@/lib/daily-input-context';
 import { readTrainingWeekReview } from '@/lib/training-week-store';
 import { trainingViewDisclosureAllowed, ACTIVITY_DISCLOSURE_REASON } from '@/lib/activity-disclosure';
 import { readVerifiedActivityReport } from '@/lib/activity-report-envelope';
+import { evaluateExecution } from '@/lib/execution-feedback';
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
@@ -196,8 +197,16 @@ export async function GET(req: Request) {
       readTrainingWeekReview(actor.id, user.id, key, user.timezone, currentPlan?.id ?? null, activityDecisions),
     ]);
     if (!trainingViewDisclosureAllowed(actor.id, user.id, [...allWorkouts, ...reported], inputContext)) throw new ApiError(ACTIVITY_DISCLOSURE_REASON, 403);
+    // Direct-rendered local evidence. It is never appended to external chat.
+    let savedDecision: {verdict?:string} | null = null;
+    try { savedDecision = checkin ? JSON.parse(checkin.adaptation || "null") : null; } catch { /* Unknown remains reviewable. */ }
+    const executionEvaluation = evaluateExecution({
+      verdict: recovery.safetyStatus !== "clear" || sessions.some(session=>session.verdict === "blocked") ? "rest" : savedDecision?.verdict === "easy" ? "easy" : savedDecision?.verdict === "trim" ? "trim" : "full",
+      safetyStatus: recovery.safetyStatus,
+    }, inputContext.executionFeedback);
     return Response.json({
       inputContext,
+      executionEvaluation,
       weekReview,
       athleteReview: athleteDayReview(allWorkouts.map(w=>({...w,feedbackRevision:workoutRevision(w)})), user.id, key, user.timezone, setupState.setup, activityDecisions),
       recovery,

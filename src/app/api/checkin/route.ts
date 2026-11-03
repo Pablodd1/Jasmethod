@@ -20,7 +20,7 @@ import {
   type Checkin,
 } from "@/lib/adaptive";
 import { checkinPrescriptionInputError } from "@/lib/checkin-prescription-input";
-import { applyExecutionFeedback } from "@/lib/execution-feedback";
+import { applyExecutionFeedback, evaluateExecution } from "@/lib/execution-feedback";
 import { readPlanningSetup } from "@/lib/planning-setup-store";
 import { assessPlanningSetup } from "@/lib/planning-setup";
 import { baseWorkout } from "@/lib/prescription";
@@ -272,7 +272,12 @@ export async function POST(req: Request) {
     if (activityPolicy.status !== "allowed" && adaptation.safetyStatus === "clear") adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", scoreAvailable: false, safetyStatus: "unknown", ruleId: "provider-provenance:insufficient", message: activityPolicy.reason || "Recent activity provenance needs review. Unknown load is not zero and no additional training is inferred." };
     const groupedHistory=groupActivityEvidence(activityPolicy.status === "allowed" ? rawHistory : [],activityDecisions);
     const previousIds=new Set(feedback.map(w=>w.id)),todayIds=new Set(sameDayReports.map(w=>w.id));
-    const execution = activityPolicy.status === "allowed" ? applyExecutionFeedback(adaptation, groupedHistory.groups.filter(g=>g.members.some(w=>previousIds.has(w.id))).map(g=>g.primary)) : { adaptation, inputs: [], notes: [activityPolicy.reason || "Activity analysis unavailable."] };
+    const executionRows = groupedHistory.groups.filter(g=>g.members.some(w=>previousIds.has(w.id))).map(g=>({ ...g.primary,
+      feedbackStatus:g.primary.feedbackStatus ?? (g.members.some(w=>w.completed) ? "completed" : "unknown"),
+      actualDurationMin:g.primary.feedbackStatus === "skipped" ? g.primary.actualDurationMin ?? null : g.unresolved ? null : g.budgetMinutes,
+      expectedDurationMin:g.members.find(w=>w.planned)?.durationMin ?? null,
+    }));
+    const execution = activityPolicy.status === "allowed" ? applyExecutionFeedback(adaptation, executionRows) : { adaptation, inputs: [], notes: [activityPolicy.reason || "Activity analysis unavailable."], evaluation:evaluateExecution(adaptation,[]) };
     adaptation = execution.adaptation;
     if(groupedHistory.unresolvedGroups&&adaptation.safetyStatus==="clear"&&adaptation.verdict!=="rest")adaptation={...adaptation,verdict:"easy",durationFactor:Math.min(adaptation.durationFactor,.6),intensityCap:Number(adaptation.intensityCap.slice(1))>2?"z2":adaptation.intensityCap,message:"Possible copies of imported training need your explicit review. Keep conservative easy guidance; raw provider records are unchanged and no extra capacity is inferred.",ruleId:"checkin-safety-v1:activity-reconciliation"};
     const uniqueSameDayReports = groupedHistory.groups.filter(g=>g.members.some(w=>todayIds.has(w.id)));
@@ -320,6 +325,8 @@ export async function POST(req: Request) {
             if (Array.isArray(steps)) {
               const c = analyzeCompliance(steps, streams, { sport: recentKey.sport, rpe: recentKey.rpe, intendedRpe: null });
               lastKeyExecution = c.verdict;
+              const report = executionRows.find(row=>row.id===recentKey.id);
+              if (report) Object.assign(report,{compliance:c.verdict});
               adaptation = { ...adaptation, lastKeyCompliance: { workoutId: recentKey.id, verdict: c.verdict, hitRate: c.hitRate, fadePct: c.fadePct, decouplingPct: c.decouplingPct, note: c.note } };
             }
           }
@@ -345,6 +352,13 @@ export async function POST(req: Request) {
         console.error("perf-engine skipped", error instanceof Error ? error.message : "unknown");
       }
     }
+    // Re-evaluate against the final readiness verdict. No downstream engine may
+    // erase a report conflict, a safety hold or the conservative execution cap.
+    if (activityPolicy.status === "allowed") {
+      const finalExecution = applyExecutionFeedback(adaptation, executionRows);
+      adaptation = finalExecution.adaptation;
+      Object.assign(execution,finalExecution);
+    } else execution.evaluation=evaluateExecution(adaptation,[]);
     const busyHrs = busyHours(appointments, key, user.timezone);
     const busyNote = `${appointments.length} calendar commitments, ${busyHrs.toFixed(1)} hours busy.`;
     const saved = await prisma.$transaction(async (tx) => {
@@ -532,6 +546,7 @@ export async function POST(req: Request) {
             inputSnapshot: recordedAnswers,
             executionInputs: execution.inputs,
             executionNotes: execution.notes,
+            executionEvaluation: execution.evaluation,
             priorPrescriptions: sessions.map((w) => ({ sessionId: w.id, prescription: w.prescription })),
             newPrescriptions: prescriptions,
             uncertainty: [...(adaptation.missingFields || []), ...rejectedSessions.map((w) => w.reason)],
@@ -606,7 +621,7 @@ export async function POST(req: Request) {
       prescriptions:resolvedPrescriptions,
       prescription,
       adaptation,
-      executionFeedback: { inputs: execution.inputs, notes: execution.notes },
+      executionFeedback: { inputs: execution.inputs, notes: execution.notes, evaluation:execution.evaluation },
       biometricAnalysisUnavailableReason: biometricPolicy.reason,
       activityReconciliation:{rawRecords:groupedHistory.rawRecords,groupedCopies:groupedHistory.groupedCopies,unresolvedGroups:groupedHistory.unresolvedGroups,requiresReview:groupedHistory.unresolvedGroups>0},
       fuel,

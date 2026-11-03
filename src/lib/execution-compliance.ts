@@ -2,8 +2,8 @@
 //
 // Compares the prescribed steps of a completed session with the recorded
 // stream (power for bike, speed for run/swim, HR as fallback) and returns:
-// - hitRate: share of work reps that reached ≥95% of the rep's intended output
-//   relative to the session's own best rep (no anchor needed),
+// - hitRate: share of work reps within 95% of the session's own best rep.
+//   This measures relative consistency, NOT attainment of prescribed targets,
 // - fade: % drop from the first to the last work rep (fatigue within session),
 // - decoupling: Pa:HR / Pw:HR drift between halves of steady work (aerobic
 //   durability; >5% = meaningful drift, Friel/Maunder),
@@ -81,8 +81,8 @@ export function analyzeCompliance(steps: WorkoutStep[], streams: ActivityStreams
   else if (fadePct > 8 || hitRate < 0.7) verdict = "faded";
   else if (opts.rpe != null && opts.intendedRpe != null && opts.rpe <= opts.intendedRpe - 2 && fadePct < 2) verdict = "too_easy";
   const note = verdict === "missed" ? `Completed ${reps.length}/${plannedReps} hard reps.`
-    : verdict === "faded" ? `Output faded ${fadePct}% first→last rep (hit rate ${Math.round(hitRate * 100)}%): dose or targets were too high for the day.`
-    : verdict === "too_easy" ? "Reps were steady and RPE well below intended: targets may be low — consider a retest."
-    : `Reps consistent (fade ${fadePct}%, hit rate ${Math.round(hitRate * 100)}%).`;
+    : verdict === "faded" ? `Output faded ${fadePct}% first→last rep (relative consistency ${Math.round(hitRate * 100)}%). Review execution and conditions; the cause is not established.`
+    : verdict === "too_easy" ? "Reps were relatively steady and reported RPE below intended. Review the dose or consider a retest; fitness improvement is not established."
+    : `Reps relatively consistent (fade ${fadePct}%, consistency ${Math.round(hitRate * 100)}%). Prescribed pace, power or HR target attainment was not assessed.`;
   return { version: "compliance-v1", verdict, channel, workReps: reps.length, hitRate, fadePct, decouplingPct, repOutputs: reps.map(r => Math.round(r * 10) / 10), note };
 }

@@ -5,6 +5,7 @@ import { readinessReasonText } from "@/components/daily-training/readiness-copy"
 import { SavedWorkoutPreviewCard } from "@/components/daily-training/SavedWorkoutPreviewCard";
 import { ExistingWorkoutReview } from "@/components/daily-training/ExistingWorkoutReview";
 import { DailyInputSummary } from "@/components/daily-training/DailyInputSummary";
+import { ExecutionReviewCard } from "@/components/daily-training/ExecutionReviewCard";
 import { DailyReadinessPath, hasCurrentHealthReadings } from "@/components/daily-training/DailyReadinessPath";
 import { readTrainingJson, TrainingReadError, isTodayTrainingResponse, todayOfflineSnapshot } from "@/components/daily-training/training-read";
 import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
@@ -281,6 +282,7 @@ function TodayPageContent() {
           <p className="text-xs text-slate-600">{es?"Los minutos y el esfuerzo guardados se usan en la revisión de próximas sesiones. El peso se conserva para cálculos de hidratación; no aumenta automáticamente la carga ni cambia tu perfil.":"Saved minutes and effort inform upcoming-session review. Weight is retained for hydration calculations; it does not automatically increase training load or change your profile."}</p>
         </section>}
         <DailyInputSummary context={data?.inputContext} es={es} />
+        <ExecutionReviewCard review={data?.executionEvaluation} es={es} />
         {offline && data && (
           <div role="status" className="card bg-amber-50 text-amber-900">
             {es ? "Copia sin conexión" : "Offline copy"} · {data?.date} ·{" "}

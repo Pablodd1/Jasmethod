@@ -93,6 +93,10 @@ test("matched plan and completed import count once, retain comparison and do not
   const planned=workout({id:"plan",source:"plan",planned:true,durationMin:40,actualDurationMin:null,matchedPlanId:"imported",createdAt:new Date("2026-10-01")});
   const value=context({completedWorkouts:[actual,planned]});assert.equal(value.completedWorkouts.length,1);assert.equal(value.activity.reportedMinutes,42);
   assert.equal(value.completedWorkouts[0].comparison?.plannedMinutes,40);assert.equal(value.completedWorkouts[0].comparison?.differenceMinutes,2);
+  const execution=applyDailyExecutionContext(full(),value).evaluation!;
+  assert.equal(execution.sessions[0].expectedMinutes,40);assert.equal(execution.sessions[0].actualMinutes,42);
+  assert.equal(execution.sessions[0].differenceMinutes,2);assert.equal(execution.sessions[0].source,"garmin");
+  assert.equal(execution.sessions[0].observedAt,"2026-10-20T15:00:00.000Z");
   assert.equal(value.completedWorkouts[0].questions.durationMinutes,false);assert.equal(value.completedWorkouts[0].questions.rpe,true);
 });
 test("two legitimate sessions and brick work remain separate; absent sync is unknown rather than rest",()=>{
