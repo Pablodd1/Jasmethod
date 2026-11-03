@@ -5,6 +5,7 @@ import { parseManualWorkout } from "@/lib/manual-workout";
 import { currentOrReportedWorkoutWhere } from "@/lib/calendar-workouts";
 import { createHash } from "node:crypto";
 import { manualWorkoutPayloadKey, manualWorkoutRequestId } from "@/lib/manual-workout-request";
+import { appMutationOriginAllowed } from "@/lib/request-origin";
 
 export async function GET(req: Request) {
   try {
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
 // biometrics, recovery prescription or provider side effects.
 export async function POST(req: Request) {
   try {
+    if (!appMutationOriginAllowed(req)) throw new ApiError("Invalid request origin", 403);
     const { actor, athlete } = await trainingAccess(req);
     const body = await req.json().catch(() => { throw new ApiError("Invalid JSON"); });
     let parsed,clientRequestId:string|null;

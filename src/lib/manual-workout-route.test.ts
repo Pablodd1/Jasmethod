@@ -6,6 +6,7 @@ import ts from "typescript";
 import * as crypto from "node:crypto";
 import * as parser from "./manual-workout";
 import * as requests from "./manual-workout-request";
+import { appMutationOriginAllowed } from "./request-origin";
 
 function fixture(){
   const state={userId:"athlete-a",actorId:"athlete-a",anonymous:false,workouts:new Map<string,any>(),audits:new Map<string,any>(),creates:0,transactions:0,locks:[] as string[],conflicts:0,failAudit:false};
@@ -24,6 +25,7 @@ function fixture(){
   const deps:Record<string,unknown>={
     "next/server":{NextResponse:Response},"node:crypto":crypto,
     "@/lib/manual-workout":parser,"@/lib/manual-workout-request":requests,"@/lib/calendar-workouts":{},
+    "@/lib/request-origin":{appMutationOriginAllowed:(req:Request)=>appMutationOriginAllowed(req,{NODE_ENV:"production",APP_URL:"https://app.example.invalid"})},
     "@/lib/access":{ApiError,trainingAccess:async()=>{if(state.anonymous)throw new ApiError("Sign in",401);return{actor:{id:state.actorId},athlete:{id:state.userId,timezone:"UTC"}};},errorResponse:(e:any)=>Response.json({error:e.status?e.message:"Save failed"},{status:e.status||500})},
     "@/lib/db":{prisma:{$transaction:async(callback:any,options:any)=>{
       state.transactions++;assert.equal(options.isolationLevel,"Serializable");
@@ -36,7 +38,11 @@ function fixture(){
   const source=ts.transpileModule(fs.readFileSync("src/app/api/workouts/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   vm.runInNewContext(source,{module:out,exports:out.exports,Request,Response,Date,require:(name:string)=>{if(!(name in deps))throw Error(`Unexpected dependency ${name}`);return deps[name];}});
   const body={sport:"bike",date:new Date().toISOString().slice(0,10),actualDurationMin:30,rpe:3,title:"Synthetic activity",clientRequestId:"synthetic-request-1"};
-  const run=(patch:Record<string,unknown>={})=>out.exports.POST(new Request("https://example.invalid/api/workouts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...body,...patch})}));
+  const run=(patch:Record<string,unknown>={},extraHeaders:Record<string,string|null>={})=>{
+    const headers=new Headers({"content-type":"application/json",origin:"https://app.example.invalid"});
+    for(const [key,value] of Object.entries(extraHeaders)){if(value===null)headers.delete(key);else headers.set(key,value);}
+    return out.exports.POST(new Request("https://app.example.invalid/api/workouts",{method:"POST",headers,body:JSON.stringify({...body,...patch})}));
+  };
   return{state,body,run};
 }
 
@@ -52,6 +58,19 @@ test("identical manual activity retries return one saved row and the original re
   assert.equal(f.state.workouts.size,1);
   assert.equal((await f.run({clientRequestId:"synthetic-new-intent"})).status,201);
   assert.equal(f.state.workouts.size,2,"new intent can report a separate same-valued session");
+});
+
+test("manual activity rejects missing, sibling, forged and cross-site origins before any transaction",async()=>{
+  const cases:Record<string,string|null>[]=[
+    {origin:null},
+    {origin:"https://sibling.example.invalid","content-type":"text/plain"},
+    {origin:"https://evil.example.invalid",host:"evil.example.invalid","x-forwarded-host":"evil.example.invalid"},
+    {origin:"https://app.example.invalid","sec-fetch-site":"cross-site"},
+  ];
+  for(const headers of cases){
+    const f=fixture();assert.equal((await f.run({},headers)).status,403);
+    assert.equal(f.state.transactions,0);assert.equal(f.state.workouts.size,0);
+  }
 });
 
 test("receipt keys and record lookup are athlete scoped and preserve the authoring actor",async()=>{
