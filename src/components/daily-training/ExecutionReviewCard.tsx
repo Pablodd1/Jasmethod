@@ -1,9 +1,9 @@
 import React from "react";
-import type { ExecutionEvaluation } from "@/lib/execution-feedback";
+import { isExecutionEvaluation } from "@/lib/execution-feedback";
 
 /** Protected local results only. No model prompt or chat-history integration. */
-export function ExecutionReviewCard({review,es}:{review?:ExecutionEvaluation;es:boolean}){
-  if(!review || review.version!=="execution-evaluation-v1")return null;
+export function ExecutionReviewCard({review,es}:{review?:unknown;es:boolean}){
+  if(!isExecutionEvaluation(review))return null;
   const label=review.state==="hold"?(es?"Revisión pendiente":"Review required"):review.state==="reduce"?(es?"Revisar o reducir la carga":"Review or reduce workload"):review.state==="review-for-progression"?(es?"Revisar posible progresión":"Review possible progression"):(es?"Mantener el plan revisado":"Maintain the reviewed plan");
   return <details className="card text-sm" aria-label={es?"Respuesta al entrenamiento reciente":"Recent training response"}>
     <summary className="cursor-pointer min-h-11 font-semibold">{es?"Entrenamiento reciente":"Recent training"} · {label}</summary>

@@ -19,4 +19,5 @@ test("absent feedback never renders a claim that the athlete rested",()=>{
  const html=renderToStaticMarkup(createElement(ExecutionReviewCard,{review,es:false}));
  assert.match(html,/does not mean you have not trained/);assert.doesNotMatch(html,/0 minutes completed/);
  assert.equal(renderToStaticMarkup(createElement(ExecutionReviewCard,{es:false})),"");
+ for(const malformed of [{...review,sessions:"bad"},{...review,sessions:[null]},{...review,state:"cleared"}])assert.equal(renderToStaticMarkup(createElement(ExecutionReviewCard,{review:malformed,es:false})),"");
 });

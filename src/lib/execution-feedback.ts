@@ -24,6 +24,12 @@ export interface ExecutionEvaluation {
     commentRecorded: boolean; conflicts: string[];
   }[];
 }
+/** Bound the direct-rendered result before mapping optional API/cache content. */
+export function isExecutionEvaluation(value:unknown):value is ExecutionEvaluation {
+  if(!value||typeof value!=="object"||Array.isArray(value))return false;
+  const v=value as Record<string,any>,number=(n:unknown)=>n===null||typeof n==="number"&&Number.isFinite(n),date=(d:unknown)=>d===null||typeof d==="string"&&Number.isFinite(Date.parse(d))||d instanceof Date&&Number.isFinite(+d);
+  return v.version==="execution-evaluation-v1"&&["hold","maintain","reduce","review-for-progression"].includes(v.state)&&v.automaticProgression===false&&v.catchUpMinutes===0&&Array.isArray(v.reasons)&&v.reasons.every((r:unknown)=>typeof r==="string")&&Array.isArray(v.sessions)&&v.sessions.length<=100&&v.sessions.every((s:any)=>s&&typeof s==="object"&&typeof s.sessionId==="string"&&typeof s.source==="string"&&(s.sport===null||typeof s.sport==="string")&&date(s.observedAt)&&date(s.recordedAt)&&number(s.expectedMinutes)&&number(s.actualMinutes)&&number(s.rpe)&&typeof s.commentRecorded==="boolean"&&Array.isArray(s.conflicts)&&s.conflicts.every((c:unknown)=>typeof c==="string"));
+}
 /** Local evidence only: never send this evaluation or its source records to AI.
  * A review suggestion cannot change a prescription, infer recovery, or clear a hold.
  * Progression eligibility must come from an existing validated readiness policy. */
