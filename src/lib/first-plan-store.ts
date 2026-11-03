@@ -33,7 +33,11 @@ export async function ensureFirstPlan(userId:string, db = prisma) {
         const plan=await tx.trainingPlan.create({data:{userId,name,level:user.profile?.experience||"unconfirmed",distance:user.profile!.goal!,weeks:1,startDate:day.start,easyPct:90}});
         for(const [slot,key] of firstPlanDateKeys(day.key).entries()){
           const sessions=draft.sessions.filter(s=>s.slot===slot),date=localDate(key,user.timezone);
-          const pd=await tx.planDay.create({data:{planId:plan.id,date,week:1,dayOfWeek:new Date(`${key}T12:00Z`).getUTCDay(),focus:sessions[0]?.base.sport??"recovery",dayOff:!sessions.length,notes:JSON.stringify({version:FIRST_PLAN_VERSION,provisional:true,kind:draft.kind,note:draft.note})}});
+          // A protected current/reported workout is not a newly prescribed rest
+          // day merely because no duplicate session is allocated to this plan.
+          // Events remain separate protection; they do not invent performed work.
+          const occupiedWorkout=records.find(row=>dateKey(row.date,user.timezone)===key&&row.source!=="starter-rest");
+          const pd=await tx.planDay.create({data:{planId:plan.id,date,week:1,dayOfWeek:new Date(`${key}T12:00Z`).getUTCDay(),focus:sessions[0]?.base.sport??occupiedWorkout?.sport??"recovery",dayOff:!sessions.length&&!occupiedWorkout,notes:JSON.stringify({version:FIRST_PLAN_VERSION,provisional:true,kind:draft.kind,note:draft.note})}});
           for(const session of sessions){
             const prescription=prescribeToday({session:session.base,adaptation:{verdict:"rest",durationFactor:0,intensityCap:"z1"}});
             await tx.workout.create({data:{userId,planDayId:pd.id,date,source:session.source,planned:true,approved:false,completed:false,sport:session.base.sport,type:session.base.type,title:session.base.title,durationMin:session.base.durationMin,intensity:session.base.intensity,notes:session.base.description,originalPlan:JSON.stringify(session.base),prescription:JSON.stringify({...prescription,planningStatus:"provisional",planningNote:draft.note})}});

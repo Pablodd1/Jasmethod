@@ -35,6 +35,11 @@ async function backend(){
  const orphan=await db.workout.create({data:{userId:archived.user.id,planDayId:oldDay.id,date:new Date(today+'T00:00Z'),sport:'bike',title:'Unperformed archived prescription',source:'plan',planned:true,completed:false,durationMin:90,type:'endurance',intensity:'z2'}});
  const replacement=await ensure(archived);assert.equal(replacement.status,'reported_capacity');assert.ok(replacement.totalMinutes>0);assert.equal(await db.trainingPlan.count({where:{userId:archived.user.id,status:'active'}}),1);assert.equal((await db.workout.findUniqueOrThrow({where:{id:orphan.id}})).completed,false);
  checks.push('PASS unperformed archived prescriptions neither block first-plan capacity nor become actual history');
+ const occupied=await actor('cycle',true),existing=await db.workout.create({data:{userId:occupied.user.id,date:new Date(today+'T00:00Z'),sport:'bike',title:'Existing reviewed standalone bike',source:'manual',planned:true,completed:false,approved:false,durationMin:30,type:'endurance',intensity:'z2',originalPlan:JSON.stringify({sport:'bike',type:'endurance',title:'Existing reviewed standalone bike',durationMin:30,intensity:'z2'}),prescription:JSON.stringify({verdict:'full',sport:'bike',durationMin:30,steps:[]})}});
+ const occupiedPlan=await ensure(occupied),occupiedDay=await db.planDay.findFirstOrThrow({where:{planId:occupiedPlan.planId,date:new Date(today+'T00:00Z')}});
+ assert.equal(occupiedDay.dayOff,false);assert.equal(occupiedDay.focus,'bike');assert.deepEqual(await db.workout.findUniqueOrThrow({where:{id:existing.id}}),existing);
+ assert.equal(await db.workout.count({where:{userId:occupied.user.id,date:new Date(today+'T00:00Z')}}),1);assert.equal((await ensure(occupied)).planId,occupiedPlan.planId);
+ checks.push('PASS occupied standalone workout remains unchanged and is never duplicated or mislabelled as planned rest');
 }
 async function browserAcceptance(){const browser=await chromium.launch({headless:true});try{
  for(const language of ['en','es']){const who=await actor('run-only',true,language),context=await browser.newContext({viewport:{width:390,height:844},locale:language});await context.addCookies([{name:'jmm_session',value:who.token,url:base,httpOnly:true,sameSite:'Lax'}]);const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));let failOnce=true,entryCalls=0;

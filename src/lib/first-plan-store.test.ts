@@ -9,15 +9,15 @@ import * as adaptive from "./adaptive";
 import * as evidence from "./activity-evidence";
 import * as calendarWorkouts from "./calendar-workouts";
 function fixture(){
-  const state={plans:[] as any[],days:[] as any[],workouts:[] as any[],audits:[] as any[],queries:[] as any[],failAudit:false,conflicts:0};
+  const state={plans:[] as any[],days:[] as any[],workouts:[] as any[],audits:[] as any[],queries:[] as any[],records:[] as any[],races:[] as any[],failAudit:false,conflicts:0};
   let owner="athlete-a",tail=Promise.resolve();
   const tx={
     $executeRaw:async(strings:TemplateStringsArray,id:string)=>{assert.equal(id,owner);assert.match(strings.join("?"),/pg_advisory_xact_lock/);return 1;},
     user:{findUnique:async({where}:any)=>{assert.equal(where.id,owner);return {id:owner,timezone:"UTC",language:"en",profile:{goal:"half",birthYear:1990}};}},
     trainingPlan:{findFirst:async({where}:any)=>state.plans.find(p=>p.userId===where.userId&&p.status==="active")??null,create:async({data}:any)=>{const row={...data,id:`p${state.plans.length}`,status:"active"};state.plans.push(row);return row;}},
     planDay:{create:async({data}:any)=>{const row={...data,id:`d${state.days.length}`};state.days.push(row);return row;}},
-    workout:{findMany:async(query:any)=>{state.queries.push(query);assert.equal(query.where.userId,owner);return [];},create:async({data}:any)=>{state.workouts.push(data);return data;}},
-    race:{findMany:async(query:any)=>{assert.equal(query.where.userId,owner);return [];}},
+    workout:{findMany:async(query:any)=>{state.queries.push(query);assert.equal(query.where.userId,owner);return state.records;},create:async({data}:any)=>{state.workouts.push(data);return data;}},
+    race:{findMany:async(query:any)=>{assert.equal(query.where.userId,owner);return state.races;}},
     auditLog:{create:async({data}:any)=>{if(state.failAudit)throw Error("Synthetic receipt failure");state.audits.push(data);return data;}},
   };
   const db={$transaction:async(fn:any,options:any)=>{
@@ -59,4 +59,21 @@ test("another athlete never reuses the first athlete's plan or audit",async()=>{
   const {state,run,setOwner}=fixture();const first=await run();setOwner("athlete-b");const second=await run();
   assert.notEqual(first.planId,second.planId);assert.equal(state.plans.length,2);
   assert.equal(state.audits[1].actorId,"athlete-b");assert.equal(state.audits[1].subjectId,"athlete-b");
+});
+test("an occupied current workout date is preserved without duplicate work or a contradictory planned-rest flag",async()=>{
+  const {state,run}=fixture(),today=dates.dayBounds("UTC");
+  state.records.push({id:"saved-easy-run",userId:"athlete-a",date:today.start,source:"manual",sport:"run",planned:true,completed:false,actualDurationMin:null,feedbackStatus:null,rpe:null});
+  const before=JSON.stringify(state.records);await run();
+  const occupied=state.days.find(row=>dates.dateKey(row.date,"UTC")===today.key);
+  assert.equal(occupied.dayOff,false);assert.equal(occupied.focus,"run");assert.equal(JSON.stringify(state.records),before);
+  assert.ok(state.workouts.every(row=>dates.dateKey(row.date,"UTC")!==today.key),"No second workout assigned to occupied day");
+  assert.ok(state.days.some(row=>row.dayOff===true),"Ordinary unassigned days retain rest semantics");
+});
+test("a protected race date and explicit starter rest do not become recorded training",async()=>{
+  for(const explicitRest of [false,true]){
+    const {state,run}=fixture(),today=dates.dayBounds("UTC");
+    if(explicitRest)state.records.push({id:"known-rest",userId:"athlete-a",date:today.start,source:"starter-rest",sport:"recovery",planned:true,completed:false,actualDurationMin:null,feedbackStatus:null,rpe:null});
+    else state.races.push({id:"race",name:"Synthetic event",date:today.start,priority:1,distance:"sprint"});
+    await run();const day=state.days.find(row=>dates.dateKey(row.date,"UTC")===today.key);assert.equal(day.dayOff,true);assert.equal(day.focus,"recovery");
+  }
 });

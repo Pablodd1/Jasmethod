@@ -151,7 +151,14 @@ async function main() {
         await page.reload(); await page.getByText(es ? "Sesión de hoy revisada" : "Today's session reviewed", {exact: true}).waitFor();
         await screenshot(page, `today-reviewed-${language}`);
         assert.equal(await db.dailyCheckin.count({where: {userId: owner.id}}), 1);
-        assert.equal(await db.workout.count({where: {userId: owner.id}}), 1, "No duplicate workout created");
+        assert.equal(await db.workout.count({where: {userId: owner.id,date:day}}), 1, "Automatic first-week entry does not duplicate today's existing workout");
+        assert.equal(await db.workout.count({where: {userId: owner.id,title:"Familiar easy run"}}),1,"The existing session is not copied on entry/reload");
+        const firstPlan=await db.trainingPlan.findFirstOrThrow({where:{userId:owner.id,status:"active"}});
+        assert.equal((await db.planDay.findFirstOrThrow({where:{planId:firstPlan.id,date:day}})).dayOff,false,"An occupied workout date cannot become planned rest");
+        assert.equal(await db.auditLog.count({where:{subjectId:owner.id,action:"plan.first"}}),1,"First-week entry is idempotent");
+        const future=await db.workout.findMany({where:{userId:owner.id,date:{gt:day},planDay:{planId:firstPlan.id}}});
+        assert.ok(future.length>0,"Planless athlete receives separate provisional future sessions");
+        assert.ok(future.every(row=>row.planned&&!row.completed&&!row.approved),"Future proposals remain unapproved and unperformed");
       });
       await db.metricObservation.updateMany({where: {userId: owner.id}, data: {observedAt: localDate(addDaysKey(today, -1), "UTC")}});
       assert.equal((await api("/api/checkin", owner)).deviceReview, null);
