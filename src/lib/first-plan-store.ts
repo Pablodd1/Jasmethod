@@ -4,6 +4,7 @@ import { readPlanningSetup } from "./planning-setup-store";
 import { firstPlanDraft, firstPlanDateKeys, FIRST_PLAN_VERSION } from "./first-plan";
 import { ACTIVITY_EVIDENCE_SELECT } from "./activity-evidence";
 import { dayBounds, addDaysKey, localDate, dateKey } from "./dates";
+import { currentOrReportedWorkoutWhere } from "./calendar-workouts";
 import { prescribeToday } from "./adaptive";
 
 /** Only creates a first provisional week. Every active plan, even an expired
@@ -20,7 +21,7 @@ export async function ensureFirstPlan(userId:string, db = prisma) {
         const day=dayBounds(user.timezone),end=localDate(addDaysKey(day.key,7),user.timezone);
         const [setup,records,races]=await Promise.all([
           readPlanningSetup(userId,tx),
-          tx.workout.findMany({where:{userId,date:{gte:localDate(addDaysKey(day.key,-28),user.timezone),lt:end}},orderBy:{id:"asc"},select:ACTIVITY_EVIDENCE_SELECT}),
+          tx.workout.findMany({where:{userId,AND:[currentOrReportedWorkoutWhere(userId,null)],date:{gte:localDate(addDaysKey(day.key,-28),user.timezone),lt:end}},orderBy:{id:"asc"},select:ACTIVITY_EVIDENCE_SELECT}),
           tx.race.findMany({where:{userId,date:{gte:new Date(`${addDaysKey(day.key,-28)}T00:00Z`),lt:new Date(`${addDaysKey(day.key,35)}T00:00Z`)}},orderBy:{id:"asc"},select:{id:true,name:true,date:true,priority:true,distance:true}}),
         ]);
         const events=races.map(r=>({id:r.id,name:r.name,dateKey:r.date.toISOString().slice(0,10),priority:r.priority as 1|2|3,distance:r.distance,source:"stored" as const}));

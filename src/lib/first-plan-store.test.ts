@@ -7,6 +7,7 @@ import * as draft from "./first-plan";
 import * as dates from "./dates";
 import * as adaptive from "./adaptive";
 import * as evidence from "./activity-evidence";
+import * as calendarWorkouts from "./calendar-workouts";
 function fixture(){
   const state={plans:[] as any[],days:[] as any[],workouts:[] as any[],audits:[] as any[],queries:[] as any[],failAudit:false,conflicts:0};
   let owner="athlete-a",tail=Promise.resolve();
@@ -27,7 +28,7 @@ function fixture(){
     const before={plans:[...state.plans],days:[...state.days],workouts:[...state.workouts],audits:[...state.audits]};
     try{return await fn(tx);}catch(error){Object.assign(state,before);throw error;}finally{release();}
   }};
-  const deps:Record<string,any>={"./db":{prisma:db},"./first-plan":draft,"./dates":dates,"./adaptive":adaptive,"./activity-evidence":evidence,"./planning-setup-store":{readPlanningSetup:async(id:string,transaction:any)=>{assert.equal(id,owner);assert.equal(transaction,tx);return{setup:null,revision:null};}}};
+  const deps:Record<string,any>={"./calendar-workouts":calendarWorkouts,"./db":{prisma:db},"./first-plan":draft,"./dates":dates,"./adaptive":adaptive,"./activity-evidence":evidence,"./planning-setup-store":{readPlanningSetup:async(id:string,transaction:any)=>{assert.equal(id,owner);assert.equal(transaction,tx);return{setup:null,revision:null};}}};
   const mod:any={exports:{}};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync("src/lib/first-plan-store.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:mod,exports:mod.exports,Date,require:(name:string)=>{if(!(name in deps))throw Error(name);return deps[name];}});
   return {state,run:()=>mod.exports.ensureFirstPlan(owner),setOwner:(id:string)=>{owner=id;}};
@@ -38,6 +39,7 @@ test("concurrent and repeated first entry produce one plan with seven days and h
   assert.equal(responses.filter(r=>r.created).length,1);assert.equal(new Set(responses.map(r=>r.planId)).size,1);
   assert.equal(state.plans.length,1);assert.equal(state.days.length,7);assert.equal(state.audits.length,1);
   assert.equal(state.workouts.length,3);
+  assert.equal(JSON.stringify(state.queries[0].where.AND),JSON.stringify([calendarWorkouts.currentOrReportedWorkoutWhere("athlete-a",null)]),"unperformed archived prescriptions are excluded; actual reports stay eligible");
   for(const row of state.workouts){assert.equal(row.userId,"athlete-a");assert.equal(row.approved,false);assert.equal(row.completed,false);assert.equal(JSON.parse(row.prescription).verdict,"rest");}
   assert.equal((await run()).created,false);
 });

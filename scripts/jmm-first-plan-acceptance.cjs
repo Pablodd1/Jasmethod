@@ -30,6 +30,11 @@ async function backend(){
  checks.push('PASS first-plan/full-cycle save race retains one active owned plan under real PostgreSQL serialization');
  const before=await db.trainingPlan.findFirstOrThrow({where:{userId:race.user.id,status:'active'}});await db.trainingPlan.update({where:{id:before.id},data:{startDate:new Date('2020-01-01')}});assert.equal((await ensure(race)).planId,before.id);assert.equal(await db.trainingPlan.count({where:{userId:race.user.id,status:'active'}}),1);
  checks.push('PASS existing/expired active plan is never replaced by entry');
+ const archived=await actor('cycle',true),old=await db.trainingPlan.create({data:{userId:archived.user.id,name:'Synthetic archived cycle',distance:'cycle',level:'advanced',weeks:4,startDate:new Date(today+'T00:00Z'),status:'archived'}});
+ const oldDay=await db.planDay.create({data:{planId:old.id,date:new Date(today+'T00:00Z'),week:1,dayOfWeek:new Date().getUTCDay(),focus:'bike'}});
+ const orphan=await db.workout.create({data:{userId:archived.user.id,planDayId:oldDay.id,date:new Date(today+'T00:00Z'),sport:'bike',title:'Unperformed archived prescription',source:'plan',planned:true,completed:false,durationMin:90,type:'endurance',intensity:'z2'}});
+ const replacement=await ensure(archived);assert.equal(replacement.status,'reported_capacity');assert.ok(replacement.totalMinutes>0);assert.equal(await db.trainingPlan.count({where:{userId:archived.user.id,status:'active'}}),1);assert.equal((await db.workout.findUniqueOrThrow({where:{id:orphan.id}})).completed,false);
+ checks.push('PASS unperformed archived prescriptions neither block first-plan capacity nor become actual history');
 }
 async function browserAcceptance(){const browser=await chromium.launch({headless:true});try{
  for(const language of ['en','es']){const who=await actor('run-only',true,language),context=await browser.newContext({viewport:{width:390,height:844},locale:language});await context.addCookies([{name:'jmm_session',value:who.token,url:base,httpOnly:true,sameSite:'Lax'}]);const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));let failOnce=true,entryCalls=0;
