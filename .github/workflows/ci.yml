@@ -163,6 +163,9 @@ jobs:
       - name: EN and ES private commander preview and save-error acceptance
         run: node scripts/jmm-commander-browser.cjs
 
+      - name: Manual activity uncertain-save retry browser acceptance
+        run: node scripts/jmm-manual-activity-browser.cjs
+
       - name: Garmin consent, unavailable configuration and revocation browser acceptance
         run: node scripts/jmm-garmin-browser.cjs
 
@@ -290,6 +293,8 @@ jobs:
             .local/jmm-ai-consent-browser/*.png
             .local/jmm-commander-browser/report.json
             .local/jmm-commander-browser/*.png
+            .local/jmm-manual-activity-browser/report.json
+            .local/jmm-manual-activity-browser/*.png
             .local/jmm-commander-persistence-browser/report.json
             .local/jmm-commander-persistence-browser/*.png
             .local/jmm-adaptive-cycle-integration/report.json

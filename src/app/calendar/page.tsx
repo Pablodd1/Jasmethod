@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   ChevronLeft,
@@ -34,6 +34,7 @@ import { dayOffProtocol, temperatureAdjustment } from "@/lib/adaptive";
 import { WeekStrip } from "@/components/week-strip";
 import { endpointText } from "@/lib/universal-workout-card";
 import { savedCycleSummary } from "@/lib/training-cycle-summary";
+import { manualWorkoutAttempt, type ManualWorkoutAttempt } from "@/lib/manual-workout-request";
 
 const SPORT_COLOR: Record<string, string> = {
   swim: "bg-sky-100 text-sky-700",
@@ -65,6 +66,9 @@ export default function CalendarPage() {
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [activityBusy, setActivityBusy] = useState(false);
   const [activityMessage, setActivityMessage] = useState("");
+  const activityAttempt=useRef<ManualWorkoutAttempt|null>(null);
+  const activityInFlight=useRef(false);
+  const activityUser=useRef(user?.id);
   const [resultFor, setResultFor] = useState<any>(null);
   const [resultBusy, setResultBusy] = useState(false);
   const [resultError, setResultError] = useState("");
@@ -105,18 +109,28 @@ export default function CalendarPage() {
     if (user) load(month);
   }, [user, month]);
 
+  useEffect(()=>{activityAttempt.current=null;activityUser.current=user?.id;},[user?.id]);
+
   async function addUnplannedActivity(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setActivityBusy(true); setMutationError(""); setActivityMessage("");
+    event.preventDefault();
+    if(activityInFlight.current)return;
+    activityInFlight.current=true;
+    setActivityBusy(true); setMutationError(""); setActivityMessage("");
     const fields = Object.fromEntries(new FormData(event.currentTarget));
+    const scopeUser=activityUser.current;
     try {
-      const res = await fetch("/api/workouts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields) });
+      activityAttempt.current=manualWorkoutAttempt(activityAttempt.current,fields,()=>crypto.randomUUID());
+      const request=activityAttempt.current;
+      const res = await fetch("/api/workouts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({...fields,clientRequestId:request.clientRequestId}) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not save activity");
+      if(activityUser.current!==scopeUser)return;
+      if (!res.ok || data.ok!==true || typeof data.workout?.id!=="string" || !data.workout.id || data.clientRequestId!==request.clientRequestId) throw new Error(data.error || (es ? "No se pudo verificar la actividad guardada. Reintenta los mismos datos para comprobar la solicitud original." : "Could not verify the saved activity. Retry the same details to check the original request."));
+      activityAttempt.current=null;
       setShowActivityForm(false);
       setActivityMessage(es ? "Actividad registrada con tus datos reales. Las sesiones planificadas no se modificaron." : "Activity saved with your reported actuals. Planned sessions were retained.");
       const observed = new Date(`${String(fields.date)}T12:00:00`);
       setMonth(observed); await load(observed);
-    } catch (error) { setMutationError((error as Error).message); } finally { setActivityBusy(false); }
+    } catch (error) { if(activityUser.current===scopeUser)setMutationError((error as Error).message); } finally { activityInFlight.current=false;setActivityBusy(false); }
   }
 
   useEffect(() => {
@@ -349,6 +363,8 @@ export default function CalendarPage() {
         </form>}
         {showActivityForm && (
           <form className="card space-y-3" onSubmit={addUnplannedActivity}>
+            <fieldset disabled={activityBusy} className="space-y-3 min-w-0">
+            <legend className="sr-only">{es ? "Informe de actividad realizada" : "Actual activity report"}</legend>
             <h2 className="font-display font-bold text-lg">{es ? "Actividad realizada no planificada" : "Unplanned activity you actually did"}</h2>
             <p className="text-xs text-slate-600">{es ? "Introduce deporte, fecha local y minutos reales. Si no sabes la duración, no la sustituyas por cero o por la duración planificada; puedes registrar respuestas desconocidas en el informe de una sesión existente." : "Enter sport, local observation date and actual minutes. If duration is unknown, don't replace it with zero or planned minutes; an existing session report can retain unknown answers."}</p>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -362,7 +378,8 @@ export default function CalendarPage() {
             </div>
             <label className="block text-sm">{es ? "Título (opcional)" : "Title (optional)"}<input name="title" className="input" maxLength={200} /></label>
             <label className="block text-sm">{es ? "Notas: tolerancia, cambios, dolor y cuándo ocurrió (opcional)" : "Notes: tolerance, changes, pain and when it occurred (optional)"}<textarea name="notes" className="input" maxLength={4000} /></label>
-            <button type="submit" disabled={activityBusy} className="btn-primary">{activityBusy ? "Saving…" : es ? "Guardar actividad realizada" : "Save actual activity"}</button>
+            <button type="submit" disabled={activityBusy} className="btn-primary">{activityBusy ? (es ? "Guardando…" : "Saving…") : es ? "Guardar actividad realizada" : "Save actual activity"}</button>
+            </fieldset>
           </form>
         )}
 
