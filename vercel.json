@@ -44,7 +44,8 @@
       "codex/public-policy-pages": false,
       "codex/dual-domain-shared-app": false,
       "codex/coach-model-upgrade": false,
-      "codex/coaching-workflow-audit": false
+      "codex/coaching-workflow-audit": false,
+      "codex/coaching-reference-review": false
     }
   }
 }
