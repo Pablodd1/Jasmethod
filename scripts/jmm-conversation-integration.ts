@@ -59,7 +59,10 @@ async function main() {
     for(const body of [{},{photoConsent:false},{photoConsent:"true",photoProviderConsent:"openai"},{photoConsent:true,photoProviderConsent:"google_gemini"},{photoConsent:true,photoProviderConsent:"openai",photoSource:"device"}])await request("/api/nutrition/photo",a,{body,status:403});
     const before=await db.coachConversationMessage.count({where:{userId:a.id}});
     const dialogue={message:"Help me review my goals",manualDialogueConsent:true,messageOrigin:"athlete_authored",externalConsent:true,textProviderConsent:"openai",clientRequestId:randomUUID()};
-    await request("/api/assistant",a,{body:dialogue,status:403});
+    // The normal request helper supplies JMM's Origin. This refusal must omit
+    // it explicitly rather than accidentally test a valid consented request.
+    const missingOrigin=await fetch(new URL("/api/assistant",base),{method:"POST",headers:{"Content-Type":"application/json",cookie:a.cookie},body:JSON.stringify(dialogue),redirect:"manual",signal:AbortSignal.timeout(120000)});
+    assert.equal(missingOrigin.status,403,"Personal dialogue refuses missing Origin before writing");
     const crossOrigin=await fetch(new URL("/api/assistant",base),{method:"POST",headers:{"Content-Type":"application/json",cookie:a.cookie,Origin:"https://other.example.invalid"},body:JSON.stringify(dialogue),redirect:"manual"});
     assert.equal(crossOrigin.status,403,"Personal dialogue refuses cross-origin dispatch before writing");
     assert.equal(await db.coachConversationMessage.count({where:{userId:a.id}}),before);
