@@ -60,6 +60,7 @@ async function actor(language = "en", observations = true): Promise<Actor> {
 }
 async function freshObservations(owner: Actor) {
   const observedAt = new Date(Date.now() - 1000);
+  await db.dailyMetrics.createMany({data:Array.from({length:28},(_,i)=>({userId:owner.id,date:new Date(day.getTime()-(i+1)*86400000),source:"whoop",hrv:70,hrvType:"rmssd",restingHr:50,sleepHours:8})),skipDuplicates:true});
   await db.metricObservation.createMany({data: [
     {metricType: "sleep_hours", unit: "h", value: 8}, {metricType: "resting_hr", unit: "bpm", value: 50}, {metricType: "hrv_rmssd", unit: "ms", value: 70},
   ].map(row => ({...row, userId: owner.id, observedAt, source: "whoop", measurementMethod: "device_sync", qualityFlag: "ok"}))});
@@ -92,6 +93,21 @@ async function main() {
   const browser = await chromium.launch({headless: true});
   try {
     await scenario("Unauthenticated device confirmations are rejected", async () => {await api("/api/checkin", undefined, confirmation("a".repeat(64)), 401);});
+    for(const concern of ["short-sleep-stable-hrv","pulse-rise","missing-baseline","sdnn-only"]){
+      await scenario(`${concern}: fresh readings retain manual review rather than a full-dose shortcut`,async()=>{
+        const owner=await actor();const initial=await api("/api/checkin",owner);assert.ok(initial.deviceReview);
+        if(concern==="short-sleep-stable-hrv")await db.metricObservation.updateMany({where:{userId:owner.id,metricType:"sleep_hours"},data:{value:1}});
+        if(concern==="pulse-rise")await db.metricObservation.updateMany({where:{userId:owner.id,metricType:"resting_hr"},data:{value:53}});
+        if(concern==="missing-baseline")await db.dailyMetrics.deleteMany({where:{userId:owner.id,date:{lt:day}}});
+        if(concern==="sdnn-only"){
+          await db.metricObservation.updateMany({where:{userId:owner.id,metricType:"hrv_rmssd"},data:{metricType:"hrv_sdnn"}});
+          await db.dailyMetrics.updateMany({where:{userId:owner.id},data:{hrvType:"sdnn"}});
+        }
+        const current=await api("/api/checkin",owner);assert.equal(current.deviceReview,null);assert.equal(current.inputContext.deviceAssessment.state,"manual");
+        await api("/api/checkin",owner,confirmation(initial.deviceReview.revision),409);
+        assert.equal(await db.dailyCheckin.count({where:{userId:owner.id}}),0);
+      });
+    }
     for (const language of ["en", "es"]) await scenario(`${language}: fresh WHOOP readings use the short mobile form and survive real save/reload`, async () => {
       const owner = await actor(language), es = language === "es";
       const before = await api("/api/checkin", owner);

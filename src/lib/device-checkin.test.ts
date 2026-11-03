@@ -10,7 +10,8 @@ const now = new Date("2026-11-02T12:00:00Z");
 const observations: DailyInputObservation[] = [
   ["sleep_hours", 7.5, "h"], ["resting_hr", 52, "bpm"], ["hrv_rmssd", 60, "ms"],
 ].map(([metricType,value,unit],i) => ({id:String(i),userId:"owner",metricType:String(metricType),value:Number(value),unit:String(unit),source:"whoop",measurementMethod:"device_sync",qualityFlag:"ok",observedAt:new Date("2026-11-02T10:00:00Z")}));
-const context = (rows = observations) => buildDailyInputContext({athleteId:"owner",timezone:"America/New_York",now,observations:rows});
+const baseline = Array.from({length:28},(_,i)=>({userId:"owner",date:new Date(+now-(i+1)*86400000),source:"whoop",hrv:60,hrvType:"rmssd",restingHr:52,sleepHours:7.5}));
+const context = (rows = observations, history=baseline) => buildDailyInputContext({athleteId:"owner",timezone:"America/New_York",now,observations:rows,deviceHistory:history});
 const answers = {sick:false,newPain:false,urgentSymptoms:false,availableMin:60};
 test("fresh owner-scoped typed measurements permit a short review without invented ratings",()=>{
   const c=context(), evidence=deviceCheckinEvidence(c,"owner",now)!;
@@ -38,6 +39,29 @@ test("evidence revision changes with corrected readings or newly reported activi
   assert.notEqual(deviceCheckinEvidence(context(observations.map((r,i)=>({...r,value:i===0?6:r.value}))),"owner",now)?.revision,initial.revision);
   const c=context();c.activity.rawRecordCount=1;
   assert.notEqual(deviceCheckinEvidence(c,"owner",now)?.revision,initial.revision);
+});
+test("fresh readings cannot bypass a missing RMSSD baseline or the existing sleep/pulse/HRV concern gates",()=>{
+  const missing=context(observations,[]);assert.equal(missing.deviceAssessment.state,"manual");assert.equal(deviceCheckinEvidence(missing,"owner",now),null);
+  for(const rows of [
+    observations.map(row=>row.metricType==="sleep_hours"?{...row,value:1}:row),
+    observations.map(row=>row.metricType==="sleep_hours"?{...row,value:5.9}:row),
+    observations.map(row=>row.metricType==="resting_hr"?{...row,value:55}:row),
+    observations.map(row=>row.metricType==="hrv_rmssd"?{...row,value:30}:row),
+    observations.map(row=>row.metricType==="hrv_rmssd"?{...row,metricType:"hrv_sdnn",source:"apple"}:{...row,source:"apple"}),
+  ]){const c=context(rows);assert.equal(c.deviceAssessment.state,"manual");assert.equal(deviceCheckinEvidence(c,"owner",now),null);}
+  assert.equal(deviceCheckinEvidence(context(observations.map(row=>row.metricType==="sleep_hours"?{...row,value:6}:row)),"owner",now)?.source,"whoop");
+  assert.equal(deviceCheckinEvidence(context(observations,baseline.map(row=>({...row,hrvType:"sdnn"}))),"owner",now),null);
+  assert.equal(deviceCheckinEvidence(context(observations,baseline.map(row=>({...row,userId:"other"}))),"owner",now),null);
+});
+test("historical assessment changes invalidate saved device review without exposing historical rows",()=>{
+  const initial=context(), evidence=deviceCheckinEvidence(initial,"owner",now)!;
+  const saved={...answers,inputMetadata:{recordedAt:now.toISOString(),deviceReview:{...evidence,athleteId:"owner",recoveryUnchanged:true}}};
+  const corrected=context(observations,baseline.map((row,i)=>i===20?{...row,hrv:61}:row));
+  assert.equal(verifiedDeviceReview(saved,corrected,"owner",now),false);
+  assert.notEqual(initial.deviceAssessment.fingerprint,corrected.deviceAssessment.fingerprint);
+  assert.equal(Object.hasOwn(initial,"deviceHistory"),false);assert.equal(Object.hasOwn(initial.deviceAssessment,"history"),false);
+  const todayAggregate=context(observations,[...baseline,{...baseline[0],date:now,source:"manual",hrv:0}]);
+  assert.equal(todayAggregate.deviceAssessment.fingerprint,initial.deviceAssessment.fingerprint,"today's aggregate is not baseline; selected observations remain authoritative");
 });
 test("device evidence cannot answer symptoms/time or erase earlier restrictions",()=>{
   for (const key of ["sick","newPain","urgentSymptoms"] as const) assert.notEqual(adaptSession({...answers,[key]:true},true).safetyStatus,"clear");

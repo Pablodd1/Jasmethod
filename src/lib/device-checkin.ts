@@ -8,14 +8,14 @@ export const DEVICE_REVIEW_VERSION = "device-checkin-v1";
 /** Server-only proof from an owner-scoped database read, never a client readiness flag.
  * These readings replace a questionnaire, not symptoms or medical clearance. */
 export function deviceCheckinEvidence(context: DailyInputContext | null | undefined, athleteId: string, now = new Date()) {
-  if (!context || context.athleteId !== athleteId || context.dateLocal !== dateKey(now, context.timezone) || context.readStatus !== "available" || context.bounded.observationsTruncated || context.bounded.workoutsTruncated || context.activity.requiresReconciliation || context.activity.derivedActivityPolicy.status !== "allowed") return null;
+  if (!context || context.athleteId !== athleteId || context.dateLocal !== dateKey(now, context.timezone) || context.readStatus !== "available" || context.bounded.observationsTruncated || context.bounded.workoutsTruncated || context.activity.requiresReconciliation || context.activity.derivedActivityPolicy.status !== "allowed" || context.deviceAssessment?.state !== "eligible") return null;
   if ([context.metrics.hrvRmssd, context.metrics.hrvSdnn].some(m => m.status === "conflicting")) return null;
   const readings = [context.metrics.sleepHours, context.metrics.restingHr,
     context.metrics.hrvRmssd.status === "usable" ? context.metrics.hrvRmssd : context.metrics.hrvSdnn];
   const selected = readings.map(m => m.selected);
   if (readings.some(m => m.status !== "usable") || selected.some(r => !r || !SOURCES.has(r.source) || !["measured", "provider_reported"].includes(r.classification) || r.aiEligibility !== "allowed" || r.observedDay !== context.dateLocal || r.freshness !== "fresh" || Date.parse(r.observedAt) > now.getTime() || now.getTime() - Date.parse(r.observedAt) > 36 * 3600000)) return null;
   if (new Set(selected.map(r => r!.source)).size !== 1) return null;
-  const revision = createHash("sha256").update(JSON.stringify({ version: DEVICE_REVIEW_VERSION, athleteId, timezone: context.timezone, date: context.dateLocal, readings: selected, activity: context.activity, completedWorkouts: context.completedWorkouts, executionFeedback: context.executionFeedback })).digest("hex");
+  const revision = createHash("sha256").update(JSON.stringify({ version: DEVICE_REVIEW_VERSION, athleteId, timezone: context.timezone, date: context.dateLocal, readings: selected, deviceAssessment:context.deviceAssessment, activity: context.activity, completedWorkouts: context.completedWorkouts, executionFeedback: context.executionFeedback })).digest("hex");
   return { version: DEVICE_REVIEW_VERSION, revision, source: selected[0]!.source, dateLocal: context.dateLocal };
 }
 

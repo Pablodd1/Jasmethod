@@ -349,6 +349,7 @@ function CheckinPageContent() {
           <a className="btn-secondary min-h-11 mt-3" href="/today">{lang === "es" ? "Omitir cuestionario y ver mi sesión" : "Skip questionnaire and view my session"}</a>
         </div>
         <DailyInputSummary context={inputContext} es={lang === "es"} />
+        {!deviceReview && inputContext?.deviceAssessment?.state === "manual" && inputContext.metrics.sleepHours.selected && <p role="status" className="text-sm text-slate-600">{lang === "es" ? "Tus mediciones están guardadas. Hoy hace falta revisión manual porque la comparación de recuperación no es suficiente o necesita atención; no debes volver a introducir las mediciones ya disponibles." : "Your measurements are saved. Recovery comparison needs manual review today because its baseline is insufficient or a signal needs attention; you do not need to re-enter available measurements."}</p>}
         {draftNotice && <p role="status" className="text-sm">{draftNotice}</p>}
 
         {err && <div role="alert" className="text-sm text-coral-600 bg-coral-50 rounded-lg px-3 py-2">{err}</div>}

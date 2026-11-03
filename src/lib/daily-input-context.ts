@@ -1,4 +1,6 @@
 import { prisma } from "./db";
+import { createHash } from "node:crypto";
+import { normalizeCentral, type MetricRow } from "./performance-engine";
 import { addDaysKey, dateKey, localDate } from "./dates";
 import { activityActualMinutes, groupActivityEvidence, type ActivityDecision, type ActivityEvidenceRow } from "./activity-evidence";
 import { readActivityDecisions } from "./activity-reconciliation";
@@ -97,6 +99,31 @@ export interface DailyInputContextOptions {
   activityDecisions?: readonly ActivityDecision[]; connectors?: readonly DailyInputConnector[];
   observationsTruncated?: boolean; workoutsTruncated?: boolean;
   observationsUnavailable?: boolean;
+  /** Owner-scoped rows stay local; only the assessment and its fingerprint leave this builder. */
+  deviceHistory?: readonly (MetricRow & {userId:string})[];
+  deviceHistoryUnavailable?: boolean;
+}
+function deviceAssessment(input:DailyInputContextOptions, metrics:Record<DailyMetricKey,ReturnType<typeof metricContext>>, now:Date) {
+  const today=dateKey(now,input.timezone);
+  const history=(input.deviceHistory ?? []).filter(row=>row.userId===input.athleteId && millis(row.date)<=now.getTime() && millis(row.date)>now.getTime()-60*86400000 && dateKey(new Date(row.date),input.timezone)!==today)
+    .map(row=>({date:iso(row.date),source:row.source??null,hrv:row.hrv??null,hrvType:row.hrvType??null,restingHr:row.restingHr??row.rhr??null,sleepHours:row.sleepHours??null}))
+    .sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const fingerprint=createHash("sha256").update(JSON.stringify({athleteId:input.athleteId,history,unavailable:input.deviceHistoryUnavailable===true,readings:[metrics.hrvRmssd.selected,metrics.restingHr.selected,metrics.sleepHours.selected]})).digest("hex");
+  const result=(state:"eligible"|"manual",reason:string)=>({state,reason,fingerprint});
+  if(input.deviceHistoryUnavailable || !input.deviceHistory) return result("manual","Historical device assessment is unavailable. Use manual recovery review.");
+  const hrv=metrics.hrvRmssd.selected,rhr=metrics.restingHr.selected,sleep=metrics.sleepHours.selected;
+  if(!hrv || !rhr || !sleep || hrv.source!==rhr.source || hrv.source!==sleep.source) return result("manual","Compatible current RMSSD, resting pulse and sleep from one source are required; SDNN is not RMSSD.");
+  const sameSource=history.filter(row=>row.source===hrv.source);
+  if(derivedActivityPolicy(sameSource).status!=="allowed" || sameSource.some(row=>(row.hrv!==null&&(!Number.isFinite(row.hrv)||row.hrv<=0||row.hrv>300)) || (row.restingHr!==null&&(!Number.isFinite(row.restingHr)||row.restingHr<25||row.restingHr>150)) || (row.sleepHours!==null&&(!Number.isFinite(row.sleepHours)||row.sleepHours<0||row.sleepHours>24))))
+    return result("manual","Historical source or measurement quality needs manual review.");
+  // Today's source-aware observations supersede an aggregate row for today.
+  const central=normalizeCentral([...sameSource.filter(row=>dateKey(new Date(row.date!),input.timezone)!==today).map(row=>({...row,date:row.date!})),
+    {date:hrv.observedAt,source:hrv.source,hrv:hrv.value,hrvType:"rmssd",restingHr:rhr.value,sleepHours:sleep.value}],{},now);
+  if(central.confidence!=="device" || central.hrvZ===null || central.rhrDelta===null) return result("manual","The existing normalization policy has insufficient same-source RMSSD or resting-pulse baseline. Use manual review.");
+  if(central.status==="suppressed") return result("manual","The existing HRV policy identifies a recovery concern. Use manual review.");
+  if(sleep.value<6) return result("manual","Sleep is below the existing six-hour normalization concern boundary. Use manual review.");
+  if(central.rhrDelta>2) return result("manual","Resting pulse is above the existing normalization concern boundary. Use manual review.");
+  return result("eligible","The existing device normalization policy found no shortcut-blocking signal. Symptoms and available time still require athlete confirmation; this is not medical clearance.");
 }
 function duplicateReview(rows: readonly DailyInputWorkout[], reconciled: ReturnType<typeof groupActivityEvidence<DailyInputWorkout>>) {
   const groups: { recordIds:string[];reason:string;proposedAction:"review"|"retain_linked_records" }[]=[];
@@ -170,6 +197,7 @@ export function buildDailyInputContext(input: DailyInputContextOptions) {
     feedbackAt: workouts.find(row => row.id === summary.id)?.feedbackAt ?? null }));
   const workoutsTruncated = input.workoutsTruncated === true || ownWorkouts.length > DAILY_INPUT_LIMIT;
   return { version: DAILY_INPUT_CONTEXT_VERSION, athleteId: input.athleteId, dateLocal: today, timezone: input.timezone, metrics,
+    deviceAssessment:deviceAssessment(input,metrics,now),
     readStatus: observationsUnavailable ? "unavailable" as const : "available" as const,
     dataAvailability: { observations: observationsUnavailable ? "unavailable" as const : "available" as const,
       limitations: observationsUnavailable ? ["Optional measurement storage is unavailable. Saved workout history remains available; current measurements are unknown."] : observationsTruncated ? ["The observation read limit was reached. Stored readings remain visible, but current numeric evidence is incomplete."] : [] },
@@ -206,10 +234,10 @@ export function applyDailyExecutionContext(adaptation: Adaptation, context: Dail
   }
   return applyExecutionFeedback(adaptation, context.executionFeedback);
 }
-type DailyInputReader = Pick<typeof prisma, "metricObservation" | "workout" | "connector" | "auditLog">;
+type DailyInputReader = Pick<typeof prisma, "metricObservation" | "workout" | "connector" | "auditLog"> & Partial<Pick<typeof prisma,"dailyMetrics">>;
 export async function readDailyInputContext(athleteId: string, timezone: string, db: DailyInputReader = prisma, now = new Date()) {
   const today = dateKey(now, timezone), end = localDate(addDaysKey(today,1), timezone);
-  const [observationRead, completedWorkouts, connectors, activityDecisions] = await Promise.all([
+  const [observationRead, completedWorkouts, connectors, activityDecisions, deviceHistory] = await Promise.all([
     db.metricObservation.findMany({ where: { userId: athleteId, metricType: { in: Object.values(rules).map(rule => rule.type) }, observedAt: { gte: localDate(addDaysKey(today,-13),timezone), lte: now } }, orderBy: [{ observedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }], take: DAILY_INPUT_LIMIT + 1,
       select: { id:true,userId:true,observedAt:true,createdAt:true,metricType:true,value:true,unit:true,source:true,measurementMethod:true,qualityFlag:true } }).then(rows=>({rows,unavailable:false})).catch((error:unknown)=>{
         if (["P2021","P2022"].includes((error as {code?:string})?.code ?? "")) return {rows:[],unavailable:true};
@@ -219,8 +247,11 @@ export async function readDailyInputContext(athleteId: string, timezone: string,
       select: { id:true,userId:true,date:true,createdAt:true,sport:true,actualSport:true,source:true,externalId:true,notes:true,planned:true,completed:true,durationMin:true,actualDurationMin:true,distanceKm:true,rpe:true,feedbackStatus:true,feedbackAt:true,matchedPlanId:true } }),
     db.connector.findMany({ where: { userId: athleteId }, select: { provider:true,status:true,lastSyncAt:true }, take:20 }),
     readActivityDecisions(athleteId,db),
+    db.dailyMetrics ? db.dailyMetrics.findMany({where:{userId:athleteId,date:{gt:new Date(now.getTime()-60*86400000),lt:localDate(today,timezone)}},orderBy:{date:"asc"},take:62,
+      select:{userId:true,date:true,source:true,hrv:true,hrvType:true,restingHr:true,rhr:true,sleepHours:true}}).then(rows=>({rows,unavailable:rows.length>61})).catch(()=>({rows:[],unavailable:true})) : Promise.resolve({rows:[],unavailable:true}),
   ]);
   return buildDailyInputContext({ athleteId, timezone, now, observations:observationRead.rows, completedWorkouts, connectors, activityDecisions,
     observationsUnavailable:observationRead.unavailable,
+    deviceHistory:deviceHistory.rows,deviceHistoryUnavailable:deviceHistory.unavailable,
     observationsTruncated: observationRead.rows.length > DAILY_INPUT_LIMIT, workoutsTruncated: completedWorkouts.length === DAILY_INPUT_LIMIT });
 }
