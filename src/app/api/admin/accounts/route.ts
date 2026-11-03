@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { resetOriginAllowed } from "@/lib/password-reset";
+import { appMutationOriginAllowed } from "@/lib/request-origin";
 import { rateLimit } from "@/lib/ratelimit";
 import { PILOT_USER_LIMIT } from "@/lib/pilot-limit";
 
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   const actor = await getCurrentUser();
   if (!actor) return Response.json({ error: "Sign in required." }, { status: 401, headers });
   if (actor.role !== "admin") return Response.json({ error: "Administrator access required." }, { status: 403, headers });
-  if (!resetOriginAllowed(req)) return Response.json({ error: "Invalid origin." }, { status: 403, headers });
+  if (!appMutationOriginAllowed(req)) return Response.json({ error: "Invalid origin." }, { status: 403, headers });
   if (!rateLimit(`admin-revoke-sessions:${actor.id}`, 20, 15 * 60_000).ok) return Response.json({ error: "Too many requests." }, { status: 429, headers });
   let body: unknown;
   try { body = await req.json(); } catch { return Response.json({ error: "Invalid request." }, { status: 400, headers }); }

@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import { appMutationOriginAllowed } from "./request-origin";
 
-function fixture(role: string | null = "admin", origin = true, exists = true) {
+function fixture(role: string | null = "admin", origin = true, exists = true, configuredOrigin = "https://app.test") {
   const calls: any[] = [];
   const tx = {
     user: { findUnique: async (args: any) => { calls.push({ lookup: args }); return exists ? { id: "target" } : null; } },
@@ -24,7 +25,7 @@ function fixture(role: string | null = "admin", origin = true, exists = true) {
   runInNewContext(output, { module: fixtureModule, exports: fixtureModule.exports, Response, Request, URL, Date, console, require: (name: string) => {
     if (name === "@/lib/auth") return { getCurrentUser: async () => role ? { id: "admin", role } : null };
     if (name === "@/lib/db") return { prisma };
-    if (name === "@/lib/password-reset") return { resetOriginAllowed: () => origin };
+    if (name === "@/lib/request-origin") return { appMutationOriginAllowed: (request:Request) => origin && appMutationOriginAllowed(request,{NODE_ENV:"production",APP_URL:configuredOrigin}) };
     if (name === "@/lib/ratelimit") return { rateLimit: () => ({ ok: true }) };
     if (name === "@/lib/pilot-limit") return { PILOT_USER_LIMIT: 50 };
     throw Error(`Unexpected dependency ${name}`);
@@ -40,6 +41,17 @@ test("account overview and revocation are administrator-only, including denial t
     assert.equal((await f.api.POST(req())).status, role ? 403 : 401);
     assert.equal(f.calls.length, 0);
   }
+});
+
+test("production-mode admin validation works on configured loopback HTTP and refuses absent or foreign origin before writes",async()=>{
+  const base="http://127.0.0.1:3220";
+  const f=fixture("admin",true,true,base);
+  const request=(origin:string|null,body:unknown={action:"revoke_sessions",userId:"target"})=>new Request(`${base}/api/admin/accounts`,{method:"POST",headers:{"Content-Type":"application/json",...(origin?{origin}:{})},body:JSON.stringify(body)});
+  assert.equal((await f.api.POST(request(base))).status,400,"Missing confirmation is validated rather than throwing an origin configuration error");
+  assert.equal((await f.api.POST(request(null))).status,403);
+  assert.equal((await f.api.POST(request("https://foreign.example.invalid"))).status,403);
+  assert.equal(f.calls.length,0);
+  assert.equal((await f.api.POST(request(base,{action:"revoke_sessions",userId:"target",confirmed:true}))).status,200);
 });
 
 test("overview includes all roles and total capacity but excludes credential and provider identity secrets", async () => {
