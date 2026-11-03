@@ -153,6 +153,9 @@ async function journey(browser, language, width) {
     if (path === '/api/coaching/messages') return route.fulfill({ json: { messages: [] } });
     if (path === '/api/coaching/assignments') return route.fulfill({ json: { assignments: [] } });
     if (path === '/api/fitness') return route.fulfill({ json: { jMetrics: null } });
+    // The existing onboarding card makes this read independently of review.
+    // It must not be mistaken for an approval/delivery or escape the API mock.
+    if (path === '/api/athlete-model') return route.fulfill({ json: { model: { coldStart:false,coverageDays:30,level:'amateur',levelSource:'athlete-reported',ageBand:'unknown',spacingH:48,keyCap:2,notes:[],onboarding:[] } } });
     unexpected.push(`GET ${path}`); return route.fulfill({ status: 500, json: { error: 'Unexpected synthetic read' } });
   });
   try {
