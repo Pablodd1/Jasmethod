@@ -1,6 +1,8 @@
 "use client";
 import { NutritionContextEditor } from "@/components/nutrition-context-editor";
 import {BaselineTests} from "@/components/baseline-tests";
+import { DatedTrainingReferenceEditor } from "@/components/DatedTrainingReferenceEditor";
+import { SportHeartRateReferences } from "@/components/SportHeartRateReferences";
 import { SportDataPanel } from "@/components/SportDataPanel";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -71,6 +73,7 @@ export default function SettingsPage() {
     } catch (failure) { if (requestId === loadRequest.current) setError((failure as Error).message); }
     finally { if (requestId === loadRequest.current) setLoading(false); }
   }, [user?.timezone]);
+  async function referenceSaved(){await load();setNotice(lang==="es"?"Referencia guardada.":"Reference saved.");}
   const cancelLoad = useCallback(()=>{loadRequest.current++;},[]);
   useEffect(() => { if (user?.id) void load(); return cancelLoad; }, [user?.id,load,cancelLoad]);
 
@@ -436,13 +439,13 @@ export default function SettingsPage() {
                   <div>
                     {measurement("runPaceBase",lang==="es"?"Ritmo umbral de carrera":"Run threshold pace")}
                     <div className="text-[11px] text-slate-400">
-                      T-pace = the pace you could race for about one hour.
+                      Use a known threshold pace. Enter minutes:seconds per mile or kilometre as labelled; race results and goals do not automatically establish threshold.
                     </div>
                   </div>
                   <div>
                     {measurement("swimPaceBase",lang==="es"?"Ritmo umbral de natación":"Swim threshold pace")}
                     <div className="text-[11px] text-slate-400">
-                      Your CSS pace — from the 400 m + 200 m test in{" "}
+                      Your known CSS pace in minutes:seconds per 100 metres or yards as labelled. A CSS test is available in{" "}
                       <a href="/labs" className="underline">
                         Labs
                       </a>
@@ -476,9 +479,11 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-6">
-            <div className="card">
+            <DatedTrainingReferenceEditor profile={profile} revision={revision??null} timezone={user?.timezone||"UTC"} units={displayUnits} es={lang==="es"} disabled={saving||JSON.stringify(form)!==JSON.stringify(loadedForm.current)||nutritionDirty} onSaved={referenceSaved}/>
+            <SportHeartRateReferences raw={profile?.manualPrs} revision={revision??null} timezone={user?.timezone||"UTC"} es={lang==="es"} disabled={saving||JSON.stringify(form)!==JSON.stringify(loadedForm.current)||nutritionDirty} onSaved={referenceSaved}/>
+            <details className="card"><summary className="min-h-11 cursor-pointer">{lang==="es"?"Referencias antiguas sin deporte verificado":"Legacy references · sport unverified"}</summary>
               <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2">
-                <HeartPulse className="w-5 h-5 text-coral-500" /> {lang==="es"?"Zonas de FC calculadas":"Calculated HR zones"}
+                <HeartPulse className="w-5 h-5 text-coral-500" /> {lang==="es"?"Referencia antigua de FC · deporte sin especificar":"Legacy HR reference · sport unspecified"}
                 — {lang==="es"?"FC máxima guardada":"saved max HR"} {zones?.anchorHr || "—"} bpm
               </h2>
               <p className="text-sm text-slate-600 mb-3">{lang==="es"?"Estas zonas usan la referencia guardada del perfil, no las zonas configuradas en tu reloj. La fecha y fuente de esta referencia no están verificadas aquí. Una FC máxima observada en un entrenamiento no prueba tu FC máxima fisiológica. Revisa los datos de origen antes de cambiarla.":"These ranges use your saved profile reference, not the zones configured on your watch. Its observation date and source are not verified here. A workout’s highest recorded HR does not establish physiological maximum HR. Review source records before changing the reference."} <Link href="/sport-data" className="underline">{lang==="es"?"Revisar datos por deporte":"Review sport data"}</Link></p>
@@ -535,17 +540,17 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 <p className="text-sm text-slate-400">
-                  Enter your max HR to see personalized zones.
+                  Add a dated sport-specific HR reference above.
                 </p>
               )}
               <p className="text-[11px] text-slate-400 mt-3">
-                {lang==="es"?"Plantilla de cinco zonas basada en FC máxima. Ciclismo: ajuste fijo de −6 lpm, no medición individual. Natación usa CSS/ritmo umbral. Estas zonas no están verificadas para estaciones HYROX ni sustituyen una revisión individual. Referencias y pruebas en ":"Five-zone template based on max HR. Cycling uses a fixed −6 bpm adjustment, not an individual measurement. Swimming uses CSS/threshold pace. These are not verified HYROX station zones or a substitute for individual review. References and tests in "}
+                {lang==="es"?"Los porcentajes antiguos no establecen umbrales por deporte. Añade referencias fechadas arriba; no se infiere un ajuste para ciclismo. El ritmo de natación usa su CSS. Revisa las referencias en ":"Legacy percentage ranges do not establish sport-specific thresholds. Add dated references above; no cycling offset is inferred. Swimming pace uses its separate CSS reference. Review references in "}
                 <a href="/labs" className="text-ocean-600 underline">
                   Labs &amp; Tests
                 </a>{" "}
                 to fill in your real numbers.
               </p>
-            </div>
+            </details>
           </div>
         </div>
 

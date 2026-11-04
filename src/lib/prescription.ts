@@ -1,4 +1,5 @@
 import { CYCLE_MOVEMENT_GUIDANCE, trustedCycleMovementGuidance } from "./cycle-movement-guidance";
+import { sportHeartRateTarget } from "./sport-heart-rate";
 export interface WorkoutStep {
   name: string;
   seconds: number;
@@ -309,6 +310,7 @@ export function zoneTargets(
     ftp?: number | null;
     runPaceBase?: number | null;
     units?: string | null;
+    manualPrs?:string|null;referenceAsOf?:string;referenceTimezone?:string;
   } | null,
 ) {
   const z = Math.max(1, Math.min(7, Number(zone.slice(1)) || 2));
@@ -316,8 +318,8 @@ export function zoneTargets(
   const targets: { rpe: number; hr?: string; power?: string; pace?: string } = {
     rpe: [0, 2, 3, 5, 7, 8, 9, 10][z],
   };
-  if (profile?.lthr)
-    targets.hr = `≤${Math.round(profile.lthr * [0, 0.8, 0.89, 0.94, 1, 1.05, 1.1, 1.1][z])} bpm`;
+  const heartRate=["run","bike"].includes(sport)?sportHeartRateTarget(profile?.manualPrs,sport,z,profile?.referenceAsOf?new Date(profile.referenceAsOf):new Date(),profile?.referenceTimezone??"UTC"):null;
+  if(heartRate)targets.hr=`≤${heartRate.high} bpm (${sport} · athlete-reported ${heartRate.reference.observedAt})`;
   if (sport === "bike" && profile?.ftp)
     targets.power = `≤${Math.round(profile.ftp * [0, 0.55, 0.75, 0.9, 1.05, 1.2, 1.5, 1.5][z])} W`;
   if (sport === "run" && profile?.runPaceBase) {

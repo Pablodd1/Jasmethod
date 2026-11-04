@@ -6,6 +6,8 @@
  */
 export const POWER_ZONE_UPPER_FACTORS = [0, .55, .75, .9, 1.05, 1.2, 1.5, 1.5] as const;
 export const HR_ZONE_UPPER_FACTORS = [0, .8, .89, .94, 1, 1.05, 1.1, 1.1] as const;
+/** Existing five-band maximum-HR reference model; not measured individual domains. */
+export const MAX_HR_ZONE_BANDS = [[.68,.73],[.73,.8],[.8,.87],[.87,.93],[.93,1]] as const;
 
 /** 1..7, or null when the anchor is missing/invalid or the value is not a finite number. */
 export function zoneOf(value: number | null | undefined, anchor: number | null | undefined, factors: readonly number[]): number | null {

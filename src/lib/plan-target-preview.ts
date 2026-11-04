@@ -15,7 +15,7 @@ export function planTargetPreview(input: { steps: WorkoutStep[]; sport: SessionS
   return {
     steps: steps.map(step => ({ targetLabel: step.target.label,
       speedLabel: targetSpeedLabel(step.target, profile.units === "imperial" ? "imperial" : "metric"),
-      reference: step.target.source === "profile_reference" ? profile.referenceEvidence[field] ?? null : null,
+      reference: step.target.source === "profile_reference" ? step.target.reference??profile.referenceEvidence[field]??null : null,
     })),
     mechanicalWork: plannedMechanicalWork(steps, input.sport),
   };

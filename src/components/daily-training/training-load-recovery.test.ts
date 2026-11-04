@@ -175,6 +175,10 @@ test("optional preview target projections require matching steps, source dates a
     preview:{distance:"cycle",weeks:4,startDate:"2026-10-14",weeklyBudgetMin:120,existingPlans:0,weeksPreview:Array.from({length:4},(_,index)=>({week:index+1,theme:"Foundation",totalMinutes:30,restDaySlots:[1,2,3,4,5,6],sessions:[{...session,targetPreview}]}))}});
   assert.equal(isPlanPreviewResponse(response(session.targetPreview)),true);
   assert.equal(isPlanPreviewResponse(response(undefined)),true,"Older preview fixtures can omit projections");
+  const hrReference={sport:"bike",metric:"maxHr",source:"athlete_reported_reference",observedAt:"2026-10-14",unit:"bpm",value:170};
+  const hrPreview=(reference:unknown)=>({steps:[{targetLabel:"124–136 bpm",speedLabel:null,reference}],mechanicalWork:null});
+  assert.equal(isPlanPreviewResponse(response(hrPreview(hrReference))),true,"Explicit dated sport-HR references are valid projected targets");
+  for(const patch of [{sport:null},{metric:null},{source:"applied_field_test"},{value:241},{value:170.5},{unit:"unknown"}])assert.equal(isPlanPreviewResponse(response(hrPreview({...hrReference,...patch}))),false,"HR projections cannot claim unscoped, invalid or lab-verified references");
   for(const targetPreview of [{steps:[],mechanicalWork:null}, {...session.targetPreview,mechanicalWork:{lowKj:300,highKj:200}}, {...session.targetPreview,mechanicalWork:{lowKj:-1,highKj:200}},
     ...[{source:"device_guess"},{observedAt:"2026-02-31"},{unit:"bpm"},{value:Infinity}].map(patch=>({...session.targetPreview,steps:[{...session.targetPreview.steps[0],reference:{...session.targetPreview.steps[0].reference,...patch}}]})),
     {...session.targetPreview,steps:[{targetLabel:{},speedLabel:null,reference:null}]}]) assert.equal(isPlanPreviewResponse(response(targetPreview)),false);

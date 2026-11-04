@@ -15,7 +15,7 @@ export function evidencedTargetProfile(profile: TargetProfile | null | undefined
     if(manual&&(!test||manual.observedAt>dateKey(test.date,timezone)))referenceEvidence[field]={source:manual.source,observedAt:manual.observedAt,unit:manual.unit,value:manual.value};
     else if(test)referenceEvidence[field]={source:type==="run5k"?"estimated_from_applied_5k":"applied_field_test",observedAt:test.date.toISOString(),unit,value:profile![field]!};
   }
-  return { ...profile,referenceEvidence,
+  return { ...profile,referenceEvidence,referenceAsOf:now.toISOString(),referenceTimezone:timezone,
     ftp: (matches("ftp", profile?.ftp) || reportedAnchor(profile as any,"ftp",now,timezone)) ? profile?.ftp : null,
     // LTHR test records have no sport context. Do not assume run and bike match.
     lthr: null,

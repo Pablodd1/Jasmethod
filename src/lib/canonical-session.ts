@@ -2,6 +2,7 @@ import { environmentRevisionContext, type DailyEnvironmentAssessment } from "./d
 // Server-side canonical workout boundary. Consumers must not infer steps from prose.
 import { createHash } from "node:crypto";
 import { sessionPurposeTitle, sportConsistentTitle } from './session-purpose-title';
+import { sportHeartRateTarget } from "./sport-heart-rate";
 import { HR_ZONE_UPPER_FACTORS, POWER_ZONE_UPPER_FACTORS, SWIM_ZONE_MULT } from "./zone-factors";
 export { HR_ZONE_UPPER_FACTORS, POWER_ZONE_UPPER_FACTORS } from "./zone-factors";
 import type { WorkoutStep } from "./prescription";
@@ -18,6 +19,8 @@ export interface TargetProfile {
   weightKg?: number | null; sweatRateMlH?: number | null; sodiumMgPerL?: number | null; gutTrained?: boolean | null;
   nutritionContext?: string | null;
   manualPrs?:string|null; referenceEvidence?:Record<string,{source:string;observedAt:string;unit:string;value:number}>;
+  /** Internal projection date; server evidence builder sets this for future sessions. */
+  referenceAsOf?:string;referenceTimezone?:string;
   goal?: string | null; experience?: string | null; weeklyHours?: number | null; birthYear?: number | null;
 }
 export interface ResolvedTarget {
@@ -111,12 +114,11 @@ export function resolveStepTarget(step: Pick<WorkoutStep, "zone" | "target">, sp
     const pace = positive(profile.runPaceBase, 3600, "running pace anchor") * [0, 1.4, 1.2, 1.08, 1, .95, .9, .85][z];
     return { type: "pace", low: pace, high: pace, source: "profile_reference", label: label("pace", pace, pace) };
   }
-  if (profile?.lthr != null) {
-    if (z === 7) return { type: "open", source: "effort", label: `Open effort · RPE ${rpe}/10`, missingReason: "This zone needs an explicit coach-reviewed target; LTHR does not define its upper bound." };
-    const high = Math.round(positive(profile.lthr, 240, "LTHR anchor") * HR_ZONE_UPPER_FACTORS[z]);
+  const heartRate=sportHeartRateTarget(profile?.manualPrs,sport,z,profile?.referenceAsOf?new Date(profile.referenceAsOf):new Date(),profile?.referenceTimezone??"UTC");
+  if (heartRate) {
+    const {low,high,reference}=heartRate;
     if (high > 250) fail("Resolved heart-rate target exceeds the supported range.");
-    const low = z === 1 ? 1 : Math.min(high, Math.round(profile.lthr * HR_ZONE_UPPER_FACTORS[z - 1]) + 1);
-    return { type: "heartRate", low, high, source: "profile_reference", label: `${z === 1 ? `≤${high} bpm` : label("heartRate", low, high)} (LTHR plan reference)` };
+    return {type:"heartRate",low,high,source:"profile_reference",reference,label:`${label("heartRate",low,high)} (${sport} ${reference.metric==="lthr"?"threshold":"maximum"} HR · athlete-reported ${reference.observedAt})`};
   }
   return { type: "open", source: "effort", label: `Open effort · RPE ${rpe}/10`, missingReason: sport === "bike" ? "No validated, dated FTP or sport-specific LTHR benchmark is available." : "No validated, dated running pace or sport-specific LTHR benchmark is available." };
 }
@@ -283,7 +285,7 @@ export function canonicalSession(input: CanonicalSessionInput): CanonicalSession
   if (verdict === "blocked" && typeof w.originalPlan === "string") {
     try { const original = JSON.parse(w.originalPlan); if (obj(original) && typeof original.title === "string" && original.title.trim()) displayTitle = original.title; } catch { /* Keep the current saved title. */ }
   }
-  steps=steps.map(step=>{const sportKey=step.componentSport??sport;const field=sportKey==="bike"?"ftp":sportKey==="swim"?"swimPaceBase":"runPaceBase";const reference=profile?.referenceEvidence?.[field];return step.target.source==="profile_reference"&&reference?{...step,target:{...step.target,reference}}:step;});
+  steps=steps.map(step=>{if(step.target.reference)return step;const sportKey=step.componentSport??sport;const field=sportKey==="bike"?"ftp":sportKey==="swim"?"swimPaceBase":"runPaceBase";const reference=profile?.referenceEvidence?.[field];return step.target.source==="profile_reference"&&reference?{...step,target:{...step.target,reference}}:step;});
   const core = { schemaVersion: SESSION_SCHEMA_VERSION as 2, id: String(w.id || ""), athleteId: input.athleteId, dateLocal: input.dateLocal, timezone: input.timezone, title: sessionPurposeTitle(sportConsistentTitle(displayTitle, sport), steps), sport, durationMin: verdict === "ready" ? (p?.durationMin ?? w.durationMin) : 0, verdict, ...(verdict==="blocked"?{reviewRequirement:input.safety?.status==="clear"?"session_structure" as const:"current_review" as const}:{}), reason, steps, exactTimeSeconds: steps.length && steps.every(s => s.endpoint.type === "time") ? steps.reduce((sum, s) => sum + (s.endpoint.type === "time" ? s.endpoint.seconds : 0), 0) : null, capability: exportCapability(sport, steps, verdict, sportStructure, components), ...(sportStructure ? { sportStructure } : {}), ...(components ? { components } : {}) };
   const revision = createHash("sha256").update(JSON.stringify({ core, environment: input.environment ? environmentRevisionContext(input.environment) : null, source: [w.prescription, w.originalPlan, w.intensity, w.notes, w.startTime], actuals: [w.feedbackStatus, w.feedbackAt, w.feedbackNote, w.actualDurationMin, w.actualSport, w.actualDetails, w.rpe, w.completed, w.distanceKm, w.avgHr, w.avgPower, w.calories, w.preWeightKg, w.postWeightKg], profile: [profile?.ftp, profile?.lthr, profile?.runPaceBase, profile?.swimPaceBase, profile?.intensityPct, profile?.injured, profile?.units, profile?.weightKg, profile?.sweatRateMlH, profile?.sodiumMgPerL, profile?.gutTrained, profile?.nutritionContext], safety, context: input.revisionContext })).digest("hex");
   return { ...core, ...(input.environment ? { environment: input.environment } : {}), revision, revisionNumber: parseInt(revision.slice(0, 12), 16) };
