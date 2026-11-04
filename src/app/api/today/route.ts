@@ -129,7 +129,6 @@ export async function GET(req: Request) {
         durationMin: p.durationMin,
         intensity: p.intensity || undefined,
         ftp: targetProfile?.ftp || undefined,
-        lthr: targetProfile?.lthr || undefined,
       });
       const ifFactor = estimateIf(p.intensity || "z2", tss, p.durationMin);
       const distanceSteps = canonical.steps.filter(step => step.endpoint.type === "distance");

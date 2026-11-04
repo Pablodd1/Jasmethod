@@ -2,8 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { stepGuide, sessionEnergy, actualSessionKj, compareSessions, kcalToKj } from "./workout-energy";
 import { buildAthleteModel } from "./athlete-model";
+import { recordSportHeartRate } from "./sport-heart-rate";
 
-const full = { ftp: 250, lthr: 165, runPaceBase: 270, swimPaceBase: 100, weightKg: 70 };
+const observedOn=new Date().toISOString().slice(0,10);
+const manualPrs=recordSportHeartRate(recordSportHeartRate(null,{sport:"bike",metric:"lthr",value:165,observedOn},observedOn),{sport:"run",metric:"lthr",value:165,observedOn},observedOn);
+const full = { ftp: 250, lthr: 165, runPaceBase: 270, swimPaceBase: 100, weightKg: 70,manualPrs };
 
 test("every step shows every unit the athlete may use; absolute numbers only with a reference", () => {
   const bike = stepGuide({ seconds: 600, zone: "z4" }, "bike", full);
@@ -13,10 +16,19 @@ test("every step shows every unit the athlete may use; absolute numbers only wit
   const run = stepGuide({ seconds: 600, zone: "z4" }, "run", full);
   assert.match(run.text, /\/km/); assert.match(run.text, /run CP/); assert.match(run.text, /bpm/);
   const swim = stepGuide({ seconds: 115, zone: "z4" }, "swim", full);
-  assert.match(swim.text, /\/100 m/); assert.match(swim.text, /CSS/); assert.match(swim.text, /~10 bpm lower/);
+  assert.match(swim.text, /\/100 m/); assert.match(swim.text, /CSS/); assert.equal(swim.hr,null);assert.match(swim.hrPct,/unavailable/);assert.doesNotMatch(swim.text,/10 bpm lower|LTHR/);
   const hyrox = stepGuide({ seconds: 240, zone: "z4" }, "hyrox", {});
-  assert.match(hyrox.text, /Z4 · RPE 7/); assert.match(hyrox.text, /% LTHR/); assert.doesNotMatch(hyrox.text, /\d+ bpm/, "no invented absolute HR");
+  assert.match(hyrox.text, /Z4 · RPE 7/); assert.match(hyrox.text, /HR reference unavailable/); assert.doesNotMatch(hyrox.text, /\d+ bpm|% LTHR/, "no invented absolute HR or threshold reference");
   assert.match(stepGuide({ seconds: 60, zone: "z5" }, "bike", {}, true).text, /muy duro|duro/);
+});
+test("step guides use only matching dated run/bike HR and name maximum versus threshold percentages",()=>{
+  for(const sport of ["run","bike","swim","strength","brick","hyrox"]){const guide=stepGuide({seconds:60,zone:"z2"},sport,{lthr:170});assert.equal(guide.hr,null);assert.match(guide.hrPct,/unavailable/);}
+  const runMax=recordSportHeartRate(null,{sport:"run",metric:"maxHr",value:180,observedOn},observedOn);
+  const maxGuide=stepGuide({seconds:60,zone:"z2"},"run",{manualPrs:runMax});assert.match(maxGuide.hr!,/131–144 bpm/);assert.equal(maxGuide.hrPct,"73–80% maximum HR");assert.equal(maxGuide.hrReference?.source,"athlete_reported_reference");assert.equal(maxGuide.hrReference?.observedAt,observedOn);
+  const thresholdGuide=stepGuide({seconds:60,zone:"z2"},"run",full);assert.equal(thresholdGuide.hrPct,"80–89% LTHR");assert.match(thresholdGuide.hr!,/133–147 bpm/);
+  const bike=stepGuide({seconds:60,zone:"z2"},"bike",{manualPrs:runMax});assert.equal(bike.hr,null);
+  const stale=stepGuide({seconds:60,zone:"z2"},"run",{manualPrs:runMax,referenceAsOf:new Date(Date.now()+91*86400000).toISOString()});assert.equal(stale.hr,null);
+  const spanish=stepGuide({seconds:60,zone:"z2"},"run",{manualPrs:runMax},true);assert.equal(spanish.hrPct,"73–80% FC máxima");assert.match(spanish.hr!,/declarado por el atleta/);
 });
 
 test("mechanical bike work and estimated metabolic energy remain distinct; unknown when neither", () => {

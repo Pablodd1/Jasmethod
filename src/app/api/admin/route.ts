@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { canCoach, ApiError, errorResponse } from "@/lib/access";
 import { estimateTss } from "@/lib/fitness";
+import { readSportHeartRate, type SportHrSport } from "@/lib/sport-heart-rate";
 
 export async function GET(req: Request) {
   try {
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
           email: true,
           role: true,
           avatar: true,
+          timezone:true,
           profile: true,
           connectors: {
             select: {
@@ -73,6 +75,7 @@ export async function GET(req: Request) {
             select: {
               durationMin: true,
               actualDurationMin: true,
+              sport:true,actualSport:true,
               avgPower: true,
               np: true,
               avgHr: true,
@@ -119,8 +122,8 @@ export async function GET(req: Request) {
                 ...w,
                 durationMin: w.actualDurationMin ?? w.durationMin,
                 avgPower: w.np ?? w.avgPower,
-                ftp: u.profile?.ftp,
-                lthr: u.profile?.lthr,
+                ftp:(w.actualSport??w.sport)==="bike"?u.profile?.ftp:null,
+                lthr:["run","bike"].includes(w.actualSport??w.sport)?readSportHeartRate(u.profile?.manualPrs,(w.actualSport??w.sport) as SportHrSport,"lthr",w.date,u.timezone)?.value??null:null,
               }),
             0,
           ),

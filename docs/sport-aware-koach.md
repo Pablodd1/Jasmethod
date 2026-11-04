@@ -28,6 +28,10 @@ define swimming technique or station prescriptions.
 The fixed cycling-minus-six-beats calculation and automatic HR-ratio VO2 estimate
 are removed. Legacy shared references are labelled and collapsed in settings.
 Activity peaks and demographic estimates cannot become physiological maxima.
+Workout step guides distinguish maximum-HR and threshold-HR percentages. Active
+activity analysis and load summaries resolve a matching threshold at the activity
+date; a later report cannot validate an earlier session. The existing provenance
+guard runs before restricted activity analysis. Swimming has no fixed HR offset.
 
 J Metrics distinguishes visible source records from calculable load. A source
 policy block shows unavailable coverage, not zero fitness or zero RPE completion.

@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import test, { before, beforeEach } from "node:test";
 import Module from "node:module";
 import { Encoder, Profile } from "@garmin/fitsdk";
+import { recordSportHeartRate } from "./sport-heart-rate";
 
 type Row = Record<string, any>;
 const M = Module as any;
@@ -167,6 +168,18 @@ test("isolation: athlete B cannot list, analyse or delete athlete A's data; A's 
   asUser(A);
   assert.deepEqual((await json(await streamsGet(get("/api/activity-streams")))).body.workoutIds, [id]);
   assert.equal((await json(await analysisGet(get(`/api/activity-analysis?workoutId=${id}`)))).body.ok, true);
+});
+test("real activity-analysis HR uses the matching sport reference valid on the activity date, preserving source and date",async()=>{
+  asUser(A);const id=(await json(await importPost(upload("garmin",rideTcx(),{consent:true})))).body.streams.workoutIds[0];
+  const activityDate=new Date(T0).toISOString().slice(0,10),futureDate=new Date(T0+86400000).toISOString().slice(0,10);
+  const read=async()=>(await json(await analysisGet(get(`/api/activity-analysis?workoutId=${id}`)))).body;
+  tables.athleteProfile[0].lthr=180;
+  tables.athleteProfile[0].manualPrs=recordSportHeartRate(null,{sport:"run",metric:"lthr",value:160,observedOn:activityDate},futureDate);
+  assert.equal((await read()).hr.secondsInZone,null,"Running threshold cannot describe cycling");
+  tables.athleteProfile[0].manualPrs=recordSportHeartRate(null,{sport:"bike",metric:"lthr",value:160,observedOn:activityDate},futureDate);
+  const eligible=await read();assert.ok(Array.isArray(eligible.hr.secondsInZone));assert.equal(eligible.anchors.heartRate.source,"athlete_reported_reference");assert.equal(eligible.anchors.heartRate.observedAt,activityDate);
+  tables.athleteProfile[0].manualPrs=recordSportHeartRate(null,{sport:"bike",metric:"lthr",value:160,observedOn:futureDate},futureDate);
+  assert.equal((await read()).hr.secondsInZone,null,"Later reference never validates prior activity");
 });
 
 test("B's own upload lands only in B's records (two consenting athletes, no cross-visibility)", async () => {
