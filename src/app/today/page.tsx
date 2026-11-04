@@ -10,8 +10,6 @@ import { DailyReadinessPath, hasCurrentHealthReadings } from "@/components/daily
 import { readTrainingJson, TrainingReadError, isTodayTrainingResponse, todayOfflineSnapshot } from "@/components/daily-training/training-read";
 import { UniversalWorkoutCardLoader } from "@/components/daily-training/UniversalWorkoutCard";
 import { JMetricsCard } from "@/components/j-metrics-card";
-import { CoachingConversation } from "@/components/coaching-conversation";
-import { CoachConversation } from "@/components/daily-training/coach-conversation";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -921,17 +919,9 @@ function TodayPageContent() {
           </div>
         )}
         {user && data && <JMetricsCard key={`metrics-${user.id}`} es={es} refreshKey={data} />}
-        {user && <CoachConversation
-          key={`coach-${user.id}`}
-          athleteId={user.id}
-          es={es}
-          offline={offline}
-          sessions={(data?.sessions || []).map((item: { id: string; title: string; sport: string }) => ({ id: item.id, title: item.title, sport: item.sport, date: data.date }))}
-          onConfirmed={load}
-        />}
+
       </div>
     {data?.motivation && <section className="card"><h2 className="font-bold">Your daily coaching cue</h2><p className="text-lg mt-2">{data.motivation.quote}</p><p className="text-sm mt-2">{data.motivation.message}</p><p className="text-xs text-slate-500 mt-2">{data.motivation.source}</p></section>}
-      <CoachingConversation />
       </ProtectedPage>
   );
 }

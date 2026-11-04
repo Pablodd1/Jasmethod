@@ -840,3 +840,58 @@ test("consented concept elaboration exports only a fixed topic and language, nev
     assert.equal(result.externalStatus,"answered");assert.equal(calls,1);assert.deepEqual(f.state.writes,[]);
   } finally {globalThis.fetch=originalFetch;for(const [key,value] of Object.entries(prior)){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
 });
+
+import { isProtectedProfileAnswer } from "./coach-profile-reference";
+import { manualDialogueHistory } from "./coach-dialogue-provider";
+
+test("personal physiology questions return ephemeral owner-profile references without external calls or fact retention",async()=>{
+  const f=fixture([]),originalFetch=globalThis.fetch,prior=Object.fromEntries(["EXTERNAL_AI_ENABLED","OPENAI_API_KEY","OPENAI_TEXT_MODEL"].map(key=>[key,process.env[key]]));let calls=0;
+  Object.assign(process.env,{EXTERNAL_AI_ENABLED:"true",OPENAI_API_KEY:"synthetic-only",OPENAI_TEXT_MODEL:"gpt-4.1-mini-2025-04-14"});
+  Object.assign(f.state.profile,{maxHr:187,lthr:166,restingHr:53,ftp:253.75,runPaceBase:303.125,swimPaceBase:98.75,manualPrs:JSON.stringify([{label:"JMM manual run maxHr reference",value:186,unit:"bpm",date:today}]),privateNote:"PRIVATE_PROFILE_CANARY_66592"});
+  const initial=JSON.stringify(f.state.profile),consent={manualDialogueConsent:true,messageOrigin:"athlete_authored",externalConsent:true,textProviderConsent:"openai"};
+  globalThis.fetch=async(_url,init)=>{calls++;const body=String(init?.body);assert.doesNotMatch(body,/187 bpm|186 bpm|PRIVATE_PROFILE_CANARY|JMM manual run maxHr|protectedProfileAnswer/);return Response.json({choices:[{finish_reason:"stop",message:{role:"assistant",content:JSON.stringify({answer:"We can discuss consistency and motivation. What matters to you?",action:"none"})}}]});};
+  try {
+    const shared=await appendConversation(actor,{message:"What is my maximum HR?",clientRequestId:"protected-hr-shared",...consent});
+    assert.equal(shared.externalStatus,"policy_local");assert.equal(isProtectedProfileAnswer(shared.protectedProfileAnswer),true);assert.equal(shared.protectedProfileAnswer!.fields[0].value,187);assert.equal(shared.protectedProfileAnswer!.fields[0].sport,"unscoped");assert.equal(shared.protectedProfileAnswer!.fields[0].observedAt,null);assert.equal(calls,0);
+    assert.doesNotMatch(shared.answer,/no reliable answer|rest day/i);assert.doesNotMatch(shared.answer,/187|186/);
+    const scoped=await appendConversation(actor,{message:"running",clientRequestId:"protected-hr-run",...consent});
+    assert.equal(scoped.protectedProfileAnswer!.fields[0].sport,"run");assert.equal(scoped.protectedProfileAnswer!.fields[0].value,186);assert.equal(scoped.protectedProfileAnswer!.fields[0].observedAt,today);assert.equal(calls,0);
+    assert.equal(manualDialogueHistory(f.state.messages,0).length,0,"Protected queries and generic local receipts do not join external dialogue history");
+    const storedText=f.state.messages.map((row:any)=>row.content).join("\n");assert.doesNotMatch(storedText,/187|186|PRIVATE_PROFILE_CANARY/);
+    for(const row of f.state.messages){const metadata=JSON.parse(row.metadata||"{}");assert.equal(metadata.protectedProfileAnswer,undefined);assert.equal(metadata.manualDialoguePolicy,undefined);assert.equal(JSON.stringify(metadata).includes("PRIVATE_PROFILE_CANARY"),false);}
+    await appendConversation(actor,{message:"Help me with motivation",clientRequestId:"after-protected-hr",...consent});assert.equal(calls,1);
+    assert.equal(JSON.stringify(f.state.profile),initial);assert.deepEqual(f.state.writes,[]);
+  } finally {globalThis.fetch=originalFetch;for(const [key,value] of Object.entries(prior)){if(value===undefined)delete process.env[key];else process.env[key]=value;}f.restore();}
+});
+
+test("missing or foreign profile physiology stays unknown and never becomes an age formula or cross-sport result",async()=>{
+  const f=fixture([]);
+  try {
+    Object.assign(f.state.profile,{birthYear:1981,maxHr:190});
+    const missingSport=await appendConversation(actor,{message:"What is my cycling maximum heart rate?",clientRequestId:"missing-bike-hr"});
+    assert.equal(missingSport.protectedProfileAnswer!.fields[0].value,null);assert.equal(missingSport.protectedProfileAnswer!.fields[0].display,"—");assert.equal(missingSport.protectedProfileAnswer!.fields[0].sport,"bike");
+    await assert.rejects(appendConversation(actor,{athleteId:"another-athlete",message:"What is my maximum HR?",clientRequestId:"foreign-hr-body"}),(error:unknown)=>error instanceof ApiError&&error.status===403);
+    f.state.profile.userId="another-athlete";
+    const noOwner=await appendConversation(actor,{message:"What is my maximum HR?",clientRequestId:"owner-profile-absent"});assert.equal(noOwner.protectedProfileAnswer!.fields[0].value,null);assert.doesNotMatch(noOwner.answer,/190/);assert.deepEqual(f.state.writes,[]);
+  } finally {f.restore();}
+});
+
+test("profile-reference replays refresh only the current protected request and never resurrect a cleared result",async()=>{
+  const f=fixture([]);f.state.profile.maxHr=187;
+  try {
+    const request={message:"What is my maximum HR?",clientRequestId:"replay-private-reference",externalConsent:false};
+    const first=await appendConversation(actor,request),count=f.state.messages.length;f.state.profile.maxHr=188;
+    const replay=await appendConversation(actor,request);assert.equal(replay.replayed,true);assert.equal(replay.protectedProfileAnswer!.fields[0].value,188);assert.equal(replay.protectedProfileAnswer!.sourceMessageId,first.protectedProfileAnswer!.sourceMessageId);assert.equal(f.state.messages.length,count);
+    await clearConversation(actor,{confirmed:true});const cleared=await appendConversation(actor,request);assert.equal(cleared.protectedProfileAnswer,null);assert.equal(cleared.conversation.messages.length,0);assert.deepEqual(f.state.writes,[]);
+  }finally{f.restore();}
+});
+
+test("urgent symptoms override reference cards; profile/image requests do not send images externally",async()=>{
+  const f=fixture([]),originalFetch=globalThis.fetch;let calls=0;f.state.profile.maxHr=187;globalThis.fetch=async()=>{calls++;throw Error("No provider call authorized");};
+  try {
+    const urgent=await appendConversation(actor,{message:"What is my maximum HR? I have chest pain now.",clientRequestId:"profile-urgent",manualDialogueConsent:true,messageOrigin:"athlete_authored",externalConsent:true,textProviderConsent:"openai"});
+    assert.match(urgent.answer,/Stop exercise/);assert.equal(urgent.protectedProfileAnswer,null);assert.equal(calls,0);
+    await assert.rejects(appendConversation(actor,{message:"What is my FTP?",clientRequestId:"profile-image-denied",externalConsent:true,textProviderConsent:"openai",imageConsent:true,imageProviderConsent:"openai",imageSource:"manual_note",image:{mimeType:"image/png",dataBase64:Buffer.from("synthetic-image-envelope").toString("base64")}}),(error:unknown)=>error instanceof ApiError&&error.status===422);
+    assert.equal(calls,0);assert.deepEqual(f.state.writes,[]);
+  }finally{globalThis.fetch=originalFetch;f.restore();}
+});

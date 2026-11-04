@@ -1,4 +1,5 @@
 import { coachEducationTopic, wantsCoachDetail } from "./coach-conversation-education";
+import { profileReferenceQuery, profileReferenceFollowup, profileReferenceSportReply, protectedProfileAnswer, savedProfileReferenceQuery } from "./coach-profile-reference";
 import { coachDialogueAnswer, manualDialogueAllowed, manualDialogueHistory, MANUAL_DIALOGUE_POLICY } from "./coach-dialogue-provider";
 import { AI_DATA_POLICY_VERSION, historySafeLocalReply } from "./ai-data-policy";
 import {ACTIVITY_EVIDENCE_SELECT} from "./activity-evidence";
@@ -226,7 +227,18 @@ export async function appendConversation(actor: ConversationActor, raw: unknown)
     }, { isolationLevel: "Serializable" });
   } catch (error) { transactionError(error); }
   if (claim.replayed) {
-    const history = await prisma.$transaction(tx => readConversation(actor, tx), { isolationLevel: "Serializable" });
+    const history = await prisma.$transaction(async tx => {
+      const current=await readConversation(actor,tx);
+      const latestUser=current.conversation.messages.filter(message=>message.role==="user").at(-1);
+      // Re-read an ephemeral card only for the still-current original request.
+      // A clear or later turn never resurrects a previous protected result.
+      if(latestUser?.clientRequestId!==clientRequestId)return {...current,protectedProfileAnswer:null};
+      const latest=await tx.coachConversationMessage.findFirst({where:{userId:actor.id,conversationId:current.conversation.id!,role:"assistant"},orderBy:[{createdAt:"desc"},{id:"desc"}],select:{source:true,metadata:true}});
+      const query=savedProfileReferenceQuery(latest);
+      if(!query)return {...current,protectedProfileAnswer:null};
+      const profile=await tx.athleteProfile.findUnique({where:{userId:actor.id}});
+      return {...current,protectedProfileAnswer:protectedProfileAnswer(query,profile,{sourceMessageId:latestUser.id,language:actor.language,now:new Date(),timezone:actor.timezone})};
+    }, { isolationLevel: "Serializable" });
     const lastAnswer = [...history.conversation.messages].reverse().find(message => message.role === "assistant");
     return { ...history, capabilities: coachCapabilities(), ok: true, replayed: true, mode: lastAnswer?.source === "openai" ? "coach_ai" : "coach_local", answer: lastAnswer?.content ?? "", trainingModified: false, externalStatus: "not_requested", imageStatus: "not_requested" };
   }
@@ -248,6 +260,8 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
   if (body.athleteId !== undefined && body.athleteId !== actor.id) throw new ApiError("Private assistant conversations are only available to their owner", 403);
   const input = parseAssistantInput(body);
   const manualDialogue = manualDialogueAllowed(input, input.message);
+  const initialProfileQuery = profileReferenceQuery(input.message);
+  if (input.image && initialProfileQuery) throw new ApiError("Saved profile references are reviewed locally. Remove the image to ask this profile question, or review the image in a separate request.", 422);
   const sessionId = guard.sessionId;
   const today = dayBounds(actor.timezone);
   // Most chat turns do not need a 90-day load series. Keep today's performed
@@ -288,8 +302,9 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           where: { userId: actor.id, date: { gte: new Date(`${today.key}T00:00:00Z`) } },
           orderBy: [{ priority: "asc" }, { date: "asc" }], select: { name: true, date: true, distance: true },
         }) : Promise.resolve(null),
-        wantsCoachDetail(input.message) ? tx.coachConversationMessage.findFirst({where:{userId:actor.id,conversationId:conversation.id,role:"assistant"},orderBy:[{createdAt:"desc"},{id:"desc"}],select:{source:true,metadata:true}}) : Promise.resolve(null),
+        wantsCoachDetail(input.message) || profileReferenceSportReply(input.message) ? tx.coachConversationMessage.findFirst({where:{userId:actor.id,conversationId:conversation.id,role:"assistant"},orderBy:[{createdAt:"desc"},{id:"desc"}],select:{source:true,metadata:true}}) : Promise.resolve(null),
       ]);
+      const profileQuery = initialProfileQuery ?? profileReferenceFollowup(input.message, previousEducation);
       if (sessionId && !selected) throw new ApiError("Session not found", 404);
       if (selected && guard.sessionRevision !== workoutRevision(selected)) throw new ApiError("The selected session changed while this message was processing. Review it before sending again.", 409);
       const sessionDate = selected ? dateKey(selected.date, actor.timezone) : undefined;
@@ -343,29 +358,29 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const safetyReply=buildCoachReply(input.message,context);
       const safetyHeld=SAFETY_RULES.some(rule=>safetyReply.ruleId===`coach-conversation-v1:${rule}`);
       const localRecordQuestion=/^coach-conversation-v1:(?:saved-training-navigation|remember-confirmed-|remember-reported-|missing-reported-)/.test(safetyReply.ruleId);
-      const reply = safetyHeld ? safetyReply : localRecordQuestion||contextNeeds.overview||contextNeeds.history!=="none"||contextNeeds.load
+      const reply = safetyHeld ? safetyReply : profileQuery ? {answer: actor.language === "es" ? "Consulté tus referencias guardadas. El resultado protegido corresponde a esta solicitud; pregunta de nuevo para actualizarlo. No se modificó ningún dato." : "I checked your saved references. The protected result belongs to this request; ask again to refresh it. No values were changed.",ruleId:"coach-conversation-v1:profile-reference-review",sourceIds:[]} : localRecordQuestion||contextNeeds.overview||contextNeeds.history!=="none"||contextNeeds.load
         ? {answer:historySafeLocalReply("",actor.language,true),ruleId:"coach-conversation-v1:local-data-review",sourceIds:[]}
         : buildCoachReply(input.message, chatContext);
       const suggestedActions: PendingAction[] = SAFETY_RULES.some(rule => reply.ruleId === `coach-conversation-v1:${rule}`) ? ["review_checkin"] : [];
       const clarifications = reply.ruleId === "coach-conversation-v1:clarify-data" ? [] : conversationClarifications(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate });
       const answer = [reply.answer, candidates.length ? actor.language === "es" ? "¿Quieres aplicar estos cambios? Revisa los valores abajo y confirma solo los correctos. Aún no se ha guardado nada." : "Apply these changes? Review the values below and confirm only those that are correct. Nothing has been saved yet." : "", ...clarifications, ...(image?.warnings ?? [])].filter(Boolean).join("\n\n");
       const userMessage = await tx.coachConversationMessage.create({ data: { conversationId: conversation.id, userId: actor.id, role: "user", content: input.message || "Image attached for review", source: input.image ? "image" : input.source,
-        metadata: JSON.stringify({ clientRequestId: typeof body.clientRequestId === "string" ? body.clientRequestId : null, localDate: today.key, timezone: actor.timezone, sessionId: sessionId ?? null, externalConsent: input.externalConsent, textProviderConsent: input.textProviderConsent ?? null, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent ?? null, imageStatus: image?.status ?? null,imageSource: input.imageSource??null, ...(manualDialogue ? {manualDialoguePolicy:MANUAL_DIALOGUE_POLICY,manualDialogueGeneration:conversation.generation,manualDialogueConsent:true,messageOrigin:"athlete_authored"} : {}) }) } });
+        metadata: JSON.stringify({ clientRequestId: typeof body.clientRequestId === "string" ? body.clientRequestId : null, localDate: today.key, timezone: actor.timezone, sessionId: sessionId ?? null, externalConsent: input.externalConsent, textProviderConsent: input.textProviderConsent ?? null, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent ?? null, imageStatus: image?.status ?? null,imageSource: input.imageSource??null, ...(manualDialogue && !profileQuery ? {manualDialoguePolicy:MANUAL_DIALOGUE_POLICY,manualDialogueGeneration:conversation.generation,manualDialogueConsent:true,messageOrigin:"athlete_authored"} : {}) }) } });
       if (candidates.length) {
         await tx.coachConversationProposal.updateMany({ where: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation, status: "pending" }, data: { status: "superseded", revision: { increment: 1 } } });
         await tx.coachConversationProposal.create({ data: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation, sourceMessageId: userMessage.id, timezone: actor.timezone,
           candidates: JSON.stringify(candidates), baseRevisions: JSON.stringify({ profile: profileRevision(profile), beforeProfile: profileBeforeValues(profile, candidates), workouts: selected ? { [selected.id]: { revision: workoutRevision(selected), date: sessionDate } } : {} }) } });
       }
-      const replyMetadata = { historyPolicy:AI_DATA_POLICY_VERSION, ruleId: reply.ruleId, sourceIds: reply.sourceIds ?? [],needsHumanReview:suggestedActions.length>0||reply.ruleId==='coach-conversation-v1:ask-next-detail', requiresCheckinReview: unreviewedCurrentCheckin, pendingActions: suggestedActions, imageStatus: image?.status ?? null };
+      const replyMetadata = { historyPolicy:AI_DATA_POLICY_VERSION, ruleId: reply.ruleId, sourceIds: reply.sourceIds ?? [],needsHumanReview:suggestedActions.length>0||reply.ruleId==='coach-conversation-v1:ask-next-detail', requiresCheckinReview: unreviewedCurrentCheckin, pendingActions: suggestedActions, imageStatus: image?.status ?? null, ...(profileQuery && !safetyHeld ? {protectedProfileQuery:profileQuery} : {}) };
       const assistantMessage = await tx.coachConversationMessage.create({ data: { conversationId: conversation.id, userId: actor.id, role: "assistant", content: answer, source: "local", metadata: JSON.stringify(replyMetadata) } });
-      const dialogueRows = manualDialogue ? await tx.coachConversationMessage.findMany({ where: { userId: actor.id, conversationId: conversation.id, id: { not: userMessage.id } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 60, select: { role: true, content: true, metadata: true } }) : [];
+      const dialogueRows = manualDialogue && !profileQuery ? await tx.coachConversationMessage.findMany({ where: { userId: actor.id, conversationId: conversation.id, id: { not: userMessage.id } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 60, select: { role: true, content: true, metadata: true } }) : [];
       const dialogueHistory = manualDialogueHistory([...dialogueRows].reverse(), conversation.generation);
-      return { ok: true, answer, mode: "coach_local", trainingModified: false, externalStatus: input.externalConsent ? "not_configured" : "not_requested", imageStatus: image?.status ?? "not_requested", capabilities: coachCapabilities(), ...await readConversation(actor, tx), _replyMetadata:replyMetadata, _dialogueHistory:dialogueHistory, _context: context, _guard: { conversationId: conversation.id, revision: conversation.revision, generation: conversation.generation, messageId: assistantMessage.id,sourceMessageId:userMessage.id,baseRevisions:{profile:profileRevision(profile),beforeProfile:profileBeforeValues(profile),workouts:selected?{[selected.id]:{revision:workoutRevision(selected),date:sessionDate}}:{}} }, _ruleId: reply.ruleId, _hasCandidates: candidates.length > 0 };
+      return { ok: true, answer, mode: "coach_local", trainingModified: false, externalStatus: input.externalConsent ? "not_configured" : "not_requested", imageStatus: image?.status ?? "not_requested", capabilities: coachCapabilities(), ...await readConversation(actor, tx), protectedProfileAnswer:profileQuery && !safetyHeld ? protectedProfileAnswer(profileQuery,profile,{sourceMessageId:userMessage.id,language:actor.language,now:new Date(),timezone:actor.timezone}) : null, _protectedProfileRequest:!!profileQuery, _replyMetadata:replyMetadata, _dialogueHistory:dialogueHistory, _context: context, _guard: { conversationId: conversation.id, revision: conversation.revision, generation: conversation.generation, messageId: assistantMessage.id,sourceMessageId:userMessage.id,baseRevisions:{profile:profileRevision(profile),beforeProfile:profileBeforeValues(profile),workouts:selected?{[selected.id]:{revision:workoutRevision(selected),date:sessionDate}}:{}} }, _ruleId: reply.ruleId, _hasCandidates: candidates.length > 0 };
     }, { isolationLevel: "Serializable", timeout: 20000 });
-    const { _replyMetadata, _dialogueHistory, _context, _guard, _ruleId, _hasCandidates, ...result } = local;
+    const { _replyMetadata, _dialogueHistory, _context, _guard, _ruleId, _hasCandidates, _protectedProfileRequest, ...result } = local;
     // Network work never runs inside a database transaction. A concurrent clear,
     // confirmation or new message prevents late provider output replacing state.
-    const provider = input.manualDialogueConsent === true && !manualDialogue ? {status:"policy_local" as const} : manualDialogue && _ruleId !== "coach-conversation-v1:urgent-symptoms" && _ruleId !== "coach-conversation-v1:unreviewed-image-urgent"
+    const provider = _protectedProfileRequest ? {status:input.externalConsent ? "policy_local" as const : "not_requested" as const} : input.manualDialogueConsent === true && !manualDialogue ? {status:"policy_local" as const} : manualDialogue && _ruleId !== "coach-conversation-v1:urgent-symptoms" && _ruleId !== "coach-conversation-v1:unreviewed-image-urgent"
       ? await coachDialogueAnswer({ message: input.message, language: actor.language || "en", units: result.displayUnits, externalConsent: input.externalConsent, textProviderConsent: input.textProviderConsent, manualDialogueConsent: input.manualDialogueConsent, messageOrigin: input.messageOrigin, history: _dialogueHistory })
       : await coachTextAnswer({ message: input.message, localRuleId: _ruleId, context: _context, externalConsent: input.externalConsent,aiReplyMemoryConsent:input.aiReplyMemoryConsent, textProviderConsent: input.textProviderConsent, hasCandidates: _hasCandidates });
     if (!provider.answer) {
@@ -373,7 +388,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const lastAnswer = [...history.conversation.messages].reverse().find(message => message.role === "assistant");
       return { ...result, ...history, answer: lastAnswer?.content ?? "", externalStatus: provider.status, externalFailureReason:"failureReason" in provider ? provider.failureReason : null };
     }
-    const disclosure = manualDialogue ? (actor.language === "es" ? "JMM Coach · Solo tus mensajes propios consentidos; los registros y tarjetas de JMM no se comparten." : "JMM Coach · Your consented own messages only; JMM records and cards are not shared.") : actor.language === "es" ? "JMM Coach · educación general sin contexto personal ni memoria. Los cambios se revisan en JMM." : "JMM Coach · general education without personal context or memory. Changes are reviewed in JMM.";
+    const disclosure = manualDialogue ? (actor.language === "es" ? "JMM Koach · Solo tus mensajes propios consentidos; los registros y tarjetas de JMM no se comparten." : "JMM Koach · Your consented own messages only; JMM records and cards are not shared.") : actor.language === "es" ? "JMM Koach · educación general sin contexto personal ni memoria. Los cambios se revisan en JMM." : "JMM Koach · general education without personal context or memory. Changes are reviewed in JMM.";
     try {
       return await prisma.$transaction(async tx => {
         const current = await tx.coachConversation.findUnique({ where: { userId: actor.id } });
