@@ -131,26 +131,32 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
       const retainedPurpose = week.templateVersion === "triathlon-foundation-v3"
         && zone === session.zone && status !== "expired" && !technicalOrTest && !movementSport ? session.description : null;
       const loweredIntensity = Number(zone.slice(1)) < Number(session.zone.slice(1));
+      // Keep a comfortable reviewed session when observing execution. All
+      // existing dose, recovery and reference-expiry caps still apply.
+      const retainComfortableIdentity = Boolean(observation && reviewedCoaching
+        && ['aerobic','technique'].includes(reviewedCoaching.recipe)
+        && !reviewedCoaching.demanding && !loweredIntensity && Number(zone.slice(1)) <= 2 && !movementSport && !technicalOrTest);
+      const embeddedObservationNote = `Comfortable observation within this planned session on ${key} (reference status: ${status}). Record actual minutes, effort, symptoms and recovery. This does not measure or renew VO2max, threshold, FTP or race ability; shorten or stop for symptoms. No extra work is added.`;
       // Reviewed recipes contain no fixed unscaled dose. Preserve the sport
       // identity, but replace quality claims when the effective effort falls.
       const coachingPurpose = reviewedCoaching && loweredIntensity && !movementSport
         ? `${Number(zone.slice(1)) <= 2 ? 'Comfortable' : 'Controlled reduced-intensity'} ${session.sport === 'brick' ? 'bike-to-run transition' : session.sport} practice; original quality work withheld for review`
         : reviewedCoaching ? reviewedCoaching.purpose : null;
-      const description = reviewedCoaching ? observation ? comfortableObservationDescription(session.sport)
+      const description = reviewedCoaching ? observation ? retainComfortableIdentity ? `${session.description} ${embeddedObservationNote}` : comfortableObservationDescription(session.sport)
         : loweredIntensity && !movementSport ? `Purpose: ${coachingPurpose}. Follow the reduced, duration-matched steps at the effective effort. No original threshold or hard-interval dose is retained. No missed work is added later.`
           : `${session.description}${sessionFactor < 1 ? ' The session duration is reduced for the current recovery/event window; the executable steps must fit this duration.' : ''}${sessionEventLimited || rebuild ? ' Use controlled familiar work; no progression of load or complexity in this review window.' : ''}`
         : session.sport==='mobility'&&session.type==='recovery' ? session.description : observation ? comfortableObservationDescription(session.sport)
         : retainedPurpose ?? `Provisional ${theme.toLowerCase()} session. Follow the duration-matched steps, adjusted by the session-day check-in. Effort labels are not measured physiological zones. No missed work is added later.${movementSport ? " Familiar controlled movement only; do not add load, maximal speed, sparring or unfamiliar skills. Review before progressing." : ""}${status === "expired" && review ? " The prior sport-specific anchor expires within this cycle; this plan does not renew it. Use comfortable effort and review current evidence." : ""}`;
-      const title = observation ? `${session.sport}: Comfortable ${firstObservation && missingAnchor ? "baseline observation" : "review observation"}`
+      const title = observation && !retainComfortableIdentity ? `${session.sport}: Comfortable ${firstObservation && missingAnchor ? "baseline observation" : "review observation"}`
         : reviewedCoaching ? loweredIntensity && !movementSport ? `${session.sport === 'brick' ? 'Brick · bike to run' : session.sport} · ${Number(zone.slice(1)) <= 2 ? 'comfortable' : 'controlled reduced-intensity'} practice` : session.title
         : technicalOrTest ? `${session.sport}: Controlled familiar practice`
         : movementSport ? `${session.title} · controlled familiar practice`
         : Number(zone.slice(1)) < Number(session.zone.slice(1)) ? `${session.sport}: ${zone === "z2" ? "Easy" : "Controlled"} practice` : session.title;
       const coaching = reviewedCoaching ? { ...reviewedCoaching,
         ...(minutes !== session.minutes && reviewedCoaching.legs ? {legs:undefined} : {}),
-        purpose: observation ? `Comfortable ${session.sport} observation; not a measured baseline` : coachingPurpose!,
+        purpose: observation && !retainComfortableIdentity ? `Comfortable ${session.sport} observation; not a measured baseline` : coachingPurpose!,
         demanding: reviewedCoaching.demanding && !observation && !recoveryWeek && !sessionEventLimited && !rebuild && !loweredIntensity,
-        ...(observation || loweredIntensity || sessionEventLimited || rebuild ? {note:'Effective effort and current duration override original quality work. This observation does not renew a measured reference.'} : {}),
+        ...(observation || loweredIntensity || sessionEventLimited || rebuild ? {note:retainComfortableIdentity ? reviewedCoaching.note : 'Effective effort and current duration override original quality work. This observation does not renew a measured reference.'} : {}),
       } : session.coaching;
       return [{ ...session, minutes, zone, type, description, title, planningAdjustment:{dateKey:key,factor:sessionFactor,eventPhase:eventDay.phase,eventIds:eventDay.eventIds}, ...(coaching ? {coaching} : {}) }];
     });

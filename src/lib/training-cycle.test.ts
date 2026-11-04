@@ -6,6 +6,8 @@ import { parsePlanningSetup } from "./planning-setup";
 import { prescribeToday } from "./adaptive";
 import { effectiveSessionFromRecords } from "./effective-prescription";
 import { addDaysKey, localDate } from "./dates";
+import {canonicalSession} from './canonical-session';
+import {buildCycleBaselineReviews} from './cycle-review';
 const setup = parsePlanningSetup({ trainingDays: [0,1,2,3,4,5,6], maxSessionMinutes:90, baselineWeeklyMinutes:300 });
 const raw = Array.from({length:24}, (_,index) => ({week:index+1,theme:"Build",sessions:Array.from({length:7},()=>({sport:"run" as const,title:"Threshold practice",minutes:60,zone:"z4" as const,type:"threshold",description:"Template"})),totalMinutes:420}));
 const bounded = boundPlanWeeks(raw, setup, 6, 1, "beginner").weeks;
@@ -235,6 +237,52 @@ test("reviewed sport purpose survives cycle shaping only while it agrees with th
   assert.doesNotMatch(easy.title, /threshold intervals/);
   assert.equal(easy.coaching?.demanding, false);
   assert.ok(reduced[0].sessions.filter(s => /observation/.test(s.title)).every(s => /does not measure/.test(s.description)));
+});
+
+test('comfortable reviewed observations retain easy and technique identity and actual canonical steps without inventing references',()=>{
+  for(const sport of ['swim','bike','run'] as const)for(const recipe of ['aerobic','technique'] as const){
+    const session={sport,daySlot:0,minutes:45,zone:'z2' as const,type:'endurance',title:`${sport} · deliberate ${recipe} practice`,description:'Purpose: retain familiar controlled practice and complete recoveries.',coaching:{recipe,phase:'foundation' as const,purpose:`Familiar ${sport} ${recipe} practice`,minimumMinutes:20,demanding:false,note:'Original reviewed equipment and technique guidance.'}};
+    const weeks=[{week:1,theme:'Reviewed foundation',templateVersion:'coaching-structure-v1',totalMinutes:45,sessions:[session],restDaySlots:[1,2,3,4,5,6],doubleDayNote:'None'}];
+    const missing=buildCycleBaselineReviews({profile:{},tests:[],appliedIds:[],sports:[sport],now:new Date('2026-10-12T12:00Z')});
+    const current=buildCycleBaselineReviews({profile:{ftp:200,runPaceBase:318,swimPaceBase:100},tests:[{id:'bike',type:'ftp',result:200,date:new Date('2026-10-10T12:00Z'),completed:true,skipped:false},{id:'run',type:'run5k',result:1500,date:new Date('2026-10-10T12:00Z'),completed:true,skipped:false},{id:'swim',type:'swim',result:100,date:new Date('2026-10-10T12:00Z'),completed:true,skipped:false}],appliedIds:['bike','run','swim'],sports:[sport],now:new Date('2026-10-12T12:00Z')});
+    const before=JSON.stringify({weeks,missing,current});
+    const observed=shapeTrainingCycle(weeks,{...options,baselineReviews:missing,templatePeriodized:true})[0];
+    const ordinary=shapeTrainingCycle(weeks,{...options,needsAssessment:false,baselineReviews:current,templatePeriodized:true})[0];
+    assert.equal(observed.sessions[0].title,session.title);
+    assert.equal(observed.sessions[0].coaching?.purpose,session.coaching.purpose);
+    assert.equal(observed.sessions[0].coaching?.note,session.coaching.note);
+    assert.match(observed.sessions[0].description,/observation within this planned session on 2026-10-12/);
+    assert.equal(observed.observations.length,1);assert.equal(ordinary.observations.length,0);
+    assert.equal(observed.observations[0].dateKey,'2026-10-12');assert.equal(observed.observations[0].status,'missing');
+    assert.equal(missing[0].source,'unavailable');assert.equal(missing[0].observedAt,null);
+    const canonical=(s:typeof session)=>{
+      const workout={id:'synthetic-comfortable-review',sport:s.sport,title:s.title,type:s.type,intensity:s.zone,durationMin:s.minutes};
+      const prescription=prescribeToday({session:{...workout,description:s.description,coaching:s.coaching,cycleVersion:'bounded-cycle-v1'},adaptation:{verdict:'planned',durationFactor:1,intensityCap:s.zone}});
+      return canonicalSession({athleteId:'synthetic',workout,prescription,profile:{},dateLocal:'2026-10-12',timezone:'UTC'});
+    };
+    const observedCanonical=canonical(observed.sessions[0] as typeof session),ordinaryCanonical=canonical(ordinary.sessions[0] as typeof session);
+    assert.deepEqual(observedCanonical.steps,ordinaryCanonical.steps);
+    assert.ok(observedCanonical.steps.every(step=>step.target.type==='open'));
+    assert.equal(observedCanonical.steps.reduce((n,step)=>n+step.seconds,0),45*60);
+    assert.equal(observed.totalMinutes,45);assert.equal(observed.sessions[0].zone,'z2');
+    assert.equal(JSON.stringify({weeks,missing,current}),before,'Planning cannot create or renew a measured reference.');
+  }
+});
+
+test('review annotation does not retain quality identity across missing, expired or recovery caps',()=>{
+  const source={sport:'bike' as const,daySlot:0,minutes:45,zone:'z4' as const,type:'interval',title:'Bike · threshold work',description:'Original threshold purpose',coaching:{recipe:'threshold' as const,phase:'development' as const,purpose:'Reviewed threshold work',minimumMinutes:25,demanding:true}};
+  const weeks=[{week:1,theme:'Reviewed development',templateVersion:'coaching-structure-v1',totalMinutes:45,sessions:[source],restDaySlots:[1,2,3,4,5,6],doubleDayNote:'None'}];
+  const missing=buildCycleBaselineReviews({profile:{},tests:[],appliedIds:[],sports:['bike'],now:new Date('2026-10-12T12:00Z')});
+  const expired=buildCycleBaselineReviews({profile:{ftp:200},tests:[{id:'old',type:'ftp',result:200,date:new Date('2026-01-01T12:00Z'),completed:true,skipped:false}],appliedIds:['old'],sports:['bike'],now:new Date('2026-10-12T12:00Z')});
+  for(const baselineReviews of [missing,expired])for(const recoveryReview of [false,true]){
+    const result=shapeTrainingCycle(weeks,{...options,baselineReviews,recoveryReview,templatePeriodized:true})[0];
+    const session=result.sessions[0];assert.equal(session.zone,'z2');assert.equal(session.coaching?.demanding,false);
+    assert.notEqual(session.title,source.title);assert.notEqual(session.coaching?.purpose,source.coaching.purpose);
+    assert.ok(session.minutes<=45);if(recoveryReview)assert.equal(session.minutes,27);
+    const p=prescribeToday({session:{sport:session.sport,title:session.title,type:session.type,intensity:session.zone,durationMin:session.minutes,description:session.description,coaching:session.coaching,cycleVersion:'bounded-cycle-v1'},adaptation:{verdict:'planned',durationFactor:1,intensityCap:session.zone}});
+    assert.ok(p.steps.every(step=>Number(step.zone.slice(1))<=2));
+    assert.ok(!p.steps.some(step=>/controlled work/.test(step.name)));
+  }
 });
 
 test("matched partial and completed reports merge known duration without duplicate sessions and retain all actual dates", () => {
