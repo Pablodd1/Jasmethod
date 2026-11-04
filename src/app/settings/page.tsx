@@ -137,7 +137,7 @@ export default function SettingsPage() {
       setRevision(result.revision); setNutritionDirty(false); setSaved(true);
       try { setNutritionDraft(result.profile?.nutritionContext ? JSON.parse(result.profile.nutritionContext) : null); } catch { setNutritionDraft(null); }
       // Recompute display ranges only from the acknowledged saved references, never from unsaved input.
-      setZones(buildZoneTable({maxHr:result.profile.maxHr ?? undefined,lthr:result.profile.lthr ?? undefined,ftp:result.profile.ftp ?? undefined,thresholdPaceSecPerKm:result.profile.runPaceBase ?? undefined,thresholdPaceSecPer100m:result.profile.swimPaceBase ?? undefined,restingHr:result.profile.restingHr ?? undefined}));
+      setZones(buildZoneTable({maxHr:result.profile.maxHr ?? undefined,lthr:result.profile.lthr ?? undefined,ftp:result.profile.ftp ?? undefined,thresholdPaceSecPerKm:result.profile.runPaceBase ?? undefined,thresholdPaceSecPer100m:result.profile.swimPaceBase ?? undefined,restingHr:result.profile.restingHr ?? undefined,manualPrs:result.profile.manualPrs,timezone:user?.timezone}));
       setVo2Source(result.profile.vo2max ? "saved reference; provenance unverified" : null);
     } catch (failure) { setError((failure as Error).message); }
     finally { savingRef.current = false; setSaving(false); }
@@ -204,6 +204,7 @@ export default function SettingsPage() {
         )}
 
         <EstimateBanner
+          language={lang}
           vo2maxMissing={!profile?.vo2max}
           lthrMissing={!profile?.lthr}
           vo2maxSource={vo2Source}
@@ -440,13 +441,13 @@ export default function SettingsPage() {
                   <div>
                     {measurement("runPaceBase",lang==="es"?"Ritmo umbral de carrera":"Run threshold pace")}
                     <div className="text-[11px] text-slate-400">
-                      Use a known threshold pace. Enter minutes:seconds per mile or kilometre as labelled; race results and goals do not automatically establish threshold.
+                      {lang==="es"?"Usa un ritmo umbral conocido en minutos:segundos por milla o kilómetro, según la etiqueta. Las marcas y los objetivos no establecen automáticamente un umbral.":"Use a known threshold pace. Enter minutes:seconds per mile or kilometre as labelled; race results and goals do not automatically establish threshold."}
                     </div>
                   </div>
                   <div>
                     {measurement("swimPaceBase",lang==="es"?"Ritmo umbral de natación":"Swim threshold pace")}
                     <div className="text-[11px] text-slate-400">
-                      Your known CSS pace in minutes:seconds per 100 metres or yards as labelled. A CSS test is available in{" "}
+                      {lang==="es"?"Tu ritmo CSS conocido en minutos:segundos por 100 metros o yardas, según la etiqueta. Evaluación CSS en ":"Your known CSS pace in minutes:seconds per 100 metres or yards as labelled. A CSS test is available in "}
                       <a href="/labs" className="underline">
                         Labs
                       </a>
@@ -562,8 +563,8 @@ export default function SettingsPage() {
             <div className="text-sm text-ocean-900">
               <strong>{lang === "es" ? "De dónde vienen tus números:" : "Where your numbers come from:"}</strong>{" "}
               {lang === "es"
-                ? "Los tests de campo (Labs) llenan tus umbrales reales. Los dispositivos sincronizados llenan tus métricas diarias. El chequeo diario adapta el entreno. Cada dato hace el coach más preciso."
-                : "Field tests (Labs) fill your real thresholds. Connected devices fill your daily metrics. The daily check-in adapts the training. Every piece of data makes the coach more precise."}
+                ? "Revisa los resultados y su procedencia antes de usarlos como referencias por deporte. Una conexión no confirma que haya datos recientes; lo que falte sigue desconocido. Las métricas utilizables y tus respuestas ayudan a revisar el entrenamiento."
+                : "Review results and their sources before using them as sport references. A connection does not confirm recent data; missing values stay unknown. Usable metrics and your feedback support training review."}
             </div>
           </div>
         </div>
