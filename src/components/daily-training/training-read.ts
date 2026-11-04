@@ -95,7 +95,10 @@ const plannedStep = (step: Record<string, any>) => text(step.name) && text(step.
   textFields(step, ["note", "group", "phase"]) && (step.reps == null || finite(step.reps));
 const referenceDate = (value: unknown) => text(value) && date(value) && /^\d{4}-\d{2}-\d{2}(?:T.+Z)?$/.test(value) && new Date(value).toISOString().slice(0,10) === value.slice(0,10);
 const projectedReference = (reference: Record<string, any>) => ["athlete_reported_reference", "applied_field_test", "estimated_from_applied_5k"].includes(reference.source) &&
-  referenceDate(reference.observedAt) && ["W", "sec/km", "sec/100m"].includes(reference.unit) && finite(reference.value) && reference.value > 0 && reference.value <= (reference.unit === "W" ? 1000 : 3600);
+  referenceDate(reference.observedAt) && finite(reference.value) && (reference.unit==="bpm"
+    ? reference.source==="athlete_reported_reference"&&["run","bike","swim","hyrox"].includes(reference.sport)&&Number.isInteger(reference.value)&&
+      (reference.metric==="maxHr"&&reference.value>=80&&reference.value<=240||reference.metric==="lthr"&&reference.value>=60&&reference.value<=230)
+    : ["W", "sec/km", "sec/100m"].includes(reference.unit)&&reference.value>0&&reference.value<=(reference.unit==="W"?1000:3600));
 const targetProjection = (value: unknown, steps: any[]) => value == null || object(value) &&
   records(value.steps, step => text(step.targetLabel) && step.targetLabel.length > 0 && (step.speedLabel === null || text(step.speedLabel) && step.speedLabel.length > 0) &&
     (step.reference === null || object(step.reference) && projectedReference(step.reference))) && value.steps.length === steps.length &&

@@ -9,6 +9,7 @@ import { cycleActivityEvidence } from "./training-cycle";
 import { athleteDayReview } from "./athlete-day-review";
 import * as policy from "./derived-activity-policy";
 import * as dates from "./dates";
+import * as sportHeartRate from "./sport-heart-rate";
 
 const now = new Date("2026-10-15T12:00:00Z"), day = "2026-10-06";
 const base = { id: "actual", userId: "owner", date: new Date(`${day}T12:00:00Z`), source: "garmin", sport: "run", title: "Original actual", completed: true,
@@ -45,6 +46,7 @@ function weeklyFixture(origin: Record<string, unknown>) {
   let calculations = 0;
   const queries: any[] = [], rows = [{ ...base, ...origin }];
   const deps: Record<string, unknown> = { "./dates": dates, "./derived-activity-policy": policy, "./fitness": { estimateTss: () => { calculations++; return 30; } },
+    "./sport-heart-rate":sportHeartRate,
     "./db": { prisma: { workout: { findMany: async (args: any) => { queries.push(args); for (const key of ["source", "externalId", "notes"]) assert.equal(args.select[key], true); return rows; } }, athleteProfile: { findUnique: async () => ({ ftp: 200 }) } } } };
   const mod: any = { exports: {} };
   const code = ts.transpileModule(fs.readFileSync("src/lib/weekly-review.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

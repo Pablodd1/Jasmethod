@@ -8,6 +8,9 @@ import ts from "typescript";
 import { derivedActivityPolicy, isDerivedActivityEligible } from "./derived-activity-policy";
 import { computeJMetrics, workoutJStress, type JStressWorkout } from "./j-metrics";
 import { activityFingerprint, type ActivityDecision } from "./activity-evidence";
+import * as fitness from "./fitness";
+import { recordSportHeartRate } from "./sport-heart-rate";
+import { coachingSummary } from "./coaching";
 
 const require = createRequire(import.meta.url);
 const at=new Date("2026-10-21T12:00Z");
@@ -46,8 +49,9 @@ test("linked restricted rows still block aggregate analytics while future, old a
   assert.equal(result.totalJStress,180);assert.equal(result.derivedActivityPolicy?.status,"allowed");
 });
 
-function fitnessFixture(rows:any[],authenticated=true) {
+function fitnessFixture(rows:any[],authenticated=true,profile:any={ftp:200,lthr:160}) {
   const queries:any[]=[];
+  const loadInputs:any[]=[];
   const matches=(row:any,where:any):boolean=>Object.entries(where).every(([key,value]:any)=>{
     if(key==="OR")return value.some((part:any)=>matches(row,part));
     if(value&&typeof value==="object"&&!(value instanceof Date)) {
@@ -56,12 +60,13 @@ function fitnessFixture(rows:any[],authenticated=true) {
     }
     return value===null?row[key]==null:row[key]===value;
   });
-  const db={athleteProfile:{findUnique:async(q:any)=>{assert.equal(q.where.userId,"owner");return {ftp:200,lthr:160};}},
+  const db={athleteProfile:{findUnique:async(q:any)=>{assert.equal(q.where.userId,"owner");return profile;}},
     workout:{findMany:async(q:any)=>{queries.push(q);return rows.filter(row=>matches(row,q.where));}},metricObservation:{findMany:async(q:any)=>{assert.equal(q.where.userId,"owner");return [];}}};
   const deps:Record<string,unknown>={"next/server":{NextResponse:Response},"@/lib/db":{prisma:db},"@/lib/auth":{getCurrentUser:async()=>authenticated?{id:"owner",timezone:"UTC"}:null},"@/lib/activity-reconciliation":{readActivityDecisions:async(id:string)=>{assert.equal(id,"owner");return [];}}};
+  deps["@/lib/fitness"]={...fitness,computePmc:(rows:any[],...args:any[])=>{loadInputs.push(...rows);return fitness.computePmc(rows,...args);}};
   const mod={exports:{} as any},source=ts.transpileModule(fs.readFileSync("src/app/api/fitness/route.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   vm.runInNewContext(source,{module:mod,exports:mod.exports,require:(id:string)=>id in deps?deps[id]:id.startsWith("@/lib/")?require(path.resolve("src/lib",id.slice(6)+".ts")):require(id),Response,Date});
-  return {run:()=>mod.exports.GET(),queries};
+  return {run:()=>mod.exports.GET(),queries,loadInputs};
 }
 const routeRows=()=>[session({date:new Date(Date.now()-3600000)}),session({id:"plan",date:new Date(Date.now()-3600000),source:"plan",externalId:null,planned:true,completed:false})];
 
@@ -73,6 +78,16 @@ test("fitness route makes mixed-source PMC, JMetrics and execution unavailable w
     assert.equal(result.derivedActivityPolicy.load.status,"insufficient");assert.equal(result.derivedActivityPolicy.execution.status,"insufficient");assert.equal(JSON.stringify(rows),before);
     assert.ok(fixture.queries.every(q=>q.where.userId==="owner"));assert.equal(fixture.queries[0].where.matchedPlanId,undefined,"policy must see linked raw contributors before analytics selection");
   }
+});
+test("actual fitness and coach load use dated matching activity-sport HR references, never generic or future reports",async()=>{
+  const today=new Date().toISOString().slice(0,10),earlier=new Date(Date.now()-10*86400000).toISOString().slice(0,10);
+  const manualPrs=recordSportHeartRate(null,{sport:"run",metric:"lthr",value:170,observedOn:earlier},today),profile={lthr:190,manualPrs,ftp:250};
+  const rows=[session({id:"run",sport:"run",source:"manual",externalId:null,date:new Date(Date.now()-86400000)}),session({id:"bike",sport:"bike",source:"manual",externalId:null,date:new Date(Date.now()-2*86400000)}),session({id:"older",sport:"run",source:"manual",externalId:null,date:new Date(Date.now()-20*86400000)})];
+  const rowsWithHr=rows.map(row=>({...row,avgHr:150}));const f=fitnessFixture(rowsWithHr,true,profile);const response=await f.run();assert.equal(response.status,200);
+  for(const row of rows){const input=f.loadInputs.find(input=>+input.date===+new Date(row.date))!.tssInput;assert.equal(input.lthr,row.id==="run"?170:null);assert.equal(input.ftp,row.sport==="bike"?250:null);}
+  assert.equal((await response.json()).physiology.lthr,null);
+  const run=rowsWithHr[0];assert.equal(coachingSummary([run],[],profile,"UTC").estimatedLoad,Math.round(fitness.estimateTss({durationMin:45,avgHr:150,lthr:170})));
+  assert.equal(coachingSummary([run],[],{lthr:190},"UTC").estimatedLoad,fitness.estimateTss({durationMin:45,avgHr:150,rpe:4}));
 });
 
 test("fitness route keeps known allowed behavior and owner boundaries; unauthenticated callers receive no records",async()=>{

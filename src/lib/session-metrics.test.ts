@@ -42,5 +42,5 @@ test("unbounded highest zone does not invent finite power or HR targets", () => 
   assert.equal(resolveStepTarget({ zone: "z7" }, "bike", { ftp: 250 }).type, "open");
   assert.equal(resolveStepTarget({ zone: "z7" }, "run", { lthr: 170 }).type, "open");
   assert.equal(resolveStepTarget({ zone: "z2" }, "bike").type, "open");
-  assert.deepEqual([resolveStepTarget({ zone: "z2" }, "run", { lthr: 170 }).low, resolveStepTarget({ zone: "z2" }, "run", { lthr: 170 }).high], [137, 151]);
+  assert.equal(resolveStepTarget({ zone: "z2" }, "run", { lthr: 170 }).type,"open","An unscoped LTHR does not establish running HR targets");
 });

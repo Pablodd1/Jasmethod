@@ -71,6 +71,7 @@ async function main() {
       });
       await page.goto(`${base}/coach`);
       const textarea = page.locator('.coach-chat-composer textarea'); await textarea.waitFor({state:'visible'});
+      await page.getByRole('heading',{name:'JMM Koach',level:2,exact:true}).waitFor({state:'visible'});
       await page.waitForFunction(()=>document.querySelector('textarea')?.disabled===false);
       assert.equal(await textarea.isDisabled(), false, 'Composer becomes usable');
       const chatBox=await page.locator('.coach-chat-page').boundingBox(),routeBox=await page.locator('.coach-chat-route').boundingBox();

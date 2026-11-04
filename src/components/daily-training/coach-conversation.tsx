@@ -1,4 +1,5 @@
 "use client";
+import {isProtectedProfileAnswer,type ProtectedProfileAnswer} from "@/lib/coach-profile-reference";
 import { CoachTodayReview } from "./CoachTodayReview";
 import { coachReviewArea, opensTodayWorkout } from "./coach-chat-intent";
 import { CoachAiConsent } from "./CoachAiConsent";
@@ -62,6 +63,8 @@ export function ProfileProposalComparison({ candidate, beforeValue, afterValue, 
 
 export function CoachConversation({ fullPage = false, es, athleteId, offline = false, sessions: todaySessions = NO_SESSIONS, onConfirmed }: Props) {
   const id = useId();
+  const [profileAnswerState,setProfileAnswer]=useState<{athleteId:string;answer:ProtectedProfileAnswer}|null>(null);
+  const profileAnswer=profileAnswerState?.athleteId===athleteId?profileAnswerState.answer:null;
   const [showTodayReview, setShowTodayReview] = useState(false);
   const [chatOptions, setChatOptions] = useState(false);
   const [reviewVersion, setReviewVersion] = useState(0);
@@ -188,6 +191,8 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
 
   const applyPayload = useCallback((payload: CoachPayload) => {
     appliedVersion.current++;
+    const card=(payload as CoachPayload & {protectedProfileAnswer?:unknown}).protectedProfileAnswer;
+    setProfileAnswer(isProtectedProfileAnswer(card)?{athleteId,answer:card}:null);
     if (!payload.conversation || !Array.isArray(payload.conversation.messages)) throw new Error(es ? "La conversación recibida no es válida." : "The conversation response is invalid.");
     setMessages(payload.conversation.messages);
     setServerActions(coachPendingActions(payload));
@@ -211,11 +216,12 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     if (payload.dialogueAction === "review_today") { setShowTodayReview(true); setReviewVersion(value=>value+1); }
     const area = payload.dialogueAction === "review_profile" ? "profile" : payload.dialogueAction === "review_cycle" ? "plan" : payload.dialogueAction === "review_races" ? "race" : null;
     if (area) setCommanderRequest({area,key:payload.conversation.messages.at(-1)?.id || "review"});
-  }, [es]);
+  }, [es,athleteId]);
 
   const request = useCallback(async (kind: NonNullable<typeof operation>, url: string, method = "GET", body?: unknown) => {
     if (busy.current) return null;
     busy.current = true;
+    if(kind==="load"||kind==="send")setProfileAnswer(null);
     activeOperation.current = kind;
     const ticket = requestGate.current.begin();
     setOperation(kind); setError(""); setStatus("");
@@ -466,7 +472,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
   return <section id="jasai" aria-labelledby={`${id}-title`} className={fullPage ? "coach-chat-page" : "card space-y-4 scroll-mt-24 min-w-0"} lang={es ? "es" : "en"}>
     <header className="space-y-2">
       {fullPage && <Link href="/today" className={`text-sm underline ${focus}`}>{es ? "← Volver a Hoy" : "← Back to Today"}</Link>}
-      <div className="flex flex-wrap items-center justify-between gap-2"><h2 id={`${id}-title`} className="font-display text-xl font-bold">JMM Coach</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h2 id={`${id}-title`} className="font-display text-xl font-bold">JMM Koach</h2>
         {fullPage ? <button type="button" className={`${secondaryClass} min-h-11`} aria-expanded={chatOptions} aria-controls={`${id}-options`} onClick={()=>setChatOptions(value=>!value)}>{es ? "Opciones del chat" : "Chat options"}</button> : <a href="/coach" target="_blank" rel="noopener noreferrer" className={`text-sm underline min-h-11 inline-flex items-center ${focus}`}>{es ? "Abrir chat en otra ventana" : "Open chat in another window"}</a>}
       </div>
       <p className="text-xs text-slate-600" role="status">{personalDialogue ? (es ? "Conversación personal activa" : "Personal conversation active") : textConfigured ? (es ? "Conversación personal disponible en Opciones del chat" : "Personal conversation available in Chat options") : (es ? "JMM local · Conversación con IA sin conectar" : "Local JMM · Personal AI not connected")}</p>
@@ -486,7 +492,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     {offline && <p role="status" className="text-sm text-amber-900">{es ? "Sin conexión. Conéctate antes de enviar mensajes o confirmar cambios." : "Offline. Reconnect before sending messages or confirming changes."}</p>}
     <ol ref={history} className={fullPage ? "space-y-4 min-w-0" : "min-h-32 max-h-[40vh] sm:max-h-[55vh] overflow-y-auto overscroll-contain space-y-3 rounded-lg border p-3"} aria-label={es ? "Historial de conversación" : "Conversation history"} aria-live="polite" aria-relevant="additions" tabIndex={0}>
       {messages.map(entry => <li key={entry.id} className={`coach-chat-message rounded-2xl p-3 sm:p-4 ${entry.role === "user" ? "coach-chat-message-user bg-ocean-50 ml-6 sm:ml-20" : "bg-white border border-slate-100 mr-2"}`}>
-        <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "JMM Coach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
+        <p className="text-xs font-semibold text-slate-700">{entry.role === "user" ? (es ? "Tú" : "You") : "JMM Koach"} · {sourceLabel(entry.source, es)} · <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString(es ? "es" : "en")}</time></p>
         <p className="mt-1 whitespace-pre-wrap break-words">{entry.content}</p>
         {entry.role==="assistant"&&<button type="button" className="underline text-sm mt-2" onClick={()=>readReply(entry.content)}>{es?"Escuchar con voz local":"Read aloud with local voice"}</button>}
       </li>)}
@@ -500,6 +506,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
 
     {(!fullPage || messages.filter(entry=>entry.role==="assistant").at(-1)?.needsHumanReview===true) && <CoachReviewRequest messages={messages} es={es} disabled={blocked} />}
     {coachTextStatusMessage(externalStatus, es,externalFailureReason) && <p role="status" className="text-xs text-slate-700">{coachTextStatusMessage(externalStatus, es,externalFailureReason)}</p>}
+    {profileAnswer&&<section className="rounded-xl border border-ocean-200 p-4 space-y-2" aria-label={es?"Datos del atleta en JMM":"Athlete facts in JMM"}><h3 className="font-semibold">{profileAnswer.title}</h3><p>{profileAnswer.answer}</p><dl className="space-y-2">{profileAnswer.fields.map((f,i)=><div key={i}><dt>{f.label}</dt><dd>{f.display} · {f.observedAt??(es?"fecha sin verificar":"date unverified")} · {f.source==="athlete_reported_reference"?(es?"declarado por el atleta":"athlete report"):(es?"perfil guardado; fuente sin verificar":"saved profile; source unverified")}<details className="text-sm"><summary className="cursor-pointer">{es?"Datos de origen":"Source details"}</summary><p>{f.note}</p></details></dd></div>)}</dl>{profileAnswer.clarification&&<p>{profileAnswer.clarification}</p>}<p className="text-xs">{es?"Resultado local; no se envía al modelo ni se guarda en el historial del chat.":"Local result; not sent to the model or stored in chat history."}</p></section>}
     {imageStatus === "extracted" && <p className="text-xs text-slate-700">{es ? "Captura analizada por OpenAI. Verifica cada valor, fecha y unidad antes de confirmar; el análisis puede equivocarse." : "Screenshot analyzed by OpenAI. Check every value, date and unit before confirming; extraction can be wrong."}</p>}
     {(imageStatus === "unavailable" || imageStatus === "not_configured") && <p className="text-xs text-amber-900">{es ? "No se pudo analizar la captura. Escribe los datos visibles para revisarlos; no se han inventado valores." : "The screenshot could not be analyzed. Type its visible details for review; no values were guessed."}</p>}
     {activeProposal && <details open key={activeProposal.id} className="rounded-xl border border-ocean-300 p-4 space-y-3">

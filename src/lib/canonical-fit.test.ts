@@ -5,6 +5,7 @@ import { canonicalSession, normalizeSteps, requireSessionRevision, fitFilename, 
 import { buildFitWorkout, fitWorkoutName, workoutToFitSpec } from "./fit-export";
 import { effectiveSessionFromRecords } from "./effective-prescription";
 import { evidencedTargetProfile } from "./anchor-evidence";
+import { recordSportHeartRate } from "./sport-heart-rate";
 import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
 
 const now = new Date("2026-10-02T12:00:00Z");
@@ -228,6 +229,16 @@ test("saved low-zone volume and explicit targets cannot bypass a readiness reduc
   assert.equal(volume.canonical.verdict, "blocked");
   const numeric = effectiveSessionFromRecords(record({ workout: { ...base.workout, prescription: JSON.stringify({ durationMin: 1, steps: [step({ zone: "z1", target: { type: "power", low: 200, high: 300 } })] }) }, checkin: reduced }));
   assert.equal(numeric.canonical.verdict, "blocked");
+});
+test("reduced explicit HR targets require the matching dated sport reference, not generic or another sport LTHR",()=>{
+  const base=record(),date=now.toISOString().slice(0,10);
+  const manualPrs=recordSportHeartRate(null,{sport:"run",metric:"lthr",value:170,observedOn:date},date);
+  const checkin={...base.checkin,adaptation:JSON.stringify({verdict:"easy",durationFactor:1,intensityCap:"z2"})};
+  const resolve=(sport:string,profile:any,high=140)=>effectiveSessionFromRecords(record({checkin,profile,workout:{...base.workout,sport,prescription:JSON.stringify({sport,durationMin:1,verdict:"full",steps:[step({zone:"z1",target:{type:"heartRate",low:120,high}})]})}}));
+  assert.equal(resolve("run",{lthr:170}).canonical.verdict,"blocked");
+  assert.equal(resolve("bike",{manualPrs,referenceAsOf:now.toISOString()}).canonical.verdict,"blocked");
+  assert.equal(resolve("run",{manualPrs,referenceAsOf:now.toISOString()}).canonical.verdict,"ready");
+  assert.equal(resolve("run",{manualPrs,referenceAsOf:now.toISOString()},160).canonical.verdict,"blocked");
 });
 
 

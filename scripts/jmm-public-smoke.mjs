@@ -12,7 +12,7 @@ for (const path of [...pages, ...privateApis]) {
     if (!privateApis.includes(path)) {
       const html = await response.text();
       assert.match(html, /<html/);
-      if (path === "/coach") { assert.match(html, /noindex/); assert.match(html, /JMM Coach/); }
+      if (path === "/coach") { assert.match(html, /noindex/); assert.match(html, /JMM Koach/); }
     }
     console.log(`PASS ${path} ${response.status}`);
   } catch (error) { failed++; console.error(`FAIL ${path}: ${error instanceof Error ? error.message : "request failed"}`); }

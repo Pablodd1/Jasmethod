@@ -1,4 +1,5 @@
-import { SWIM_ZONE_MULT } from "./zone-factors";
+import { SWIM_ZONE_MULT, MAX_HR_ZONE_BANDS } from "./zone-factors";
+import { SPORT_HR_SPORTS, sportHeartRateTarget, type SportHeartRateReference, type SportHrSport } from "./sport-heart-rate";
 import { coachingWeekTemplate, type CoachingSessionMetadata } from "./coaching-week-template";
 import { buildSprintSession } from "./sprint-protocols";
 // JasMiamiMethod — Sports Science Engine
@@ -30,21 +31,16 @@ export interface Zone {
 }
 
 // ---- MyProCoach 5-zone HR model (anchored on MAX HEART RATE) ----
-// Verified against MyProCoach calculator (myprocoach.net/calculators/hr-zones, 2026):
 // Z1 Easy 68-73%, Z2 Steady 73-80%, Z3 Moderately Hard 80-87%, Z4 Hard 87-93%,
-// Z5 Very Hard 93-100% of MAX HR. Bike zones run 5-8 bpm lower (we use 6).
-// Gym/boxing/hyrox use the SAME max-HR zones but are RPE-guided (HR lags
-// intermittent high-force work), so each zone carries its RPE equivalent.
+// Z5 Very Hard 93-100% of MAX HR. These are reference bands, not measured
+// individual domains. A generic saved maximum does not establish sport scope.
 export const HR_ZONES: Zone[] = [
-  { key: "z1", name: "Easy", pctLow: 0.68, pctHigh: 0.73, rpe: "1-2 /10", description: "Recovery / easy — blood flow, active recovery." },
-  { key: "z2", name: "Steady", pctLow: 0.73, pctHigh: 0.80, rpe: "3-4 /10", description: "Endurance — fat & carb efficiency. Conversational." },
-  { key: "z3", name: "Moderately Hard", pctLow: 0.80, pctHigh: 0.87, rpe: "5-6 /10", description: "Tempo — delays lactate fatigue. 10-20 min reps." },
-  { key: "z4", name: "Hard", pctLow: 0.87, pctHigh: 0.93, rpe: "7-8 /10", description: "Threshold — raises lactate threshold. 3-10 min reps." },
-  { key: "z5", name: "Very Hard", pctLow: 0.93, pctHigh: 1.00, rpe: "9-10 /10", description: "VO2max / top-end speed. 1-3 min reps." },
+  { key: "z1", name: "Easy", pctLow: MAX_HR_ZONE_BANDS[0][0], pctHigh: MAX_HR_ZONE_BANDS[0][1], rpe: "1-2 /10", description: "Recovery / easy — blood flow, active recovery." },
+  { key: "z2", name: "Steady", pctLow: MAX_HR_ZONE_BANDS[1][0], pctHigh: MAX_HR_ZONE_BANDS[1][1], rpe: "3-4 /10", description: "Endurance — fat & carb efficiency. Conversational." },
+  { key: "z3", name: "Moderately Hard", pctLow: MAX_HR_ZONE_BANDS[2][0], pctHigh: MAX_HR_ZONE_BANDS[2][1], rpe: "5-6 /10", description: "Tempo — delays lactate fatigue. 10-20 min reps." },
+  { key: "z4", name: "Hard", pctLow: MAX_HR_ZONE_BANDS[3][0], pctHigh: MAX_HR_ZONE_BANDS[3][1], rpe: "7-8 /10", description: "Threshold — raises lactate threshold. 3-10 min reps." },
+  { key: "z5", name: "Very Hard", pctLow: MAX_HR_ZONE_BANDS[4][0], pctHigh: MAX_HR_ZONE_BANDS[4][1], rpe: "9-10 /10", description: "VO2max / top-end speed. 1-3 min reps." },
 ];
-
-// Bike HR zones sit 5-8 bpm below run (MyProCoach); 6 is the midpoint.
-export const BIKE_HR_OFFSET_BPM = 6;
 
 // ---- Power zones anchored on FTP (Coggan) ----
 export const POWER_ZONES: Zone[] = [
@@ -125,8 +121,8 @@ export function lthrFrom30MinTT(last20AvgHr: number): number {
 }
 
 // ---- VO2max from heart-rate ratio (Uth–Sørensen–Overgaard–Pedersen 2004) ----
-// Most recent simple field-test estimate: VO2max = 15.3 × (HRmax / HRrest).
-// ~0.8 ml/kg/min accuracy vs direct measurement (Eur J Appl Physiol 91:111-115).
+// Legacy explicit calculator only; never automatically derived from a profile.
+// A heart-rate ratio is not a measured VO2max or a sport-specific laboratory test.
 export function estimateVo2maxFromHr(maxHr: number, restingHr: number): number {
   if (!maxHr || !restingHr || restingHr <= 0) return 0;
   return Math.round((15.3 * maxHr) / restingHr * 10) / 10;
@@ -144,8 +140,9 @@ export function cssFromTestTimes(t400sec: number, t200sec: number): number {
 export interface ZoneTable {
   anchorHr?: number;  // MAX heart rate (HR zone anchor)
   anchorLthr?: number; // threshold HR (cross-reference only)
-  hr?: Record<string, { low: number; high: number }>;        // RUN HR (MyProCoach 5-zone, % max HR)
-  bikeHr?: Record<string, { low: number; high: number }>;    // BIKE HR (run zones − 6 bpm)
+  hr?: Record<string, { low: number; high: number }>;        // Generic unscoped stored maximum reference
+  bikeHr?: Record<string, { low: number; high: number }>;    // Only explicitly dated cycling reference
+  sportHr?: Partial<Record<SportHrSport,{reference:SportHeartRateReference;zones:Record<string,{low:number;high:number}>}>>;
   power?: Record<ZoneKey, { low: number; high: number }>;    // FTP power (Coggan 7-zone)
   pace?: Record<ZoneKey, { low: number; high: number }>;     // RUN threshold pace (7-zone, sec/km)
   swim?: Record<string, { low: number; high: number }>;      // SWIM pace (5-zone, sec/100m)
@@ -165,19 +162,17 @@ export function buildZoneTable(opts: {
   thresholdPaceSecPerKm?: number; // run
   thresholdPaceSecPer100m?: number; // swim
   restingHr?: number;
+  manualPrs?: string | null;
+  referenceNow?: Date;
+  timezone?: string;
 }): ZoneTable {
-  const { maxHr, lthr, ftp, thresholdPaceSecPerKm, thresholdPaceSecPer100m, restingHr } = opts;
+  const { maxHr, lthr, ftp, thresholdPaceSecPerKm, thresholdPaceSecPer100m } = opts;
 
   let hr: Record<string, { low: number; high: number }> | undefined;
-  let bikeHr: Record<string, { low: number; high: number }> | undefined;
-  if (maxHr) {
-    hr = {}; bikeHr = {};
+  if (typeof maxHr==="number"&&Number.isFinite(maxHr)&&maxHr>0&&maxHr<=300) {
+    hr = {};
     for (const z of HR_ZONES) {
       hr[z.key] = { low: Math.round(maxHr * z.pctLow), high: Math.round(maxHr * z.pctHigh) };
-      bikeHr[z.key] = {
-        low: Math.round(maxHr * z.pctLow) - BIKE_HR_OFFSET_BPM,
-        high: Math.round(maxHr * z.pctHigh) - BIKE_HR_OFFSET_BPM,
-      };
     }
   }
 
@@ -206,20 +201,27 @@ export function buildZoneTable(opts: {
     }
   }
 
-  const vo2maxHr = maxHr && restingHr ? estimateVo2maxFromHr(maxHr, restingHr) : undefined;
+  const sportHr:NonNullable<ZoneTable["sportHr"]>={};
+  for(const sport of SPORT_HR_SPORTS){
+    const first=sportHeartRateTarget(opts.manualPrs,sport,1,opts.referenceNow,opts.timezone);
+    if(!first)continue;
+    const zones:Record<string,{low:number;high:number}>={};
+    for(let zone=1;zone<=5;zone++){const target=sportHeartRateTarget(opts.manualPrs,sport,zone,opts.referenceNow,opts.timezone);if(target)zones[`z${zone}`]={low:target.low,high:target.high};}
+    sportHr[sport]={reference:first.reference,zones};
+  }
 
   return {
-    anchorHr: maxHr,
+    anchorHr: hr?maxHr:undefined,
     anchorLthr: lthr,
     hr,
-    bikeHr,
+    bikeHr:sportHr.bike?.zones,
+    sportHr,
     power,
     pace,
     swim,
     anchorPower: ftp,
     anchorPace: thresholdPaceSecPerKm,
     anchorSwim: thresholdPaceSecPer100m,
-    vo2maxHr,
   };
 }
 

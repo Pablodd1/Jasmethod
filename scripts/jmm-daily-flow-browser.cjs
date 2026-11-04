@@ -176,6 +176,10 @@ async function journey(browser, language, width) {
     releaseRich();
     const pathCard=page.getByRole('region',{name:language==='es'?'Tu semana y preparación':'Your week and readiness',exact:true});
     await pathCard.waitFor();
+    const koachNav=page.locator('nav.jmm-mobile-nav').getByRole('link',{name:'Koach',exact:true});
+    assert.equal(await koachNav.getAttribute('href'),'/coach');
+    assert.equal(await page.locator('#jasai').count(),0,'Today does not embed the private chat');
+    assert.equal(await page.locator('#coach-conversation').count(),0,'Today does not embed the human coach conversation');
     assert.match(await pathCard.innerText(),language==='es'?/3 mediciones actuales/:/3 current measurements/);
 
     assert.match(await pathCard.innerText(),language==='es'?/Mostrando la sesión prevista/:/Showing the planned workout/);

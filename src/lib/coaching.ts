@@ -4,6 +4,7 @@ import {activityActualMinutes,groupActivityEvidence,type ActivityDecision} from 
 import { derivedActivityPolicy } from "./derived-activity-policy";
 import { isUnperformedSupersededWorkout } from "./superseded-workout";
 import { hasPerformedTraining } from "./j-metrics";
+import { readSportHeartRate, type SportHrSport } from "./sport-heart-rate";
 
 // Explain observations and their data coverage. Missing data is not a diagnosis.
 export function coachingSummary(
@@ -41,8 +42,8 @@ export function coachingSummary(
     rpe: w.rpe,
     intensity: w.intensity,
     tss: w.tss,
-    ftp: profile?.ftp,
-    lthr: profile?.lthr,
+    ftp:(w.actualSport??w.sport)==="bike"?profile?.ftp:null,
+    lthr:["run","bike"].includes(w.actualSport??w.sport??"")?readSportHeartRate(profile?.manualPrs,(w.actualSport??w.sport) as SportHrSport,"lthr",new Date(w.date),timezone)?.value??null:null,
   });
   const pmc = incomplete?null:computePmc(
     completed.map((w) => ({ date: new Date(w.date), tssInput: input(w) })),

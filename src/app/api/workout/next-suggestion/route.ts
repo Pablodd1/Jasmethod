@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { loadStreams, prismaStreamRepo, streamStorageEnabled, type StreamDelegate } from "@/lib/activity-stream-store";
 import { analyseStreams, type AnalysisSport } from "@/lib/stream-analysis";
 import { evidencedTargetProfile } from "@/lib/anchor-evidence";
+import { readSportHeartRate, type SportHrSport } from "@/lib/sport-heart-rate";
 import { provenanceOf } from "@/lib/strava-provenance";
 import { suggestNextWorkout } from "@/lib/next-workout-suggestion";
 import { summarizeSet, toEditableSteps } from "@/lib/workout-interval-edit";
@@ -55,7 +56,8 @@ export async function GET(req: Request) {
       const streams = await loadStreams(repo, athlete.id, activity.id);
       if (!streams) continue;
       const sport: AnalysisSport = ["bike", "run", "swim"].includes(activity.sport) ? (activity.sport as AnalysisSport) : "other";
-      const analysis = analyseStreams({ streams, provenance, athlete: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, lthr: anchors.lthr ?? null }, sport });
+      const hrReference=["run","bike"].includes(sport)?readSportHeartRate(profile?.manualPrs,sport as SportHrSport,"lthr",activity.date,athlete.timezone):null;
+      const analysis = analyseStreams({ streams, provenance, athlete: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, lthr: hrReference?.value??null }, sport });
       if (!analysis.ok) continue;
       let plannedSet = null;
       if (activity.matchedPlanId) {

@@ -38,6 +38,7 @@ export type CoachPayload = {
   unitPreference?: string;
   mode?: string;
   disclosure?: string;
+  protectedProfileAnswer?: unknown;
   externalStatus?: string;
   externalFailureReason?: string | null;
   imageStatus?: string;

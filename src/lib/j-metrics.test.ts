@@ -1,9 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeJMetrics, workoutJStress, type JStressWorkout } from "./j-metrics";
+import { computeJMetrics, diagnoseJMetricsInputs, workoutJStress, type JStressWorkout } from "./j-metrics";
 import { addDaysKey, localDate } from "./dates";
 const at = new Date("2026-10-04T20:00:00Z");
 const session = (extra: Partial<JStressWorkout> = {}): JStressWorkout => ({ date: at, source:"manual", completed: true, planned: false, durationMin: 60, rpe: 5, ...extra });
+test("owner-facing input gaps respect source restrictions, observed duration, and reported zero effort", () => {
+  const rows = [session({ id: 'missing-both', planned: true, actualDurationMin: null, rpe: null }), session({ id: 'valid-zero', rpe: 0 }), session({ id: 'missing-effort', rpe: null })];
+  assert.deepEqual(diagnoseJMetricsInputs(rows, at, 'UTC', 1), { missingDuration: 1, missingEffort: 2 });
+  assert.equal(diagnoseJMetricsInputs([...rows, session({ id: 'restricted', source: 'strava' })], at, 'UTC', 1), null);
+  assert.equal(diagnoseJMetricsInputs([...rows, session({ id: 'unknown', source: 'intervals' })], at, 'UTC', 1), null);
+  assert.equal(computeJMetrics([...rows, session({ id: 'restricted', source: 'strava' })], at, 'UTC', [], 1).totalJStress, null);
+});
+test("unresolved duplicate candidates are not presented as missing effort to fix", () => {
+  const rows = [session({ id: 'whoop', userId: 'owner', source: 'whoop', sport: 'run', rpe: null }),
+    session({ id: 'oura', userId: 'owner', source: 'oura', sport: 'run', rpe: null })];
+  assert.equal(computeJMetrics(rows, at, 'UTC', [], 1).reconciliation?.unresolvedGroups, 1);
+  assert.deepEqual(diagnoseJMetricsInputs(rows, at, 'UTC', 1), { missingDuration: 0, missingEffort: 0 });
+});
 test("JStress uses actual reported effort and recorded duration only", () => {
   assert.equal(workoutJStress(session()).value, 300);
   assert.equal(workoutJStress(session({ actualDurationMin: 40 })).value, 200);

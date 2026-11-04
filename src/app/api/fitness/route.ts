@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { computeJMetrics, hasPerformedTraining } from "@/lib/j-metrics";
+import { computeJMetrics, diagnoseJMetricsInputs, hasPerformedTraining } from "@/lib/j-metrics";
 import { activityActualMinutes,groupActivityEvidence,publicActivityReconciliation } from "@/lib/activity-evidence";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { addDaysKey, dateKey, localDate } from "@/lib/dates";
 import { computePmc, executionScore } from "@/lib/fitness";
 import { derivedActivityPolicy } from "@/lib/derived-activity-policy";
+import { readSportHeartRate, type SportHrSport } from "@/lib/sport-heart-rate";
 
 // Owner-only JMetrics and legacy estimates retained for history compatibility.
 export async function GET() {
@@ -29,7 +30,6 @@ export async function GET() {
     readActivityDecisions(user.id),
   ]);
   const ftp = profile?.ftp ?? null;
-  const lthr = profile?.lthr ?? null;
   const policy=derivedActivityPolicy(completed);
   const reconciled=groupActivityEvidence(completed.filter(w=>hasPerformedTraining(w)&&!w.matchedPlanId),activityDecisions);
   const jMetrics = computeJMetrics(completed, asOf, user.timezone, rest.map(r => dateKey(r.observedAt, user.timezone)),90,activityDecisions);
@@ -45,8 +45,10 @@ export async function GET() {
         rpe: w.rpe,
         intensity: w.intensity,
         tss: w.tss,
-        ftp,
-        lthr,
+        ftp:(w.actualSport??w.sport)==="bike"?ftp:null,
+        // Resolve at the activity date: a later report is not evidence of a
+        // historical threshold, and a generic LTHR has no sport scope.
+        lthr:["run","bike"].includes(w.actualSport??w.sport??"")?readSportHeartRate(profile?.manualPrs,(w.actualSport??w.sport) as SportHrSport,"lthr",new Date(w.date),user.timezone)?.value??null:null,
       },
     })),
     asOf, user.timezone,
@@ -92,11 +94,11 @@ export async function GET() {
     pmc,
     pmcUnavailableReason,
     derivedActivityPolicy: { load:policy, execution:executionPolicy },
-    jMetrics,
+    jMetrics: { ...jMetrics, inputGaps: diagnoseJMetricsInputs(completed, asOf, user.timezone, 90, activityDecisions) },
     activityReconciliation:publicActivityReconciliation(completed,activityDecisions),
     execution,
     executionUnavailableReason,
     goalDistance: profile?.goal ?? null,
-    physiology: { ftp, lthr },
+    physiology: { ftp, lthr:null,heartRateSource:"Dated sport-specific athlete reports only; generic profile LTHR is not an activity threshold." },
   });
 }

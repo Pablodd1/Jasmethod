@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     thresholdPaceSecPerKm: profile.runPaceBase || undefined,
     thresholdPaceSecPer100m: profile.swimPaceBase || undefined,
     restingHr: profile.restingHr || undefined,
+    manualPrs:profile.manualPrs,timezone:user.timezone,
   });
 
   return NextResponse.json({

@@ -25,6 +25,7 @@ import { existingReviewResetHold, readExistingReviewResetAudits, type ExistingRe
 import { readPlanningSetup } from "./planning-setup-store";
 import { assessPlanningSetup } from "./planning-setup";
 import { evidencedTargetProfile } from "./anchor-evidence";
+import { sportHeartRateTarget } from "./sport-heart-rate";
 import { stepGuide, sessionEnergy } from "./workout-energy";
 import { carbsPerHourFor } from "./fueling";
 
@@ -192,7 +193,7 @@ export function effectiveSessionFromRecords(input: EffectiveRecords): { workout:
       // transferred to other sports to approve an explicit reduced-day target.
       const targetSport = step.componentSport ?? canonical.sport;
       if (t.type === "power") return targetSport !== "bike" || !profile?.ftp || t.high! > Math.round(profile.ftp * [0,.55,.75,.9,1.05,1.2,1.5,1.5][cap]);
-      if (t.type === "heartRate") return !["run", "bike"].includes(targetSport) || !profile?.lthr || t.high! > Math.round(profile.lthr * [0,.8,.89,.94,1,1.05,1.1,1.1][cap]);
+      if (t.type === "heartRate") {const reference=["run","bike"].includes(targetSport)?sportHeartRateTarget(profile?.manualPrs,targetSport,cap,profile?.referenceAsOf?new Date(profile.referenceAsOf):new Date(),profile?.referenceTimezone??"UTC"):null;return !reference||t.high!>reference.high;}
       const pace = targetSport === "run" && profile?.runPaceBase ? profile.runPaceBase * [0,1.4,1.2,1.08,1,.95,.9,.85][cap] : null;
       return !pace || (t.type === "pace" ? t.low! < pace : t.high! > 1000 / pace);
     });

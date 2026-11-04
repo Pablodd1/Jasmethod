@@ -5,6 +5,7 @@ import { loadStreams, prismaStreamRepo, streamStorageEnabled, type StreamDelegat
 import { analyseStreams, type AnalysisSport } from "@/lib/stream-analysis";
 import { provenanceOf } from "@/lib/strava-provenance";
 import { evidencedTargetProfile } from "@/lib/anchor-evidence";
+import { readSportHeartRate, type SportHrSport } from "@/lib/sport-heart-rate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
  * GET ?workoutId=… → deterministic analysis of ONE of the athlete's own imported activities (stream-analysis.ts).
  * Own data only. Refuses (200, ok:false with a reason) for Strava-origin / unknown-origin activities before any
  * stored data is read. Anchors are the athlete's validated FTP only (same evidence rule as plan targets);
- * heart-rate zones need an LTHR that the repo's anchor policy never treats as validated, so they are not computed.
+ * HR analysis requires a dated sport-specific athlete report valid on the activity date.
  */
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -38,8 +39,9 @@ export async function GET(req: Request) {
     const tests = await prisma.benchmarkTest.findMany({ where: { userId: user.id, id: { in: appliedIds }, completed: true, skipped: false }, orderBy: { date: "desc" } });
     const anchors = evidencedTargetProfile(profile, tests, appliedIds);
     const sport: AnalysisSport = ["bike", "run", "swim"].includes(workout.sport) ? (workout.sport as AnalysisSport) : "other";
-    const analysis = analyseStreams({ streams, provenance, athlete: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, lthr: anchors.lthr ?? null }, sport });
-    return NextResponse.json({ ...analysis, workout: { id: workout.id, title: workout.title, date: workout.date, sport: workout.sport }, anchors: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, ftpBasis: sport === "bike" && anchors.ftp ? "validated test within 90 days" : null } }, { headers: NO_STORE });
+    const hrReference=["run","bike"].includes(sport)?readSportHeartRate(profile?.manualPrs,sport as SportHrSport,"lthr",workout.date,user.timezone):null;
+    const analysis = analyseStreams({ streams, provenance, athlete: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, lthr: hrReference?.value??null }, sport });
+    return NextResponse.json({ ...analysis, workout: { id: workout.id, title: workout.title, date: workout.date, sport: workout.sport }, anchors: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, ftpBasis: sport === "bike" && anchors.ftp ? "validated test within 90 days" : null,heartRate:hrReference } }, { headers: NO_STORE });
   } catch (error) {
     console.error("activity analysis failed:", error instanceof Error ? error.message : "unknown");
     return NextResponse.json({ error: "Could not analyse this activity." }, { status: 500 });

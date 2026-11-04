@@ -5,7 +5,8 @@
 //    running power (%run-CP), pace (/km or /mi, %threshold) and swim pace (/100,
 //    vs CSS). Absolute numbers appear only when the athlete has a dated reference
 //    (the same evidence-gated TargetProfile the canonical session uses); the
-//    percentage always appears, so any watch, power meter or app can be set.
+//    HR percentages require a dated matching sport reference; missing HR stays
+//    unavailable rather than assigning a generic threshold or a sport offset.
 //
 // 2. ENERGY: mechanical work and metabolic energy are different quantities.
 //    - Bike with FTP: mechanical work kJ = Σ watts × seconds / 1000 (what a power
@@ -25,17 +26,20 @@
 // 3. HYDRATION: planned fluid from a measured sweat rate if one exists; otherwise a
 //    prompt to weigh before and after (the existing SessionMeasurementsFields).
 
-import { HR_ZONE_UPPER_FACTORS, POWER_ZONE_UPPER_FACTORS, SWIM_ZONE_MULT } from "./zone-factors";
+import { HR_ZONE_UPPER_FACTORS, MAX_HR_ZONE_BANDS, POWER_ZONE_UPPER_FACTORS, SWIM_ZONE_MULT } from "./zone-factors";
+import { sportHeartRateTarget, type SportHeartRateReference } from "./sport-heart-rate";
 
 export interface GuideProfile {
   ftp?: number | null; lthr?: number | null; runPaceBase?: number | null; swimPaceBase?: number | null;
   weightKg?: number | null; sweatRateMlH?: number | null; units?: string | null;
+  manualPrs?:string|null;referenceAsOf?:string;referenceTimezone?:string;
 }
 export interface GuideStep { name?: string; seconds: number; zone: string; phase?: string }
 
 export interface StepGuide {
   zone: string; rpe: number; feel: string;
   hr: string | null; hrPct: string;
+  hrReference:SportHeartRateReference|null;
   power: string | null; powerPct: string | null;
   runPowerPct: string | null;
   pace: string | null; pacePct: string | null;
@@ -87,9 +91,10 @@ export const kcalToKj = (kcal: number) => Math.round(kcal * 4.184 * 10) / 10;
 
 export function stepGuide(step: GuideStep, sport: string, p: GuideProfile | null | undefined, es = false): StepGuide {
   const z = Z(step.zone), lo = z === 1 ? 0 : z - 1, imperial = p?.units === "imperial";
-  const hrLo = HR_ZONE_UPPER_FACTORS[lo], hrHi = HR_ZONE_UPPER_FACTORS[z];
-  const hrPct = z >= 7 ? `>${Math.round(HR_ZONE_UPPER_FACTORS[6] * 100)}% LTHR` : z === 1 ? `≤${Math.round(hrHi * 100)}% LTHR` : `${pct(hrLo, hrHi)} LTHR`;
-  const hr = p?.lthr && z < 7 ? (z === 1 ? `≤${Math.round(p.lthr * hrHi)} bpm` : `${Math.round(p.lthr * hrLo) + 1}–${Math.round(p.lthr * hrHi)} bpm`) + (sport === "swim" ? (es ? " (en el agua ~10 lpm menos)" : " (swim HR runs ~10 bpm lower)") : "") : null;
+  const scopedHr=["run","bike"].includes(sport)?sportHeartRateTarget(p?.manualPrs,sport,z,p?.referenceAsOf?new Date(p.referenceAsOf):new Date(),p?.referenceTimezone??"UTC"):null;
+  const hrReference=scopedHr?.reference??null;
+  const hrPct=scopedHr?(hrReference!.metric==="lthr"?(z===1?`≤${Math.round(HR_ZONE_UPPER_FACTORS[z]*100)}% LTHR`:`${pct(HR_ZONE_UPPER_FACTORS[lo],HR_ZONE_UPPER_FACTORS[z])} LTHR`):`${pct(MAX_HR_ZONE_BANDS[z-1][0],MAX_HR_ZONE_BANDS[z-1][1])} ${es?"FC máxima":"maximum HR"}`):(es?"Referencia de FC no disponible":"HR reference unavailable");
+  const hr=scopedHr?`${hrReference!.metric==="lthr"&&z===1?`≤${scopedHr.high}`:`${scopedHr.low}–${scopedHr.high}`} bpm (${sport} · ${es?"declarado por el atleta":"athlete-reported"} ${hrReference!.observedAt})`:null;
 
   let power: string | null = null, powerPct: string | null = null, runPowerPct: string | null = null, pace: string | null = null, pacePct: string | null = null;
   if (sport === "bike" || sport === "brick") {
@@ -120,7 +125,7 @@ export function stepGuide(step: GuideStep, sport: string, p: GuideProfile | null
   const e = stepEnergy(step, sport, p);
   if (e.kj != null) parts.push(es ? `Trabajo mecánico estimado ≈${e.kj} kJ` : `Estimated mechanical work ≈${e.kj} kJ`);
   else if (e.kcal != null) parts.push(es ? `Energía metabólica estimada ≈${e.kcal} kcal` : `Estimated metabolic energy ≈${e.kcal} kcal`);
-  return { zone: step.zone, rpe: RPE[z], feel, hr, hrPct, power, powerPct, runPowerPct, pace, pacePct, text: parts.join(" · "), kj: e.kj, kcal: e.kcal };
+  return { zone: step.zone, rpe: RPE[z], feel, hr, hrPct, hrReference, power, powerPct, runPowerPct, pace, pacePct, text: parts.join(" · "), kj: e.kj, kcal: e.kcal };
 }
 
 function stepEnergy(step: GuideStep, sport: string, p: GuideProfile | null | undefined): { kj: number | null; kcal: number | null; method: SessionEnergy["method"] } {

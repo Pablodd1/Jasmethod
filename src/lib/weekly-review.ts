@@ -6,6 +6,7 @@ import { prisma } from "./db";
 import { dateKey, dayBounds, addDaysKey, localDate } from "./dates";
 import { estimateTss } from "./fitness";
 import { derivedActivityPolicy, type DerivedActivityPolicy } from "./derived-activity-policy";
+import { readSportHeartRate, type SportHrSport } from "./sport-heart-rate";
 
 export interface WeeklyReview {
   subject: string;
@@ -31,7 +32,7 @@ export async function buildWeeklyReview(
     prisma.workout.findMany({
       where: { userId, completed: true, date: { gte: start, lt: end } },
       select: {
-        title: true, date: true, sport: true, durationMin: true,
+        title: true, date: true, sport: true, actualSport:true, durationMin: true,
         actualDurationMin: true, avgHr: true, np: true, avgPower: true,
         rpe: true, intensity: true, distanceKm: true, tss: true, matchedPlanId: true,
         source: true, externalId: true, notes: true,
@@ -40,7 +41,7 @@ export async function buildWeeklyReview(
     }),
     prisma.athleteProfile.findUnique({
       where: { userId },
-      select: { ftp: true, lthr: true },
+      select: { ftp: true, manualPrs: true },
     }),
   ]);
 
@@ -67,8 +68,8 @@ export async function buildWeeklyReview(
         durationMin: c.actualDurationMin ?? c.durationMin,
         avgPower: (c as any).np ?? c.avgPower ?? undefined,
         avgHr: c.avgHr ?? undefined,
-        ftp: profile?.ftp ?? undefined,
-        lthr: profile?.lthr ?? undefined,
+        ftp:(c.actualSport??c.sport)==="bike"?profile?.ftp:undefined,
+        lthr:["run","bike"].includes(c.actualSport??c.sport)?readSportHeartRate(profile?.manualPrs,(c.actualSport??c.sport) as SportHrSport,"lthr",c.date,timezone)?.value??undefined:undefined,
         intensity: c.intensity ?? undefined,
         tss: c.tss ?? undefined,
       } as any),
