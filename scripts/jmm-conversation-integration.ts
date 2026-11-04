@@ -9,6 +9,8 @@ import { Decoder, Stream } from "@garmin/fitsdk";
 import { hashToken } from "../src/lib/auth";
 import { dayBounds, addDaysKey, localDate } from "../src/lib/dates";
 import { isTodayTrainingResponse, isSavedPlanResponse, isTrainingProfileResponse } from "../src/components/daily-training/training-read";
+import { recordSportHeartRate } from "../src/lib/sport-heart-rate";
+import { isProtectedProfileAnswer } from "../src/lib/coach-profile-reference";
 
 for (const key of ["DATABASE_URL", "DIRECT_URL"]) {
   const url = new URL(process.env[key] || "");
@@ -53,6 +55,39 @@ async function ask(a:Actor,message:string,extra:Record<string,unknown>={}) {retu
 function pending(result:any) {assert.ok(result.proposal?.id,"Expected a reviewable saved proposal");assert.ok(result.proposal.candidates?.length,"Expected explicit candidates");return result.proposal;}
 function confirmBody(p:any,candidates=p.candidates) {return {proposalId:p.id,expectedRevision:p.revision,candidates,idempotencyKey:randomUUID(),confirmed:true};}
 async function main() {
+  await scenario("Dated sport HR saves through HTTP, produces separate owner zones and protected local Koach answers without retained facts",async()=>{
+    const a=await actor("dated-sport-hr"),other=await actor("dated-sport-hr-other");
+    const before=await json("/api/profile",a),otherBefore=await json("/api/profile",other);
+    let records=JSON.stringify([{label:"PRIVATE_PROFILE_CANARY_86241",value:75,unit:"reps",date:yesterday}]);
+    records=recordSportHeartRate(records,{sport:"run",metric:"maxHr",value:186,observedOn:yesterday},today);
+    records=recordSportHeartRate(records,{sport:"bike",metric:"maxHr",value:174,observedOn:today},today);
+    await json("/api/profile",a,{method:"PUT",body:{expectedRevision:before.revision,maxHr:235,manualPrs:records}});
+    await json("/api/profile",other,{method:"PUT",body:{expectedRevision:otherBefore.revision,manualPrs:recordSportHeartRate(otherBefore.profile.manualPrs,{sport:"run",metric:"maxHr",value:201,observedOn:today},today)}});
+    const saved=await json("/api/profile",a);
+    assert.deepEqual([saved.zones.sportHr.run.reference.value,saved.zones.sportHr.bike.reference.value],[186,174]);
+    assert.deepEqual([saved.zones.sportHr.run.reference.observedAt,saved.zones.sportHr.bike.reference.observedAt],[yesterday,today]);
+    assert.equal(saved.zones.sportHr.run.reference.source,"athlete_reported_reference");
+    assert.notDeepEqual(saved.zones.sportHr.run.zones,saved.zones.sportHr.bike.zones,"A cycling reference cannot be copied from running or the shared legacy maximum");
+    assert.deepEqual(saved.zones.bikeHr,saved.zones.sportHr.bike.zones);
+    for(const [sport,value,observedAt] of [["running",186,yesterday],["cycling",174,today]] as const){
+      const answer=await ask(a,`What is my ${sport} maximum heart rate?`);
+      assert.equal(isProtectedProfileAnswer(answer.protectedProfileAnswer),true);
+      const fact=answer.protectedProfileAnswer.fields[0];
+      assert.deepEqual([fact.sport,fact.value,fact.unit,fact.source,fact.observedAt,fact.provenance],[sport==="running"?"run":"bike",value,"bpm","athlete_reported_reference",observedAt,"athlete_reported"]);
+      assert.equal(answer.protectedProfileAnswer.privacy,"local_only");assert.equal(answer.trainingModified,false);assert.equal(answer.externalStatus,"not_requested");
+      assert.doesNotMatch(answer.answer,/no reliable answer|rest day/i);
+      assert.equal((await db.coachConversationMessage.findUniqueOrThrow({where:{id:answer.protectedProfileAnswer.sourceMessageId}})).userId,a.id);
+    }
+    const foreign=await ask(other,"What is my running maximum heart rate?");
+    assert.equal(foreign.protectedProfileAnswer.fields[0].value,201);
+    await request("/api/assistant",other,{body:{message:"What is my running maximum heart rate?",athleteId:a.id},status:403});
+    const history=await json("/api/assistant",a);assert.equal(history.protectedProfileAnswer,undefined,"GET reload does not retain an ephemeral protected card");
+    const persisted=await db.coachConversationMessage.findMany({where:{userId:{in:[a.id,other.id]}},select:{content:true,metadata:true,source:true}});
+    assert.doesNotMatch(JSON.stringify(persisted),/\b(?:186|174|201|235)\b|PRIVATE_PROFILE_CANARY|86241|protectedProfileAnswer/,"Profile numbers, record canaries and protected cards are not persisted in conversation text or metadata");
+    assert.ok(persisted.every(message=>message.source!=="openai"));
+    assert.equal((await db.athleteProfile.findUniqueOrThrow({where:{userId:a.id}})).manualPrs,records,"Asking questions does not alter dated source records");
+    assert.equal(await db.auditLog.count({where:{subjectId:{in:[a.id,other.id]},action:"coach.conversation.confirmed"}}),0);
+  });
   await scenario("AI privacy consent and source refusals make no message writes; legacy summaries are withheld",async()=>{
     const a=await actor("privacy-consent");
     await request("/api/nutrition/photo",undefined,{body:{},status:401});
@@ -260,7 +295,7 @@ async function main() {
     const page=await request("/coach",undefined,{status:200});
     const html=await page.text();
     assert.match(html,/noindex/);
-    assert.match(html,/JMM Coach/);
+    assert.match(html,/JMM Koach/);
     // HTTP route coverage complements, but does not replace, signed-in browser navigation.
   });
   await scenario("Unauthenticated access and invalid envelopes fail without success",async()=>{await request("/api/assistant",undefined,{status:401});await request("/api/assistant",undefined,{body:{message:"hello"},status:401});const a=await actor("invalid");for(const body of [null,[],{message:""},{message:"x".repeat(10001)},{message:"hello",source:"web"},{message:"hello",externalConsent:"yes"},{message:"image",image:{url:"http://127.0.0.1/private"}}]) await request("/api/assistant",a,{body,status:400});});
