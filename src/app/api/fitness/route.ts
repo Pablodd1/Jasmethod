@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { computeJMetrics, hasPerformedTraining } from "@/lib/j-metrics";
+import { computeJMetrics, diagnoseJMetricsInputs, hasPerformedTraining } from "@/lib/j-metrics";
 import { activityActualMinutes,groupActivityEvidence,publicActivityReconciliation } from "@/lib/activity-evidence";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { addDaysKey, dateKey, localDate } from "@/lib/dates";
@@ -92,7 +92,7 @@ export async function GET() {
     pmc,
     pmcUnavailableReason,
     derivedActivityPolicy: { load:policy, execution:executionPolicy },
-    jMetrics,
+    jMetrics: { ...jMetrics, inputGaps: diagnoseJMetricsInputs(completed, asOf, user.timezone, 90, activityDecisions) },
     activityReconciliation:publicActivityReconciliation(completed,activityDecisions),
     execution,
     executionUnavailableReason,

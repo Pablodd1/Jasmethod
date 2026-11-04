@@ -6,6 +6,8 @@ import Link from "next/link";
 export type JMetrics = {
   version: "jstress-srpe-v1"; unit: "AU";
   reconciliation?: {rawRecords:number;groupedCopies:number;unresolvedGroups:number};
+  derivedActivityPolicy?: { status: "allowed" | "insufficient"; reason: string | null; restrictedRecords: {strava:number;unknown:number} };
+  inputGaps?: { missingDuration:number; missingEffort:number } | null;
   totalJStress: number | null; eligibleSessions: number; totalSessions: number;
   coveragePct: number | null; missingDays: number; windowDays: number; note: string;
   confirmedRestDays: string[]; timezone: string; today: string;
@@ -39,6 +41,7 @@ export function JMetricsCard({ metrics, refreshKey, es = false, allowRestEntry =
     return () => controller.abort();
   }, [metrics, refreshKey, revision]);
   const data = metrics === undefined ? loaded : metrics;
+  const sourceBlocked = data?.derivedActivityPolicy?.status === "insufficient";
   const earliest = data?.today && /^\d{4}-\d{2}-\d{2}$/.test(data.today) ? new Date(Date.parse(`${data.today}T12:00:00Z`) - 89 * 86400000).toISOString().slice(0, 10) : undefined;
   async function saveRest(event: React.FormEvent) {
     event.preventDefault(); setSaving(true); setStatus("");
@@ -60,7 +63,11 @@ export function JMetricsCard({ metrics, refreshKey, es = false, allowRestEntry =
     <p className="text-sm">{es ? "JStress = minutos realizados × esfuerzo percibido de la sesión (RPE, 0–10). Unidades arbitrarias (AU); no requiere dispositivo." : "JStress = completed minutes × your session effort rating (RPE, 0–10). Arbitrary units (AU); no device required."}</p>
     {!data ? <p role="status" className="text-sm">{loading ? (es ? "Cargando…" : "Loading…") : error ? (es ? "No se pudieron cargar las métricas. Vuelve a cargar la página." : "Metrics could not be loaded. Reload the page to retry.") : (es ? "— No hay datos disponibles para esta vista." : "— No data available for this view.")}</p> : <>
       <p className="text-sm">{es ? "JStress registrado" : "Recorded JStress"}: <strong>{display(data.totalJStress)} AU</strong> · {data.windowDays} {es ? "días" : "days"}</p>
-      <p className="text-sm">{es ? "Cobertura" : "Coverage"}: {data.eligibleSessions}/{data.totalSessions} {es ? "sesiones" : "sessions"} ({display(data.coveragePct)}{data.coveragePct == null ? "" : "%"}). {data.missingDays} {es ? "días sin datos completos; no equivalen a descanso confirmado." : "days without complete data; these are not confirmed rest days."}</p>
+      {data.reconciliation && <p className="text-sm">{es ? "Registros de actividad visibles" : "Visible activity records"}: {data.reconciliation.rawRecords} · {es ? "sesiones agrupadas" : "grouped sessions"}: {data.totalSessions}. {es ? "Los planes vinculados no se cuentan otra vez." : "Linked plans are not counted again."}</p>}
+      {sourceBlocked ? <p role="status" className="text-sm">{es ? "Cobertura de carga: no disponible. Hay registros de origen Strava o desconocido en este período; no se calcula una carga parcial que omita ese trabajo. Los registros siguen disponibles para revisar." : "Load coverage: unavailable. This period includes Strava-origin or unknown-origin records, so a partial load that omits that work is not calculated. Your records remain available to review."} <Link href="/calendar" className="underline">{es ? "Ver registros" : "View records"}</Link></p> : <>
+        <p className="text-sm">{es ? "Sesiones con carga calculable" : "Sessions with calculable load"}: {data.eligibleSessions}/{data.totalSessions} ({display(data.coveragePct)}{data.coveragePct == null ? "" : "%"}). {data.missingDays} {es ? "días sin datos completos; no equivalen a descanso confirmado." : "days without complete data; these are not confirmed rest days."}</p>
+        {data.inputGaps && (data.inputGaps.missingDuration > 0 || data.inputGaps.missingEffort > 0) && <p className="text-sm">{es ? "Para sesiones registradas y sin copias pendientes:" : "For recorded sessions without unresolved copies:"} {data.inputGaps.missingDuration > 0 && (es ? `${data.inputGaps.missingDuration} sin duración real válida. ` : `${data.inputGaps.missingDuration} missing valid actual duration. `)}{data.inputGaps.missingEffort > 0 && (es ? `${data.inputGaps.missingEffort} sin esfuerzo de sesión (RPE). ` : `${data.inputGaps.missingEffort} missing session effort (RPE). `)}<Link href="/calendar" className="underline">{es ? "Revisar resultados" : "Review results"}</Link></p>}
+      </>}
       <div className="grid grid-cols-3 gap-2">{lines.map(line => <div key={line.key} className="rounded-lg border p-2"><div className="text-xs font-bold">{line.label}</div><div className="text-lg font-semibold">{display(data.current[line.key])} <span className="text-xs">AU</span></div></div>)}</div>
       <p className="text-xs">{es ? "Resúmenes suavizados en escala de carga diaria (AU), no mediciones de condición física, fatiga ni preparación. Las lagunas se mantienen visibles." : "Smoothed summaries on a daily-load scale (AU), not measurements of fitness, fatigue or readiness. Missing values remain gaps."}</p>
       {values.length > 0 && <>
@@ -80,7 +87,7 @@ export function JMetricsCard({ metrics, refreshKey, es = false, allowRestEntry =
         <div className="flex flex-wrap gap-4 text-xs"><span>▥ JStress · {es ? "barras diarias; ○ = cero confirmado" : "daily bars; ○ = confirmed zero"}</span>{lines.map(line => <span key={line.key}><svg width="25" height="10" className="inline mr-1" aria-hidden="true"><line x1="0" x2="25" y1="5" y2="5" stroke={line.color} strokeWidth="2" strokeDasharray={line.dash} /></svg>{line.label}</span>)}</div>
       </>}
       {!!data.reconciliation?.unresolvedGroups && <p role="status" className="text-sm">{es ? "Posibles copias: carga incompleta hasta revisar." : "Possible activity copies: load remains incomplete until reviewed."} <Link className="underline" href="/onboard?redo=1&advanced=1&step=race">{es ? "Revisar importaciones en configuración" : "Review imports in athlete setup"}</Link></p>}
-      <p className="text-xs text-slate-600">{data.note}</p>
+      <p className="text-xs text-slate-600">{es ? "Solo se usa la duración real y el esfuerzo informado. Un día sin datos es desconocido; las lagunas reinician las tendencias. Las puntuaciones de proveedores no sustituyen estos datos." : "Only actual duration and reported effort are used. A day without data is unknown; gaps restart trends. Provider scores do not replace these inputs."}</p>
       {allowRestEntry && metrics === undefined && <form onSubmit={saveRest} className="border rounded-lg p-3 space-y-3 text-sm">
         <p>{es ? "Confirma solo días realmente sin entrenamiento. J Recent requiere 7 días consecutivos completos; J Base y J Balance requieren 42. Un día desconocido interrumpe la secuencia." : "Confirm only actual days without training. J Recent needs 7 consecutive complete days; J Base and J Balance need 42. An unknown day interrupts the sequence."}</p>
         <label className="block">{es ? "Fecha" : "Date"} ({data.timezone})<input className="input mt-1" type="date" required min={earliest} max={data.today} value={date} onChange={event => { setDate(event.target.value); setConfirmed(data.confirmedRestDays?.includes(event.target.value) ?? false); setStatus(""); }} /></label>

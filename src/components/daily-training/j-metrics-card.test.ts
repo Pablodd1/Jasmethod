@@ -26,7 +26,7 @@ test("J Metrics unavailable values stay unknown rather than zero", () => {
 test("J Metrics shows reported source, coverage, units and accessible daily values", () => {
   const html = renderToStaticMarkup(React.createElement(JMetricsCard, { metrics: sample }));
   assert.match(html, /completed minutes × your session effort rating/);
-  assert.match(html, /1\/2 sessions \(50%\)/);
+  assert.match(html, /Sessions with calculable load: 1\/2 \(50%\)/);
   assert.match(html, /300 AU/);
   assert.match(html, /daily-load scale \(AU\)/);
   assert.match(html, /not measurements of fitness, fatigue or readiness/);
@@ -72,4 +72,27 @@ test("ambiguous source load displays review route without invented zero",()=>{
  const html=renderToStaticMarkup(React.createElement(JMetricsCard,{metrics:{...sample,totalJStress:null,reconciliation:{rawRecords:2,groupedCopies:0,unresolvedGroups:1}}}));
  assert.match(html,/Recorded JStress[^<]*<strong>— AU/);
  assert.match(html,/Possible activity copies/);assert.match(html,/href="\/onboard\?redo=1&amp;advanced=1&amp;step=race"/);
+});
+
+test("blocked provenance is unavailable rather than zero coverage and does not suggest adding effort as a bypass", () => {
+  for (const es of [false, true]) {
+    const html = renderToStaticMarkup(React.createElement(JMetricsCard, { es, metrics: { ...sample, totalJStress: null, eligibleSessions: 0, totalSessions: 144, coveragePct: 0,
+      reconciliation: { rawRecords: 145, groupedCopies: 1, unresolvedGroups: 0 },
+      derivedActivityPolicy: { status: 'insufficient', reason: 'restricted', restrictedRecords: { strava: 1, unknown: 1 } }, inputGaps: null } }));
+    assert.match(html, es ? /Cobertura de carga: no disponible/ : /Load coverage: unavailable/);
+    assert.match(html, /145/);
+    assert.doesNotMatch(html, /0\/144/);
+    assert.doesNotMatch(html, /missing session effort|sin esfuerzo de sesión/);
+    assert.match(html, /href="\/calendar"/);
+    assert.match(html, /— AU/);
+  }
+});
+
+test("eligible missing duration and effort are actionable without invented values", () => {
+  for (const es of [false, true]) {
+    const html = renderToStaticMarkup(React.createElement(JMetricsCard, { es, metrics: { ...sample, inputGaps: { missingDuration: 1, missingEffort: 2 } } }));
+    assert.match(html, es ? /1 sin duración real válida/ : /1 missing valid actual duration/);
+    assert.match(html, es ? /2 sin esfuerzo de sesión/ : /2 missing session effort/);
+    assert.match(html, /href="\/calendar"/);
+  }
 });

@@ -40,6 +40,25 @@ export interface JMetrics {
   reconciliation?: {rawRecords:number;groupedCopies:number;unresolvedGroups:number};
   derivedActivityPolicy?: DerivedActivityPolicy;
 }
+
+/** Owner-facing input gaps for the same window. Do not produce an input
+ * breakdown when any contributing origin blocks the aggregate calculation. */
+export function diagnoseJMetricsInputs(workouts: JStressWorkout[], asOf = new Date(), timezone = DEFAULT_TIMEZONE, windowDays = 90, decisions: readonly ActivityDecision[] = []) {
+  const days = Number.isFinite(windowDays) ? Math.max(1, Math.min(90, Math.floor(windowDays))) : 90;
+  const first = addDaysKey(dateKey(asOf, timezone), 1 - days);
+  const performed = workouts.filter(w => hasPerformedTraining(w) && Number.isFinite(w.date.getTime()) && w.date <= asOf && dateKey(w.date, timezone) >= first);
+  if (derivedActivityPolicy(performed).status !== "allowed") return null;
+  const groups = groupActivityEvidence(performed.filter(w => !w.matchedPlanId), decisions).groups;
+  let missingDuration = 0, missingEffort = 0;
+  for (const group of groups) {
+    if (group.unresolved) continue;
+    const w = group.primary;
+    const minutes = w.actualDurationMin ?? (w.planned ? null : w.durationMin);
+    if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes <= 0 || minutes > 1440) missingDuration++;
+    if (typeof w.rpe !== "number" || !Number.isFinite(w.rpe) || w.rpe < 0 || w.rpe > 10) missingEffort++;
+  }
+  return { missingDuration, missingEffort };
+}
 export function computeJMetrics(workouts: JStressWorkout[], asOf = new Date(), timezone = DEFAULT_TIMEZONE, restDays: string[] = [], windowDays = 90,decisions:readonly ActivityDecision[]=[]): JMetrics {
   const days = Number.isFinite(windowDays) ? Math.max(1, Math.min(90, Math.floor(windowDays))) : 90;
   const today = dateKey(asOf, timezone), first = addDaysKey(today, 1 - days);
