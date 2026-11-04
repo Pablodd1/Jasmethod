@@ -36,6 +36,7 @@ export default function SettingsPage() {
   const lang = (user?.language || "es") as Lang;
   const [revision, setRevision] = useState<string>();
   const [profile, setProfile] = useState<any>(null);
+  const [profileOwner,setProfileOwner]=useState<string|null>(null);
   const [zones, setZones] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -66,13 +67,13 @@ export default function SettingsPage() {
       if (requestId !== loadRequest.current) return;
       const current = settingsProfileForm(data.profile ?? null, user?.timezone);
       loadedForm.current = current; setForm(current);
-      setRevision(data.revision); setProfile(data.profile);
+      setRevision(data.revision); setProfile(data.profile); setProfileOwner(user?.id??null);
       try { setNutritionDraft(data.profile?.nutritionContext ? JSON.parse(data.profile.nutritionContext) : null); }
       catch { setNutritionDraft(null); }
       setNutritionDirty(false); setZones(data.zones); setVo2Source(data.vo2maxSource || null);
     } catch (failure) { if (requestId === loadRequest.current) setError((failure as Error).message); }
     finally { if (requestId === loadRequest.current) setLoading(false); }
-  }, [user?.timezone]);
+  }, [user?.timezone,user?.id]);
   async function referenceSaved(){await load();setNotice(lang==="es"?"Referencia guardada.":"Reference saved.");}
   const cancelLoad = useCallback(()=>{loadRequest.current++;},[]);
   useEffect(() => { if (user?.id) void load(); return cancelLoad; }, [user?.id,load,cancelLoad]);
@@ -142,7 +143,7 @@ export default function SettingsPage() {
     finally { savingRef.current = false; setSaving(false); }
   }
 
-  if (loading) {
+  if (loading || profileOwner!==user?.id) {
     return (
       <ProtectedPage>
         {error && (

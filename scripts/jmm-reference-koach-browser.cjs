@@ -82,6 +82,12 @@ async function journey(browser, language, units) {
     assert.equal(writes.length, 0, 'Missing date must not trigger a save');
     await shot('01-hr-date-required');
     await hr.getByLabel(es ? 'Fecha de observación' : 'Observation date').fill(today);
+    await hr.getByLabel(es?'Referencia':'Reference',{exact:true}).selectOption('maxHr');
+    assert.equal(await hr.getByLabel('bpm',{exact:true}).inputValue(),'','Changing metric cannot carry another reference value');
+    assert.equal(await hr.getByLabel(es?'Fecha de observación':'Observation date').inputValue(),'');
+    await hr.getByLabel(es?'Referencia':'Reference',{exact:true}).selectOption('lthr');
+    await hr.getByLabel('bpm',{exact:true}).fill('165');
+    await hr.getByLabel(es?'Fecha de observación':'Observation date').fill(today);
     await hr.getByRole('button', { name: es ? 'Guardar referencia' : 'Save reference', exact: true }).click();
     await page.getByRole('status').filter({ hasText: es ? 'Referencia guardada.' : 'Reference saved.' }).waitFor();
     assert.equal(writes.length, 1);
