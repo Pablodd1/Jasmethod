@@ -6,8 +6,13 @@ import { getCurrentUser } from "@/lib/auth";
 import { canCoach, canAccessAthlete, ApiError, errorResponse } from "@/lib/access";
 import { coachingSummary } from "@/lib/coaching";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
-import { dayBounds } from "@/lib/dates";
+import { addDaysKey, dateKey, dayBounds, localDate } from "@/lib/dates";
 import { activityDisclosure, activityAuditDisclosure } from "@/lib/activity-disclosure";
+import { computeJMetrics, hasPerformedTraining } from "@/lib/j-metrics";
+import { derivedActivityPolicy } from "@/lib/derived-activity-policy";
+import { buildCycleBaselineReviews } from "@/lib/cycle-review";
+import { readSportHeartRate } from "@/lib/sport-heart-rate";
+import { sportEvidence } from "@/lib/sport-evidence";
 
 export async function GET(
   req: Request,
@@ -37,10 +42,14 @@ export async function GET(
     if (!athlete) throw new ApiError("Athlete not found", 404);
     const days = Math.max(
       7,
-      Math.min(180, Number(new URL(req.url).searchParams.get("days")) || 30),
+      Math.min(180, Math.floor(Number(new URL(req.url).searchParams.get("days")) || 30)),
     );
-    const since = new Date(Date.now() - days * 86400000),
-      until = new Date(Date.now() + 28 * 86400000);
+    const now = new Date();
+    const today = dayBounds(athlete.timezone, now).key;
+    const since = localDate(addDaysKey(today, 1 - days), athlete.timezone);
+    const until = new Date(now.getTime() + 28 * 86400000);
+    const loadDays = Math.min(days, 90);
+    const loadStart = localDate(addDaysKey(today, 1 - loadDays), athlete.timezone);
     const [
       workouts,
       metrics,
@@ -53,6 +62,9 @@ export async function GET(
       connectors,
       audit,
       plan,
+      restDays,
+      appliedAnchors,
+      decisions,
     ] = await Promise.all([
       prisma.workout.findMany({
         where: { userId: athlete.id, date: { gte: since, lte: until } },
@@ -113,10 +125,38 @@ export async function GET(
         where: { userId: athlete.id, status: "active" },
         orderBy: { createdAt: "desc" },
       }),
+      prisma.metricObservation.findMany({
+        where: { userId: athlete.id, metricType: "jmm_rest_day", source: "manual", value: 1, qualityFlag: "ok",
+          measurementMethod: "athlete_reported_rest", observedAt: { gte: loadStart, lte: now } },
+        select: { observedAt: true },
+      }),
+      prisma.auditLog.findMany({
+        where: { subjectId: athlete.id, action: "baseline.fromTest" },
+        select: { entityId: true },
+      }),
+      readActivityDecisions(athlete.id),
     ]);
     const disclosed = activityDisclosure(workouts, actor.id, athlete.id);
     const metricView = activityDisclosure(metrics, actor.id, athlete.id);
     const auditView = activityAuditDisclosure(audit, actor.id, athlete.id);
+    const performed = workouts.filter(row => row.date >= loadStart && row.date <= now && hasPerformedTraining(row));
+    const loadUnavailableReason = activityDisclosure(performed, actor.id, athlete.id).reason
+      ?? derivedActivityPolicy(performed).reason;
+    const jMetrics = loadUnavailableReason ? null
+      : computeJMetrics(performed, now, athlete.timezone, restDays.map(row => dateKey(row.observedAt, athlete.timezone)), loadDays, decisions);
+    const observations = !loadUnavailableReason && !jMetrics?.reconciliation?.unresolvedGroups
+      ? sportEvidence(performed.filter(row => !row.matchedPlanId), athlete.id, decisions, now).map(({ sport, latest }) => ({ sport, latest }))
+      : [];
+    const references = buildCycleBaselineReviews({
+      profile: athlete.profile, tests: benchmarks, appliedIds: appliedAnchors.flatMap(row => row.entityId ? [row.entityId] : []),
+      sports: ["run", "bike", "swim"], now, timezone: athlete.timezone,
+    });
+    const heartRate = (["run", "bike", "swim", "hyrox"] as const).flatMap(sport =>
+      (["lthr", "maxHr"] as const).flatMap(metric => {
+        const reference = readSportHeartRate(athlete.profile?.manualPrs, sport, metric, now, athlete.timezone);
+        return reference ? [reference] : [];
+      }));
+    const analysisUnavailableReason = disclosed.reason ?? metricView.reason;
     return Response.json({
       athlete,
       profileRevision: profileRevision(athlete.profile),
@@ -133,16 +173,11 @@ export async function GET(
       disclosure: { workoutsUnavailableReason: disclosed.reason, metricsUnavailableReason: metricView.reason, auditUnavailableReason: auditView.reason },
       plan,
       days,
-      today: dayBounds(athlete.timezone).key,
-      analysis: coachingSummary(
-        workouts,
-        metrics,
-        athlete.profile,
-        athlete.timezone,
-        new Date(),
-        await readActivityDecisions(athlete.id),
-      ),
-    });
+      today,
+      metricReview: { jMetrics, loadUnavailableReason, references, heartRate, observations },
+      analysisUnavailableReason,
+      analysis: analysisUnavailableReason ? null : coachingSummary(workouts, metrics, athlete.profile, athlete.timezone, now, decisions),
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     return errorResponse(e);
   }
