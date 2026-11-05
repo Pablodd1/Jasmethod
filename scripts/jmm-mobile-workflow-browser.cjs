@@ -235,7 +235,8 @@ async function fillGoals(p, { hours = '3', weeks = '12', maximum = '60' } = {}) 
         assert.equal((await api(athlete, '/api/plan')).plans[0].id, originalPlan);
         await p.getByRole('region', { name: 'Saved training cycle', exact: true }).getByRole('link', { name: 'Calendar', exact: true }).click();
         await p.waitForURL('**/calendar');
-        await p.getByText('Use Apple Calendar or another calendar app', { exact: true }).click();
+        await p.getByRole('region', { name: 'Training agenda', exact: true }).waitFor();
+        await p.getByText('Plan, legend and export', { exact: true }).click();
         await p.getByRole('link', { name: 'Download calendar (.ics)', exact: true }).waitFor();
         const [downloaded] = await Promise.all([
             p.waitForEvent('download'),
