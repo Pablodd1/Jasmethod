@@ -1,6 +1,9 @@
 "use client";
+import "@/components/daily-training/universal-workout-card.css";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { enUS, es as esLocale } from "date-fns/locale";
 import {
   CalendarDays,
   ChevronLeft,
@@ -13,9 +16,7 @@ import {
   Thermometer,
   MapPin,
   CheckCircle2,
-  CloudSun,
 } from "lucide-react";
-import { workoutDetail } from "@/lib/workout-view";
 import { dateKey } from "@/lib/dates";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -25,13 +26,10 @@ import {
   eachDayOfInterval,
   format,
   isSameMonth,
-  isSameDay,
   addMonths,
   addDays,
 } from "date-fns";
-import { buildSessionDetail } from "@/lib/science";
 import { dayOffProtocol, temperatureAdjustment } from "@/lib/adaptive";
-import { WeekStrip } from "@/components/week-strip";
 import { endpointText } from "@/lib/universal-workout-card";
 import { savedCycleSummary } from "@/lib/training-cycle-summary";
 import { manualWorkoutAttempt, type ManualWorkoutAttempt } from "@/lib/manual-workout-request";
@@ -47,15 +45,36 @@ const SPORT_COLOR: Record<string, string> = {
   recovery: "bg-slate-100 text-slate-600",
 };
 
+const SavedWorkoutPreview = dynamic(() => import("@/components/daily-training/SavedWorkoutPreviewCard").then(module => module.SavedWorkoutPreviewCard));
+
+function CalendarWorkoutSteps({ sessionId, es }: { sessionId: string; es: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  return <details className="mt-2 min-w-0" onToggle={event => setExpanded(event.currentTarget.open)}>
+    <summary className="cursor-pointer min-h-11 content-center font-semibold">{es ? "Pasos y objetivos" : "Steps and targets"}</summary>
+    {expanded && <SavedWorkoutPreview sessionId={sessionId} es={es} compact embedded />}
+  </details>;
+}
+
 function fmtMin(min: number, language: "en" | "es" = "en") {
   return endpointText({ endpoint: { type: "time", seconds: min * 60 } }, language);
 }
 
 export default function CalendarPage() {
   const { user } = useAuth();
+  return <TrainingCalendar key={user?.id ?? "signed-out"} />;
+}
+
+function TrainingCalendar() {
+  const { user } = useAuth();
   const es = user?.language === "es";
-  const [view, setView] = useState<"days" | "month">("month");
-  const [month, setMonth] = useState(new Date());
+  const locale = es ? esLocale : enUS;
+  const todayKey = dateKey(new Date(), user?.timezone);
+  const [view, setView] = useState<"days" | "month">("days");
+  const [month, setMonth] = useState(() => new Date(`${todayKey}T12:00:00`));
+  const monthKey = format(month, "yyyy-MM");
+  const [loadedMonth, setLoadedMonth] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const requestId = useRef(0);
   const [events, setEvents] = useState<any[]>([]);
   const [races, setRaces] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
@@ -74,12 +93,15 @@ export default function CalendarPage() {
   const [resultError, setResultError] = useState("");
   const [evForm, setEvForm] = useState({
     title: "",
-    date: format(new Date(), "yyyy-MM-dd"),
+    date: todayKey,
     type: "note",
     notes: "",
   });
   const [selected, setSelected] = useState<string | null>(null); // yyyy-MM-dd
-  const [stripWorkouts, setStripWorkouts] = useState<any[]>([]); // prev month → next month for the week strip
+  const dayClose = useRef<HTMLButtonElement>(null);
+  const [nearby, setNearby] = useState<any[]>([]);
+  const [nearbyLoaded, setNearbyLoaded] = useState(false);
+  const [nearbyRest, setNearbyRest] = useState<string[]>([]);
   const [mutationError, setMutationError] = useState("");
   const [moveFor, setMoveFor] = useState<any>(null); // session being moved
   const [moveForm, setMoveForm] = useState({
@@ -89,27 +111,53 @@ export default function CalendarPage() {
     temp: "",
   });
 
-  async function load(m: Date) {
+  const load = useCallback(async (m: Date, signal?: AbortSignal) => {
     const key = format(m, "yyyy-MM");
-    const [res,sres]=await Promise.all([fetch(`/api/calendar?month=${key}`,{cache:'no-store'}),fetch('/api/calendar?month=auto',{cache:'no-store'})]);
-    const d = await res.json();
-    setEvents(d.events || []);
-    setWorkouts(d.workouts || []);
-    setDisplayWorkouts(d.displayWorkouts||d.workouts||[]);
-    setRaces(d.races || []);
-    setPlan(d.plan);
-    // The concurrent wider request supplies the week strip without stale data.
-    if (sres.ok) {
-      const sd = await sres.json();
-      setStripWorkouts(sd.displayWorkouts||sd.workouts||[]);
+    const id = ++requestId.current;
+    setLoadError("");
+    const read = async (period: string) => {
+      const res = await fetch(`/api/calendar?month=${period}`, { cache: "no-store", signal });
+      if (!res.ok) throw Error("Calendar unavailable");
+      return res.json();
+    };
+    try {
+      const [d, sd] = await Promise.all([read(key), read("auto").catch(() => null)]);
+      if (signal?.aborted || id !== requestId.current) return;
+      setEvents(d.events || []);
+      setWorkouts(d.workouts || []);
+      setDisplayWorkouts(d.displayWorkouts || d.workouts || []);
+      setRaces(d.races || []);
+      setPlan(d.plan);
+      setNearby(sd ? [...(sd.events || []), ...(sd.races || []), ...(sd.displayWorkouts || sd.workouts || [])] : []);
+      setNearbyLoaded(sd != null);
+      setNearbyRest((sd?.plan?.days || []).filter((day: any) => day.dayOff).map((day: any) => dateKey(new Date(day.date), user?.timezone)));
+      setLoadedMonth(key);
+    } catch (error) {
+      if (signal?.aborted || id !== requestId.current) return;
+      setLoadError(es ? "No se pudo cargar el calendario." : "Could not load the calendar.");
+      throw error;
     }
-  }
+  }, [es, user?.timezone]);
 
   useEffect(() => {
-    if (user) load(month);
-  }, [user, month]);
+    if (!user) return;
+    const controller = new AbortController();
+    void load(month, controller.signal).catch(() => {});
+    return () => controller.abort();
+  }, [user, month, load]);
+
+  function selectDay(key: string) {
+    setSelected(key);
+    if (key.slice(0, 7) !== monthKey) setMonth(new Date(`${key}T12:00:00`));
+  }
 
   useEffect(()=>{activityAttempt.current=null;activityUser.current=user?.id;},[user?.id]);
+  useEffect(() => {
+    if (!selected) return;
+    const trigger = document.activeElement;
+    dayClose.current?.focus();
+    return () => { if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus(); };
+  }, [selected]);
 
   async function addUnplannedActivity(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -129,7 +177,8 @@ export default function CalendarPage() {
       setShowActivityForm(false);
       setActivityMessage(es ? "Actividad registrada con tus datos reales. Las sesiones planificadas no se modificaron." : "Activity saved with your reported actuals. Planned sessions were retained.");
       const observed = new Date(`${String(fields.date)}T12:00:00`);
-      setMonth(observed); await load(observed);
+      if (format(observed, "yyyy-MM") === monthKey) await load(observed);
+      else setMonth(observed);
     } catch (error) { if(activityUser.current===scopeUser)setMutationError((error as Error).message); } finally { activityInFlight.current=false;setActivityBusy(false); }
   }
 
@@ -140,16 +189,18 @@ export default function CalendarPage() {
   function openResult(session: any) {
     setResultError(""); setActivityMessage(""); setMutationError("");
     if (session.matchedPlanId) {
-      const actual = [...workouts, ...stripWorkouts, ...allSessions].find(item => item.id === session.matchedPlanId && !item.matchedPlanId);
+      const actual = [...workouts, ...allSessions].find(item => item.id === session.matchedPlanId && !item.matchedPlanId);
       if (!actual) {
         setResultFor(null);
         setMutationError(es ? "Esta sesión está vinculada a una actividad importada. Abre la fecha de esa actividad y edita su resultado; el plan no se cuenta otra vez en JStress." : "This plan is linked to an imported activity. Open that activity's date and edit its result; the plan is not counted again in JStress.");
         return;
       }
       setActivityMessage(es ? "Editando la actividad importada vinculada. El plan se conserva y no se cuenta dos veces." : "Editing the linked imported activity. Its plan is retained and is not counted twice.");
+      setSelected(null);
       setResultFor(actual);
       return;
     }
+    setSelected(null);
     setResultFor(session);
   }
 
@@ -175,20 +226,26 @@ export default function CalendarPage() {
 
   async function addEvent(e: React.FormEvent) {
     e.preventDefault();
-    const res = await fetch("/api/calendar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(evForm),
-    });
-    if (res.ok) {
+    setMutationError("");
+    try {
+      const res = await fetch("/api/calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(evForm),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok !== true || !data.event?.id) throw Error(data.error || (es ? "No se pudo guardar el evento." : "Could not save the event."));
       setShowForm(false);
       setEvForm({
         title: "",
-        date: format(new Date(), "yyyy-MM-dd"),
+        date: todayKey,
         type: "note",
         notes: "",
       });
-      load(month);
+      setActivityMessage(es ? "Evento guardado." : "Event saved.");
+      void load(month).catch(() => {});
+    } catch (error) {
+      setMutationError((error as Error).message);
     }
   }
 
@@ -196,14 +253,10 @@ export default function CalendarPage() {
     setMutationError("");
     try {
       const res = await fetch("/api/plan", {method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
-      if(!res.ok) {const data=await res.json();throw Error(data.error||"Could not save session");}
+      const data = await res.json();
+      if (!res.ok || data.ok !== true || data.workout?.id !== body.sessionId) throw Error(data.error || (es ? "No se pudo verificar el cambio." : "Could not verify the change."));
       return true;
     } catch(error) {setMutationError((error as Error).message);return false;}
-  }
-
-  async function toggleDone(session: any) {
-    await api({ sessionId: session.id, completed: !session.completed });
-    load(month);
   }
 
   async function saveMove() {
@@ -217,7 +270,7 @@ export default function CalendarPage() {
     });
     if (ok) {
       setMoveFor(null);
-      load(month);
+      void load(month).catch(() => {});
     }
   }
 
@@ -237,17 +290,13 @@ export default function CalendarPage() {
   });
   const leadingBlanks = startOfMonth(month).getDay();
 
-  // 3-day view pool: month events + the wide strip range, deduped by id.
-  const allEvents = (() => {
-    const seen = new Set<string>();
-    const out: any[] = [];
-    for (const e of [...events, ...stripWorkouts, ...(races || [])]) {
-      if (seen.has(e.id)) continue;
-      seen.add(e.id);
-      out.push(e);
-    }
-    return out;
-  })();
+  const agendaEntries = new Map<string, any>();
+  for (const entry of [...nearby.filter(entry => (entry.dateKey || dateKey(new Date(entry.date), user?.timezone)).slice(0, 7) !== loadedMonth), ...events, ...races, ...displayWorkouts]) {
+    const type = entry.calendarState ? "workout" : "priority" in entry ? "race" : "event";
+    agendaEntries.set(`${type}:${entry.id}`, entry);
+  }
+  const calendarReady = loadedMonth === monthKey && !loadError;
+  const nextSevenDays = Array.from({ length: 7 }, (_, index) => addDays(new Date(`${todayKey}T12:00:00`), index));
 
   // Selected day: plan days (with notes + dayOff) + any standalone workouts
   const selDays = selected
@@ -273,8 +322,8 @@ export default function CalendarPage() {
   );
   const allSessions = [...selSessions, ...selStandalone];
   const selEvents = selected
-    ? events.filter(
-        (e) => dateKey(new Date(e.date), user?.timezone) === selected,
+    ? [...events, ...races].filter(
+        (e) => (e.dateKey || dateKey(new Date(e.date), user?.timezone)) === selected,
       )
     : [];
   const tempAdvice =
@@ -286,56 +335,37 @@ export default function CalendarPage() {
     <ProtectedPage>
       <div className="space-y-6">
         {mutationError && <p role="alert" className="text-red-700">{mutationError}</p>}
-        <nav className="flex flex-wrap gap-3" aria-label={es ? "Navegación de entrenamiento" : "Training navigation"}><a href="/today" className="btn-primary min-h-12">{es ? "Entrenamiento de hoy" : "Today’s workout"}</a><a href="/training" className="btn-secondary min-h-12">{es ? "Ciclo y meses guardados" : "Saved cycle and months"}</a></nav>
-        <p className="text-sm text-slate-600">{es?'Solo se muestran las sesiones pendientes del ciclo activo y los informes guardados. Los planes reemplazados sin resultados no son entrenamiento adicional.':'Only pending sessions from your active cycle and saved reports are shown. Replaced plans without results are not extra training.'}</p>
-        <details className="card space-y-2">
-          <summary className="cursor-pointer min-h-11 content-center font-semibold">{es ? "Usar mi calendario de Apple u otra app" : "Use Apple Calendar or another calendar app"}</summary>
-          <a className="btn-secondary min-h-11" href="/api/training/export?format=ics">{es ? "Descargar calendario (.ics)" : "Download calendar (.ics)"}</a>
-          <p className="text-sm text-slate-600">{es ? "Abre el archivo en una app que admita importar calendarios y revisa los eventos antes de añadirlos. Si el móvil solo muestra una vista previa, importa el archivo desde el ordenador. Es una copia del plan actual, no sincronización automática ni envío al reloj. Volver a importar puede duplicar eventos." : "Open the file in a calendar app that supports imports and review events before adding them. If your phone only previews it, import the file from a computer. This is a snapshot of your current plan, not automatic sync or watch delivery. Importing again may duplicate events."}</p>
-        </details>
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="font-display text-2xl font-bold">
-              Training Calendar
-            </h1>
-            <p className="text-slate-500 text-sm">
-              Click any day to see the full workout detail, move sessions, or
-              mark them done.
-            </p>
+        <header className="space-y-3">
+          <h1 className="font-display text-2xl font-bold">{es ? "Calendario de entrenamiento" : "Training Calendar"}</h1>
+          <nav className="flex flex-wrap gap-2" aria-label={es ? "Navegación de entrenamiento" : "Training navigation"}>
+            <a href="/today" className="btn-primary min-h-11">{es ? "Entrenamiento de hoy" : "Today’s workout"}</a>
+            <a href="/training" className="btn-secondary min-h-11">{es ? "Mi ciclo" : "My cycle"}</a>
+            <a href="/coach" className="btn-secondary min-h-11">{es ? "Preguntar a Koach" : "Ask Koach"}</a>
+          </nav>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={es ? "Vista del calendario" : "Calendar view"}>
+            <button type="button" aria-pressed={view === "days"} onClick={() => { setView("days"); setSelected(null); const current = new Date(`${todayKey}T12:00:00`); if (monthKey !== todayKey.slice(0, 7)) setMonth(current); }} className={view === "days" ? "btn-primary min-h-11" : "btn-secondary min-h-11"}>{es ? "Próximos 7 días" : "Next 7 days"}</button>
+            <button type="button" aria-pressed={view === "month"} onClick={() => { setView("month"); setSelected(null); }} className={view === "month" ? "btn-primary min-h-11" : "btn-secondary min-h-11"}>{es ? "Mes" : "Month"}</button>
           </div>
+        </header>
+        {loadError ? <div role="alert" className="card space-y-2"><p>{loadError}</p><button type="button" className="btn-secondary" onClick={() => { void load(month).catch(() => {}); }}>{es ? "Reintentar" : "Retry"}</button></div>
+          : !calendarReady && <p role="status">{es ? "Cargando calendario…" : "Loading calendar…"}</p>}
+
+        <div className="flex items-center justify-between flex-wrap gap-3">
+
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => setMonth(addMonths(month, -1))}
-              aria-label={es ? "Mes anterior" : "Previous month"}
-              className="btn-secondary p-2"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <div className="font-display font-bold text-lg text-center">
-              {format(month, "MMMM yyyy")}
-            </div>
-            <button
-              onClick={() => setMonth(addMonths(month, 1))}
-              aria-label={es ? "Mes siguiente" : "Next month"}
-              className="btn-secondary p-2"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => {
-                setMonth(new Date());
-                load(new Date());
-              }}
-              className="btn-secondary text-sm"
-            >
-              Today
-            </button>
+            {view === "month" && <>
+              <button onClick={() => setMonth(addMonths(month, -1))} aria-label={es ? "Mes anterior" : "Previous month"} className="btn-secondary min-h-11 min-w-11 p-2"><ChevronLeft className="w-4 h-4" /></button>
+              <span className="font-display font-bold text-lg capitalize">{format(month, "MMMM yyyy", { locale })}</span>
+              <button onClick={() => setMonth(addMonths(month, 1))} aria-label={es ? "Mes siguiente" : "Next month"} className="btn-secondary min-h-11 min-w-11 p-2"><ChevronRight className="w-4 h-4" /></button>
+              <button onClick={() => selectDay(todayKey)} className="btn-secondary min-h-11">{es ? "Hoy" : "Today"}</button>
+            </>}
+
             <button onClick={() => setShowActivityForm(!showActivityForm)} className="btn-secondary"><Plus className="w-4 h-4" />{es ? "Registrar actividad" : "Log actual activity"}</button>
             <button
               onClick={() => setShowForm(!showForm)}
               className="btn-primary"
             >
-              <Plus className="w-4 h-4" /> Event
+              <Plus className="w-4 h-4" /> {es ? "Añadir evento" : "Add event"}
             </button>
           </div>
         </div>
@@ -435,164 +465,43 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {/* Week strip: previous month → next week, today pinned in view */}
-        <div className="card">
-          <h2 className="font-display font-bold text-sm mb-2 text-slate-500 uppercase tracking-wide">
-            Your weeks — last month to next week
-          </h2>
-          <WeekStrip
-            workouts={stripWorkouts}
-            selected={selected || format(new Date(), "yyyy-MM-dd")}
-            onSelect={setSelected}
-          />
-        </div>
-
-        {/* DEFAULT VIEW — 3 big days (yesterday · today · tomorrow), scroll
-            sideways for the following two weeks. Bigger, easier to read than
-            the month grid; toggle below keeps Month available. */}
-        <div className="card p-3 md:p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wide">
-              {es ? "Próximos días — desliza →" : "Your days — scroll sideways →"}
-            </h2>
-            <div className="flex gap-1.5">
-              <button
-                onClick={() => {
-                  const el = document.getElementById("days-scroller");
-                  el?.scrollTo({ left: 0, behavior: "smooth" });
-                }}
-                className="btn-secondary !px-3 !py-1 text-xs"
-              >
-                {es ? "Hoy" : "Today"}
-              </button>
-              <button
-                onClick={() => setView("month")}
-                className="btn-secondary !px-3 !py-1 text-xs"
-              >
-                {es ? "Ver mes" : "Month view"}
-              </button>
-            </div>
-          </div>
-          <div id="days-scroller" className="overflow-x-auto pb-2 -mx-1 px-1">
-            <div className="flex gap-3" style={{ width: "max-content" }}>
-              {Array.from({ length: 15 }, (_, i) => addDays(new Date(), i - 1)).map((day) => {
-                const key = format(day, "yyyy-MM-dd");
-                const dayEvents = allEvents.filter(
-                  (e) => dateKey(new Date(e.date), user?.timezone) === key,
-                );
-                const isToday = key === format(new Date(), "yyyy-MM-dd");
-                const isYesterday = key === format(addDays(new Date(), -1), "yyyy-MM-dd");
-                const label = isToday
-                  ? es ? "HOY" : "TODAY"
-                  : isYesterday
-                    ? es ? "AYER" : "YESTERDAY"
-                    : key === format(addDays(new Date(), 1), "yyyy-MM-dd")
-                      ? es ? "MAÑANA" : "TOMORROW"
-                      : "";
-                return (
-                  <div
-                    key={key}
-                    className={`flex-none w-[270px] sm:w-[300px] rounded-2xl border p-3 ${
-                      isToday
-                        ? "border-ocean-400 bg-ocean-50/60 shadow-sm"
-                        : "border-slate-200 bg-white"
-                    }`}
-                  >
-                    <div className="mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-bold ${isToday ? "text-ocean-700" : "text-slate-700"}`}>
-                          {format(day, "EEE d MMM", { locale: undefined })}
-                        </span>
-                        {label && (
-                          <span className={`text-[9px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5 ${isToday ? "bg-ocean-600 text-white" : "bg-slate-200 text-slate-600"}`}>
-                            {label}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="space-y-2 min-h-[90px]">
-                      {dayEvents.length === 0 && (
-                        <div className="text-[11px] text-slate-300 py-4 text-center">
-                          {es ? "sin eventos" : "no events"}
-                        </div>
-                      )}
-                      {dayEvents.map((e) => {
-                        const isRace = e.priority != null || e.type === "race";
-                        const raceBadge =
-                          e.priority === 1 ? "A" : e.priority === 2 ? "B" : e.priority === 3 ? "C" : null;
-                        return (
-                          <div
-                            key={e.id}
-                            className={`rounded-xl border px-3 py-2 ${
-                              isRace
-                                ? e.priority === 1
-                                  ? "border-vermillion-400 bg-vermillion-400/15 shadow-sm"
-                                  : e.priority === 2
-                                    ? "border-amber-300 bg-amber-50"
-                                    : "border-slate-300 bg-slate-100"
-                                : e.type === "appointment"
-                                  ? "border-amber-200 bg-amber-50"
-                                  : "border-slate-200 bg-slate-50"
-                            }`}
-                          >
-                            <div className="text-sm font-semibold leading-tight flex items-center gap-1.5">
-                              {raceBadge && (
-                                <span
-                                  className={`text-[9px] font-black rounded-full w-5 h-5 flex items-center justify-center shrink-0 ${
-                                    raceBadge === "A"
-                                      ? "bg-vermillion-500 text-white"
-                                      : raceBadge === "B"
-                                        ? "bg-amber-500 text-white"
-                                        : "bg-slate-500 text-white"
-                                  }`}
-                                >
-                                  {raceBadge}
-                                </span>
-                              )}
-                              <span className="truncate">{"priority" in e ? `🏁 ${e.name}` : e.title}</span>
-                            </div>
-                            {"planned" in e && !e.calendarGroup && dateKey(new Date(e.date), user?.timezone) <= dateKey(new Date(), user?.timezone) && <button type="button" className="btn-secondary text-xs mt-2" disabled={resultBusy} onClick={() => openResult(e)}>{es ? "Editar resultado" : "Edit result"}</button>}
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              {"priority" in e ? (
-                                <>
-                                  {e.startTime ? String(e.startTime).slice(0, 5) : ""} · {e.distance}
-                                  {e.location ? ` · ${e.location}` : ""}
-                                </>
-                              ) : (
-                                <>
-                                  {e.startTime ? String(e.startTime).slice(0, 5) : ""} ·{" "}
-                                  {e.durationMin != null ? fmtMin(e.durationMin, es ? "es" : "en") : e.type}{" "}
-                                  {e.intensity ? `· ${String(e.intensity).toUpperCase()}` : ""}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        {view === "days" && calendarReady && (
+          <section className="space-y-2" aria-label={es ? "Agenda de entrenamiento" : "Training agenda"}>
+            {nextSevenDays.map(day => {
+              const key = format(day, "yyyy-MM-dd");
+              const isToday = key === todayKey;
+              const entries = [...agendaEntries.values()].filter(entry => (entry.dateKey || dateKey(new Date(entry.date), user?.timezone)) === key);
+              const rest = key.slice(0, 7) === loadedMonth ? plan?.days?.some((d: any) => d.dayOff && dateKey(new Date(d.date), user?.timezone) === key) : nearbyRest.includes(key);
+              return <button type="button" key={key} onClick={() => selectDay(key)} aria-haspopup="dialog" className={`w-full rounded-xl border px-4 py-3 text-left hover:border-ocean-400 ${isToday ? "border-ocean-300 bg-ocean-50" : "border-sand-200 bg-white"}`}>
+                <span className="flex flex-wrap items-baseline justify-between gap-x-2">
+                  <strong className="capitalize">{isToday ? (es ? "Hoy" : "Today") : format(day, "EEEE", { locale })} · {format(day, "d MMM", { locale })}</strong>
+                  <span className="text-sm text-ocean-700">{es ? "Ver día" : "View day"} →</span>
+                </span>
+                {rest && <span className="mt-2 block text-sm font-medium text-slate-700">{es ? "Descanso planificado" : "Planned rest"}</span>}
+                {entries.length ? <span className="mt-1 block space-y-1">{entries.map(entry => {
+                  const workout = Boolean(entry.calendarState) || "planned" in entry;
+                  const reported = entry.calendarState === "reported" || entry.completed || entry.feedbackStatus != null;
+                  const review = entry.calendarState === "review";
+                  const actual = entry.actualDurationMin ?? (entry.completed && entry.planned === false ? entry.durationMin : null);
+                  const minutes = reported ? actual : entry.durationMin;
+                  const label = !workout ? ("priority" in entry || entry.type === "race" ? (es ? "Carrera" : "Race") : (es ? "Evento" : "Event"))
+                    : review ? (es ? "Revisar fuentes" : "Review sources") : reported ? (es ? "Registrado" : "Logged") : entry.planned ? (es ? "Planificado" : "Planned") : (es ? "Sin confirmar" : "Unconfirmed");
+                  return <span key={`${label}:${entry.id}`} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <span className={`rounded px-1.5 text-xs font-medium ${SPORT_COLOR[entry.sport] || "bg-slate-100 text-slate-700"}`}>{label}</span>
+                    <span className="min-w-0 break-words">{entry.name || entry.title}</span>
+                    {workout && !review && minutes != null && <span className="text-slate-600">{fmtMin(minutes, es ? "es" : "en")}</span>}
+                  </span>;
+                })}</span> : !rest && <span className="block text-sm text-slate-600">{key.slice(0, 7) === loadedMonth || nearbyLoaded ? (es ? "Sin sesiones ni eventos" : "No sessions or events") : (es ? "Abre el día para cargarlo" : "Open day to load")}</span>}
+              </button>;
+            })}
+          </section>
+        )}
 
         {/* Calendar grid */}
-        {view === "month" && (
+        {view === "month" && calendarReady && (
         <div className="card p-3 md:p-5">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wide">
-              {es ? "Vista de mes" : "Month view"}
-            </h2>
-            <button
-              onClick={() => setView("days")}
-              className="btn-secondary !px-3 !py-1 text-xs"
-            >
-              {es ? "← Vista de 3 días" : "← 3-day view"}
-            </button>
-          </div>
           <div className="grid grid-cols-7 gap-1 mb-2">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+            {(es ? ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]).map((d) => (
               <div
                 key={d}
                 className="text-center text-[11px] font-semibold uppercase text-slate-400 py-1"
@@ -607,8 +516,8 @@ export default function CalendarPage() {
             ))}
             {days.map((day) => {
               const key = format(day, "yyyy-MM-dd");
-              const dayEvents = events.filter(
-                (e) => dateKey(new Date(e.date), user?.timezone) === key,
+              const dayEvents = [...events, ...races].filter(
+                (e) => (e.dateKey || dateKey(new Date(e.date), user?.timezone)) === key,
               );
               const dayWorkouts = displayWorkouts.filter(
                 (w) => dateKey(new Date(w.date), user?.timezone) === key,
@@ -617,12 +526,14 @@ export default function CalendarPage() {
                 (d: any) =>
                   d.dayOff && dateKey(new Date(d.date), user?.timezone) === key,
               );
-              const isToday = isSameDay(day, new Date());
+              const isToday = key === todayKey;
               const inMonth = isSameMonth(day, month);
               return (
                 <button
                   key={key}
-                  onClick={() => setSelected(key)}
+                  onClick={() => selectDay(key)}
+                  aria-haspopup="dialog"
+                  aria-label={`${format(day, "PPP", { locale })} · ${dayWorkouts.length} ${es ? "sesiones" : "sessions"} · ${dayEvents.length} ${es ? "eventos" : "events"}${isDayOff ? (es ? " · Descanso" : " · Rest") : ""}`}
                   className={`min-h-16 md:min-h-32 rounded-lg border p-1 text-left transition-colors cursor-pointer hover:border-ocean-400 overflow-hidden ${isToday ? "border-ocean-500 bg-ocean-50" : "border-sand-200 bg-white"} ${inMonth ? "" : "opacity-40"}`}
                 >
                   <div className="text-xs font-semibold mb-1">
@@ -651,10 +562,10 @@ export default function CalendarPage() {
                       <div
                         key={e.id}
                         className="text-[10px] md:text-[11px] rounded-md px-1.5 py-0.5 truncate bg-coral-100 text-coral-700"
-                        title={`${e.title} — ${e.notes || ""}`}
+                        title={e.name || e.title}
                       >
                         <Flag className="w-2.5 h-2.5 inline mr-1" />
-                        {e.title.slice(0, 22)}
+                        {(e.name || e.title || "").slice(0, 22)}
                       </div>
                     ))}
                   </div>
@@ -667,11 +578,10 @@ export default function CalendarPage() {
 
 
         {/* Legend */}
-        <div className="card">
-          <h2 className="font-display font-bold text-lg mb-2 flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-ocean-500" /> Legend & Active
-            Plan
-          </h2>
+        <details className="card space-y-3">
+          <summary className="cursor-pointer min-h-11 content-center font-semibold">
+            <CalendarDays className="inline w-4 h-4 mr-2 text-ocean-600" />{es ? "Plan, leyenda y exportación" : "Plan, legend and export"}
+          </summary>
           <div className="flex flex-wrap gap-3 text-xs">
             {Object.entries(SPORT_COLOR).map(([sport, cls]) => (
               <span key={sport} className={`chip ${cls}`}>
@@ -691,7 +601,9 @@ export default function CalendarPage() {
               {cycleSummary.raceDate && <span className="block">{es ? "Evento principal:" : "Primary event:"} {cycleSummary.raceDate}</span>}
             </p>
           )}
-        </div>
+          <a className="btn-secondary min-h-11" href="/api/training/export?format=ics">{es ? "Descargar calendario (.ics)" : "Download calendar (.ics)"}</a>
+          <p className="text-sm text-slate-600">{es ? "Copia del plan guardado. No sincroniza ni envía al reloj; importar dos veces puede duplicar eventos." : "A copy of the saved plan. It does not sync or send to a watch; importing twice can duplicate events."}</p>
+        </details>
 
         {/* Day detail modal */}
         {selected && (
@@ -700,24 +612,28 @@ export default function CalendarPage() {
             onClick={() => setSelected(null)}
           >
             <div
+              role="dialog"
+              aria-labelledby="calendar-day-title"
+              onKeyDown={e => { if (e.key === "Escape" && !moveFor && !resultFor) setSelected(null); }}
               className="bg-white rounded-3xl w-full max-w-2xl my-8 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between p-5 border-b border-sand-200 sticky top-0 bg-white rounded-t-3xl">
                 <div>
-                  <h2 className="font-display font-bold text-lg">
-                    {format(new Date(selected + "T12:00:00"), "EEEE, MMMM d")}
+                  <h2 id="calendar-day-title" className="font-display font-bold text-lg capitalize">
+                    {format(new Date(selected + "T12:00:00"), "PPPP", { locale })}
                   </h2>
                   <p className="text-xs text-slate-400">
-                    {allSessions.length
+                    {!calendarReady ? (loadError || (es ? "Cargando…" : "Loading…")) : allSessions.length
                       ? `${allSessions.length} ${es?'registros de sesión/fuente':'session/source records'}`
-                      : selDayOff
-                        ? "Day off"
-                        : "No sessions"}
+                      : selEvents.length ? (es ? "Eventos del día" : "Day events") : selDayOff
+                        ? (es ? "Descanso planificado" : "Planned rest")
+                        : (es ? "Sin sesiones" : "No sessions")}
                   </p>
                 </div>
                 <button
                   aria-label={es?'Cerrar detalles del día':'Close day details'}
+                  ref={dayClose}
                   onClick={() => setSelected(null)}
                   className="p-2 rounded-lg hover:bg-slate-100"
                 >
@@ -725,7 +641,8 @@ export default function CalendarPage() {
                 </button>
               </div>
 
-              <div className="p-5 space-y-4">
+              {!calendarReady && loadError && <div className="p-5"><button type="button" className="btn-secondary" onClick={() => { void load(month).catch(() => {}); }}>{es ? "Reintentar" : "Retry"}</button></div>}
+              {calendarReady && <div className="p-5 space-y-4">
                 {selDayOff && !allSessions.length && (
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="font-semibold text-sm">
@@ -742,7 +659,6 @@ export default function CalendarPage() {
                 )}
 
                 {allSessions.map((s: any) => {
-                  const d = workoutDetail(s, user?.profile);
                   const reported=s.calendarState==='reported'||s.completed||s.feedbackStatus!=null||s.actualDurationMin!=null;
                   const actualMinutes=s.actualDurationMin??(s.completed&&s.planned===false?s.durationMin:null);
                   return (
@@ -769,20 +685,15 @@ export default function CalendarPage() {
                             {s.startTime ? `${s.startTime} · ` : ""}
                             {reported?actualMinutes==null?'—':fmtMin(actualMinutes, es ? "es" : "en"):fmtMin(s.durationMin, es ? "es" : "en")}{!reported&&` · ${s.intensity?.toUpperCase()||'—'}`}
                           </span>
-                          <button type="button" className="btn-secondary text-xs px-2.5 py-1.5" disabled={resultBusy || dateKey(new Date(s.date), user?.timezone) > dateKey(new Date(), user?.timezone)} onClick={() => openResult(s)}>{es ? "Editar resultado" : "Edit result"}</button>
+                          {selected <= todayKey && <button type="button" className="btn-secondary text-xs min-h-11 px-2.5" disabled={resultBusy} onClick={() => openResult(s)}>{reported ? (es ? "Editar resultado" : "Edit result") : (es ? "Registrar resultado" : "Log result")}</button>}
                           {!reported&&<button
                             onClick={() => openMove(s)}
-                            className="btn-secondary text-xs px-2.5 py-1.5"
+                            className="btn-secondary text-xs min-h-11 px-2.5"
                           >
                             <Clock className="w-3 h-3 inline mr-1" />
-                            Move
+                            {es ? "Mover" : "Move"}
                           </button>}
-                          {!reported&&<button
-                            onClick={() => toggleDone(s)}
-                            className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${s.completed ? "bg-emerald-600 text-white" : "bg-white border border-ocean-200 text-ocean-700"}`}
-                          >
-                            {s.completed ? "✓ Done" : "Done"}
-                          </button>}
+
                         </div>
                       </div>
                       {reported?<div className="rounded-xl bg-slate-50 p-3 space-y-1.5 text-xs">
@@ -790,45 +701,26 @@ export default function CalendarPage() {
                         <p>RPE {s.rpe??'—'}/10 · HR {s.avgHr??'—'} bpm · {es?'Potencia informada':'Reported power'} {s.avgPower??'—'} W</p>
                         <p>{es?'Distancia':'Distance'} {s.distanceKm??'—'} km · {es?'Calorías informadas':'Reported calories'} {s.calories??'—'} kcal</p>
                         <p>{es?'Peso antes/después':'Weight before/after'} {s.preWeightKg??'—'} / {s.postWeightKg??'—'} kg</p>
-                      </div>:<div className="rounded-xl bg-ocean-50/50 p-3 space-y-1.5 text-xs">
-                        <p className="text-slate-700">
-                          <span className="font-bold text-ocean-700">
-                            WARM-UP
-                          </span>{" "}
-                          — {d.wu}
-                        </p>
-                        <p className="text-slate-700">
-                          <span className="font-bold text-ocean-700">
-                            MAIN SET
-                          </span>{" "}
-                          — {d.main}
-                        </p>
-                        <p className="text-slate-700">
-                          <span className="font-bold text-ocean-700">
-                            COOL-DOWN
-                          </span>{" "}
-                          — {d.cd}
-                        </p>
-                        <p className="text-slate-500">🧘 {d.breathing}</p>
-                        <p className="text-slate-400">📚 Study: {d.study}</p>
-                      </div>}
+                      </div> : s.planned && <CalendarWorkoutSteps key={s.revision} sessionId={s.id} es={es} />}
                     </div>
                   );
                 })}
 
                 {selEvents.map((e: any) => (
                   <div
-                    key={e.id}
+                    key={`${"priority" in e ? "race" : "event"}:${e.id}`}
                     className="rounded-2xl border border-coral-200 bg-coral-50 p-4 text-sm"
                   >
                     <Flag className="w-4 h-4 inline text-coral-600 mr-1" />
-                    <strong>{e.title}</strong>
+                    <strong>{e.name || e.title}</strong>
+                    {e.distance && <p className="mt-1 text-xs">{e.distance}{e.location && ` · ${e.location}`}</p>}
+                    {"priority" in e && <a href="/race-prediction" className="mt-1 inline-block underline text-ocean-700">{es ? "Abrir escenarios de carrera" : "Open race scenarios"}</a>}
                     {e.notes && (
                       <p className="text-xs text-slate-500 mt-1">{e.notes}</p>
                     )}
                   </div>
                 ))}
-              </div>
+              </div>}
             </div>
           </div>
         )}
