@@ -81,7 +81,8 @@ test("calendar UI duration adapter and coach saved/actual readouts preserve frac
   const source = fs.readFileSync("src/app/calendar/page.tsx", "utf8");
   const compiled = ts.transpileModule(`${source}\nexport { fmtMin as durationForTest };`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
   const mod = { exports: {} as any };
-  vm.runInNewContext(compiled, { module: mod, exports: mod.exports, require: (id: string) => id === "@/lib/universal-workout-card" ? { endpointText } : {}, React });
+  vm.runInNewContext(compiled, { module: mod, exports: mod.exports, require: (id: string) =>
+    id === "@/lib/universal-workout-card" ? { endpointText } : id === "next/dynamic" ? { default: () => () => null } : {}, React });
   assert.equal(mod.exports.durationForTest(45), "45 min");
   assert.equal(mod.exports.durationForTest(1.5), "1 min 30 sec");
   assert.equal(mod.exports.durationForTest(0), "0 min");
