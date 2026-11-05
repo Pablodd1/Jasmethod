@@ -45,7 +45,7 @@ export function firstPlanDraft(profile: Profile, setup: PlanningSetup | null, st
   const sessions = observation.days.filter(day=>day.selected&&!day.occupied).map(day=>{
     // All three triathlon disciplines are visible when three observation slots
     // fit. Swimming retains the existing competence/supervision condition.
-    const triathlon = ["sprint","olympic","half","full"].includes(goal);
+    const triathlon = ["triathlon","sprint","olympic","half","full"].includes(goal);
     const base = triathlon ? starterSession(["swim-only","cycle","run-only"][observationIndex++ % 3]) : observation.base;
     return {slot:day.slot,source:day.minutes>0?"starter":"plan",base:{...base,durationMin:day.minutes,
       title:day.minutes>0?`${base.sport} · comfortable observation`:"Review before training",

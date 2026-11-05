@@ -144,11 +144,14 @@ export async function POST(req: Request) {
     const matchedRace=coachingAnchorRace&&race&&dateKey(coachingAnchorRace.date,user.timezone)===dateKey(race,user.timezone)?coachingAnchorRace:null;
     // Preserve the confirmed sport goal. Only an owned, date-matched race may
     // refine its triathlon distance; a nearby 70.3 is never a custom-leg proxy.
-    const customRaceLegs=triathlonCoachingDistance(dist)&&matchedRace?parseCustomTriathlonDistance(matchedRace.distance):null;
-    const templateDistance=customRaceLegs?'custom':dist;
+    const triathlonGoal = dist === "triathlon" || !!triathlonCoachingDistance(dist);
+    const customRaceLegs = triathlonGoal && matchedRace ? parseCustomTriathlonDistance(matchedRace.distance) : null;
+    const matchedDistance = dist === "triathlon" ? triathlonCoachingDistance(matchedRace?.distance) : null;
+    const templateDistance = customRaceLegs ? "custom" : matchedDistance && matchedDistance !== "custom" ? matchedDistance : dist;
     const raceTarget=customRaceLegs?{raceId:matchedRace!.id,dateKey:dateKey(matchedRace!.date,user.timezone),source:'athlete_reported_race',distance:'custom',legs:customRaceLegs}:null;
     if (
       ![
+        "triathlon",
         "sprint",
         "olympic",
         "half",

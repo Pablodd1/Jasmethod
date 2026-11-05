@@ -15,7 +15,7 @@ const swim: RequiredComponent = { id: 'swim', sports: ['swim'], en: 'swimming', 
 const bike: RequiredComponent = { id: 'bike', sports: ['bike'], en: 'cycling', es: 'ciclismo' };
 const run: RequiredComponent = { id: 'run', sports: ['run'], en: 'running', es: 'carrera' };
 function requiredComponents(goal: string): RequiredComponent[] {
-  if (['sprint', 'olympic', 'half', 'full', 'custom'].includes(goal)) return [swim, bike, run];
+  if (['triathlon', 'sprint', 'olympic', 'half', 'full', 'custom'].includes(goal)) return [swim, bike, run];
   if (goal === 'cycle') return [bike];
   if (goal === 'swim-only') return [swim];
   if (['run-only', 'track-sprint', '5k', '10k', 'half-marathon', 'marathon'].includes(goal)) return [run];

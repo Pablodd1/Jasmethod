@@ -105,5 +105,5 @@ test("baseline examples preserve source-specific constructs and core expiry sema
 test("the review document is reproducible from editable session endpoints", () => {
   const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/render-reviewed-cycle-samples.ts", "--check"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /Verified 10 review-only cycle examples/);
+  assert.match(result.stdout, new RegExp(`Verified ${REVIEWED_CYCLE_SAMPLE_GOALS.length} review-only cycle examples`));
 });

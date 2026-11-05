@@ -19,6 +19,7 @@
   ],
   "git": {
     "deploymentEnabled": {
+      "codex/daily-coaching-visibility": false,
       "codex/jmm-journey-verification": false,
       "codex/jmm-acceptance-followup": false,
       "codex/jmm-nine-task-acceptance": false,

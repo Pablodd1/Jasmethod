@@ -475,7 +475,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 id={`${id}-title`} className="font-display text-xl font-bold">JMM Koach</h2>
         {fullPage ? <button type="button" className={`${secondaryClass} min-h-11`} aria-expanded={chatOptions} aria-controls={`${id}-options`} onClick={()=>setChatOptions(value=>!value)}>{es ? "Opciones del chat" : "Chat options"}</button> : <a href="/coach" target="_blank" rel="noopener noreferrer" className={`text-sm underline min-h-11 inline-flex items-center ${focus}`}>{es ? "Abrir chat en otra ventana" : "Open chat in another window"}</a>}
       </div>
-      <p className="text-xs text-slate-600" role="status">{personalDialogue ? (es ? "Conversación personal activa" : "Personal conversation active") : textConfigured ? (es ? "Conversación personal disponible en Opciones del chat" : "Personal conversation available in Chat options") : (es ? "JMM local · Conversación con IA sin conectar" : "Local JMM · Personal AI not connected")}</p>
+      <p className="text-xs text-slate-600" role="status">{personalDialogue ? (es ? "Conversación personal activa" : "Personal conversation active") : textConfigured ? (es ? "Chat con IA disponible" : "AI chat available") : (es ? "JMM local · Conversación con IA sin conectar" : "Local JMM · Personal AI not connected")}</p>
     </header>
     <div ref={conversationScroll} className={fullPage ? "coach-chat-scroll space-y-4" : "space-y-4"}>
     {(!fullPage || !messages.length) && <>
@@ -603,11 +603,6 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
         </div>
       </details>
 
-    <details className="rounded-xl border bg-white p-3" open={personalDialogue || undefined}><summary className={`cursor-pointer ${focus}`}>{es ? "Conversación personal" : "Personal conversation"}</summary>
-      <label className="flex items-start gap-2 py-3 text-sm"><input type="checkbox" checked={personalDialogue} disabled={blocked || imageBusy || capabilities.personalDialogue !== true} onChange={event=>{setPersonalDialogue(event.target.checked);setExternalConsent(false);if(event.target.checked){setScreenshot(null);setImageConsent(false);}}} /><span>{es ? "Permito enviar a OpenAI mis mensajes escritos o dictados por mí y hasta ocho mensajes previos de este canal consentido. Pueden incluir las preocupaciones de salud que yo decida contar. No pegaré datos de dispositivos, importaciones ni sus resúmenes. Este permiso termina al recargar o salir." : "Allow OpenAI to receive my own typed or dictated messages and up to eight prior messages from this consented channel. These may include health concerns I choose to describe. I will not paste device/imported data or derived summaries. Permission ends on reload or leaving."}</span></label>
-      <p className="text-xs">{es ? "No se adjuntan el perfil, sesiones, check-in, métricas, archivos ni tarjetas. Revísalos dentro de JMM. La declaración de origen no verifica derechos; las solicitudes identificadas como datos de dispositivos se bloquean. Los cambios requieren confirmación local. No sustituye una evaluación médica." : "Profile, sessions, check-in, metrics, files and cards are not attached. Review them inside JMM. Declaring origin does not verify rights; identified device-data requests are blocked. Changes require local confirmation. This does not replace medical assessment."}</p>
-      {capabilities.personalDialogue !== true && <p role="status" className="text-sm mt-2">{es ? "La conversación con IA todavía no está conectada. El micrófono y las herramientas locales siguen disponibles." : "Personal AI is not connected yet. The microphone and local tools remain available."}</p>}
-    </details>
     <details className="rounded-lg border p-3"><summary className={`cursor-pointer ${focus}`}>{es ? "Ayuda y acciones disponibles" : "Help & supported actions"}</summary>
       <p className="mt-2 text-sm">{es ? "Pregunta o dicta; revisa la transcripción antes de enviar. Los cambios requieren tu confirmación. Las tarjetas protegidas muestran los registros originales dentro de JMM. La conversación personal opcional usa solo tus mensajes consentidos; las tarjetas protegidas se quedan en JMM." : "Ask or dictate; review the transcript before sending. Changes need your confirmation. Protected cards show the original records inside JMM. Optional personal conversation uses only your consented messages; protected cards stay inside JMM."}</p>
       {fullPage && <a href="/coach" target="_blank" rel="noopener noreferrer" className={`text-sm underline min-h-11 inline-flex items-center ${focus}`}>{es ? "Abrir chat en otra ventana" : "Open chat in another window"}</a>}
@@ -635,6 +630,28 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     </details>
     </section>
     </div>
+    {capabilities.personalDialogue === true && (
+    <details className="shrink-0 max-h-[30dvh] overflow-y-auto rounded-xl border bg-white px-3">
+      <summary className={`cursor-pointer min-h-11 content-center text-sm font-medium ${focus}`}>{personalDialogue ? (es ? "Chat con IA activo" : "AI chat active") : (es ? "Activar chat con IA" : "Enable AI chat")}</summary>
+      <label className="flex items-start gap-2 pb-3 text-sm">
+        <input className="mt-1 h-5 w-5 shrink-0" type="checkbox" checked={personalDialogue} disabled={blocked || imageBusy} onChange={event => {
+          const enabled = event.currentTarget.checked;
+          setPersonalDialogue(enabled);
+          setExternalConsent(false);
+          setAiReplyMemory(false);
+          if (enabled) {
+            setScreenshot(null);
+            setImageConsent(false);
+          }
+          const disclosure = event.currentTarget.closest("details");
+          if (disclosure) disclosure.open = false;
+          textInput.current?.focus();
+        }} />
+        <span>{es ? "Permito enviar a OpenAI mis mensajes escritos o dictados y hasta ocho mensajes previos de este chat consentido. Pueden incluir temas de salud que yo decida compartir. Evitaré datos de dispositivos, importaciones y sus resúmenes. El permiso termina al recargar o salir." : "Allow OpenAI to receive my own typed or dictated messages and up to eight prior messages from this consented chat. These may include health details I choose to share. I will exclude device data, imports and their summaries. Permission ends on reload or leaving."}</span>
+      </label>
+      <p className="pb-3 text-xs">{es ? "Tu perfil, sesiones, métricas y tarjetas se consultan dentro de JMM. Confirma aquí los cambios que quieras guardar." : "Review your profile, sessions, metrics and cards within JMM. Confirm changes here before saving."}</p>
+    </details>
+    )}
     <form onSubmit={send} className={fullPage ? "coach-chat-composer space-y-2" : "space-y-3"}>
       <label className={fullPage ? "sr-only" : "block font-medium"} htmlFor={`${id}-message`}>{source === "voice" ? (es ? "Mensaje con transcripción revisada" : "Message with reviewed transcript") : (es ? "Tu mensaje" : "Your message")}</label>
       <textarea ref={textInput} id={`${id}-message`} className={`${inputClass} !text-base min-h-16`} rows={2} maxLength={COACH_MESSAGE_LIMIT} value={message} disabled={blocked || listening} onChange={event => { setMessage(event.target.value); if (voiceReview) setTranscript(event.target.value); }} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={es ? "Escribe tu pregunta aquí…" : "Type your question here…"} />

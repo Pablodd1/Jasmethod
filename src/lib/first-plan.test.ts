@@ -10,18 +10,18 @@ test("each selected supported sport has a first draft without a race, wearable o
     const draft=firstPlanDraft({goal,birthYear:1990},null,start,"UTC",[],[],now)!;
     assert.ok(draft,goal);assert.equal(draft.kind,"observation");assert.ok(draft.totalMinutes<=60);
     assert.ok(draft.sessions.length);assert.doesNotMatch(JSON.stringify(draft),/"ftp":|"vo2max":|"runPaceBase":/);
-    if(["sprint","olympic","half","full"].includes(goal))assert.deepEqual(draft.sessions.map(s=>s.base.sport),["swim","bike","run"]);
+    if(["triathlon","sprint","olympic","half","full"].includes(goal))assert.deepEqual(draft.sessions.map(s=>s.base.sport),["swim","bike","run"]);
     if(goal==="hyrox")assert.ok(draft.sessions.every(s=>s.base.sport==="mobility"));
   }
   assert.equal(firstPlanDraft({goal:"unknown"},null,start,"UTC",[],[],now),null);
 });
 test("eligible athletes retain separately reported capacity rather than universal 60-minute observation",()=>{
-  for(const goal of ["swim-only","cycle","run-only","sprint","olympic","half","full","hyrox"]){
+  for(const goal of ["swim-only","cycle","run-only","triathlon","sprint","olympic","half","full","hyrox"]){
     const draft=firstPlanDraft({goal,birthYear:1990,experience:"advanced",weeklyHours:10},setup(),start,"UTC",[],[],now)!;
     assert.equal(draft.kind,"reported_capacity",goal);assert.ok(draft.totalMinutes>60,goal);
     assert.ok(draft.totalMinutes<=540,goal);
     for(const s of draft.sessions)assert.ok(s.base.durationMin<=90,goal);
-    if(goal==="half")for(const sport of ["swim","bike","run"])assert.ok(draft.sessions.some(s=>s.base.sport===sport),sport);
+    if(goal==="half"||goal==="triathlon")for(const sport of ["swim","bike","run"])assert.ok(draft.sessions.some(s=>s.base.sport===sport),sport);
   }
 });
 test("availability cannot invent tolerated capacity; stale or restricted history remains explicit",()=>{

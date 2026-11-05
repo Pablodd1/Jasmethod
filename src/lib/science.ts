@@ -352,6 +352,8 @@ export interface GeneratedWeek {
   totalMinutes: number;
   /** Existing template volume wave; event control compares reductions rather than stacking them. */
   periodizationFactor?: number;
+  /** Available minutes in the template phase before recipe and session caps. */
+  templateBudgetMinutes?: number;
   templateVersion?:string;
   tss?: number;
 }
@@ -501,7 +503,10 @@ export function generatePlan(opts: {
   // The legacy branch puts the whole weekly swim allocation in one session;
   // selecting a different distance or experience label must not re-enable it.
   // The athlete's reported dose supplies the ceiling, not the distance label.
-  if(opts.reviewedCycle&&weeklyHours!=null&&["sprint","olympic","half","full","custom"].includes(distance))return coachingWeekTemplate({sport:'triathlon',weeks,weeklyHours:targetHours,level,distance,sessionLimitMinutes:opts.sessionLimitMinutes,volume:index=>mesoVolumeRaces(index,level,races,startDate).vol});
+  if (opts.reviewedCycle && weeklyHours != null && ["triathlon", "sprint", "olympic", "half", "full", "custom"].includes(distance)) {
+    return coachingWeekTemplate({ sport: "triathlon", weeks, weeklyHours: targetHours, level, distance,
+      sessionLimitMinutes: opts.sessionLimitMinutes, volume: index => mesoVolumeRaces(index, level, races, startDate).vol });
+  }
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
     const { vol: volumeFactor, phase: ph, block } = mesoVolumeRaces(w - 1, level, races, startDate);

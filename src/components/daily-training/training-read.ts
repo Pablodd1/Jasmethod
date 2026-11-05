@@ -113,6 +113,8 @@ export function isPlanPreviewResponse(value: unknown): value is Record<string, a
     (p.raceDate == null || date(p.raceDate)) && finite(p.weeklyBudgetMin) && p.weeklyBudgetMin > 0 && Number.isInteger(p.existingPlans) && p.existingPlans >= 0 &&
     records(p.weeksPreview, week => Number.isInteger(week.week) && text(week.theme) && finite(week.totalMinutes) && week.totalMinutes >= 0 && slots(week.restDaySlots) &&
       (week.eventDays == null || Array.isArray(week.eventDays) && week.eventDays.every(date)) &&
+      optionalObject(week.templateTimeLimit, limit => finite(limit.templateMinutes) && finite(limit.budgetMinutes)
+        && limit.templateMinutes >= 0 && limit.templateMinutes < limit.budgetMinutes) &&
       optionalObject(week.volumeDecision, decision => ["scheduledMinutes", "cycleFactor", "remainingPlannedMinutes"].every(key => finite(decision[key])) && text(decision.reason)) &&
       records(week.sessions, session => text(session.title) && text(session.sport) && text(session.zone) && finite(session.minutes) && session.minutes > 0 && Number.isInteger(session.daySlot) && session.daySlot >= 0 && session.daySlot <= 6 &&
         textFields(session, ["description", "startTime"]) && records(session.steps, plannedStep) && session.steps.length > 0 && targetProjection(session.targetPreview,session.steps))) && p.weeksPreview.length === p.weeks &&
@@ -160,6 +162,7 @@ export const isTodayTrainingResponse = (value: unknown): value is Record<string,
       optionalRecords(week.ahead.next, item => text(item.id) && date(item.date) && text(item.title) && (item.minutes == null || finite(item.minutes) && item.minutes >= 0))) &&
     optionalObject(value.athleteReview, review => finite(review.rawRecordCount) && (finite(review.possibleCopies) || (review.possibleCopies === null && object(review.derivedActivityPolicy) && review.derivedActivityPolicy.status === "insufficient" && text(review.derivedActivityPolicy.reason))) && (review.baselineWeeklyMinutes == null || finite(review.baselineWeeklyMinutes)) && optionalText(review.baselineObservedAt) && records(review.records, row => text(row.id) && text(row.title) && text(row.sport) && text(row.source) && ['minutes','rpe','distanceKm','paceSecondsPerKm','avgHr','avgPower','calories','preWeightKg','postWeightKg'].every(key => row[key] == null || finite(row[key])) && textFields(row,['actualDetails','feedbackStatus','feedbackNote','matchedPlanId']))) &&
     optionalObject(value.race, race => optionalText(race.name) && finite(race.daysAway)) &&
+    optionalObject(value.eventToday, event => optionalText(event.name)) &&
     optionalObject(value.cycle, cycle => textFields(cycle, ["start", "end", "status"]) && finite(cycle.weeks) && (cycle.currentWeek == null || finite(cycle.currentWeek))) &&
     optionalObject(value.motivation, motivation => textFields(motivation, ["quote", "message", "source"])) &&
     records(value.connectors, connector => text(connector.provider) && text(connector.status) && optionalText(connector.lastError)) &&

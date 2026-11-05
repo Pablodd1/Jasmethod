@@ -164,8 +164,13 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
     for (const session of sessions) if (session.doubleDayRole && sessions.filter(other => other.daySlot === session.daySlot && other.doubleDayRole).length !== 2) {
       delete session.doubleDayRole; delete session.movedFromSlot;
     }
+    const templateBudget = week.templateBudgetMinutes;
+    const templateMinutes = week.doseAllocation?.templateTargetMinutes;
     return { ...week, theme, sessions, cycleOmissions, totalMinutes: sessions.reduce((sum, session) => sum + session.minutes, 0),
       restDaySlots: Array.from({ length: 7 }, (_, slot) => slot).filter(slot => !sessions.some(session => session.daySlot === slot)),
+      ...(templateBudget != null && templateMinutes != null && templateMinutes < templateBudget
+        ? { templateTimeLimit: { budgetMinutes: templateBudget, templateMinutes } }
+        : {}),
       cycleFactor: factor, volumeDecision:{scheduledMinutes:week.totalMinutes,cycleFactor:factor,application:"session_day",dayFactors:eventDays.map(day=>({dateKey:day.key,phase:day.phase,factor:day.protected?0:Math.min(baseFactor,day.factor/templateFactor),eventIds:day.eventIds})),remainingPlannedMinutes:sessions.reduce((sum,s)=>sum+s.minutes,0),protectedDates:eventDays.filter(day=>day.protected||options.protectedDays.includes(day.key)).map(day=>day.key),reason:rebuild?'Recent reported difficult/incomplete work: conservative review':unknownReview?'Recent training load and recovery are unknown: planning stays within the separately reported baseline; daily review remains required':eventLimited?'Event preparation/recovery applied to affected dates only':options.templatePeriodized?'Template progression applied once; no second generic ramp':'Legacy conservative cycle'}, observations, eventDays: eventDays.filter(day => day.protected).map(day => day.key),
       eventIds: [...new Set(eventDays.flatMap(day => day.eventIds))],
       doubleDayNote: week.sessions.some(session => session.doubleDayRole === "secondary" && eventDays[session.daySlot].phase !== "ordinary")

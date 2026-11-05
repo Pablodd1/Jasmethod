@@ -6,7 +6,7 @@ import type { Sport } from "./science";
 
 export const CYCLE_SAMPLE_VERSION = "2026-10-10-review-only-v1";
 export const CYCLE_SAMPLE_EVIDENCE = "docs/research/2026-10-07/training-evidence.md";
-export type SampleGoal = "sprint" | "olympic" | "half" | "full" | "run-only" | "track-sprint" | "cycle" | "swim-only" | "hyrox" | "general-strength";
+export type SampleGoal = "triathlon" | "sprint" | "olympic" | "half" | "full" | "run-only" | "track-sprint" | "cycle" | "swim-only" | "hyrox" | "general-strength";
 export type SampleFamily = "triathlon" | "distance-running" | "track-sprint" | "cycling" | "swimming" | "hyrox" | "general-strength";
 export type SampleEndpoint = { type: "time"; seconds: number } | { type: "distance"; meters: number };
 export interface ReviewedSampleStep {
@@ -167,6 +167,7 @@ const CATALOG: { goal: SampleGoal; family: SampleFamily; title: string; ceiling:
   { goal: "swim-only", family: "swimming", title: "Pool swimming", ceiling: 180, baselines: ["swim", "strength"] },
   { goal: "hyrox", family: "hyrox", title: "HYROX familiar-skill foundation", ceiling: 240, baselines: ["run", "hyrox", "strength"] },
   { goal: "general-strength", family: "general-strength", title: "General strength: partial supporting scope", ceiling: 120, baselines: ["strength"] },
+  { goal: "triathlon", family: "triathlon", title: "General triathlon without an event", ceiling: 360, baselines: ["run", "bike", "swim", "strength"] },
 ];
 
 /** Full-horizon review drafts, not completion-ready race plans. Repeatable
@@ -176,6 +177,7 @@ const CATALOG: { goal: SampleGoal; family: SampleFamily; title: string; ceiling:
 export function buildReviewedCycleSample(goal: SampleGoal): ReviewedCycleSample {
   const spec = CATALOG.find(item => item.goal === goal);
   if (!spec) throw new Error("Unsupported review sample goal");
+  const hasEvent = goal !== "general-strength" && goal !== "triathlon";
   return {
     id: `synthetic-${goal}-${CYCLE_SAMPLE_VERSION}`, goal, family: spec.family, title: spec.title,
     review: { status: "review_only", reviewedAt: "2026-10-10", scope: "engineering_and_evidence_scope", qualifiedCoachApproval: false, automaticPrescription: false },
@@ -185,15 +187,15 @@ export function buildReviewedCycleSample(goal: SampleGoal): ReviewedCycleSample 
     limitations: ["This full 12-week horizon illustrates structure, not race completion readiness or a validated response model", "After each scheduled review, hold or reduce until actual response supports the next block; no automatic volume increase", "Events replace the planned day; no assumed event duration, completion, recovery or compensatory work", "Distance endpoints preserve exact distance and unknown elapsed time; time budgets are not measured totals", ...(spec.family === "triathlon" ? ["Distance variants require separate event-specific endurance and open-water/fueling review; a larger ceiling does not establish long-course readiness"] : []), ...(goal === "general-strength" ? ["General strength has partial supporting scope only; no standalone lifting goal, 1RM progression or Olympic-lifting cycle"] : [])],
     startKey: START, baselineWeeklyMinutes: spec.ceiling,
     baselines: spec.baselines.map(key => ({ ...BASELINES[key], observations: { ...BASELINES[key].observations } })),
-    event: goal === "general-strength" ? null : { name: `${spec.title} review event`, dateKey: addDaysKey(START, 76), priority: "A", source: "synthetic_fixture" },
+    event: hasEvent ? { name: `${spec.title} review event`, dateKey: addDaysKey(START, 76), priority: "A", source: "synthetic_fixture" } : null,
     weeks: Array.from({ length: 12 }, (_, index) => {
       const week = index + 1;
       const reduced = [1, 4, 8, 10, 11, 12].includes(week);
       const easyMinutes = reduced ? 25 : week < 5 ? 35 : 40;
       let sessions: ReviewedSampleSession[];
       if (spec.family === "triathlon") {
-        const longBike = reduced ? 40 : goal === "sprint" ? 50 : goal === "olympic" ? 65 : goal === "half" ? 80 : 95;
-        sessions = [pool(0, reduced), controlled("bike", 1, reduced), pool(2, reduced), ...(week === 11 ? [] : [strength(3, true)]), easy("run", easyMinutes, 4, week === 1), brick(5, longBike, reduced)];
+        const longBike = reduced ? 40 : goal === "sprint" ? 50 : goal === "olympic" || goal === "triathlon" ? 65 : goal === "half" ? 80 : 95;
+        sessions = [pool(0, reduced), controlled("bike", 1, reduced), pool(2, reduced), ...(week === 11 && hasEvent ? [] : [strength(3, true)]), easy("run", easyMinutes, 4, week === 1), brick(5, longBike, reduced)];
       } else if (spec.family === "distance-running") sessions = [easy("run", easyMinutes, 0, week === 1), controlled("run", 2, reduced), strength(4, reduced), easy("run", reduced ? 30 : 50, 5)];
       else if (spec.family === "cycling") sessions = [easy("bike", easyMinutes, 0, week === 1), controlled("bike", 2, reduced), strength(4, reduced), easy("bike", reduced ? 40 : 75, 5)];
       else if (spec.family === "swimming") sessions = [pool(0, reduced), pool(2, reduced), strength(4, reduced), pool(5, true)];
@@ -202,11 +204,11 @@ export function buildReviewedCycleSample(goal: SampleGoal): ReviewedCycleSample 
       else sessions = [strength(1, reduced), strength(4, reduced)];
       // No post-event session is assumed safe or performed. Review the actual
       // event and recovery first; optional movement needs its own daily review.
-      if (week === 12 && goal !== "general-strength") sessions = [];
+      if (week === 12 && hasEvent) sessions = [];
       // Recovery opportunities are explicit, never fabricated completed sessions.
-      return { week, startKey: addDaysKey(START, index * 7), theme: goal === "general-strength" && week >= 11 ? "Reduced practice and goal review" : THEMES[index],
+      return { week, startKey: addDaysKey(START, index * 7), theme: !hasEvent && week >= 9 ? "Reduced practice and goal review" : THEMES[index],
         reviewRequired: [1, 4, 8, 12].includes(week), sessions,
-        restDaySlots: Array.from({ length: 7 }, (_, day) => day).filter(day => !sessions.some(item => item.daySlot === day) && !(week === 11 && goal !== "general-strength" && day === 6)) };
+        restDaySlots: Array.from({ length: 7 }, (_, day) => day).filter(day => !sessions.some(item => item.daySlot === day) && !(week === 11 && hasEvent && day === 6)) };
     }),
   };
 }

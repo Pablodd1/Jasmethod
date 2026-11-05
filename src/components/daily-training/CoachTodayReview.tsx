@@ -1,13 +1,15 @@
 "use client";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { readTrainingJson } from "./training-read";
 const Workout = dynamic(() => import("./UniversalWorkoutCard").then(module => module.UniversalWorkoutCardLoader));
-type Day = { date: string; sessions: { id: string; title: string; sport: string }[] };
+type Day = { date: string; eventToday?: { name: string | null } | null; sessions: { id: string; title: string; sport: string }[] };
 function isDay(value: unknown): value is Day {
   if (!value || typeof value !== "object") return false;
   const day = value as Day;
   return typeof day.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day.date) && Array.isArray(day.sessions)
+    && (day.eventToday == null || typeof day.eventToday === "object" && (day.eventToday.name === null || typeof day.eventToday.name === "string"))
     && day.sessions.every(session => session && typeof session.id === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(session.id) && typeof session.title === "string" && typeof session.sport === "string");
 }
 /** Browser-only protected view. Its contents are never added to conversation/model input. */
@@ -30,7 +32,8 @@ export function CoachTodayReview({ es, selectedId, onSelect, onSaved, onClose }:
     <p className="text-xs text-slate-600">{es ? "Registro guardado en JMM · No se envía a IA externa ni se copia al historial del chat." : "Saved record inside JMM · Not sent to external AI or copied into chat history."} {day?.date}</p>
     {error && <div role="alert"><p>{error}</p><button type="button" className="btn-secondary" onClick={() => setRetry(value => value + 1)}>{es ? "Reintentar" : "Retry"}</button></div>}
     {!day && !error && <p role="status">{es ? "Consultando tu sesión guardada…" : "Checking your saved session…"}</p>}
-    {day && !day.sessions.length && <p role="status">{es ? "No hay sesiones guardadas para hoy. No se ha generado ni supuesto un entrenamiento. Puedes revisar un ciclo en las herramientas de abajo." : "No saved sessions for today. No workout has been generated or assumed. You can review a cycle using the tools below."}</p>}
+    {day?.eventToday && <p role="status">{es ? "Evento de hoy" : "Today's event"} · {day.eventToday.name || (es ? "Día reservado" : "Reserved event day")} <Link href="/today" className="underline">{es ? "Abrir Hoy" : "Open Today"}</Link></p>}
+    {day && !day.eventToday && !day.sessions.length && <p role="status">{es ? "No hay sesiones guardadas para hoy. Puedes revisar tu ciclo en Entrenamiento." : "No saved sessions for today. You can review your cycle in Training."} <Link href="/training" className="underline">{es ? "Ver ciclo" : "View cycle"}</Link></p>}
     {!!day?.sessions.length && <div className="flex flex-wrap gap-2">{day.sessions.map(session => <button type="button" key={session.id} className="btn-secondary min-h-11 whitespace-normal" aria-pressed={current?.id === session.id} onClick={() => onSelect(session.id)}>{session.title} · {session.sport}</button>)}</div>}
     {day && day.sessions.length > 0 && !current && <p>{es ? "Elige la sesión que quieres revisar; no se supondrá a cuál te refieres." : "Choose the session to review; we will not assume which one you mean."}</p>}
     {current && <Workout key={current.id + ":" + retry} sessionId={current.id} es={es} onSaved={async () => { setRetry(value => value + 1); await onSaved(); }} />}

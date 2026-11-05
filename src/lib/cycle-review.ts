@@ -30,7 +30,7 @@ export function requiredCycleSports(goal: string): Sport[] {
   if (goal === "hyrox") return ["run", "hyrox", "strength"];
   if (goal === "strength") return ["strength"];
   if (goal === "boxing") return ["boxing"];
-  if (["sprint", "olympic", "half", "full"].includes(goal)) return ["swim", "bike", "run"];
+  if (["triathlon", "sprint", "olympic", "half", "full"].includes(goal)) return ["swim", "bike", "run"];
   return [];
 }
 /** Only completed, explicitly applied tests matching the current profile establish
