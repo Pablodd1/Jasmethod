@@ -1,4 +1,5 @@
 "use client";
+import "@/components/daily-training/universal-workout-card.css";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
