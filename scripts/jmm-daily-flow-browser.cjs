@@ -83,6 +83,7 @@ async function journey(browser, language, width) {
   const mutations = [], reads = [];
   let releaseRich, richReleased = false, reviewed = false, failReview = true, withMeasurements=true, cognitiveReject=true, cognitiveWrites=0;
   let feedbackSaved = { feedbackRevision: 'e'.repeat(64), feedbackNote: 'Synthetic saved note', preWeightKg: 70, postWeightKg: 69 }, failFeedback = true, recordMode = 'none', forceOffline = false, preWorkoutSaved = null, failPreWeight = true;
+  let eventDay = false;
   const richGate = new Promise(resolve => { releaseRich = () => { richReleased = true; resolve(); }; });
   page.on('pageerror', error => errors.push({ language, width, error: String(error) }));
   await context.route('**/*', async route => {
@@ -127,7 +128,7 @@ async function journey(browser, language, width) {
     }
     reads.push(`${path}${url.search}`);
     if (path === '/api/auth/me') return route.fulfill({ json: { user: f.user } });
-    if (path === '/api/today' && url.searchParams.get('view') === 'plan') return route.fulfill({ json: f.fast });
+    if (path === '/api/today' && url.searchParams.get('view') === 'plan') return route.fulfill({ json: eventDay ? {...f.fast, sessions: []} : f.fast });
     if (path === '/api/today') {
       if (forceOffline) return route.fulfill({ status: 503, json: { error: 'Synthetic offline' } });
       await richGate; const rich = f.rich(reviewed); rich.units = language === 'en' ? 'imperial' : 'metric'; rich.sessions[0] = { ...rich.sessions[0], ...feedbackSaved, preWorkoutWeight: preWorkoutSaved };
@@ -138,6 +139,11 @@ async function journey(browser, language, width) {
         rich.athleteReview = { rawRecordCount: 1, possibleCopies: 0, records: [record] };
         if (recordMode === 'matched') rich.sessions[0].matchedPlanId = record.id;
         if (recordMode === 'choose') rich.sessions.push({ ...rich.sessions[0], id: 'synthetic-second-session', title: 'Synthetic second planned workout', matchedPlanId: null });
+      }
+      if (eventDay) {
+        rich.sessions = [];
+        rich.eventToday = { name: 'Synthetic 5K' };
+        rich.recovery = { mode: 'event-day', safetyStatus: 'unknown', reviewedSessionId: null };
       }
       return route.fulfill({ json: {...rich,...(!withMeasurements?{inputContext:null,connectors:[]}:{} )} });
     }
@@ -256,16 +262,13 @@ async function journey(browser, language, width) {
     assert.equal(await recent.locator('input[name="rpe"]').inputValue(), '', 'Missing effort remains unanswered');
     assert.equal(mutations.length, 2, 'Full check-in and correction actions never auto-submit');
     const checkinGeometry = await assertMobile(page, 'checkin-context', language, width, recent);
-    await page.goto(`${base}/today?sessionId=missing-synthetic-session`, { waitUntil: 'domcontentloaded' });
-    const selected = page.getByRole('combobox', { name: language === 'es' ? /^Sesión de hoy/ : /^Today's session/ });
-    await selected.waitFor({ state: 'visible' });
-    assert.equal(await selected.inputValue(), '', 'A missing saved link asks for an explicit current-session choice');
-    assert.equal(await selected.getByRole('option').count(), 2, 'The one current session remains reachable alongside the placeholder');
-    await selected.selectOption(f.workout.id);
+    recordMode = 'imported';
+    await page.goto(`${base}/today?sessionId=synthetic-imported`, { waitUntil: 'domcontentloaded' });
     await page.locator('#today-workout .uwc-header').getByText(language === 'es' ? 'LISTO' : 'READY', { exact: false }).waitFor();
-    assert.equal(new URL(page.url()).searchParams.get('sessionId'), f.workout.id);
+    await page.getByText(language === 'es' ? 'Ese enlace corresponde a otra sesión. Se muestra tu sesión guardada de hoy.' : 'That link points to another session. Your saved session for today is shown.', { exact: true }).waitFor();
     assert.equal(mutations.length, 2, 'Recovering a stale session link never posts or approves');
     await assertMobile(page, 'stale-link-recovered', language, width, page.locator('#today-workout'));
+    recordMode = 'none';
     withMeasurements=false;reviewed=false;
     await page.goto(`${base}/today`);
     const manualPath=page.getByRole('region',{name:language==='es'?'Tu semana y preparación':'Your week and readiness',exact:true});await manualPath.waitFor();
@@ -345,9 +348,19 @@ async function journey(browser, language, width) {
     await page.locator('div[role="status"]').filter({ hasText: language === 'es' ? 'Copia sin conexión' : 'Offline copy' }).waitFor();
     const migrated = await page.evaluate(key => localStorage.getItem(key), `jmm_today_${f.user.id}`);
     assert.doesNotMatch(migrated, /legacy private note|legacy private result/, 'Offline upgrade removes legacy notes from persistent cache');
+    forceOffline = false;
+    eventDay = true;
+    recordMode = 'imported';
+    await page.goto(`${base}/today?sessionId=synthetic-imported`);
+    await page.locator('#today-workout').getByRole('heading', { name: 'Synthetic 5K', exact: true }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: language === 'es' ? 'Sin sesiones programadas' : 'No sessions planned', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('heading', { name: language === 'es' ? 'Cómo estás hoy' : 'Readiness today', exact: true }).count(), 0);
+    await page.getByRole('button', { name: language === 'es' ? 'Registrar resultado y notas' : 'Log results & notes', exact: true }).click();
+    await page.locator('#workout-feedback').waitFor();
+    await assertMobile(page, 'event-with-actual', language, width, page.locator('#today-workout'));
     results.push({ language, width, fastSavedPlanBeforeRichContext: 'pass', explicitUncheckedReview: 'pass', failedSaveKeepsDraft: 'pass',
       noAutomaticPostOrApproval: 'pass', importedNumericCorrection: 'pass', knownActualCorrection: 'pass',
-      staleSelectedLinkRecovery: 'pass', resultsSaveFailureAndReload: 'pass', weightUnits: 'pass', geometries: { fast: fastGeometry, review: reviewGeometry, checkin: checkinGeometry }, mockedReviewRequests: mutations.length });
+      staleSelectedLinkRecovery: 'pass', eventAndActualStaySeparate: 'pass', resultsSaveFailureAndReload: 'pass', weightUnits: 'pass', geometries: { fast: fastGeometry, review: reviewGeometry, checkin: checkinGeometry }, mockedReviewRequests: mutations.length });
   } catch (error) {
     const selectedCards = await page.locator('#today-workout').evaluateAll(nodes => nodes.map(node => ({
       children: Array.from(node.children).map(child => ({ tag: child.tagName, className: child.className,

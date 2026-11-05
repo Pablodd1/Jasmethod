@@ -239,7 +239,7 @@ for (const es of [false, true]) test(`composer comes before optional workout/ima
   assert.ok(composer>=0&&composer<send);
   assert.ok(tools>=0&&tools<workout&&workout<composer);
   assert.ok(privacy>=0);
-  assert.equal((markup.match(/<details/g) || []).length, 7);
+  assert.equal((markup.match(/<details/g) || []).length, 6);
   assert.match(markup,/tel:\+17862317906/);
   assert.match(markup,/tel:\+17869708366/);
   assert.doesNotMatch(markup, /<details[^>]*\bopen(?:=|>|\s)/);
@@ -275,5 +275,5 @@ for (const es of [false, true]) test(`standalone Coach starts as focused chat wi
   assert.doesNotMatch(markup, /Keep the conversation open while reviewing|La conversaci[oó]n prepara el siguiente paso/);
   assert.equal((markup.match(/class="coach-chat-composer/g)||[]).length, 1);
   assert.ok(markup.includes(es?"Micrófono":"Microphone"));
-  assert.ok(markup.includes(es?"Permito enviar a OpenAI":"Allow OpenAI to receive"));
+  assert.doesNotMatch(markup, /Enable AI chat|Activar chat con IA/, "Wait for provider capability before showing AI activation");
 });

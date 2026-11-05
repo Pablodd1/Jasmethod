@@ -10,7 +10,7 @@ import { TargetProgressPanel } from "@/components/target-progress-panel";
 import { RestPreference } from "@/components/rest-preference";
 import { StartingCycle } from "@/components/StartingCycle";
 import { planningReasonText } from "@/lib/planning-reason-copy";
-import { planningGoal } from "@/lib/planning-setup";
+import { planningGoal, type PlanningSetup } from "@/lib/planning-setup";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -90,6 +90,7 @@ function TrainingPageContent() {
   });
   const [error, setError] = useState("");
   const [planningReadiness, setPlanningReadiness] = useState<any>(null);
+  const [planningSetup, setPlanningSetup] = useState<PlanningSetup | null>(null);
   const [doubleDayConfirmed,setDoubleDayConfirmed]=useState(false);
   const [eventTradeoffsConfirmed,setEventTradeoffsConfirmed]=useState(false);
   const [preview, setPreview] = useState<any>(null);
@@ -151,11 +152,13 @@ function TrainingPageContent() {
           setZones(z.zones);
           setProfile(z.profile);
           setPlanningReadiness(z.planningReadiness);
+          setPlanningSetup(z.setup ?? null);
           setForm(previous => ({...previous, distance: previous.distance || planningGoal(z.profile?.goal) || "", weeks: previous.weeks || String(z.setup?.planWeeks ?? "")}));
         })
         .catch(err => {
           if (!mounted.current || signal.aborted) return;
           setPlanningReadiness(null);
+          setPlanningSetup(null);
           setSetupError(err instanceof Error ? err.message : "Could not load planning setup.");
         })
         .finally(() => { if (!signal.aborted) setSetupLoading(false); }),
@@ -324,7 +327,7 @@ function TrainingPageContent() {
         {setupError && <div role="alert" className="card border-amber-300"><p>{setupError} {es ? "El ciclo guardado se carga por separado." : "Your saved cycle loads separately."}</p><button type="button" className="btn-secondary mt-2" disabled={setupLoading} onClick={() => void load()}>{es ? "Reintentar configuración" : "Retry planning setup"}</button></div>}
         {savedMessage && <p role="status" className="card border-emerald-300">{savedMessage}</p>}
         {cycleNeedsReview && <p role="status" className="card border-amber-300 text-sm">{es ? "Tus sesiones guardadas están disponibles. El resumen de este ciclo anterior necesita revisión; no se han modificado las sesiones." : "Your saved sessions are available. This older cycle summary needs review; the sessions have not been changed."}</p>}
-        {plan && <TrainingCycleOverview es={es} plan={plan} cycle={cycle} timezone={user?.timezone || "America/New_York"} selectedMonth={visibleMonth} onMonthChange={setSelectedMonth} />}
+        {plan && <TrainingCycleOverview es={es} plan={plan} cycle={cycle} planningSetup={planningSetup} timezone={user?.timezone || "America/New_York"} selectedMonth={visibleMonth} onMonthChange={setSelectedMonth} />}
         <details className="rounded-xl border border-sand-200 bg-white px-4"><summary className="min-h-11 cursor-pointer content-center text-sm font-semibold">{es ? "Objetivos y días de descanso" : "Targets & rest days"}</summary><div className="space-y-4 pb-4"><RestPreference es={es} onSaved={()=>{setPreview(null);void load();}} /><TargetProgressPanel key={user?.id} language={user?.language} /></div></details>
 
         {/* A saved cycle remains primary; replacing it is an explicit review. */}
@@ -358,6 +361,7 @@ function TrainingPageContent() {
                 onChange={(e) => updatePlanForm({ ...form, distance: e.target.value })}
               >
                 <option value="">Choose your actual goal</option>
+                <option value="triathlon">{es ? "Triatlón general" : "General triathlon"}</option>
                 <option value="sprint">Sprint (750m / 20km / 5km)</option>
                 <option value="track-sprint">Track Sprint (100m / 200m / 400m)</option>
                 <option value="olympic">Olympic (1.5k / 40k / 10k)</option>
@@ -447,6 +451,9 @@ function TrainingPageContent() {
             <p>{preview.preview.existingPlans ? "Confirming will archive the current plan and supersede its uncompleted future sessions. History is retained." : "Confirming will assign this provisional plan."}</p>
             <details className="my-3"><summary className="cursor-pointer underline">Review every week, off-day and session</summary>{preview.preview.weeksPreview.map((week:any,weekIndex:number)=><div className="my-4" key={week.week}>
               <h4 className="font-semibold">Week {week.week}: {week.theme} · {week.totalMinutes} min</h4>
+              {week.templateTimeLimit && <p className="my-2 text-sm">{es
+                ? `Las sesiones completas de la plantilla usan ${week.templateTimeLimit.templateMinutes} de ${week.templateTimeLimit.budgetMinutes} min disponibles en esta fase, antes de ajustar el calendario y los eventos.`
+                : `The template uses ${week.templateTimeLimit.templateMinutes} of ${week.templateTimeLimit.budgetMinutes} minutes available for this phase, before scheduling and event adjustments. Session durations follow each workout’s purpose and time limit.`}</p>}
               {Array.isArray(week.doseAllocation?.strengthPreference?.requestedSlots)&&week.doseAllocation.strengthPreference.requestedSlots.length>0 && <p className="my-2 text-sm" role="status">{es ? "Preferencias de gimnasio" : "Gym preferences"}: {week.doseAllocation.strengthPreference.requestedSlots.map((slot:number)=>{
                 const day=addDaysKey(dateKey(new Date(preview.preview.startDate),user?.timezone),weekIndex*7+slot);
                 const scheduled=week.sessions.some((session:any)=>session.daySlot===slot&&session.sport==='strength');

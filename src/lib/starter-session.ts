@@ -9,7 +9,7 @@ export function starterRestriction(profile: {injured?:boolean;birthYear?:number|
 export function starterSession(goal:string|null|undefined, recentSport?:string|null) {
   const sport = goal === "cycle" ? "bike" : goal === "swim-only" ? "swim"
     : goal === "hyrox" || goal === "track-sprint" ? "mobility"
-    : ["sprint","olympic","half","full","run-only","5k","10k","half-marathon","marathon"].includes(goal??"") ? "run" : ["run","bike","swim"].includes(recentSport ?? "") ? recentSport! : "mobility";
+    : ["triathlon","sprint","olympic","half","full","run-only","5k","10k","half-marathon","marathon"].includes(goal??"") ? "run" : ["run","bike","swim"].includes(recentSport ?? "") ? recentSport! : "mobility";
   const guidance = sport === "run" ? "Walk or alternate comfortable walking and easy jogging. Keep conversation easy; no pace target."
     : sport === "bike" ? "Use a familiar bike in a safe setting. Pedal comfortably; no power target."
     : sport === "swim" ? "Only if you can swim confidently with appropriate supervision and pool access: familiar relaxed swimming, pausing as needed. Otherwise choose gentle land movement in Profile."

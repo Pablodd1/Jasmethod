@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { dateKey } from "@/lib/dates";
 import { savedCycleSummary } from "@/lib/training-cycle-summary";
+import type { PlanningSetup } from "@/lib/planning-setup";
 
 function themeLabel(theme: string, es: boolean) {
   if (!es) return theme;
@@ -13,7 +14,7 @@ function themeLabel(theme: string, es: boolean) {
     .replace("Baseline assessment and easy foundation", "Evaluación inicial y base suave")
     .replace("Foundation", "Base").replace("Progressive practice", "Práctica progresiva").replace("Block", "Bloque");
 }
-export function TrainingCycleOverview({ plan, cycle, timezone, selectedMonth, onMonthChange, es = false }: { plan: any; cycle: any; timezone: string; selectedMonth: string; onMonthChange: (month: string) => void; es?: boolean }) {
+export function TrainingCycleOverview({ plan, cycle, planningSetup, timezone, selectedMonth, onMonthChange, es = false }: { plan: any; cycle: any; planningSetup?: PlanningSetup | null; timezone: string; selectedMonth: string; onMonthChange: (month: string) => void; es?: boolean }) {
   const t = (en: string, spanish: string) => es ? spanish : en;
   const summary = savedCycleSummary(plan, timezone);
   const months = Array.from(new Set<string>(plan.days.map((day: any) => dateKey(new Date(day.date), timezone).slice(0, 7)))).sort();
@@ -22,6 +23,9 @@ export function TrainingCycleOverview({ plan, cycle, timezone, selectedMonth, on
   const completed = sessions.filter((session: any) => session.completed).length;
   const eventDates = new Set<string>(cycle?.events?.events?.map((event:any)=>event.dateKey) ?? []);
   const weekNumbers = new Set(monthDays.map((day: any) => day.week));
+  const savedBaseline = cycle?.baseline?.weeklyMinutes;
+  const currentBaseline = planningSetup?.baselineWeeklyMinutes;
+  const currentWeek = cycle?.weeks?.find((week: any) => week.week === summary.currentWeek);
   return <section className="card space-y-4 border-ocean-200" aria-label={t("Saved training cycle", "Ciclo de entrenamiento guardado")}>
     <div>
       <p className="text-xs font-semibold uppercase text-ocean-700">{t("Saved training cycle", "Ciclo de entrenamiento guardado")}</p>
@@ -29,6 +33,12 @@ export function TrainingCycleOverview({ plan, cycle, timezone, selectedMonth, on
       <p className="text-sm mt-1">{summary.start} – {summary.end} · {summary.weeks} {t("weeks", "semanas")}{summary.currentWeek ? ` · ${t("Week", "Semana")} ${summary.currentWeek}` : summary.status === "upcoming" ? t(" · Starts soon", " · Próximo inicio") : t(" · Cycle ended", " · Ciclo finalizado")}</p>
       <p className="text-sm">{summary.raceDate ? `${t("Primary saved event date", "Fecha del evento principal")}: ${summary.raceDate}. ${t("Event participation is not recorded as completed training.", "Participar en el evento no se registra como entrenamiento completado.")}` : t("No event date supplied. This cycle supports your saved goal without inventing a race.", "Sin fecha de evento. El ciclo sigue tu objetivo guardado sin inventar una competición.")}</p>
     </div>
+    {typeof savedBaseline === "number" && typeof currentBaseline === "number" && savedBaseline !== currentBaseline && <div role="status" className="rounded border border-amber-300 p-3 space-y-1 text-sm">
+      <p className="font-semibold">{t("This cycle uses an earlier training baseline", "Este ciclo usa una base de entrenamiento anterior")}</p>
+      <p>{t(`At cycle creation: ${savedBaseline} min/week. Current reported baseline: ${currentBaseline} min/week.`, `Al crear el ciclo: ${savedBaseline} min/semana. Base declarada actual: ${currentBaseline} min/semana.`)}</p>
+      {currentWeek && <p>{t(`This week was assigned ${currentWeek.totalMinutes} min in the saved cycle.`, `Esta semana tiene ${currentWeek.totalMinutes} min asignados en el ciclo guardado.`)}</p>}
+      <p>{t("Open “Review changes to future training” below to preview a cycle using your current inputs.", "Abre «Revisar cambios del entrenamiento futuro» para ver un ciclo con tus datos actuales.")}</p>
+    </div>}
     {cycle?.weeks?.length>0 && !cycle.weeks.some((week:any)=>week.doseAllocation) && <p role="status" className="rounded border border-amber-300 p-3 text-sm">{t("This saved cycle predates the weekly-dose correction. Your history and dates are preserved. Review your rest preference and preview a replacement in Planning setup below; this cycle has not been silently rewritten.", "Este ciclo es anterior a la corrección del volumen semanal. Se conservan tu historial y fechas. Revisa el descanso y una nueva vista previa en la configuración de abajo; el ciclo no se ha modificado automáticamente.")}</p>}
     {["sprint","olympic","half","full"].includes(plan.distance)&&cycle?.weeks?.some((week:any)=>week.templateVersion!=="triathlon-foundation-v3")&&<p role="status" className="rounded border border-amber-300 p-3 text-sm">{t("This saved triathlon cycle needs review against the sport-allocation correction. Long generic swims and missing sport structure must not be treated as ready. History is retained; preview and confirm a replacement rather than silently rewriting it.","Este ciclo de triatlón necesita revisar la distribución por deporte. Las nataciones largas genéricas y estructuras incompletas no deben considerarse listas. Se conserva el historial; revisa y confirma un reemplazo.")}</p>}
     <div className="flex flex-wrap gap-2">

@@ -265,7 +265,7 @@ export default function SettingsPage() {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="profile-goal" className="label">Goal distance</label>
+                  <label htmlFor="profile-goal" className="label">{lang === "es" ? "Deporte u objetivo" : "Sport or goal"}</label>
                   <select
                     id="profile-goal"
                     className="input"
@@ -274,6 +274,7 @@ export default function SettingsPage() {
                   >
                     <option value="">Not provided</option>
                     {form.goal && !PLANNABLE_GOALS.includes(planningGoal(form.goal)!) && <option value={form.goal} disabled>Saved legacy goal: {form.goal}</option>}
+                    <option value="triathlon">{lang === "es" ? "Triatlón general" : "General triathlon"}</option>
                     <option value="sprint">Sprint</option>
                     <option value="olympic">Olympic</option>
                     <option value="half">Half Ironman</option>

@@ -305,10 +305,42 @@ No event or standalone lifting progression is inferred.
 | 6 / 2026-11-16 | Consolidate repeatability | Tue [S17](#s17) strength 26 min; Fri [S17](#s17) strength 26 min | 52 min | Mon, Wed, Thu, Sat, Sun |
 | 7 / 2026-11-23 | Practice within tolerated load | Tue [S17](#s17) strength 26 min; Fri [S17](#s17) strength 26 min | 52 min | Mon, Wed, Thu, Sat, Sun |
 | 8 / 2026-11-30 | Recovery and baseline review; review required | Tue [S03](#s03) strength 20 min; Fri [S03](#s03) strength 20 min | 40 min | Mon, Wed, Thu, Sat, Sun |
-| 9 / 2026-12-07 | Event-specific integration | Tue [S17](#s17) strength 26 min; Fri [S17](#s17) strength 26 min | 52 min | Mon, Wed, Thu, Sat, Sun |
-| 10 / 2026-12-14 | Reduced-load event preparation | Tue [S03](#s03) strength 20 min; Fri [S03](#s03) strength 20 min | 40 min | Mon, Wed, Thu, Sat, Sun |
+| 9 / 2026-12-07 | Reduced practice and goal review | Tue [S17](#s17) strength 26 min; Fri [S17](#s17) strength 26 min | 52 min | Mon, Wed, Thu, Sat, Sun |
+| 10 / 2026-12-14 | Reduced practice and goal review | Tue [S03](#s03) strength 20 min; Fri [S03](#s03) strength 20 min | 40 min | Mon, Wed, Thu, Sat, Sun |
 | 11 / 2026-12-21 | Reduced practice and goal review | Tue [S03](#s03) strength 20 min; Fri [S03](#s03) strength 20 min | 40 min | Mon, Wed, Thu, Sat, Sun |
 | 12 / 2026-12-28 | Reduced practice and goal review; review required | Tue [S03](#s03) strength 20 min; Fri [S03](#s03) strength 20 min | 40 min | Mon, Wed, Thu, Sat, Sun |
+
+## General triathlon without an event
+
+Goal: triathlon. Scope: supported_goal_example. Assumed recently tolerated ceiling: 360 min/week. Start: 2026-10-12.
+
+No event or standalone lifting progression is inferred.
+
+The triathlon variants provide a foundation/maintenance illustration with combined swim–bike–run load. Longer-course variants require separate endurance, open-water, equipment and fueling review; these example durations do not establish full-distance race readiness.
+
+### Baseline examples
+
+- run, synthetic observation 2026-10-05: Recent familiar 5 km performance, consistent course; optional non-maximal alternative records minutes/effort only. Values: distanceMeters=5000; elapsedSeconds=1500; conditions=Synthetic flat-course example. 5:00/km is observed performance pace, not measured threshold. Do not silently write performance pace to a threshold field. Any explicitly chosen derived threshold estimate must retain its method and uncertainty; an aspirational goal never becomes an anchor.
+- bike, synthetic observation 2026-10-05: Previously completed, reviewed FTP protocol with calibrated meter. Values: reportedFtpWatts=220; protocol=20-minute-derived FTP, method explicitly recorded. 220 W is a synthetic FTP field estimate; CP needs its own test and field. No universal CP = FTP + 16 W conversion.
+- swim, synthetic observation 2026-10-05: Reviewed same-stroke 200/400 m pool tests; not automatically scheduled. Values: t400Seconds=480; t200Seconds=220; cssSecondsPer100m=130; poolLengthMeters=25; stroke=freestyle. (480−220)/2 = 130 s/100 m, a CSS field estimate with measurement error. It is not directly measured LT2 or proof of open-water safety.
+- strength, synthetic observation 2026-10-05: Qualified review of familiar movements, comfortable loads and repetitions in reserve. Values: movement=goblet squat; loadKg=12; repetitions=6; reportedRepsInReserve=3. Synthetic technique example, not a 1RM estimate or automatic starting load. General strength is only partially supported; Olympic lifting remains outside scope.
+
+### Full 12-week horizon
+
+| Week / starting | Purpose | Sessions (allowance or exact time as noted in library) | Budget total, excluding event | Rest/review slots |
+|---|---|---|---|---|
+| 1 / 2026-10-12 | Baseline observation and familiarization; review required | Mon [S01](#s01) swim 30 min; Tue [S02](#s02) bike 25 min; Wed [S01](#s01) swim 30 min; Thu [S03](#s03) strength 20 min; Fri [S04](#s04) run 25 min; Sat [S05](#s05) brick 53 min | 183 min | Sun |
+| 2 / 2026-10-19 | Repeatable foundation | Mon [S06](#s06) swim 40 min; Tue [S07](#s07) bike 31 min; Wed [S06](#s06) swim 40 min; Thu [S03](#s03) strength 20 min; Fri [S08](#s08) run 35 min; Sat [S12](#s12) brick 83 min | 249 min | Sun |
+| 3 / 2026-10-26 | Controlled practice | Mon [S06](#s06) swim 40 min; Tue [S07](#s07) bike 31 min; Wed [S06](#s06) swim 40 min; Thu [S03](#s03) strength 20 min; Fri [S08](#s08) run 35 min; Sat [S12](#s12) brick 83 min | 249 min | Sun |
+| 4 / 2026-11-02 | Recovery and baseline review; review required | Mon [S01](#s01) swim 30 min; Tue [S02](#s02) bike 25 min; Wed [S01](#s01) swim 30 min; Thu [S03](#s03) strength 20 min; Fri [S10](#s10) run 25 min; Sat [S05](#s05) brick 53 min | 183 min | Sun |
+| 5 / 2026-11-09 | Event-relevant practice | Mon [S06](#s06) swim 40 min; Tue [S07](#s07) bike 31 min; Wed [S06](#s06) swim 40 min; Thu [S03](#s03) strength 20 min; Fri [S11](#s11) run 40 min; Sat [S12](#s12) brick 83 min | 254 min | Sun |
+| 6 / 2026-11-16 | Consolidate repeatability | Mon [S06](#s06) swim 40 min; Tue [S07](#s07) bike 31 min; Wed [S06](#s06) swim 40 min; Thu [S03](#s03) strength 20 min; Fri [S11](#s11) run 40 min; Sat [S12](#s12) brick 83 min | 254 min | Sun |
+| 7 / 2026-11-23 | Practice within tolerated load | Mon [S06](#s06) swim 40 min; Tue [S07](#s07) bike 31 min; Wed [S06](#s06) swim 40 min; Thu [S03](#s03) strength 20 min; Fri [S11](#s11) run 40 min; Sat [S12](#s12) brick 83 min | 254 min | Sun |
+| 8 / 2026-11-30 | Recovery and baseline review; review required | Mon [S01](#s01) swim 30 min; Tue [S02](#s02) bike 25 min; Wed [S01](#s01) swim 30 min; Thu [S03](#s03) strength 20 min; Fri [S10](#s10) run 25 min; Sat [S05](#s05) brick 53 min | 183 min | Sun |
+| 9 / 2026-12-07 | Reduced practice and goal review | Mon [S06](#s06) swim 40 min; Tue [S07](#s07) bike 31 min; Wed [S06](#s06) swim 40 min; Thu [S03](#s03) strength 20 min; Fri [S11](#s11) run 40 min; Sat [S12](#s12) brick 83 min | 254 min | Sun |
+| 10 / 2026-12-14 | Reduced practice and goal review | Mon [S01](#s01) swim 30 min; Tue [S02](#s02) bike 25 min; Wed [S01](#s01) swim 30 min; Thu [S03](#s03) strength 20 min; Fri [S10](#s10) run 25 min; Sat [S05](#s05) brick 53 min | 183 min | Sun |
+| 11 / 2026-12-21 | Reduced practice and goal review | Mon [S01](#s01) swim 30 min; Tue [S02](#s02) bike 25 min; Wed [S01](#s01) swim 30 min; Thu [S03](#s03) strength 20 min; Fri [S10](#s10) run 25 min; Sat [S05](#s05) brick 53 min | 183 min | Sun |
+| 12 / 2026-12-28 | Reduced practice and goal review; review required | Mon [S01](#s01) swim 30 min; Tue [S02](#s02) bike 25 min; Wed [S01](#s01) swim 30 min; Thu [S03](#s03) strength 20 min; Fri [S10](#s10) run 25 min; Sat [S05](#s05) brick 53 min | 183 min | Sun |
 
 ## Editable session library
 
