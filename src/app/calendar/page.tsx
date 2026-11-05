@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { enUS, es as esLocale } from "date-fns/locale";
 import {
   CalendarDays,
@@ -15,7 +16,6 @@ import {
   MapPin,
   CheckCircle2,
 } from "lucide-react";
-import { workoutDetail } from "@/lib/workout-view";
 import { dateKey } from "@/lib/dates";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -43,6 +43,16 @@ const SPORT_COLOR: Record<string, string> = {
   boxing: "bg-rose-100 text-rose-700",
   recovery: "bg-slate-100 text-slate-600",
 };
+
+const SavedWorkoutPreview = dynamic(() => import("@/components/daily-training/SavedWorkoutPreviewCard").then(module => module.SavedWorkoutPreviewCard));
+
+function CalendarWorkoutSteps({ sessionId, es }: { sessionId: string; es: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  return <details className="mt-2 min-w-0" onToggle={event => setExpanded(event.currentTarget.open)}>
+    <summary className="cursor-pointer min-h-11 content-center font-semibold">{es ? "Pasos y objetivos" : "Steps and targets"}</summary>
+    {expanded && <SavedWorkoutPreview sessionId={sessionId} es={es} compact embedded />}
+  </details>;
+}
 
 function fmtMin(min: number, language: "en" | "es" = "en") {
   return endpointText({ endpoint: { type: "time", seconds: min * 60 } }, language);
@@ -648,7 +658,6 @@ function TrainingCalendar() {
                 )}
 
                 {allSessions.map((s: any) => {
-                  const d = workoutDetail(s, user?.profile);
                   const reported=s.calendarState==='reported'||s.completed||s.feedbackStatus!=null||s.actualDurationMin!=null;
                   const actualMinutes=s.actualDurationMin??(s.completed&&s.planned===false?s.durationMin:null);
                   return (
@@ -691,28 +700,7 @@ function TrainingCalendar() {
                         <p>RPE {s.rpe??'—'}/10 · HR {s.avgHr??'—'} bpm · {es?'Potencia informada':'Reported power'} {s.avgPower??'—'} W</p>
                         <p>{es?'Distancia':'Distance'} {s.distanceKm??'—'} km · {es?'Calorías informadas':'Reported calories'} {s.calories??'—'} kcal</p>
                         <p>{es?'Peso antes/después':'Weight before/after'} {s.preWeightKg??'—'} / {s.postWeightKg??'—'} kg</p>
-                      </div>:<div className="rounded-xl bg-ocean-50/50 p-3 space-y-1.5 text-xs">
-                        <p className="text-slate-700">
-                          <span className="font-bold text-ocean-700">
-                            WARM-UP
-                          </span>{" "}
-                          — {d.wu}
-                        </p>
-                        <p className="text-slate-700">
-                          <span className="font-bold text-ocean-700">
-                            MAIN SET
-                          </span>{" "}
-                          — {d.main}
-                        </p>
-                        <p className="text-slate-700">
-                          <span className="font-bold text-ocean-700">
-                            COOL-DOWN
-                          </span>{" "}
-                          — {d.cd}
-                        </p>
-                        <p className="text-slate-500">🧘 {d.breathing}</p>
-                        <p className="text-slate-400">📚 Study: {d.study}</p>
-                      </div>}
+                      </div> : s.planned && <CalendarWorkoutSteps key={s.revision} sessionId={s.id} es={es} />}
                     </div>
                   );
                 })}
