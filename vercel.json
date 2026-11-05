@@ -46,7 +46,8 @@
       "codex/coach-model-upgrade": false,
       "codex/coaching-workflow-audit": false,
       "codex/coaching-reference-review": false,
-      "codex/sport-aware-koach": false
+      "codex/sport-aware-koach": false,
+      "codex/calendar-agenda": false
     }
   }
 }
