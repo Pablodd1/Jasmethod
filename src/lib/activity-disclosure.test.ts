@@ -12,6 +12,7 @@ import * as jMetrics from './j-metrics';
 import * as cycleReview from './cycle-review';
 import * as sportHeartRate from './sport-heart-rate';
 import * as sportEvidence from './sport-evidence';
+import * as supersededWorkout from './superseded-workout';
 
 const date=new Date(), rows=[{id:'allowed',source:'garmin',date,userId:'athlete',planned:false,completed:true,durationMin:30,rpe:4,sport:'bike',avgPower:155,insights:'legacy-restricted-insight'},
   {id:'restricted',source:'strava',date,userId:'athlete',planned:false,completed:true,durationMin:41,title:'restricted-private-title'},
@@ -40,7 +41,7 @@ function fixture(actorId='coach',role='coach',assigned=true,metricRestricted=fal
   auditLog:list('audit',[{id:'audit',action:'workout.update',createdAt:date,actor:{name:'Coach'},entityId:'private-provider-id',before:'restricted-before',after:'restricted-after'}]),trainingPlan:{findFirst:async()=>null}};
  const deps:Record<string,unknown>={'@/lib/db':{prisma},'@/lib/auth':{getCurrentUser:async()=>actorId?{id:actorId,role}:null},'@/lib/access':{ApiError,canCoach:(actor:any)=>['admin','coach'].includes(actor.role),canAccessAthlete:async()=>assigned,errorResponse:(error:ApiError)=>Response.json({error:error.message},{status:error.status||500})},
   '@/lib/coaching':{coachingSummary},'@/lib/activity-disclosure':disclosure,'@/lib/activity-reconciliation':{readActivityDecisions:async()=>[]},'@/lib/dates':dates,'@/lib/workout-update':{workoutRevision:()=> 'revision'},'@/lib/profile-service':{profileRevision:()=> 'profile'},
-  '@/lib/j-metrics':jMetrics,'@/lib/cycle-review':cycleReview,'@/lib/sport-heart-rate':sportHeartRate,'@/lib/sport-evidence':sportEvidence,'@/lib/derived-activity-policy':{derivedActivityPolicy}};
+  '@/lib/j-metrics':jMetrics,'@/lib/cycle-review':cycleReview,'@/lib/sport-heart-rate':sportHeartRate,'@/lib/sport-evidence':sportEvidence,'@/lib/derived-activity-policy':{derivedActivityPolicy},'@/lib/superseded-workout':supersededWorkout};
  const mod:any={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/app/api/admin/athletes/[id]/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:mod,exports:mod.exports,Request,Response,URL,Date,require:(key:string)=>{if(key in deps)return deps[key];throw Error(key)}});
  return{run:()=>mod.exports.GET(new Request('https://app.example/api/admin/athletes/athlete'),{params:Promise.resolve({id:'athlete'})}),reads:()=>reads,queries};
 }
@@ -72,6 +73,12 @@ test('Coaching Desk withholds Garmin direct load and observations from a differe
  const result=await(await fixture('coach','coach',true,false,[direct]).run()).json();
  assert.equal(result.metricReview.jMetrics,null);assert.deepEqual(result.metricReview.observations,[]);
  assert.ok(result.metricReview.loadUnavailableReason);
+});
+test('replaced unperformed plan rows do not block permitted Coaching Desk analysis',async()=>{
+ const replaced={id:'old',title:'Replaced session',source:'superseded-plan',date,userId:'athlete',planned:false,completed:false,durationMin:30};
+ const result=await(await fixture('coach','coach',true,false,[rows[0],replaced]).run()).json();
+ assert.equal(result.analysis.minutes,30);
+ assert.equal(result.analysisUnavailableReason,null);
 });
 
 function dailyRoute(file:string,owner=false){

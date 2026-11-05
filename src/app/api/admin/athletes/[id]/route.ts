@@ -13,6 +13,7 @@ import { derivedActivityPolicy } from "@/lib/derived-activity-policy";
 import { buildCycleBaselineReviews } from "@/lib/cycle-review";
 import { readSportHeartRate } from "@/lib/sport-heart-rate";
 import { sportEvidence } from "@/lib/sport-evidence";
+import { isUnperformedSupersededWorkout } from "@/lib/superseded-workout";
 
 export async function GET(
   req: Request,
@@ -156,7 +157,10 @@ export async function GET(
         const reference = readSportHeartRate(athlete.profile?.manualPrs, sport, metric, now, athlete.timezone);
         return reference ? [reference] : [];
       }));
-    const analysisUnavailableReason = disclosed.reason ?? metricView.reason;
+    // The summary ignores future and replaced unperformed rows. Disclosure
+    // must evaluate the same contributors, including all performed history.
+    const analysisRows = workouts.filter(row => row.date <= now && !isUnperformedSupersededWorkout(row));
+    const analysisUnavailableReason = activityDisclosure(analysisRows, actor.id, athlete.id).reason ?? metricView.reason;
     return Response.json({
       athlete,
       profileRevision: profileRevision(athlete.profile),
@@ -176,7 +180,7 @@ export async function GET(
       today,
       metricReview: { jMetrics, loadUnavailableReason, references, heartRate, observations },
       analysisUnavailableReason,
-      analysis: analysisUnavailableReason ? null : coachingSummary(workouts, metrics, athlete.profile, athlete.timezone, now, decisions),
+      analysis: analysisUnavailableReason ? null : coachingSummary(analysisRows, metrics, athlete.profile, athlete.timezone, now, decisions),
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     return errorResponse(e);
