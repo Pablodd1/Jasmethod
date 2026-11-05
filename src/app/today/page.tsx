@@ -164,12 +164,12 @@ function TodayPageContent() {
       })
       .catch(() => setSyncStatus("failed"));
   }, [user, data, autoSynced, load]);
-  const session = selected
-    ? data?.sessions.find((s: any) => s.id === selected)
-    : data?.sessions.find(
-      (s: any) => !s.completed && s.feedbackStatus !== "skipped",
-    ) ||
-    data?.sessions[0];
+  const selectedSession = selected ? data?.sessions.find((s: any) => s.id === selected) : undefined;
+  const session = selectedSession
+    ?? data?.sessions.find((s: any) => !s.completed && s.feedbackStatus !== "skipped")
+    ?? data?.sessions[0];
+  const eventToday = !!data?.eventToday || data?.recovery?.mode === "event-day";
+  const nextSession = data?.weekReview?.ahead?.next?.[0];
   const dayHeld = ["hold", "planned-rest", "event-day"].includes(data?.recovery?.mode) || ["hold", "urgent"].includes(data?.recovery?.safetyStatus);
   const reviewedDaily = data?.recovery?.safetyStatus === "clear" || !!data?.recovery?.reviewedSessionId;
   const plannedView = !!session && !offline && !dayHeld && !session.completed && !session.feedbackStatus && (viewChoice && viewChoice.sessionId === session.id ? viewChoice.mode === "planned" : !reviewedDaily && hasCurrentHealthReadings(data?.inputContext, data?.date));
@@ -242,7 +242,7 @@ function TodayPageContent() {
           <h1 className="font-display text-3xl font-bold">
             {es ? "Entrenamiento de hoy" : "Today's training"}
           </h1>
-          {data?.race && (
+          {data?.race && !eventToday && (
             <p className="text-sm text-ocean-700">
               {data.race.name} · {data.race.daysAway} {es ? "días" : "days"}
             </p>
@@ -252,7 +252,9 @@ function TodayPageContent() {
             : "No watch or benchmark test is required to report training. When usable benchmarks are missing, follow the plan's effort instructions."}</p>
         </div>
         <nav className="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label={es ? "Acciones de hoy" : "Today actions"}>
-          <a href={session ? "#today-workout" : "/training"} className="btn-primary min-h-12 justify-center">{es ? "Ver entrenamiento" : "View workout"}</a>
+          <a href={session || eventToday ? "#today-workout" : "/training"} className="btn-primary min-h-12 justify-center">
+            {session ? (es ? "Ver entrenamiento" : "View workout") : eventToday ? (es ? "Ver evento" : "View event") : (es ? "Ver plan" : "View plan")}
+          </a>
           <button className="btn-secondary min-h-12 justify-center" disabled={busy || offline || feedbackTarget.kind === 'none'} onClick={openFeedbackTarget}>{es ? "Registrar resultado y notas" : "Log results & notes"}</button>
         </nav>
         {session && !session.completed && !session.feedbackStatus && !session.matchedPlanId && !offline && <PreWorkoutWeightCard key={`${session.id}:${session.preWorkoutWeight?.revision ?? 'new'}:${displayUnits}`} session={session} units={displayUnits} es={es} disabled={busy || offline} onSaved={load} />}
@@ -260,11 +262,19 @@ function TodayPageContent() {
           <p role="status" className="text-sm">{es ? "Tu sesión guardada ya está disponible. El contexto y los datos se están revisando; esta vista no autoriza el ejercicio." : "Your saved session is available. Context and data are still being reviewed; this preview does not authorize exercise."}</p>
           {savedPlan.sessions.map((s: any) => <div key={s.id}><p className="font-semibold">{s.title} · {s.durationMin} min</p><SavedWorkoutPreviewCard sessionId={s.id} es={es} /></div>)}
         </section>}
-        {data?.sessions.length > 0 && (data.sessions.length > 1 || !session) && <label className="block text-sm">{es ? "Sesión de hoy" : "Today's session"}<select className="input" value={session?.id ?? ""} onChange={event => {
+        {selected && data && !selectedSession && session && <p role="status" className="text-sm">
+          {es ? "Ese enlace corresponde a otra sesión. Se muestra tu sesión guardada de hoy." : "That link points to another session. Your saved session for today is shown."}
+        </p>}
+        {data?.sessions.length > 1 && <label className="block text-sm">{es ? "Sesión de hoy" : "Today's session"}<select className="input" value={session?.id ?? ""} onChange={event => {
             const id = event.target.value; const url = new URL(window.location.href); url.searchParams.set("sessionId", id); window.history.pushState({}, "", url);
             setSelected(id); setReportActivityId(null); setFeedback(false); setMessage(""); setError("");
-          }}>{!session && <option value="" disabled>{es ? "Elige una sesión actual" : "Choose a current session"}</option>}{data.sessions.map((s: any) => <option key={s.id} value={s.id}>{s.title} · {s.plannedDurationMin ?? s.durationMin} min</option>)}</select></label>}
-        {data && <DailyReadinessPath es={es} date={data.date} cycle={data.cycle} week={data.weekReview} context={data.inputContext} mode={data.recovery?.mode} safetyStatus={data.recovery?.safetyStatus} reviewedSessionId={data.recovery?.reviewedSessionId} hasSession={!!session} offline={offline} skipped={plannedView} onSkip={() => { if(session)setViewChoice({sessionId:session.id,mode:"planned"}); requestAnimationFrame(() => document.getElementById("today-workout")?.scrollIntoView({block:"start",behavior:"smooth"})); }} />}
+          }}>{data.sessions.map((s: any) => <option key={s.id} value={s.id}>{s.title} · {s.plannedDurationMin ?? s.durationMin} min</option>)}</select></label>}
+        {eventToday && <section id={session ? undefined : "today-workout"} className="card space-y-2 scroll-mt-4">
+          <p className="text-sm font-medium">{es ? "Evento de hoy" : "Today's event"}</p>
+          <h2 className="font-display text-xl font-bold">{data?.eventToday?.name || (es ? "Día de evento" : "Event day")}</h2>
+          <p className="text-sm">{es ? "Esta fecha está reservada en tu ciclo. Registra el resultado cuando lo tengas." : "Your cycle reserves this date for the event. Log your result when you have it."}</p>
+        </section>}
+        {data && (!eventToday || session) && <DailyReadinessPath es={es} date={data.date} cycle={data.cycle} week={data.weekReview} context={data.inputContext} mode={data.recovery?.mode} safetyStatus={data.recovery?.safetyStatus} reviewedSessionId={data.recovery?.reviewedSessionId} hasSession={!!session} offline={offline} skipped={plannedView} onSkip={() => { if(session)setViewChoice({sessionId:session.id,mode:"planned"}); requestAnimationFrame(() => document.getElementById("today-workout")?.scrollIntoView({block:"start",behavior:"smooth"})); }} />}
         {session && <section id="today-workout" className="space-y-3 scroll-mt-4">
           {plannedView ? <>
             <SavedWorkoutPreviewCard sessionId={session.id} es={es} compact plannedSession={{title:session.title,sport:session.sport,durationMin:session.plannedDurationMin ?? session.durationMin}} />
@@ -408,19 +418,24 @@ function TodayPageContent() {
           <p role="status">{data ? (es ? "Actualizando entrenamiento…" : "Refreshing training…") : (es ? "Cargando sesión…" : "Loading session…")}</p>
         )}
         {data && <DailyRecoveryCard recovery={data.recovery} es={es} offline={offline} plannedView={plannedView} />}
-        {data && !data.sessions.length && data.recovery?.mode !== "planned-rest" && data.recovery?.mode !== "hold" && (
+        {data && !data.sessions.length && !eventToday && data.recovery?.mode !== "planned-rest" && data.recovery?.mode !== "hold" && (
           <div className="card">
             <h2 className="font-bold">
               {es ? "Sin sesiones programadas" : "No sessions planned"}
             </h2>
-            <p className="mt-2 text-sm">{es ? "Orientación general, no una sesión personalizada: registra cómo te sientes, revisa tu perfil y conversa con tu entrenador. No hemos asignado intensidad, volumen ni objetivos sin los datos necesarios." : "General guidance, not a personalized session: record how you feel, review your profile and talk with your coach. No intensity, volume or targets have been assigned without the necessary information."}</p>
-            <div className="flex flex-wrap gap-3 mt-3"><Link className="underline" href="/coach">{es ? "Conversar con J Koach" : "Talk with J Koach"}</Link><Link className="underline" href="/onboard?redo=1&advanced=1">{es ? "Preparar plan personalizado" : "Prepare personalized planning"}</Link><Link className="underline" href="/help/pilot">{es ? "Próximos pasos" : "Next steps"}</Link></div>
+            <p className="mt-2 text-sm">{data.cycle
+              ? (es ? "Tu ciclo guardado sigue disponible. Revisa el horario de las próximas sesiones." : "Your saved cycle is available. Review the schedule for your upcoming sessions.")
+              : (es ? "Elige tu deporte para preparar una semana inicial. La carrera es opcional." : "Choose your sport to prepare a starting week. A race is optional.")}</p>
             <Link className="btn-primary mt-3" href="/training">
               {data?.cycle ? (es ? "Ver mi ciclo guardado" : "View my saved cycle") : (es ? "Crear plan" : "Create a plan")}
             </Link>
           </div>
         )}
-        {selected && data && !session && <p role="alert" className="card">{es ? "La sesión seleccionada no está disponible hoy. Elige una sesión de la lista o abre el plan." : "The selected session is not available today. Choose a current session from the list or open your plan."} <Link href="/training">{es ? "Abrir plan" : "Open plan"}</Link></p>}
+        {!session && nextSession && <section className="card space-y-2">
+          <h2 className="font-semibold">{es ? "Próxima sesión guardada" : "Next saved session"}</h2>
+          <p className="text-sm">{nextSession.date} · {nextSession.title}{nextSession.minutes != null ? ` · ${nextSession.minutes} min` : ""}</p>
+          <Link href="/training" className="underline">{es ? "Ver mi ciclo" : "View my cycle"}</Link>
+        </section>}
         {session && (
           <>
             <details><summary className="my-4 cursor-pointer underline">{es ? "Herramientas de la sesión y seguimiento" : "Session tools & feedback"}</summary>

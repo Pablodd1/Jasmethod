@@ -27,6 +27,7 @@ const options: Record<string, string[]> = {
   sex: ["male", "female"],
   experience: ["beginner", "amateur", "advanced", "pro"],
   goal: [
+    "triathlon",
     "sprint",
     "olympic",
     "half",

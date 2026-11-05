@@ -97,7 +97,7 @@ export function coachingWeekTemplate(options: {
         ...(c.recipe==='brick'?{note:'Ordered bike, T2 and run components must be preserved by the executable prescription; no extra run added outside this budget.'}:{}),
         ...(c.sport==='strength'?{emphasis:options.sport,note:'Plyometrics require separate eligibility; otherwise use controlled non-jumping movements.'}:{})}}));
     const omitted = candidates.filter(c=>!selected.includes(c)).map(c=>c.title);
-    return {week:index+1,templateVersion:'coaching-structure-v1',periodizationFactor:factor,
+    return {week:index+1,templateVersion:'coaching-structure-v1',periodizationFactor:factor,templateBudgetMinutes:budget,
       theme:`${options.sport} · ${phase} · reviewed capacity ceiling${introductoryAlternative?' · Brief introduction only; full program does not fit':''}${omitted.length?` · Time budget/session limit excludes complete components: ${omitted.join('; ')}`:''}`,
       sessions,totalMinutes:sessions.reduce((sum,s)=>sum+s.minutes,0)};
   });

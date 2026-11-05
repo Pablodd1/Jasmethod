@@ -482,6 +482,7 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
               {showGoal && <div><label htmlFor="onboard-field-7" className="label">{lang === "es" ? "Objetivo o deporte (opcional)" : "Goal or sport (optional)"}</label><select id="onboard-field-7" className="input" value={profile.goal} onChange={(e) => setProfile({ ...profile, goal: e.target.value })}>
                   <option value="">{t("Choose a goal", "Elige un objetivo")}</option>
                   {profile.goal && !PLANNABLE_GOALS.includes(planningGoal(profile.goal)!) && <option value={profile.goal} disabled>{t("Saved legacy goal (choose a supported goal to plan)", "Objetivo anterior (elige otro compatible para planificar)")}: {profile.goal}</option>}
+                  <option value="triathlon">{t("General triathlon", "Triatlón general")}</option>
                   <option value="sprint">Sprint</option>
                   <option value="olympic">Olympic</option>
                   <option value="half">Half Ironman</option>
