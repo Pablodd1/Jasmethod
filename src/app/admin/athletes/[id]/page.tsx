@@ -14,6 +14,7 @@ import { unitsOf } from "@/lib/units";
 import { profileUnitFormValues, profileUnitPatch } from "@/lib/profile-unit-fields";
 import { endpointText } from "@/lib/universal-workout-card";
 import { intensityDistribution } from "@/lib/science";
+import { CoachMetricReview } from "@/components/coach-metric-review";
 const formatDuration=(seconds:number)=>endpointText({endpoint:{type:"time",seconds}});
 
 const FIELDS: [string, string][] = [
@@ -53,8 +54,14 @@ const equipment = [
 export default function AthletePage() {
   const params = useParams<{id: string}>();
   const { user } = useAuth();
+  return <AthleteWorkspace key={JSON.stringify([user?.id, params.id])} athleteId={params.id} />;
+}
+
+function AthleteWorkspace({ athleteId }: { athleteId: string }) {
+  const params = { id: athleteId };
+  const { user } = useAuth();
   const [data, setData] = useState<any>(null),
-    [days, setDays] = useState("30"),
+    [days, setDays] = useState("90"),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
@@ -64,12 +71,12 @@ export default function AthletePage() {
     [generate, setGenerate] = useState(false);
   const [planPreview,setPlanPreview]=useState<any>(null);
   const load = useCallback(async () => {
-    const r = await fetch(`/api/admin/athletes/${params.id}?days=${days}`);
+    const r = await fetch(`/api/admin/athletes/${encodeURIComponent(athleteId)}?days=${days}`);
     const d = await r.json();
     if (!r.ok) throw Error(d.error);
     setData(d);
     setProfile(d.athlete.profile || {});
-  }, [params.id, days]);
+  }, [athleteId, days]);
   useEffect(() => {
     if (user) load().catch((e) => setError(e.message));
   }, [user, load]);
@@ -126,8 +133,8 @@ export default function AthletePage() {
             {message}
           </p>
         )}
-        {!data && !error && <p>Loading athlete…</p>}
-        {data && (
+        {data?.athlete.id !== params.id && !error && <p>Loading athlete…</p>}
+        {data?.athlete.id === params.id && (
           <>
             {user?.role === "admin" && <AdminPasswordReset userId={params.id} email={data.athlete.email} />}
             <div className="card bg-ocean-50 border-ocean-200">
@@ -184,6 +191,7 @@ export default function AthletePage() {
             </div>
             {tab === "Overview" && (
               <>
+                {data.metricReview && <CoachMetricReview key={params.id} data={data.metricReview} goal={profile.goal} units={displayUnits} />}
                 <CoachingConversation athleteId={params.id} />
                 <BaselineTests athleteId={params.id} onSaved={load} />
                 <AdminCoachEditor
@@ -197,17 +205,18 @@ export default function AthletePage() {
                   onPreviewPlan={()=>{setTab("Training");setGenerate(true);setPlanPreview(null);}}
                   onReviewBaselines={()=>setTab("Profile")}
                 />
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {data.analysisUnavailableReason && <p role="status" className="card text-sm">{data.analysisUnavailableReason}</p>}
+                {data.analysis && <>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                   {[
-                    ["Recorded sessions", data.analysis.completed],
-                    ["Hours", data.analysis.minutes==null?"— (review activity copies)":(data.analysis.minutes / 60).toFixed(1)],
+                    ["Recorded sessions", data.analysis.completed ?? "—"],
+                    ["Hours", data.analysis.minutes==null?"—":(data.analysis.minutes / 60).toFixed(1)],
                     [
                       "Plan fulfilled",
                       data.analysis.fulfillmentPct == null
-                        ? "No plan"
+                        ? "—"
                         : `${data.analysis.fulfillmentPct}%`,
                     ],
-                    ["Estimated load", data.analysis.estimatedLoad??"— (review activity copies)"],
                   ].map(([l, v]) => (
                     <div key={l} className="card">
                       <p className="text-xs text-slate-500">{l}</p>
@@ -233,19 +242,21 @@ export default function AthletePage() {
                 </div>
                 <div className="card">
                   <h2 className="font-bold mb-3">Completed training by day</h2>
-                  {data.analysis.reconciliation?.unresolvedGroups>0?<p role="status" className="text-sm text-amber-800">Activity totals are unknown while possible imported copies need review. Ask the athlete to reconcile source records in athlete setup; unknown load is not zero.</p>:<Trend
+                  {data.analysis.derivedActivityPolicy?.status === "insufficient" ? <p role="status" className="text-sm">{data.analysis.derivedActivityPolicy.reason}</p>
+                    : data.analysis.reconciliation?.unresolvedGroups>0 ? <p role="status" className="text-sm text-amber-800">Activity totals are unknown while possible imported copies need review. Ask the athlete to reconcile source records in athlete setup.</p> : <Trend
                     values={data.analysis.daily.map((d: any) => ({
                       date: d.date,
                       value: d.minutes,
                     }))}
                     unit="minutes"
                   />}
-                  <p className="text-xs text-slate-500 mt-2">
+                  {data.analysis.completed != null && <p className="text-xs text-slate-500 mt-2">
                     {data.analysis.measuredSessions}/{data.analysis.completed}{" "}
                     sessions have HR/power. Missing days may mean no training or
                     missing logs.
-                  </p>
+                  </p>}
                 </div>
+                </>}
                 <div className="card">
                   <h2 className="font-bold">Connections</h2>
                   {data.connectors.length ? (
@@ -787,8 +798,10 @@ export default function AthletePage() {
                         </strong>
                         <p>{a.message}</p>
                         <p className="text-slate-500">
-                          Sleep {b.sleep}/5 · Energy {b.energy}/5 · Soreness{" "}
-                          {b.soreness}/5 · Sick {b.sick ? "yes" : "no"}
+                          Sleep {b.sleep ?? "—"}/5 · Energy {b.energy ?? "—"}/5 ·
+                          Soreness {b.soreness ?? "—"}/5 · Reported stress {b.stress ?? "—"}/5 ·
+                          Sick {b.sick === true ? "yes" : b.sick === false ? "no" : "—"} ·
+                          New pain {b.newPain === true ? "yes" : b.newPain === false ? "no" : "—"}
                         </p>
                       </div>
                     );
@@ -894,7 +907,7 @@ function Trend({
   values,
   unit,
 }: {
-  values: { date: string; value: number }[];
+  values: { date: string; value: number | null }[];
   unit: string;
 }) {
   if (!values.length)
@@ -903,7 +916,7 @@ function Trend({
         No completed training in this period.
       </p>
     );
-  const max = Math.max(1, ...values.map((v) => v.value));
+  const max = Math.max(1, ...values.map((v) => v.value ?? 0));
   return (
     <div
       className="flex items-end gap-1 h-36"
@@ -914,8 +927,8 @@ function Trend({
         <div
           key={v.date}
           className="flex-1 bg-ocean-500 rounded-t min-w-1"
-          style={{ height: `${Math.max(2, (100 * v.value) / max)}%` }}
-          title={`${v.date}: ${v.value} ${unit}`}
+          style={{ height: v.value == null ? 0 : `${(100 * v.value) / max}%` }}
+          title={v.value == null ? `${v.date}: actual duration unavailable` : `${v.date}: ${v.value} ${unit}`}
         />
       ))}
     </div>
