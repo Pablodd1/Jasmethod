@@ -1,6 +1,7 @@
 "use client";
 import {isProtectedProfileAnswer,type ProtectedProfileAnswer} from "@/lib/coach-profile-reference";
-import { CoachTodayReview } from "./CoachTodayReview";
+import { CoachRecoveryReview, CoachTodayReview } from "./CoachTodayReview";
+import { CoachGarminDeliveryStatus } from "./CoachGarminDeliveryStatus";
 import { coachReviewArea, opensTodayWorkout } from "./coach-chat-intent";
 import { CoachAiConsent } from "./CoachAiConsent";
 import { CoachReviewRequest } from './CoachReviewRequest';
@@ -35,6 +36,9 @@ const primaryClass = `btn-primary ${focus}`;
 const secondaryClass = `btn-secondary ${focus}`;
 
 const FIELD_LABELS: Record<string, [string, string]> = {
+  swimObservation: ["Reported swim training pace", "Ritmo de entrenamiento de natación declarado"],
+  swimPaceBase: ["Athlete-reported CSS", "CSS declarado por el atleta"],
+  indoor: ["Train indoors", "Entrenar bajo techo"],
   intensity:['Planned effort zone','Zona de esfuerzo planificada'],avgHr:['Reported average HR','FC media reportada'],avgPower:['Reported average power','Potencia media reportada'],calories:['Reported energy','Energía reportada'],preWeightKg:['Weight before','Peso antes'],postWeightKg:['Weight after','Peso después'],
   heightCm:["Height","Altura"], birthYear:["Birth year","Año de nacimiento"],experience:["Training experience","Experiencia"],ftp:["Reported cycling FTP","FTP de ciclismo reportado"],
   goal: ["Training goal", "Objetivo de entrenamiento"], weeklyHours: ["Weekly training hours", "Horas de entrenamiento semanales"], weightKg: ["Body weight", "Peso corporal"],
@@ -139,6 +143,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
   const activeProposal = proposal && ["proposed", "pending"].includes(proposal.status) ? proposal : null;
 
   const latestMessageId = messages.at(-1)?.id;
+  const localReview = messages.at(-1)?.role === "assistant" ? messages.at(-1)?.localReview : undefined;
   useEffect(() => {
     // Only scroll this conversation, never the surrounding training page.
     if (!latestMessageId && !sendingMessage) return;
@@ -155,7 +160,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     else anchor.scrollIntoView({ block: "nearest" });
     anchor.focus({ preventScroll: true });
   }, [fullPage]);
-  useEffect(() => { if (showTodayReview) focusTodayReview(); }, [showTodayReview, reviewVersion, latestMessageId, focusTodayReview]);
+  useEffect(() => { if (showTodayReview || localReview) focusTodayReview(); }, [showTodayReview, localReview, reviewVersion, latestMessageId, focusTodayReview]);
 
 
   useEffect(() => {
@@ -501,7 +506,11 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
     </ol>
 
 
-    {showTodayReview && <div ref={todayReviewAnchor} tabIndex={-1} className={focus}><CoachTodayReview key={`${athleteId}:${reviewVersion}`} es={es} selectedId={sessionId} onSelect={setSessionId} onSaved={async () => { await onConfirmed(); await load(); }} onClose={() => setShowTodayReview(false)} /></div>}
+    {(localReview || showTodayReview) && <div ref={todayReviewAnchor} tabIndex={-1} className={focus}>
+      {localReview === "recovery" && <CoachRecoveryReview es={es} />}
+      {localReview === "garmin" && !offline && <CoachGarminDeliveryStatus key={`${athleteId}:${latestMessageId}`} sessions={allSessions} initialSessionId={sessionId || undefined} es={es} />}
+      {!localReview && showTodayReview && <CoachTodayReview key={`${athleteId}:${reviewVersion}`} es={es} selectedId={sessionId} onSelect={setSessionId} onSaved={async () => { await onConfirmed(); await load(); }} onClose={() => setShowTodayReview(false)} />}
+    </div>}
     <div ref={commanderAnchor} tabIndex={-1} className={focus}><CoachCommanderWorkspace compact={fullPage} requestedArea={commanderRequest?.area} requestKey={commanderRequest?.key} athleteId={athleteId} es={es} messages={messages} sessionId={sessionId} sessions={allSessions} onSelectSession={setSessionId} disabled={offline||!loaded||needsReload||!!operation} onBusy={setCommanderBusy} onSaved={async()=>{setReviewVersion(value=>value+1);await onConfirmed();await load();}}/></div>
 
     {(!fullPage || messages.filter(entry=>entry.role==="assistant").at(-1)?.needsHumanReview===true) && <CoachReviewRequest messages={messages} es={es} disabled={blocked} />}
@@ -522,14 +531,17 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
         const candidateId = `${id}-${candidate.id}`;
         let previewValue: CoachCandidate["value"] | undefined;
         try { previewValue = editedCoachCandidate(candidate, edits[candidate.id] ?? "", displayUnits).value; } catch { /* Invalid edits cannot be approved by the service. */ }
-        const displayUnit = coachCandidateUnit(candidate, displayUnits);
+        const lockedValue = ["swimObservation", "swimPaceBase", "indoor"].includes(candidate.field);
+        const displayUnit = lockedValue ? null : coachCandidateUnit(candidate, displayUnits);
         return <fieldset key={candidate.id} disabled={blocked || ambiguous} className="rounded-lg border p-3 space-y-2 min-w-0">
           <legend className="px-1 font-semibold">{fieldLabel(candidate.field, es)}</legend>
           <label className="flex items-center gap-2 min-h-8"><input type="checkbox" className={`h-5 w-5 ${focus}`} checked={!!selected[candidate.id]} onChange={event => setSelected(current => ({ ...current, [candidate.id]: event.target.checked }))} />{es ? "Incluir al confirmar" : "Include in confirmation"}</label>
-          {candidate.kind === "profile" && <ProfileProposalComparison candidate={candidate} beforeValue={activeProposal.beforeValues?.[candidate.field]} afterValue={previewValue} units={displayUnits} es={es} />}
+          {candidate.kind === "profile" && candidate.field !== "swimObservation" && <ProfileProposalComparison candidate={candidate} beforeValue={activeProposal.beforeValues?.[candidate.field]} afterValue={previewValue} units={displayUnits} es={es} />}
+          {lockedValue ? <p className="text-sm">{displayValue(candidate, candidate.value, displayUnits, es)}</p> : <>
           <button type="button" className={secondaryClass} onClick={() => setEditing(current => ({ ...current, [candidate.id]: true }))}>{es ? "Editar" : "Edit"}</button>
           <label htmlFor={candidateId} className="block text-sm font-medium">{es ? "Valor" : "Value"}{displayUnit ? ` (${displayUnit})` : ""}</label>
           {typeof candidate.value === "boolean" ? <select id={candidateId} disabled={!editing[candidate.id]} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}><option value="true">{es ? "Sí" : "Yes"}</option><option value="false">{es ? "No" : "No"}</option></select> : VALUE_CHOICES[candidate.field] ? <select id={candidateId} disabled={!editing[candidate.id]} className={inputClass} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))}>{VALUE_CHOICES[candidate.field].map(([value, en, spanish]) => <option key={value} value={value}>{es ? spanish : en}</option>)}</select> : <input id={candidateId} disabled={!editing[candidate.id]} className={inputClass} type={typeof candidate.value === "number" && !(candidate.field === "heightCm" && displayUnits === "imperial") ? "number" : "text"} step="any" maxLength={500} value={edits[candidate.id] ?? ""} onChange={event => setEdits(current => ({ ...current, [candidate.id]: event.target.value }))} />}
+          </>}
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm text-slate-700">
             <div><dt className="inline font-medium">{es ? "Campo: " : "Field: "}</dt><dd className="inline break-words">{candidate.field}</dd></div>
             <div><dt className="inline font-medium">{es ? "Unidad: " : "Unit: "}</dt><dd className="inline">{displayUnit || (es ? "No aplica" : "Not applicable")}</dd></div>

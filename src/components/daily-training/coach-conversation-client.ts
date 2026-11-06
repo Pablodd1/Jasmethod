@@ -1,6 +1,6 @@
 /** Browser-only interaction helpers. No athlete facts are inferred here. */
 import { fmtHeight, fmtWeight, heightFromFeetInches, heightToFeetInches, weightFromDisplay, weightToDisplay, type UnitSystem } from "@/lib/units";
-export type CoachMessage = { id: string; role: string; content: string; createdAt: string; source: string; clientRequestId?: string;needsHumanReview?:boolean;safetyReviewRequired?:boolean;localContextSummary?:string };
+export type CoachMessage = { id: string; role: string; content: string; createdAt: string; source: string; clientRequestId?: string;needsHumanReview?:boolean;safetyReviewRequired?:boolean;localContextSummary?:string;localReview?: "recovery" | "garmin" };
 export type CoachCandidate = {
   id: string;
   kind: "profile" | "workout_feedback" | "workout_plan" | "checkin";
@@ -139,6 +139,10 @@ export function coachCandidateUnit(candidate: CoachCandidate, units: UnitSystem)
 
 export function coachDisplayValue(field: string, value: CoachCandidate["value"] | undefined, unit: string | null, units: UnitSystem, es = false): string {
   if (value === null || value === undefined) return "—";
+  if (typeof value === "number" && (field === "swimObservation" || field === "swimPaceBase")) {
+    const seconds = Math.round(value);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}/100 m`;
+  }
   if (typeof value === "number" && ["weightKg", "preWeightKg", "postWeightKg"].includes(field)) return fmtWeight(value, units);
   if (typeof value === "number" && field === "heightCm") return fmtHeight(value, units);
   if (typeof value === "boolean") return value ? (es ? "Sí" : "Yes") : "No";

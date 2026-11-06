@@ -46,6 +46,10 @@ async function main() {
         window.webkitSpeechRecognition = SyntheticSpeech;
       });
       const page = await context.newPage(), f = fixtures(language);
+      const recoveryMessage = language === 'es'
+        ? 'Hice una sesión dura de bici y carrera ayer. Me pesan las piernas y dormí mal.'
+        : 'I finished a hard bike-run brick yesterday. My legs feel heavy and I slept poorly.';
+      const garminMessage = language === 'es' ? 'Mi entrenamiento no aparece en Garmin Connect.' : 'My workout is not in Garmin Connect.';
       const history = Array.from({length:12},(_,i)=>({id:'old-'+i,role:i%2?'assistant':'user',source:'local',content:'Synthetic earlier conversation '.repeat(12),createdAt:new Date().toISOString()})); let sends = 0;
       page.on('pageerror', error => errors.push(String(error)));
       let planRelease, profileFailure = false, todayState = "error", todayReads = 0, cardReads = 0; const selectedDailyReads=[];
@@ -55,10 +59,12 @@ async function main() {
           const input = route.request().postDataJSON(); sends++;
           assert.equal(input.externalConsent, false); assert.ok(input.clientRequestId);
           const answer = historySafeLocalReply('',language,true);
-          history.push({id:'synthetic-user-'+sends,role:'user',content:input.message,createdAt:new Date().toISOString(),source:'text',clientRequestId:input.clientRequestId},{id:'synthetic-assistant-'+sends,role:'assistant',needsHumanReview:true,content:answer,createdAt:new Date().toISOString(),source:'local'});
+          const localReview = input.message === recoveryMessage ? 'recovery' : input.message === garminMessage ? 'garmin' : undefined;
+          history.push({id:'synthetic-user-'+sends,role:'user',content:input.message,createdAt:new Date().toISOString(),source:'text',clientRequestId:input.clientRequestId},{id:'synthetic-assistant-'+sends,role:'assistant',needsHumanReview:true,content:answer,createdAt:new Date().toISOString(),source:'local',localReview});
           return route.fulfill({json:{ok:true,conversation:{id:'synthetic-conversation',messages:history},proposal:null}});
         }
         if (route.request().method() !== 'GET') { unexpected.push(`${route.request().method()} ${path}`); return route.fulfill({status: 500, json: { error: 'Mutations are forbidden in this fixture' }}); }
+        if (path === '/api/connectors/garmin/preferences') return route.fulfill({json:{available:true,receipts:[{sessionId:f.card.session.id,date:today,status:'published',stage:'schedule_verified',deviceReceived:false}]}});
         if (path === '/api/auth/me') return route.fulfill({json:{user:f.user}});
         if (path === '/api/today') { todayReads++; return route.fulfill(todayState === 'error' ? {status:503,json:{error:'Synthetic unavailable'}} : {json:{date:today,sessions:todayState === 'empty' ? [] : [{id:f.card.session.id,title:f.card.session.title,sport:f.card.session.sport}]}}); }
         if (path === '/api/assistant') return route.fulfill({json:{ok:true,conversation:{id:'synthetic-conversation',messages:history},proposal:null,sessions:[{id:f.card.session.id,title:f.card.session.title,sport:f.card.session.sport,date:today}],capabilities:{externalAi:false,imageUnderstanding:false,textProvider:null,imageProvider:null}}});
@@ -140,6 +146,26 @@ async function main() {
       const inlineBox=await inline.boundingBox();assert.ok(inlineBox&&inlineBox.y>=0&&inlineBox.y<900,'Requested inline review is brought into the chat viewport');
       const rect=await textarea.boundingBox();assert.ok(rect&&rect.y>=0&&rect.y+rect.height<=900,'Composer remains in mobile/desktop viewport after card review');
       await page.screenshot({path:`${dir}/coach-${language}-${width}.png`});
+
+      await textarea.fill(recoveryMessage);
+      await page.getByRole('button', { name: language === 'es' ? 'Enviar mensaje' : 'Send message', exact: true }).click();
+      const recovery = page.getByRole('region', { name: language === 'es' ? 'Revisión de recuperación' : 'Recovery review', exact: true });
+      await recovery.waitFor({ state: 'visible' });
+      assert.equal(await recovery.getByRole('link', { name: language === 'es' ? 'Revisar actividad reciente' : 'Review recent activity', exact: true }).getAttribute('href'), '/checkin#previous-session-heading');
+      assert.equal(await recovery.getByRole('link', { name: language === 'es' ? 'Actualizar check-in' : 'Update check-in', exact: true }).getAttribute('href'), '/checkin#daily-questions');
+      assert.equal(await privateReview.count(), 0, 'A recovery report opens the review handoff instead of a workout card');
+      assert.equal(sends, 4, 'Only the explicitly submitted recovery message is sent');
+      if (width === 390) await recovery.screenshot({ path: `${dir}/coach-recovery-${language}-${width}.png` });
+
+      await textarea.fill(garminMessage);
+      await page.getByRole('button', { name: language === 'es' ? 'Enviar mensaje' : 'Send message', exact: true }).click();
+      const garmin = page.getByRole('region', { name: language === 'es' ? 'Estado de Garmin' : 'Garmin delivery status', exact: true });
+      await garmin.getByRole('combobox').selectOption(f.card.session.id);
+      await garmin.getByText(language === 'es' ? /recepción en el reloj sigue sin verificar/ : /Watch receipt is unverified/).waitFor();
+      assert.match(await garmin.innerText(), language === 'es' ? /se verificó para este intento/ : /calendar schedule verified/);
+      assert.equal(sends,5);
+      if (width === 390) await garmin.screenshot({ path: `${dir}/coach-garmin-status-${language}-${width}.png` });
+
       await page.goto(`${base}/daily`);
       await page.locator('.uwc').first().waitFor({state:'visible'});
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Daily card has no horizontal overflow');
@@ -191,7 +217,7 @@ async function main() {
       assert.equal(await page.getByLabel(language==='es'?'Minutos realizados (en blanco si no lo sabes)':'Actual minutes (leave blank if unknown)',{exact:true}).inputValue(),'','Planned time is never copied into actual minutes');
       assert.equal(await page.getByRole('button',{name:language==='es'?'Guardar comentario del entrenamiento':'Save workout feedback',exact:true}).isVisible(),true);
       await page.screenshot({path:`${dir}/training-log-result-${language}-${width}.png`});
-      results.push({language,width,coach:'pass',heldCard:'pass',delayedPlanAndProfileFailure:'pass',legacyCycleMetadataRecovery:'pass',matchingResultFormWithoutMutation:'pass'});
+      results.push({language,width,coach:'pass',recoveryHandoff:'pass',heldCard:'pass',delayedPlanAndProfileFailure:'pass',legacyCycleMetadataRecovery:'pass',matchingResultFormWithoutMutation:'pass'});
       await context.close();
     }
     for (const language of ['en','es']) {

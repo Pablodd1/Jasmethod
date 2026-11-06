@@ -12,6 +12,20 @@ function isDay(value: unknown): value is Day {
     && (day.eventToday == null || typeof day.eventToday === "object" && (day.eventToday.name === null || typeof day.eventToday.name === "string"))
     && day.sessions.every(session => session && typeof session.id === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(session.id) && typeof session.title === "string" && typeof session.sport === "string");
 }
+
+export function CoachRecoveryReview({ es }: { es: boolean }) {
+  return <section className="rounded-2xl border border-ocean-200 bg-white p-3 space-y-3 min-w-0" aria-label={es ? "Revisión de recuperación" : "Recovery review"}>
+    <h3 className="font-semibold">{es ? "Revisa tu recuperación" : "Review your recovery"}</h3>
+    <p className="text-sm">{es
+      ? "Revisa el resultado y el esfuerzo de tu sesión reciente. Luego confirma cómo te sientes hoy para que JMM revise tu próxima sesión."
+      : "Review the result and effort for your recent session. Then confirm how you feel today so JMM can reassess your next session."}</p>
+    <div className="flex flex-wrap gap-2">
+      <Link href="/checkin#previous-session-heading" className="btn-secondary min-h-11">{es ? "Revisar actividad reciente" : "Review recent activity"}</Link>
+      <Link href="/checkin#daily-questions" className="btn-primary min-h-11">{es ? "Actualizar check-in" : "Update check-in"}</Link>
+    </div>
+  </section>;
+}
+
 /** Browser-only protected view. Its contents are never added to conversation/model input. */
 export function CoachTodayReview({ es, selectedId, onSelect, onSaved, onClose }: {
   es: boolean; selectedId: string; onSelect: (id: string) => void; onSaved: () => void | Promise<void>; onClose: () => void;

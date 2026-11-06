@@ -1,3 +1,5 @@
+export { isPostWorkoutRecoveryReport } from "../../lib/coach-recovery-intent";
+
 /** Presentation routing only. Never authorizes data access, mutations or AI disclosure. */
 export function opensTodayWorkout(message: string): boolean {
   const text = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();

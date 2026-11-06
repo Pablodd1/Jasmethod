@@ -49,7 +49,8 @@
       "codex/coaching-reference-review": false,
       "codex/sport-aware-koach": false,
       "codex/coaching-desk-evidence": false,
-      "codex/calendar-agenda": false
+      "codex/calendar-agenda": false,
+      "codex/koach-workflow": false
     }
   }
 }

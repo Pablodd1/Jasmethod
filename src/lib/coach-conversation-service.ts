@@ -21,7 +21,10 @@ import { parseConversationInput, extractLocalCandidates, validateCoachCandidates
 import { extractImageCandidates } from "./coach-image";
 import { coachTextAnswer, coachTextConfigured } from "./coach-text-provider";
 import { coachVisionConfiguration, createCoachVisionProvider } from "./coach-vision-provider";
-import { coachAutoSessionDay,coachPlanChangeWarnings } from './coach-intent';
+import { coachAutoSessionDay, coachNamedSessionSport, coachPlanChangeWarnings } from './coach-intent';
+import { isPostWorkoutRecoveryReport } from "./coach-recovery-intent";
+import { asksGarminDeliveryStatus } from "./coach-delivery-status";
+import { applyCoachSwimReport, coachSwimReply, COACH_SWIM_PACE_UNIT, parseCoachSwimReport } from "./coach-swim-report";
 import { currentOrReportedWorkoutWhere } from './calendar-workouts';
 
 export type ConversationActor = { id: string; timezone: string; language?: string };
@@ -30,9 +33,9 @@ export const CONVERSATION_MESSAGE_LIMIT = 60;
 function coachCapabilities() { const externalAi = coachTextConfigured(), imageUnderstanding = coachVisionConfiguration().configured; return { externalAi, personalDialogue: externalAi, textProvider: externalAi ? "OpenAI" : null, imageUnderstanding, imageProvider: imageUnderstanding ? "OpenAI" : null }; }
 const SAFETY_RULES = ["urgent-symptoms", "illness-or-pain", "clarify-fatigue", "clarify-prior-safety", "clarify-symptom-timing", "clarify-current-symptoms", "unreviewed-image-urgent", "unreviewed-image-symptoms"];
 const mutationFields: Record<string, readonly string[]> = {
-  profile: ["goal", "weeklyHours", "weightKg", "heightCm", "birthYear", "experience", "ftp", "hasSmartTrainer", "bikeType", "sex"],
+  profile: ["goal", "weeklyHours", "weightKg", "heightCm", "birthYear", "experience", "ftp", "hasSmartTrainer", "bikeType", "sex", "swimObservation", "swimPaceBase"],
   workout_feedback: ["feedbackStatus", "actualDurationMin", "rpe", "actualSport",'avgHr','avgPower','calories','preWeightKg','postWeightKg'],
-  workout_plan:["durationMin","sport","intensity"],
+  workout_plan:["durationMin","sport","intensity","indoor"],
 };
 export type PendingAction = "review_checkin" | "review_plan";
 export interface ConversationReceipt {
@@ -60,7 +63,7 @@ function identifier(value: unknown, label: string): string {
 function pendingActions(candidates: CoachCandidate[], applied = false): PendingAction[] {
   const actions: PendingAction[] = [];
   if (applied || candidates.some(c => c.kind === "checkin")) actions.push("review_checkin");
-  if (candidates.some(c => c.kind === "workout_plan" || (c.kind === "profile" && ["goal", "weeklyHours"].includes(c.field)))) actions.push("review_plan");
+  if (candidates.some(c => c.kind === "workout_plan" || (c.kind === "profile" && ["goal", "weeklyHours", "swimPaceBase"].includes(c.field)))) actions.push("review_plan");
   return actions;
 }
 function publicProposal(proposal: CoachConversationProposal | null) {
@@ -112,18 +115,23 @@ export async function readConversationBody(req: Request, maxBytes = 8 * 1024 * 1
 
 function publicMessage({metadata,...message}:{id:string;role:string;content:string;source:string;createdAt:Date;metadata:string|null}, language: unknown) {
   let clientRequestId:string|undefined,needsHumanReview=false,safetyReviewRequired=false;
+  let localReview: "recovery" | "garmin" | undefined;
   try {
     const meta=JSON.parse(metadata||'{}');
     if(typeof meta.clientRequestId==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(meta.clientRequestId))clientRequestId=meta.clientRequestId;
     needsHumanReview=meta.needsHumanReview===true;
     safetyReviewRequired=message.role === "assistant" && SAFETY_RULES.some(rule => meta.ruleId === `coach-conversation-v1:${rule}`);
+    if (message.role === "assistant" && message.source === "local" && meta.historyPolicy === AI_DATA_POLICY_VERSION) {
+      if (meta.ruleId === "coach-conversation-v1:post-workout-recovery") localReview = "recovery";
+      if (meta.ruleId === "coach-conversation-v1:garmin-delivery-status") localReview = "garmin";
+    }
     // Legacy derived summaries are never exposed or reused.
   }catch{/* Unverified metadata grants no action or context. */}
   if(message.role === "assistant") {
     let safe=false;try{safe=JSON.parse(metadata||"{}").historyPolicy===AI_DATA_POLICY_VERSION||JSON.parse(metadata||"{}").contextVersion===AI_DATA_POLICY_VERSION;}catch{}
     if(!safe)message.content=historySafeLocalReply("", language, true);
   }
-  return {...message,...(clientRequestId?{clientRequestId}:{}),...(needsHumanReview?{needsHumanReview:true}:{}),...(safetyReviewRequired?{safetyReviewRequired:true}:{})};
+  return {...message,...(clientRequestId?{clientRequestId}:{}),...(needsHumanReview?{needsHumanReview:true}:{}),...(safetyReviewRequired?{safetyReviewRequired:true}:{}),...(localReview ? { localReview } : {})};
 }
 async function readConversation(actor: ConversationActor, db: DB = prisma) {
   const [conversation, profile] = await Promise.all([
@@ -199,9 +207,10 @@ export async function appendConversation(actor: ConversationActor, raw: unknown)
       const explicit=selectedSessionId?await tx.workout.findFirst({where:{...visible,id:selectedSessionId}}):null;
       if(selectedSessionId&&!explicit)throw new ApiError('Session not found',404);
       const requestedDay=coachAutoSessionDay(input.message,dateKey(now,actor.timezone));
-      const resolveDate=!!requestedDay&&(!explicit||dateKey(explicit.date,actor.timezone)!==requestedDay);
-      const automatic=resolveDate?await tx.workout.findMany({where:{...visible,planned:true,completed:false,feedbackAt:null,feedbackStatus:null,feedbackNote:null,actualDurationMin:null,actualSport:null,actualDetails:null,rpe:null,avgHr:null,maxHr:null,avgPower:null,np:null,distanceKm:null,calories:null,preWeightKg:null,postWeightKg:null,externalId:null,matchedPlanId:null,date:{gte:localDate(requestedDay!,actor.timezone),lt:localDate(addDaysKey(requestedDay!,1),actor.timezone)}},take:2}):[];
-      const selected=resolveDate?(automatic.length===1?automatic[0]:null):explicit;
+      const namedSport=coachNamedSessionSport(input.message);
+      const resolveDate=!!requestedDay&&(!explicit||dateKey(explicit.date,actor.timezone)!==requestedDay||(namedSport!==null&&explicit.sport!==namedSport));
+      const automatic=resolveDate?await tx.workout.findMany({where:{...visible,...(namedSport ? {sport:namedSport} : {}),planned:true,completed:false,feedbackAt:null,feedbackStatus:null,feedbackNote:null,actualDurationMin:null,actualSport:null,actualDetails:null,rpe:null,avgHr:null,maxHr:null,avgPower:null,np:null,distanceKm:null,calories:null,preWeightKg:null,postWeightKg:null,externalId:null,matchedPlanId:null,date:{gte:localDate(requestedDay!,actor.timezone),lt:localDate(addDaysKey(requestedDay!,1),actor.timezone)}},take:2}):[];
+      const selected=resolveDate?(automatic.length===1?automatic[0]:null):(namedSport && explicit?.sport !== namedSport ? null : explicit);
       await tx.coachConversationRequest.updateMany({ where: { userId: actor.id, status: "processing", createdAt: { lt: new Date(now.getTime() - 90000) } }, data: { status: "unknown", activeKey: null, finishedAt: now } });
       const existing = await tx.coachConversationRequest.findFirst({ where: { userId: actor.id, clientRequestId } });
       if (existing) {
@@ -259,11 +268,17 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
   // Explicitly reject cross-athlete bodies as well as query-string overrides.
   if (body.athleteId !== undefined && body.athleteId !== actor.id) throw new ApiError("Private assistant conversations are only available to their owner", 403);
   const input = parseAssistantInput(body);
-  const manualDialogue = manualDialogueAllowed(input, input.message);
   const initialProfileQuery = profileReferenceQuery(input.message);
   if (input.image && initialProfileQuery) throw new ApiError("Saved profile references are reviewed locally. Remove the image to ask this profile question, or review the image in a separate request.", 422);
   const sessionId = guard.sessionId;
   const today = dayBounds(actor.timezone);
+  const requestedDay = input.image ? null : coachAutoSessionDay(input.message, today.key);
+  const namedWorkout = input.image ? null : coachNamedSessionSport(input.message);
+  const garminReview = !input.image && asksGarminDeliveryStatus(input.message);
+  const recoveryReview = !input.image && isPostWorkoutRecoveryReport(input.message);
+  const swimReport = !input.image ? parseCoachSwimReport(input.message, today.key) : null;
+  const protectedWorkflow = Boolean(requestedDay || namedWorkout || garminReview || recoveryReview || swimReport);
+  const manualDialogue = !protectedWorkflow && manualDialogueAllowed(input, input.message);
   // Most chat turns do not need a 90-day load series. Keep today's performed
   // activity for recovery safeguards, and read the full history only for a
   // JMetrics question. Missing metrics are never replaced with partial totals.
@@ -310,10 +325,18 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const sessionDate = selected ? dateKey(selected.date, actor.timezone) : undefined;
       let candidates: CoachCandidate[];
       try {
+        const swimField = swimReport?.status === "ready" && (swimReport.kind === "observation" ? "swimObservation" : "swimPaceBase");
+        const swimCandidate = swimReport?.status === "ready" && swimField ? {
+          id: createHash("sha256").update(JSON.stringify([swimField, swimReport.observedDate, swimReport.secondsPer100m, input.source])).digest("hex"),
+          kind: "profile", field: swimField, value: swimReport.secondsPer100m, unit: COACH_SWIM_PACE_UNIT,
+          observedDate: swimReport.observedDate, source: input.source, evidence: input.message, status: "proposed",
+        } : null;
         candidates = coachPlanChangeWarnings(validateCoachCandidates([
-          ...extractLocalCandidates(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate }),
+          ...(swimReport || garminReview || recoveryReview ? [] : extractLocalCandidates(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate })),
+          ...(swimCandidate ? [swimCandidate] : []),
           ...(image?.candidates ?? []),
         ], { localToday: today.key }),selected);
+        if (candidates.some(candidate => candidate.field === "indoor")) candidates = candidates.filter(candidate => candidate.kind !== "workout_plan" || candidate.field !== "sport" || candidate.value !== selected?.sport);
       } catch (error) { throw new ApiError((error as Error).message); }
       for (const candidate of candidates) {
         if (candidate.kind.startsWith("workout") && candidate.sessionId && candidate.sessionId !== selected?.id) throw new ApiError("Candidate session does not match your selected session");
@@ -358,24 +381,32 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const safetyReply=buildCoachReply(input.message,context);
       const safetyHeld=SAFETY_RULES.some(rule=>safetyReply.ruleId===`coach-conversation-v1:${rule}`);
       const localRecordQuestion=/^coach-conversation-v1:(?:saved-training-navigation|remember-confirmed-|remember-reported-|missing-reported-)/.test(safetyReply.ruleId);
-      const reply = safetyHeld ? safetyReply : profileQuery ? {answer: actor.language === "es" ? "Consulté tus referencias guardadas. El resultado protegido corresponde a esta solicitud; pregunta de nuevo para actualizarlo. No se modificó ningún dato." : "I checked your saved references. The protected result belongs to this request; ask again to refresh it. No values were changed.",ruleId:"coach-conversation-v1:profile-reference-review",sourceIds:[]} : localRecordQuestion||contextNeeds.overview||contextNeeds.history!=="none"||contextNeeds.load
+      const reply = safetyHeld ? safetyReply
+        : garminReview ? { answer: actor.language === "es" ? "Revisa el último comprobante registrado para la sesión. Una publicación confirmada en Garmin no confirma la recepción en el reloj." : "Review the last recorded receipt for the workout. A verified Garmin publication does not confirm watch receipt.", ruleId:"coach-conversation-v1:garmin-delivery-status" }
+        : recoveryReview ? { answer: actor.language === "es" ? "Revisemos la sesión realizada y cómo te recuperaste. Confirma el resultado y completa el check-in para reevaluar el próximo entrenamiento. Tu plan no ha cambiado." : "Let's review the completed session and how you recovered. Confirm the result and complete the check-in to reassess the next workout. Your plan hasn't changed.", ruleId:"coach-conversation-v1:post-workout-recovery" }
+        : swimReport ? { answer: coachSwimReply(swimReport, actor.language === "es"), ruleId:"coach-conversation-v1:swim-reference-report" }
+        : (requestedDay || namedWorkout) && !selected ? { answer: actor.language === "es" ? "No pude identificar una única sesión pendiente para esa fecha y deporte. Elige la sesión correcta en Herramientas opcionales y vuelve a enviar el cambio." : "I couldn't identify one pending workout for that date and sport. Choose the correct workout in Optional tools and send the change again.", ruleId:"coach-conversation-v1:choose-workout" }
+        : profileQuery ? {answer: actor.language === "es" ? "Consulté tus referencias guardadas. El resultado protegido corresponde a esta solicitud; pregunta de nuevo para actualizarlo. No se modificó ningún dato." : "I checked your saved references. The protected result belongs to this request; ask again to refresh it. No values were changed.",ruleId:"coach-conversation-v1:profile-reference-review",sourceIds:[]} : localRecordQuestion||contextNeeds.overview||contextNeeds.history!=="none"||contextNeeds.load
         ? {answer:historySafeLocalReply("",actor.language,true),ruleId:"coach-conversation-v1:local-data-review",sourceIds:[]}
         : buildCoachReply(input.message, chatContext);
       const suggestedActions: PendingAction[] = SAFETY_RULES.some(rule => reply.ruleId === `coach-conversation-v1:${rule}`) ? ["review_checkin"] : [];
       const clarifications = reply.ruleId === "coach-conversation-v1:clarify-data" ? [] : conversationClarifications(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate });
       const answer = [reply.answer, candidates.length ? actor.language === "es" ? "¿Quieres aplicar estos cambios? Revisa los valores abajo y confirma solo los correctos. Aún no se ha guardado nada." : "Apply these changes? Review the values below and confirm only those that are correct. Nothing has been saved yet." : "", ...clarifications, ...(image?.warnings ?? [])].filter(Boolean).join("\n\n");
+      const retainDialogue = manualDialogue && !profileQuery && !candidates.some(candidate => candidate.field === "indoor");
       const userMessage = await tx.coachConversationMessage.create({ data: { conversationId: conversation.id, userId: actor.id, role: "user", content: input.message || "Image attached for review", source: input.image ? "image" : input.source,
-        metadata: JSON.stringify({ clientRequestId: typeof body.clientRequestId === "string" ? body.clientRequestId : null, localDate: today.key, timezone: actor.timezone, sessionId: sessionId ?? null, externalConsent: input.externalConsent, textProviderConsent: input.textProviderConsent ?? null, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent ?? null, imageStatus: image?.status ?? null,imageSource: input.imageSource??null, ...(manualDialogue && !profileQuery ? {manualDialoguePolicy:MANUAL_DIALOGUE_POLICY,manualDialogueGeneration:conversation.generation,manualDialogueConsent:true,messageOrigin:"athlete_authored"} : {}) }) } });
-      if (candidates.length) {
+        metadata: JSON.stringify({ clientRequestId: typeof body.clientRequestId === "string" ? body.clientRequestId : null, localDate: today.key, timezone: actor.timezone, sessionId: sessionId ?? null, externalConsent: input.externalConsent, textProviderConsent: input.textProviderConsent ?? null, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent ?? null, imageStatus: image?.status ?? null,imageSource: input.imageSource??null, ...(retainDialogue ? {manualDialoguePolicy:MANUAL_DIALOGUE_POLICY,manualDialogueGeneration:conversation.generation,manualDialogueConsent:true,messageOrigin:"athlete_authored"} : {}) }) } });
+      if (candidates.length || swimReport || ((requestedDay || namedWorkout) && !selected) || recoveryReview) {
         await tx.coachConversationProposal.updateMany({ where: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation, status: "pending" }, data: { status: "superseded", revision: { increment: 1 } } });
+      }
+      if (candidates.length) {
         await tx.coachConversationProposal.create({ data: { userId: actor.id, conversationId: conversation.id, generation: conversation.generation, sourceMessageId: userMessage.id, timezone: actor.timezone,
           candidates: JSON.stringify(candidates), baseRevisions: JSON.stringify({ profile: profileRevision(profile), beforeProfile: profileBeforeValues(profile, candidates), workouts: selected ? { [selected.id]: { revision: workoutRevision(selected), date: sessionDate } } : {} }) } });
       }
-      const replyMetadata = { historyPolicy:AI_DATA_POLICY_VERSION, ruleId: reply.ruleId, sourceIds: reply.sourceIds ?? [],needsHumanReview:suggestedActions.length>0||reply.ruleId==='coach-conversation-v1:ask-next-detail', requiresCheckinReview: unreviewedCurrentCheckin, pendingActions: suggestedActions, imageStatus: image?.status ?? null, ...(profileQuery && !safetyHeld ? {protectedProfileQuery:profileQuery} : {}) };
+      const replyMetadata = { historyPolicy:AI_DATA_POLICY_VERSION, ruleId: reply.ruleId, sourceIds: reply.sourceIds ?? [],needsHumanReview:suggestedActions.length>0||reply.ruleId==='coach-conversation-v1:ask-next-detail', requiresCheckinReview: unreviewedCurrentCheckin || recoveryReview, pendingActions: suggestedActions, imageStatus: image?.status ?? null, ...(profileQuery && !safetyHeld ? {protectedProfileQuery:profileQuery} : {}) };
       const assistantMessage = await tx.coachConversationMessage.create({ data: { conversationId: conversation.id, userId: actor.id, role: "assistant", content: answer, source: "local", metadata: JSON.stringify(replyMetadata) } });
-      const dialogueRows = manualDialogue && !profileQuery ? await tx.coachConversationMessage.findMany({ where: { userId: actor.id, conversationId: conversation.id, id: { not: userMessage.id } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 60, select: { role: true, content: true, metadata: true } }) : [];
+      const dialogueRows = retainDialogue ? await tx.coachConversationMessage.findMany({ where: { userId: actor.id, conversationId: conversation.id, id: { not: userMessage.id } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 60, select: { role: true, content: true, metadata: true } }) : [];
       const dialogueHistory = manualDialogueHistory([...dialogueRows].reverse(), conversation.generation);
-      return { ok: true, answer, mode: "coach_local", trainingModified: false, externalStatus: input.externalConsent ? "not_configured" : "not_requested", imageStatus: image?.status ?? "not_requested", capabilities: coachCapabilities(), ...await readConversation(actor, tx), protectedProfileAnswer:profileQuery && !safetyHeld ? protectedProfileAnswer(profileQuery,profile,{sourceMessageId:userMessage.id,language:actor.language,now:new Date(),timezone:actor.timezone}) : null, _protectedProfileRequest:!!profileQuery, _replyMetadata:replyMetadata, _dialogueHistory:dialogueHistory, _context: context, _guard: { conversationId: conversation.id, revision: conversation.revision, generation: conversation.generation, messageId: assistantMessage.id,sourceMessageId:userMessage.id,baseRevisions:{profile:profileRevision(profile),beforeProfile:profileBeforeValues(profile),workouts:selected?{[selected.id]:{revision:workoutRevision(selected),date:sessionDate}}:{}} }, _ruleId: reply.ruleId, _hasCandidates: candidates.length > 0 };
+      return { ok: true, answer, mode: "coach_local", trainingModified: false, externalStatus: input.externalConsent ? "not_configured" : "not_requested", imageStatus: image?.status ?? "not_requested", capabilities: coachCapabilities(), ...await readConversation(actor, tx), protectedProfileAnswer:profileQuery && !safetyHeld ? protectedProfileAnswer(profileQuery,profile,{sourceMessageId:userMessage.id,language:actor.language,now:new Date(),timezone:actor.timezone}) : null, _protectedProfileRequest:!!profileQuery || protectedWorkflow || candidates.some(candidate => candidate.field === "indoor"), _replyMetadata:replyMetadata, _dialogueHistory:dialogueHistory, _context: context, _guard: { conversationId: conversation.id, revision: conversation.revision, generation: conversation.generation, messageId: assistantMessage.id,sourceMessageId:userMessage.id,baseRevisions:{profile:profileRevision(profile),beforeProfile:profileBeforeValues(profile),workouts:selected?{[selected.id]:{revision:workoutRevision(selected),date:sessionDate}}:{}} }, _ruleId: reply.ruleId, _hasCandidates: candidates.length > 0 };
     }, { isolationLevel: "Serializable", timeout: 20000 });
     const { _replyMetadata, _dialogueHistory, _context, _guard, _ruleId, _hasCandidates, _protectedProfileRequest, ...result } = local;
     // Network work never runs inside a database transaction. A concurrent clear,
@@ -435,6 +466,7 @@ export function validateSelectedCandidates(stored: CoachCandidate[], selected: u
     const candidate = valid[index];
     const original = stored.find(c => c.id === candidate.id);
     if (!original || ids.has(candidate.id)) throw new ApiError("The selected value was not in this proposal");
+    if (["swimObservation", "swimPaceBase", "indoor"].includes(candidate.field) && candidate.value !== original.value) throw new ApiError("Send a corrected report before confirming this value.");
     ids.add(candidate.id);
     const supplied = object(selected.find(raw => object(raw).id === candidate.id));
     const allowedKeys = new Set(Object.keys(original));
@@ -483,7 +515,20 @@ export async function confirmConversation(actor: ConversationActor, raw: unknown
       const profileFields: Record<string, unknown> = {};
       const workoutFields = new Map<string, Record<string, unknown>>();
       for (const candidate of selected) {
-        if (candidate.kind === "profile") profileFields[candidate.field] = candidate.value;
+        if (candidate.kind === "profile" && ["swimObservation", "swimPaceBase"].includes(candidate.field)) {
+          if (Object.hasOwn(profileFields, "manualPrs")) throw new ApiError("Confirm one dated swim report at a time.");
+          if (candidate.field === "swimPaceBase" && profile?.swimPaceBase != null) {
+            const newerTest = await tx.benchmarkTest.findFirst({ where: { userId: actor.id, type: "swim", completed: true, skipped: false,
+              date: { gte: localDate(addDaysKey(candidate.observedDate!, 1), actor.timezone) } }, select: { id: true } });
+            if (newerTest) throw new ApiError("A newer swim test is saved. Review your training references before replacing CSS.", 409);
+          }
+          try {
+            Object.assign(profileFields, applyCoachSwimReport(profile?.manualPrs, {
+              kind: candidate.field === "swimObservation" ? "observation" : "reported_css",
+              secondsPer100m: Number(candidate.value), observedDate: candidate.observedDate!,
+            }, today));
+          } catch (error) { throw new ApiError((error as Error).message, 409); }
+        } else if (candidate.kind === "profile") profileFields[candidate.field] = candidate.value;
         if (candidate.kind === "workout_feedback" || candidate.kind === "workout_plan") {
           const base = bases.workouts[candidate.sessionId!];
           if (!base || candidate.observedDate !== base.date || (candidate.kind === "workout_feedback" ? base.date > today : base.date < today)) throw new ApiError("Session and observation date must match the original proposal", 409);
@@ -512,9 +557,13 @@ export async function confirmConversation(actor: ConversationActor, raw: unknown
       }
       const applied = selected.filter(c => c.kind === "profile" || c.kind === "workout_feedback" || c.kind === "workout_plan").map(candidate => ({ candidateId: candidate.id, kind: candidate.kind, field: candidate.field, value: candidate.value, ...(candidate.kind === "profile" ? { previousValue: beforeProfileValues[candidate.field] } : {}), sourceValue: stored.find(c => c.id === candidate.id)!.value, source: candidate.source, observedDate: candidate.observedDate, ...(candidate.sessionId ? { sessionId: candidate.sessionId } : {}), entityId: entityIds.get(candidate.kind === "profile" ? "profile" : candidate.sessionId!)!, evidence: candidate.evidence }));
       const trainingModified=applied.some(c=>c.kind==="workout_plan");
-      const actions = pendingActions(selected.filter(c=>c.kind!=="workout_plan"), applied.length > 0);
+      const swimOnly = applied.length === 1 && selected.length === 1 && ["swimObservation", "swimPaceBase"].includes(applied[0].field);
+      const actions = pendingActions(selected.filter(c=>c.kind!=="workout_plan"), applied.length > 0 && !swimOnly);
+      const swimMessage = applied[0]?.field === "swimObservation"
+        ? (actor.language === "es" ? "Observación de natación guardada. Tu CSS y tu plan no cambiaron." : "Swim training observation saved. Your CSS and plan did not change.")
+        : (actor.language === "es" ? "Referencia CSS declarada guardada. No es una prueba verificada y tu plan guardado no se reescribió." : "Athlete-reported CSS reference saved. It is not a verified test, and your saved plan was not rewritten.");
       const receipt: ConversationReceipt = { id: randomUUID(), proposalId, confirmedAt: new Date().toISOString(), applied, pendingActions: actions, checkinDraft: selected.filter(c => c.kind === "checkin"), planDraft: [],
-        message: trainingModified ? (actor.language === "es" ? "Se guardaron los cambios confirmados. La aprobación anterior del entrenamiento se retiró: revisa el check-in y la nueva estructura antes de entrenar o publicar. No se envió nada al reloj." : "Confirmed changes saved. Previous workout approval was removed: review your check-in and the new structure before training or publishing. Nothing was sent to a watch.") : actor.language === "es" ? applied.length ? "Se guardaron los valores confirmados del perfil o del trabajo realizado. Revisa el check-in de hoy para reevaluar el entrenamiento. No se han reescrito las sesiones de hoy ni las futuras." : "Estos valores necesitan revisión en el check-in. No se ha guardado ningún cambio." : applied.length ? "Confirmed profile or actual-work values saved. Review today's check-in to reassess training. Daily and future prescriptions have not been rewritten." : "These values need review in the check-in. No change has been saved." };
+        message: swimOnly ? swimMessage : trainingModified ? (actor.language === "es" ? "Se guardaron los cambios confirmados. La aprobación anterior del entrenamiento se retiró: revisa el check-in y la nueva estructura antes de entrenar o publicar. No se envió nada al reloj." : "Confirmed changes saved. Previous workout approval was removed: review your check-in and the new structure before training or publishing. Nothing was sent to a watch.") : actor.language === "es" ? applied.length ? "Se guardaron los valores confirmados del perfil o del trabajo realizado. Revisa el check-in de hoy para reevaluar el entrenamiento. No se han reescrito las sesiones de hoy ni las futuras." : "Estos valores necesitan revisión en el check-in. No se ha guardado ningún cambio." : applied.length ? "Confirmed profile or actual-work values saved. Review today's check-in to reassess training. Daily and future prescriptions have not been rewritten." : "These values need review in the check-in. No change has been saved." };
       await tx.coachConversationProposal.update({ where: { id: proposal.id, userId: actor.id }, data: { status: applied.length ? "confirmed" : "review_required", revision: { increment: 1 }, idempotencyKey, requestHash, receipt: JSON.stringify(receipt), confirmedAt: new Date(receipt.confirmedAt) } });
       if (applied.length) await tx.auditLog.create({ data: { id: receipt.id, actorId: actor.id, subjectId: actor.id, action: "coach.conversation.confirmed", entityId: proposal.id, before: JSON.stringify({ candidates: stored.filter(c => applied.some(a => a.candidateId === c.id)).map(({ evidence: _chatText, warnings: _chatWarnings, ...facts }) => facts), sourceMessageId: proposal.sourceMessageId, baseRevisions: bases }), after: JSON.stringify({ ...receipt, applied: receipt.applied.map(({ evidence: _chatText, ...facts }) => facts), checkinDraft: [], planDraft: [] }), note: `Athlete-confirmed ${actor.timezone}; explicit reviewed profile, actuals and selected workout edits; approvals revoked for edited prescriptions` } });
       await tx.coachConversationMessage.create({ data: { userId: actor.id, conversationId: conversation.id, role: "assistant", source: "local", content: receipt.message, metadata: JSON.stringify({ historyPolicy:AI_DATA_POLICY_VERSION, proposalId, receiptId: receipt.id, applied: applied.length > 0 }) } });
