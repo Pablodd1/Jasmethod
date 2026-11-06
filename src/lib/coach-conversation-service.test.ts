@@ -168,7 +168,11 @@ test('dated auto binding ignores archived suggestions and cannot choose between 
       f.state.choiceWorkouts=[...Array.from({length:100},(_,i)=>({...f.state.workout,id:`old-${i}`,planDay:{plan:{id:'archived',status:'archived',userId:actor.id}}})),...(double?[{...f.state.workout,id:'current-b'}]:[])];
       const result=await appendConversation(actor,{message:"Update today's workout to 30 minutes"});
       const candidate=result.proposal?.candidates.find((c:CoachCandidate)=>c.kind==='workout_plan'&&c.field==='durationMin');
-      if(double)assert.equal(candidate,undefined);else assert.equal(candidate?.sessionId,'session-a');
+      if(double) {
+        assert.match(result.answer, /Which workout should I change[?]/);
+        assert.notEqual(result.proposal?.status, 'pending');
+        assert.equal(candidate, undefined);
+      } else assert.equal(candidate?.sessionId,'session-a');
       assert.deepEqual(f.state.writes,[]); assert.equal(f.state.selectionRead.take,2);
     } finally {f.restore();}
   }
