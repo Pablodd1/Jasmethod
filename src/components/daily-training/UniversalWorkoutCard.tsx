@@ -35,7 +35,7 @@ export function WorkoutHeader({ card, compactReadiness = false }: { card: Card; 
         <p>
           {s.sport.toUpperCase()} · {s.dateLocal} · {s.timezone}
         </p>
-        <h1>{s.title}</h1>
+        <h2 className="uwc-title">{s.title}</h2>
         {compactReadiness && s.verdict === "blocked" ? <details className="text-sm"><summary>{es ? "Adaptación diaria sin revisar" : "Daily adaptation not reviewed"}</summary><p>{readinessReasonText(s.reason, es)}</p></details> : <p>{s.verdict === "ready" ? card.content.summary : readinessReasonText(s.reason, es)}</p>}
       </div>
       <div className="uwc-stats">
