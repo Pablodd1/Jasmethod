@@ -25,7 +25,7 @@ export function SavedWorkoutPreviewView({ preview, es = false, compact = false, 
     <p role="status">{es ? preview.reason.startsWith("A current injury") ? "Una restricción de lesión actual mantiene el entrenamiento en pausa." : "Día de descanso previsto; no hay una sesión para ejecutar." : preview.reason}</p>
   </section>;
   if (compact && !card) return <section className="uwc saved-workout-preview" aria-label={es ? "Sesión prevista" : "Planned workout"}>
-    {!embedded && plannedSession && <header className="uwc-header"><div><p>{plannedSession.sport.toUpperCase()}</p><h1>{sportConsistentTitle(plannedSession.title,plannedSession.sport)}</h1></div><div className="uwc-stats"><b>{Number.isFinite(plannedSession.durationMin) && plannedSession.durationMin > 0 ? `${plannedSession.durationMin} min` : "—"}<small>{es ? "TIEMPO PREVISTO" : "PLANNED TIME"}</small></b></div></header>}
+    {!embedded && plannedSession && <header className="uwc-header"><div><p>{plannedSession.sport.toUpperCase()}</p><h2 className="uwc-title">{sportConsistentTitle(plannedSession.title,plannedSession.sport)}</h2></div><div className="uwc-stats"><b>{Number.isFinite(plannedSession.durationMin) && plannedSession.durationMin > 0 ? `${plannedSession.durationMin} min` : "—"}<small>{es ? "TIEMPO PREVISTO" : "PLANNED TIME"}</small></b></div></header>}
     {embedded && plannedSession && Number.isFinite(plannedSession.durationMin) && plannedSession.durationMin > 0 && <p>{es ? "Tiempo previsto" : "Planned time"}: {plannedSession.durationMin} min</p>}
     <p role="status">{es ? "Pasos pendientes de revisión; no hay una adaptación aprobada." : "Steps need review; no approved daily adaptation."}</p>
     <a className="inline-flex min-h-11 items-center underline" href={`/daily?sessionId=${encodeURIComponent(preview.sessionId)}`}>{es ? "Revisar estructura" : "Review structure"}</a>
@@ -40,7 +40,7 @@ export function SavedWorkoutPreviewView({ preview, es = false, compact = false, 
   return <section className="uwc saved-workout-preview" aria-label={es ? "Plan guardado" : "Saved plan preview"}>
     <style>{previewStyles}</style>
     {!embedded && <header className="uwc-header">
-      <div><p>{s.sport.toUpperCase()} · {s.dateLocal} · {s.timezone}</p><h1>{s.title}</h1></div>
+      <div><p>{s.sport.toUpperCase()} · {s.dateLocal} · {s.timezone}</p><h2 className="uwc-title">{s.title}</h2></div>
       <div className="uwc-stats"><b>{s.exactTimeSeconds === null ? "~" : ""}{endpointText({ endpoint: { type: "time", seconds: s.exactTimeSeconds ?? s.durationMin * 60 } }, es ? "es" : "en")}<small>{es ? "DURACIÓN" : "DURATION"}</small></b></div>
     </header>}
     <div className="uwc-selected" role="status"><b>{compact ? (es ? "SESIÓN PREVISTA · SIN ADAPTAR" : "PLANNED WORKOUT · NOT ADAPTED") : (es ? "VISTA GUARDADA · SOLO LECTURA" : "SAVED PREVIEW · READ ONLY")}</b>{!compact && <p>{notice}</p>}</div>

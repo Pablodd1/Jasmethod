@@ -114,9 +114,12 @@ async function main(){const who=await actor(),other=await actor();const before=a
  await page.getByRole('button',{name:'Chat options',exact:true}).click();await page.getByText('Help & supported actions',{exact:true}).click();
  const popup=page.getByRole('link',{name:'Open chat in another window',exact:true});assert.equal(await popup.getAttribute('target'),'_blank');assert.equal(await popup.getAttribute('href'),'/coach');
  checks.push({name:'real authenticated mobile chat opens canonical workout/fueling card, keeps composer visible, records only explicit sends, retains no protected card in history, and offers separate-window access',status:'PASS'});
- await page.goto(base+'/today?sessionId='+swim.id);await page.getByRole('heading',{level:1}).waitFor();
- await page.getByText('Share, device & edit',{exact:true}).first().click();
- const editor=page.getByLabel('Explicit sport structure',{exact:true}).first();await editor.getByRole('button',{name:'Edit steps, sets and rests',exact:true}).click();
+ await page.goto(base+'/today?sessionId='+swim.id);
+ const currentCard=page.locator('#today-workout .uwc[data-revision]');await currentCard.waitFor();
+ assert.equal(await page.getByRole('heading',{level:1}).count(),1);
+ assert.equal(await currentCard.getByRole('heading',{level:2,name:fromToday.title,exact:true}).count(),1);
+ await currentCard.getByText('Share, device & edit',{exact:true}).click();
+ const editor=currentCard.getByLabel('Explicit sport structure',{exact:true});await editor.getByRole('button',{name:'Edit steps, sets and rests',exact:true}).click();
  await editor.getByText('Loaded the saved structure.',{exact:true}).waitFor();
  const advanced=editor.getByRole('button',{name:'Advanced options (JSON)',exact:true});if(await advanced.count())await advanced.click();assert.deepEqual(JSON.parse(await editor.getByLabel('Sport structure JSON',{exact:true}).inputValue()),pool);
  await editor.getByLabel('Sport structure JSON',{exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:dir+'/05-existing-pool-editor.png'});
