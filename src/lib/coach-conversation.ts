@@ -97,6 +97,8 @@ const fieldRules: Record<CoachCandidate["kind"], Record<string, Rule>> = {
     birthYear: {type:"number",unit:"year",min:1900,max:new Date().getFullYear()-13,integer:true},
     experience: {type:"string",unit:null,values:["beginner","amateur","advanced","pro"]},
     ftp: {type:"number",unit:"W",min:20,max:700},
+    swimObservation: {type:"number",unit:"sec/100m",min:30,max:600},
+    swimPaceBase: {type:"number",unit:"sec/100m",min:30,max:600},
     // Equipment the engine may pivot to (perf-engine-v2). Never inferred: explicit first-person statements only.
     hasSmartTrainer: {type:"boolean",unit:null},
     bikeType: {type:"string",unit:null,values:["road","tt","tri","gravel","mountain"]},
@@ -113,7 +115,7 @@ const fieldRules: Record<CoachCandidate["kind"], Record<string, Rule>> = {
     preWeightKg: {type:'number',unit:'kg',min:20,max:350},
     postWeightKg: {type:'number',unit:'kg',min:20,max:350},
   },
-  workout_plan: { durationMin: { type: "number", unit: "min", min: 1, max: 1440, integer: true }, sport: { type: "string", unit: null, values: COACH_SPORTS }, intensity:{type:'string',unit:null,values:['z1','z2','z3','z4','z5','z6','z7']} },
+  workout_plan: { durationMin: { type: "number", unit: "min", min: 1, max: 1440, integer: true }, sport: { type: "string", unit: null, values: COACH_SPORTS }, intensity:{type:'string',unit:null,values:['z1','z2','z3','z4','z5','z6','z7']}, indoor:{type:"boolean",unit:null} },
   checkin: {
     ...Object.fromEntries(["sleep", "soreness", "motivation", "energy", "stress"].map(k => [k, { type: "number", unit: "1-5", min: 1, max: 5, integer: true } as Rule])),
     ...Object.fromEntries(["sick", "newPain", "urgentSymptoms", "painAffectsMovement"].map(k => [k, { type: "boolean", unit: null } as Rule])),
@@ -121,7 +123,8 @@ const fieldRules: Record<CoachCandidate["kind"], Record<string, Rule>> = {
     painLocation: { type: "string", unit: null },
   },
 };
-export const coachChangeFields = () => Object.fromEntries(['profile','workout_plan','workout_feedback'].map(kind=>[kind,fieldRules[kind as CoachCandidate['kind']]]));
+export const isLocalCoachField = (field: unknown) => field === "swimObservation" || field === "swimPaceBase" || field === "indoor";
+export const coachChangeFields = () => Object.fromEntries(['profile','workout_plan','workout_feedback'].map(kind=>[kind,Object.fromEntries(Object.entries(fieldRules[kind as CoachCandidate['kind']]).filter(([field])=>!isLocalCoachField(field)))]));
 const candidateKeys = new Set(["id", "kind", "field", "value", "unit", "observedDate", "source", "evidence", "sessionId", "status", "warnings"]);
 const binding = (c: CoachCandidate) => `${c.kind}:${c.observedDate || ""}:${c.sessionId || ""}`;
 const simpleId = (x: unknown): x is string => typeof x === "string" && /^[A-Za-z0-9_-]{1,120}$/.test(x);
@@ -142,6 +145,7 @@ export function validateCoachCandidates(raw: unknown, context: Pick<CandidateCon
     if (c.observedDate !== null && !isCoachDate(c.observedDate)) continue;
     if (c.kind !== "profile" && c.observedDate === null) continue;
     if (typeof c.observedDate === "string" && c.kind !== "workout_plan" && c.observedDate > context.localToday) continue;
+    if (isLocalCoachField(c.field) && (c.source === "image" || !c.observedDate || (c.field === "indoor" && !c.sessionId))) continue;
     if (c.kind === "checkin" && c.observedDate !== context.localToday) continue;
     if (c.sessionId !== undefined && (!simpleId(c.sessionId) || !["workout_feedback", "workout_plan"].includes(c.kind))) continue;
     if (typeof c.evidence !== "string" || !c.evidence.trim() || c.evidence.length > 500) continue;
@@ -240,7 +244,7 @@ export function extractLocalCandidates(message: string, context: CandidateContex
     const ownDate = dateIn(t, context.localToday);
     if (ownDate.ambiguous) continue;
     const date = ownDate.date || (!globalDate.ambiguous ? globalDate.date || (isCoachDate(context.sessionDate) ? context.sessionDate : null) : null);
-    const explicitEdit = !!context.sessionId && /\b(?:change|set|update|correct|switch|shorten|reduce|extend|make|cambia|cambiar|actualiza|ajusta|ajustar|reduce|amplia)\b/.test(t) && /\b(?:(?:my|selected|this|today's|todays|tomorrow's|mi|seleccionad[oa]|esta|este)\s+(?:workout|session|training|run|ride|swim|entrenamiento|sesion)|it)\b/.test(t);
+    const explicitEdit = !!context.sessionId && /\b(?:change|set|update|correct|switch|shorten|reduce|extend|make|move|cambia|cambiar|actualiza|ajusta|ajustar|reduce|amplia|mueve)\b/.test(t) && /\b(?:(?:my|selected|this|today's|todays|tomorrow's|mi|seleccionad[oa]|esta|este)\s+(?:workout|session|training|run|ride|bike|swim|brick|entrenamiento|sesion|bici)|(?:bici|bicicleta|carrera|natacion)\s+de\s+(?:hoy|manana)|it)\b/.test(t);
     const planned = explicitEdit || /\b(plan(?:ned)? to|planning to|will|going to|want to|schedule|planned|planeo|planifique|voy a|quiero|programado|planificado)\b/.test(t);
     const explicitCompletion = /\b(completed|finished|complete|termine)\b/.test(t);
     const completed = explicitCompletion || /\b(?:i (?:ran|swam|rode|cycled|biked|jogged)|corri|nade|pedalee)\b/.test(t) || /\b(?:i did|hice|realice)\s+(?:(?:a|an|my|mi|una?|the)\s+)?(?:run|swim|ride|workout|session|carrera|sesion|entrenamiento)\b/.test(t);
@@ -264,6 +268,12 @@ export function extractLocalCandidates(message: string, context: CandidateContex
     if (durations.length === 1) add(kind, planned ? "durationMin" : "actualDurationMin", durations[0], date, clause);
     if (sports.length === 1) add(kind, planned ? "sport" : "actualSport", sports[0], date, clause);
     if(explicitEdit) {
+      const setting = t.split(/\b(?:because|since|porque|debido a)\b/)[0];
+      const indoors = /\b(?:indoors|bajo techo|en interior)\s*[.!]?\s*$/.test(setting);
+      const outdoors = /\b(?:outdoors|al aire libre)\s*[.!]?\s*$/.test(setting);
+      if (indoors !== outdoors && !/\b(?:not|no|instead of|en vez de)\b|\b(?:indoors|bajo techo|en interior)\b.*\b(?:outdoors|al aire libre)\b|\b(?:outdoors|al aire libre)\b.*\b(?:indoors|bajo techo|en interior)\b/.test(setting)) {
+        add("workout_plan", "indoor", indoors, date, clause);
+      }
       const zones=unique([...t.matchAll(/\b(?:z|zone|zona)\s*([1-7])\b/g)].map(m=>`z${m[1]}`));
       if(zones.length===1)add('workout_plan','intensity',zones[0],date,clause,'A requested effort label is not a new measured threshold. Review the rebuilt workout before execution.');
     }

@@ -1,6 +1,18 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {coachAutoSessionDay,coachRequestedDay,groundCoachChanges,type CoachChange} from './coach-intent';
+import {coachAutoSessionDay,coachNamedSessionSport,coachRequestedDay,groundCoachChanges,type CoachChange} from './coach-intent';
+
+test("the rainy bike voice request resolves tomorrow and binds to cycling", () => {
+  const message = "Change tomorrow’s bike to 45 minutes indoors because it’s raining.";
+  assert.equal(coachAutoSessionDay(message, "2026-11-05"), "2026-11-06");
+  assert.equal(coachNamedSessionSport(message), "bike");
+  assert.equal(coachNamedSessionSport("Change my bike tomorrow to 45 minutes indoors"), "bike");
+  assert.equal(coachNamedSessionSport("Change my ride on 2026-11-06 to 45 minutes indoors"), "bike");
+  assert.equal(coachNamedSessionSport("Cambia la bici de mañana a 45 minutos bajo techo"), "bike");
+  assert.equal(coachNamedSessionSport("Switch tomorrow's run to a ride"), "run");
+  assert.equal(coachNamedSessionSport("Change tomorrow's workout to a ride"), null);
+  assert.equal(coachNamedSessionSport("I rode my bike yesterday"), null);
+});
 import {buildCoachReply,extractLocalCandidates} from './coach-conversation';
 const context={localToday:'2026-10-17',sessionId:'owned-session',sessionDate:'2026-10-17'};
 const change=(patch:Partial<CoachChange>={}):CoachChange=>({kind:'workout_plan',field:'durationMin',unit:'min',value:30,evidence:'Make this session half an hour',...patch});

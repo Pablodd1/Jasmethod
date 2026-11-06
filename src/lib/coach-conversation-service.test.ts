@@ -5,6 +5,7 @@ import { prisma } from "./db";
 import { ApiError } from "./access";
 import { profileRevision } from "./profile-service";
 import { workoutRevision } from "./workout-update";
+import { evidencedTargetProfile } from "./anchor-evidence";
 import { confirmConversation, cancelConversationProposal, clearConversation, readConversationBody, validateSelectedCandidates, parseAssistantInput, appendConversation, getConversation } from "./coach-conversation-service";
 import type { CoachCandidate } from "./coach-conversation";
 import { addDaysKey, dayBounds, localDate } from "./dates";
@@ -103,6 +104,7 @@ function fixture(candidates = [candidate()]) {
         update: async ({ where, data }: any) => { assert.equal(where.id, draft.workout.id); draft.writes.push("workout"); return update(draft.workout, data); },
       },
       metricObservation: { findMany: async ({ where }: any) => { assert.equal(where.userId, actor.id); draft.restQuery = where; return (draft.restObservations || []).filter((row: any) => matches(row, where)); } },
+      benchmarkTest: { findFirst: async ({ where }: any) => { assert.equal(where.userId, actor.id); return (draft.benchmarkTests || []).find((row: any) => matches(row, where)) ?? null; } },
       planDay: { findFirst: async ({ where }: any) => { assert.equal(where.plan.userId, actor.id); assert.equal(where.plan.status, "active"); assert.equal(where.dayOff, true); return draft.plannedRestDay ?? null; } },
       dailyMetrics: { findFirst: async (query: any) => {
         assert.equal(query.where.userId, actor.id); draft.metricsRead = query;
@@ -170,6 +172,82 @@ test('dated auto binding ignores archived suggestions and cannot choose between 
       assert.deepEqual(f.state.writes,[]); assert.equal(f.state.selectionRead.take,2);
     } finally {f.restore();}
   }
+});
+
+test("reviewed voice edits only the matching bike tomorrow and saves duration and indoor once", async () => {
+  for (const bikeCount of [0, 1, 2]) {
+    const f = fixture([]);
+    try {
+      const tomorrow = addDaysKey(today, 1);
+      Object.assign(f.state.workout, { sport: bikeCount ? "bike" : "run", date: localDate(tomorrow, "UTC"), durationMin: 60, completed:false, feedbackStatus:null, feedbackAt:null, actualDurationMin:null, rpe:null, indoor:false });
+      f.state.choiceWorkouts = bikeCount === 2 ? [{...f.state.workout,id:"other-bike"}] : bikeCount ? [{...f.state.workout,id:"other-run",sport:"run"}] : [];
+      const reply = await appendConversation(actor, {message:"Change tomorrow’s bike to 45 minutes indoors because it’s raining.",source:"voice"});
+      assert.equal(f.state.selectionRead.where.sport, "bike");
+      assert.deepEqual(f.state.writes, []);
+      if (bikeCount !== 1) {
+        assert.equal(reply.proposal?.candidates.length ?? 0, 0);
+        assert.match(reply.answer, /couldn't identify one pending workout/);
+        continue;
+      }
+      const proposal = reply.proposal!;
+      assert.deepEqual(proposal.candidates.map(({field,value,sessionId,source})=>[field,value,sessionId,source]),
+        [["durationMin",45,"session-a","voice"],["indoor",true,"session-a","voice"]]);
+      const confirmation = {proposalId:proposal.id,expectedRevision:proposal.revision,candidates:proposal.candidates,confirmed:true,idempotencyKey:"rainy-bike"};
+      const saved = await confirmConversation(actor, confirmation);
+      assert.equal(saved.trainingModified, true);
+      assert.equal(f.state.workout.indoor, true);
+      assert.equal(f.state.workout.durationMin, 45);
+      assert.equal(f.state.workout.approved, false);
+      const writes = f.state.writes.length;
+      await confirmConversation(actor, confirmation);
+      assert.equal(f.state.writes.length, writes);
+    } finally { f.restore(); }
+  }
+});
+
+test("ambiguous swim pace asks first; dated confirmed observation leaves CSS untouched", async () => {
+  const f = fixture([]);
+  try {
+    Object.assign(f.state.profile,{swimPaceBase:98,manualPrs:"[]"});
+    const ambiguous = await appendConversation(actor,{message:"My swim pace is 1:45 per 100 meters."});
+    assert.match(ambiguous.answer,/training pace or a CSS reference/);
+    assert.equal(ambiguous.proposal?.candidates.length ?? 0,0);
+    const report = await appendConversation(actor,{message:"My swim training pace was 1:45 per 100 meters yesterday."});
+    const proposal = report.proposal!;
+    const [pace] = proposal.candidates;
+    assert.deepEqual([pace.field,pace.value,pace.observedDate],["swimObservation",105,addDaysKey(today,-1)]);
+    assert.deepEqual(f.state.writes, []);
+    const body = {proposalId:proposal.id,expectedRevision:proposal.revision,candidates:[pace],confirmed:true,idempotencyKey:"swim-pace"};
+    await assert.rejects(confirmConversation(actor,{...body,candidates:[{...pace,value:106}]}), /corrected report/);
+    const saved = await confirmConversation(actor, body);
+    assert.equal(saved.profileModified,true);
+    assert.equal(saved.trainingModified,false);
+    assert.equal(f.state.profile.swimPaceBase,98);
+    assert.deepEqual(JSON.parse(f.state.profile.manualPrs),[{label:"Reported swim training pace",value:105,unit:"sec/100m",date:addDaysKey(today,-1)}]);
+    assert.deepEqual(saved.pendingActions,[]);
+  } finally { f.restore(); }
+});
+
+test("dated CSS is reviewable, protects newer tests and becomes a reported anchor only after confirmation", async () => {
+  const f = fixture([]);
+  try {
+    Object.assign(f.state.profile,{swimPaceBase:98,manualPrs:"[]"});
+    const observedDate = addDaysKey(today,-1);
+    const report = await appendConversation(actor,{message:"My CSS was 1:45/100 m yesterday."});
+    const proposal = report.proposal!;
+    assert.deepEqual(proposal.candidates.map(c=>[c.field,c.value,c.observedDate]),[["swimPaceBase",105,observedDate]]);
+    const body = {proposalId:proposal.id,expectedRevision:proposal.revision,candidates:proposal.candidates,confirmed:true,idempotencyKey:"swim-css"};
+    f.state.benchmarkTests=[{id:"new-test",userId:actor.id,type:"swim",completed:true,skipped:false,date:localDate(today,"UTC")}];
+    await assert.rejects(confirmConversation(actor,body),/newer swim test/);
+    assert.equal(f.state.profile.swimPaceBase,98);
+    f.state.benchmarkTests=[];
+    const saved = await confirmConversation(actor,body);
+    assert.match(saved.receipt.message,/not a verified test/);
+    assert.deepEqual(saved.pendingActions,["review_plan"]);
+    const anchors = evidencedTargetProfile(f.state.profile,[],[],new Date(),"UTC");
+    assert.equal(anchors.swimPaceBase,105);
+    assert.equal(anchors.referenceEvidence?.swimPaceBase.source,"athlete_reported_reference");
+  } finally { f.restore(); }
 });
 
 test('explicit retired pending selection and retirement after a proposal cannot rewrite a replaced plan; historical feedback remains correctable',async()=>{
@@ -843,6 +921,53 @@ test("consented concept elaboration exports only a fixed topic and language, nev
 
 import { isProtectedProfileAnswer } from "./coach-profile-reference";
 import { manualDialogueHistory } from "./coach-dialogue-provider";
+
+test("post-workout recovery handoff is local, read-only and excluded from later external dialogue", async () => {
+  const f = fixture([]);
+  const originalFetch = globalThis.fetch;
+  const prior = Object.fromEntries(["EXTERNAL_AI_ENABLED", "OPENAI_API_KEY", "OPENAI_TEXT_MODEL"].map(key => [key, process.env[key]]));
+  Object.assign(process.env, { EXTERNAL_AI_ENABLED: "true", OPENAI_API_KEY: "synthetic-only", OPENAI_TEXT_MODEL: "gpt-4.1-mini-2025-04-14" });
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw Error("Recovery report must stay local"); };
+  try {
+    const result = await appendConversation(actor, {
+      message: "I finished a hard bike-run brick yesterday. My legs feel heavy and I slept poorly.",
+      source: "voice", clientRequestId: "local-recovery-voice",
+      manualDialogueConsent: true, messageOrigin: "athlete_authored", externalConsent: true, textProviderConsent: "openai",
+    });
+    assert.equal(result.externalStatus, "policy_local");
+    const latest = result.conversation.messages.filter(message => message.role === "assistant").at(-1);
+    assert.equal(latest?.localReview, "recovery");
+    assert.deepEqual(result.proposal?.candidates ?? [], []);
+    assert.equal(manualDialogueHistory(f.state.messages, f.state.conversation.generation).length, 0);
+    assert.equal(calls, 0);
+    assert.deepEqual(f.state.writes, []);
+
+    const focalPain = await appendConversation(actor, {
+      message: "I finished a hard brick yesterday. My legs feel heavy and my knee hurts now.",
+      clientRequestId: "local-recovery-pain",
+    });
+    const painReply = focalPain.conversation.messages.filter(message => message.role === "assistant").at(-1);
+    assert.equal(painReply?.localReview, undefined);
+    assert.equal(painReply?.safetyReviewRequired, true);
+
+    const urgent = await appendConversation(actor, {
+      message: "I finished a hard brick yesterday. My legs feel heavy and I have chest pain now.",
+      clientRequestId: "local-recovery-urgent",
+    });
+    const urgentReply = urgent.conversation.messages.filter(message => message.role === "assistant").at(-1);
+    assert.match(urgent.answer, /Stop exercise/);
+    assert.equal(urgentReply?.localReview, undefined);
+    assert.equal(urgentReply?.safetyReviewRequired, true);
+    assert.deepEqual(f.state.writes, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(prior)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    f.restore();
+  }
+});
 
 test("personal physiology questions return ephemeral owner-profile references without external calls or fact retention",async()=>{
   const f=fixture([]),originalFetch=globalThis.fetch,prior=Object.fromEntries(["EXTERNAL_AI_ENABLED","OPENAI_API_KEY","OPENAI_TEXT_MODEL"].map(key=>[key,process.env[key]]));let calls=0;

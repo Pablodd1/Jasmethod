@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { addDaysKey } from './dates';
-import { isCoachDate, validateCoachCandidates, type CoachCandidate, type CandidateContext } from './coach-conversation';
+import { isCoachDate, isLocalCoachField, validateCoachCandidates, type CoachCandidate, type CandidateContext } from './coach-conversation';
 
 export type CoachChange = {kind:'profile'|'workout_plan'|'workout_feedback';field:string;value:string|number;unit:string|null;evidence:string};
 const edit = /\b(?:change|chnage|chage|update|udpate|set|correct|make|shorten|reduce|extend|switch|log|record|save|cambia|cambiar|actualiza|ajusta|pon|registra|guarda)\b/i;
@@ -15,7 +15,21 @@ export function coachRequestedDay(message:string,today:string):string|null {
   return keys.size===1?[...keys][0]:null;
 }
 export function coachAutoSessionDay(message:string,today:string):string|null {
-  return edit.test(message)&&/\b(?:workout|session|training|run|ride|swim|entrenamiento|sesion|sesión|carrera|bici|natacion|natación)\b/i.test(message)?coachRequestedDay(message,today):null;
+  return edit.test(message)&&/\b(?:workout|session|training|run|ride|bike|swim|brick|entrenamiento|sesion|sesión|carrera|bici|bicicleta|natacion|natación)\b/i.test(message)?coachRequestedDay(message,today):null;
+}
+
+/** Identify the session named before an edit, not the destination sport in
+ * "switch tomorrow's run to a ride". This selector never authorizes a write. */
+export function coachNamedSessionSport(message: string): string | null {
+  if (!edit.test(message)) return null;
+  const text = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/’/g, "'").toLowerCase();
+  const nouns = "bike|ride|run|swim|brick|bici|bicicleta|carrera|natacion";
+  const match = new RegExp(`\\b(?:today|tomorrow|yesterday)'s\\s+(${nouns})\\b|\\b(${nouns})\\s+de\\s+(?:hoy|manana|ayer)\\b|\\b(${nouns})\\s+(?:today|tomorrow|yesterday|on\\s+\\d{4}-\\d{2}-\\d{2})\\b|\\b(?:change|set|update|switch|shorten|reduce|extend|move|cambia|ajusta)\\s+(?:my|the|this|mi|la|el)\\s+(${nouns})\\b`).exec(text);
+  const sport = match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4];
+  return sport === "bike" || sport === "ride" || sport === "bici" || sport === "bicicleta" ? "bike"
+    : sport === "run" || sport === "carrera" ? "run"
+    : sport === "swim" || sport === "natacion" ? "swim"
+    : sport === "brick" ? "brick" : null;
 }
 const wordNumbers:Record<string,number>={one:1,a:1,an:1,two:2,half:.5,una:1,un:1,dos:2,media:.5};
 function supportedNumber(c:CoachChange):boolean {
@@ -53,6 +67,7 @@ export function groundCoachChanges(raw:unknown,message:string,context:CandidateC
   const candidates=raw.flatMap((item):CoachCandidate[]=>{
     if(!item||typeof item!=='object'||Array.isArray(item))return [];
     const c=item as CoachChange;
+    if (isLocalCoachField(c.field)) return [];
     if(Object.keys(c).sort().join(',')!=='evidence,field,kind,unit,value'||typeof c.field!=='string'||(c.unit!==null&&typeof c.unit!=='string')||!['string','number'].includes(typeof c.value)||!['profile','workout_plan','workout_feedback'].includes(c.kind)||typeof c.evidence!=='string'||c.evidence.length>500||!c.evidence.trim()||!message.includes(c.evidence)||!supportedNumber(c)||!supportedEnum(c))return [];
     const workout=c.kind!=='profile';
     if(!edit.test(message)&&!ownsFact&&availableTime&&(c.kind!=='workout_plan'||c.field!=='durationMin'))return [];
