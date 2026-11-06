@@ -282,8 +282,9 @@ export async function POST(req: Request) {
     const activityPolicy = derivedActivityPolicy(rawHistory.filter(w => hasWorkoutReport(w) || !w.planned));
     if (activityPolicy.status !== "allowed" && adaptation.safetyStatus === "clear") adaptation = { ...adaptation, verdict: "rest", durationFactor: 0, intensityCap: "z1", scoreAvailable: false, safetyStatus: "unknown", ruleId: "provider-provenance:insufficient", message: activityPolicy.reason || "Recent activity provenance needs review. Unknown load is not zero and no additional training is inferred." };
     const groupedHistory=groupActivityEvidence(activityPolicy.status === "allowed" ? rawHistory : [],activityDecisions);
-    const previousIds=new Set(feedback.map(w=>w.id)),todayIds=new Set(sameDayReports.map(w=>w.id));
-    const executionRows = groupedHistory.groups.filter(g=>g.members.some(w=>previousIds.has(w.id))).map(g=>({ ...g.primary,
+    const todayIds = new Set(sameDayReports.map(w => w.id));
+    // Count same-day reports in effort analysis as well as the time budget.
+    const executionRows = groupedHistory.groups.map(g => ({ ...g.primary,
       feedbackStatus:g.primary.feedbackStatus ?? (g.members.some(w=>w.completed) ? "completed" : "unknown"),
       actualDurationMin:g.primary.feedbackStatus === "skipped" ? g.primary.actualDurationMin ?? null : g.unresolved ? null : g.budgetMinutes,
       expectedDurationMin:g.members.find(w=>w.planned)?.durationMin ?? null,
