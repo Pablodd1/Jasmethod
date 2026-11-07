@@ -19,7 +19,7 @@ export function garminWorkoutPayload(session: CanonicalSession) {
       if(detail?.kind==="rest" && endpoint.type==="time")return {type:"WorkoutStep",stepOrder:index+1,intensity:"REST",description,durationType:"FIXED_REST",durationValue:endpoint.seconds,durationValueType:null,targetType:null,targetValue:null,targetValueLow:null,targetValueHigh:null,targetValueType:null};
       if(detail?.kind!=="pool" || endpoint.type!=="distance" || detail.stroke==="drill" || detail.sendOffSeconds!==undefined || step.target.type!=="swimStroke" || step.target.stroke!==detail.stroke)
         throw new SessionResolutionError("This swim step needs a verified drill or timing representation. Use its full app/file instructions; no stroke or rest was guessed.");
-      return {type:"WorkoutStep",stepOrder:index+1,intensity:({warmup:"WARMUP",active:"ACTIVE",recovery:"RECOVERY",cooldown:"COOLDOWN"} as const)[step.phase],description,durationType:"DISTANCE",durationValue:endpoint.meters,durationValueType:"METER",strokeType:detail.stroke.toUpperCase(),targetType:null,targetValue:null,targetValueLow:null,targetValueHigh:null,targetValueType:null};
+      return {type:"WorkoutStep",stepOrder:index+1,intensity:({warmup:"WARMUP",active:"ACTIVE",recovery:"RECOVERY",cooldown:"COOLDOWN"} as const)[step.phase],description,durationType:"DISTANCE",durationValue:endpoint.meters,durationValueType:"METER",strokeType:detail.stroke.toUpperCase(),targetType:"SWIM_STROKE",targetValue:null,targetValueLow:null,targetValueHigh:null,targetValueType:null};
     }
     if (!["time", "distance", "lap"].includes(endpoint.type)) throw new SessionResolutionError("This step's endpoint is not supported for direct Garmin publication.");
     const target = step.target;
