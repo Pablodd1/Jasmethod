@@ -277,7 +277,8 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
   const garminReview = !input.image && asksGarminDeliveryStatus(input.message);
   const recoveryReview = !input.image && isPostWorkoutRecoveryReport(input.message);
   const swimReport = !input.image ? parseCoachSwimReport(input.message, today.key) : null;
-  const protectedWorkflow = Boolean(requestedDay || namedWorkout || garminReview || recoveryReview || swimReport);
+  const medicalReview = /\b(?:ferritin|ferritina|blood (?:test|panel|work|results?)|anal[ií]tica de sangre|an[aá]lisis de sangre|dna (?:test|results?|risk)|(?:prueba|resultado) de adn)\b/i.test(input.message);
+  const protectedWorkflow = Boolean(requestedDay || namedWorkout || garminReview || recoveryReview || swimReport || medicalReview);
   const manualDialogue = !protectedWorkflow && manualDialogueAllowed(input, input.message);
   // Most chat turns do not need a 90-day load series. Keep today's performed
   // activity for recovery safeguards, and read the full history only for a
@@ -285,7 +286,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
   const contextNeeds = coachContextNeeds(input.message);
   const needsLoadHistory = contextNeeds.load;
   let image: Awaited<ReturnType<typeof extractImageCandidates>> | null = null;
-  try { if (input.image) image = await extractImageCandidates(input.image, { localToday: today.key, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent, imageSource: input.imageSource, sessionId }, createCoachVisionProvider()); }
+  try { if (input.image && !medicalReview) image = await extractImageCandidates(input.image, { localToday: today.key, imageConsent: input.imageConsent, imageProviderConsent: input.imageProviderConsent, imageSource: input.imageSource, sessionId }, createCoachVisionProvider()); }
   catch (error) { throw new ApiError((error as Error).message); }
   try {
     const local = await prisma.$transaction(async tx => {
@@ -332,8 +333,8 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           observedDate: swimReport.observedDate, source: input.source, evidence: input.message, status: "proposed",
         } : null;
         candidates = coachPlanChangeWarnings(validateCoachCandidates([
-          ...(swimReport || garminReview || recoveryReview ? [] : extractLocalCandidates(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate })),
-          ...(swimCandidate ? [swimCandidate] : []),
+          ...(swimReport || garminReview || recoveryReview || medicalReview ? [] : extractLocalCandidates(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate })),
+          ...(swimCandidate && !medicalReview ? [swimCandidate] : []),
           ...(image?.candidates ?? []),
         ], { localToday: today.key }),selected);
         if (candidates.some(candidate => candidate.field === "indoor")) candidates = candidates.filter(candidate => candidate.kind !== "workout_plan" || candidate.field !== "sport" || candidate.value !== selected?.sport);
@@ -382,6 +383,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const safetyHeld=SAFETY_RULES.some(rule=>safetyReply.ruleId===`coach-conversation-v1:${rule}`);
       const localRecordQuestion=/^coach-conversation-v1:(?:saved-training-navigation|remember-confirmed-|remember-reported-|missing-reported-)/.test(safetyReply.ruleId);
       const reply = safetyHeld ? safetyReply
+        : medicalReview ? { answer: actor.language === "es" ? "Consulta los resultados con un profesional de salud antes de cambiar tu entrenamiento o tomar suplementos. Koach no interpreta análisis clínicos ni recomienda tratamientos o dosis." : "Review those results with a qualified clinician before changing training or taking supplements. Koach cannot interpret clinical tests or recommend treatments or doses.", ruleId: "coach-conversation-v1:clinical-results-boundary" }
         : garminReview ? { answer: actor.language === "es" ? "Revisa el último comprobante registrado para la sesión. Una publicación confirmada en Garmin no confirma la recepción en el reloj." : "Review the last recorded receipt for the workout. A verified Garmin publication does not confirm watch receipt.", ruleId:"coach-conversation-v1:garmin-delivery-status" }
         : recoveryReview ? { answer: actor.language === "es" ? "Revisemos la sesión realizada y cómo te recuperaste. Confirma el resultado y completa el check-in para reevaluar el próximo entrenamiento. Tu plan no ha cambiado." : "Let's review the completed session and how you recovered. Confirm the result and complete the check-in to reassess the next workout. Your plan hasn't changed.", ruleId:"coach-conversation-v1:post-workout-recovery" }
         : swimReport ? { answer: coachSwimReply(swimReport, actor.language === "es"), ruleId:"coach-conversation-v1:swim-reference-report" }

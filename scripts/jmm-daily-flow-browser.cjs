@@ -273,10 +273,9 @@ async function journey(browser, language, width) {
     await page.goto(`${base}/today`);
     const manualPath=page.getByRole('region',{name:language==='es'?'Tu semana y preparación':'Your week and readiness',exact:true});await manualPath.waitFor();
     assert.match(await manualPath.innerText(),language==='es'?/Sin mediciones válidas/:/No usable measurements for today/);
-    await manualPath.getByRole('button',{name:language==='es'?'Omitir por ahora':'Skip for now',exact:true}).click();
     await page.locator('#today-workout').getByText(language==='es'?'SESIÓN PREVISTA · SIN ADAPTAR':'PLANNED WORKOUT · NOT ADAPTED',{exact:true}).waitFor();
-    assert.equal(mutations.length,2,'Skipping readiness creates no answer, approval or workout write');
-    await assertMobile(page,'no-device-skipped',language,width,manualPath);
+    assert.equal(mutations.length,2,'Showing the default planned workout creates no answer, approval or workout write');
+    await assertMobile(page,'no-device-planned',language,width,manualPath);
     await manualPath.getByRole('link',{name:language==='es'?'Actualizar check-in':'Update check-in',exact:true}).click();
     await page.locator('#answer-sleep').waitFor();
     for(const key of ['sleep','soreness','energy','stress','motivation'])assert.equal(await page.locator(`#answer-${key}`).inputValue(),'');

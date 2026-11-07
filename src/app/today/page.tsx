@@ -173,7 +173,8 @@ function TodayPageContent() {
   const dayHeld = ["hold", "planned-rest", "event-day"].includes(data?.recovery?.mode) || ["hold", "urgent"].includes(data?.recovery?.safetyStatus);
   const reviewedDaily = data?.recovery?.safetyStatus === "clear" || !!data?.recovery?.reviewedSessionId;
   const needsActivityReview = session?.verdict === "blocked" && (data?.athleteReview?.rawRecordCount ?? 0) > 0;
-  const plannedView = !!session && !offline && !dayHeld && !session.completed && !session.feedbackStatus && (viewChoice && viewChoice.sessionId === session.id ? viewChoice.mode === "planned" : !reviewedDaily && !needsActivityReview && hasCurrentHealthReadings(data?.inputContext, data?.date));
+  const missingCheckin = data?.recovery?.mode === "checkin-needed";
+  const plannedView = !!session && !offline && !dayHeld && !session.completed && !session.feedbackStatus && (viewChoice && viewChoice.sessionId === session.id ? viewChoice.mode === "planned" : !reviewedDaily && !needsActivityReview && (missingCheckin || hasCurrentHealthReadings(data?.inputContext, data?.date)));
   const feedbackSession = reportActivityId ? data?.athleteReview?.records.find((record: any) => record.id === reportActivityId) : session;
   const linkedPreWeight = session?.preWorkoutWeight && (feedbackSession?.id === session.id || session.matchedPlanId === feedbackSession?.id) ? session.preWorkoutWeight.weightKg : null;
   const feedbackForForm = feedbackSession ? { ...feedbackSession, preWeightKg: feedbackSession.preWeightKg ?? linkedPreWeight } : null;
