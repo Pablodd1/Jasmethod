@@ -317,7 +317,7 @@ async function main() {
     assert.equal(await db.trainingPlan.count({ where: { userId: events.id } }), 1);
   });
   await scenario("A recent event protects its recovery window even when it predates the cycle", async () => {
-    await race(other, "Synthetic recent C marathon", addDaysKey(today, -4), 3, "marathon");
+    await race(other, "Synthetic recent A marathon", addDaysKey(today, -4), 1, "marathon");
     const draft = await preview(other);
     assert.ok(draft.preview.cycle.events.warnings.some((warning: Json) => warning.code === "recent_event"));
     const week=draft.preview.weeksPreview[0];

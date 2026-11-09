@@ -33,8 +33,8 @@ test("close and same-day events require an explicit conservative choice, with st
   assert.match(review.warnings[0].message, /Separate peaks are not assumed/);
   assert.equal(assessCycleEvents(normalizeCycleEvents({ events: [{ dateKey: "2026-11-15" }, { dateKey: "2027-01-15" }] }), "2026-10-12", 16).requiresChoice, false);
 });
-test("recent events apply recovery before cycle start, including long C races and short upcoming preparation", () => {
-  const events = normalizeCycleEvents({ events: [{ id: "recent", dateKey: "2026-10-04", priority: "C", distance: "marathon" }, { id: "next", dateKey: "2026-10-20", priority: "A" }] });
+test("recent A events apply recovery before cycle start, including long races and short upcoming preparation", () => {
+  const events = normalizeCycleEvents({ events: [{ id: "recent", dateKey: "2026-10-04", priority: "A", distance: "marathon" }, { id: "next", dateKey: "2026-10-20", priority: "A" }] });
   assert.equal(cycleEventPolicy(events[0]).recoveryDays, 14);
   const day = cycleEventDay(events, "2026-10-12");
   assert.equal(day.factor, .5); assert.equal(day.phase, "recovery");
@@ -43,9 +43,14 @@ test("recent events apply recovery before cycle start, including long C races an
   assert.ok(review.warnings.some(warning => warning.code === "short_preparation"));
   assert.equal(cycleEventDay(events, "2026-10-19").phase, "preparation");
 });
-test("priority changes preparation, never assumes C events are physiologically cheap", () => {
+test("B and C protect the event date without changing the surrounding workouts", () => {
   const make = (priority: "A" | "B" | "C") => normalizeCycleEvents({ events: [{ dateKey: "2026-11-15", priority }] });
   assert.equal(cycleEventDay(make("A"), "2026-11-05").phase, "preparation");
   assert.equal(cycleEventDay(make("B"), "2026-11-05").phase, "ordinary");
-  for (const priority of ["A", "B", "C"] as const) assert.equal(cycleEventDay(make(priority), "2026-11-21").factor, .5);
+  assert.equal(cycleEventDay(make("A"), "2026-11-21").factor, .5);
+  for (const priority of ["B", "C"] as const) {
+    assert.equal(cycleEventDay(make(priority), "2026-11-14").factor, 1);
+    assert.equal(cycleEventDay(make(priority), "2026-11-15").protected, true);
+    assert.equal(cycleEventDay(make(priority), "2026-11-21").factor, 1);
+  }
 });
