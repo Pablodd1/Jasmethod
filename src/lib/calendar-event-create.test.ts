@@ -5,10 +5,11 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as dates from './dates';
 import * as calendarWorkouts from './calendar-workouts';
+import * as prescription from './prescription';
 class ApiError extends Error { constructor(message:string,public status=400){super(message);} }
 const errorResponse=(e:unknown)=>Response.json({error:e instanceof ApiError?e.message:'Could not save changes. Please retry.'},{status:e instanceof ApiError?e.status:500});
 function calendar(create:(arg:any)=>Promise<any>,user:any={id:'owner',timezone:'America/New_York'}){
- const deps:Record<string,unknown>={'@/lib/calendar-workouts':calendarWorkouts,'@/lib/activity-reconciliation':{readActivityDecisions:async()=>[]},'@/lib/workout-update':{},'next/server':{NextResponse:Response},'@/lib/dates':dates,'@/lib/access':{ApiError,errorResponse},'@/lib/auth':{getCurrentUser:async()=>user},'@/lib/db':{prisma:{calendarEvent:{create}}}};
+ const deps:Record<string,unknown>={'@/lib/prescription':prescription,'@/lib/calendar-workouts':calendarWorkouts,'@/lib/activity-reconciliation':{readActivityDecisions:async()=>[]},'@/lib/workout-update':{},'next/server':{NextResponse:Response},'@/lib/dates':dates,'@/lib/access':{ApiError,errorResponse},'@/lib/auth':{getCurrentUser:async()=>user},'@/lib/db':{prisma:{calendarEvent:{create}}}};
  const compiled=ts.transpileModule(fs.readFileSync('src/app/api/calendar/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const mod:any={exports:{}};vm.runInNewContext(compiled,{module:mod,exports:mod.exports,require:(id:string)=>{if(id in deps)return deps[id];throw Error(id)},URL,Response,Request});return mod.exports.POST;
 }
