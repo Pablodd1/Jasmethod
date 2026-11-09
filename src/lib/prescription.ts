@@ -386,3 +386,13 @@ export function estimateIf(
     startTime: w.startTime || null,
   };
 }
+
+/** Display-only reference to the schedule before the daily prescription changed. */
+export function plannedWorkoutSummary(w: { planned?: boolean; title: string; durationMin?: number | null; originalPlan?: string | null }) {
+  if (!w.planned || typeof w.durationMin !== "number") return null;
+  const base = baseWorkout(w);
+  const title = typeof base?.title === "string" && base.title.trim() ? base.title : w.title;
+  const durationMin = typeof base?.durationMin === "number" && Number.isFinite(base.durationMin) && base.durationMin >= 0
+    ? base.durationMin : w.durationMin;
+  return { title, durationMin };
+}

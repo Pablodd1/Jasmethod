@@ -16,7 +16,7 @@ import {
 } from "@/lib/fueling";
 import { effectivePrescription } from "@/lib/effective-prescription";
 import { intervalsConnectorEnabled, trainingCapabilities } from "@/lib/capabilities";
-import { baseWorkout } from "@/lib/prescription";
+import { baseWorkout, plannedWorkoutSummary } from "@/lib/prescription";
 import { athleteDayReview } from "@/lib/athlete-day-review";
 import { readPlanningSetup } from "@/lib/planning-setup-store";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
@@ -113,9 +113,11 @@ export async function GET(req: Request) {
     const sessions = todaysWorkouts.flatMap<any>((w, index) => {
       const resolved = resolvedWorkouts[index];
       if (!resolved) return [];
+      const plannedWorkout = plannedWorkoutSummary(w);
       if ("resolutionError" in resolved) return [{
         id: w.id, feedbackRevision: workoutRevision(w), preWorkoutWeight: preWeightFor(w.id), title: w.title || "Session needs review", sport: w.sport, type: w.type,
         revision: null, verdict: "blocked", resolutionReason: resolved.resolutionError,
+        plannedWorkout, plannedDurationMin: plannedWorkout?.durationMin ?? w.durationMin,
         capability: { available: false, mode: "unavailable", reason: resolved.resolutionError, deviceTested: false },
         matchedPlanId: w.matchedPlanId,
         jStress: workoutJStress(w),
@@ -146,7 +148,8 @@ export async function GET(req: Request) {
         feedbackRevision: workoutRevision(w), preWorkoutWeight: preWeightFor(w.id),
         revision: canonical.revision,
         existingReview: resolved.existingReview,
-        plannedDurationMin: w.durationMin,
+        plannedWorkout,
+        plannedDurationMin: plannedWorkout?.durationMin ?? w.durationMin,
         environment: canonical.environment,
         intervalsPublication: w.deliveryProvider === "intervals" ? (() => {
           const receipt = readIntervalsReceipt(w.deliveryId);

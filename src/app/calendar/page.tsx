@@ -484,8 +484,9 @@ function TrainingCalendar() {
                   const review = entry.calendarState === "review";
                   const actual = entry.actualDurationMin ?? (entry.completed && entry.planned === false ? entry.durationMin : null);
                   const minutes = reported ? actual : entry.durationMin;
+                  const changed = entry.plannedWorkout && (entry.plannedWorkout.title !== entry.title || entry.plannedWorkout.durationMin !== entry.durationMin);
                   const label = !workout ? ("priority" in entry || entry.type === "race" ? (es ? "Carrera" : "Race") : (es ? "Evento" : "Event"))
-                    : review ? (es ? "Revisar fuentes" : "Review sources") : reported ? (es ? "Registrado" : "Logged") : entry.planned ? (es ? "Planificado" : "Planned") : (es ? "Sin confirmar" : "Unconfirmed");
+                    : review ? (es ? "Revisar fuentes" : "Review sources") : reported ? (es ? "Registrado" : "Logged") : changed ? (es ? "Ajustado" : "Adjusted") : entry.planned ? (es ? "Planificado" : "Planned") : (es ? "Sin confirmar" : "Unconfirmed");
                   return <span key={`${label}:${entry.id}`} className="flex flex-wrap items-baseline gap-x-2 text-sm">
                     <span className={`rounded px-1.5 text-xs font-medium ${SPORT_COLOR[entry.sport] || "bg-slate-100 text-slate-700"}`}>{label}</span>
                     <span className="min-w-0 break-words">{entry.name || entry.title}</span>
@@ -661,6 +662,8 @@ function TrainingCalendar() {
                 {allSessions.map((s: any) => {
                   const reported=s.calendarState==='reported'||s.completed||s.feedbackStatus!=null||s.actualDurationMin!=null;
                   const actualMinutes=s.actualDurationMin??(s.completed&&s.planned===false?s.durationMin:null);
+                  const original = s.plannedWorkout;
+                  const changedFromPlan = original && (original.title !== s.title || original.durationMin !== s.durationMin);
                   return (
                     <div
                       key={s.id}
@@ -696,6 +699,10 @@ function TrainingCalendar() {
 
                         </div>
                       </div>
+                      {changedFromPlan && <p className="mb-2 text-xs text-slate-600">
+                        {es ? "Plan original" : "Original plan"}: {original.title} · {fmtMin(original.durationMin, es ? "es" : "en")}
+                        {" · "}{es ? "Última versión guardada" : "Latest saved version"}: {fmtMin(s.durationMin, es ? "es" : "en")}
+                      </p>}
                       {reported?<div className="rounded-xl bg-slate-50 p-3 space-y-1.5 text-xs">
                         <p>{es?'Registro informado, no una prescripción. No se infieren calentamiento, intervalos ni zonas medidas.':'Reported record, not a prescription. Warm-up, intervals and measured zones are not inferred.'}</p>
                         <p>RPE {s.rpe??'—'}/10 · HR {s.avgHr??'—'} bpm · {es?'Potencia informada':'Reported power'} {s.avgPower??'—'} W</p>

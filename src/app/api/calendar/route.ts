@@ -6,6 +6,7 @@ import { errorResponse, ApiError } from "@/lib/access";
 import { getCurrentUser } from "@/lib/auth";
 import {calendarWorkoutView} from '@/lib/calendar-workouts';
 import {readActivityDecisions} from '@/lib/activity-reconciliation';
+import { plannedWorkoutSummary } from "@/lib/prescription";
 
 // GET /api/calendar?month=YYYY-MM — calendar events + workouts for the month.
 // month=auto spans the previous month, current month and next month so the
@@ -83,8 +84,8 @@ export async function GET(req: Request) {
   const visibleIds=new Set(view.workouts.map(w=>w.id));
   return NextResponse.json({
     events,
-    workouts: view.workouts.map(w => ({...w, revision: workoutRevision(w)})),
-    displayWorkouts:view.displayWorkouts,
+    workouts: view.workouts.map(w => ({...w, plannedWorkout: plannedWorkoutSummary(w), revision: workoutRevision(w)})),
+    displayWorkouts:view.displayWorkouts.map(w => ({...w, plannedWorkout: plannedWorkoutSummary(w)})),
     calendarReview:{hiddenUnperformed:view.hiddenUnperformed,possibleCopyGroups:view.possibleCopyGroups},
     // Calendar consumers group timestamps in the athlete timezone. Preserve
     // the entered day while adapting to that display contract (no DB write).
