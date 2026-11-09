@@ -57,6 +57,15 @@ export function coachingWeekTemplate(options: {
       // bonus. Its canonical recipe owns warm-up, two legs and transition time.
       add('brick','Brick · bike to run pacing','brick','Practice controlled bike pacing, T2 and comfortable running off the bike',40,150,longBikeWeight,2);
       add('swim','Swim · sustained aerobic sets','aerobic','Develop sustained swimming economy with familiar pauses',20,75,.12,4);
+      const baseCapacity = candidates.reduce((sum, session) => sum + session.cap, 0);
+      const remainingBudget = budget - baseCapacity;
+      if (!introductory && !recovery && remainingBudget >= 25) {
+        // Add a complete low-stress unit only when the reviewed phase budget
+        // exceeds the base template. The scheduler can omit it if no slot fits.
+        add('bike', 'Bike · easy cadence practice', 'aerobic',
+          'Practice smooth cadence and repeatable bike handling at a comfortable effort',
+          25, Math.min(30, remainingBudget), .05, 6);
+      }
     } else if (options.sport === 'hyrox') {
       add('run','HYROX · easy running durability','aerobic','Build comfortable running independent of station fatigue',20,75,.24,1);
       add('hyrox','HYROX · station technique','hyrox-technique','Practice controlled station movement patterns; division loads remain unverified until supplied',20,60,.18,1);
