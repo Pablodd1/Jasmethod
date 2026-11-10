@@ -194,9 +194,9 @@ test("event edits invalidate preview and transactional event changes cannot comm
     assert.equal(response.status,409);assert.equal(state.created.length,0);
   }
 });
-test("all event days protected, recent race retained, close event tradeoff needs athlete agreement",async()=>{
+test("all event days protected, recent A race retained, close event tradeoff needs athlete agreement",async()=>{
   const {state,run,today}=fixture("America/New_York");
-  state.races=[[-2,3],[35,1],[39,2],[65,3]].map(([offset,priority],i)=>({id:`event-${i}`,name:`Event ${i}`,priority,date:new Date(`${dates.addDaysKey(today,offset)}T00:00:00Z`)}));
+  state.races=[[-2,1],[35,1],[39,2],[65,3]].map(([offset,priority],i)=>({id:`event-${i}`,name:`Event ${i}`,priority,date:new Date(`${dates.addDaysKey(today,offset)}T00:00:00Z`)}));
   const response=await run();assert.equal(response.status,200);const draft=await response.json();
   assert.equal(draft.preview.cycle.events.events.length,4);
   assert.equal(draft.eventTradeoffAgreementRequired,true);
@@ -208,6 +208,18 @@ test("all event days protected, recent race retained, close event tradeoff needs
   assert.equal(state.created.length,0);
   assert.equal((await run({preview:false,previewToken:draft.previewToken,confirmEventTradeoffs:true})).status,200);
   for(const day of state.created[0].days.create.filter((day:any)=>day.focus==="event")) { assert.equal(day.dayOff,false);assert.equal(day.sessions.create.length,0);assert.match(day.notes,/Participation and recovery are not assumed/); }
+});
+
+test("recent B and C races do not impose an automatic recovery window on the route preview",async()=>{
+  for(const priority of [2,3]) {
+    const {state,run,today}=fixture("America/New_York");
+    state.races=[{id:"recent-secondary",name:"Recent secondary race",priority,date:new Date(`${dates.addDaysKey(today,-2)}T00:00:00Z`)}];
+    const response=await run();assert.equal(response.status,200);const draft=await response.json();
+    assert.equal(draft.preview.cycle.events.events.length,0);
+    assert.ok(!draft.preview.cycle.events.warnings.some((warning:any)=>warning.code==="recent_event"));
+    assert.equal(draft.eventTradeoffAgreementRequired,false);
+    assert.equal(state.created.length,0);
+  }
 });
 
 test("distinct profile, saved and explicit event dates all remain protected",async()=>{

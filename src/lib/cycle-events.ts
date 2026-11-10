@@ -62,13 +62,14 @@ export function normalizeCycleEvents(options: { events?: readonly CycleEventInpu
   return [...byId.values()].sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.priority.localeCompare(b.priority) || a.id.localeCompare(b.id));
 }
 
-export const CYCLE_EVENT_POLICY_NOTE = "Conservative scheduling heuristics, not individualized taper or recovery prescriptions. A/B/C expresses importance, not physiological cost. All event dates are protected; preparation and recovery only reduce existing training. No peak or event result is promised. Actual effort, symptoms and recovery can require more rest and qualified review.";
-/** Duration/cost is often unknown; a C label never implies a low-cost race. */
+export const CYCLE_EVENT_POLICY_NOTE = "Conservative scheduling heuristics, not individualized taper or recovery prescriptions. A/B/C expresses importance, not physiological cost. All event dates are protected. A races shape the cycle; B/C dates alone do not reduce surrounding training. Actual effort, symptoms and recovery can require more rest and qualified review.";
+/** Only the A event shapes the cycle; B/C recovery depends on actual evidence. */
 export function cycleEventPolicy(event: CycleEvent) {
+  if (event.priority !== "A") return { preparationDays: 0, recoveryDays: 0 };
   const long = ["full", "marathon", "ironman", "ultra"].includes(event.distance?.toLowerCase() ?? "");
   const middle = ["half", "half-marathon", "70.3"].includes(event.distance?.toLowerCase() ?? "");
   return {
-    preparationDays: event.priority === "A" ? 14 : event.priority === "B" ? 7 : 3,
+    preparationDays: 14,
     recoveryDays: long ? 14 : middle ? 10 : 7,
   };
 }
@@ -108,7 +109,7 @@ export function cycleEventDay(events: readonly CycleEvent[], key: string) {
     if (gap < 0 && -gap <= policy.recoveryDays) {
       factor = Math.min(factor, .5); if (phase !== "event") phase = "recovery"; eventIds.push(event.id);
     } else if (gap > 0 && gap <= policy.preparationDays) {
-      factor = Math.min(factor, event.priority === "A" ? (gap <= 7 ? .5 : .65) : event.priority === "B" ? .65 : .75);
+      factor = Math.min(factor, gap <= 7 ? .5 : .65);
       if (phase === "ordinary") phase = "preparation";
       eventIds.push(event.id);
     }

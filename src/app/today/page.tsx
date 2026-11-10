@@ -278,6 +278,10 @@ function TodayPageContent() {
         </section>}
         {data && (!eventToday || session) && <DailyReadinessPath es={es} date={data.date} cycle={data.cycle} week={data.weekReview} context={data.inputContext} mode={data.recovery?.mode} safetyStatus={data.recovery?.safetyStatus} reviewedSessionId={data.recovery?.reviewedSessionId} hasSession={!!session} offline={offline} skipped={plannedView} onSkip={() => { if(session)setViewChoice({sessionId:session.id,mode:"planned"}); requestAnimationFrame(() => document.getElementById("today-workout")?.scrollIntoView({block:"start",behavior:"smooth"})); }} />}
         {session && <section id="today-workout" className="space-y-3 scroll-mt-4">
+          {session.plannedWorkout && !plannedView && session.verdict === "ready" && (session.plannedWorkout.title !== session.title || session.plannedWorkout.durationMin !== session.durationMin) && <p className="text-sm text-slate-600">
+            {es ? "Plan original" : "Original plan"}: {session.plannedWorkout.title} · {session.plannedWorkout.durationMin} min
+            {" · "}{es ? "Sesión revisada" : "Reviewed workout"}: {session.durationMin} min
+          </p>}
           {plannedView ? <>
             <SavedWorkoutPreviewCard sessionId={session.id} es={es} compact plannedSession={{title:session.title,sport:session.sport,durationMin:session.plannedDurationMin ?? session.durationMin}} />
             <button type="button" className="text-sm underline min-h-11" onClick={() => setViewChoice({sessionId:session.id,mode:"review"})}>{es ? "Volver a la revisión diaria" : "Return to daily review"}</button>

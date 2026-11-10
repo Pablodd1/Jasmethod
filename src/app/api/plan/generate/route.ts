@@ -225,7 +225,7 @@ export async function POST(req: Request) {
     // Preserve actual day placement, reducing rather than making up omitted work.
     const startWeekday = new Date(dateKey(start,user.timezone)+"T12:00Z").getUTCDay();
     const pairSlots=doubleDayWeekdays(setup.doubleDay).map(day=>(day-startWeekday+7)%7);
-    const raceDays=events.map(event=>event.dateKey);
+    const raceDays=events.filter(event=>event.priority==="A").map(event=>event.dateKey);
     const excludedDoubleWeeks=rawGenerated.flatMap((_,i)=>{
       return pairSlots.some(slot=>raceDays.some(d=>{const candidateDay=Date.parse(addDaysKey(dateKey(start,user.timezone),i*7+slot));return Date.parse(d)-candidateDay>=0&&Date.parse(d)-candidateDay<=14*86400000;}))?[i]:[];
     });

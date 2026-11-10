@@ -26,13 +26,13 @@ test("unknown history does not pretend difficult execution or add a second recov
 test("an event reduces only dates within its existing window, not the entire adjacent week",()=>{
   const week={week:1,theme:'Reviewed practice',templateVersion:'coaching-structure-v1',periodizationFactor:1,sessions:Array.from({length:7},(_,daySlot)=>({sport:'bike' as const,title:'Easy bike',minutes:40,zone:'z2' as const,type:'endurance',description:'Familiar easy bike',daySlot})),totalMinutes:280,restDaySlots:[],doubleDayNote:''};
   const plain=shapeTrainingCycle([week],{...options,templatePeriodized:true,needsAssessment:false});
-  const shaped=shapeTrainingCycle([week],{...options,templatePeriodized:true,needsAssessment:false,events:[{id:'race-next-week',dateKey:'2026-10-21',priority:'C',distance:'5k'}]});
+  const shaped=shapeTrainingCycle([week],{...options,templatePeriodized:true,needsAssessment:false,events:[{id:'race-next-month',dateKey:'2026-11-01',priority:'A',distance:'5k'}]});
   for(const session of shaped[0].sessions){
     const before=plain[0].sessions.find(row=>row.daySlot===session.daySlot)!;
-    assert.equal(session.minutes,session.daySlot===6?30:before.minutes);
+    assert.equal(session.minutes,session.daySlot===6?26:before.minutes);
     assert.equal(session.planningAdjustment.eventPhase,session.daySlot===6?'preparation':'ordinary');
   }
-  assert.equal(shaped[0].totalMinutes,270);
+  assert.equal(shaped[0].totalMinutes,266);
   assert.equal(shaped[0].volumeDecision.application,'session_day');
   assert.equal(shaped[0].volumeDecision.dayFactors.filter(day=>day.factor<1).length,1);
 });
@@ -117,7 +117,7 @@ test("strength and station mechanical demand is not hidden by a z1 label",()=>{
 
 test("all A/B/C event days are protected and recent-event recovery is reduction-only", () => {
   const events = [
-    { id: "recent", dateKey: "2026-10-04", priority: "C" as const, distance: "marathon" },
+    { id: "recent", dateKey: "2026-10-04", priority: "A" as const, distance: "marathon" },
     { id: "a", dateKey: "2026-11-16", priority: "A" as const },
     { id: "b", dateKey: "2026-11-20", priority: "B" as const },
     { id: "c", dateKey: "2026-11-23", priority: "C" as const },
@@ -185,8 +185,9 @@ test("event days defer affected optional pairs while ordinary days retain their 
   assert.deepEqual(cycle[0].restDaySlots, pairWeek.restDaySlots);
   assert.equal(cycle[0].doubleDayNote, "Optional pair");
   const affected=shapeTrainingCycle([{...pairWeek,sessions:pairWeek.sessions.map(row=>({...row,daySlot:1}))}],{...options,events:[{dateKey:"2026-10-16",priority:"C"}]});
-  assert.equal(affected[0].sessions.length,1);assert.equal(affected[0].sessions[0].doubleDayRole,undefined);
-  assert.match(affected[0].doubleDayNote,/omitted/);
+  assert.equal(affected[0].sessions.length,2);assert.equal(affected[0].sessions[0].doubleDayRole,"primary");
+  const eventDay=shapeTrainingCycle([{...pairWeek,sessions:pairWeek.sessions.map(row=>({...row,daySlot:4}))}],{...options,events:[{dateKey:"2026-10-16",priority:"C"}]});
+  assert.equal(eventDay[0].sessions.length,0);
   assert.equal(shapeTrainingCycle(bounded, { ...options, recoveryReview: true })[0].observations.length, 0);
 });
 
