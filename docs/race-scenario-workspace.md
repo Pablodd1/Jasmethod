@@ -17,7 +17,7 @@ Implementation candidate, 8 October 2026. This is an experimental execution-plan
 
 Select a saved custom triathlon to prefill its reported swim, bike and run distances. Add optional race-day notes inside the scenario: rehearsal and taper evidence, cues for holding or changing effort, and logistics or practiced fueling. To schedule morning tasks, explicitly confirm that the entered event start is your wave. The venue time zone and entered minute offsets determine the displayed local times; no default schedule or supplement dose is generated. Changes to the event time or venue clear the wave confirmation and offsets.
 
-Preview and save a new scenario version. The card distinguishes selected effort and modeled splits from user-entered notes. Ask Koach “Show my race plan” (or “Muéstrame mi plan de carrera”) to open an owner-session review. The athlete chooses the saved version when there is more than one. The plan is rendered separately from chat and is not passed to an external AI. Delegated requests cannot read or save the private race-day notes.
+Preview and save a new scenario version. If you enter race-day notes before you have a course, missing course inputs still withhold the affected split. The card distinguishes selected effort and modeled splits from user-entered notes. Ask Koach “Show my race plan” (or “Muéstrame mi plan de carrera”) to open an owner-session review. The athlete chooses the saved version when there is more than one. The plan is rendered separately from chat and is not passed to an external AI. Delegated requests cannot read or save the private race-day notes.
 
 ## Architecture and safety
 

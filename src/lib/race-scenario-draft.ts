@@ -69,7 +69,8 @@ export function buildInput(draft: Draft, anchors: RaceScenarioAnchor[]): RaceSce
     };
     let distanceM = Number(leg.distanceKm) * 1000;
     let segments: ScenarioLeg["segments"] = [];
-    if (leg.sport !== "swim") {
+    // A checklist can be saved while a route is pending; the model withholds that leg.
+    if (leg.sport !== "swim" && (leg.courseMode !== "unknown" || !draft.racePlan)) {
       if (leg.courseMode === "unknown") throw Error(`${leg.sport}: choose a course profile or explicitly select a flat-course assumption.`);
       const headwindMps = Number(leg.headwindMps), speedCapMps = numberOrNull(leg.speedCapMps);
       if (!Number.isFinite(headwindMps)) throw Error("Correct the along-course wind in the displayed speed units.");
