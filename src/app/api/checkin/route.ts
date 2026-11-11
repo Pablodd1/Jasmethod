@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { trainingAccess, errorResponse, ApiError } from "@/lib/access";
-import { dayBounds, busyHours, addDaysKey, localDate } from "@/lib/dates";
+import { dayBounds, busyHours, addDaysKey, localDate, dateKey } from "@/lib/dates";
 import {
   adaptSession,
   prescribeToday,
@@ -24,7 +24,7 @@ import { checkinPrescriptionInputError } from "@/lib/checkin-prescription-input"
 import { applyExecutionFeedback, evaluateExecution } from "@/lib/execution-feedback";
 import { readPlanningSetup } from "@/lib/planning-setup-store";
 import { assessPlanningSetup } from "@/lib/planning-setup";
-import { baseWorkout } from "@/lib/prescription";
+import { baseWorkout, plannedWorkoutSummary } from "@/lib/prescription";
 import { hrvReadiness } from "@/lib/science";
 import { stimPlan } from "@/lib/stimulation";
 import { cycleAdvice, youthPolicy, proteinPerKg } from "@/lib/cycle";
@@ -155,13 +155,35 @@ export async function GET(req: Request) {
       return {
         id: group.primary.id,
         title: group.primary.title,
-        plannedMinutes: planned?.durationMin ?? null,
+        plannedMinutes: planned ? plannedWorkoutSummary(planned)?.durationMin ?? null : null,
         actualMinutes: group.budgetMinutes,
         effort: group.primary.rpe,
       };
     }) : null;
+    const pendingResolved = currentResolved.find(session => session?.workout.planned &&
+      !session.workout.completed && !session.workout.feedbackStatus);
+    const nextWorkout = pendingResolved?.workout ?? await prisma.workout.findFirst({
+      where: {
+        AND: [currentWorkoutWhere(user.id, activePlan?.id ?? null), {
+          date: { gte: start, lt: localDate(addDaysKey(key, 8), user.timezone) },
+          planned: true, completed: false, feedbackStatus: null,
+        }],
+      },
+      orderBy: [{ date: "asc" }, { startTime: "asc" }, { id: "asc" }],
+    });
+    const nextSummary = nextWorkout ? plannedWorkoutSummary(nextWorkout) : null;
+    const nextTrainingReview = nextWorkout && trainingViewDisclosureAllowed(actor.id, user.id, [nextWorkout], inputContext) ? {
+      id: nextWorkout.id,
+      title: nextSummary?.title ?? nextWorkout.title,
+      date: dateKey(nextWorkout.date, user.timezone),
+      plannedMinutes: nextSummary?.durationMin ?? null,
+      effectiveMinutes: pendingResolved?.canonical.verdict === "ready" ? pendingResolved.canonical.durationMin : null,
+      status: pendingResolved?.canonical.verdict ?? "pending",
+      reason: pendingResolved?.canonical.reason ?? null,
+    } : null;
     return NextResponse.json({
       completedReview,
+      nextTrainingReview,
       inputContext,
       deviceReview,
       prescriptions,

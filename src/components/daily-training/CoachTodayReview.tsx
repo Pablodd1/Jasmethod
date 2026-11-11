@@ -2,6 +2,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { NextTrainingReview } from "./NextTrainingReview";
 import { readTrainingJson } from "./training-read";
 const Workout = dynamic(() => import("./UniversalWorkoutCard").then(module => module.UniversalWorkoutCardLoader));
 type Day = { date: string; eventToday?: { name: string | null } | null; sessions: { id: string; title: string; sport: string }[] };
@@ -14,7 +15,7 @@ function isDay(value: unknown): value is Day {
 }
 
 type CompletedSession = { id: string; title: string; plannedMinutes: number | null; actualMinutes: number | null; effort: number | null };
-type RecoveryReview = { feedbackDate: string; completedReview: CompletedSession[] | null };
+type RecoveryReview = { feedbackDate: string; completedReview: CompletedSession[] | null; nextTrainingReview?: unknown };
 
 function isRecoveryReview(value: unknown): value is RecoveryReview {
   if (!value || typeof value !== "object") return false;
@@ -59,6 +60,7 @@ export function CoachRecoveryReview({ es }: { es: boolean }) {
           </li>)}
         </ul> : <p className="text-sm">{es ? "No hay resultados para esa fecha." : "No results recorded for that date."}</p>}
     </>}
+    <NextTrainingReview review={review?.nextTrainingReview} es={es} />
     <div className="flex flex-wrap gap-2">
       <Link href="/checkin#previous-session-heading" className="btn-secondary min-h-11">{es ? "Revisar actividad reciente" : "Review recent activity"}</Link>
       <Link href="/checkin#daily-questions" className="btn-primary min-h-11">{es ? "Actualizar check-in" : "Update check-in"}</Link>

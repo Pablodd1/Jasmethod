@@ -8,6 +8,7 @@ import { t, type Lang } from "@/lib/i18n";
 import { parseCheckinTranscript, VOICE_LANGUAGES, type VoiceCheckinAnswers } from "@/lib/voice-parse";
 import { CognitiveCheck } from "@/components/cognitive-check";
 import { Activity } from "lucide-react";
+import { NextTrainingReview } from "@/components/daily-training/NextTrainingReview";
 import { ActualFuelingFields } from "@/components/daily-training/ActualFuelingFields";
 import { actualFuelingFromForm } from "@/lib/actual-fueling";
 import { checkinAdaptationView } from "@/components/daily-training/checkin-result-view";
@@ -90,6 +91,7 @@ function CheckinPageContent() {
   const [manualReview, setManualReview] = useState(false);
   const [deviceConfirmed, setDeviceConfirmed] = useState(false);
   const [correctImported, setCorrectImported] = useState(false);
+  const [nextTrainingReview, setNextTrainingReview] = useState<unknown>(null);
   const [previousSessions, setPreviousSessions] = useState<any[]>([]);
   const [feedbackDate, setFeedbackDate] = useState("");
   const [localToday, setLocalToday] = useState("");
@@ -186,6 +188,7 @@ function CheckinPageContent() {
     if (d.checkin?.adaptation) {setResult({ adaptation: JSON.parse(d.checkin.adaptation), prescriptions:d.prescriptions??[],prescription:d.prescriptions?.[0]??null });setSelectedSessionId(current=>d.prescriptions?.some((p:any)=>p.sessionId===current)?current:d.prescriptions?.[0]?.sessionId??"");}
     if (d.recovery || d.fuelBrands || d.sources) setResult((r: any) => ({ ...(r || {}), recovery: d.recovery, fuelBrands: d.fuelBrands, sources: d.sources }));
     setReadiness(d.readiness || null);
+    setNextTrainingReview(d.nextTrainingReview ?? null);
     setPreviousSessions(d.previousSessions || []); setFeedbackDate(d.feedbackDate || ""); setLocalToday(d.localToday || "");
     // Device modules — same list the connectors page uses
     if (cres.ok) {
@@ -264,14 +267,17 @@ function CheckinPageContent() {
 
   async function loadFeedbackDate(date: string) {
     const request = ++feedbackRequest.current;
-    setFeedbackDate(date); setFeedbackMessage(""); setPreviousSessions([]);
-    if (!date) { setPreviousSessions([]); return; }
+    setFeedbackDate(date); setFeedbackMessage(""); setPreviousSessions([]); setNextTrainingReview(null);
+    if (!date) return;
     try {
       const res = await fetch(`/api/checkin?feedbackDate=${encodeURIComponent(date)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load sessions");
-      if (request === feedbackRequest.current) setPreviousSessions(data.previousSessions || []);
-    } catch (e: any) { setErr(e.message); }
+      if (request === feedbackRequest.current) {
+        setPreviousSessions(data.previousSessions || []);
+        setNextTrainingReview(data.nextTrainingReview ?? null);
+      }
+    } catch (e: any) { if (request === feedbackRequest.current) setErr(e.message); }
   }
   async function saveSessionFeedback(event: React.FormEvent<HTMLFormElement>, sessionId: string) {
     event.preventDefault(); setFeedbackBusy(sessionId); setErr(""); setFeedbackMessage("");
@@ -321,6 +327,7 @@ function CheckinPageContent() {
       // An unanswered question is explained in the result card and its input receives focus.
       const view = checkinAdaptationView(d.adaptation, lang === "es");
       if (view.kind === "incomplete" && view.focusInputId) focusAnswer(view.focusInputId);
+      if (feedbackDate || localToday) await loadFeedbackDate(feedbackDate || localToday);
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
@@ -766,6 +773,7 @@ function CheckinPageContent() {
         <section className="card space-y-3" aria-labelledby="previous-session-heading">
           <h2 id="previous-session-heading" className="font-display font-bold text-lg">{lang === "es" ? "Actividad reciente: solo lo que falta" : "Recent activity: only what's missing"}</h2>
           <p className="text-xs text-slate-600">{lang === "es" ? "Las duraciones conocidas ya están disponibles. Añade esfuerzo o corrige el resultado si hace falta. La fecha de la sesión y la del registro son distintas." : "Known durations are already available. Add effort or correct the outcome only when needed. Session date and entry time remain separate."}</p>
+          <NextTrainingReview review={nextTrainingReview} es={lang === "es"} />
           <label className="block text-sm">{lang === "es" ? "Fecha local observada" : "Local observation date"}<input className="input" type="date" max={localToday || undefined} value={feedbackDate} onChange={(e) => void loadFeedbackDate(e.target.value)} /></label>
           {previousSessions.length === 0 && <p className="text-sm text-slate-600">{lang === "es" ? "No hay sesiones registradas para esta fecha. No se supone que descansaste ni que tu carga fue cero." : "No sessions are recorded for this date. This does not mean you rested or had zero activity."}</p>}
           {previousSessions.map((session: any) => (
