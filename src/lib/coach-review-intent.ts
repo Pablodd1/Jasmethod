@@ -22,3 +22,12 @@ export function coachReviewArea(message: string): "profile" | "plan" | "race" | 
   if (/\b(?:my workout|my session|this workout|this session|mi entrenamiento|mi sesion|esta sesion)\b/.test(text)) return "session";
   return null;
 }
+
+/** A private read, not a request to create or change a workout. */
+export function opensRacePlan(message: string): boolean {
+  const text = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(?:do not|don.t|no quiero|no abras|no revises)\b/.test(text)) return false;
+  if (/\b(?:my race (?:day )?(?:plan|strategy|prediction)|my race.day plan|mi plan de carrera|mi estrategia de carrera)\b/.test(text)) return true;
+  return /\b(?:show|open|review|pull up|muestra|muestrame|abre|revisa)\b.*\b(?:race.day plan|race (?:plan|strategy)|plan de carrera|estrategia de carrera)\b/.test(text)
+    || /\b(?:how should i (?:pace|race)|como (?:debo|puedo) (?:correr|dosificar))\b.*\b(?:my|next race|mi|carrera)\b/.test(text);
+}

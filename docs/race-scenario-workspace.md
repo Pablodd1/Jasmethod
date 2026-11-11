@@ -13,6 +13,12 @@ Implementation candidate, 8 October 2026. This is an experimental execution-plan
 7. Review a separately dated, tolerated carbohydrate practice rate. Multiplication by modeled feeding-window duration creates logistics totals, not carbohydrate oxidation or calorie requirements. Swim and transitions are excluded from modeled feeding windows. No grams are derived from mechanical kJ.
 8. Save an immutable scenario snapshot. Reload it for a new edit or compare saved snapshots. Changing inputs immediately invalidates current preview/save. Changes to reference evidence or model version label old snapshots stale. The tool does not change athlete capacity, training plans, safety check-ins or device prescriptions.
 
+## Race-day plan card
+
+Select a saved custom triathlon to prefill its reported swim, bike and run distances. Add optional race-day notes inside the scenario: rehearsal and taper evidence, cues for holding or changing effort, and logistics or practiced fueling. To schedule morning tasks, explicitly confirm that the entered event start is your wave. The venue time zone and entered minute offsets determine the displayed local times; no default schedule or supplement dose is generated. Changes to the event time or venue clear the wave confirmation and offsets.
+
+Preview and save a new scenario version. The card distinguishes selected effort and modeled splits from user-entered notes. Ask Koach “Show my race plan” (or “Muéstrame mi plan de carrera”) to open an owner-session review. The athlete chooses the saved version when there is more than one. The plan is rendered separately from chat and is not passed to an external AI. Delegated requests cannot read or save the private race-day notes.
+
 ## Architecture and safety
 
 - `race-scenario.ts`: strict reconstructing parser and deterministic model; versioned inputs and results.

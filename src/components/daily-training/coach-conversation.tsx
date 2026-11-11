@@ -1,6 +1,7 @@
 "use client";
 import {isProtectedProfileAnswer,type ProtectedProfileAnswer} from "@/lib/coach-profile-reference";
 import { CoachRecoveryReview, CoachTodayReview } from "./CoachTodayReview";
+import { CoachRacePlan } from "./CoachRacePlan";
 import { CoachGarminDeliveryStatus } from "./CoachGarminDeliveryStatus";
 import { coachReviewArea, opensTodayWorkout } from "./coach-chat-intent";
 import { CoachAiConsent } from "./CoachAiConsent";
@@ -347,7 +348,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
       const reviewToday = (payload.dialogueAction === "review_today" || opensTodayWorkout(outgoing.message)) && latestReply?.safetyReviewRequired !== true;
       setShowTodayReview(reviewToday);
       if (reviewToday) setReviewVersion(value => value + 1);
-      const reviewArea = !reviewToday && latestReply?.safetyReviewRequired !== true ? coachReviewArea(outgoing.message) : null;
+      const reviewArea = !reviewToday && !latestReply?.localReview && latestReply?.safetyReviewRequired !== true ? coachReviewArea(outgoing.message) : null;
       if (reviewArea && (!payload.dialogueAction || payload.dialogueAction === "none")) {
         if (reviewArea === "history") setSessionId("");
         setChatOptions(false);
@@ -507,6 +508,7 @@ export function CoachConversation({ fullPage = false, es, athleteId, offline = f
 
 
     {(localReview || showTodayReview) && <div ref={todayReviewAnchor} tabIndex={-1} className={focus}>
+      {localReview === "race_plan" && !offline && <CoachRacePlan key={`${athleteId}:${latestMessageId}`} es={es} imperial={displayUnits==="imperial"} />}
       {localReview === "recovery" && <CoachRecoveryReview es={es} />}
       {localReview === "garmin" && !offline && <CoachGarminDeliveryStatus key={`${athleteId}:${latestMessageId}`} sessions={allSessions} initialSessionId={sessionId || undefined} es={es} />}
       {!localReview && showTodayReview && <CoachTodayReview key={`${athleteId}:${reviewVersion}`} es={es} selectedId={sessionId} onSelect={setSessionId} onSaved={async () => { await onConfirmed(); await load(); }} onClose={() => setShowTodayReview(false)} />}
