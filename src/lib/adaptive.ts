@@ -1076,8 +1076,11 @@ export function prescribeToday(opts: {
         : Number(intensity.slice(1)) <= 2
           ? "endurance"
           : session.type;
-  const coached = session.coaching && !rest && durationMin > 0
-    ? buildCoachingPrescription(session.sport, durationMin, intensity, session.coaching, adaptation.verdict === "easy")
+  const coaching = session.coaching ?? (session.sport === "brick" && session.cycleVersion === "bounded-cycle-v1"
+    ? { recipe: "brick" as const, phase: "foundation" as const, purpose: "Practice the bike-to-run transition at a comfortable effort.", demanding: false, minimumMinutes: 15 }
+    : undefined);
+  const coached = coaching && !rest && durationMin > 0
+    ? buildCoachingPrescription(session.sport, durationMin, intensity, coaching, !session.coaching || adaptation.verdict === "easy")
     : undefined;
   if (coached?.paused) { rest = true; durationMin = 0; }
   const steps = coached ? coached.steps : session.cycleVersion === "bounded-cycle-v1" && ["strength", "hyrox", "mobility"].includes(session.sport)
@@ -1122,7 +1125,7 @@ export function prescribeToday(opts: {
   }
   return {
     ...(coached?.sportStructure ? { sportStructure: coached.sportStructure } : {}),
-    ...(session.coaching ? { coaching: session.coaching } : {}),
+    ...(coaching ? { coaching } : {}),
     title: rest ? "Rest and recover" : session.title,
     sport: session.sport,
     durationMin,
