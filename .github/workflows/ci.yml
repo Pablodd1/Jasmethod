@@ -141,7 +141,7 @@ jobs:
         run: node scripts/jmm-public-smoke.mjs
 
       - name: Install Chromium for synthetic UI acceptance
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Public policy discovery, bilingual pages and mobile acceptance
         run: node scripts/jmm-public-policies-browser.cjs
