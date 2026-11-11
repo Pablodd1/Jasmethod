@@ -6,7 +6,15 @@ import {readRaceScenarioState,RACE_SCENARIO_ACTION} from '@/lib/race-scenario-st
 import {prepareRaceScenario} from '@/lib/race-scenario-request';
 import {readScenarioJson,scenarioError,SCENARIO_HEADERS} from '@/lib/race-scenario-http';
 export const dynamic='force-dynamic';
-export async function GET(req:Request){try{const {athlete}=await trainingAccess(req);return Response.json(await readRaceScenarioState(athlete.id),{headers:SCENARIO_HEADERS});}catch(e){return scenarioError(e);}}
+export async function GET(req:Request){try{const {actor,athlete}=await trainingAccess(req);
+ const state=await readRaceScenarioState(athlete.id);
+ if(actor.id===athlete.id)return Response.json(state,{headers:SCENARIO_HEADERS});
+ const snapshots=state.snapshots.map(snapshot=>{
+  if(!snapshot.metadata)return snapshot;
+  const {racePlan:_ownerOnly,...metadata}=snapshot.metadata;
+  return {...snapshot,metadata};
+ });
+ return Response.json({...state,snapshots},{headers:SCENARIO_HEADERS});}catch(e){return scenarioError(e);}}
 export async function POST(req:Request){try{
  const {actor,athlete}=await trainingAccess(req);
  if(!appMutationOriginAllowed(req))throw new ApiError('Save scenarios from this application only',403);
@@ -17,6 +25,7 @@ export async function POST(req:Request){try{
   const state=await readRaceScenarioState(athlete.id,tx);
   if(typeof body.expectedRevision!=='string'||body.expectedRevision!==state.revision)throw new ApiError('Race details, references or saved scenarios changed. Reload and review before saving.',409);
   const prepared=prepareRaceScenario(body,state);
+  if(prepared.metadata.racePlan&&actor.id!==athlete.id)throw new ApiError('Only the athlete can save private race-day notes',403);
   const row=await tx.auditLog.create({data:{actorId:actor.id,subjectId:athlete.id,action:RACE_SCENARIO_ACTION,after:JSON.stringify({version:'race-scenario-snapshot-v1',modelVersion:prepared.result.modelVersion,evidenceRevision:state.evidenceRevision,...prepared}),note:'Explicit execution scenario only. No profile, training plan or validated forecast changed.'}});
   return {id:row.id,createdAt:row.createdAt.toISOString(),...prepared};
  },{isolationLevel:'Serializable'});

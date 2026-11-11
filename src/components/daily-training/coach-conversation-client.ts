@@ -1,6 +1,6 @@
 /** Browser-only interaction helpers. No athlete facts are inferred here. */
 import { fmtHeight, fmtWeight, heightFromFeetInches, heightToFeetInches, weightFromDisplay, weightToDisplay, type UnitSystem } from "@/lib/units";
-export type CoachMessage = { id: string; role: string; content: string; createdAt: string; source: string; clientRequestId?: string;needsHumanReview?:boolean;safetyReviewRequired?:boolean;localContextSummary?:string;localReview?: "recovery" | "garmin" };
+export type CoachMessage = { id: string; role: string; content: string; createdAt: string; source: string; clientRequestId?: string;needsHumanReview?:boolean;safetyReviewRequired?:boolean;localContextSummary?:string;localReview?: "recovery" | "garmin" | "race_plan" };
 export type CoachCandidate = {
   id: string;
   kind: "profile" | "workout_feedback" | "workout_plan" | "checkin";

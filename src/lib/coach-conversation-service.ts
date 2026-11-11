@@ -22,7 +22,7 @@ import { extractImageCandidates } from "./coach-image";
 import { coachTextAnswer, coachTextConfigured } from "./coach-text-provider";
 import { coachVisionConfiguration, createCoachVisionProvider } from "./coach-vision-provider";
 import { coachAutoSessionDay, coachNamedSessionSport, coachPlanChangeWarnings } from './coach-intent';
-import { coachReviewArea, opensTodayWorkout } from "./coach-review-intent";
+import { coachReviewArea, opensTodayWorkout, opensRacePlan } from "./coach-review-intent";
 import { isPostWorkoutRecoveryReport } from "./coach-recovery-intent";
 import { asksGarminDeliveryStatus } from "./coach-delivery-status";
 import { applyCoachSwimReport, coachSwimReply, COACH_SWIM_PACE_UNIT, parseCoachSwimReport } from "./coach-swim-report";
@@ -116,7 +116,7 @@ export async function readConversationBody(req: Request, maxBytes = 8 * 1024 * 1
 
 function publicMessage({metadata,...message}:{id:string;role:string;content:string;source:string;createdAt:Date;metadata:string|null}, language: unknown) {
   let clientRequestId:string|undefined,needsHumanReview=false,safetyReviewRequired=false;
-  let localReview: "recovery" | "garmin" | undefined;
+  let localReview: "recovery" | "garmin" | "race_plan" | undefined;
   try {
     const meta=JSON.parse(metadata||'{}');
     if(typeof meta.clientRequestId==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(meta.clientRequestId))clientRequestId=meta.clientRequestId;
@@ -125,6 +125,7 @@ function publicMessage({metadata,...message}:{id:string;role:string;content:stri
     if (message.role === "assistant" && message.source === "local" && meta.historyPolicy === AI_DATA_POLICY_VERSION) {
       if (meta.ruleId === "coach-conversation-v1:post-workout-recovery") localReview = "recovery";
       if (meta.ruleId === "coach-conversation-v1:garmin-delivery-status") localReview = "garmin";
+      if (meta.ruleId === "coach-conversation-v1:race-plan-review") localReview = "race_plan";
     }
     // Legacy derived summaries are never exposed or reused.
   }catch{/* Unverified metadata grants no action or context. */}
@@ -273,14 +274,16 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
   if (input.image && initialProfileQuery) throw new ApiError("Saved profile references are reviewed locally. Remove the image to ask this profile question, or review the image in a separate request.", 422);
   const sessionId = guard.sessionId;
   const today = dayBounds(actor.timezone);
-  const requestedDay = input.image ? null : coachAutoSessionDay(input.message, today.key);
-  const namedWorkout = input.image ? null : coachNamedSessionSport(input.message);
+  const racePlanReview = opensRacePlan(input.message);
+  if (racePlanReview && input.image) throw new ApiError("Remove the image to open the private race plan.", 422);
+  const requestedDay = input.image || racePlanReview ? null : coachAutoSessionDay(input.message, today.key);
+  const namedWorkout = input.image || racePlanReview ? null : coachNamedSessionSport(input.message);
   const garminReview = !input.image && asksGarminDeliveryStatus(input.message);
   const recoveryReview = !input.image && isPostWorkoutRecoveryReport(input.message);
-  const swimReport = !input.image ? parseCoachSwimReport(input.message, today.key) : null;
+  const swimReport = !input.image && !racePlanReview ? parseCoachSwimReport(input.message, today.key) : null;
   const medicalReview = /\b(?:ferritin|ferritina|blood (?:test|panel|work|results?)|anal[ií]tica de sangre|an[aá]lisis de sangre|dna (?:test|results?|risk)|(?:prueba|resultado) de adn)\b/i.test(input.message);
   const reviewToday = opensTodayWorkout(input.message);
-  const protectedWorkflow = Boolean(reviewToday || coachReviewArea(input.message) || requestedDay || namedWorkout || garminReview || recoveryReview || swimReport || medicalReview);
+  const protectedWorkflow = Boolean(reviewToday || coachReviewArea(input.message) || requestedDay || namedWorkout || garminReview || recoveryReview || racePlanReview || swimReport || medicalReview);
   const manualDialogue = !protectedWorkflow && manualDialogueAllowed(input, input.message);
   // Most chat turns do not need a 90-day load series. Keep today's performed
   // activity for recovery safeguards, and read the full history only for a
@@ -335,7 +338,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           observedDate: swimReport.observedDate, source: input.source, evidence: input.message, status: "proposed",
         } : null;
         candidates = coachPlanChangeWarnings(validateCoachCandidates([
-          ...(swimReport || garminReview || recoveryReview || medicalReview ? [] : extractLocalCandidates(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate })),
+          ...(swimReport || garminReview || recoveryReview || racePlanReview || medicalReview ? [] : extractLocalCandidates(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate })),
           ...(swimCandidate && !medicalReview ? [swimCandidate] : []),
           ...(image?.candidates ?? []),
         ], { localToday: today.key }),selected);
@@ -388,6 +391,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const reply = safetyHeld ? safetyReply
         : medicalReview ? { answer: actor.language === "es" ? "Consulta los resultados con un profesional de salud antes de cambiar tu entrenamiento o tomar suplementos. Koach no interpreta análisis clínicos ni recomienda tratamientos o dosis." : "Review those results with a qualified clinician before changing training or taking supplements. Koach cannot interpret clinical tests or recommend treatments or doses.", ruleId: "coach-conversation-v1:clinical-results-boundary" }
         : garminReview ? { answer: actor.language === "es" ? "Revisa el último comprobante registrado para la sesión. Una publicación confirmada en Garmin no confirma la recepción en el reloj." : "Review the last recorded receipt for the workout. A verified Garmin publication does not confirm watch receipt.", ruleId:"coach-conversation-v1:garmin-delivery-status" }
+        : racePlanReview ? { answer: actor.language === "es" ? "Elige un plan guardado para revisar los parciales, tus notas y la hora de salida. Los tiempos son escenarios calculados." : "Choose a saved plan to review its splits, your notes, and the wave time. The times are calculated scenarios.", ruleId:"coach-conversation-v1:race-plan-review" }
         : recoveryReview ? { answer: actor.language === "es" ? "Revisemos la sesión realizada y cómo te recuperaste. Confirma el resultado y completa el check-in para reevaluar el próximo entrenamiento. Tu plan no ha cambiado." : "Let's review the completed session and how you recovered. Confirm the result and complete the check-in to reassess the next workout. Your plan hasn't changed.", ruleId:"coach-conversation-v1:post-workout-recovery" }
         : swimReport ? { answer: coachSwimReply(swimReport, actor.language === "es"), ruleId:"coach-conversation-v1:swim-reference-report" }
         : (requestedDay || namedWorkout) && !selected ? { answer: actor.language === "es" ? "¿Qué sesión quieres cambiar? No pude identificar una única sesión pendiente. Elige su fecha y título en Herramientas opcionales y vuelve a enviar el cambio." : "Which workout should I change? I couldn't identify one pending workout. Choose its date and title in Optional tools and send the change again.", ruleId:"coach-conversation-v1:choose-workout" }
