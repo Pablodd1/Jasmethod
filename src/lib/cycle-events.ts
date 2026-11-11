@@ -62,7 +62,7 @@ export function normalizeCycleEvents(options: { events?: readonly CycleEventInpu
   return [...byId.values()].sort((a, b) => a.dateKey.localeCompare(b.dateKey) || a.priority.localeCompare(b.priority) || a.id.localeCompare(b.id));
 }
 
-export const CYCLE_EVENT_POLICY_NOTE = "Conservative scheduling heuristics, not individualized taper or recovery prescriptions. A/B/C expresses importance, not physiological cost. All event dates are protected. A races shape the cycle; B/C dates alone do not reduce surrounding training. Actual effort, symptoms and recovery can require more rest and qualified review.";
+export const CYCLE_EVENT_POLICY_NOTE = "Conservative scheduling heuristics, not individualized taper or recovery prescriptions. A/B/C expresses importance, not physiological cost. All event dates are protected. A races shape the cycle; B/C dates alone do not reduce surrounding training. B can replace a quality session and C can serve as controlled practice. Consider any separate easy endurance after review of the actual race, recovery and remaining time. Do not automatically make up distance. Actual effort, symptoms and recovery can require more rest and qualified review.";
 /** Only the A event shapes the cycle; B/C recovery depends on actual evidence. */
 export function cycleEventPolicy(event: CycleEvent) {
   if (event.priority !== "A") return { preparationDays: 0, recoveryDays: 0 };
@@ -89,7 +89,7 @@ export function assessCycleEvents(events: readonly CycleEvent[], startKey: strin
   for (const event of relevant) {
     const days = cycleDaysBetween(startKey, event.dateKey);
     if (days < 0) warnings.push({ code: "recent_event", eventIds: [event.id], message: `${event.name} (${event.dateKey}) falls before the cycle; its provisional recovery window still applies. Review actual recovery before resuming.` });
-    else if (days < 28) warnings.push({ code: "short_preparation", eventIds: [event.id], message: `${event.name} (${event.dateKey}, ${event.priority}) is less than four weeks from the start. Choose conservative preparation or obtain a coach-reviewed plan; this cycle cannot promise readiness or a peak.` });
+    else if (days < 28 && event.priority === "A") warnings.push({ code: "short_preparation", eventIds: [event.id], message: `${event.name} (${event.dateKey}, ${event.priority}) is less than four weeks from the start. Choose conservative preparation or obtain a coach-reviewed plan; this cycle cannot promise readiness or a peak.` });
   }
   for (let first = 0; first < relevant.length; first++) for (let second = first + 1; second < relevant.length; second++) {
     const a = relevant[first], b = relevant[second];

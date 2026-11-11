@@ -479,11 +479,13 @@ export function generatePlan(opts: {
   runBase?: number;
   strengthBase?: number;
   weeklyHours?: number;
+  customRaceLegs?: { swimM: number; bikeM: number; runM: number };
   easyPct?: number; // target % of weekly minutes in Z1-Z2; rest = quality. Default 70 (70/30).
   raceDate?: Date; // race day — volume dips after it, then rebuilds
   extraRaces?: PlanRace[]; // B/C races — B = train-through sharpening
   reviewedCycle?: boolean; // No automatic test or second per-sport taper in reviewed cycles.
   sessionLimitMinutes?: number; // Explicit availability ceiling for complete reviewed bouts.
+  aRaceLeadDays?: number;
 }): GeneratedWeek[] {
   const { level, distance, weeks, startDate, weeklyHours, easyPct, raceDate, extraRaces } = opts;
   const splitTarget = easyPct ?? 70; // 70/30 default, manual-adjustable
@@ -505,7 +507,7 @@ export function generatePlan(opts: {
   // The athlete's reported dose supplies the ceiling, not the distance label.
   if (opts.reviewedCycle && weeklyHours != null && ["triathlon", "sprint", "olympic", "half", "full", "custom"].includes(distance)) {
     return coachingWeekTemplate({ sport: "triathlon", weeks, weeklyHours: targetHours, level, distance,
-      sessionLimitMinutes: opts.sessionLimitMinutes, volume: index => mesoVolumeRaces(index, level, races, startDate).vol });
+      sessionLimitMinutes: opts.sessionLimitMinutes, aRaceLeadDays: opts.aRaceLeadDays, easyPct, customRaceLegs: opts.customRaceLegs, volume: index => mesoVolumeRaces(index, level, races, startDate).vol });
   }
   const weeksOut: GeneratedWeek[] = [];
   for (let w = 1; w <= weeks; w++) {
@@ -854,10 +856,11 @@ export function generateHyroxPlan(opts: {
   weeklyHours?: number;
   reviewedCycle?: boolean;
   sessionLimitMinutes?: number;
+  aRaceLeadDays?: number;
 }): GeneratedWeek[] {
   const { level, weeks, startDate, weeklyHours } = opts;
   const baseWeekly = weeklyHours ?? (level === "pro" ? 14 : level === "advanced" ? 10 : level === "amateur" ? 7 : 5);
-  if(opts.reviewedCycle && weeklyHours != null) return coachingWeekTemplate({sport:'hyrox',weeks,weeklyHours,level,sessionLimitMinutes:opts.sessionLimitMinutes,volume:index=>mesoVolume(index,level).vol});
+  if(opts.reviewedCycle && weeklyHours != null) return coachingWeekTemplate({sport:'hyrox',weeks,weeklyHours,level,sessionLimitMinutes:opts.sessionLimitMinutes,aRaceLeadDays:opts.aRaceLeadDays,volume:index=>mesoVolume(index,level).vol});
   const legacy = (w: number): "base" | "build" | "peak" | "taper" => {
     const inBlock = (w - 1) % 6;
     return inBlock === 5 ? "taper" : inBlock <= 1 ? "base" : inBlock <= 3 ? "build" : "peak";
@@ -1144,10 +1147,11 @@ export function generateSingleSport(opts: {
   hasRace?: boolean;
   reviewedCycle?: boolean;
   sessionLimitMinutes?: number;
+  aRaceLeadDays?: number;
 }): GeneratedWeek[] {
   const { sport, level, weeks, startDate, weeklyHours, hasRace } = opts;
   const baseWeekly = weeklyHours ?? (level === "advanced" ? 10 : level === "amateur" ? 7 : level === "beginner" ? 4 : 12);
-  if(opts.reviewedCycle && weeklyHours != null && sport !== 'strength') return coachingWeekTemplate({sport,weeks,weeklyHours,level,sessionLimitMinutes:opts.sessionLimitMinutes,volume:index=>mesoVolume(index,level).vol});
+  if(opts.reviewedCycle && weeklyHours != null && sport !== 'strength') return coachingWeekTemplate({sport,weeks,weeklyHours,level,sessionLimitMinutes:opts.sessionLimitMinutes,aRaceLeadDays:opts.aRaceLeadDays,volume:index=>mesoVolume(index,level).vol});
   const phase = (w: number): "base" | "build" | "peak" | "taper" => {
     const inBlock = (w - 1) % 6;
     return inBlock === 5 ? "taper" : inBlock <= 1 ? "base" : inBlock <= 3 ? "build" : "peak"; // week 6 = baseline test taper even without a race
