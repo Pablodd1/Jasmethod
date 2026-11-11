@@ -119,6 +119,7 @@ export async function GET(req: Request) {
     const deviceReview = actor.id === user.id && !reportedHold ? deviceCheckinEvidence(inputContext, user.id) : null;
     let displayedCheckin = checkin;
     let currentSafetyClear = false;
+    let reviewedCheckinNote: string | null = null;
     if (checkin) {
       let answers: Checkin = {};
       try { const parsed = JSON.parse(checkin.answers || "{}"); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) answers = parsed; } catch { /* Fail closed below. */ }
@@ -137,6 +138,7 @@ export async function GET(req: Request) {
       if (safety.status !== "clear" && !currentScopedReview) displayedCheckin = { ...checkin, adaptation: JSON.stringify(adaptSession(profile?.injured ? { ...answers, newPain: true } : answers)) };
       else if (!validSaved) displayedCheckin = { ...checkin, adaptation: JSON.stringify({ score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "unknown", ruleId: "checkin-safety-v1:refresh-required", message: "The saved adaptation cannot be verified. Review and submit today's check-in to refresh it before training." }) };
       currentSafetyClear = currentSafetyClear && Boolean(validSaved);
+      if (actor.id === user.id && currentSafetyClear && typeof savedAdaptation.message === "string") reviewedCheckinNote = savedAdaptation.message.trim().slice(0, 500) || null;
       if (safety.status === "clear" && !setup.ready && !starterReady) displayedCheckin = { ...checkin, adaptation: JSON.stringify({ score: 0, scoreAvailable: false, verdict: "rest", durationFactor: 0, intensityCap: "z1", safetyStatus: "unknown", ruleId: setup.ruleId, message: `Complete or review athlete setup before individualized training. ${[...setup.missing, ...setup.review].join("; ")}` }) };
     }
 
@@ -180,6 +182,8 @@ export async function GET(req: Request) {
       effectiveMinutes: pendingResolved?.canonical.verdict === "ready" ? pendingResolved.canonical.durationMin : null,
       status: pendingResolved?.canonical.verdict ?? "pending",
       reason: pendingResolved?.canonical.reason ?? null,
+      checkinNote: pendingResolved?.canonical.verdict === "ready" && nextSummary?.durationMin != null &&
+        nextSummary.durationMin !== pendingResolved.canonical.durationMin ? reviewedCheckinNote : null,
     } : null;
     return NextResponse.json({
       completedReview,
