@@ -319,6 +319,29 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
     );
   }
 
+  const primarySportCard = (
+    <section className="card mb-4 space-y-4" aria-labelledby="onboard-primary-sport-label">
+      <h2 id="onboard-primary-sport-label" className="font-display text-2xl">{t("Choose your sport", "Elige tu deporte")}</h2>
+      <p>{t("You can set a race or a more specific goal later.", "Puedes elegir una carrera o un objetivo más específico después.")}</p>
+      <fieldset className="grid grid-cols-2 gap-2" disabled={saving || !revision}>
+        <legend className="sr-only">{t("Primary sport", "Deporte principal")}</legend>
+        {[
+          ["swim-only", t("Swimming", "Natación")], ["cycle", t("Cycling", "Ciclismo")],
+          ["run-only", t("Running", "Carrera a pie")], ["triathlon", t("Triathlon", "Triatlón")],
+          ["hyrox", "HYROX"], ["track-sprint", t("Track sprint", "Velocidad en pista")],
+        ].map(([goal, label]) => <label key={goal} className="flex min-h-11 items-center gap-2 rounded-lg border p-3 has-[:checked]:border-ocean-600 has-[:checked]:bg-ocean-50">
+          <input type="radio" name="onboard-primary-sport" value={goal} checked={profile.goal === goal}
+            onChange={() => setProfile(current => ({ ...current, goal }))} />
+          {label}
+        </label>)}
+      </fieldset>
+      <button type="button" disabled={saving || !revision || !PLANNABLE_GOALS.includes(planningGoal(profile.goal)!)} className="btn-primary"
+        onClick={async () => { if (await saveProfile("sport")) setStep(ONBOARDING_STEP.devices); }}>
+        {t("Save sport and continue", "Guardar deporte y continuar")}
+      </button>
+    </section>
+  );
+
   return (
     <ProtectedPage>
       <div className="training-workflow max-w-2xl mx-auto py-4 px-1 sm:px-4">
@@ -344,34 +367,7 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
         <details className="text-sm text-slate-600 mb-3"><summary className="min-h-11 cursor-pointer content-center">{t("How your answers are saved", "Cómo se guardan tus respuestas")}</summary>        <p className="text-sm text-slate-600 mb-5">{t("Save each section to keep accepted answers in your account. Unfinished entries are retained in this tab across navigation and reloads. Skipping keeps them as a draft. Unknown answers stay unknown; a personalized plan needs the relevant reviewed details.", "Guarda cada sección para conservar las respuestas en tu cuenta. Los datos sin guardar se conservan en esta pestaña al navegar o recargar. Omitir los conserva como borrador. Un plan personalizado necesita los datos relevantes revisados.")}</p></details>
         <div className="flex flex-wrap gap-4 mb-5">{OPTIONAL_STEPS.map(item=><button key={item.step} disabled={saving} className="underline min-h-11 text-sm" aria-current={step===item.step ? "step" : undefined} onClick={()=>setStep(item.step)}>{item.label}</button>)}</div>
         </details>
-        {/* Step 0: Language + Welcome */}
-        {step === ONBOARDING_STEP.welcome && (
-          <div className="text-center py-8">
-            <h1 className="font-display text-4xl font-bold mb-2">
-              {lang === "es" ? "Bienvenido a JMMai" : "Welcome to JMMai"}
-            </h1>
-            <p className="text-lg text-slate-600 mb-6">
-              {lang === "es"
-                ? "Tu entrenador personal basado en ciencia y biometría. Vamos a configurar tu perfil de entrenamiento."
-                : "Your personal coach powered by science and biometrics. Let's set up your coaching profile."}
-            </p>
-            <div className="text-left space-y-3 mb-6">
-              {[
-                { icon: "📋", en: "Connect first — or continue without devices", es: "Conecta primero — o continúa sin dispositivos" },
-                { icon: "⌚", en: "Review saved information and fill only what is missing", es: "Revisa datos guardados y completa solo lo que falta" },
-                { icon: "🏁", en: "Review zones, goals, an optional race and travel", es: "Revisa zonas, objetivos, carrera opcional y viajes" },
-              ].map((s, i) => (
-                <div key={i} className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 p-3">
-                  <span className="text-2xl">{s.icon}</span>
-                  <span className="text-sm font-medium text-slate-700">{lang === "es" ? s.es : s.en}</span>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => setStep(ONBOARDING_STEP.devices)} className="btn-primary w-full justify-center">
-              {lang === "es" ? "Empezar" : "Get started"} <ArrowRight className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-        )}
+        {step === ONBOARDING_STEP.welcome && primarySportCard}
 
         {/* Step 2: Acknowledge actual records, then collect only missing references. */}
         <fieldset disabled={!revision || saving} aria-label={t("Editable setup sections", "Secciones de configuración editables")}>
@@ -434,7 +430,8 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
         )}
 
         {step === ONBOARDING_STEP.devices && <section className="space-y-4">
-          <h2 className="font-display text-2xl">{t("Connect your device or import first", "Conecta tu dispositivo o importa primero")}</h2>
+          {!savedOnboarding.current.profile.goal && primarySportCard}
+          <h2 className="font-display text-2xl">{t("Connect a device or import history", "Conecta un dispositivo o importa tu historial")}</h2>
           <p>{t("Choose an available connection or file import below, or skip. After you return, review the records actually stored before filling any gaps.", "Elige una conexión o importación disponible abajo, u omite este paso. Al volver, revisa los registros guardados antes de completar lo que falte.")}</p>
           <div className="flex flex-wrap gap-3"><Link href="/connectors?onboarding=1" className="btn-secondary">{t("Open devices to sync or import", "Abrir dispositivos para sincronizar o importar")}</Link><button className="btn-primary w-full sm:w-auto" onClick={()=>setStep(ONBOARDING_STEP.profile)}>{providers.some(provider=>provider.status === "connected") ? t("Continue to review my information", "Continuar y revisar mis datos") : t("Skip connections and continue manually", "Omitir conexiones y continuar manualmente")}</button></div>
           <p className="text-sm">{t("Garmin and COROS file import uses supported files here. Intervals.icu is a separate optional connection; Garmin-origin activity imports remain blocked until permissions are verified. Connecting or exporting does not prove watch delivery. Unavailable services cannot be authorized.", "Garmin y COROS usan archivos compatibles aquí. Intervals.icu es una conexión opcional separada; las importaciones de actividades de origen Garmin siguen bloqueadas hasta verificar los permisos. Conectar o exportar no confirma entrega al reloj. No se pueden autorizar servicios no disponibles.")}</p>
