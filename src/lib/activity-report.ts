@@ -232,6 +232,7 @@ export async function generateAndDeliverActivityReport(
   userId: string,
   timezone: string,
   activityId: string,
+  options: { deliver?: boolean } = {},
 ): Promise<{ headline: string; body: string } | null> {
   try {
     const activity = await prisma.workout.findFirst({
@@ -308,7 +309,7 @@ export async function generateAndDeliverActivityReport(
       data: { insights: JSON.stringify(activityReportEnvelope(report)) },
     });
     // Telegram delivery — athlete's own bot, only if they opted in.
-    if (pref?.telegramEnabled && pref.telegramChatId) {
+    if (options.deliver !== false && pref?.telegramEnabled && pref.telegramChatId) {
       const { sendTelegram } = await import("./notify");
       const text = `📊 KCoach Activity Report\n\n${report.headline}\n\n${report.body}`;
       const sent = await sendTelegram(pref.telegramChatId, text);

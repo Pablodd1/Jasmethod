@@ -210,7 +210,7 @@ export function AdminCoachEditor({
           <div>
             <label className="label" htmlFor={`dose-${athleteId}`}>Workout dose scale (%)</label>
             <input id={`dose-${athleteId}`} type="number" min={50} max={130} step={5} className="input" value={pct} onChange={(e) => setPct(e.target.value)} />
-            <div className="text-xs text-slate-600 mt-1">100 = saved dose. Scales workout dose within safety limits; does not set easy/quality distribution or physiological thresholds.</div>
+            <div className="text-xs text-slate-600 mt-1">100% keeps the planned dose. In reviewed cycles, values below 100% can shorten the workout (60% duration floor for this control) and lower the effort cap. Values above 100% apply only to legacy prescriptions. Daily safety and availability limits still apply.</div>
           </div>
           <div>
             <label className="label">Weekly hours</label>

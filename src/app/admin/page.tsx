@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ProtectedPage } from "@/components/gate";
 import { useAuth } from "@/components/auth";
@@ -41,7 +41,7 @@ export default function AdminPage() {
             decisions.
           </p>
         </div>
-        {user?.role === "admin" && <AdminOperations />}
+        {user && ["admin", "coach"].includes(user.role) && <AdminOperations isAdmin={user.role === "admin"} />}
         {user&&['admin','coach'].includes(user.role)&&<CoachReviewInbox key={user.id}/>}
         {user?.role === "admin" && <AdminIntegrationChecks />}
         {user?.role === "admin" && <AdminAccountControls key={user.id} />}
@@ -92,9 +92,9 @@ export default function AdminPage() {
                     <span className="text-ocean-700 text-sm">Review →</span>
                   </div>
                   <div className="grid grid-cols-3 gap-3 my-4">
-                    <Stat label="Sessions" value={r.workouts30} />
-                    <Stat label="Hours" value={(r.minutes30 / 60).toFixed(1)} />
-                    <Stat label="Estimated load" value={r.totalTss30} />
+                    <Stat label="Sessions" value={r.workouts30 ?? "—"} />
+                    <Stat label="Hours" value={r.minutes30 == null ? "—" : (r.minutes30 / 60).toFixed(1)} />
+                    <Stat label="Reported load (AU)" value={r.reportedLoad30 ?? "—"} />
                   </div>
                   <p className="text-sm">
                     {r.goal || "Goal not set"} ·{" "}
@@ -156,7 +156,7 @@ function Stat({ label, value }: { label: string; value: any }) {
 }
 
 // ---- Admin operations: exception inbox + coach lifecycle + pilot outcomes ----
-function AdminOperations() {
+function AdminOperations({ isAdmin }: { isAdmin: boolean }) {
   const [inbox, setInbox] = useState<any>(null);
   const [coaches, setCoaches] = useState<any[]>([]);
   const [pilot, setPilot] = useState<any>(null);
@@ -164,21 +164,21 @@ function AdminOperations() {
   const [open, setOpen] = useState(false);
   const [opsOpen, setOpsOpen] = useState(true);
 
-  async function load() {
+  const load = useCallback(async () => {
     const [i, c, p, o] = await Promise.all([
       fetch("/api/admin/inbox").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/admin/coaches").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/admin/pilot?days=30").then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/admin/ops?days=7").then((r) => (r.ok ? r.json() : null)),
+      isAdmin ? fetch("/api/admin/coaches").then((r) => (r.ok ? r.json() : null)) : null,
+      isAdmin ? fetch("/api/admin/pilot?days=30").then((r) => (r.ok ? r.json() : null)) : null,
+      isAdmin ? fetch("/api/admin/ops?days=7").then((r) => (r.ok ? r.json() : null)) : null,
     ]);
     setInbox(i);
     setCoaches(c?.coaches || []);
     setPilot(p);
     setOps(o);
-  }
+  }, [isAdmin]);
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
 
   const sevColor: Record<string, string> = {
     high: "bg-red-50 text-red-700 border-red-200",
@@ -209,12 +209,13 @@ function AdminOperations() {
                 </div>
               ))
             ) : (
-              <p className="text-sm text-emerald-700">✓ Nothing needs attention — every assigned athlete checked in and all devices are healthy.</p>
+              <p className="text-sm text-emerald-700">{inbox ? "No exceptions reported." : "Exception inbox unavailable."}</p>
             )}
           </div>
         )}
       </div>
 
+      {isAdmin && <>
       {/* Operations & cost */}
       <div className="card">
         <div className="flex items-center justify-between">
@@ -353,6 +354,7 @@ function AdminOperations() {
         </div>
         <CoachCreator onCreated={load} />
       </div>
+      </>}
     </div>
   );
 }

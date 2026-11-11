@@ -351,7 +351,7 @@ select { min-width: 0; }
 .coach-chat-composer { flex: 0 0 auto; max-height: 38dvh; overflow-y: auto; border: 1px solid #9cbcc5; border-radius: 1.25rem; padding: .6rem .75rem; background: rgba(255,255,255,.97); box-shadow: 0 8px 28px rgba(12,67,83,.06); }
 .coach-chat-composer textarea { background: transparent; }
 .coach-chat-route { box-sizing: border-box; width: 100%; max-width: none; margin: 0; padding: max(.75rem, env(safe-area-inset-top)) max(.75rem, env(safe-area-inset-right)) max(.75rem, env(safe-area-inset-bottom)) max(.75rem, env(safe-area-inset-left)); height: 100dvh; overflow: hidden; }
-.coach-chat-route .coach-chat-page { width: 100%; height: 100%; min-height: 0; margin: 0; }
-.coach-chat-route .coach-chat-message { margin-right: 0; }
-.coach-chat-route .coach-chat-message-user { margin-left: auto; width: min(88%, 76rem); }
+.coach-chat-route .coach-chat-page { width: 100%; max-width: 60rem; height: 100%; min-height: 0; margin-inline: auto; }
+.coach-chat-route .coach-chat-message { margin-right: 0; max-width: 72ch; }
+.coach-chat-route .coach-chat-message-user { margin-left: auto; width: fit-content; max-width: min(88%, 64ch); }
 @media (max-height: 520px) { .coach-chat-composer { max-height: 52dvh; } }

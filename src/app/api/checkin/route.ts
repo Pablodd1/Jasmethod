@@ -62,7 +62,8 @@ export async function GET(req: Request) {
   try {
     const { actor, athlete: user } = await trainingAccess(req);
     const { start, end, key } = dayBounds(user.timezone);
-    const feedbackDate = new URL(req.url).searchParams.get("feedbackDate") || addDaysKey(key, -1);
+    const requestedFeedbackDate = new URL(req.url).searchParams.get("feedbackDate");
+    const feedbackDate = requestedFeedbackDate === "today" ? key : requestedFeedbackDate || addDaysKey(key, -1);
     let feedbackStart: Date;
     try { feedbackStart = localDate(feedbackDate, user.timezone); } catch { throw new ApiError("Invalid feedback observation date"); }
     if (feedbackDate > key) throw new ApiError("Feedback must describe today or an earlier date");
@@ -144,7 +145,23 @@ export async function GET(req: Request) {
     if(!trainingViewDisclosureAllowed(actor.id,user.id,currentWorkouts,inputContext))throw new ApiError(ACTIVITY_DISCLOSURE_REASON,403);
     const currentResolved=await Promise.all(currentWorkouts.map(w=>effectivePrescription(user.id,w.id)));
     const prescriptions=currentResolved.flatMap(r=>r?[{...r.prescription,sessionId:r.canonical.id,canonical:r.canonical,nutrition:r.nutrition}]:[]);
+    const reported = previousSessions.filter(w => w.feedbackStatus !== "skipped" &&
+      (w.completed || ["completed", "partial", "substituted"].includes(w.feedbackStatus ?? "")));
+    const reviewed = derivedActivityPolicy(reported).status === "allowed"
+      ? groupActivityEvidence(reported, reported.length ? await readActivityDecisions(user.id) : [])
+      : null;
+    const completedReview = reviewed && !reviewed.unresolvedGroups ? reviewed.groups.map(group => {
+      const planned = group.members.find(w => w.planned);
+      return {
+        id: group.primary.id,
+        title: group.primary.title,
+        plannedMinutes: planned?.durationMin ?? null,
+        actualMinutes: group.budgetMinutes,
+        effort: group.primary.rpe,
+      };
+    }) : null;
     return NextResponse.json({
+      completedReview,
       inputContext,
       deviceReview,
       prescriptions,
@@ -320,9 +337,24 @@ export async function POST(req: Request) {
           prisma.workout.findMany({ where: { userId: user.id, date: { gte: new Date(start.getTime() - 90 * 86400000), lt: new Date(end.getTime() + 86400000) } }, orderBy: { date: "asc" } }),
         ]);
         const history90 = loadWindow.filter(w => w.date < end);
-        const load28 = history90.filter(w => w.date >= new Date(start.getTime() - 28 * 86400000));
-        // Individual model from imported Garmin/COROS/manual history (Strava rows count locally, never for AI).
-        const model = buildAthleteModel({ history: activityPolicy.status === "allowed" ? history90 : [], metrics: biometricPolicy.status === "allowed" ? metrics60 : [], profile: profile as any, now: new Date() });
+        const reportedHistory = history90.filter(w => !w.planned || hasWorkoutReport(w));
+        const longActivityPolicy = derivedActivityPolicy(reportedHistory);
+        const longBiometricPolicy = derivedActivityPolicy(metrics60);
+        const reviewedHistory = longActivityPolicy.status === "allowed"
+          ? groupActivityEvidence(reportedHistory, activityDecisions)
+          : null;
+        const usableHistory = reviewedHistory && !reviewedHistory.unresolvedGroups
+          ? reviewedHistory.groups.map(({ primary, budgetMinutes }) => ({
+              ...primary, actualDurationMin: budgetMinutes, durationMin: budgetMinutes, matchedPlanId: null,
+            }))
+          : [];
+        const load28 = usableHistory.filter(w => w.date >= new Date(start.getTime() - 28 * 86400000));
+        const model = buildAthleteModel({
+          history: usableHistory,
+          metrics: longBiometricPolicy.status === "allowed" ? metrics60 : [],
+          profile,
+          now: new Date(),
+        });
         if (!activePlan?.level) level = model.level;
         spacingH = model.spacingH;
         adaptation = { ...adaptation, athleteModel: { coldStart: model.coldStart, level: model.level, levelSource: model.levelSource, ageBand: model.ageBand, spacingH: model.spacingH, keyCap: model.keyCap, rpeBias: model.rpeBias, personalRecoveryH: model.personalRecoveryH, anchorsStale: model.anchorsStale, notes: model.notes } };
@@ -330,7 +362,7 @@ export async function POST(req: Request) {
         let lastKeyExecution: ReturnType<typeof analyzeCompliance>["verdict"] | null = null;
         try {
           const recentKey = [...load28].reverse().find(w => !w.planned && w.completed && w.date >= new Date(start.getTime() - 4 * 86400000) && isKeySession({ date: w.date, sport: w.sport, type: w.type, intensity: inferZone(w as any, profile as any) ?? w.intensity, rpe: w.rpe, minutes: null }));
-          const plannedTwin = recentKey ? load28.find(w => w.planned && w.matchedPlanId === recentKey.id) : null;
+          const plannedTwin = recentKey ? history90.find(w => w.planned && w.matchedPlanId === recentKey.id) : null;
           if (recentKey && plannedTwin && streamStorageEnabled()) {
             const steps = JSON.parse(plannedTwin.prescription || "null")?.steps;
             const streams = await loadStreams(prismaStreamRepo((prisma as unknown as { activityStream: StreamDelegate }).activityStream), user.id, recentKey.id);
@@ -345,13 +377,11 @@ export async function POST(req: Request) {
         } catch { /* compliance is advisory; missing streams never block */ }
         const tomorrow = loadWindow.filter(w => w.date >= end && w.planned && !w.completed);
         const todayPlanned = loadWindow.filter(w => w.date >= start && w.date < end && w.planned && !w.completed);
-        const loadAllowed = activityPolicy.status === "allowed" && !groupedHistory.unresolvedGroups;
-        const loadRows: LoadRow[] = (loadAllowed ? load28 : [])
+        const loadRows: LoadRow[] = load28
           .filter(w => !w.matchedPlanId && w.feedbackStatus !== "skipped" && (w.completed || w.feedbackStatus === "completed" || w.feedbackStatus === "partial"))
           .map(w => ({ date: w.date, sport: w.actualSport || w.sport, type: w.type, intensity: inferZone(w as any, profile as any) ?? w.intensity, rpe: w.rpe,
-            // A plain "completed" planned session counts at its planned duration; partial without actual minutes stays unknown.
-            minutes: w.actualDurationMin ?? (w.feedbackStatus === "partial" ? null : w.planned ? w.durationMin : activityActualMinutes(w as any)) }));
-        const deviceMetrics: MetricRow[] = biometricPolicy.status === "allowed" ? (deviceEvidence ? [
+            minutes: w.actualDurationMin }));
+        const deviceMetrics: MetricRow[] = longBiometricPolicy.status === "allowed" ? (deviceEvidence ? [
           ...metrics60.filter(m => m.source === deviceEvidence.source && m.date < start && m.hrvType === hrvType),
           { date: new Date(importedHrv!.observedAt), source: deviceEvidence.source, hrv: importedHrv!.value, hrvType,
             restingHr: importedRhr!.value, sleepHours: inputContext.metrics.sleepHours.selected!.value },
@@ -359,7 +389,7 @@ export async function POST(req: Request) {
         let firstCoaching: string | null = null; try { firstCoaching = todayPlanned[0] ? baseWorkout(todayPlanned[0])?.coaching?.phase ?? null : null; } catch {}
         const dayPhase = planContextFor(firstCoaching).phase;
         const asLoad = (w: (typeof loadWindow)[number]): LoadRow => ({ date: w.date, sport: w.sport, type: w.type, intensity: w.intensity, rpe: null, minutes: w.durationMin });
-        const decision = decidePerformance({ base: adaptation, subjective: checkin, metrics: deviceMetrics, loadRows, pushEnabled: !deviceMode && process.env.ADAPTIVE_PUSH_ENABLED === "true",
+        const decision = decidePerformance({ base: adaptation, subjective: checkin, metrics: deviceMetrics, loadRows, pushEnabled: !deviceMode && longBiometricPolicy.status === "allowed" && !!reviewedHistory && !reviewedHistory.unresolvedGroups && process.env.ADAPTIVE_PUSH_ENABLED === "true",
           quality: { level, phase: dayPhase, plannedHard: todayPlanned.some(w => isKeySession(asLoad(w))), nextDayKey: tomorrow.some(w => isKeySession(asLoad(w))),
             keyCap: model.keyCap, pushAllowed: model.pushAllowed, pushBlockReason: model.coldStart ? `first block: ${model.coverageDays} d of history (<21)` : model.ageBand === "youth" ? "youth athlete: no automatic overload" : profile?.injured ? "injury flag" : undefined, lastKeyExecution } });
         adaptation = applyPerformance(adaptation, decision);

@@ -59,12 +59,16 @@ export async function GET(req: Request) {
       const hrReference=["run","bike"].includes(sport)?readSportHeartRate(profile?.manualPrs,sport as SportHrSport,"lthr",activity.date,athlete.timezone):null;
       const analysis = analyseStreams({ streams, provenance, athlete: { ftpW: sport === "bike" ? anchors.ftp ?? null : null, lthr: hrReference?.value??null }, sport });
       if (!analysis.ok) continue;
-      let plannedSet = null;
-      if (activity.matchedPlanId) {
-        const plan = await prisma.workout.findFirst({ where: { id: activity.matchedPlanId, userId: athlete.id }, select: { prescription: true } });
-        const steps = plan ? prescriptionSteps(plan.prescription) : null;
-        plannedSet = steps ? summarizeSet(steps) : null;
-      }
+      const plans = await prisma.workout.findMany({
+        where: { userId: athlete.id, planned: true, sport: activity.sport, OR: [
+          { matchedPlanId: activity.id },
+          ...(activity.matchedPlanId ? [{ id: activity.matchedPlanId }] : []),
+        ] },
+        select: { prescription: true },
+        take: 2,
+      });
+      const steps = plans.length === 1 ? prescriptionSteps(plans[0].prescription) : null;
+      const plannedSet = steps ? summarizeSet(steps) : null;
       const lang = athlete.language === "es" ? "es" : "en";
       const s = suggestNextWorkout({ analysis, plannedSet, nextSet });
       return Response.json({

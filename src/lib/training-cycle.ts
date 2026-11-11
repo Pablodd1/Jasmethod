@@ -3,7 +3,7 @@ import {groupActivityEvidence,type ActivityDecision,type ActivityEvidenceRow} fr
 import { derivedActivityPolicy } from "./derived-activity-policy";
 import type { BoundedPlanSession } from "./planning-bounds";
 import type { GeneratedWeek, Sport, ZoneKey } from "./science";
-import { cycleEventDay, normalizeCycleEvents, type CycleEventInput } from "./cycle-events";
+import { cycleEventDay, cycleDaysBetween, normalizeCycleEvents, type CycleEventInput } from "./cycle-events";
 import { CYCLE_REVIEW_INTERVAL_DAYS, comfortableObservationDescription, cycleBaselineStatus, type CycleBaselineReview } from "./cycle-review";
 
 export const TRAINING_CYCLE_VERSION = "bounded-cycle-v1";
@@ -62,8 +62,10 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
   return weeks.map((week, index) => {
     const weekStart = addDaysKey(options.startKey, index * 7);
     const eventDays = Array.from({ length: 7 }, (_, slot) => ({ key: addDaysKey(weekStart, slot), ...cycleEventDay(events, addDaysKey(weekStart, slot)) }));
-    const hasPreparation = eventDays.some(day => day.phase === "preparation" || day.phase === "event");
+    const hasPreparation = eventDays.some(day => day.phase === "preparation" ||
+      (day.phase === "event" && events.some(event => event.priority === "A" && event.dateKey === day.key)));
     const hasRecovery = eventDays.some(day => day.phase === "recovery");
+    const hasEvent = eventDays.some(day => day.protected);
     const eventLimited = hasPreparation || hasRecovery;
     const recoveryWeek = !options.templatePeriodized && (index + 1) % 4 === 0;
     const unknownReview = options.recoveryReview && options.recoveryReviewBasis === "unknown_history" && index === 0;
@@ -80,11 +82,13 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
       : hasPreparation ? "Event preparation · reduced load"
       : hasRecovery ? "Post-event recovery · review before resuming"
       : rebuild ? "Recovery and training review"
+      : hasEvent ? "B/C event day protected · surrounding plan retained"
       : recoveryWeek ? "Recovery and reassessment"
       : options.needsAssessment && index === 0 ? "Baseline assessment and easy foundation"
       : options.templatePeriodized ? week.theme || 'Planned practice · review response' : `Block ${Math.floor(index / 4) + 1} · ${index % 4 === 0 ? "Foundation" : "Progressive practice"}`;
     const observations: { sport: Sport; dateKey: string; minutes: number; status: string; reason: string }[] = [];
     const cycleOmissions: string[] = [];
+    let taperTempoScheduled = false;
     const sessions = week.sessions.flatMap(session => {
       const key = addDaysKey(weekStart, session.daySlot);
       if (protectedDays.has(key)) return [];
@@ -119,7 +123,20 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
       }
       const movementSport = ["strength", "mobility", "hyrox", "boxing"].includes(session.sport);
       const technicalOrTest = ["speed", "plyo", "race", "test"].includes(session.type);
-      const cap = observation || recoveryWeek || sessionEventLimited || rebuild || movementSport || technicalOrTest || status === "expired"
+      // A reduced-duration taper may retain one familiar tempo stimulus per week.
+      // Current references and a previously planned quality bout are prerequisites.
+      const aRaceApproaching = events.some(event => {
+        const gap = cycleDaysBetween(key, event.dateKey);
+        return event.priority === "A" && gap >= 3 && gap <= 14;
+      });
+      const nearbySecondaryRace = events.some(event => event.priority !== "A" &&
+        Math.abs(cycleDaysBetween(key, event.dateKey)) <= 2);
+      const taperTempo = !taperTempoScheduled && !rebuild && !recoveryWeek && !session.doubleDayRole &&
+        eventDay.phase === "preparation" && aRaceApproaching && !nearbySecondaryRace &&
+        status === "current" && reviewedCoaching && reviewedCoaching.demanding &&
+        ["swim", "bike", "run"].includes(session.sport) && Number(session.zone.slice(1)) >= 3 && minutes >= 25;
+      if (taperTempo) taperTempoScheduled = true;
+      const cap = taperTempo ? 3 : observation || recoveryWeek || sessionEventLimited || rebuild || movementSport || technicalOrTest || status === "expired"
         || (missingAnchor && index < 2) ? 2 : missingAnchor ? 3 : 4;
       const zone = `z${Math.min(cap, Number(session.zone.slice(1)))}` as ZoneKey;
       // A low zone label cannot legitimize maximal/loaded sprint or station work.
@@ -142,20 +159,24 @@ export function shapeTrainingCycle(weeks: BoundedWeek[], options: {
       const coachingPurpose = reviewedCoaching && loweredIntensity && !movementSport
         ? `${Number(zone.slice(1)) <= 2 ? 'Comfortable' : 'Controlled reduced-intensity'} ${session.sport === 'brick' ? 'bike-to-run transition' : session.sport} practice; original quality work withheld for review`
         : reviewedCoaching ? reviewedCoaching.purpose : null;
-      const description = reviewedCoaching ? observation ? retainComfortableIdentity ? `${session.description} ${embeddedObservationNote}` : comfortableObservationDescription(session.sport)
+      const description = taperTempo
+        ? "Short controlled tempo within the A-race taper. Use the dated sport reference and review readiness before training."
+        : reviewedCoaching ? observation ? retainComfortableIdentity ? `${session.description} ${embeddedObservationNote}` : comfortableObservationDescription(session.sport)
         : loweredIntensity && !movementSport ? `Purpose: ${coachingPurpose}. Follow the reduced, duration-matched steps at the effective effort. No original threshold or hard-interval dose is retained. No missed work is added later.`
           : `${session.description}${sessionFactor < 1 ? ' The session duration is reduced for the current recovery/event window; the executable steps must fit this duration.' : ''}${sessionEventLimited || rebuild ? ' Use controlled familiar work; no progression of load or complexity in this review window.' : ''}`
         : session.sport==='mobility'&&session.type==='recovery' ? session.description : observation ? comfortableObservationDescription(session.sport)
         : retainedPurpose ?? `Provisional ${theme.toLowerCase()} session. Follow the duration-matched steps, adjusted by the session-day check-in. Effort labels are not measured physiological zones. No missed work is added later.${movementSport ? " Familiar controlled movement only; do not add load, maximal speed, sparring or unfamiliar skills. Review before progressing." : ""}${status === "expired" && review ? " The prior sport-specific anchor expires within this cycle; this plan does not renew it. Use comfortable effort and review current evidence." : ""}`;
-      const title = observation && !retainComfortableIdentity ? `${session.sport}: Comfortable ${firstObservation && missingAnchor ? "baseline observation" : "review observation"}`
+      const title = taperTempo ? `${session.sport} · A-race taper tempo`
+        : observation && !retainComfortableIdentity ? `${session.sport}: Comfortable ${firstObservation && missingAnchor ? "baseline observation" : "review observation"}`
         : reviewedCoaching ? loweredIntensity && !movementSport ? `${session.sport === 'brick' ? 'Brick · bike to run' : session.sport} · ${Number(zone.slice(1)) <= 2 ? 'comfortable' : 'controlled reduced-intensity'} practice` : session.title
         : technicalOrTest ? `${session.sport}: Controlled familiar practice`
         : movementSport ? `${session.title} · controlled familiar practice`
         : Number(zone.slice(1)) < Number(session.zone.slice(1)) ? `${session.sport}: ${zone === "z2" ? "Easy" : "Controlled"} practice` : session.title;
       const coaching = reviewedCoaching ? { ...reviewedCoaching,
+        ...(taperTempo ? { recipe: "tempo" as const } : {}),
         ...(minutes !== session.minutes && reviewedCoaching.legs ? {legs:undefined} : {}),
-        purpose: observation && !retainComfortableIdentity ? `Comfortable ${session.sport} observation; not a measured baseline` : coachingPurpose!,
-        demanding: reviewedCoaching.demanding && !observation && !recoveryWeek && !sessionEventLimited && !rebuild && !loweredIntensity,
+        purpose: taperTempo ? "Retain a short, familiar tempo stimulus in the A-race taper" : observation && !retainComfortableIdentity ? `Comfortable ${session.sport} observation; not a measured baseline` : coachingPurpose!,
+        demanding: Boolean(taperTempo) || reviewedCoaching.demanding && !observation && !recoveryWeek && !sessionEventLimited && !rebuild && !loweredIntensity,
         ...(observation || loweredIntensity || sessionEventLimited || rebuild ? {note:retainComfortableIdentity ? reviewedCoaching.note : 'Effective effort and current duration override original quality work. This observation does not renew a measured reference.'} : {}),
       } : session.coaching;
       return [{ ...session, minutes, zone, type, description, title, planningAdjustment:{dateKey:key,factor:sessionFactor,eventPhase:eventDay.phase,eventIds:eventDay.eventIds}, ...(coaching ? {coaching} : {}) }];

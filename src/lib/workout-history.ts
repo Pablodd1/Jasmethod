@@ -1,4 +1,6 @@
-import { summarizeSet, type EditableStep, type SetSummary } from "./workout-interval-edit";
+import { summarizeSet, type SetSummary } from "./workout-interval-edit";
+import { prescriptionSteps } from "./prescription-steps";
+export { prescriptionSteps } from "./prescription-steps";
 
 /**
  * Revision history of ONE workout, rebuilt from the AuditLog rows that `updateWorkout`, the card step editor and
@@ -29,28 +31,6 @@ export interface HistoryEntry {
 const parse = (text: string | null | undefined): any => { if (typeof text !== "string") return null; try { const v = JSON.parse(text); return v && typeof v === "object" ? v : null; } catch { return null; } };
 const iso = (v: Date | string) => (v instanceof Date ? v : new Date(v)).toISOString();
 const when = (row: AuditRow) => Date.parse(iso(row.createdAt));
-
-/** Steps of a stored prescription, with repeat nodes expanded. null when there are no explicit steps. */
-export function prescriptionSteps(prescription: unknown): EditableStep[] | null {
-  const p = typeof prescription === "string" ? parse(prescription) : prescription;
-  if (!p || typeof p !== "object") return null;
-  const raw = p.sportStructure?.kind === "endurance" && Array.isArray(p.sportStructure.steps) ? p.sportStructure.steps : p.steps;
-  if (!Array.isArray(raw) || !raw.length) return null;
-  const out: EditableStep[] = [];
-  const expand = (nodes: any[], depth = 0): boolean => {
-    if (depth > 4) return false;
-    for (const node of nodes) {
-      if (!node || typeof node !== "object") return false;
-      if (node.repeat !== undefined) {
-        const n = Number(node.repeat);
-        if (!Number.isInteger(n) || n < 1 || n > 100 || !Array.isArray(node.steps)) return false;
-        for (let i = 0; i < n; i++) if (!expand(node.steps, depth + 1)) return false;
-      } else { out.push(node as EditableStep); if (out.length > 1000) return false; }
-    }
-    return true;
-  };
-  return expand(raw) ? out : null;
-}
 
 export function stepsDigest(prescription: unknown): StepsDigest | null {
   const steps = prescriptionSteps(prescription);

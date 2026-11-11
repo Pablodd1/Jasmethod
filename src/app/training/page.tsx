@@ -477,7 +477,7 @@ function TrainingPageContent() {
               <p className="font-semibold">{es ? "Eventos y recuperación" : "Events and recovery"}</p>
               <Link href="/races" className="underline">{es ? "Revisar eventos y prioridades" : "Review events and priorities"}</Link>
               <ul>{preview.preview.cycle.events.events.map((event:any)=><li key={event.id}>{event.dateKey} · {event.name || (es ? "Evento" : "Event")} · {event.priority}</li>)}</ul>
-              <p>{es ? "Las carreras A dan forma a la preparación y recuperación del ciclo. Las fechas B y C no reducen por sí solas las sesiones cercanas; revisa la recuperación según el esfuerzo real y cómo te sientes. Cada día de evento queda libre de entrenamiento añadido." : "A races shape preparation and recovery. B and C dates alone do not reduce nearby workouts. Review recovery using actual effort and how you feel. Every event day is protected from added training."}</p>
+              <p>{es ? "La carrera A es la prioridad del ciclo. La B puede ser el esfuerzo de calidad del día. La C puede servir de práctica controlada. Las fechas B y C conservan el ciclo. Antes de añadir una sesión suave, revisa el esfuerzo real, tu recuperación y el tiempo disponible. Cada día de evento queda libre de entrenamiento añadido." : "A is the peak event. B can serve as the day’s quality work. C can serve as controlled practice. B and C leave the surrounding cycle in place. Review actual race effort, recovery and available time before adding any separate easy endurance. Every event day is protected from added training."}</p>
               {preview.preview.cycle.events.warnings?.length > 0 && <ul role="status" className="space-y-1">{preview.preview.cycle.events.warnings.map((warning:any,index:number)=><li key={index}>{es ? `${warning.eventIds.map((id:string)=>preview.preview.cycle.events.events.find((event:any)=>event.id===id)?.name || id).join(" / ")}: ${warning.code === "recent_event" ? "evento reciente; revisar recuperación antes de retomar" : warning.code === "short_preparation" ? "menos de cuatro semanas de preparación; no se garantiza estar listo" : "preparación y recuperación se superponen; revisar prioridades sin prometer varios picos de forma"}.` : warning.message}</li>)}</ul>}
 
             </div>}
@@ -543,9 +543,9 @@ function TrainingPageContent() {
             <summary className="min-h-11 cursor-pointer font-display font-bold text-lg">{es ? "Distribución aeróbica prevista" : "Planned aerobic allocation"}</summary>
             <p className="text-xs text-slate-400 mb-3">
               Planned allocation: {actualEasy}% easy / {100 - actualEasy}% quality.
-              {" "}Entire saved cycle: {plan.days?.[0]?.date?.slice(0,10)} – {plan.days?.at(-1)?.date?.slice(0,10)}; denominator {plannedDistribution.totalMinutes} planned aerobic minutes across {plannedDistribution.sessionCount} sessions. Strength and station work are excluded.
+              {" "}Entire saved cycle: {plan.days?.[0]?.date?.slice(0,10)} – {plan.days?.at(-1)?.date?.slice(0,10)}; denominator {Math.round(plannedDistribution.totalMinutes)} planned aerobic minutes across {plannedDistribution.sessionCount} sessions. Strength and station work are excluded.
             </p>
-            <p className="text-xs text-slate-600 mb-3">Achieved physiological zone distribution: —. These are prescribed session labels, not measured completed time in zones. No achieved ratio is inferred from this plan.</p>
+            <p className="text-xs text-slate-600 mb-3">Achieved physiological zone distribution: —. Uses saved aerobic steps where available and session labels for older single-sport workouts without a prescription. Brick transitions are excluded. This is planned time, not measured time in zones.</p>
             <div className="flex gap-1 h-6 rounded-full overflow-hidden">
               <div
                 className="bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white"

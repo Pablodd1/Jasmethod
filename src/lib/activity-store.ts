@@ -20,6 +20,8 @@ export async function storeActivity(
   )
     throw new Error("Activity has invalid date or duration");
   let savedId: string | null = null;
+  let corrected = false;
+  let hadReport = false;
   const created = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
     await options.beforeWrite?.(tx);
@@ -32,7 +34,6 @@ export async function storeActivity(
     });
     if (existing) {
       if(activity.source==="garmin_direct"&&activity.actualDetails)activity={...activity,actualDetails:mergeProviderMeasurements(existing.actualDetails,activity.actualDetails)};
-      await clearActivityLinks(tx, userId, [existing.id]);
       const fields = [
         "sport",
         "title",
@@ -48,20 +49,20 @@ export async function storeActivity(
         "notes",
         "actualDetails",
       ];
+      const updatedFields = Object.fromEntries(fields
+        .filter(key => activity[key] !== undefined && (key !== "actualDetails" || (activity.source === "garmin_direct" && typeof activity[key] === "string")))
+        .map(key => [key, activity[key]]));
+      const changed = Object.entries(updatedFields).some(([key, value]) =>
+        JSON.stringify(value) !== JSON.stringify(existing[key as keyof typeof existing]));
+      if (!changed && existing.actualDurationMin === activity.durationMin) return false;
+      await clearActivityLinks(tx, userId, [existing.id]);
       await tx.workout.update({
         where: { id: existing.id },
-        data: {
-          ...Object.fromEntries(
-            fields
-              .filter((k) => activity[k] !== undefined && (k!=="actualDetails" || (activity.source==="garmin_direct"&&typeof activity[k]==="string")))
-              .map((k) => [k, activity[k]]),
-          ),
-          actualDurationMin: activity.durationMin,
-          // Corrected measurements invalidate the old report (Codex review #3
-          // P2) — it regenerates on the next report pass from the new values.
-          insights: null,
-        },
+        data: { ...updatedFields, actualDurationMin: activity.durationMin, insights: null },
       });
+      savedId = existing.id;
+      corrected = true;
+      hadReport = !!existing.insights;
       await matchActivity(tx, userId, timezone, { ...existing, ...activity, id: existing.id });
       return false;
     }
@@ -112,12 +113,12 @@ export async function storeActivity(
   // activities) generates silently — otherwise one connect = hundreds of
   // Telegram messages.
   if (
-    created &&
+    (created || corrected) &&
     activity.source !== "garmin_direct" &&
     savedId &&
-    Date.now() - new Date(activity.date).getTime() < 48 * 3600000
+    (hadReport || Date.now() - new Date(activity.date).getTime() < 48 * 3600000)
   )
-    await generateAndDeliverActivityReport(userId, timezone, savedId).catch(
+    await generateAndDeliverActivityReport(userId, timezone, savedId, { deliver: created }).catch(
       () => {},
     );
   return created;
@@ -138,6 +139,10 @@ async function matchActivity(tx: any, userId: string, timezone: string, activity
   const candidates = await tx.workout.findMany({ where: {
     userId, planned: true, completed: false, matchedPlanId: null,
     feedbackStatus: null,
+    AND: [
+      { OR: [{ source: null }, { source: { notIn: ["superseded-plan", "superseded-starter", "superseded-starter-rest"] } }] },
+      { OR: [{ planDay: null }, { planDay: { plan: { userId, status: "active" } } }] },
+    ],
     sport: activity.sport, date: { gte: start, lt: end },
   }});
   const best = selectUnambiguousPlan<any>(candidates, activity.durationMin);

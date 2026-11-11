@@ -13,12 +13,52 @@ function isDay(value: unknown): value is Day {
     && day.sessions.every(session => session && typeof session.id === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(session.id) && typeof session.title === "string" && typeof session.sport === "string");
 }
 
+type CompletedSession = { id: string; title: string; plannedMinutes: number | null; actualMinutes: number | null; effort: number | null };
+type RecoveryReview = { feedbackDate: string; completedReview: CompletedSession[] | null };
+
+function isRecoveryReview(value: unknown): value is RecoveryReview {
+  if (!value || typeof value !== "object") return false;
+  const { feedbackDate, completedReview } = value as RecoveryReview;
+  const metric = (n: unknown) => n === null || (typeof n === "number" && Number.isFinite(n) && n >= 0);
+  return typeof feedbackDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(feedbackDate) &&
+    (completedReview === null || Array.isArray(completedReview) && completedReview.length <= 100 &&
+      completedReview.every(row => row && typeof row.id === "string" && typeof row.title === "string" &&
+        metric(row.plannedMinutes) && metric(row.actualMinutes) && metric(row.effort)));
+}
+
 export function CoachRecoveryReview({ es }: { es: boolean }) {
+  const [review, setReview] = useState<RecoveryReview | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const [showYesterday, setShowYesterday] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setReview(null);
+    setUnavailable(false);
+    readTrainingJson(showYesterday ? "/api/checkin" : "/api/checkin?feedbackDate=today", {
+      signal: controller.signal, label: es ? "Revisión de recuperación" : "Recovery review", validate: isRecoveryReview,
+    }).then(setReview, () => { if (!controller.signal.aborted) setUnavailable(true); });
+    return () => controller.abort();
+  }, [es, showYesterday]);
   return <section className="rounded-2xl border border-ocean-200 bg-white p-3 space-y-3 min-w-0" aria-label={es ? "Revisión de recuperación" : "Recovery review"}>
     <h3 className="font-semibold">{es ? "Revisa tu recuperación" : "Review your recovery"}</h3>
     <p className="text-sm">{es
       ? "Revisa el resultado y el esfuerzo de tu sesión reciente. Luego confirma cómo te sientes hoy para que JMM revise tu próxima sesión."
       : "Review the result and effort for your recent session. Then confirm how you feel today so JMM can reassess your next session."}</p>
+    <button type="button" className="btn-secondary min-h-11" onClick={() => setShowYesterday(value => !value)}>
+      {showYesterday ? (es ? "Ver hoy" : "View today") : (es ? "Ver ayer" : "View yesterday")}
+    </button>
+    {!review && !unavailable && <p role="status" className="text-sm">{es ? "Cargando resultados…" : "Loading results…"}</p>}
+    {unavailable && <p role="status" className="text-sm">{es ? "Revisa tus resultados en el check-in." : "Open check-in to review your results."}</p>}
+    {review && <>
+      <p className="text-xs text-slate-600">{review.feedbackDate}</p>
+      {review.completedReview === null ? <p className="text-sm">{es ? "Los registros necesitan revisión antes de compararlos." : "The records need review before comparison."}</p>
+        : review.completedReview.length ? <ul className="space-y-2 text-sm">
+          {review.completedReview.map(row => <li key={row.id}>
+            <b>{row.title}</b>
+            <span className="block">{es ? "Previsto" : "Planned"} {row.plannedMinutes ?? "—"} · {es ? "Realizado" : "Actual"} {row.actualMinutes ?? "—"} min · {es ? "Esfuerzo" : "Effort"} {row.effort == null ? "—" : `${row.effort}/10`}</span>
+          </li>)}
+        </ul> : <p className="text-sm">{es ? "No hay resultados para esa fecha." : "No results recorded for that date."}</p>}
+    </>}
     <div className="flex flex-wrap gap-2">
       <Link href="/checkin#previous-session-heading" className="btn-secondary min-h-11">{es ? "Revisar actividad reciente" : "Review recent activity"}</Link>
       <Link href="/checkin#daily-questions" className="btn-primary min-h-11">{es ? "Actualizar check-in" : "Update check-in"}</Link>

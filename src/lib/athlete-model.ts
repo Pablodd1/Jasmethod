@@ -1,7 +1,7 @@
 // JasMiamiMethod — Individual athlete model (perf-engine-v3). Pure, no I/O.
 //
 // Builds the daily coach's picture of ONE athlete from imported history
-// (Garmin, COROS, Apple, manual, and Strava only for local, non-AI use),
+// (for example, permitted Garmin, COROS, Apple and manual data),
 // overnight metrics and profile facts. Where history is missing it does
 // not guess: it returns the onboarding questions the coach must ask.
 //
@@ -109,7 +109,7 @@ export function buildAthleteModel(input: { history: HistoryWorkout[]; metrics: H
   if (rpeBias != null && rpeBias >= 1) notes.push(`Sessions feel ~${rpeBias} RPE harder than intended: targets may be set too high.`);
   if (rpeBias != null && rpeBias <= -1.5) notes.push(`Sessions feel ~${Math.abs(rpeBias)} RPE easier than intended: a retest may raise your targets.`);
 
-  // HRV recovery after key sessions: hours until the 3-day-smoothed lnRMSSD is back within 0.5 SD of baseline.
+  // Heuristic: elapsed hours to an observed lnRMSSD within the baseline band. This is not a smoothed or validated recovery time.
   const hrv = input.metrics.filter(m => m.hrv && m.hrv > 0 && m.hrv <= 300 && (m.hrvType || "rmssd") === "rmssd" && m.source !== "strava").map(m => ({ ts: t(m.date), ln: Math.log(m.hrv!) })).sort((a, b) => a.ts - b.ts);
   let personalRecoveryH: number | null = null;
   if (hrv.length >= 30) {
@@ -126,7 +126,7 @@ export function buildAthleteModel(input: { history: HistoryWorkout[]; metrics: H
   }
 
   let spacingH = 48;
-  if (personalRecoveryH != null) { spacingH = Math.max(36, Math.min(72, Math.round(personalRecoveryH / 12) * 12)); notes.push(`Personal recovery: HRV typically back to baseline ~${personalRecoveryH} h after hard sessions → ${spacingH} h spacing.`); }
+  if (personalRecoveryH != null) { spacingH = Math.max(36, Math.min(72, Math.round(personalRecoveryH / 12) * 12)); notes.push(`Estimated recovery spacing: HRV observations returned to the baseline band ~${personalRecoveryH} h after hard sessions → ${spacingH} h spacing.`); }
   if (ageBand === "masters") { spacingH = Math.max(spacingH, personalRecoveryH != null ? spacingH : 60); }
   if (ageBand === "masters65") { spacingH = Math.max(spacingH, personalRecoveryH != null ? spacingH : 72); }
   let keyCap = level === "beginner" ? 2 : 3;

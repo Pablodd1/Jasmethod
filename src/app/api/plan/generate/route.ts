@@ -2,7 +2,7 @@ import {ACTIVITY_EVIDENCE_SELECT} from "@/lib/activity-evidence";
 import { cyclePlanningBasis } from "@/lib/cycle-planning-basis";
 import {commanderRequestHash} from "@/lib/coach-commander-provenance";
 import {unreportedWorkoutWhere} from "@/lib/calendar-workouts";
-import { normalizeCycleEvents, assessCycleEvents } from "@/lib/cycle-events";
+import { normalizeCycleEvents, assessCycleEvents, cycleDaysBetween } from "@/lib/cycle-events";
 import { readActivityDecisions } from "@/lib/activity-reconciliation";
 import { buildCycleBaselineReviews, requiredCycleSports } from "@/lib/cycle-review";
 import { cycleActivityEvidence, shapeTrainingCycle, TRAINING_CYCLE_VERSION } from "@/lib/training-cycle";
@@ -132,7 +132,7 @@ export async function POST(req: Request) {
     const anchors = evidencedTargetProfile(profile, benchmarkTests, appliedAnchors.flatMap(row => row.entityId ? [row.entityId] : []),new Date(),user.timezone);
     const needsAssessment = dist === "cycle" ? !anchors.ftp : dist === "swim-only" ? !anchors.swimPaceBase : ["track-sprint", "hyrox"].includes(dist) ? true : dist === "run-only" ? !anchors.runPaceBase : !anchors.ftp || !anchors.runPaceBase || !anchors.swimPaceBase;
     const upcomingRaces = allRaces.filter(r => dateKey(r.date, user.timezone) >= startKey);
-    const anchorRaceId = (upcomingRaces.find(r => r.priority === 1) || upcomingRaces[0])?.id;
+    const anchorRaceId = upcomingRaces.find(r => r.priority === 1)?.id;
     // Taper anchor: explicit raceDate wins; else the athlete's A race; else
     // a supplied profile date. Missing dates remain absent.
     const race = raceDate
@@ -142,6 +142,10 @@ export async function POST(req: Request) {
     if (raceDate && race && dateKey(race,user.timezone) < startKey) throw new ApiError("An explicit upcoming event cannot precede the plan start. Recent saved races remain recovery context.",422);
     const coachingAnchorRace=allRaces.find(r=>r.id===anchorRaceId);
     const matchedRace=coachingAnchorRace&&race&&dateKey(coachingAnchorRace.date,user.timezone)===dateKey(race,user.timezone)?coachingAnchorRace:null;
+    const raceKey = race ? dateKey(race, user.timezone) : null;
+    const savedOnRaceDay = allRaces.filter(event => dateKey(event.date, user.timezone) === raceKey);
+    const aRaceLeadDays = raceKey && (!savedOnRaceDay.length || savedOnRaceDay.some(event => event.priority === 1))
+      ? cycleDaysBetween(startKey, raceKey) : undefined;
     // Preserve the confirmed sport goal. Only an owned, date-matched race may
     // refine its triathlon distance; a nearby 70.3 is never a custom-leg proxy.
     const triathlonGoal = dist === "triathlon" || !!triathlonCoachingDistance(dist);
@@ -188,6 +192,7 @@ export async function POST(req: Request) {
           startDate: start,
           weeklyHours: planningWeeklyBudget(setup) / 60,
           sessionLimitMinutes: setup.maxSessionMinutes!,
+          aRaceLeadDays,
           hasRace: false, // One normalized event controller below owns reductions.
         })
       : isHyrox
@@ -198,6 +203,7 @@ export async function POST(req: Request) {
               startDate: start,
               weeklyHours: planningWeeklyBudget(setup) / 60,
               sessionLimitMinutes: setup.maxSessionMinutes!,
+              aRaceLeadDays,
             })
           : generatePlan({
               reviewedCycle: true,
@@ -207,7 +213,9 @@ export async function POST(req: Request) {
               startDate: start,
               weeklyHours: planningWeeklyBudget(setup) / 60,
               sessionLimitMinutes: setup.maxSessionMinutes!,
+              aRaceLeadDays,
               easyPct: splitTarget,
+              customRaceLegs: customRaceLegs ?? undefined,
               // Template only. The normalized bounded-cycle controller below
               // applies all event reductions once across every supported sport.
 
