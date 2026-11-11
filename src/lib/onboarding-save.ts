@@ -2,12 +2,13 @@ import { PLANNABLE_GOALS, planningGoal } from "./planning-setup";
 import { onboardingProfileFields } from "./profile-client";
 import { weeklyAvailabilityMinutes } from './planning-availability';
 
-export type OnboardingSection = "profile" | "essentials" | "zones" | "intent" | "goals" | "travel";
+export type OnboardingSection = "sport" | "profile" | "essentials" | "zones" | "intent" | "goals" | "travel";
 export interface SavedOnboarding { profile: Record<string, unknown>; setup: Record<string, unknown> | null }
 
 /** Section saves never persist drafts from a skipped or unrelated section. */
 export function onboardingSectionPayload(section: OnboardingSection, profile: Record<string, unknown>, setup: Record<string, unknown>, saved: SavedOnboarding, setupRevision: string | null) {
   const pick = (keys: string[]) => Object.fromEntries(keys.filter(key => Object.hasOwn(profile, key)).map(key => [key, profile[key]]));
+  if (section === "sport") return onboardingProfileFields(pick(["goal"]));
   if (section === "essentials") {
     // Omit unchanged values, including manually reviewed references and missing answers.
     return {...onboardingProfileFields(Object.fromEntries(["birthYear","sex","heightCm","weightKg"].filter(key=>Object.hasOwn(profile,key)&&profile[key]!==""&&profile[key]!=null&&String(profile[key])!==String(saved.profile[key]??"")).map(key=>[key,profile[key]]))),...Object.fromEntries(["lthr", "maxHr", "ftp", "runPaceBase", "swimPaceBase", "manualPrs"]
