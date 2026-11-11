@@ -280,6 +280,10 @@ export function DetailedAthleteSetup({embedded=false,initialSection="race",onSav
       const response = await fetch("/api/onboard", {method:"POST",headers:{"Content-Type":"application/json"},body:"{}",signal:AbortSignal.timeout(15000)});
       const result = await response.json();
       if (!response.ok || result.ok !== true) throw Error("Could not finish onboarding. Your saved answers remain available; please retry.");
+      if (result.planPending === true) {
+        setError(t("Setup saved. Your first plan is still pending. Retry to generate it.", "Datos guardados. Tu primer plan está pendiente. Vuelve a intentar generarlo."));
+        return;
+      }
       completedRef.current = true;
       await refresh();
       if (embedded) { completedRef.current=false; await onSaved?.(); setNotice(t("Saved answers reviewed. Return to the plan preview in this conversation.","Datos guardados revisados. Vuelve a la vista previa del plan en esta conversación.")); }

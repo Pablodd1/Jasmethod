@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { canCoach } from "@/lib/access";
-import { dayBounds, addDaysKey, dateKey } from "@/lib/dates";
+import { dayBounds, addDaysKey, localDate } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +33,9 @@ export async function GET() {
     return NextResponse.json({ alerts: [] });
 
   const athleteWhere = assignedIds ? { id: { in: assignedIds } } : undefined;
-  const { start, end, key } = dayBounds(me.timezone);
-  const yesterdayKey = addDaysKey(key, -1);
+  const now = new Date();
+  const earliest = new Date(now.getTime() - 26 * 3600000);
+  const latest = new Date(now.getTime() + 26 * 3600000);
 
   const athletes = await prisma.user.findMany({
     where: athleteWhere,
@@ -42,10 +43,9 @@ export async function GET() {
       id: true, name: true, email: true, avatar: true, timezone: true,
       profile: { select: { injured: true } },
       checkins: {
-        where: { date: { gte: start, lt: end } },
+        where: { date: { gte: earliest, lt: latest } },
         orderBy: { date: "desc" },
-        take: 1,
-        select: { answers: true, adaptation: true },
+        select: { date: true, answers: true },
       },
       connectors: {
         where: { status: "error" },
@@ -61,7 +61,8 @@ export async function GET() {
   }[] = [];
 
   for (const a of athletes) {
-    const checkin = a.checkins[0];
+    const { start, end, key } = dayBounds(a.timezone, now);
+    const checkin = a.checkins.find(row => row.date >= start && row.date < end);
     let answers: any = {};
     try { answers = JSON.parse(checkin?.answers || "{}"); } catch {}
 
@@ -82,7 +83,7 @@ export async function GET() {
         detail: "Reported sick or injured at today's check-in",
       });
     }
-    if (!checkin) {
+    if (!checkin && now >= localDate(key, a.timezone, "12:00")) {
       alerts.push({
         kind: "missed", severity: "low",
         athleteId: a.id, athlete: a.name, avatar: a.avatar,
@@ -104,15 +105,19 @@ export async function GET() {
       planned: true,
       feedbackStatus: "skipped",
       date: {
-        gte: new Date(`${yesterdayKey}T00:00:00Z`),
-        lt: new Date(`${key}T00:00:00Z`),
+        gte: new Date(now.getTime() - 50 * 3600000),
+        lt: now,
       },
       ...(assignedIds ? { userId: { in: assignedIds } } : {}),
     },
-    select: { userId: true, title: true, user: { select: { name: true, avatar: true } } },
-    take: 20,
+    select: { userId: true, title: true, date: true, user: { select: { name: true, avatar: true, timezone: true } } },
+    orderBy: { date: "desc" },
   });
-  for (const w of skipped) {
+  const yesterday = skipped.filter(w => {
+    const { key, start } = dayBounds(w.user.timezone, now);
+    return w.date >= localDate(addDaysKey(key, -1), w.user.timezone) && w.date < start;
+  }).slice(0, 20);
+  for (const w of yesterday) {
     alerts.push({
       kind: "skipped", severity: "low",
       athleteId: w.userId, athlete: w.user.name, avatar: w.user.avatar,

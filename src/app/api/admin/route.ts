@@ -2,8 +2,9 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { canCoach, ApiError, errorResponse } from "@/lib/access";
-import { estimateTss } from "@/lib/fitness";
-import { readSportHeartRate, type SportHrSport } from "@/lib/sport-heart-rate";
+import { ACTIVITY_EVIDENCE_SELECT, groupActivityEvidence } from "@/lib/activity-evidence";
+import { readActivityDecisions } from "@/lib/activity-reconciliation";
+import { derivedActivityPolicy } from "@/lib/derived-activity-policy";
 
 export async function GET(req: Request) {
   try {
@@ -66,35 +67,27 @@ export async function GET(req: Request) {
           },
           workouts: {
             where: {
-              completed: true,
+              OR: [{ completed: true }, { feedbackStatus: { in: ["completed", "partial", "substituted"] } }],
+              AND: [{ OR: [{ feedbackStatus: null }, { feedbackStatus: { not: "skipped" } }] }],
               date: {
                 gte: new Date(Date.now() - 30 * 86400000),
                 lte: new Date(),
               },
             },
-            select: {
-              durationMin: true,
-              actualDurationMin: true,
-              sport:true,actualSport:true,
-              avgPower: true,
-              np: true,
-              avgHr: true,
-              rpe: true,
-              intensity: true,
-              tss: true,
-              date: true,
-              matchedPlanId: true,
-            },
+            select: ACTIVITY_EVIDENCE_SELECT,
           },
         },
       }),
     ]);
-    const rows = users.map((u) => {
-      const workouts = u.workouts.filter((w) => !w.matchedPlanId);
-      const last = workouts.reduce(
-        (d, w) => (w.date > d ? w.date : d),
-        new Date(0),
-      );
+    const rows = await Promise.all(users.map(async (u) => {
+      const policy = derivedActivityPolicy(u.workouts);
+      const grouped = policy.status === "allowed"
+        ? groupActivityEvidence(u.workouts, u.workouts.length ? await readActivityDecisions(u.id) : [])
+        : null;
+      const workouts = grouped && !grouped.unresolvedGroups ? grouped.groups : null;
+      const last = workouts?.reduce((date, group) => group.primary.date > date ? group.primary.date : date, new Date(0));
+      const completeMinutes = workouts?.every(group => group.budgetMinutes !== null);
+      const completeEffort = workouts?.every(({primary}) => typeof primary.rpe === "number" && primary.rpe >= 0 && primary.rpe <= 10);
       let verdict = null;
       try {
         verdict =
@@ -109,33 +102,19 @@ export async function GET(req: Request) {
         goal: u.profile?.goal,
         experience: u.profile?.experience,
         ftp: u.profile?.ftp,
-        workouts30: workouts.length,
-        minutes30: workouts.reduce(
-          (s, w) => s + (w.actualDurationMin ?? w.durationMin),
-          0,
-        ),
-        totalTss30: Math.round(
-          workouts.reduce(
-            (s, w) =>
-              s +
-              estimateTss({
-                ...w,
-                durationMin: w.actualDurationMin ?? w.durationMin,
-                avgPower: w.np ?? w.avgPower,
-                ftp:(w.actualSport??w.sport)==="bike"?u.profile?.ftp:null,
-                lthr:["run","bike"].includes(w.actualSport??w.sport)?readSportHeartRate(u.profile?.manualPrs,(w.actualSport??w.sport) as SportHrSport,"lthr",w.date,u.timezone)?.value??null:null,
-              }),
-            0,
-          ),
-        ),
-        lastWorkoutDays: last.getTime()
+        workouts30: workouts?.length ?? null,
+        minutes30: completeMinutes && workouts ? workouts.reduce((sum, group) => sum + group.budgetMinutes!, 0) : null,
+        reportedLoad30: completeMinutes && completeEffort && workouts
+          ? workouts.reduce((sum, group) => sum + group.budgetMinutes! * group.primary.rpe!, 0)
+          : null,
+        lastWorkoutDays: last?.getTime()
           ? Math.floor((Date.now() - last.getTime()) / 86400000)
           : null,
         lastCheckin: u.checkins[0]?.date,
         verdict,
         connectors: u.connectors,
       };
-    });
+    }));
     return Response.json({ rows, page, pages: Math.ceil(count / 30), count });
   } catch (e) {
     return errorResponse(e);
