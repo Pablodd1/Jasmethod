@@ -165,6 +165,7 @@ export async function GET(req: Request) {
             fuel.preSession.note,
             `During: approximately ${fuel.carbsPerHourG} g carbohydrate per hour as an educational example within practiced tolerance.`,
             `Fluid example up to ${Math.round(fuel.fluidMlPerHour)} ml/h (${fuel.fluidSource}); drink according to need, do not force intake.`,
+            ...(resolved.nutrition?.duringGuidance ? [resolved.nutrition.duringGuidance[user.language === "es" ? "es" : "en"]] : []),
             "Fluid and sodium examples are not measured current replacement needs. Avoid overdrinking.",
           ] : ["Session-specific fueling is unavailable while this session is on hold."],
           note: fuel ? [...fuel.measurementGaps, "General education; review dietary needs and tolerance."].join(" ") : undefined,

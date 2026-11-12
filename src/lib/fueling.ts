@@ -226,7 +226,7 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
   else if (durationMin < 75)
     notes.push("45-75 min — carbohydrates are for the mouth and brain: rinse or small sips.");
   else if (durationMin < 150)
-    notes.push(`${carbsPerHourG} g/h is a general example within the 30–60 g/h range; choose familiar food or drink and adjust for tolerance.`);
+    notes.push(practice ? `${carbsPerHourG} g/h reflects your recorded practice and tolerance for this session.` : `${carbsPerHourG} g/h is a general example within the 30–60 g/h range; choose familiar food or drink and adjust for tolerance.`);
   else
     notes.push(
       `${carbsPerHourG} g/h${carbsPerHourG > 60 ? " total carbohydrate using a practiced glucose/maltodextrin plus fructose mixture; ratio depends on the product and tolerance" : " TOTAL carbohydrate from all foods, drinks and gels combined"}.`,
@@ -237,7 +237,9 @@ export function buildFuelingPlan(opts: FuelingInput): FuelingPlan {
 
   // Carb periodization ("fuel for the work required", Impey 2018): the daily
   // verdict bends the day's carb emphasis, not the session safety floor.
-  if (verdict === "easy" || verdict === "rest")
+  if (verdict === "easy")
+    notes.push("Easy session: keep regular meals and match fueling to the work you do; this is not a weight-loss plan.");
+  else if (verdict === "rest")
     notes.push("Recovery day: eat regular balanced meals and enough energy for recovery; this is not a weight-loss plan.");
   else if (verdict === "trim")
     notes.push("Trimmed session — fuel stays proportional; no extra loading needed.");
