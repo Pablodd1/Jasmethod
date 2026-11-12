@@ -508,7 +508,7 @@ export const ERGOGENIC_LIBRARY: ErgoOption[] = [
     when: "45-60 min pre-workout",
     benefit:
       "Lowers perceived exertion, improves endurance + high-intensity output (Goldstein 2010).",
-    caution: "Late-day use can impair sleep — stop by ~2pm.",
+    caution: "Count caffeine from coffee, gels, drinks and supplements together. Use only a familiar amount you tolerate, and consider how close the session is to bedtime.",
   },
   {
     key: "citrulline",
@@ -632,33 +632,13 @@ export function recommendErgogenics(
     session.intensity === "z5" ||
     session.intensity === "z6" ||
     session.intensity === "z7";
-  const long = session.durationMin >= 90;
-  const strength = session.sport === "strength";
-  const shortIntense =
-    session.sport === "swim" || session.sport === "run"
-      ? session.type === "interval" || session.type === "threshold"
-      : false;
-
+  const competitionOrTest = session.type === "race" || session.type === "test";
   const picks: ErgoOption[] = [];
-  if (hard || long)
+  // Preference indicates consent to see a suggestion, not prior race rehearsal.
+  if (!competitionOrTest && hard && session.durationMin >= 45)
     picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "caffeine")!);
-  if (long) picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "nitrate")!);
-  if (strength || shortIntense)
+  if (!competitionOrTest && session.sport === "strength" && session.durationMin > 0)
     picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!);
-  if (shortIntense)
-    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "betaAlanine")!);
-  if (strength || session.type === "volume" || session.durationMin >= 75)
-    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "citrulline")!);
-  if (session.type === "test" || session.type === "race")
-    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "bicarb")!);
-
-  // Combat recommendations concern performance, never protection from head impacts.
-  if (session.sport === "boxing") {
-    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "creatine")!); // repeated-effort power
-    picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "choline")!); // reaction speed
-    if (!shortIntense)
-      picks.push(ERGOGENIC_LIBRARY.find((e) => e.key === "betaAlanine")!); // 1-4 min round buffering
-  }
 
   // Explicit per-item opt-in; an enabled master switch is not supplement consent.
   const liked = picks.filter((e) => prefs.likes.includes(e.key));

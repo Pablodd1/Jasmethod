@@ -342,7 +342,7 @@ function CheckinPageContent() {
   // Null belongs to the selected session: never borrow another session's meal.
   const fuel = prescription?.nutrition?.fuel ?? null;
   const post = prescription?.nutrition?.post ?? null;
-  const ergos = result?.ergos?.recommended;
+  const ergos = prescription?.sessionId === result?.prescription?.sessionId ? result?.ergos?.recommended : undefined;
   const recovery = result?.recovery;
   const fuelBrands = checkinFuelBrands(result?.fuelBrands);
   const sources = result?.sources;
@@ -594,6 +594,7 @@ function CheckinPageContent() {
                 <div className="text-sm text-slate-600 space-y-1">
                   <div>{t(lang, "fuel.carbs")}: <strong>{fuel.carbsPerHourG} g/h</strong></div>
                   <div>{t(lang, "fuel.sodium")}: <strong>{fuel.sodiumMgPerHour} mg/h</strong> · {t(lang, "fuel.fluid")}: <strong>{fuel.fluidMlPerHour} ml/h</strong></div>
+                  {prescription?.nutrition?.duringGuidance && <p>{prescription.nutrition.duringGuidance[lang === "es" ? "es" : "en"]}</p>}
                   {fuel.caffeineMg && <div>{t(lang, "fuel.caffeine")}: <strong>{fuel.caffeineMg} mg</strong> pre-session</div>}
                 </div>
               </div>
