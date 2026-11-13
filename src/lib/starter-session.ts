@@ -6,13 +6,17 @@ export function starterRestriction(profile: {injured?:boolean;birthYear?:number|
   return !!profile?.injured || !!(profile?.birthYear && now.getUTCFullYear()-profile.birthYear<18)
     || setup?.restrictions === "present" || setup?.qualifiedReview === "required" || setup?.interruptions === "yes";
 }
-export function starterSession(goal:string|null|undefined, recentSport?:string|null) {
+const TRIATHLON_GOALS = ["triathlon","sprint","olympic","half","full"];
+export function starterSession(goal:string|null|undefined, recentSport?:string|null, observationIndex?: number) {
+  const triathlonSport = observationIndex === undefined ? "run" : (["swim","bike","run"] as const)[observationIndex % 3] ?? "swim";
   const sport = goal === "cycle" ? "bike" : goal === "swim-only" ? "swim"
     : goal === "hyrox" || goal === "track-sprint" ? "mobility"
-    : ["triathlon","sprint","olympic","half","full","run-only","5k","10k","half-marathon","marathon"].includes(goal??"") ? "run" : ["run","bike","swim"].includes(recentSport ?? "") ? recentSport! : "mobility";
+    : TRIATHLON_GOALS.includes(goal ?? "") ? triathlonSport
+    : ["run-only","5k","10k","half-marathon","marathon"].includes(goal??"") ? "run" : ["run","bike","swim"].includes(recentSport ?? "") ? recentSport! : "mobility";
   const guidance = sport === "run" ? "Walk or alternate comfortable walking and easy jogging. Keep conversation easy; no pace target."
     : sport === "bike" ? "Use a familiar bike in a safe setting. Pedal comfortably; no power target."
     : sport === "swim" ? "Only if you can swim confidently with appropriate supervision and pool access: familiar relaxed swimming, pausing as needed. Otherwise choose gentle land movement in Profile."
+    : goal === "hyrox" ? "Alternate easy walking with familiar unloaded station patterns such as a supported squat or step-back. Skip any unfamiliar movement. No race loads, jumps or maximal efforts."
     : "Use gentle familiar walking and comfortable mobility. No loaded stations, jumps or maximal efforts.";
   return { starterVersion:STARTER_SESSION_VERSION, title:"Day zero — comfortable observation", sport,
     type:"recovery", intensity:"z1", durationMin:20,

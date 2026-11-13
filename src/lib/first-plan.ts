@@ -1,5 +1,4 @@
 import { startingCycle } from "./starting-cycle";
-import { starterSession } from "./starter-session";
 import { assessPlanningSetup, planningGoal, PLANNABLE_GOALS, type PlanningSetup } from "./planning-setup";
 import { coachingWeekTemplate } from "./coaching-week-template";
 import { boundPlanWeeks, planningWeeklyBudget } from "./planning-bounds";
@@ -41,16 +40,11 @@ export function firstPlanDraft(profile: Profile, setup: PlanningSetup | null, st
       review:shaped[0]};
   }
   const observation = startingCycle(profile,setup,startKey,occupied,activity.derivedActivityPolicy.status!=="allowed",now);
-  let observationIndex = 0;
-  const sessions = observation.days.filter(day=>day.selected&&!day.occupied).map(day=>{
-    // All three triathlon disciplines are visible when three observation slots
-    // fit. Swimming retains the existing competence/supervision condition.
-    const triathlon = ["triathlon","sprint","olympic","half","full"].includes(goal);
-    const base = triathlon ? starterSession(["swim-only","cycle","run-only"][observationIndex++ % 3]) : observation.base;
-    return {slot:day.slot,source:day.minutes>0?"starter":"plan",base:{...base,durationMin:day.minutes,
-      title:day.minutes>0?`${base.sport} · comfortable observation`:"Review before training",
-      description:day.minutes>0?base.description:observation.reasons.map(reason=>reason.en).join(" ")}};
-  });
+  const sessions = observation.days.filter(day=>day.selected&&!day.occupied).map(day=>({
+    slot:day.slot,source:day.minutes>0?"starter":"plan",base:{...observation.base,sport:day.sport,durationMin:day.minutes,
+      title:day.minutes>0?`${day.sport} · comfortable observation`:"Review before training",
+      description:day.minutes>0?day.description:observation.reasons.map(reason=>reason.en).join(" ")}
+  }));
   return {version:FIRST_PLAN_VERSION,kind:"observation" as const,startKey,sessions,activity,totalMinutes:observation.totalMinutes,
     note:"Initial observation/review only; usable recent capacity is not established. This is not a complete performance cycle. Unknown and restricted work are not zero training.",review:observation};
 }

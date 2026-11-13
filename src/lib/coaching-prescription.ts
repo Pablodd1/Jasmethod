@@ -95,11 +95,14 @@ export function coachingEnduranceSteps(sport: string, minutes: number, zone: str
   const cool = Math.min(300, Math.floor(total / 4));
   const warm = quality ? 1200 : Math.min(600, Math.floor(total * .2));
   const main = total - warm - cool;
-  const warmup = sport === 'run' ? 'Easy jog' : sport === 'bike' ? 'Easy spin' : 'Easy swim';
+  const warmup = sport === 'run' ? cap === 1 ? 'Easy walk or jog' : 'Easy jog' : sport === 'bike' ? 'Easy spin' : 'Easy swim';
   const cooldown = sport === 'run' ? 'Easy jog or walk' : sport === 'bike' ? 'Easy spin' : 'Easy swim';
   const steps = quality ? [
     timed(warmup, 900, 'z1', 'warmup'),
-    timed(sport === 'run' ? 'Dynamic running drills' : sport === 'bike' ? 'Smooth cadence build' : 'Progressive technique swim', 300, 'z1', 'warmup'),
+    timed(sport === 'run' ? 'Dynamic running drills' : sport === 'bike' ? 'Smooth cadence build' : 'Progressive technique swim', 300, 'z1', 'warmup',
+      sport === 'run' ? 'Use familiar ankle rocks, controlled leg swings and marching. Keep the range comfortable and return to an easy jog between drills.'
+      : sport === 'bike' ? 'Use a light gear and gradually increase cadence while keeping pressure on the pedals easy.'
+      : 'Use a familiar stroke and gradually build rhythm. Pause as needed and use a supervised setting.'),
   ] : [timed(warmup,warm,'z1','warmup')];
   if (quality) {
     const count = Math.min(recipe === 'short-interval' ? 8 : 4, Math.floor(main / (work + recovery)));
@@ -118,7 +121,7 @@ export function coachingEnduranceSteps(sport: string, minutes: number, zone: str
       steps.push(timed(`Relaxed repeat ${i+1}/${count}`,Math.max(1,seconds-30),`z${Math.min(2,cap)}`,'active',sport === 'swim' ? 'Use a familiar technique. Swim in a supervised setting; no breath-hold drills.' : 'Keep the movement familiar and relaxed.'));
       steps.push(timed('Reset and easy recovery',Math.min(30,seconds-1),'z1','recovery'));
     }
-  } else steps.push(timed('Steady aerobic work',main,`z${Math.min(2,cap)}`));
+  } else steps.push(timed(cap === 1 && sport === 'run' ? 'Comfortable walk / run practice' : 'Steady aerobic work',main,`z${Math.min(2,cap)}`));
   steps.push(timed(cooldown,cool,'z1','cooldown'));
   return steps;
 }
@@ -171,7 +174,7 @@ export function buildCoachingPrescription(sport: string, minutes: number, zone: 
       if(!reviewed) return {steps:[],paused:true,note:'Reviewed station practice is paused: confirm equipment, technique, explicit load/endpoint, complete time budget and current tolerance. Do not infer a replacement dose from division or race distance.'};
       return {steps:sportStructureSteps(reviewed).map(s=>s.step),sportStructure:reviewed,note:'Execute the reviewed station endpoints and rests only. Non-time endpoint durations are planning estimates. Change loads, distance, repetitions or progression only after review; this is not a race simulation.'};
     }
-    structure.steps.push({kind:'step',name:'Easy movement and station rehearsal',phase:'warmup',zone:'z1',endpoint:{type:'time',seconds:warm}});
+    structure.steps.push({kind:'step',name:'Easy walk or jog, then unloaded station rehearsal',phase:'warmup',zone:'z1',endpoint:{type:'time',seconds:warm},note:'Start comfortably. Rehearse familiar squat, hinge or step-back patterns with control before the first run–station block.'});
     const main=total-warm-cool, count=Math.max(1,Math.floor(main/300));
     for(let i=0;i<count;i++) {
       const block=i===count-1 ? main-Math.floor(main/count)*i : Math.floor(main/count);

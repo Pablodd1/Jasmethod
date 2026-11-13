@@ -6,6 +6,12 @@ type Preview = {preview:ReturnType<typeof startingCycle>;previewToken:string;exi
 export function StartingCycle({es,onSaved,disabled=false,onBusy}:{es:boolean;onSaved:()=>void|Promise<void>;disabled?:boolean;onBusy?:(value:boolean)=>void}) {
   const [preview,setPreview]=useState<Preview|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[saved,setSaved]=useState("");
   const say=(en:string,spanish:string)=>es?spanish:en;
+  const sportLabels: Record<string,string> = {
+    run: say("Walk / easy run","Caminar / correr suave"),
+    bike: say("Easy bike","Bici suave"),
+    swim: say("Easy swim (with safe pool access)","Natación suave (con acceso seguro a piscina)"),
+    mobility: say("Walking and mobility","Caminata y movilidad"),
+  };
   async function run(save=false){
     if(busy||disabled)return;setBusy(true);onBusy?.(true);setError("");setSaved("");
     try {
@@ -25,7 +31,7 @@ export function StartingCycle({es,onSaved,disabled=false,onBusy}:{es:boolean;onS
         {preview.renewingStartingWeek&&<p>{say("Your previous starting week has ended. Saving archives that week and keeps its reported history; no progression is assumed.","La semana inicial anterior terminó. Al guardar se archiva esa semana y se conserva el historial informado; no se supone una progresión.")}</p>}
         <p className="text-sm">{say("Suggested schedule for your review, not assumed availability. Up to three optional, comfortable observations; no progression or invented benchmarks. Record actual minutes, effort and recovery before choosing the next cycle.","Horario propuesto para que lo revises, no disponibilidad supuesta. Hasta tres observaciones cómodas opcionales, sin progresión ni referencias inventadas. Registra minutos reales, esfuerzo y recuperación antes de elegir el siguiente ciclo.")}</p>
         {preview.preview.reasons.length>0&&<div role="status"><strong>{say("Review tasks only; no exercise prescribed","Solo tareas de revisión; no se prescribe ejercicio")}</strong><ul className="list-disc pl-5">{preview.preview.reasons.map(reason=><li key={reason.key}>{es?reason.es:reason.en}</li>)}</ul><a className="underline" href="/onboard?redo=1&advanced=1&step=race&return=training">{say("Review my answers and restrictions","Revisar mis respuestas y restricciones")}</a></div>}
-        <ul className="text-sm space-y-2">{preview.preview.days.map(day=><li key={day.dateKey}><strong>{day.dateKey}</strong> · {day.kind==="existing_record"?say("Existing activity/event protected; no extra session","Actividad/evento existente protegido; sin sesión adicional"):day.kind==="review"?say("Review readiness and missing information","Revisar preparación y datos pendientes"):day.kind==="observation"&&day.minutes>0?`${day.minutes} min · ${say("optional comfortable observation, pending daily check-in","observación cómoda opcional, pendiente del check-in diario")}`:say("Open day; record only what you do","Día libre; registra solo lo que hagas")}</li>)}</ul>
+        <ul className="text-sm space-y-2">{preview.preview.days.map(day=><li key={day.dateKey}><strong>{day.dateKey}</strong> · {day.kind==="existing_record"?say("Existing activity/event protected; no extra session","Actividad/evento existente protegido; sin sesión adicional"):day.kind==="review"?say("Review readiness and missing information","Revisar preparación y datos pendientes"):day.kind==="observation"&&day.minutes>0?`${day.minutes} min · ${say("optional comfortable observation, pending daily check-in","observación cómoda opcional, pendiente del check-in diario")} · ${sportLabels[day.sport] ?? say("Easy movement","Movimiento suave")}`:say("Open day; record only what you do","Día libre; registra solo lo que hagas")}</li>)}</ul>
         <div className="flex flex-wrap gap-2"><button type="button" className="btn-primary" disabled={busy||disabled} onClick={()=>void run(true)}>{say("Confirm and save starting week","Confirmar y guardar semana inicial")}</button><button type="button" className="btn-secondary" disabled={busy||disabled} onClick={()=>setPreview(null)}>{say("Cancel","Cancelar")}</button></div>
       </>}
     </div>}

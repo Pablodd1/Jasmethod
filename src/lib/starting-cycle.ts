@@ -27,16 +27,19 @@ export function startingCycle(profile: {goal?:string|null;birthYear?:number|null
   if (!adult) reasons.push({key:"adult",en:"Confirm eligibility for the adult program.",es:esReasons.adult});
   if (starterRestriction(profile,setup,now)) reasons.push({key:"restrictions",en:"Review current restrictions or return after an interruption with your coach or qualified professional.",es:esReasons.restrictions});
   if (provenanceHold) reasons.push({key:"provenance",en:"Some history cannot yet be used for training adaptation because its origin needs review.",es:esReasons.provenance});
-  if (typeof profile?.weeklyHours === "number" && Number.isFinite(profile.weeklyHours) && profile.weeklyHours*60 < 1) reasons.push({key:"availability",en:"Saved availability does not allow a one-minute observation. Review your available time when it changes.",es:esReasons.availability});
+  const availableMinutes = setup?.availableWeeklyMinutes ?? (typeof profile?.weeklyHours === "number" && Number.isFinite(profile.weeklyHours) ? profile.weeklyHours * 60 : 60);
+  if (availableMinutes < 1) reasons.push({key:"availability",en:"Saved availability does not allow a one-minute observation. Review your available time when it changes.",es:esReasons.availability});
   const base = starterSession(profile?.goal);
   const weekday = new Date(`${startKey}T12:00Z`).getUTCDay();
   const slots = setup?.trainingDays.length ? Array.from({length:7},(_,slot)=>slot).filter(slot=>setup.trainingDays.includes((weekday+slot)%7)).slice(0,3) : [0,2,4];
-  let remaining = Math.min(60, Number.isFinite(profile?.weeklyHours) && profile!.weeklyHours! >= 0 ? profile!.weeklyHours!*60 : 60);
+  let remaining = Math.max(0, Math.min(60, availableMinutes));
+  let observationIndex = 0;
   const days = Array.from({length:7},(_,slot)=>{
     const dateKey = addDaysKey(startKey,slot), selected = slots.includes(slot), occupied = unavailableDays.includes(dateKey);
     const minutes = selected && !occupied && !reasons.length ? Math.max(0,Math.floor(Math.min(20,setup?.maxSessionMinutes ?? 20,remaining))) : 0;
     remaining -= minutes;
-    return { dateKey, slot, selected, occupied, minutes, kind: occupied ? "existing_record" as const : selected ? reasons.length ? "review" as const : "observation" as const : "open" as const };
+    const session = starterSession(profile?.goal, null, minutes > 0 ? observationIndex++ : undefined);
+    return { dateKey, slot, selected, occupied, minutes, sport: session.sport, description: session.description, kind: occupied ? "existing_record" as const : selected ? reasons.length ? "review" as const : "observation" as const : "open" as const };
   });
   return { version:STARTING_CYCLE_VERSION, startKey, days, reasons, base, scheduleSource:setup?.trainingDays.length ? "saved_availability" : "suggested_for_review", totalMinutes:days.reduce((sum,day)=>sum+day.minutes,0),
     status:reasons.length ? "review_required" : "daily_checkin_required", progression:false, physiologicalTargets:false };

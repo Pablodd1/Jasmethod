@@ -5,7 +5,7 @@ import { trainingAccess, ApiError, errorResponse } from "@/lib/access";
 import { readPlanningSetup } from "@/lib/planning-setup-store";
 import { startingCycle, STARTING_CYCLE_VERSION } from "@/lib/starting-cycle";
 import { dayBounds, addDaysKey, localDate, dateKey } from "@/lib/dates";
-import { prescribeToday } from "@/lib/adaptive";
+import { provisionalWorkoutPrescription } from "@/lib/adaptive";
 import { derivedActivityPolicy } from "@/lib/derived-activity-policy";
 import { appMutationOriginAllowed } from "@/lib/request-origin";
 import { readScenarioJson } from "@/lib/race-scenario-http";
@@ -60,10 +60,10 @@ export async function POST(req:Request) {
       const plan=await tx.trainingPlan.create({data:{userId:user.id,name:es?"Semana inicial · observar y revisar":"Starting week · observe and review",level:p.profile?.experience||"unconfirmed",distance:p.profile?.goal||"unconfirmed",weeks:1,startDate:localDate(p.cycle.startKey,user.timezone),easyPct:90}});
       for(const day of p.cycle.days){
         const date=localDate(day.dateKey,user.timezone),isTask=day.selected&&!day.occupied&&(day.kind==="review"||day.minutes>0);
-        const planDay=await tx.planDay.create({data:{planId:plan.id,date,week:1,dayOfWeek:new Date(`${day.dateKey}T12:00Z`).getUTCDay(),focus:day.minutes>0?p.cycle.base.sport:"review",dayOff:!isTask,notes:JSON.stringify({version:STARTING_CYCLE_VERSION,kind:day.kind,scheduleSource:p.cycle.scheduleSource,provisional:true})}});
+        const planDay=await tx.planDay.create({data:{planId:plan.id,date,week:1,dayOfWeek:new Date(`${day.dateKey}T12:00Z`).getUTCDay(),focus:day.minutes>0?day.sport:"review",dayOff:!isTask,notes:JSON.stringify({version:STARTING_CYCLE_VERSION,kind:day.kind,scheduleSource:p.cycle.scheduleSource,provisional:true})}});
         if(!isTask)continue;
-        const base={...p.cycle.base,durationMin:day.minutes,title:day.minutes>0?(es?"Observación cómoda · sin prueba máxima":"Comfortable observation · no maximal test"):(es?"Revisar antes de entrenar":"Review before training"),description:day.minutes>0?`${p.cycle.base.description} Record actual effort and recovery; this observation does not establish FTP, threshold pace or VO2 max.`:p.cycle.reasons.map(r=>es?r.es:r.en).join(" ")};
-        const prescription=prescribeToday({session:base,adaptation:{verdict:"rest",durationFactor:0,intensityCap:"z1"}});
+        const base={...p.cycle.base,sport:day.sport,durationMin:day.minutes,title:day.minutes>0?(es?"Observación cómoda · sin prueba máxima":"Comfortable observation · no maximal test"):(es?"Revisar antes de entrenar":"Review before training"),description:day.minutes>0?`${day.description} Record actual effort and recovery; this observation does not establish FTP, threshold pace or VO2 max.`:p.cycle.reasons.map(r=>es?r.es:r.en).join(" ")};
+        const prescription=provisionalWorkoutPrescription(base);
         await tx.workout.create({data:{userId:user.id,planDayId:planDay.id,date,source:day.minutes>0?"starter":"plan",planned:true,approved:false,completed:false,sport:base.sport,type:base.type,title:base.title,durationMin:day.minutes,intensity:"z1",notes:base.description,originalPlan:JSON.stringify(base),prescription:JSON.stringify(prescription)}});
       }
       await tx.auditLog.create({data:{actorId:user.id,subjectId:user.id,action:"plan.starting",entityId:plan.id,note:token,after:JSON.stringify({version:STARTING_CYCLE_VERSION,cycle:p.cycle})}});
