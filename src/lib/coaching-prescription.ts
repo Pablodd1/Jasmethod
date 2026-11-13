@@ -86,17 +86,22 @@ const timed = (name: string, seconds: number, zone: string, phase: WorkoutStep['
 export function coachingEnduranceSteps(sport: string, minutes: number, zone: string, recipe: CoachingSessionMetadata['recipe']): WorkoutStep[] {
   const total = Math.max(0, Math.floor(minutes * 60));
   if (!total) return [];
-  const warm = Math.min(600, Math.floor(total * .2)), cool = Math.min(300, Math.floor(total * .1));
-  const main = total - warm - cool;
-  const steps = [timed('Progressive easy warm-up',warm,'z1','warmup')];
   const cap = Number(zone.slice(1)) || 1;
-  // Over/under requires separate anchors and familiarity; use capped threshold
-  // repeats until a reviewed protocol supplies those details.
   const requested = ['vo2','short-interval'].includes(recipe) ? 5 : ['threshold','over-under'].includes(recipe) ? 4 : 3;
-  const quality = !['aerobic','technique','brick'].includes(recipe) && cap >= requested && minutes >= 25;
+  const work = recipe === 'short-interval' ? 60 : recipe === 'vo2' ? 180 : recipe === 'tempo' ? 300 : 240;
+  const recovery = recipe === 'vo2' ? 180 : 120;
+  const quality = !['aerobic','technique','brick'].includes(recipe) && cap >= requested &&
+    total >= 1200 + 300 + 2 * (work + recovery);
+  const cool = Math.min(300, Math.floor(total / 4));
+  const warm = quality ? 1200 : Math.min(600, Math.floor(total * .2));
+  const main = total - warm - cool;
+  const warmup = sport === 'run' ? 'Easy jog' : sport === 'bike' ? 'Easy spin' : 'Easy swim';
+  const cooldown = sport === 'run' ? 'Easy jog or walk' : sport === 'bike' ? 'Easy spin' : 'Easy swim';
+  const steps = quality ? [
+    timed(warmup, 900, 'z1', 'warmup'),
+    timed(sport === 'run' ? 'Dynamic running drills' : sport === 'bike' ? 'Smooth cadence build' : 'Progressive technique swim', 300, 'z1', 'warmup'),
+  ] : [timed(warmup,warm,'z1','warmup')];
   if (quality) {
-    const work = recipe === 'short-interval' ? 60 : recipe === 'vo2' ? 180 : recipe === 'tempo' ? 300 : 240;
-    const recovery = recipe === 'short-interval' ? 120 : recipe === 'vo2' ? 180 : 120;
     const count = Math.min(recipe === 'short-interval' ? 8 : 4, Math.floor(main / (work + recovery)));
     for (let i = 0; i < count; i++) {
       steps.push(timed(`Repeat ${i+1}/${count} · controlled work`,work,`z${Math.min(cap,requested)}`));
@@ -110,11 +115,11 @@ export function coachingEnduranceSteps(sport: string, minutes: number, zone: str
     const block = Math.floor(main / count);
     for (let i=0;i<count;i++) {
       const seconds = i === count-1 ? main-block*i : block;
-      steps.push(timed(`Relaxed repeat ${i+1}/${count}`,Math.max(1,seconds-30),`z${Math.min(2,cap)}`,'active','Use a familiar technique. Swim in a supervised setting; no breath-hold drills.'));
+      steps.push(timed(`Relaxed repeat ${i+1}/${count}`,Math.max(1,seconds-30),`z${Math.min(2,cap)}`,'active',sport === 'swim' ? 'Use a familiar technique. Swim in a supervised setting; no breath-hold drills.' : 'Keep the movement familiar and relaxed.'));
       steps.push(timed('Reset and easy recovery',Math.min(30,seconds-1),'z1','recovery'));
     }
   } else steps.push(timed('Steady aerobic work',main,`z${Math.min(2,cap)}`));
-  steps.push(timed('Easy cool-down',cool,'z1','cooldown'));
+  steps.push(timed(cooldown,cool,'z1','cooldown'));
   return steps;
 }
 
@@ -182,5 +187,8 @@ export function buildCoachingPrescription(sport: string, minutes: number, zone: 
     return {steps:sportStructureSteps(structure).map(s=>s.step),sportStructure:structure,note:'Station equipment, division and tolerated loads must be reviewed before prescribing loaded sleds, carries, wall balls or race simulation.'};
   }
   const required=['vo2','short-interval'].includes(coaching.recipe)?5:['threshold','over-under'].includes(coaching.recipe)?4:3;
-  return {steps:coachingEnduranceSteps(sport,minutes,zone,coaching.recipe),...(!['aerobic','technique'].includes(coaching.recipe)&&(Number(zone.slice(1))<required||minutes<25)?{note:'Quality work replaced by aerobic practice because the current readiness/baseline cap or available time cannot support the complete quality dose.'}:{})};
+  const steps = coachingEnduranceSteps(sport, minutes, zone, coaching.recipe);
+  const qualityOmitted = !['aerobic','technique'].includes(coaching.recipe) &&
+    !steps.some(step => step.phase === 'active' && Number(step.zone.slice(1)) >= required);
+  return {steps, ...(qualityOmitted ? {note:'Quality work replaced by aerobic practice because the current readiness/baseline cap or available time cannot support the complete quality dose.'} : {})};
 }
