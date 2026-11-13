@@ -24,7 +24,7 @@ async function backend(){
  const a=await actor(),other=await actor();
  await call(null,'/api/plan/starting',undefined,401);
  await call(a,`/api/plan/starting?athleteId=${other.user.id}`,undefined,403);
- const first=await call(a,'/api/plan/starting');assert.equal(first.preview.totalMinutes,60);assert.equal(first.preview.progression,false);
+ const first=await call(a,'/api/plan/starting');assert.equal(first.preview.totalMinutes,180);assert.equal(first.preview.progression,false);
  for(const [origin,type,body,status] of [['https://foreign.example.invalid','application/json',JSON.stringify({confirmed:true,previewToken:first.previewToken}),403],[base,'text/plain','{}',415],[base,'application/json','{',400],[base,'application/json',' '.repeat(2048),413]]){
   const rejected=await fetch(base+'/api/plan/starting',{method:'POST',headers:{cookie:`jmm_session=${a.token}`,origin,'Content-Type':type},body});assert.equal(rejected.status,status);
  }

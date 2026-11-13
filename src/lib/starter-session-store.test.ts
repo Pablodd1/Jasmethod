@@ -43,7 +43,7 @@ test("starter schedules honor no-fixed-rest preference while preserving default 
       assert.equal((await ensureStarterWorkout("athlete")).created, true);
       assert.equal(writes.length, 1);
       assert.equal(writes[0].source, scenario.rest ? "starter-rest" : "starter", JSON.stringify(scenario));
-      assert.equal(writes[0].durationMin, scenario.rest ? 0 : 20);
+      assert.equal(writes[0].durationMin, scenario.rest ? 0 : 60);
       assert.equal(writes[0].approved, false, "a scheduling preference does not establish daily readiness");
     }
   } finally {

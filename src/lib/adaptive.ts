@@ -900,6 +900,7 @@ export function postWorkoutFuel(opts: {
 // comes from buildSessionDetail (WU/CD templates, main-set generator).
 import { buildSessionDetail } from "./science";
 import { buildCoachingPrescription } from "./coaching-prescription";
+import { STARTER_SESSION_VERSION, STARTER_SESSION_MINUTES, starterSessionSteps } from "./starter-session";
 import type { CoachingSessionMetadata } from "./coaching-week-template";
 import type { SportStructure } from "./sport-structure";
 import {
@@ -952,6 +953,7 @@ export function prescribeToday(opts: {
     startTime?: string | null;
     variantSeed?: number;
     cycleVersion?: string;
+    starterVersion?: string;
     protocol?: ProtocolSpec;
     coaching?: CoachingSessionMetadata;
   };
@@ -973,7 +975,9 @@ export function prescribeToday(opts: {
   } | null;
 }): DailyPrescription {
   let session = opts.session;
-  const profile = opts.profile;
+  const starterObservation = session.starterVersion === STARTER_SESSION_VERSION &&
+    session.intensity === "z1" && session.durationMin <= STARTER_SESSION_MINUTES;
+  const profile = starterObservation ? undefined : opts.profile;
   // Coach intensity multiplier folds into the same factors as the daily
   // check-in: <100 eases (caps zones stepwise, trims duration), >100 sharpens
   // (raises the planned zone by at most 2, modestly extends duration). A rest
@@ -1023,7 +1027,7 @@ export function prescribeToday(opts: {
     easy.detail.main = `${easy.detail.main} Use gentle, comfortable movement; no hard repetitions or loaded power work.`;
     return easy;
   }
-  if (opts.performance && !rest) {
+  if (opts.performance && !rest && !starterObservation) {
     const engine = engineOverride(session, adaptation, opts, opts.performance);
     if (engine) return engine;
   }
@@ -1038,7 +1042,7 @@ export function prescribeToday(opts: {
           1,
           Math.min(
             (opts.busyHrs || 0) >= 6 ? 25 : Infinity,
-            Math.round(session.durationMin * adaptation.durationFactor),
+            Math.round(session.durationMin * (starterObservation ? Math.min(1, adaptation.durationFactor) : adaptation.durationFactor)),
           ),
         );
     return opts.timeBudgetMin != null
@@ -1063,7 +1067,10 @@ export function prescribeToday(opts: {
     ? buildCoachingPrescription(session.sport, durationMin, intensity, coaching, !session.coaching || adaptation.verdict === "easy")
     : undefined;
   if (coached?.paused) { rest = true; durationMin = 0; }
-  const steps = coached ? coached.steps : session.cycleVersion === "bounded-cycle-v1" && ["strength", "hyrox", "mobility"].includes(session.sport)
+  const steps = coached ? coached.steps
+    : starterObservation && durationMin > 0
+    ? starterSessionSteps(session.sport, durationMin, session.description)
+    : session.cycleVersion === "bounded-cycle-v1" && ["strength", "hyrox", "mobility"].includes(session.sport)
     ? cycleMovementSteps(durationMin, intensity, session.title)
     : structuredSteps(
     durationMin,
@@ -1090,12 +1097,13 @@ export function prescribeToday(opts: {
     minutes: durationMin,
     description: "",
   });
-  detail.wu = steps.length
-    ? `Warm up for ${steps[0].seconds / 60} min at Z1.`
+  const warmupSeconds = steps.filter(step => step.phase === "warmup").reduce((sum, step) => sum + step.seconds, 0);
+  detail.wu = warmupSeconds > 0
+    ? `Warm up for ${Math.round(warmupSeconds / 6) / 10} min at Z1.`
     : "No warm-up needed.";
   detail.main = rest
     ? `Rest today. The planned session is paused.${coached?.note ? ` ${coached.note}` : ""}`
-    : `${session.cycleVersion === "bounded-cycle-v1" && session.description ? `${session.description} ` : ""}${stepsText(steps)}${coached?.note ? ` ${coached.note}` : ""}`;
+    : `${(session.cycleVersion === "bounded-cycle-v1" || starterObservation) && session.description ? `${session.description} ` : ""}${stepsText(steps)}${coached?.note ? ` ${coached.note}` : ""}`;
   detail.cd = steps.length
     ? `Cool down for ${steps[steps.length - 1].seconds / 60} min at Z1.`
     : "Resume training after reassessing readiness.";
@@ -1123,6 +1131,16 @@ export function prescribeToday(opts: {
     },
     sources: session.cycleVersion === "bounded-cycle-v1" ? [] : ["Seiler 2009", "Plews 2013"],
   };
+}
+
+/** Save the scheduled steps for display while session-day execution remains held. */
+export function provisionalWorkoutPrescription(session: Parameters<typeof prescribeToday>[0]["session"]) {
+  const held = prescribeToday({ session, adaptation: { verdict: "rest", durationFactor: 0, intensityCap: "z1" } });
+  if (session.durationMin <= 0) return held;
+  const { verdict, title, sport, durationMin, steps, sportStructure } = prescribeToday({
+    session, adaptation: { verdict: "planned", durationFactor: 1, intensityCap: session.intensity ?? "z2" },
+  });
+  return { ...held, savedPlan: { verdict, title, sport, durationMin, steps, sportStructure } };
 }
 
 // ---------- PROGRESSION OVERSIGHT ----------

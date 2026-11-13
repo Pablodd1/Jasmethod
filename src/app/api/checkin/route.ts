@@ -508,7 +508,8 @@ export async function POST(req: Request) {
               }
             : base;
         // Coach-authored sport structures, protocols and starter sessions keep their design.
-        let priorStructure = false; try { priorStructure = JSON.parse(w.prescription || "null")?.sportStructure !== undefined; } catch {}
+        let priorPrescription; try { priorPrescription = JSON.parse(w.prescription || "null"); } catch {}
+        const priorStructure = priorPrescription?.sportStructure !== undefined;
         const performance = adaptation.performance && effective === adaptation && remaining > 0 && !priorStructure && !base.protocol && !isStarterSession(w)
           ? { decision: adaptation.performance, stimulus: selectStimulus({ planned: { sport: base.sport, type: base.type, intensity: base.intensity, durationMin: base.durationMin }, decision: adaptation.performance, availMin: Math.floor(remaining), availableSports, spacingH, raceBuild: profile?.goal === "hyrox", plan: planContextFor(base.coaching?.phase, adaptation.performance.load.chronic28) }) }
           : undefined;
@@ -537,7 +538,8 @@ export async function POST(req: Request) {
           where: { id: w.id },
           data: {
             originalPlan: JSON.stringify(base),
-            prescription: JSON.stringify(p),
+            prescription: JSON.stringify(isStarterSession(w) && priorPrescription?.savedPlan
+              ? { ...p, savedPlan: priorPrescription.savedPlan } : p),
             durationMin: p.durationMin,
             intensity: p.intensity,
             type: p.type,

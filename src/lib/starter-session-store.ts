@@ -2,7 +2,7 @@ import { prisma } from "./db";
 import { dayBounds, dateKey, addDaysKey } from "./dates";
 import { readPlanningSetup } from "./planning-setup-store";
 import { starterSession, starterRestriction } from "./starter-session";
-import { prescribeToday } from "./adaptive";
+import { provisionalWorkoutPrescription } from "./adaptive";
 
 /** Explicit mutation only. Never add work over a plan, rest/event day or actual activity. */
 export async function ensureStarterWorkout(userId:string,actorId=userId) {
@@ -27,7 +27,11 @@ export async function ensureStarterWorkout(userId:string,actorId=userId) {
     const available=!setup.setup?.trainingDays.length || setup.setup.trainingDays.includes(new Date(`${day.key}T12:00Z`).getUTCDay());
     const recoveryDay=rest || !available;
     const base=recoveryDay ? {...starterSession(user.profile?.goal,recent?.sport),title:"Starter recovery day",sport:"recovery",durationMin:0,description:"Planned recovery: no compulsory workout or catch-up work. Prioritize sleep, familiar meals and recovery. Optional gentle movement is reviewed separately after today's check-in; a planned rest day is not a completed-rest report."} : starterSession(user.profile?.goal,recent?.sport);
-    const prescription=prescribeToday({session:base,adaptation:{verdict:"rest",durationFactor:0,intensityCap:"z1"}});
+    if (base.durationMin > 0) {
+      base.durationMin = Math.floor(Math.min(base.durationMin, setup.setup?.maxSessionMinutes ?? Infinity, setup.setup?.availableWeeklyMinutes ?? Infinity));
+      if (base.durationMin < 1) return {created:false,workoutId:null};
+    }
+    const prescription=provisionalWorkoutPrescription(base);
     const workout=await tx.workout.create({data:{userId,date:day.start,source:recoveryDay ? "starter-rest" : "starter",planned:true,approved:false,
       title:base.title,sport:base.sport,type:base.type,intensity:base.intensity,durationMin:base.durationMin,notes:base.description,
       originalPlan:JSON.stringify(base),prescription:JSON.stringify(prescription)}});

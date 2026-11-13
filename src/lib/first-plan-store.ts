@@ -5,7 +5,7 @@ import { firstPlanDraft, firstPlanDateKeys, FIRST_PLAN_VERSION } from "./first-p
 import { ACTIVITY_EVIDENCE_SELECT } from "./activity-evidence";
 import { dayBounds, addDaysKey, localDate, dateKey } from "./dates";
 import { currentOrReportedWorkoutWhere } from "./calendar-workouts";
-import { prescribeToday } from "./adaptive";
+import { provisionalWorkoutPrescription } from "./adaptive";
 
 /** Only creates a first provisional week. Every active plan, even an expired
  * plan, is retained for explicit review. All writes and receipt share one tx. */
@@ -39,7 +39,7 @@ export async function ensureFirstPlan(userId:string, db = prisma) {
           const occupiedWorkout=records.find(row=>dateKey(row.date,user.timezone)===key&&row.source!=="starter-rest");
           const pd=await tx.planDay.create({data:{planId:plan.id,date,week:1,dayOfWeek:new Date(`${key}T12:00Z`).getUTCDay(),focus:sessions[0]?.base.sport??occupiedWorkout?.sport??"recovery",dayOff:!sessions.length&&!occupiedWorkout,notes:JSON.stringify({version:FIRST_PLAN_VERSION,provisional:true,kind:draft.kind,note:draft.note})}});
           for(const session of sessions){
-            const prescription=prescribeToday({session:session.base,adaptation:{verdict:"rest",durationFactor:0,intensityCap:"z1"}});
+            const prescription=provisionalWorkoutPrescription(session.base);
             await tx.workout.create({data:{userId,planDayId:pd.id,date,source:session.source,planned:true,approved:false,completed:false,sport:session.base.sport,type:session.base.type,title:session.base.title,durationMin:session.base.durationMin,intensity:session.base.intensity,notes:session.base.description,originalPlan:JSON.stringify(session.base),prescription:JSON.stringify({...prescription,planningStatus:"provisional",planningNote:draft.note})}});
           }
         }

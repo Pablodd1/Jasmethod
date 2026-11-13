@@ -12,12 +12,20 @@ export function scheduleCoachingWeek(week:GeneratedWeek, availableSlots:number[]
   const eligible=entries.filter(({session})=>session.sport!=='recovery' && session.minutes>0 &&
     session.minutes<=dailyLimit && session.minutes>=(session.coaching?.minimumMinutes??1));
   const compatiblePairPrimary=(primary:PlanSession)=>['swim','bike','run'].includes(primary.sport)&&eligible.some(({session:donor})=>donor.title!==primary.title&&['swim','bike','run'].includes(donor.sport)&&/^z[12]$/.test(donor.zone)&&!hard(donor)&&!['race','test','speed','interval','threshold','plyo'].includes(donor.type)&&primary.minutes+donor.minutes<=dailyLimit);
+  const primarySports = new Set(entries.flatMap(({session}) =>
+    ['swim','bike','run','hyrox','brick'].includes(session.sport) ? [session.sport] : []));
+  const singleEnduranceSport = primarySports.size === 1 &&
+    ['swim','bike','run'].some(sport => primarySports.has(sport as PlanSession['sport']));
   // Sport coverage is prioritized before supporting dose; a brick contributes
   // only the explicitly represented legs, never an assumed swim component.
   const score=(chosen:typeof entries)=>{
     const sports=new Set(chosen.flatMap(({session:s})=>s.sport==='brick'&&s.minutes>=40&&validCoachingMetadata(s.coaching,'brick')&&s.coaching.recipe==='brick'?['bike','run']:['swim','bike','run','hyrox'].includes(s.sport)?[s.sport]:[]));
     const support=Math.min(2,chosen.filter(({session})=>session.sport==='strength').length);
-    return sports.size*100000+support*10000+chosen.filter(({session})=>session.sport==='brick').length*1000+
+    // Keep up to three complete sport sessions before filling scarce single-sport slots with strength.
+    const frequency = singleEnduranceSport
+      ? Math.min(3, chosen.filter(({session}) => primarySports.has(session.sport)).length)
+      : 0;
+    return sports.size*100000+frequency*20000+support*10000+chosen.filter(({session})=>session.sport==='brick').length*1000+
       chosen.reduce((n,{session:s})=>n+100-(s.coaching?.priority??5),0);
   };
   const subsets:Array<{chosen:typeof entries;score:number}>=[];
@@ -92,7 +100,10 @@ export function scheduleCoachingWeek(week:GeneratedWeek, availableSlots:number[]
     purpose:session.coaching?.purpose??session.type,
     reason:session.minutes>dailyLimit?'Complete session exceeds the daily time limit.':
       session.minutes<(session.coaching?.minimumMinutes??1)?'Complete session is below its minimum executable dose.':
-      'Complete session does not fit available days, weekly time, rest or demanding-session separation. No catch-up work was added.'}));
+      singleEnduranceSport && session.sport === 'strength' && sessions.length >= Math.min(maximumDays, availableSlots.length) &&
+        sessions.every(placed => primarySports.has(placed.sport))
+        ? 'The available session slots were used for the athlete’s primary sport. Supporting strength was omitted.'
+        : 'Complete session does not fit available days, weekly time, rest or demanding-session separation. No catch-up work was added.'}));
   const total=sessions.reduce((n,s)=>n+s.minutes,0);
   const honoredStrengthSlots=preferredStrengthSlots.filter(slot=>sessions.some(s=>s.daySlot===slot&&s.sport==='strength'));
   const unmetStrengthSlots=preferredStrengthSlots.filter(slot=>!honoredStrengthSlots.includes(slot));

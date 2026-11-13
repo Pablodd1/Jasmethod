@@ -4,7 +4,7 @@ import { normalizeSportStructure, sportStructureSteps, type SportStructure, type
 
 /** Race station identities, not automatic race doses or division loads. */
 export const HYROX_COACHING_STATIONS = {
-  ski: { name: 'SkiErg', purpose: 'Coordinate the hip hinge and double-pole pull; keep the return relaxed.', loaded: false },
+  ski: { name: 'SkiErg', purpose: 'Begin the pull with a hip hinge, finish with hands near the thighs, and return smoothly.', loaded: false },
   sledpush: { name: 'Sled push', purpose: 'Maintain controlled short steps and trunk position against the reviewed resistance.', loaded: true },
   sledpull: { name: 'Sled pull', purpose: 'Rehearse controlled rope handling and stable footwork in a clear lane.', loaded: true },
   burpee: { name: 'Burpee broad jump', purpose: 'Practice a familiar controlled floor transition and balanced two-foot landing.', loaded: false },
@@ -53,7 +53,7 @@ function reviewedHyroxStructure(review: HyroxPrescriptionReview, total: number, 
       if(!Number.isInteger(seconds) || seconds!<=0 || !Number.isInteger(dose.runSeconds) || dose.runSeconds<=0 || !Number.isInteger(dose.recoverySeconds) || dose.recoverySeconds<=0) return;
       used+=seconds!+dose.runSeconds+dose.recoverySeconds;
       const loadNote=dose.load?` Reviewed load: ${dose.load.value} ${dose.load.unit} (${expectedBasis}).`:'';
-      structure.steps.push({kind:'run',name:'Controlled run / walk before reviewed station',zone,endpoint:{type:'time',seconds:dose.runSeconds}});
+      structure.steps.push({kind:'run',name:'Controlled run / walk before reviewed station',zone,endpoint:{type:'time',seconds:dose.runSeconds},note:'Start at an effort you can repeat after the stations. Ease off when you cannot maintain control at the same effort.'});
       structure.steps.push({kind:'station',name:station.name,stationId:dose.stationId,zone:'z1',endpoint,...(endpoint.type==='time'?{}:{estimatedSeconds:seconds}),...(dose.load?{load:dose.load}:{}),note:`Purpose: ${station.purpose}${loadNote}${dose.stationId==='wallball'?` Reviewed target: ${dose.targetHeightMeters} m.`:''} Stop before technique deteriorates; stop painful movement. Reviewed ${review.reviewedAt}; source: ${review.sourceReference}. This is reviewed station practice, not race simulation or automatic progression.`});
       structure.steps.push({kind:'rest',seconds:dose.recoverySeconds,note:'Recover and set up the next station safely. Extend rest or stop if needed; do not compress recovery to catch up.'});
     }
@@ -86,17 +86,25 @@ const timed = (name: string, seconds: number, zone: string, phase: WorkoutStep['
 export function coachingEnduranceSteps(sport: string, minutes: number, zone: string, recipe: CoachingSessionMetadata['recipe']): WorkoutStep[] {
   const total = Math.max(0, Math.floor(minutes * 60));
   if (!total) return [];
-  const warm = Math.min(600, Math.floor(total * .2)), cool = Math.min(300, Math.floor(total * .1));
-  const main = total - warm - cool;
-  const steps = [timed('Progressive easy warm-up',warm,'z1','warmup')];
   const cap = Number(zone.slice(1)) || 1;
-  // Over/under requires separate anchors and familiarity; use capped threshold
-  // repeats until a reviewed protocol supplies those details.
   const requested = ['vo2','short-interval'].includes(recipe) ? 5 : ['threshold','over-under'].includes(recipe) ? 4 : 3;
-  const quality = !['aerobic','technique','brick'].includes(recipe) && cap >= requested && minutes >= 25;
+  const work = recipe === 'short-interval' ? 60 : recipe === 'vo2' ? 180 : recipe === 'tempo' ? 300 : 240;
+  const recovery = recipe === 'vo2' ? 180 : 120;
+  const quality = !['aerobic','technique','brick'].includes(recipe) && cap >= requested &&
+    total >= 1200 + 300 + 2 * (work + recovery);
+  const cool = Math.min(300, Math.floor(total / 4));
+  const warm = quality ? 1200 : Math.min(600, Math.floor(total * .2));
+  const main = total - warm - cool;
+  const warmup = sport === 'run' ? cap === 1 ? 'Easy walk or jog' : 'Easy jog' : sport === 'bike' ? 'Easy spin' : 'Easy swim';
+  const cooldown = sport === 'run' ? 'Easy jog or walk' : sport === 'bike' ? 'Easy spin' : 'Easy swim';
+  const steps = quality ? [
+    timed(warmup, 900, 'z1', 'warmup'),
+    timed(sport === 'run' ? 'Dynamic running drills' : sport === 'bike' ? 'Smooth cadence build' : 'Progressive technique swim', 300, 'z1', 'warmup',
+      sport === 'run' ? 'Use familiar ankle rocks, controlled leg swings and marching. Keep the range comfortable and return to an easy jog between drills.'
+      : sport === 'bike' ? 'Use a light gear and gradually increase cadence while keeping pressure on the pedals easy.'
+      : 'Use a familiar stroke and gradually build rhythm. Pause as needed and use a supervised setting.'),
+  ] : [timed(warmup,warm,'z1','warmup')];
   if (quality) {
-    const work = recipe === 'short-interval' ? 60 : recipe === 'vo2' ? 180 : recipe === 'tempo' ? 300 : 240;
-    const recovery = recipe === 'short-interval' ? 120 : recipe === 'vo2' ? 180 : 120;
     const count = Math.min(recipe === 'short-interval' ? 8 : 4, Math.floor(main / (work + recovery)));
     for (let i = 0; i < count; i++) {
       steps.push(timed(`Repeat ${i+1}/${count} · controlled work`,work,`z${Math.min(cap,requested)}`));
@@ -110,11 +118,11 @@ export function coachingEnduranceSteps(sport: string, minutes: number, zone: str
     const block = Math.floor(main / count);
     for (let i=0;i<count;i++) {
       const seconds = i === count-1 ? main-block*i : block;
-      steps.push(timed(`Relaxed repeat ${i+1}/${count}`,Math.max(1,seconds-30),`z${Math.min(2,cap)}`,'active','Use a familiar technique. Swim in a supervised setting; no breath-hold drills.'));
+      steps.push(timed(`Relaxed repeat ${i+1}/${count}`,Math.max(1,seconds-30),`z${Math.min(2,cap)}`,'active',sport === 'swim' ? 'Use a familiar technique. Swim in a supervised setting; no breath-hold drills.' : 'Keep the movement familiar and relaxed.'));
       steps.push(timed('Reset and easy recovery',Math.min(30,seconds-1),'z1','recovery'));
     }
-  } else steps.push(timed('Steady aerobic work',main,`z${Math.min(2,cap)}`));
-  steps.push(timed('Easy cool-down',cool,'z1','cooldown'));
+  } else steps.push(timed(cap === 1 && sport === 'run' ? 'Comfortable walk / run practice' : 'Steady aerobic work',main,`z${Math.min(2,cap)}`));
+  steps.push(timed(cooldown,cool,'z1','cooldown'));
   return steps;
 }
 
@@ -166,13 +174,13 @@ export function buildCoachingPrescription(sport: string, minutes: number, zone: 
       if(!reviewed) return {steps:[],paused:true,note:'Reviewed station practice is paused: confirm equipment, technique, explicit load/endpoint, complete time budget and current tolerance. Do not infer a replacement dose from division or race distance.'};
       return {steps:sportStructureSteps(reviewed).map(s=>s.step),sportStructure:reviewed,note:'Execute the reviewed station endpoints and rests only. Non-time endpoint durations are planning estimates. Change loads, distance, repetitions or progression only after review; this is not a race simulation.'};
     }
-    structure.steps.push({kind:'step',name:'Easy movement and station rehearsal',phase:'warmup',zone:'z1',endpoint:{type:'time',seconds:warm}});
+    structure.steps.push({kind:'step',name:'Easy walk or jog, then unloaded station rehearsal',phase:'warmup',zone:'z1',endpoint:{type:'time',seconds:warm},note:'Start comfortably. Rehearse familiar squat, hinge or step-back patterns with control before the first run–station block.'});
     const main=total-warm-cool, count=Math.max(1,Math.floor(main/300));
     for(let i=0;i<count;i++) {
       const block=i===count-1 ? main-Math.floor(main/count)*i : Math.floor(main/count);
       const technique=coaching.recipe==='hyrox-technique';
       const station=technique?90:60,recovery=technique?90:60;
-      structure.steps.push({kind:'run',name:technique?'Easy run / walk between technique blocks':'Controlled run into station',zone:easy?'z1':`z${Math.min(2,Number(zone.slice(1))||1)}`,endpoint:{type:'time',seconds:Math.max(1,block-station-recovery)}});
+      structure.steps.push({kind:'run',name:technique?'Easy run / walk between technique blocks':'Controlled run into station',zone:easy?'z1':`z${Math.min(2,Number(zone.slice(1))||1)}`,endpoint:{type:'time',seconds:Math.max(1,block-station-recovery)},...(!technique ? {note:'Start at a pace you can repeat after each station. Ease off if fatigue changes your stride.'} : {})});
       const preparation=[['Supported reverse-lunge preparation','lunge-pattern','Balance and controlled stepping for later reviewed lunges.'],['Controlled sit-to-stand preparation','squat-pattern','Controlled squat pattern for later reviewed wall-ball technique; no throwing prescribed.'],['Supported hip-hinge preparation','hinge-pattern','Rehearse a comfortable hinge for later reviewed erg technique; no erg distance prescribed.'],['Wall push-up preparation','push-pattern','Practice comfortable trunk and upper-body control; this does not substitute for sled or burpee practice.']][i%4];
       structure.steps.push({kind:'station',name:preparation[0],stationId:preparation[1],zone:'z1',endpoint:{type:'time',seconds:station},note:`Purpose: ${preparation[2]} Familiar comfortable movement; use support and stop before fatigue changes technique. No external load assumed. This is unloaded preparation, not execution of the eight race stations.`});
       structure.steps.push({kind:'rest',seconds:recovery});
@@ -182,5 +190,8 @@ export function buildCoachingPrescription(sport: string, minutes: number, zone: 
     return {steps:sportStructureSteps(structure).map(s=>s.step),sportStructure:structure,note:'Station equipment, division and tolerated loads must be reviewed before prescribing loaded sleds, carries, wall balls or race simulation.'};
   }
   const required=['vo2','short-interval'].includes(coaching.recipe)?5:['threshold','over-under'].includes(coaching.recipe)?4:3;
-  return {steps:coachingEnduranceSteps(sport,minutes,zone,coaching.recipe),...(!['aerobic','technique'].includes(coaching.recipe)&&(Number(zone.slice(1))<required||minutes<25)?{note:'Quality work replaced by aerobic practice because the current readiness/baseline cap or available time cannot support the complete quality dose.'}:{})};
+  const steps = coachingEnduranceSteps(sport, minutes, zone, coaching.recipe);
+  const qualityOmitted = !['aerobic','technique'].includes(coaching.recipe) &&
+    !steps.some(step => step.phase === 'active' && Number(step.zone.slice(1)) >= required);
+  return {steps, ...(qualityOmitted ? {note:'Quality work replaced by aerobic practice because the current readiness/baseline cap or available time cannot support the complete quality dose.'} : {})};
 }

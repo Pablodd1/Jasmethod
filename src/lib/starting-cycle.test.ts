@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { startingCycle, isStartingCycle } from "./starting-cycle";
 test("missing baselines allow a labelled observation draft without invented physiology or progression",()=>{
   const p=startingCycle({birthYear:1990,goal:"run-only"},null,"2026-10-28",[],false,new Date("2026-10-28"));
-  assert.equal(p.totalMinutes,60); assert.equal(p.scheduleSource,"suggested_for_review"); assert.equal(p.progression,false); assert.equal(p.physiologicalTargets,false);
+  assert.equal(p.totalMinutes,180); assert.equal(p.scheduleSource,"suggested_for_review"); assert.equal(p.progression,false); assert.equal(p.physiologicalTargets,false);
   assert.equal(p.status,"daily_checkin_required"); assert.equal(p.days.length,7);
   assert.equal(isStartingCycle(p),true);assert.equal(isStartingCycle({...p,days:null}),false);assert.equal(isStartingCycle(null),false);
 });
