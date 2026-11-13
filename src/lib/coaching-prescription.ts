@@ -4,7 +4,7 @@ import { normalizeSportStructure, sportStructureSteps, type SportStructure, type
 
 /** Race station identities, not automatic race doses or division loads. */
 export const HYROX_COACHING_STATIONS = {
-  ski: { name: 'SkiErg', purpose: 'Coordinate the hip hinge and double-pole pull; keep the return relaxed.', loaded: false },
+  ski: { name: 'SkiErg', purpose: 'Begin the pull with a hip hinge, finish with hands near the thighs, and return smoothly.', loaded: false },
   sledpush: { name: 'Sled push', purpose: 'Maintain controlled short steps and trunk position against the reviewed resistance.', loaded: true },
   sledpull: { name: 'Sled pull', purpose: 'Rehearse controlled rope handling and stable footwork in a clear lane.', loaded: true },
   burpee: { name: 'Burpee broad jump', purpose: 'Practice a familiar controlled floor transition and balanced two-foot landing.', loaded: false },
@@ -53,7 +53,7 @@ function reviewedHyroxStructure(review: HyroxPrescriptionReview, total: number, 
       if(!Number.isInteger(seconds) || seconds!<=0 || !Number.isInteger(dose.runSeconds) || dose.runSeconds<=0 || !Number.isInteger(dose.recoverySeconds) || dose.recoverySeconds<=0) return;
       used+=seconds!+dose.runSeconds+dose.recoverySeconds;
       const loadNote=dose.load?` Reviewed load: ${dose.load.value} ${dose.load.unit} (${expectedBasis}).`:'';
-      structure.steps.push({kind:'run',name:'Controlled run / walk before reviewed station',zone,endpoint:{type:'time',seconds:dose.runSeconds}});
+      structure.steps.push({kind:'run',name:'Controlled run / walk before reviewed station',zone,endpoint:{type:'time',seconds:dose.runSeconds},note:'Start at an effort you can repeat after the stations. Ease off when you cannot maintain control at the same effort.'});
       structure.steps.push({kind:'station',name:station.name,stationId:dose.stationId,zone:'z1',endpoint,...(endpoint.type==='time'?{}:{estimatedSeconds:seconds}),...(dose.load?{load:dose.load}:{}),note:`Purpose: ${station.purpose}${loadNote}${dose.stationId==='wallball'?` Reviewed target: ${dose.targetHeightMeters} m.`:''} Stop before technique deteriorates; stop painful movement. Reviewed ${review.reviewedAt}; source: ${review.sourceReference}. This is reviewed station practice, not race simulation or automatic progression.`});
       structure.steps.push({kind:'rest',seconds:dose.recoverySeconds,note:'Recover and set up the next station safely. Extend rest or stop if needed; do not compress recovery to catch up.'});
     }
@@ -180,7 +180,7 @@ export function buildCoachingPrescription(sport: string, minutes: number, zone: 
       const block=i===count-1 ? main-Math.floor(main/count)*i : Math.floor(main/count);
       const technique=coaching.recipe==='hyrox-technique';
       const station=technique?90:60,recovery=technique?90:60;
-      structure.steps.push({kind:'run',name:technique?'Easy run / walk between technique blocks':'Controlled run into station',zone:easy?'z1':`z${Math.min(2,Number(zone.slice(1))||1)}`,endpoint:{type:'time',seconds:Math.max(1,block-station-recovery)}});
+      structure.steps.push({kind:'run',name:technique?'Easy run / walk between technique blocks':'Controlled run into station',zone:easy?'z1':`z${Math.min(2,Number(zone.slice(1))||1)}`,endpoint:{type:'time',seconds:Math.max(1,block-station-recovery)},...(!technique ? {note:'Start at a pace you can repeat after each station. Ease off if fatigue changes your stride.'} : {})});
       const preparation=[['Supported reverse-lunge preparation','lunge-pattern','Balance and controlled stepping for later reviewed lunges.'],['Controlled sit-to-stand preparation','squat-pattern','Controlled squat pattern for later reviewed wall-ball technique; no throwing prescribed.'],['Supported hip-hinge preparation','hinge-pattern','Rehearse a comfortable hinge for later reviewed erg technique; no erg distance prescribed.'],['Wall push-up preparation','push-pattern','Practice comfortable trunk and upper-body control; this does not substitute for sled or burpee practice.']][i%4];
       structure.steps.push({kind:'station',name:preparation[0],stationId:preparation[1],zone:'z1',endpoint:{type:'time',seconds:station},note:`Purpose: ${preparation[2]} Familiar comfortable movement; use support and stop before fatigue changes technique. No external load assumed. This is unloaded preparation, not execution of the eight race stations.`});
       structure.steps.push({kind:'rest',seconds:recovery});
