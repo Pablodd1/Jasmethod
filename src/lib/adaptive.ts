@@ -899,8 +899,8 @@ export function postWorkoutFuel(opts: {
 // calendar busy time, and their own HR/power baselines. Science-backed detail
 // comes from buildSessionDetail (WU/CD templates, main-set generator).
 import { buildSessionDetail } from "./science";
-import { buildCoachingPrescription, coachingEnduranceSteps } from "./coaching-prescription";
-import { STARTER_SESSION_VERSION } from "./starter-session";
+import { buildCoachingPrescription } from "./coaching-prescription";
+import { STARTER_SESSION_VERSION, STARTER_SESSION_MINUTES, starterSessionSteps } from "./starter-session";
 import type { CoachingSessionMetadata } from "./coaching-week-template";
 import type { SportStructure } from "./sport-structure";
 import {
@@ -975,7 +975,9 @@ export function prescribeToday(opts: {
   } | null;
 }): DailyPrescription {
   let session = opts.session;
-  const profile = opts.profile;
+  const starterObservation = session.starterVersion === STARTER_SESSION_VERSION &&
+    session.intensity === "z1" && session.durationMin <= STARTER_SESSION_MINUTES;
+  const profile = starterObservation ? undefined : opts.profile;
   // Coach intensity multiplier folds into the same factors as the daily
   // check-in: <100 eases (caps zones stepwise, trims duration), >100 sharpens
   // (raises the planned zone by at most 2, modestly extends duration). A rest
@@ -1025,7 +1027,7 @@ export function prescribeToday(opts: {
     easy.detail.main = `${easy.detail.main} Use gentle, comfortable movement; no hard repetitions or loaded power work.`;
     return easy;
   }
-  if (opts.performance && !rest) {
+  if (opts.performance && !rest && !starterObservation) {
     const engine = engineOverride(session, adaptation, opts, opts.performance);
     if (engine) return engine;
   }
@@ -1040,7 +1042,7 @@ export function prescribeToday(opts: {
           1,
           Math.min(
             (opts.busyHrs || 0) >= 6 ? 25 : Infinity,
-            Math.round(session.durationMin * adaptation.durationFactor),
+            Math.round(session.durationMin * (starterObservation ? Math.min(1, adaptation.durationFactor) : adaptation.durationFactor)),
           ),
         );
     return opts.timeBudgetMin != null
@@ -1065,11 +1067,9 @@ export function prescribeToday(opts: {
     ? buildCoachingPrescription(session.sport, durationMin, intensity, coaching, !session.coaching || adaptation.verdict === "easy")
     : undefined;
   if (coached?.paused) { rest = true; durationMin = 0; }
-  const starterObservation = session.starterVersion === STARTER_SESSION_VERSION &&
-    session.intensity === "z1" && session.durationMin <= 20;
-  const generatedSteps = coached ? coached.steps
-    : starterObservation && durationMin > 0 && ["run", "bike", "swim"].includes(session.sport)
-    ? coachingEnduranceSteps(session.sport, durationMin, "z1", "aerobic")
+  const steps = coached ? coached.steps
+    : starterObservation && durationMin > 0
+    ? starterSessionSteps(session.sport, durationMin, session.description)
     : session.cycleVersion === "bounded-cycle-v1" && ["strength", "hyrox", "mobility"].includes(session.sport)
     ? cycleMovementSteps(durationMin, intensity, session.title)
     : structuredSteps(
@@ -1079,12 +1079,6 @@ export function prescribeToday(opts: {
     session.variantSeed,
     session.sport,
   );
-  const starterNote = session.description;
-  const steps = starterObservation && session.sport === "mobility" && starterNote
-    ? generatedSteps.map(step => step.phase === "active"
-      ? { ...step, name: "Easy walking and movement practice", note: starterNote }
-      : step)
-    : generatedSteps;
   if (coached && steps.length) {
     intensity = `z${Math.max(...steps.map(step => Number(step.zone.slice(1)) || 1))}`;
     if (["run", "bike", "swim"].includes(session.sport) && Number(intensity.slice(1)) <= 2) type = intensity === "z1" ? "recovery" : "endurance";

@@ -7,7 +7,7 @@ import { prescribeToday } from "./adaptive";
 import { deviceMetricSnapshot } from "./device-metric-snapshot";
 import { onboardingObservations } from "./onboarding-imports";
 const now=new Date("2026-10-12T12:00:00Z"), date=new Date("2026-10-12T00:00:00Z");
-const answers={sleep:3,soreness:3,motivation:3,energy:3,stress:3,sick:false,newPain:false,urgentSymptoms:false,availableMin:20};
+const answers={sleep:3,soreness:3,motivation:3,energy:3,stress:3,sick:false,newPain:false,urgentSymptoms:false,availableMin:60};
 const adaptation={verdict:"full",durationFactor:1,intensityCap:"z1"};
 function records() {
  const base=starterSession("run-only");
@@ -17,7 +17,7 @@ function records() {
 }
 test("day-zero sport suggestions never invent numeric athlete anchors or loaded HYROX work",()=>{
  for(const [goal,sport] of [["cycle","bike"],["swim-only","swim"],["hyrox","mobility"],["sprint","run"],[null,"mobility"]]) {
-   const base=starterSession(goal);assert.equal(base.sport,sport);assert.equal(base.durationMin,20);assert.equal(base.intensity,"z1");
+   const base=starterSession(goal);assert.equal(base.sport,sport);assert.equal(base.durationMin,goal ? 60 : 20);assert.equal(base.intensity,"z1");
    assert.equal(isStarterSession({source:"starter",originalPlan:JSON.stringify(base)}),true);
  }
  assert.equal(starterSession(null,"bike").sport,"bike");
@@ -26,14 +26,14 @@ test("day-zero sport suggestions never invent numeric athlete anchors or loaded 
 });
 test("incomplete profile permits only a bounded starter after current check-in; missing safety, symptoms and events still hold",()=>{
  const input=records();const ready=effectiveSessionFromRecords(input).canonical;
- assert.equal(ready.verdict,"ready");assert.equal(ready.durationMin,20);assert.ok(ready.steps.every(s=>s.zone==="z1"));
+ assert.equal(ready.verdict,"ready");assert.equal(ready.durationMin,60);assert.ok(ready.steps.every(s=>s.zone==="z1"));
  for(const changed of [
    {...input,checkin:null},
    {...input,checkin:{...input.checkin,answers:JSON.stringify({...answers,sick:true})}},
    {...input,currentEvents:[{id:"race",userId:"athlete",date}]},
    {...input,workout:{...input.workout,source:"manual"}},
    {...input,workout:{...input.workout,sport:"hyrox"}},
-   {...input,workout:{...input.workout,originalPlan:JSON.stringify({...starterSession("run-only"),durationMin:60})}},
+   {...input,workout:{...input.workout,originalPlan:JSON.stringify({...starterSession("run-only"),durationMin:61})}},
  ]) assert.notEqual(effectiveSessionFromRecords(changed).canonical.verdict,"ready");
  const limited={...input,checkin:{...input.checkin,answers:JSON.stringify({...answers,availableMin:10})}};
  assert.notEqual(effectiveSessionFromRecords(limited).canonical.verdict,"ready","a read must not silently truncate authoritative steps");
@@ -64,5 +64,5 @@ test('Oura readiness contributor scores cannot become HRV milliseconds or restin
 test('confirmed shorter starter stays eligible without inventing a full-profile baseline; increased dose needs review',()=>{
  const base=starterSession('run-only');
  assert.equal(isStarterSession({source:'starter',sport:base.sport,type:base.type,originalPlan:JSON.stringify({...base,durationMin:15})}),true);
- for(const durationMin of [0,21,NaN,1.5]) assert.equal(isStarterSession({source:'starter',originalPlan:JSON.stringify({...base,durationMin})}),false);
+ for(const durationMin of [0,61,NaN,1.5]) assert.equal(isStarterSession({source:'starter',originalPlan:JSON.stringify({...base,durationMin})}),false);
 });

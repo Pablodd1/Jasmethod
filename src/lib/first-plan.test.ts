@@ -8,14 +8,14 @@ const setup=()=>parsePlanningSetup({adultConfirmed:true,profileConfirmed:true,go
 test("each selected supported sport has a first draft without a race, wearable or invented physiology",()=>{
   for(const goal of PLANNABLE_GOALS){
     const draft=firstPlanDraft({goal,birthYear:1990},null,start,"UTC",[],[],now)!;
-    assert.ok(draft,goal);assert.equal(draft.kind,"observation");assert.ok(draft.totalMinutes<=60);
+    assert.ok(draft,goal);assert.equal(draft.kind,"observation");assert.equal(draft.totalMinutes,180); assert.ok(draft.sessions.every(s=>s.base.durationMin===60));
     assert.ok(draft.sessions.length);assert.doesNotMatch(JSON.stringify(draft),/"ftp":|"vo2max":|"runPaceBase":/);
     if(["triathlon","sprint","olympic","half","full"].includes(goal))assert.deepEqual(draft.sessions.map(s=>s.base.sport),["swim","bike","run"]);
     if(goal==="hyrox")assert.ok(draft.sessions.every(s=>s.base.sport==="mobility"));
   }
   assert.equal(firstPlanDraft({goal:"unknown"},null,start,"UTC",[],[],now),null);
 });
-test("eligible athletes retain separately reported capacity rather than universal 60-minute observation",()=>{
+test("eligible athletes retain separately reported capacity rather than universal introductory dose",()=>{
   for(const goal of ["swim-only","cycle","run-only","triathlon","sprint","olympic","half","full","hyrox"]){
     const draft=firstPlanDraft({goal,birthYear:1990,experience:"advanced",weeklyHours:10},setup(),start,"UTC",[],[],now)!;
     assert.equal(draft.kind,"reported_capacity",goal);assert.ok(draft.totalMinutes>60,goal);

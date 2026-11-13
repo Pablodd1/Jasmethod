@@ -14,9 +14,10 @@ export function savedWorkoutPreview(input: unknown, athleteId: string, timezone:
     if (!workout || workout.userId !== athleteId || workout.planned !== true || !validSavedSessionId(workout.id)) return unavailable();
     const stored = typeof workout.prescription === "string" ? JSON.parse(workout.prescription) : workout.prescription;
     // A held first-week record can carry a display-only copy of its original steps.
-    const prescription = stored?.verdict === "rest" && stored.savedPlan?.verdict === "planned"
-      ? stored.savedPlan : stored;
-    const canonical = canonicalSession({ athleteId, workout, prescription, profile, dateLocal: dateKey(new Date(workout.date), timezone), timezone });
+    const planned = stored?.savedPlan?.verdict === "planned" && Number.isFinite(stored.savedPlan.durationMin)
+      ? stored.savedPlan : null;
+    const canonical = canonicalSession({ athleteId, workout: planned ? { ...workout, durationMin: planned.durationMin } : workout,
+      prescription: planned ?? stored, profile, dateLocal: dateKey(new Date(workout.date), timezone), timezone });
     if (canonical.verdict !== "ready") return unavailable(canonical.reason);
     const preview: SavedWorkoutPreview = {
       kind: "saved_plan_preview", sessionId: canonical.id, available: true,
