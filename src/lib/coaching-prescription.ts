@@ -92,12 +92,29 @@ export function coachingEnduranceSteps(sport: string, minutes: number, zone: str
   const recovery = recipe === 'vo2' ? 180 : 120;
   const quality = !['aerobic','technique','brick'].includes(recipe) && cap >= requested &&
     total >= 1200 + 300 + 2 * (work + recovery);
-  const cool = Math.min(300, Math.floor(total / 4));
-  const warm = quality ? 1200 : Math.min(600, Math.floor(total * .2));
+  const bikeMicroIntervals = recipe === 'short-interval' && sport === 'bike';
+  const fullWork = recipe === 'threshold' ? 480 : recipe === 'vo2' ? 240 : bikeMicroIntervals ? 30 : work;
+  const fullCount = recipe === 'short-interval' ? 8 : recipe === 'threshold' ? 3 : 4;
+  const fullReset = recipe === 'short-interval' ? fullWork : recovery;
+  const fullDose = fullCount * fullWork + (fullCount - 1) * fullReset;
+  const full = quality && ['threshold', 'vo2', 'short-interval'].includes(recipe) && total >= 2700 + fullDose;
+  const cool = full ? 600 : Math.min(300, Math.floor(total / 4));
+  const warm = full ? 2100 : quality ? 1200 : Math.min(600, Math.floor(total * .2));
   const main = total - warm - cool;
   const warmup = sport === 'run' ? cap === 1 ? 'Easy walk or jog' : 'Easy jog' : sport === 'bike' ? 'Easy spin' : 'Easy swim';
   const cooldown = sport === 'run' ? 'Easy jog or walk' : sport === 'bike' ? 'Easy spin' : 'Easy swim';
-  const steps = quality ? [
+  const steps = full ? [
+    timed(warmup, 1200, 'z1', 'warmup'),
+    timed('Dynamic mobility', 300, 'z1', 'warmup', sport === 'run'
+      ? 'Ankle rocks, controlled leg swings and marching.'
+      : sport === 'bike' ? 'Off the bike, move ankles, hips and upper back through a comfortable range.'
+      : 'On deck, use gentle shoulder and shoulder-blade movements, trunk rotations and ankle mobility.'),
+    timed('Sport activation', 300, 'z1', 'warmup', sport === 'run'
+      ? 'Four relaxed 15-second strides with one minute easy after each.'
+      : sport === 'bike' ? 'Four short seated cadence pickups in a light gear, with easy spinning between.'
+      : 'Build rhythm with short, controlled pickups and easy swimming between.'),
+    timed('Reset and prepare', 300, 'z1', 'warmup', 'Hydrate as needed and review the first target.'),
+  ] : quality ? [
     timed(warmup, 900, 'z1', 'warmup'),
     timed(sport === 'run' ? 'Dynamic running drills' : sport === 'bike' ? 'Smooth cadence build' : 'Progressive technique swim', 300, 'z1', 'warmup',
       sport === 'run' ? 'Use familiar ankle rocks, controlled leg swings and marching. Keep the range comfortable and return to an easy jog between drills.'
@@ -105,12 +122,13 @@ export function coachingEnduranceSteps(sport: string, minutes: number, zone: str
       : 'Use a familiar stroke and gradually build rhythm. Pause as needed and use a supervised setting.'),
   ] : [timed(warmup,warm,'z1','warmup')];
   if (quality) {
-    const count = Math.min(recipe === 'short-interval' ? 8 : 4, Math.floor(main / (work + recovery)));
+    const count = full ? fullCount : Math.min(recipe === 'short-interval' ? 8 : 4, Math.floor(main / (work + recovery)));
+    const effort = full && recipe === 'threshold' ? 'Threshold' : full && recipe === 'vo2' ? 'Aerobic power' : 'Controlled work';
     for (let i = 0; i < count; i++) {
-      steps.push(timed(`Repeat ${i+1}/${count} · controlled work`,work,`z${Math.min(cap,requested)}`));
-      steps.push(timed('Easy recovery',recovery,'z1','recovery'));
+      steps.push(timed(`${effort} ${i+1}/${count}`,full ? fullWork : work,`z${Math.min(cap,requested)}`));
+      if (!full || i < count - 1) steps.push(timed('Easy recovery',full ? fullReset : recovery,'z1','recovery'));
     }
-    const remainder = main - count * (work + recovery);
+    const remainder = main - (full ? fullDose : count * (work + recovery));
     if (remainder) steps.push(timed('Easy aerobic finish',remainder,`z${Math.min(2,cap)}`));
   } else if (sport === 'swim' || recipe === 'technique') {
     // Timed repeats do not invent pool length, stroke, CSS or distance.
@@ -122,7 +140,8 @@ export function coachingEnduranceSteps(sport: string, minutes: number, zone: str
       steps.push(timed('Reset and easy recovery',Math.min(30,seconds-1),'z1','recovery'));
     }
   } else steps.push(timed(cap === 1 && sport === 'run' ? 'Comfortable walk / run practice' : 'Steady aerobic work',main,`z${Math.min(2,cap)}`));
-  steps.push(timed(cooldown,cool,'z1','cooldown'));
+  steps.push(timed(cooldown,full ? 300 : cool,'z1','cooldown'));
+  if (full) steps.push(timed('Comfortable breathing',300,'z1','cooldown', 'Once breathing settles, sit or stand out of the pool or off the bike. Breathe comfortably with a gentle longer exhale if it feels natural.'));
   return steps;
 }
 

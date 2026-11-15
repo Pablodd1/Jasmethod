@@ -167,7 +167,7 @@ export function manualWorkoutEmail(input: ManualWorkoutEmailInput): ManualWorkou
   const html = [
     `<!doctype html><html lang="${es ? "es" : "en"}"><head><meta charset="utf-8"></head><body><main style="font-family:Arial,sans-serif;line-height:1.6;max-width:600px;margin:0 auto;color:#17202a;padding:24px">`,
     paragraph(greeting), paragraph(intro), paragraph(revisionLine), paragraph(status),
-    ...(preview ? [paragraph(preview.heading), paragraph(preview.summary), paragraph(preview.caution), paragraph(preview.checkinLabel)] : []),
+    ...(preview ? [paragraph(preview.heading), paragraph(preview.summary), ...(preview.steps ?? []).map(paragraph), paragraph(preview.caution), paragraph(preview.checkinLabel)] : []),
     `<p>${anchor(reviewLabel, links.workout)}</p>`,
     ...(notice ? [paragraph(notice)] : []),
     ...(actionable ? [
@@ -181,7 +181,7 @@ export function manualWorkoutEmail(input: ManualWorkoutEmailInput): ManualWorkou
     "</main></body></html>",
   ].join("\n");
   const text = [
-    greeting, intro, revisionLine, status, ...(preview ? [preview.heading, preview.summary, preview.caution, preview.checkinLabel] : []), `${reviewLabel}\n${links.workout}`,
+    greeting, intro, revisionLine, status, ...(preview ? [preview.heading, preview.summary, ...(preview.steps ?? []), preview.caution, preview.checkinLabel] : []), `${reviewLabel}\n${links.workout}`,
     ...(notice ? [notice] : []),
     ...(actionable ? [...planText, preparation, steps.map((step, index) => `${index + 1}. ${step}`).join("\n"), caveat,
       `${helpLabel}: ${MANUAL_GARMIN_FILE_HELP}\n${macLabel}: ${MANUAL_GARMIN_MAC_HELP}`] : []),

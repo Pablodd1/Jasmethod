@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { hasWorkoutReport, isCurrentOrReportedWorkout } from "./calendar-workouts";
+export { plannedWorkoutDeliverySteps } from "./delivery-workout-preview";
 
 /** Minimal scheduling copy, never personalized medical/training instructions. */
 export function manualWorkoutCalendarPlaceholder(language: string, ready: boolean, appUrl: string) {
