@@ -1,5 +1,34 @@
 import { dateKey } from './dates';
-export type DeliveryWorkoutPreview = { heading: string; summary: string; caution: string; checkinLabel: string };
+import { savedWorkoutPreview } from './saved-workout-preview';
+import { stepEndpointLabel } from './plan-formats';
+
+export type DeliveryWorkoutPreview = { heading: string; summary: string; caution: string; checkinLabel: string; steps?: string[] };
+
+/** Share only validated, read-only blocks. Never include stored names, notes,
+ * actuals, health reasons, or numeric targets derived from athlete records. */
+export function plannedWorkoutDeliverySteps(
+ workout: { planned?: boolean; completed?: boolean; feedbackStatus?: string | null; prescription?: unknown } | null,
+ athleteId: string, timezone: string, language: string,
+): string[] {
+ if (!workout?.planned || workout.completed || workout.feedbackStatus) return [];
+ let plannedWorkout;
+ // Daily adaptations may encode a readiness decision. Publish only a
+ // snapshot explicitly marked as planned, never the adapted prescription.
+ try {
+   const stored = typeof workout.prescription === 'string' ? JSON.parse(workout.prescription) : workout.prescription;
+   const planned = stored?.savedPlan?.verdict === 'planned' ? stored.savedPlan : stored;
+   if (planned?.verdict !== 'planned' || !Number.isFinite(planned.durationMin)) return [];
+   plannedWorkout = { ...workout, durationMin: planned.durationMin, prescription: planned };
+ } catch { return []; }
+ const preview = savedWorkoutPreview(plannedWorkout, athleteId, timezone);
+ if (!preview.available || !preview.session) return [];
+ const es = language === 'es';
+ const phases = es
+   ? { warmup: 'Calentamiento', active: 'Trabajo principal', recovery: 'Recuperación', cooldown: 'Vuelta a la calma' }
+   : { warmup: 'Warm-up', active: 'Main set', recovery: 'Recovery', cooldown: 'Cool-down' };
+ return preview.session.steps.map((step, index) =>
+   `${index + 1}. ${phases[step.phase]} · ${stepEndpointLabel(step, es ? 'es' : 'en')} · ${step.zone.toUpperCase()}`);
+}
 /** Whitelisted schedule metadata only. A preview carries no executable steps,
  * targets, nutrition, health reasons, arbitrary title/notes or device claims. */
 export function deliveryWorkoutPreview(workout: { planned?: boolean; completed?: boolean; feedbackStatus?: string | null; sport?: string; type?: string; durationMin?: number; startTime?: string | null },

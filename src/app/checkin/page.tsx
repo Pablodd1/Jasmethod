@@ -553,8 +553,8 @@ function CheckinPageContent() {
                 {result?.prescriptions?.length > 1 && <label className="block text-sm mt-3">{lang === "es" ? "Sesión" : "Session"}<select className="input" value={selectedSessionId} onChange={(e) => { setSelectedSessionId(e.target.value); setDownloaded(false); }}>{result.prescriptions.map((p: any) => <option key={p.sessionId} value={p.sessionId}>{p.title}</option>)}</select></label>}
                 {prescription.durationMin > 0 && prescription.canonical?.capability?.available !== false && <button onClick={downloadWorkout} disabled={busy} className="btn-primary w-full justify-center mt-3"><Download className="w-4 h-4" />{busy ? "Preparing…" : "Download workout (.FIT)"}</button>}
                 {downloaded && <p role="status" className="mt-2 text-sm">File download started. Device import and receipt are not verified.</p>}
-                {prescription.canonical?.capability?.available === false && <p role="status" className="text-sm mt-2">{prescription.canonical.capability.reason} <a className="underline" href="/today">Review session structure</a></p>}
-                {prescription.durationMin > 0 && <p className="text-xs mt-2">Manual transfer and model compatibility vary. <a className="underline" href="/today">Review this session and transfer instructions</a></p>}
+                {prescription.canonical?.capability?.available === false && <p role="status" className="text-sm mt-2">{prescription.canonical.capability.reason}</p>}
+                {prescription.sessionId && <a className="btn-secondary mt-2" href={`/daily?sessionId=${encodeURIComponent(prescription.sessionId)}`}>{lang === "es" ? "Ver esta sesión y su gráfico" : "View this workout and graph"}</a>}
               </div>
             )}
 

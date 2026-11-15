@@ -1,5 +1,5 @@
 import { deviceMetricSnapshot } from "./device-metric-snapshot";
-import { calendarUnscheduledCopy, manualWorkoutCalendarPlaceholder, manualWorkoutCalendarRevision, retireWorkoutCalendarLink } from "./manual-workout-calendar";
+import { calendarUnscheduledCopy, manualWorkoutCalendarPlaceholder, manualWorkoutCalendarRevision, plannedWorkoutDeliverySteps, retireWorkoutCalendarLink } from "./manual-workout-calendar";
 import { manualEmailLanguage } from "./manual-workout-email-locale";
 import { eligibleManualEmail, manualEmailConfigured } from "./manual-workout-email";
 import { manualWorkoutCalendarDescription } from "./manual-workout-email-content";
@@ -265,9 +265,8 @@ export async function syncUserConnectors(
           const link =
             links.find((l) => l.workoutId === w.id) ||
             links.find((l) => l.notes === `gcalPush:${legacyRemote?.id}`);
-          // Calendar delivery has the same safety/revision boundary as the
-          // screen and file. Future or held plans are scheduling placeholders,
-          // with no actionable steps or private safety reasons transmitted.
+          // Calendar previews can include read-only blocks with the athlete's
+          // guidance opt-in. Approved instructions still require the exact revision.
           let resolved: Awaited<ReturnType<typeof effectivePrescription>> = null;
           try { resolved = await effectivePrescription(userId, w.id); }
           catch (error) { if (!(error instanceof SessionResolutionError)) throw error; }
@@ -285,9 +284,17 @@ export async function syncUserConnectors(
           const workoutDate = dateKey(w.date, user.timezone);
           const appUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://jasmiamimethod.fit").replace(/\/$/, "")}/daily?sessionId=${encodeURIComponent(w.id)}&date=${workoutDate}`;
           const placeholder = manualWorkoutCalendarPlaceholder(deliveryUser.language, !!ready, appUrl);
+          const plannedSteps = !ready && shareGuidance
+            ? plannedWorkoutDeliverySteps(w, userId, deliveryUser.timezone, language!)
+            : [];
+          const plannedDescription = language === "es"
+            ? "Plan previsto. Revisa la sesión actual y cualquier ajuste en JMM antes de entrenar. Los detalles son visibles para quienes tengan acceso al calendario."
+            : "Planned workout. Review the current session and any adjustments in JMM before training. Anyone with calendar access can see these details.";
           const description = (ready && shareGuidance
               ? manualWorkoutCalendarDescription(session!, resolved!.nutrition, w.startTime, language!, resolved!.targetProfile?.units) + `\n${language === "es" ? "Plan actual y gráfico" : "Current plan and workout graphic"}: ${appUrl}\n${language === "es" ? "Revisión" : "Plan revision"}: ${session!.revision}`
-              : placeholder.description) + (w.startTime ? "" : `\n${calendarUnscheduledCopy(deliveryUser.language)}`);
+              : plannedSteps.length
+                ? [plannedDescription, ...plannedSteps, appUrl].join("\n")
+                : placeholder.description) + (w.startTime ? "" : `\n${calendarUnscheduledCopy(deliveryUser.language)}`);
           const revision = manualWorkoutCalendarRevision({
             workoutId: w.id, date: workoutDate, startTime: w.startTime,
             durationMin: session?.durationMin ?? w.durationMin,

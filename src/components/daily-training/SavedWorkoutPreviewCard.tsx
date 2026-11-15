@@ -28,7 +28,7 @@ export function SavedWorkoutPreviewView({ preview, es = false, compact = false, 
     {!embedded && plannedSession && <header className="uwc-header"><div><p>{plannedSession.sport.toUpperCase()}</p><h2 className="uwc-title">{sportConsistentTitle(plannedSession.title,plannedSession.sport)}</h2></div><div className="uwc-stats"><b>{Number.isFinite(plannedSession.durationMin) && plannedSession.durationMin > 0 ? `${plannedSession.durationMin} min` : "—"}<small>{es ? "TIEMPO PREVISTO" : "PLANNED TIME"}</small></b></div></header>}
     {embedded && plannedSession && Number.isFinite(plannedSession.durationMin) && plannedSession.durationMin > 0 && <p>{es ? "Tiempo previsto" : "Planned time"}: {plannedSession.durationMin} min</p>}
     <p role="status">{es ? "Pasos pendientes de revisión; no hay una adaptación aprobada." : "Steps need review; no approved daily adaptation."}</p>
-    <a className="inline-flex min-h-11 items-center underline" href={`/daily?sessionId=${encodeURIComponent(preview.sessionId)}`}>{es ? "Revisar estructura" : "Review structure"}</a>
+    {!embedded && <a className="inline-flex min-h-11 items-center underline" href={`/daily?sessionId=${encodeURIComponent(preview.sessionId)}`}>{es ? "Revisar estructura" : "Review structure"}</a>}
     <details className="text-sm"><summary>{es ? "Detalles de la revisión" : "Review details"}</summary><p>{preview.reason}</p></details>
   </section>;
   if (!card) return <section className="uwc saved-workout-preview" aria-label={es ? "Plan guardado" : "Saved plan preview"}>

@@ -11,7 +11,7 @@ import { buildUniversalWorkoutCard } from "./universal-workout-card-server";
 import { renderUniversalWorkoutPng } from "./universal-workout-render";
 import { eligibleManualEmail, manualEmailActionable, manualEmailChanged, manualEmailConfigured, manualEmailDue, manualEmailKey, manualEmailOrigin } from "./manual-workout-email";
 import { sendManualEmail } from "./manual-workout-email-transport";
-import { deliveryWorkoutPreview } from "./delivery-workout-preview";
+import { deliveryWorkoutPreview, plannedWorkoutDeliverySteps } from "./delivery-workout-preview";
 import { readDeliveryWorkout } from "./delivery-session";
 import { currentWorkoutWhere } from "./calendar-workouts";
 
@@ -120,6 +120,12 @@ export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?
           content.plan.graphicAlt=content.plan.steps.join("; ");
         }
         const heldPreview = kind === "held" && fresh.resolved && fresh.workout ? deliveryWorkoutPreview(fresh.workout, { ...fresh.resolved.canonical, language }, dependencies.clock()) : null;
+        if (heldPreview) {
+          heldPreview.steps = plannedWorkoutDeliverySteps(fresh.workout, pref.userId, freshPref.timezone, language);
+          if (heldPreview.steps.length) heldPreview.caution = language === "es"
+            ? "Estos son los bloques previstos. Revisa cualquier ajuste en JMM antes de entrenar."
+            : "These are the planned blocks. Review any adjustments in JMM before training.";
+        }
         const plannedRest = kind === "held" && fresh.workout?.planned && fresh.workout.durationMin === 0 && fresh.resolved?.canonical.verdict === "rest";
         const email = manualWorkoutEmail({ language, kind, workoutSport: actionable ? actionable.canonical.sport : undefined, dateLabel: fresh.resolved?.canonical.dateLocal || bounds.key, revision: row.revision.slice(0, 8), workoutUrl: `${origin}/daily?sessionId=${encodeURIComponent(sessionId)}`, settingsUrl: `${origin}/workout-email/settings`, ...(content ? { readyPlan: content.plan } : {}), ...(heldPreview ? { heldPreview } : {}), plannedRest });
         const download = actionable ? buildPrivateSafeSessionDownload(actionable.canonical) : null;
