@@ -203,6 +203,17 @@ export function structuredSteps(
     return finishStructuredSteps(boxingSteps(minutes, variant, capZone), total, capZone);
   if (sport === "hyrox")
     return finishStructuredSteps(hyroxSteps(minutes, variant, capZone), total, capZone);
+  if (sport === "bike" && type === "endurance" && capZone <= 2 && !variant && total >= 74 * 60) {
+    return finishStructuredSteps([
+      { name: "Easy spin", seconds: 1200, zone: "z1", phase: "warmup" },
+      { name: "Cadence preparation", seconds: 300, zone: "z1", phase: "warmup",
+        note: "Use a light gear and briefly raise cadence with easy spinning between pickups. Optional: comfortable ankle and hip mobility before riding." },
+      { name: "Steady aerobic ride", seconds: total - 2100, zone, phase: "active" },
+      { name: "Easy spin", seconds: 300, zone: "z1", phase: "cooldown" },
+      { name: "Comfortable breathing", seconds: 300, zone: "z1", phase: "cooldown",
+        note: "Dismount first. Let your breathing settle and breathe comfortably." },
+    ], total, capZone);
+  }
   const warm = Math.round(total * 0.15),
     cool = Math.round(total * 0.1),
     main = total - warm - cool;
