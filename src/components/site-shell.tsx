@@ -14,7 +14,7 @@ export function PublicLanguageSelect({compact}:{compact?:boolean}) {
 }
 export function SiteHeader(){
   const pathname=usePathname(),{language,user}=useAuth(),route=publicRoute(pathname),locale=route.localized?route.locale:language,es=locale==="es",href=(path:string)=>publicHref(locale,path);
-  const links=[["/how-it-works",es?"Cómo funciona":"How it works"],["/capabilities",es?"Qué puedes hacer":"Capabilities"],["/science",es?"Ciencia":"Science"],["/contact",es?"Contacto":"Contact"]];
+  const links=[["/how-it-works",es?"Cómo funciona":"How it works"],["/capabilities",es?"Qué puedes hacer":"Capabilities"],["/science",es?"Ciencia":"Science"],["/blog",es?"Guías de entrenamiento (inglés)":"Training Guides"],["/contact",es?"Contacto":"Contact"]];
   const nav=(mobile=false)=><nav aria-label={es?"Navegación pública":"Public navigation"} className={mobile?"website-mobile-links":"website-desktop-links"}>{links.map(([path,label])=><Link key={path} href={href(path)} aria-current={route.base===path?"page":undefined}>{label}</Link>)}{mobile&&<Link href={user?"/today":"/login"}>{user?(es?"Mi entrenamiento":"My training"):(es?"Entrar":"Sign in")}</Link>}</nav>;
   return <header className="website-header"><a className="website-skip" href="#main-content">{es?"Ir al contenido":"Skip to content"}</a><div className="pub-container website-header-row">
     <Link href={href("/")} className="website-brand" aria-label="Jas Miami Method"><span aria-hidden="true" className="website-brand-mark">j</span><span>Jas Miami Method</span><span className="website-brand-short">JMM</span></Link>
