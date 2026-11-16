@@ -397,7 +397,12 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
         : (requestedDay || namedWorkout) && !selected ? { answer: actor.language === "es" ? "¿Qué sesión quieres cambiar? No pude identificar una única sesión pendiente. Elige su fecha y título en Herramientas opcionales y vuelve a enviar el cambio." : "Which workout should I change? I couldn't identify one pending workout. Choose its date and title in Optional tools and send the change again.", ruleId:"coach-conversation-v1:choose-workout" }
         : profileQuery ? {answer: actor.language === "es" ? "Consulté tus referencias guardadas. El resultado protegido corresponde a esta solicitud; pregunta de nuevo para actualizarlo. No se modificó ningún dato." : "I checked your saved references. The protected result belongs to this request; ask again to refresh it. No values were changed.",ruleId:"coach-conversation-v1:profile-reference-review",sourceIds:[]}
         : reviewToday && !candidates.length
-        ? {answer: actor.language === "es" ? "Consulta la sesión guardada de hoy en la tarjeta privada. Si necesitas cambiar de deporte, indica qué sesión quieres sustituir y cuánto tiempo tienes." : "Review today's saved session in the private workout card. To switch sports, tell me which session you want to replace and how much time you have.",ruleId:"coach-conversation-v1:today-workout-review",sourceIds:[]}
+        ? {answer: [
+          actor.language === "es"
+            ? "Consulta la sesión guardada de hoy en la tarjeta privada. Si necesitas cambiar de deporte, indica qué sesión quieres sustituir y cuánto tiempo tienes."
+            : "Review today's saved session in the private workout card. To switch sports, tell me which session you want to replace and how much time you have.",
+          historySafeLocalReply("", actor.language, true),
+        ].join("\n\n"), ruleId:"coach-conversation-v1:today-workout-review",sourceIds:[]}
         : protectedRecordContext
         ? {answer:historySafeLocalReply("",actor.language,true),ruleId:"coach-conversation-v1:local-data-review",sourceIds:[]}
         : buildCoachReply(input.message, chatContext);
