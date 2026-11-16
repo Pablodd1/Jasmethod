@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteHeader,SiteFooter } from "./site-shell";
 import { PublicInquiryForm } from "./public-inquiry-form";
+import { PublicWorkoutDemo } from "./public-workout-demo";
 import { CAPABILITIES,WORKFLOW,WEBSITE_FAQ,WEBSITE_TITLES,WEBSITE_DESCRIPTIONS,wording } from "@/lib/website-content";
 import { WEBSITE_SCIENCE } from "@/lib/website-science";
 import { publicHref,PUBLIC_SITE_ORIGIN,type PublicLocale } from "@/lib/public-routes";
@@ -20,9 +21,9 @@ export function WebsitePage({path,locale}:{path:string;locale:PublicLocale}){
     <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(structured).replace(/</g,"\\u003c")}}/>
     <section className={home?"pub-container website-hero":"pub-container website-intro"}>
       <div><p className="website-eyebrow">{guide?t("Evidence guide","Guía de evidencia"):home?"Jas Miami Method":t("Training · Fueling · Recovery","Entrenamiento · Alimentación · Recuperación")}</p><h1>{title}</h1><p className="website-deck">{description}</p>
-        {home&&<><Link className="website-cta" href={href("/how-it-works")}>{t("See how it works","Conoce cómo funciona")} <span aria-hidden="true">↗</span></Link><p className="website-small">{t("Swim. Bike. Run. HYROX. Your starting point matters.","Natación. Ciclismo. Carrera. HYROX. Tu punto de partida importa.")}</p></>}
+        {home&&<><Link className="website-cta" href="#workout-demo">{t("See a sample workout","Ver una sesión de ejemplo")} <span aria-hidden="true">↓</span></Link><p className="website-small"><Link className="website-text-link" href={href("/how-it-works")}>{t("See how it works","Conoce cómo funciona")}</Link></p></>}
       </div>
-      {home&&<figure className="website-session"><figcaption>{t("Illustrative session · synthetic example","Sesión ilustrativa · ejemplo sintético")}</figcaption><div className="website-session-heading"><span>{t("Today / Run","Hoy / Carrera")}</span><span>30:00</span></div><p>{t("Review the work. Prepare the details.","Revisa el trabajo. Prepara los detalles.")}</p><ol>{[["Before","Antes","Review your session, food and available time.","Revisa tu sesión, alimentación y tiempo disponible."],["During","Durante","Keep instructions and planned intake together.","Mantén juntas las instrucciones y la ingesta prevista."],["After","Después","Record actual work, effort and notes.","Registra trabajo real, esfuerzo y notas."]].map(([en,sp,body,bodyEs],i)=><li key={en}><span aria-hidden="true">0{i+1}</span><div><strong>{t(en,sp)}</strong><p>{t(body,bodyEs)}</p></div></li>)}</ol><p className="website-example-note">{t("A workflow example, not a prescription or an athlete’s record.","Un ejemplo del proceso, no una prescripción ni un registro real.")}</p></figure>}
+      {home&&<PublicWorkoutDemo es={es}/>}
     </section>
     {home&&<>
       <section className="website-band"><div className="pub-container"><p>{t("Your session is more than a workout file.","Tu sesión es más que un archivo de entrenamiento.")}</p><span>{t("Prepare → Train → Review → Adjust","Preparar → Entrenar → Revisar → Ajustar")}</span></div></section>

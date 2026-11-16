@@ -2,7 +2,11 @@
 export function opensTodayWorkout(message: string): boolean {
   const text = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (/\b(?:yesterday|tomorrow|last week|next week|ayer|manana|semana pasada|proxima semana)\b/.test(text)) return false;
-  return /\b(?:today|hoy)\b/.test(text) && /\b(?:workout|session|training|fuel|fueling|nutrition|eat|drink|entrenamiento|entrenar|sesion|nutricion|comer|beber|alimentacion|hidratacion|few minutes|pocos minutos)\b/.test(text);
+  const daily = /\b(?:today|todays|hoy)\b|\btoday['’]s\b/.test(text);
+  const sport = /\b(?:run|running|bike|cycling|swim|swimming|hyrox|correr|ciclismo|natacion)\b/.test(text);
+  if (sport && daily && /\b(?:run|workout|session|plan|sesion|entrenamiento)\b/.test(text)) return true;
+  if (sport && /\b(?:give me|suggest|dame|sugiere)\b.*\b(?:workout|session|entrenamiento|sesion)\b/.test(text)) return true;
+  return daily && /\b(?:workout|session|training|fuel|fueling|nutrition|eat|drink|entrenamiento|entrenar|sesion|nutricion|comer|beber|alimentacion|hidratacion|few minutes|pocos minutos)\b/.test(text);
 }
 
 /** Only opens the existing owner-scoped review UI. It never supplies record

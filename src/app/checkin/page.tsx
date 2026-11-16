@@ -316,6 +316,12 @@ function CheckinPageContent() {
       }
       const res = await fetch("/api/checkin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submitted) });
       const d = await res.json();
+      if (short && res.status === 409 && d.error === "Device readings changed or are unavailable. Reload or use the manual check-in.") {
+        await load();
+        throw new Error(lang === "es"
+          ? "Actualizamos tus registros. Confirma la revisión de nuevo o usa la opción manual. El chequeo no se guardó."
+          : "Refreshed your readings. Confirm again or use manual review. Your check-in was not saved.");
+      }
       if (!res.ok) throw new Error(d.error || "Failed");
       for(const field of dirtyAnswers.current)if(Object.is(currentAnswers.current[field],answers[field]))dirtyAnswers.current.delete(field);
       draftScope.current={dateLocal:localToday,savedBasis:d.checkin?.answers ?? null};
