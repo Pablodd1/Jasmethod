@@ -21,7 +21,7 @@ export function WebsitePage({path,locale}:{path:string;locale:PublicLocale}){
     <script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(structured).replace(/</g,"\\u003c")}}/>
     <section className={home?"pub-container website-hero":"pub-container website-intro"}>
       <div><p className="website-eyebrow">{guide?t("Evidence guide","Guía de evidencia"):home?"Jas Miami Method":t("Training · Fueling · Recovery","Entrenamiento · Alimentación · Recuperación")}</p><h1>{title}</h1><p className="website-deck">{description}</p>
-        {home&&<><Link className="website-cta" href="#workout-demo">{t("See a sample workout","Ver una sesión de ejemplo")} <span aria-hidden="true">↓</span></Link><p className="website-small">{t("Swim, bike, run, triathlon and HYROX.","Natación, ciclismo, carrera, triatlón y HYROX.")}</p></>}
+        {home&&<><Link className="website-cta" href="#workout-demo">{t("See a sample workout","Ver una sesión de ejemplo")} <span aria-hidden="true">↓</span></Link><p className="website-small"><Link className="website-text-link" href={href("/how-it-works")}>{t("See how it works","Conoce cómo funciona")}</Link></p></>}
       </div>
       {home&&<PublicWorkoutDemo es={es}/>}
     </section>

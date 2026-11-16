@@ -18,5 +18,6 @@ export function renderWebsite(language:"en"|"es",path="/") {
   function load(file:string){const compiled=ts.transpileModule(readFileSync(file,"utf8"),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
     const loaded={exports:{} as any};runInNewContext(compiled,{module:loaded,exports:loaded.exports,process:{env:{}},require:(name:string)=>{if(name in dependencies)return dependencies[name];throw Error("Unexpected public-render dependency: "+name);}});return loaded.exports;}
   dependencies["./site-shell"]=load("src/components/site-shell.tsx");dependencies["./public-inquiry-form"]=load("src/components/public-inquiry-form.tsx");
+  dependencies["./public-workout-demo"]=load("src/components/public-workout-demo.tsx");
   const {WebsitePage}=load("src/components/website-page.tsx");return renderToStaticMarkup(React.createElement(WebsitePage,{path,locale:language}));
 }

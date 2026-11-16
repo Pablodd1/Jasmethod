@@ -42,7 +42,7 @@ export function PublicWorkoutDemo({ es }: { es: boolean }) {
   return (
     <section id="workout-demo" className="website-session" aria-labelledby="workout-demo-title">
       <h2 id="workout-demo-title">{label(["Explore a sample workout", "Explora una sesión de ejemplo"])}</h2>
-      <p>{label(["Illustrative workout with sample data.", "Sesión ilustrativa con datos de ejemplo."])}</p>
+      <p>{label(["Illustrative workout · synthetic example", "Sesión ilustrativa · ejemplo sintético"])}</p>
       <label className="block">
         {label(["Sport", "Deporte"])}
         <select className="website-language ml-2" value={sport} onChange={event => setSport(Number(event.target.value))}>
