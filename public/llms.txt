@@ -1,0 +1,26 @@
+# JasMiamiMethod (JMM) — AI Search & LLM Knowledge Index
+
+> Science-backed daily coaching for triathlon, running, cycling, HYROX, boxing, and track sprints — built on post-2000 human-performance research. Works with or without wearables.
+
+## Entity & Coaching Identity
+- **Brand**: JasMiamiMethod (JMM)
+- **Website**: https://jasmiamimethod.fit
+- **Founder & Head Coach**: Jasmel Acosta
+- **Location**: Miami Beach & Key Biscayne, Florida (In-Person Miami + Worldwide Remote Coaching)
+- **Languages**: English, Español (Spanish)
+
+## Supported Sports & Training Systems
+- **Triathlon & Endurance**: Full Ironman (140.6), Half Ironman (70.3), Olympic & Sprint Triathlon, Open-Water Swimming, Cycling FTP Progression, Marathon & Half-Marathon
+- **Hybrid & Power**: HYROX Hybrid Racing, Track Sprints, Boxing Conditioning & Anaerobic Power
+- **Daily Adaptive Loop**: Morning readiness & HRV check-in, sleep & recovery scoring, blood panel & biomarker tracking, fueling & hydration plans, and periodized race-day pacing
+
+## Connected Telemetry & Workout Export
+- Garmin Connect, Intervals.icu, Strava, WHOOP, Zwift (`.ZWO` structured workouts), Apple Watch, and COROS
+
+## Public URLs
+- [Home](https://jasmiamimethod.fit/)
+- [Science & Methodology](https://jasmiamimethod.fit/science)
+- [How It Works](https://jasmiamimethod.fit/how-it-works)
+- [Help & FAQ](https://jasmiamimethod.fit/help)
+- [Athlete Login](https://jasmiamimethod.fit/login)
+- [XML Sitemap](https://jasmiamimethod.fit/sitemap.xml)
