@@ -198,6 +198,14 @@ test('Monday gym and Wednesday agreed pair coexist without turning ten available
   assert.ok(boundPlanWeeks(raw,planning,10,1,'advanced').weeks.every(w=>w.totalMinutes<=240));
 });
 
+test('an explicit zero weekly limit never becomes an omitted limit',()=>{
+  const planning=setup([1,3,5],240,90);
+  planning.availableWeeklyMinutes=null;
+  assert.equal(planningWeeklyBudget(planning),240);
+  planning.availableWeeklyMinutes=0;
+  assert.equal(planningWeeklyBudget(planning),0);
+});
+
 test('unavailable or conflicting gym preference reports the tradeoff without losing complete feasible units',()=>{
   const planning=setup([1,3,5],240,90);planning.strengthWeekdays=[0];
   const raw=generateSingleSport({sport:'run',level:'advanced',weeks:1,startDate:new Date('2026-11-02T12:00Z'),weeklyHours:4,reviewedCycle:true,sessionLimitMinutes:90});

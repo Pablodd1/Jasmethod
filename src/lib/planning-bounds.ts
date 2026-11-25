@@ -9,10 +9,10 @@ function pairSportPriority(primary:string|undefined,secondary:string) {
   return secondary === primary ? 3 : 1;
 }
 export type BoundedPlanSession = PlanSession & {daySlot:number; startTime?:string; doubleDayRole?:"primary"|"secondary"; movedFromSlot?:number};
-/** The weekly availability entry is a preference. Keep the tolerated
- * baseline and explicit daily scheduling limits as independent bounds. */
+/** Available time is an additional ceiling, never evidence of tolerated load.
+ * An omitted weekly ceiling is unbounded; an explicit zero is not omitted. */
 export function planningWeeklyBudget(setup:PlanningSetup){
-  return Math.min(setup.baselineWeeklyMinutes??0,(setup.maxSessionMinutes??0)*setup.trainingDays.length);
+  return Math.min(setup.baselineWeeklyMinutes??0,(setup.maxSessionMinutes??0)*setup.trainingDays.length,setup.availableWeeklyMinutes??Infinity);
 }
 const demandingSession=(session:PlanSession)=>Number(session.zone.slice(1))>=4
   || ["strength","hyrox"].includes(session.sport) || ["speed","plyo"].includes(session.type)
