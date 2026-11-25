@@ -1,0 +1,31 @@
+# JMM daily coaching: implementation and release checklist
+
+JMM is an individualized daily coach. The app, coach workspace, and device export should use the same versioned workout prescription. This is a roadmap, not a claim that every feature is live.
+
+## Structured workout on Today
+
+- Keep a coach's approved plan visible. Offer a prominent Start control only when the session is ready. Show the purpose, pre-fueling, warm-up, dynamic work, strides or buildups, main set, recovery intervals, cooldown, optional breathing and post-workout follow-up.
+- Give each drill a typed step, dose, cue, and stable original illustration ID. Use JMM's Motion Comics: compact start, peak, finish frames for every selected movement, with accessible text and live Now/Next, remaining time, reps or distance. Timed steps can advance automatically; time must not complete distance, repetitions or laps.
+- Running baseline: 10 minutes easy, arm swings, lateral leg swings, forward/hamstring swings and carioca, 12 counts per drill (six each side when bilateral), 15 seconds easy jogging after each, then four relaxed progressive 15-second strides with 45–60 seconds easy between when appropriate. Optional A/B skips, straight-leg drills and gentle plyometrics depend on the session and athlete. Adapt the phases to each sport, not the exact movements. Rest days do not get a required warm-up.
+- Support easy and long endurance, recovery/rest, shorter and longer subthreshold or threshold work, VO₂max, technique, strength and plyometrics. Include bike watts/cadence; swim lengths, send-offs and rests; triathlon sport legs and transitions; and HYROX runs, stations, loads and recovery. Long is duration, not intensity. Each recipe states the athlete population, sport, intensity anchor, dose, recovery, progression, evidence and adaptations. [Running 4×4 trial](https://pubmed.ncbi.nlm.nih.gov/17414804/) and [cycling interval-duration trial](https://pubmed.ncbi.nlm.nih.gov/21812820/) are examples, not universal protocols.
+
+## Athlete and coach workflow
+
+- Review readiness at 4:45 a.m. athlete-local. Use consented recent load, sport-specific baseline, biometric freshness, wellness and schedule. Ask only for missing actionable context; missing data does not count as good readiness. Offer a shorter session at the intended stimulus or a reschedule rather than automatically raising intensity. Safety holds remain holds. Keep the original, rationale and confirmed revision.
+- Authorized coaches see separate athlete profiles, prescribed vs. completed intervals and subjective feedback. Draft, validate, preview and approve before device delivery. Preserve a log of revisions and coach locks. For athlete or coach text and voice commands, preview what will change before saving or syncing. Store editable profile context; do not train model weights on provider data.
+- Make fueling an optional entry from Today and coaching chat. Allow meal, snack, gel, drink and label photos/screenshots, editable portion estimates, manual entry, and private opt-in coach access. Separate planned and consumed intake. Show before/during/after guidance and independent carbohydrate, fluid and sodium ranges where supported; do not infer sugar oxidation from body mass or kilojoules. Field sweat estimates require opted-in pre/post weight, fluid and urine inputs. Caffeine is optional and context-dependent; beta-alanine is not an acute stimulant. No unreviewed recommendations or photo auto-logging.
+
+## Nolio / Garmin boundary
+
+- Nolio is the intended bridge, not a promise of all Garmin fields. Verify the authorized Garmin history window, activities, laps, streams, readiness and write coverage. Keep approved direct imports or private manual check-ins as fallback. Do not route WHOOP or Ōura readiness through Nolio API/MCP. For paid AI coaching and multi-coach access, confirm written terms, v2 scopes and declared uses before enabling live data. [Nolio API terms](https://www.nolio.io/en/api-terms/).
+- Use [Nolio API v2](https://www.nolio.io/api/v2/docs/) and its [migration guide](https://media.cdn.nolio.io/api/migration-v1-to-v2.pdf), not the deprecated v1 wiki. Verify actual v2 schema and credentials in the approved account. Store the returned Nolio ID against the athlete/workout/revision. Test a timed-out create that actually succeeded: reconcile against that athlete's calendar before considering a retry. Hold cases that cannot be matched safely; protect concurrent coach edits and process duplicate webhook deliveries once.
+- Keep three separate states: accepted by Nolio, verified on the watch, and matched to a returned activity. [Nolio auto-links by date and sport](https://help.nolio.io/en/articles/9159820-link-a-completed-workout-to-a-planned-workout); test two same-day runs and a next-day completion, and hold wrong/ambiguous matches for review. Never treat missing streams, laps, power or kJ as zero.
+
+## Coach-ready race prediction
+
+- Maintain a monthly refreshed registry of race editions, official source/date, course versions, legs, transitions, hills/grades, turns and surface. Label forecast versus historical conditions, and expose unknowns. Select one course first; verify route rights, correct edition and split data before backtesting.
+- Use athlete-specific recent performance and course/conditions to return segment pace or speed, power where supported, effort targets, and split/finish ranges. Use [validated cycling power modeling](https://pubmed.ncbi.nlm.nih.gov/28121252/) as one component, with wind, gradient and equipment assumptions visible. Report uncertainty; avoid universal pacing formulas and unsupported precision. Validate against completed races before adding more formats.
+
+## First acceptance test
+
+With test data first, prove one athlete and one workout through history import → visible plan → readiness adjustment → coach approval → watch receipt → returned completion matched to the same revision. Test missing/stale data, limited time, held workouts, manual step completion, ambiguous delivery, same-day overlaps and permission boundaries. A local guide is never evidence of workout completion or device receipt. Record exact test results; mobile, live account, and device tests need their own evidence.

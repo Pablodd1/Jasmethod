@@ -55,6 +55,23 @@ async function ask(a:Actor,message:string,extra:Record<string,unknown>={}) {retu
 function pending(result:any) {assert.ok(result.proposal?.id,"Expected a reviewable saved proposal");assert.ok(result.proposal.candidates?.length,"Expected explicit candidates");return result.proposal;}
 function confirmBody(p:any,candidates=p.candidates) {return {proposalId:p.id,expectedRevision:p.revision,candidates,idempotencyKey:randomUUID(),confirmed:true};}
 async function main() {
+  await scenario("One-hour bike request stays private and routes to review instead of a generic fallback", async () => {
+    const a = await actor("bike-request"), other = await actor("bike-request-other");
+    const unrelated = await fixture(other);
+    for (const source of ["text", "voice"] as const) {
+      const result = await ask(a, "I need a bike workout I have an hour", { source });
+      assert.equal(result.mode, "coach_local");
+      assert.equal(result.externalStatus, "not_requested");
+      assert.match(result.answer, /bike workout within 60 minutes/);
+      assert.match(result.answer, /today's check-in/i);
+      assert.ok(result.pendingActions.includes("review_checkin"));
+      assert.equal(result.trainingModified, false);
+      assert.equal(result.proposal, null);
+      assert.doesNotMatch(result.answer, /reliable answer|Reviewed easy run/);
+    }
+    assert.equal(await db.workout.count({ where: { userId: a.id } }), 0);
+    assert.equal((await db.workout.findUniqueOrThrow({ where: { id: unrelated.id } })).durationMin, 30);
+  });
   await scenario("Dated sport HR saves through HTTP, produces separate owner zones and protected local Koach answers without retained facts",async()=>{
     const a=await actor("dated-sport-hr"),other=await actor("dated-sport-hr-other");
     const before=await json("/api/profile",a),otherBefore=await json("/api/profile",other);

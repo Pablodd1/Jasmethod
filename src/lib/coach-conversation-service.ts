@@ -22,7 +22,8 @@ import { extractImageCandidates } from "./coach-image";
 import { coachTextAnswer, coachTextConfigured } from "./coach-text-provider";
 import { coachVisionConfiguration, createCoachVisionProvider } from "./coach-vision-provider";
 import { coachAutoSessionDay, coachNamedSessionSport, coachPlanChangeWarnings } from './coach-intent';
-import { coachReviewArea, opensTodayWorkout, opensRacePlan } from "./coach-review-intent";
+import { coachReviewArea, opensTodayWorkout, opensRacePlan, todayWorkoutRequest } from "./coach-review-intent";
+import { workoutRequestReply } from "./coach-workout-request";
 import { isPostWorkoutRecoveryReport } from "./coach-recovery-intent";
 import { asksGarminDeliveryStatus } from "./coach-delivery-status";
 import { applyCoachSwimReport, coachSwimReply, COACH_SWIM_PACE_UNIT, parseCoachSwimReport } from "./coach-swim-report";
@@ -282,6 +283,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
   const recoveryReview = !input.image && isPostWorkoutRecoveryReport(input.message);
   const swimReport = !input.image && !racePlanReview ? parseCoachSwimReport(input.message, today.key) : null;
   const medicalReview = /\b(?:ferritin|ferritina|blood (?:test|panel|work|results?)|anal[ií]tica de sangre|an[aá]lisis de sangre|dna (?:test|results?|risk)|(?:prueba|resultado) de adn)\b/i.test(input.message);
+  const workoutRequest = !input.image ? todayWorkoutRequest(input.message) : null;
   const reviewToday = opensTodayWorkout(input.message);
   const protectedWorkflow = Boolean(reviewToday || coachReviewArea(input.message) || requestedDay || namedWorkout || garminReview || recoveryReview || racePlanReview || swimReport || medicalReview);
   const manualDialogue = !protectedWorkflow && manualDialogueAllowed(input, input.message);
@@ -355,6 +357,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
       const unreviewedCurrentCheckin = candidates.some(candidate => candidate.kind === "checkin" && candidate.observedDate === today.key);
       const possibleCurrentSymptom = candidates.some(candidate => candidate.kind === "checkin" && ["sick", "newPain", "urgentSymptoms", "painAffectsMovement"].includes(candidate.field) && candidate.value === true);
       const plannedRecoverySessions = todayRecoverySessions.filter(row => row.planned);
+      const performedToday = loadWorkouts.some(row => row.date <= new Date() && dateKey(row.date, actor.timezone) === today.key);
       const context: CoachReplyContext = {
         externalFacts: undefined,
         savedTodaySessions: plannedRecoverySessions.map(row => ({ date: dateKey(row.date, actor.timezone), title: row.title, sport: row.sport, durationMin: row.durationMin, completed: row.completed })),
@@ -364,7 +367,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
           plannedRest: !!plannedRestDay || (!!plannedRecoverySessions.length && plannedRecoverySessions.every(row => row.planDay?.dayOff)),
           sessions: plannedRecoverySessions.map(row => ({ durationMin: row.id === planned?.id && effective ? effective.canonical.durationMin : row.durationMin, intensity: row.intensity,
             verdict: row.id === planned?.id ? effective?.canonical.verdict ?? "blocked" : row.planned && !row.approved && !row.completed ? "blocked" : undefined })),
-          performedToday: loadWorkouts.some(row => row.date <= new Date() && dateKey(row.date, actor.timezone) === today.key),
+          performedToday,
           injured: !!profile?.injured, answers: checkin && !unreviewedCurrentCheckin ? answers : null,
         }),
         jMetrics: needsLoadHistory ? computeJMetrics(loadWorkouts, new Date(), actor.timezone, restObservations.map(row => dateKey(row.observedAt, actor.timezone)),90,await readActivityDecisions(actor.id,tx)) : null,
@@ -396,6 +399,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
         : swimReport ? { answer: coachSwimReply(swimReport, actor.language === "es"), ruleId:"coach-conversation-v1:swim-reference-report" }
         : (requestedDay || namedWorkout) && !selected ? { answer: actor.language === "es" ? "¿Qué sesión quieres cambiar? No pude identificar una única sesión pendiente. Elige su fecha y título en Herramientas opcionales y vuelve a enviar el cambio." : "Which workout should I change? I couldn't identify one pending workout. Choose its date and title in Optional tools and send the change again.", ruleId:"coach-conversation-v1:choose-workout" }
         : profileQuery ? {answer: actor.language === "es" ? "Consulté tus referencias guardadas. El resultado protegido corresponde a esta solicitud; pregunta de nuevo para actualizarlo. No se modificó ningún dato." : "I checked your saved references. The protected result belongs to this request; ask again to refresh it. No values were changed.",ruleId:"coach-conversation-v1:profile-reference-review",sourceIds:[]}
+        : workoutRequest && !candidates.length ? workoutRequestReply(workoutRequest, context, performedToday)
         : reviewToday && !candidates.length
         ? {answer: [
           actor.language === "es"
@@ -406,7 +410,7 @@ async function appendClaimedConversation(actor: ConversationActor, raw: unknown,
         : protectedRecordContext
         ? {answer:historySafeLocalReply("",actor.language,true),ruleId:"coach-conversation-v1:local-data-review",sourceIds:[]}
         : buildCoachReply(input.message, chatContext);
-      const suggestedActions: PendingAction[] = SAFETY_RULES.some(rule => reply.ruleId === `coach-conversation-v1:${rule}`) ? ["review_checkin"] : [];
+      const suggestedActions: PendingAction[] = (SAFETY_RULES.some(rule => reply.ruleId === `coach-conversation-v1:${rule}`) || reply.ruleId === "coach-conversation-v1:workout-request-checkin") ? ["review_checkin"] : [];
       const clarifications = reply.ruleId === "coach-conversation-v1:clarify-data" ? [] : conversationClarifications(input.message, { localToday: today.key, source: input.source, sessionId, sessionDate });
       const answer = [reply.answer, candidates.length ? actor.language === "es" ? "¿Quieres aplicar estos cambios? Revisa los valores abajo y confirma solo los correctos. Aún no se ha guardado nada." : "Apply these changes? Review the values below and confirm only those that are correct. Nothing has been saved yet." : "", ...clarifications, ...(image?.warnings ?? [])].filter(Boolean).join("\n\n");
       const hasWriteProposal = candidates.some(candidate => candidate.kind !== "checkin");

@@ -1,5 +1,31 @@
+export type TodayWorkoutRequest = { sport: "bike" | "run" | "swim" | "brick" | "hyrox" | "strength"; minutes: number | null };
+
+/** Read-only review intent. A stated time is a ceiling, not a prescription or an edit. */
+export function todayWorkoutRequest(message: string): TodayWorkoutRequest | null {
+  const text = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[’‘]/g, "'").toLowerCase().trim();
+  if (!/^(?:please\s+)?(?:i (?:need|want|would like)|(?:can|could|would) you (?:give|suggest)|give me|suggest|necesito|quiero|dame|sugiere|podrias (?:darme|sugerir))\b/.test(text)) return null;
+  if (/[“”"«»]/.test(text) || /\b(?:not|don't|never|hypothetical|example|what if|if i|yesterday|tomorrow|next|last|ayer|manana|proxim[oa]|pasad[oa]|weekly|semana|edit|replace|change|save|log|completed|cambia|cambiar|guarda|registra)\b|\b\d{4}-\d{2}-\d{2}\b/.test(text)) return null;
+  if (!/\b(?:workouts?|sessions?|entrenamiento|sesion|ride|brick|correr|nadar)\b/.test(text)) return null;
+  const sports = ([
+    ["bike", /\b(?:bike|biking|cycling|ride|bici|bicicleta|ciclismo|rodillo)\b/],
+    ["run", /\b(?:run|running|correr|carrera|trote)\b/],
+    ["swim", /\b(?:swim|swimming|nado|nadar|natacion)\b/],
+    ["brick", /\b(?:brick|triathlon|triatlon)\b/],
+    ["hyrox", /\bhyrox\b/],
+    ["strength", /\b(?:strength|weights|pesas|fuerza)\b/],
+  ] as const).filter(([, re]) => re.test(text));
+  if (sports.length !== 1) return null;
+  const numbers: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, un: 1, una: 1, dos: 2, half: .5, media: .5 };
+  const durations = [...text.replace(/\bhalf an? (?=hour)/g, "half ").matchAll(/\b(\d+(?:[.,]\d+)?|one|two|an?|un|una|dos|half|media)\s*[- ]?\s*(minutes?|mins?|minutos?|min|hours?|hrs?|horas?|h)\b/g)]
+    .map(([, n, unit]) => (numbers[n] ?? Number(n.replace(",", "."))) * (/^(?:hour|hr|hora|h$)/.test(unit) ? 60 : 1));
+  const timeRange = /\b\d+(?:[.,]\d+)?\s*(?:or|and|to|o|y|a|[-–])\s*\d+(?:[.,]\d+)?\s*[- ]?\s*(?:minutes?|mins?|minutos?|min|hours?|hrs?|horas?|h)\b/.test(text);
+  const minutes = !timeRange && durations.length === 1 && Number.isInteger(durations[0]) && durations[0] >= 1 && durations[0] <= 1440 ? durations[0] : null;
+  return { sport: sports[0][0], minutes };
+}
+
 /** Presentation routing only. Never authorizes data access, mutations or AI disclosure. */
 export function opensTodayWorkout(message: string): boolean {
+  if (todayWorkoutRequest(message)) return true;
   const text = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (/\b(?:yesterday|tomorrow|last week|next week|ayer|manana|semana pasada|proxima semana)\b/.test(text)) return false;
   const daily = /\b(?:today|todays|hoy)\b|\btoday['’]s\b/.test(text);

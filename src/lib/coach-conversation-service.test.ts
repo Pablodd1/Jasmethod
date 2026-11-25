@@ -1024,3 +1024,34 @@ test("urgent symptoms override reference cards; profile/image requests do not se
     assert.equal(calls,0);assert.deepEqual(f.state.writes,[]);
   }finally{globalThis.fetch=originalFetch;f.restore();}
 });
+
+test("the reported one-hour bike prompt opens private workout review instead of the local fallback", async () => {
+  const f = fixture([]);
+  const originalFetch = globalThis.fetch;
+  const previous = Object.fromEntries(["EXTERNAL_AI_ENABLED", "OPENAI_API_KEY", "OPENAI_TEXT_MODEL"].map(key => [key, process.env[key]]));
+  Object.assign(process.env, { EXTERNAL_AI_ENABLED: "true", OPENAI_API_KEY: "synthetic-only", OPENAI_TEXT_MODEL: "gpt-4.1-mini-2025-04-14" });
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw Error("Workout review must stay local"); };
+  try {
+    for (const [index, source] of ["text", "voice"].entries()) {
+      const result = await appendConversation(actor, {
+        message: "I need a bike workout I have an hour", source, clientRequestId: "bike-review-" + index,
+        ...(source === "voice" ? { manualDialogueConsent: true, messageOrigin: "athlete_authored", externalConsent: true, textProviderConsent: "openai" } : {}),
+      });
+      assert.equal(result.mode, "coach_local");
+      assert.equal(result.externalStatus, source === "voice" ? "policy_local" : "not_requested");
+      assert.match(result.answer, /bike workout within 60 minutes/);
+      assert.match(result.answer, /today's check-in/i);
+      assert.doesNotMatch(result.answer, /reliable answer|Original interval/);
+      assert.ok(result.pendingActions.includes("review_checkin"));
+      assert.equal(result.trainingModified, false);
+      assert.deepEqual(result.proposal?.candidates ?? [], []);
+    }
+    assert.equal(calls, 0);
+    assert.deepEqual(f.state.writes, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    f.restore();
+  }
+});

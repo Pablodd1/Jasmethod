@@ -38,12 +38,14 @@ async function mobile(browser,language,width){const es=language==='es',c=await c
    if(path==='/'){assert.ok(await page.locator('.website-header').evaluate(e=>e.getBoundingClientRect().height<=95));await page.screenshot({path:dir+'/home-'+language+'-'+width+'.png'});diagnostics.push({language,width,...await page.evaluate(()=>window.__websiteMetrics),scope:'One synthetic lab navigation; INP and real-user percentiles not established.'});
      await page.keyboard.press('Tab');await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>document.activeElement.id),'main-content');
      if(width<1001){await page.locator('.website-mobile-menu summary').click();const menu=page.locator('.website-mobile-links');assert.ok(await menu.isVisible());await menu.getByRole('link',{name:es?'Contacto':'Contact',exact:true}).waitFor();await page.locator('.website-mobile-menu summary').click();}
-     const cta=page.locator('.website-hero').getByRole('link');assert.equal(await cta.count(),1);assert.ok(await cta.evaluate(e=>e.getBoundingClientRect().height>=44));
+     const hero=page.locator('.website-hero');
+     const cta=hero.locator('a.website-cta');assert.equal(await cta.count(),1);assert.ok(await cta.isVisible());assert.equal(await cta.getAttribute('href'),'#workout-demo');assert.ok(await cta.evaluate(e=>e.getBoundingClientRect().height>=44));
+     const details=hero.getByRole('link',{name:es?'Conoce cómo funciona':'See how it works',exact:true});assert.equal(await details.count(),1);assert.ok(await details.isVisible());assert.equal(await details.getAttribute('href'),localized(language,'/how-it-works'));
    }else if(width===320)await page.screenshot({path:dir+'/'+path.slice(1).replaceAll('/','-')+'-'+language+'-'+width+'.png',fullPage:true});
    if(path==='/book')assert.match(await page.locator('main').innerText(),/Jeffrey Draesel DC/);
  }
  await page.goto(base+localized(language,'/science/nutrition'));await page.getByRole('heading',{level:1}).waitFor();await page.getByLabel('Language',{exact:true}).selectOption(es?'en':'es');await page.waitForURL(base+localized(es?'en':'es','/science/nutrition'));assert.equal(await page.locator('html').getAttribute('lang'),es?'en':'es');
- checks.push({name:language+' '+width+'px mobile/desktop navigation, source-language hydration, keyboard skip, single primary hero action, no overflow and context-preserving language switch',status:'PASS'});
+ checks.push({name:language+' '+width+'px mobile/desktop navigation, source-language hydration, keyboard skip, one primary hero action and a localized secondary link, no overflow and context-preserving language switch',status:'PASS'});
  }catch(e){await page.screenshot({path:dir+'/failure-'+language+'-'+width+'.png',fullPage:true}).catch(()=>{});throw e;}finally{await c.close();}}
 async function inquiry(browser,language){const es=language==='es',c=await context(browser,language,390),page=await c.newPage();let sends=0;
  try{await page.goto(base+localized(language,'/contact'));const form=page.locator('main form');await form.getByLabel(es?'Nombre':'Name',{exact:true}).fill('Synthetic visitor');await form.getByLabel(es?'Correo para responder':'Reply email',{exact:true}).fill('visitor@example.invalid');await form.getByLabel(es?'Tu mensaje':'Your message',{exact:true}).fill('Synthetic product inquiry, no health information.');
