@@ -7,6 +7,7 @@ import {
   type UniversalWorkoutCard as Card,
 } from "@/lib/universal-workout-card";
 import { readTrainingJson } from "./training-read";
+import { timedWorkoutProgress } from "./timed-workout-progress";
 import { readinessReasonText } from "./readiness-copy";
 import type { CanonicalStep } from "@/lib/canonical-session";
 import { FitDownloadActions } from "./FitDownloadActions";
@@ -95,14 +96,10 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
       setRunning(false);
     }
   }, [elapsed, timed, s.exactTimeSeconds]);
-  let cursor = 0;
-  const active = timed
-    ? s.steps.findIndex((st) => {
-        const from = cursor;
-        cursor += st.seconds;
-        return elapsed >= from && elapsed < cursor;
-      })
-    : selected ?? 0;
+  const progress = timed ? timedWorkoutProgress(s.steps, elapsed) : null;
+  const following = progress !== null && (running || elapsed > 0);
+  const displayed = following ? progress.index : selected ?? 0;
+  const next = following && !progress.complete ? s.steps[displayed + 1] : undefined;
   const values = s.steps.map((st) => n(st, mode)),
     max = Math.max(1, ...values.filter((v): v is number => v !== null));
   const width = 900,
@@ -122,7 +119,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
     x += w;
     return { st, i, x: left, w, h, value };
   });
-  const step = selected === null ? undefined : s.steps[selected];
+  const step = s.steps[displayed];
   if (!s.steps.length) return null;
   return (
     <section className="uwc-section">
@@ -155,12 +152,13 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
               role="button"
               tabIndex={0}
               aria-label={`${i + 1}. ${st.name}: ${endpointText(st, card.language)}, ${st.target.label}`}
-              aria-pressed={selected === i}
-              onClick={() => setSelected(i)}
+              aria-pressed={displayed === i}
+              aria-disabled={following || undefined}
+              onClick={() => { if (!following) setSelected(i); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setSelected(i);
+                  if (!following) setSelected(i);
                 }
               }}
             >
@@ -172,13 +170,13 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
                 height={h}
                 fill={value === null ? "#56636b" : stepColor(st)}
                 stroke={
-                  i === active && (running || elapsed > 0)
+                  i === displayed && following
                     ? "#fff"
                     : selected === i
                       ? "#f7c84a"
                       : "#080f13"
                 }
-                strokeWidth={selected === i ? 3 : 1}
+                strokeWidth={displayed === i ? 3 : 1}
               />
               {w >= 85 && <text x={x + w / 2} y={160} textAnchor="middle" fill="#ecf3f5" fontSize="12">{mode === "zone" ? st.zone.toUpperCase() : mode === "RPE" ? `RPE ${value ?? "—"}` : value === null ? "—" : st.target.label.split(" (")[0].slice(0, 24)}</text>}
               {w >= 20 && <text
@@ -197,14 +195,15 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
       {step && (
         <div className="uwc-selected" aria-live="polite">
           <b>
-            {(selected ?? 0) + 1}. {step.componentSport ? `${step.componentSport.toUpperCase()} · ` : ""}{step.name} · {endpointText(step, card.language)}
+            {displayed + 1}. {step.componentSport ? `${step.componentSport.toUpperCase()} · ` : ""}{step.name} · {endpointText(step, card.language)}
           </b>
           <p>{step.target.label}</p>
           <p>{step.target.label.includes("RPE") ? step.zone.toUpperCase() : `${stepExecutionGuide(step, s.sport, es).effort} · ${step.zone.toUpperCase()}`}</p>
           <p>{stepExecutionGuide(step, s.sport, es).phase}</p>
-          {additionalStepInstruction(card.content.steps[selected ?? 0] || "") && <p>{additionalStepInstruction(card.content.steps[selected ?? 0] || "")}</p>}
+          {additionalStepInstruction(card.content.steps[displayed] || "") && <p>{additionalStepInstruction(card.content.steps[displayed] || "")}</p>}
           {step.note && <p>{step.note}</p>}
-          {values[selected ?? 0] === null && (
+          {next && <p>{es ? "Siguiente:" : "Next:"} {next.name} · {endpointText(next, card.language)}</p>}
+          {values[displayed] === null && (
             <p>
               {es
                 ? "Este paso no tiene ese objetivo."
@@ -265,6 +264,7 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
                 offset.current = 0;
                 setElapsed(0);
               }
+              if (timed && offset.current === 0) setSelected(0);
               setRunning(true);
             }
           }}
@@ -282,13 +282,16 @@ export function WorkoutIntensityTimeline({ card }: { card: Card }) {
             setRunning(false);
             offset.current = 0;
             setElapsed(0);
+            setSelected(0);
           }}
         >
           {es ? "Reiniciar" : "Reset"}
         </button>
-        <output>
-          {timed
-            ? `${Math.floor(elapsed / 60)}:${String(Math.floor(elapsed % 60)).padStart(2, "0")} · ${es ? "paso" : "step"} ${Math.max(1, active + 1)}/${s.steps.length}`
+        <output aria-live={progress?.complete ? "polite" : "off"}>
+          {progress
+            ? progress.complete
+              ? (es ? "Guía completada" : "Guide complete")
+              : `${es ? "Paso" : "Step"} ${progress.index + 1}/${s.steps.length} · ${endpointText({ endpoint: { type: "time", seconds: progress.remaining } }, card.language)} ${es ? "restantes" : "remaining"}`
             : es
               ? "Avanza los pasos manualmente"
               : "Advance steps manually"}
