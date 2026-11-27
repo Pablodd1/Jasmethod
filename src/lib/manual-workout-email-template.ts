@@ -27,6 +27,7 @@ export interface ManualWorkoutEmailInput {
   readyPlan?: ManualWorkoutEmailReadyPlan;
   heldPreview?: DeliveryWorkoutPreview;
   plannedRest?: boolean;
+  eveningPreview?: boolean;
 }
 
 export interface ManualWorkoutEmailContent {
@@ -98,6 +99,7 @@ export function manualWorkoutEmail(input: ManualWorkoutEmailInput): ManualWorkou
   const plannedRest = kind === "held" && input.plannedRest === true;
   const intro = plannedRest ? (es ? `Hoy (${date}) tienes descanso planificado. No es un entrenamiento perdido ni confirma que ya descansaste. Revisa la recuperación y el check-in privado en la aplicación. No adjuntamos ningún FIT.` : `Today (${date}) has planned rest. This is not a missed workout or a report of completed rest. Review recovery and your private check-in in the app. No FIT is attached.`) : introductions[kind];
   const preview = kind === "held" ? input.heldPreview : null;
+  const eveningPreview = kind === "held" && input.eveningPreview === true;
   const revisionLine = `${es ? "Revisión" : "Revision"}: ${revision}.`;
   const status = actionable
     ? es ? "Descarga lista. La transferencia a tu Garmin no está verificada." : "Download ready. Transfer to your Garmin has not been verified."
@@ -189,6 +191,6 @@ export function manualWorkoutEmail(input: ManualWorkoutEmailInput): ManualWorkou
   ].join("\n\n");
   const sports: Record<string,string> = es ? {run:"Carrera",bike:"Ciclismo",swim:"Natación",hyrox:"HYROX",brick:"Sesión combinada",strength:"Fuerza",mobility:"Movilidad",recovery:"Recuperación"} : {run:"Run",bike:"Bike",swim:"Swim",hyrox:"HYROX",brick:"Brick",strength:"Strength",mobility:"Mobility",recovery:"Recovery"};
   const sport = input.workoutSport ? sports[input.workoutSport] : undefined;
-  const subject = plannedRest ? `${es ? "Tu descanso planificado" : "Your planned recovery day"} · ${date}` : preview ? `${es ? "Tu plan guardado — completa el check-in" : "Your saved plan — complete your check-in"} · ${date}` : actionable && typeof sport === "string" ? `${sport} ${es ? "entrenamiento" : "Training"} — ${date}${kind === "revised" ? es ? " (actualizado)" : " (updated)" : ""}` : `${subjects[kind]} · ${date}`;
+  const subject = eveningPreview ? `${es ? "Plan de mañana — vista previa" : "Tomorrow’s workout — preview"} · ${date}` : plannedRest ? `${es ? "Tu descanso planificado" : "Your planned recovery day"} · ${date}` : preview ? `${es ? "Tu plan guardado — completa el check-in" : "Your saved plan — complete your check-in"} · ${date}` : actionable && typeof sport === "string" ? `${sport} ${es ? "entrenamiento" : "Training"} — ${date}${kind === "revised" ? es ? " (actualizado)" : " (updated)" : ""}` : `${subjects[kind]} · ${date}`;
   return { subject, html, text };
 }
