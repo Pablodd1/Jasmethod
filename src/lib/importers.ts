@@ -1050,6 +1050,13 @@ export interface GcalEventInput {
   existingGoogleId?: string | null; // when set, update instead of create
 }
 
+/** Set both directions explicitly: omitting a field on PATCH preserves it. */
+export function jmmCalendarNotificationPolicy(tentative: boolean, unscheduled: boolean) {
+  return tentative || unscheduled
+    ? { transparency: "transparent" as const, reminders: { useDefault: false, overrides: [] } }
+    : { transparency: "opaque" as const, reminders: { useDefault: true, overrides: null } };
+}
+
 export async function googleCalUpsertEvent(
   accessToken: string,
   ev: GcalEventInput,
@@ -1057,9 +1064,13 @@ export async function googleCalUpsertEvent(
   const id =
     ev.existingGoogleId ||
     createHash("sha256").update(ev.workoutId).digest("hex");
+  const tentative = ev.provisional !== false;
+  const unscheduled = !(ev.start instanceof Date);
+  const scheduling = jmmCalendarNotificationPolicy(tentative, unscheduled);
   const body = {
     summary: ev.summary,
     description: ev.description || "",
+    ...scheduling,
     // Explicit nulls clear the opposite representation on PATCH (timed ↔ all-day).
     start: ev.start instanceof Date
       ? { dateTime: ev.start.toISOString(), date: null }
@@ -1067,7 +1078,7 @@ export async function googleCalUpsertEvent(
     end: ev.start instanceof Date
       ? { dateTime: new Date(ev.start.getTime() + ev.durationMin * 60000).toISOString(), date: null }
       : { date: addDaysKey(ev.start.date, 1), dateTime: null, timeZone: null },
-    status: ev.provisional !== false ? "tentative" : "confirmed",
+    status: tentative ? "tentative" : "confirmed",
     extendedProperties: { private: {
       jmmWorkoutId: ev.workoutId,
       ...(ev.revision ? { jmmRevision: ev.revision } : {}),
