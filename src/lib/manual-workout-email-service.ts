@@ -36,11 +36,14 @@ async function snapshot(userId: string, sessionId: string) {
 
 /** Reconciliation sees effective revisions (including safety/check-in changes),
  * not just explicit workout edits. It never bypasses athlete approval. */
-export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?: string, dependencies = { resolve: snapshot, send: sendManualEmail, clock: () => new Date() }) {
+export async function reconcileManualWorkoutEmails(now = new Date(), onlyUserId?: string, dependencies: { resolve: typeof snapshot; send: typeof sendManualEmail; clock: () => Date; eveningPreviewEnabled?: boolean } = {
+  resolve: snapshot, send: sendManualEmail, clock: () => new Date(),
+  eveningPreviewEnabled: process.env.ENABLE_JMM_EVENING_WORKOUT_PREVIEW === "true",
+}) {
   if (!manualEmailConfigured()) return { enabled: false, queued: 0, accepted: 0 };
   const origin = manualEmailOrigin();
   // Roll out deliberately; toggling the pilot replaces routine same-day mail, not explicit revision notices.
-  const eveningPilot = process.env.ENABLE_JMM_EVENING_WORKOUT_PREVIEW === "true";
+  const eveningPilot = dependencies.eveningPreviewEnabled === true;
   await prisma.manualWorkoutEmailOutbox.updateMany({ where: { status: "sending", attemptedAt: { lt: new Date(now.getTime() - 5 * 60_000) } }, data: { status: "unknown", error: "Interrupted attempt; no automatic resend." } });
   const preferences = await prisma.manualWorkoutEmailPreference.findMany({ where: { enabled: true, ...(onlyUserId ? { userId: onlyUserId } : {}) }, include: { user: { select: { id: true, email: true, timezone: true, language: true } } }, take: 500 });
   let queued = 0, accepted = 0, unsupportedLanguage = 0;

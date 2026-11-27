@@ -79,7 +79,8 @@ function makeHarness() {
     readPreference: (_read: number): Row | null => structuredClone(preference),
     readUser: (_read: number): Row | null => structuredClone(user),
     send: async (_message: ManualEmailMessage): Promise<ManualEmailReceipt> => ({ status: "accepted", receiptId: "fake-smtp-receipt" }),
-    run: (at = now) => reconcileManualWorkoutEmails(at, user.id, {
+    run: (at = now, eveningPreviewEnabled = false) => reconcileManualWorkoutEmails(at, user.id, {
+      eveningPreviewEnabled,
       resolve: async (userId, sessionId) => {
         assert.equal(userId, user.id);
         assert.equal(sessionId, "session-a");
@@ -388,28 +389,21 @@ test("a held morning email prepared before local midnight does not dispatch on t
 });
 
 test("evening pilot mails only tomorrow’s preview and never an unapproved FIT", async () => {
-  const original = process.env.ENABLE_JMM_EVENING_WORKOUT_PREVIEW;
-  process.env.ENABLE_JMM_EVENING_WORKOUT_PREVIEW = "true";
-  try {
-    await withHarness(async h => {
-      const early = new Date("2026-10-07T17:59:59Z");
-      h.sendTime = early;
-      await h.run(early);
-      assert.equal(h.sends.length,0,"no routine same-day email");
-      h.state = snapshot("ready","Steady","2026-10-08");
-      h.sendTime = new Date("2026-10-07T18:00:00Z");
-      await h.run(h.sendTime);
-      assert.equal(h.sends.length,1);
-      assert.match(h.sends[0].subject,/Tomorrow’s workout.*2026-10-08/);
-      assert.deepEqual(h.sends[0].attachments,[]);
-      await h.run(h.sendTime);
-      assert.equal(h.sends.length,1,"do not duplicate the preparation email");
-      h.sendTime = new Date("2026-10-08T04:05:00Z");
-      await h.run(h.sendTime);
-      assert.equal(h.sends.length,1,"do not repeat the evening preview by mail in the morning");
-    });
-  } finally {
-    if (original === undefined) delete process.env.ENABLE_JMM_EVENING_WORKOUT_PREVIEW;
-    else process.env.ENABLE_JMM_EVENING_WORKOUT_PREVIEW = original;
-  }
+  await withHarness(async h => {
+    const early = new Date("2026-10-07T17:59:59Z");
+    h.sendTime = early;
+    await h.run(early, true);
+    assert.equal(h.sends.length,0,"no routine same-day email");
+    h.state = snapshot("ready","Steady","2026-10-08");
+    h.sendTime = new Date("2026-10-07T18:00:00Z");
+    await h.run(h.sendTime, true);
+    assert.equal(h.sends.length,1);
+    assert.match(h.sends[0].subject,/Tomorrow’s workout.*2026-10-08/);
+    assert.deepEqual(h.sends[0].attachments,[]);
+    await h.run(h.sendTime, true);
+    assert.equal(h.sends.length,1,"do not duplicate the preparation email");
+    h.sendTime = new Date("2026-10-08T04:05:00Z");
+    await h.run(h.sendTime, true);
+    assert.equal(h.sends.length,1,"do not repeat the evening preview by mail in the morning");
+  });
 });
