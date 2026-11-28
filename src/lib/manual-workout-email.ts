@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { formatInTimeZone } from "date-fns-tz";
-import { dateKey, localDate } from "./dates";
+import { addDaysKey, dateKey, localDate } from "./dates";
 import type { CanonicalSession } from "./canonical-session";
 
 export const MANUAL_EMAIL_CONSENT = "manual-garmin-workout-email-v1";
@@ -51,4 +51,10 @@ export function manualEmailActionable(session: CanonicalSession, workout: { appr
 
 export function manualEmailChanged(previous: { revision: string; kind: string } | undefined, current: { revision: string; kind: string }) {
   return !!previous && (previous.revision !== current.revision || (previous.kind === "revised" ? "ready" : previous.kind) !== current.kind);
+}
+
+/** Return only tomorrow's local day, in the evening window. */
+export function manualEmailEveningTarget(timezone: string, now = new Date()): string | null {
+  const today = dateKey(now, timezone);
+  return now >= localDate(today, timezone, "18:00") ? addDaysKey(today, 1) : null;
 }

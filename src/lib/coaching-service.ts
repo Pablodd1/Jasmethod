@@ -1,7 +1,7 @@
 import { telegramWorkoutActionable, telegramWorkoutAttachments } from "./telegram-workout-attachments";
 import { dailyEnvironmentSummary } from "./daily-environment";
 import { unitsOf } from "./units";
-import { deliveryWorkoutPreview } from "./delivery-workout-preview";
+import { deliveryWorkoutPreview, plannedWorkoutDeliverySteps } from "./delivery-workout-preview";
 import { readDeliveryWorkout } from "./delivery-session";
 import { currentOrReportedWorkoutWhere, isCurrentWorkout } from "./calendar-workouts";
 import { sendTelegramCoaching, telegramCoachingConfigured, parseTelegramUpdate, boundedTelegramMessage } from "./telegram-coaching-transport";
@@ -122,7 +122,10 @@ function promptMessage(resolved: NonNullable<Awaited<ReturnType<typeof effective
     else if (c.verdict !== "ready" || !workoutCleared) {
       const preview = deliveryWorkoutPreview(resolved.workout, { ...c, language }, now);
       lines.push("No cleared workout is available. Open your private daily check-in: sleep, energy, soreness, stress, symptoms and available time. Review the updated workout in the app before training.");
-      if (preview) lines.push(preview.heading, preview.summary, preview.caution, preview.checkinLabel);
+      if (preview) {
+        const savedSteps = plannedWorkoutDeliverySteps(resolved.workout, c.athleteId, c.timezone, language ?? "en");
+        lines.push(preview.heading, preview.summary, ...savedSteps, preview.caution, preview.checkinLabel);
+      }
     }
     else lines.push("Before: review equipment, venue and full preparation/fueling guidance in the app.",
       "During: follow the selected session's exact blocks; stop if unwell or in pain.",

@@ -20,7 +20,7 @@ async function fixture(mode: "accepted" | "revoke" | "changed" | "approval" | "h
   if(mode.startsWith("legacy-")||mockSeed)rows.push({id:"legacy",idempotencyKey:promptKey(actor.id,"dailyPlan","session","2026-10-11"),sourceRevision:canonical.revision,message:mode.endsWith("preview")||mode==="legacy-preview-unknown"?"Saved plan preview — not cleared to execute":"During: follow the selected session's exact blocks; stop if unwell or in pain.",status:mockSeed?(mode==="mock-cancelled"?"cancelled":"simulated"):mode==="legacy-sent"?"sent":mode==="legacy-partial"?"partial":"unknown",transport:mockSeed?"mock":"telegram",questions:"[]",candidate:null,attempts:1});
   if(mockSeed)for(let i=1;i<=2;i++)rows.push({...rows[0],id:`other-mock-${i}`,idempotencyKey:`other-mock-key-${i}`});
   approval = mode === "missing-approval" ? "" : mode === "stale-approval" ? "stale" : canonical.revision;
-  let resolved: any = { canonical: ["held","upgrade","mock-preview","legacy-preview-unknown"].includes(mode) ? { ...canonical, verdict: "blocked" } : canonical, targetProfile: { ftp: 200 }, workout: { id: "session", date: new Date("2026-10-11T00:00Z"), approved: !["unapproved","upgrade"].includes(mode), planned: true, completed: false, feedbackStatus: null, startTime: mode === "started" ? "11:00" : "15:00", sport: "bike",durationMin:10,type:"endurance",title:"PRIVATE_MEDICAL_TITLE",notes:"PRIVATE_MEDICAL_NOTE" } };
+  let resolved: any = { canonical: ["held","upgrade","mock-preview","legacy-preview-unknown"].includes(mode) ? { ...canonical, verdict: "blocked" } : canonical, targetProfile: { ftp: 200 }, workout: { id: "session", date: new Date("2026-10-11T00:00Z"), approved: !["unapproved","upgrade"].includes(mode), planned: true, completed: false, feedbackStatus: null, startTime: mode === "started" ? "11:00" : "15:00", sport: "bike",durationMin:10,type:"endurance",title:"PRIVATE_MEDICAL_TITLE",notes:"PRIVATE_MEDICAL_NOTE", ...(mode==="held" ? {userId:actor.id,prescription:{sport:"bike",durationMin:10,verdict:"planned",steps:[{name:"Steady",seconds:600,zone:"z2",phase:"active"}]}} : {}) } };
   const tx: any = {
     communicationPreference: { findUnique: async () => pref },
     trainingPlan: { findFirst: async () => ({id:"current-plan"}) },
@@ -69,6 +69,7 @@ async function fixture(mode: "accepted" | "revoke" | "changed" | "approval" | "h
     assert.equal(result.prompt.externallySent, true);
     if (["unapproved", "missing-approval", "stale-approval", "started", "held", "refresh-incomplete"].includes(mode)) {
       assert.match(texts[0], /No cleared workout/);
+      if (mode === "held") { assert.match(texts[0], /Main set · .* · Z2/); assert.equal(calls,1); }
       assert.doesNotMatch(texts[0], /1\. active|During:|After:| W|RPE/);
     }
     const outcome = audit.find(a => a.data.action === "communication.telegram-outcome");
